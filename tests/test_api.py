@@ -77,7 +77,7 @@ class TestCheck:
         report = th.check(data, validators=["duplicate"])
 
         assert report.has_issues
-        assert any(i.issue_type == "duplicate" for i in report.issues)
+        assert any(i.issue_type == "duplicate_row" for i in report.issues)
 
 
 class TestScan:

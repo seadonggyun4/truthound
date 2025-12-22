@@ -59,7 +59,7 @@ class TestDuplicateValidator:
         issues = validator.validate(df.lazy())
 
         assert len(issues) == 1
-        assert issues[0].issue_type == "duplicate"
+        assert issues[0].issue_type == "duplicate_row"
         # is_duplicated() marks ALL rows that have duplicates (both copies)
         assert issues[0].count == 2
 
@@ -153,7 +153,7 @@ class TestUniqueValidator:
 
         assert len(issues) == 1
         assert issues[0].column == "user_id"
-        assert issues[0].issue_type == "duplicate_values"
+        assert issues[0].issue_type == "unique_violation"
 
     def test_unique_ids(self):
         """Test with all unique IDs."""
