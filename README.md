@@ -127,18 +127,28 @@ The architecture follows several key design principles:
 
 ## 3. Core Components
 
-### 3.1 Validators
+### 3.1 Validators (91 Total)
 
-| Validator | Description | Severity Thresholds |
-|-----------|-------------|---------------------|
-| `NullValidator` | Detects missing/null values per column | >50%: CRITICAL, >20%: HIGH, >5%: MEDIUM, else: LOW |
-| `TypeValidator` | Verifies type consistency within columns | Based on inconsistency ratio |
-| `RangeValidator` | Identifies out-of-range values | Configurable bounds |
-| `OutlierValidator` | Statistical outlier detection using IQR method | >10%: MEDIUM, else: LOW |
-| `DuplicateValidator` | Detects duplicate rows | >30%: CRITICAL, >10%: HIGH, >1%: MEDIUM, else: LOW |
-| `FormatValidator` | Pattern validation (email, phone, etc.) | Based on invalid ratio |
-| `UniqueValidator` | Enforces uniqueness constraints | Column-specific |
-| `SchemaValidator` | Validates against learned schema | Type/constraint based |
+Truthound provides **91 validators** across **8 categories**, comparable to Great Expectations:
+
+| Category | Count | Key Validators |
+|----------|-------|----------------|
+| **Schema** | 14 | `ColumnExistsValidator`, `ColumnTypeValidator`, `TableSchemaValidator`, `ReferentialIntegrityValidator`, `ColumnPairInSetValidator` |
+| **Completeness** | 7 | `NullValidator`, `NotNullValidator`, `CompletenessRatioValidator`, `ConditionalNullValidator` |
+| **Uniqueness** | 13 | `UniqueValidator`, `DuplicateValidator`, `PrimaryKeyValidator`, `CompoundKeyValidator`, `UniqueWithinRecordValidator` |
+| **Distribution** | 15 | `RangeValidator`, `BetweenValidator`, `OutlierValidator`, `KLDivergenceValidator`, `ChiSquareValidator` |
+| **String** | 17 | `RegexValidator`, `EmailValidator`, `PhoneValidator`, `JsonSchemaValidator`, `LikePatternValidator` |
+| **Datetime** | 10 | `DateFormatValidator`, `DateBetweenValidator`, `RecentDataValidator`, `DateutilParseableValidator` |
+| **Aggregate** | 8 | `MeanBetweenValidator`, `MedianBetweenValidator`, `SumBetweenValidator`, `TypeValidator` |
+| **Cross-table** | 4 | `CrossTableRowCountValidator`, `CrossTableAggregateValidator`, `CrossTableDistinctCountValidator` |
+
+#### Key Features
+
+- **`mostly` parameter**: All validators support partial pass rates (e.g., `mostly=0.95` allows 5% failures)
+- **Statistical tests**: KL Divergence, Chi-Square for distribution validation
+- **SQL LIKE patterns**: `LikePatternValidator` supports `%` and `_` wildcards
+- **Flexible date parsing**: `DateutilParseableValidator` handles multiple date formats automatically
+- **Cross-table validation**: Compare row counts, aggregates between related tables
 
 ### 3.2 Drift Detectors
 
@@ -295,8 +305,11 @@ The LazyFrame-based architecture enables processing of datasets larger than avai
 | Unit Tests | 39 | ✅ Pass |
 | Stress Tests | 53 | ✅ Pass |
 | Extreme Stress Tests | 14 | ✅ Pass |
-| Integration Tests | 39 | ✅ Pass |
-| **Total** | **145** | **✅ All Pass** |
+| Validator Tests (P0) | 32 | ✅ Pass |
+| Validator Tests (P1) | 27 | ✅ Pass |
+| Validator Tests (P2) | 27 | ✅ Pass |
+| Integration Tests | 112 | ✅ Pass |
+| **Total** | **304** | **✅ All Pass** |
 
 ### 6.2 Test Categories
 
@@ -412,7 +425,10 @@ truthound compare train.parquet prod.parquet --method psi --sample-size 10000
 | PII Detection | ✅ | ❌ | ❌ | ✅ |
 | Schema Inference | ✅ | ✅ | ✅ | ✅ |
 | Auto Caching | ✅ | ❌ | ❌ | ❌ |
-| Validator Count | ~10 | 300+ | 50+ | 100+ |
+| `mostly` Parameter | ✅ | ✅ | ❌ | ❌ |
+| Cross-table Validation | ✅ | ✅ | ❌ | ✅ |
+| Statistical Tests (KL, χ²) | ✅ | ✅ | ❌ | ❌ |
+| Validator Count | 91 | 300+ | 50+ | 100+ |
 
 ### 8.2 Honest Assessment
 
@@ -421,12 +437,13 @@ truthound compare train.parquet prod.parquet --method psi --sample-size 10000
 2. True zero-configuration with auto schema caching
 3. Statistical drift detection with multiple methods
 4. Korean-specific PII patterns
+5. 91 validators covering most common data quality checks
+6. Great Expectations-compatible `mostly` parameter
 
 **Limitations** (see Section 11):
-1. Limited validator count compared to established solutions
-2. No production deployment validation
-3. No ecosystem integrations (Airflow, dbt, etc.)
-4. Limited documentation and community
+1. No production deployment validation yet
+2. No ecosystem integrations (Airflow, dbt, etc.)
+3. Limited documentation and community
 
 ---
 
@@ -529,15 +546,14 @@ masked_df.write_parquet("anonymized.parquet")
 
 ### 11.1 Current Limitations
 
-1. **Validator Coverage**: ~10 validators vs 300+ in Great Expectations
-2. **No Production Validation**: Untested in large-scale production environments
-3. **Limited Integrations**: No native support for Airflow, dbt, Dagster, etc.
-4. **Documentation**: Minimal API documentation and tutorials
-5. **Community**: No established user community or support channels
+1. **No Production Validation**: Untested in large-scale production environments
+2. **Limited Integrations**: No native support for Airflow, dbt, Dagster, etc.
+3. **Documentation**: Minimal API documentation and tutorials
+4. **Community**: No established user community or support channels
 
 ### 11.2 Planned Improvements
 
-1. **Phase 1**: Expand validator library (50+ validators)
+1. ~~**Phase 1**: Expand validator library (50+ validators)~~ ✅ **Completed** (91 validators)
 2. **Phase 2**: Add pipeline integrations (Airflow, Prefect)
 3. **Phase 3**: Web dashboard for visualization
 4. **Phase 4**: Database connectors (PostgreSQL, BigQuery)
