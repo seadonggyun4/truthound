@@ -98,7 +98,7 @@ This work presents:
           ▼                    ▼                    ▼
 ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
 │   Validators    │  │  Drift Detectors │  │   PII Scanners  │
-│   (225 total)   │  │    (11 types)    │  │   (8 patterns)  │
+│   (239 total)   │  │    (11 types)    │  │   (8 patterns)  │
 ├─────────────────┤  ├─────────────────┤  ├─────────────────┤
 │ • Schema (14)   │  │ • KS Test       │  │ • Email         │
 │ • Completeness  │  │ • Chi-Square    │  │ • Phone         │
@@ -119,6 +119,7 @@ This work presents:
 │ • Profiling (6) │           │                    │
 │ • Referential   │           │                    │
 │ • TimeSeries    │           │                    │
+│ • Privacy (14)  │           │                    │
 └────────┬────────┘           │                    │
          │                    │                    │
          └────────────────────┼────────────────────┘
@@ -150,9 +151,9 @@ The architecture follows several key design principles:
 
 ## 3. Core Components
 
-### 3.1 Validators (225 Total)
+### 3.1 Validators (239 Total)
 
-Truthound provides **225 validators** across **20 categories**, offering comprehensive data quality coverage:
+Truthound provides **239 validators** across **21 categories**, offering comprehensive data quality coverage:
 
 | Category | Count | Key Validators |
 |----------|-------|----------------|
@@ -176,6 +177,7 @@ Truthound provides **225 validators** across **20 categories**, offering compreh
 | **Profiling** | 6 | `CardinalityValidator`, `UniquenessRatioValidator`, `EntropyValidator`, `ValueFrequencyValidator` |
 | **Referential** | 11 | `ForeignKeyValidator`, `CompositeForeignKeyValidator`, `OrphanRecordValidator`, `CircularReferenceValidator` |
 | **Time Series** | 12 | `TimeSeriesGapValidator`, `TimeSeriesMonotonicValidator`, `SeasonalityValidator`, `TrendValidator` |
+| **Privacy** | 14 | `GDPRComplianceValidator`, `CCPAComplianceValidator`, `GlobalPrivacyValidator`, `DataRetentionValidator` |
 
 > **Detailed Documentation**: For comprehensive descriptions of each validator, including usage examples and configuration options, see **[Validator Reference (docs/VALIDATORS.md)](docs/VALIDATORS.md)**.
 
@@ -403,8 +405,9 @@ The LazyFrame-based architecture enables processing of datasets larger than avai
 | Profiling Validator Tests | 23 | Pass |
 | Referential Validator Tests | 28 | Pass |
 | Time Series Validator Tests | 30 | Pass |
+| Privacy Validator Tests | 46 | Pass |
 | Integration Tests | 138 | Pass |
-| **Total** | **671** | **All Pass** |
+| **Total** | **717** | **All Pass** |
 
 ### 6.2 Test Categories
 
@@ -528,7 +531,8 @@ truthound compare train.parquet prod.parquet --method psi --sample-size 10000
 | Time Series Validation | Yes (12) | No | No | Limited |
 | Referential Integrity | Yes (11) | Plugin | No | Yes |
 | ML Feature Validation | Yes (4) | No | No | No |
-| Validator Count | 225 | 300+ | 50+ | 100+ |
+| Privacy Compliance (GDPR/CCPA) | Yes (14) | No | No | Limited |
+| Validator Count | 239 | 300+ | 50+ | 100+ |
 
 ### 8.2 Honest Assessment
 
@@ -538,13 +542,14 @@ truthound compare train.parquet prod.parquet --method psi --sample-size 10000
 3. Comprehensive drift detection with 11 statistical methods
 4. Advanced anomaly detection including ML-based approaches
 5. Korean-specific PII patterns
-6. 225 validators covering most common data quality checks
+6. 239 validators covering most common data quality checks
 7. Great Expectations-compatible `mostly` parameter
 8. Geospatial coordinate validation
 9. Time series validation with gap, seasonality, and trend detection
 10. Referential integrity validation for complex data relationships
 11. ML feature quality validation (leakage, correlation, scale)
 12. Asian localization support (Korean, Japanese, Chinese)
+13. Global privacy compliance (GDPR, CCPA, LGPD, PIPEDA, APPI)
 
 **Limitations** (see Section 11):
 1. No production deployment validation yet
@@ -708,7 +713,7 @@ masked_df.write_parquet("anonymized.parquet")
 
 ### 11.2 Completed Improvements
 
-- ~~**Phase 1**: Expand validator library (50+ validators)~~ **Completed** (225 validators)
+- ~~**Phase 1**: Expand validator library (50+ validators)~~ **Completed** (239 validators)
 - ~~**Phase 1.1**: Add drift detection validators~~ **Completed** (11 validators)
 - ~~**Phase 1.2**: Add anomaly detection validators~~ **Completed** (13 validators)
 - ~~**Phase 1.3**: Add multi-column validators~~ **Completed** (16 validators)
@@ -719,6 +724,7 @@ masked_df.write_parquet("anonymized.parquet")
 - ~~**Phase 1.8**: Add profiling validators~~ **Completed** (6 validators)
 - ~~**Phase 1.9**: Add referential integrity validators~~ **Completed** (11 validators)
 - ~~**Phase 1.10**: Add time series validators~~ **Completed** (12 validators)
+- ~~**Phase 1.11**: Add privacy compliance validators (GDPR/CCPA)~~ **Completed** (14 validators)
 
 ### 11.3 Planned Improvements
 
