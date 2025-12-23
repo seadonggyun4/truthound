@@ -98,7 +98,7 @@ This work presents:
           ▼                    ▼                    ▼
 ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
 │   Validators    │  │  Drift Detectors │  │   PII Scanners  │
-│   (169 total)   │  │    (11 types)    │  │   (8 patterns)  │
+│   (225 total)   │  │    (11 types)    │  │   (8 patterns)  │
 ├─────────────────┤  ├─────────────────┤  ├─────────────────┤
 │ • Schema (14)   │  │ • KS Test       │  │ • Email         │
 │ • Completeness  │  │ • Chi-Square    │  │ • Phone         │
@@ -111,8 +111,14 @@ This work presents:
 │ • Anomaly (13)  │  │ • Cosine Sim    │  └────────┬────────┘
 │ • Drift (11)    │  │ • Feature Drift │           │
 │ • Geospatial    │  │ • Concept Drift │           │
-│ • Query (5)     │  └────────┬───────┘           │
+│ • Query (5)     │  └────────┬────────┘           │
 │ • Table (7)     │           │                    │
+│ • Business (6)  │           │                    │
+│ • Localization  │           │                    │
+│ • ML Feature    │           │                    │
+│ • Profiling (6) │           │                    │
+│ • Referential   │           │                    │
+│ • TimeSeries    │           │                    │
 └────────┬────────┘           │                    │
          │                    │                    │
          └────────────────────┼────────────────────┘
@@ -144,9 +150,9 @@ The architecture follows several key design principles:
 
 ## 3. Core Components
 
-### 3.1 Validators (169 Total)
+### 3.1 Validators (225 Total)
 
-Truthound provides **169 validators** across **14 categories**, offering comprehensive data quality coverage:
+Truthound provides **225 validators** across **20 categories**, offering comprehensive data quality coverage:
 
 | Category | Count | Key Validators |
 |----------|-------|----------------|
@@ -164,6 +170,12 @@ Truthound provides **169 validators** across **14 categories**, offering compreh
 | **Geospatial** | 6 | `LatitudeValidator`, `LongitudeValidator`, `CoordinatePairValidator`, `BoundingBoxValidator` |
 | **Drift** | 11 | `KSTestValidator`, `ChiSquareDriftValidator`, `WassersteinValidator`, `PSIValidator`, `JensenShannonValidator` |
 | **Anomaly** | 13 | `IsolationForestValidator`, `LOFValidator`, `MahalanobisValidator`, `IQRAnomalyValidator`, `DBSCANAnomalyValidator` |
+| **Business Rule** | 6 | `LuhnValidator`, `ISBNValidator`, `CreditCardValidator`, `IBANValidator`, `VATValidator`, `SWIFTValidator` |
+| **Localization** | 8 | `KoreanBusinessNumberValidator`, `KoreanRRNValidator`, `JapanesePostalCodeValidator`, `ChineseIDValidator` |
+| **ML Feature** | 4 | `FeatureNullImpactValidator`, `FeatureScaleValidator`, `FeatureCorrelationMatrixValidator`, `TargetLeakageValidator` |
+| **Profiling** | 6 | `CardinalityValidator`, `UniquenessRatioValidator`, `EntropyValidator`, `ValueFrequencyValidator` |
+| **Referential** | 11 | `ForeignKeyValidator`, `CompositeForeignKeyValidator`, `OrphanRecordValidator`, `CircularReferenceValidator` |
+| **Time Series** | 12 | `TimeSeriesGapValidator`, `TimeSeriesMonotonicValidator`, `SeasonalityValidator`, `TrendValidator` |
 
 > **Detailed Documentation**: For comprehensive descriptions of each validator, including usage examples and configuration options, see **[Validator Reference (docs/VALIDATORS.md)](docs/VALIDATORS.md)**.
 
@@ -385,8 +397,14 @@ The LazyFrame-based architecture enables processing of datasets larger than avai
 | Query Validator Tests | 14 | Pass |
 | Table Validator Tests | 21 | Pass |
 | Geospatial Validator Tests | 26 | Pass |
+| Business Rule Validator Tests | 22 | Pass |
+| Localization Validator Tests | 28 | Pass |
+| ML Feature Validator Tests | 23 | Pass |
+| Profiling Validator Tests | 23 | Pass |
+| Referential Validator Tests | 28 | Pass |
+| Time Series Validator Tests | 30 | Pass |
 | Integration Tests | 138 | Pass |
-| **Total** | **517** | **All Pass** |
+| **Total** | **671** | **All Pass** |
 
 ### 6.2 Test Categories
 
@@ -507,7 +525,10 @@ truthound compare train.parquet prod.parquet --method psi --sample-size 10000
 | Cross-table Validation | Yes | Yes | No | Yes |
 | Statistical Tests (KL, Chi2) | Yes | Yes | No | No |
 | Geospatial Validation | Yes | No | No | No |
-| Validator Count | 169 | 300+ | 50+ | 100+ |
+| Time Series Validation | Yes (12) | No | No | Limited |
+| Referential Integrity | Yes (11) | Plugin | No | Yes |
+| ML Feature Validation | Yes (4) | No | No | No |
+| Validator Count | 225 | 300+ | 50+ | 100+ |
 
 ### 8.2 Honest Assessment
 
@@ -517,9 +538,13 @@ truthound compare train.parquet prod.parquet --method psi --sample-size 10000
 3. Comprehensive drift detection with 11 statistical methods
 4. Advanced anomaly detection including ML-based approaches
 5. Korean-specific PII patterns
-6. 169 validators covering most common data quality checks
+6. 225 validators covering most common data quality checks
 7. Great Expectations-compatible `mostly` parameter
 8. Geospatial coordinate validation
+9. Time series validation with gap, seasonality, and trend detection
+10. Referential integrity validation for complex data relationships
+11. ML feature quality validation (leakage, correlation, scale)
+12. Asian localization support (Korean, Japanese, Chinese)
 
 **Limitations** (see Section 11):
 1. No production deployment validation yet
@@ -683,11 +708,17 @@ masked_df.write_parquet("anonymized.parquet")
 
 ### 11.2 Completed Improvements
 
-- ~~**Phase 1**: Expand validator library (50+ validators)~~ **Completed** (169 validators)
+- ~~**Phase 1**: Expand validator library (50+ validators)~~ **Completed** (225 validators)
 - ~~**Phase 1.1**: Add drift detection validators~~ **Completed** (11 validators)
 - ~~**Phase 1.2**: Add anomaly detection validators~~ **Completed** (13 validators)
 - ~~**Phase 1.3**: Add multi-column validators~~ **Completed** (16 validators)
 - ~~**Phase 1.4**: Add geospatial validators~~ **Completed** (6 validators)
+- ~~**Phase 1.5**: Add business rule validators~~ **Completed** (6 validators)
+- ~~**Phase 1.6**: Add localization validators~~ **Completed** (8 validators)
+- ~~**Phase 1.7**: Add ML feature validators~~ **Completed** (4 validators)
+- ~~**Phase 1.8**: Add profiling validators~~ **Completed** (6 validators)
+- ~~**Phase 1.9**: Add referential integrity validators~~ **Completed** (11 validators)
+- ~~**Phase 1.10**: Add time series validators~~ **Completed** (12 validators)
 
 ### 11.3 Planned Improvements
 
