@@ -1,6 +1,6 @@
 """Built-in validators for data quality checks.
 
-This module provides 169 validators across 14 categories:
+This module provides 216 validators across 20 categories:
 - schema: Table structure validation (14 validators)
 - completeness: Null and missing value detection (7 validators)
 - uniqueness: Duplicate, primary key, and distinct value checks (13 validators)
@@ -15,6 +15,12 @@ This module provides 169 validators across 14 categories:
 - geospatial: Geographic coordinate validation (8 validators)
 - drift: Data drift detection (11 validators)
 - anomaly: Anomaly and outlier detection (13 validators)
+- referential: Referential integrity validation (11 validators)
+- timeseries: Time series validation (12 validators)
+- business_rule: Business rule validation (6 validators)
+- profiling: Data profiling validation (6 validators)
+- localization: Asian localization validation (8 validators)
+- ml_feature: ML feature validation (4 validators)
 """
 
 from __future__ import annotations
@@ -274,6 +280,100 @@ from truthound.validators.anomaly import (
     DBSCANAnomalyValidator,
 )
 
+# Referential integrity validators
+from truthound.validators.referential import (
+    ForeignKeyRelation,
+    TableNode,
+    ReferentialValidator,
+    MultiTableValidator,
+    ForeignKeyValidator,
+    CompositeForeignKeyValidator,
+    SelfReferentialFKValidator,
+    CascadeAction,
+    CascadeRule,
+    CascadeIntegrityValidator,
+    CascadeDepthValidator,
+    OrphanRecordValidator,
+    MultiTableOrphanValidator,
+    DanglingReferenceValidator,
+    CircularReferenceValidator,
+    HierarchyCircularValidator,
+    HierarchyDepthValidator,
+)
+
+# Time series validators
+from truthound.validators.timeseries import (
+    TimeFrequency,
+    TimeSeriesStats,
+    TimeSeriesValidator,
+    ValueTimeSeriesValidator,
+    TimeSeriesGapValidator,
+    TimeSeriesIntervalValidator,
+    TimeSeriesDuplicateValidator,
+    MonotonicityType,
+    TimeSeriesMonotonicValidator,
+    TimeSeriesOrderValidator,
+    SeasonalPeriod,
+    SeasonalityValidator,
+    SeasonalDecompositionValidator,
+    TrendDirection,
+    TrendValidator,
+    TrendBreakValidator,
+    TimeSeriesCompletenessValidator,
+    TimeSeriesValueCompletenessValidator,
+    TimeSeriesDateRangeValidator,
+)
+
+# Business rule validators
+from truthound.validators.business_rule import (
+    BusinessRuleValidator,
+    ChecksumValidator,
+    LuhnValidator,
+    ISBNValidator,
+    CreditCardValidator,
+    IBANValidator,
+    VATValidator,
+    SWIFTValidator,
+)
+
+# Data profiling validators
+from truthound.validators.profiling import (
+    ProfileMetrics,
+    ProfilingValidator,
+    CardinalityValidator,
+    UniquenessRatioValidator,
+    EntropyValidator,
+    InformationGainValidator,
+    ValueFrequencyValidator,
+    DistributionShapeValidator,
+)
+
+# Localization validators
+from truthound.validators.localization import (
+    LocalizationValidator,
+    KoreanBusinessNumberValidator,
+    KoreanRRNValidator,
+    KoreanPhoneValidator,
+    KoreanBankAccountValidator,
+    JapanesePostalCodeValidator,
+    JapaneseMyNumberValidator,
+    ChineseIDValidator,
+    ChineseUSCCValidator,
+)
+
+# ML feature validators
+from truthound.validators.ml_feature import (
+    MLFeatureValidator,
+    FeatureStats,
+    CorrelationResult,
+    LeakageResult,
+    ScaleType,
+    FeatureNullImpactValidator,
+    FeatureScaleValidator,
+    FeatureCorrelationMatrixValidator,
+    TargetLeakageValidator,
+)
+
 __all__ = [
     # Base
     "ValidationIssue",
@@ -489,6 +589,82 @@ __all__ = [
     "LOFValidator",
     "OneClassSVMValidator",
     "DBSCANAnomalyValidator",
+    # Referential
+    "ForeignKeyRelation",
+    "TableNode",
+    "ReferentialValidator",
+    "MultiTableValidator",
+    "ForeignKeyValidator",
+    "CompositeForeignKeyValidator",
+    "SelfReferentialFKValidator",
+    "CascadeAction",
+    "CascadeRule",
+    "CascadeIntegrityValidator",
+    "CascadeDepthValidator",
+    "OrphanRecordValidator",
+    "MultiTableOrphanValidator",
+    "DanglingReferenceValidator",
+    "CircularReferenceValidator",
+    "HierarchyCircularValidator",
+    "HierarchyDepthValidator",
+    # Time series
+    "TimeFrequency",
+    "TimeSeriesStats",
+    "TimeSeriesValidator",
+    "ValueTimeSeriesValidator",
+    "TimeSeriesGapValidator",
+    "TimeSeriesIntervalValidator",
+    "TimeSeriesDuplicateValidator",
+    "MonotonicityType",
+    "TimeSeriesMonotonicValidator",
+    "TimeSeriesOrderValidator",
+    "SeasonalPeriod",
+    "SeasonalityValidator",
+    "SeasonalDecompositionValidator",
+    "TrendDirection",
+    "TrendValidator",
+    "TrendBreakValidator",
+    "TimeSeriesCompletenessValidator",
+    "TimeSeriesValueCompletenessValidator",
+    "TimeSeriesDateRangeValidator",
+    # Business rule
+    "BusinessRuleValidator",
+    "ChecksumValidator",
+    "LuhnValidator",
+    "ISBNValidator",
+    "CreditCardValidator",
+    "IBANValidator",
+    "VATValidator",
+    "SWIFTValidator",
+    # Profiling
+    "ProfileMetrics",
+    "ProfilingValidator",
+    "CardinalityValidator",
+    "UniquenessRatioValidator",
+    "EntropyValidator",
+    "InformationGainValidator",
+    "ValueFrequencyValidator",
+    "DistributionShapeValidator",
+    # Localization
+    "LocalizationValidator",
+    "KoreanBusinessNumberValidator",
+    "KoreanRRNValidator",
+    "KoreanPhoneValidator",
+    "KoreanBankAccountValidator",
+    "JapanesePostalCodeValidator",
+    "JapaneseMyNumberValidator",
+    "ChineseIDValidator",
+    "ChineseUSCCValidator",
+    # ML Feature
+    "MLFeatureValidator",
+    "FeatureStats",
+    "CorrelationResult",
+    "LeakageResult",
+    "ScaleType",
+    "FeatureNullImpactValidator",
+    "FeatureScaleValidator",
+    "FeatureCorrelationMatrixValidator",
+    "TargetLeakageValidator",
 ]
 
 
