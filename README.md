@@ -1,3 +1,7 @@
+<div align="center">
+  <img width="500" height="500" alt="logo" src="https://github.com/user-attachments/assets/4b4dea6c-46b9-49e5-af19-744a3b216bf8" />
+</div>
+
 <h1 align="center">Truthound</h1>
 
 <p align="center">
