@@ -1,6 +1,6 @@
 """Built-in validators for data quality checks.
 
-This module provides 216 validators across 20 categories:
+This module provides 239 validators across 21 categories:
 - schema: Table structure validation (14 validators)
 - completeness: Null and missing value detection (7 validators)
 - uniqueness: Duplicate, primary key, and distinct value checks (13 validators)
@@ -21,6 +21,7 @@ This module provides 216 validators across 20 categories:
 - profiling: Data profiling validation (6 validators)
 - localization: Asian localization validation (8 validators)
 - ml_feature: ML feature validation (4 validators)
+- privacy: GDPR/CCPA/Global privacy compliance (14 validators)
 """
 
 from __future__ import annotations
@@ -374,6 +375,37 @@ from truthound.validators.ml_feature import (
     TargetLeakageValidator,
 )
 
+# Privacy compliance validators
+from truthound.validators.privacy import (
+    # Enums
+    PrivacyRegulation,
+    PIICategory,
+    ConsentStatus,
+    LegalBasis,
+    # Data classes
+    PIIFieldDefinition,
+    PrivacyFinding,
+    # Base validators
+    PrivacyValidator,
+    DataRetentionValidator,
+    ConsentValidator,
+    # GDPR validators
+    GDPRComplianceValidator,
+    GDPRSpecialCategoryValidator,
+    GDPRDataMinimizationValidator,
+    GDPRRightToErasureValidator,
+    # CCPA validators
+    CCPAComplianceValidator,
+    CCPASensitiveInfoValidator,
+    CCPADoNotSellValidator,
+    CCPAConsumerRightsValidator,
+    # Global validators
+    GlobalPrivacyValidator,
+    LGPDComplianceValidator,
+    PIPEDAComplianceValidator,
+    APPIComplianceValidator,
+)
+
 __all__ = [
     # Base
     "ValidationIssue",
@@ -665,6 +697,28 @@ __all__ = [
     "FeatureScaleValidator",
     "FeatureCorrelationMatrixValidator",
     "TargetLeakageValidator",
+    # Privacy Compliance
+    "PrivacyRegulation",
+    "PIICategory",
+    "ConsentStatus",
+    "LegalBasis",
+    "PIIFieldDefinition",
+    "PrivacyFinding",
+    "PrivacyValidator",
+    "DataRetentionValidator",
+    "ConsentValidator",
+    "GDPRComplianceValidator",
+    "GDPRSpecialCategoryValidator",
+    "GDPRDataMinimizationValidator",
+    "GDPRRightToErasureValidator",
+    "CCPAComplianceValidator",
+    "CCPASensitiveInfoValidator",
+    "CCPADoNotSellValidator",
+    "CCPAConsumerRightsValidator",
+    "GlobalPrivacyValidator",
+    "LGPDComplianceValidator",
+    "PIPEDAComplianceValidator",
+    "APPIComplianceValidator",
 ]
 
 
