@@ -5,6 +5,10 @@
 </p>
 
 <p align="center">
+  <em>Sniffs out bad data. 🐕</em>
+</p>
+
+<p align="center">
   <a href="https://pypi.org/project/truthound/"><img src="https://img.shields.io/pypi/v/truthound" alt="PyPI"></a>
   <a href="https://pypi.org/project/truthound/"><img src="https://img.shields.io/pypi/pyversions/truthound" alt="Python"></a>
   <a href="https://github.com/seadonggyun4/Truthound/blob/main/LICENSE"><img src="https://img.shields.io/github/license/seadonggyun4/Truthound" alt="License"></a>
