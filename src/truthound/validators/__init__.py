@@ -1,6 +1,6 @@
 """Built-in validators for data quality checks.
 
-This module provides 91 validators across 8 categories:
+This module provides 169 validators across 14 categories:
 - schema: Table structure validation (14 validators)
 - completeness: Null and missing value detection (7 validators)
 - uniqueness: Duplicate, primary key, and distinct value checks (13 validators)
@@ -9,6 +9,12 @@ This module provides 91 validators across 8 categories:
 - datetime: Date format and range checks (10 validators)
 - aggregate: Statistical aggregate validation (8 validators)
 - cross_table: Multi-table validation (4 validators)
+- query: SQL and expression-based validation (17 validators)
+- multi_column: Multi-column compound checks (18 validators)
+- table: Table metadata validation (13 validators)
+- geospatial: Geographic coordinate validation (8 validators)
+- drift: Data drift detection (11 validators)
+- anomaly: Anomaly and outlier detection (13 validators)
 """
 
 from __future__ import annotations
@@ -151,6 +157,123 @@ from truthound.validators.cross_table import (
     CrossTableDistinctCountValidator,
 )
 
+# Query validators
+from truthound.validators.query import (
+    QueryValidator,
+    ExpressionValidator,
+    QueryReturnsSingleValueValidator,
+    QueryReturnsNoRowsValidator,
+    QueryReturnsRowsValidator,
+    QueryResultMatchesValidator,
+    QueryRowCountValidator,
+    QueryRowCountRatioValidator,
+    QueryRowCountCompareValidator,
+    QueryColumnValuesValidator,
+    QueryColumnUniqueValidator,
+    QueryColumnNotNullValidator,
+    QueryAggregateValidator,
+    QueryGroupAggregateValidator,
+    QueryAggregateCompareValidator,
+    CustomExpressionValidator,
+    ConditionalExpressionValidator,
+    MultiConditionValidator,
+    RowLevelValidator,
+)
+
+# Multi-column validators
+from truthound.validators.multi_column import (
+    MultiColumnValidator,
+    ColumnArithmeticValidator,
+    ColumnSumValidator,
+    ColumnProductValidator,
+    ColumnDifferenceValidator,
+    ColumnRatioValidator,
+    ColumnPercentageValidator,
+    ColumnComparisonValidator,
+    ColumnChainComparisonValidator,
+    ColumnMaxValidator,
+    ColumnMinValidator,
+    ColumnMeanValidator,
+    ColumnConsistencyValidator,
+    ColumnMutualExclusivityValidator,
+    ColumnCoexistenceValidator,
+    ColumnDependencyValidator,
+    ColumnImplicationValidator,
+    ColumnCorrelationValidator,
+    ColumnCovarianceValidator,
+    MultiColumnVarianceValidator,
+)
+
+# Table metadata validators
+from truthound.validators.table import (
+    TableValidator,
+    TableRowCountRangeValidator,
+    TableRowCountExactValidator,
+    TableRowCountCompareValidator,
+    TableNotEmptyValidator,
+    TableColumnCountValidator,
+    TableRequiredColumnsValidator,
+    TableForbiddenColumnsValidator,
+    TableFreshnessValidator,
+    TableDataRecencyValidator,
+    TableUpdateFrequencyValidator,
+    TableSchemaMatchValidator,
+    TableSchemaCompareValidator,
+    TableColumnTypesValidator,
+    TableMemorySizeValidator,
+    TableRowToColumnRatioValidator,
+    TableDimensionsValidator,
+)
+
+# Geospatial validators
+from truthound.validators.geospatial import (
+    GeoValidator,
+    LatitudeValidator,
+    LongitudeValidator,
+    CoordinateValidator,
+    CoordinateNotNullIslandValidator,
+    GeoDistanceValidator,
+    GeoDistanceFromPointValidator,
+    GeoBoundingBoxValidator,
+    GeoCountryValidator,
+)
+
+# Drift validators
+from truthound.validators.drift import (
+    DriftValidator,
+    ColumnDriftValidator,
+    KSTestValidator,
+    ChiSquareDriftValidator,
+    WassersteinDriftValidator,
+    PSIValidator,
+    CSIValidator,
+    MeanDriftValidator,
+    VarianceDriftValidator,
+    QuantileDriftValidator,
+    RangeDriftValidator,
+    FeatureDriftValidator,
+    JSDivergenceValidator,
+)
+
+# Anomaly validators
+from truthound.validators.anomaly import (
+    AnomalyValidator,
+    ColumnAnomalyValidator,
+    IQRAnomalyValidator,
+    MADAnomalyValidator,
+    GrubbsTestValidator,
+    TukeyFencesValidator,
+    PercentileAnomalyValidator,
+    MahalanobisValidator,
+    EllipticEnvelopeValidator,
+    PCAAnomalyValidator,
+    ZScoreMultivariateValidator,
+    IsolationForestValidator,
+    LOFValidator,
+    OneClassSVMValidator,
+    DBSCANAnomalyValidator,
+)
+
 __all__ = [
     # Base
     "ValidationIssue",
@@ -267,6 +390,105 @@ __all__ = [
     "CrossTableRowCountFactorValidator",
     "CrossTableAggregateValidator",
     "CrossTableDistinctCountValidator",
+    # Query
+    "QueryValidator",
+    "ExpressionValidator",
+    "QueryReturnsSingleValueValidator",
+    "QueryReturnsNoRowsValidator",
+    "QueryReturnsRowsValidator",
+    "QueryResultMatchesValidator",
+    "QueryRowCountValidator",
+    "QueryRowCountRatioValidator",
+    "QueryRowCountCompareValidator",
+    "QueryColumnValuesValidator",
+    "QueryColumnUniqueValidator",
+    "QueryColumnNotNullValidator",
+    "QueryAggregateValidator",
+    "QueryGroupAggregateValidator",
+    "QueryAggregateCompareValidator",
+    "CustomExpressionValidator",
+    "ConditionalExpressionValidator",
+    "MultiConditionValidator",
+    "RowLevelValidator",
+    # Multi-column
+    "MultiColumnValidator",
+    "ColumnArithmeticValidator",
+    "ColumnSumValidator",
+    "ColumnProductValidator",
+    "ColumnDifferenceValidator",
+    "ColumnRatioValidator",
+    "ColumnPercentageValidator",
+    "ColumnComparisonValidator",
+    "ColumnChainComparisonValidator",
+    "ColumnMaxValidator",
+    "ColumnMinValidator",
+    "ColumnMeanValidator",
+    "ColumnConsistencyValidator",
+    "ColumnMutualExclusivityValidator",
+    "ColumnCoexistenceValidator",
+    "ColumnDependencyValidator",
+    "ColumnImplicationValidator",
+    "ColumnCorrelationValidator",
+    "ColumnCovarianceValidator",
+    "MultiColumnVarianceValidator",
+    # Table metadata
+    "TableValidator",
+    "TableRowCountRangeValidator",
+    "TableRowCountExactValidator",
+    "TableRowCountCompareValidator",
+    "TableNotEmptyValidator",
+    "TableColumnCountValidator",
+    "TableRequiredColumnsValidator",
+    "TableForbiddenColumnsValidator",
+    "TableFreshnessValidator",
+    "TableDataRecencyValidator",
+    "TableUpdateFrequencyValidator",
+    "TableSchemaMatchValidator",
+    "TableSchemaCompareValidator",
+    "TableColumnTypesValidator",
+    "TableMemorySizeValidator",
+    "TableRowToColumnRatioValidator",
+    "TableDimensionsValidator",
+    # Geospatial
+    "GeoValidator",
+    "LatitudeValidator",
+    "LongitudeValidator",
+    "CoordinateValidator",
+    "CoordinateNotNullIslandValidator",
+    "GeoDistanceValidator",
+    "GeoDistanceFromPointValidator",
+    "GeoBoundingBoxValidator",
+    "GeoCountryValidator",
+    # Drift
+    "DriftValidator",
+    "ColumnDriftValidator",
+    "KSTestValidator",
+    "ChiSquareDriftValidator",
+    "WassersteinDriftValidator",
+    "PSIValidator",
+    "CSIValidator",
+    "MeanDriftValidator",
+    "VarianceDriftValidator",
+    "QuantileDriftValidator",
+    "RangeDriftValidator",
+    "FeatureDriftValidator",
+    "JSDivergenceValidator",
+    # Anomaly
+    "AnomalyValidator",
+    "ColumnAnomalyValidator",
+    "IQRAnomalyValidator",
+    "MADAnomalyValidator",
+    "GrubbsTestValidator",
+    "TukeyFencesValidator",
+    "PercentileAnomalyValidator",
+    "MahalanobisValidator",
+    "EllipticEnvelopeValidator",
+    "PCAAnomalyValidator",
+    "ZScoreMultivariateValidator",
+    "IsolationForestValidator",
+    "LOFValidator",
+    "OneClassSVMValidator",
+    "DBSCANAnomalyValidator",
 ]
 
 

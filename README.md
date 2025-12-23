@@ -5,7 +5,7 @@
 </p>
 
 <p align="center">
-  <em>Sniffs out bad data. 🐕</em>
+  <em>Sniffs out bad data.</em>
 </p>
 
 <p align="center">
@@ -18,9 +18,9 @@
 
 ## Abstract
 
-Truthound is a high-performance data quality validation framework designed for modern data engineering pipelines. The library leverages the computational efficiency of Polars—a Rust-based DataFrame library—to achieve order-of-magnitude performance improvements over traditional Python-based validation solutions. This document presents the architectural design, implemented features, performance benchmarks, and empirical validation results of Truthound v0.1.0.
+Truthound is a high-performance data quality validation framework designed for modern data engineering pipelines. The library leverages the computational efficiency of Polars—a Rust-based DataFrame library—to achieve order-of-magnitude performance improvements over traditional Python-based validation solutions. This document presents the architectural design, implemented features, performance benchmarks, and empirical validation results of Truthound.
 
-**Keywords**: Data Quality, Data Validation, Statistical Drift Detection, PII Detection, Polars, Schema Inference
+**Keywords**: Data Quality, Data Validation, Statistical Drift Detection, Anomaly Detection, PII Detection, Polars, Schema Inference
 
 ---
 
@@ -54,8 +54,9 @@ Truthound was designed with the following objectives:
 1. **Zero Configuration**: Immediate usability without boilerplate setup code
 2. **High Performance**: Leveraging Rust-based Polars for computational efficiency
 3. **Universal Input Support**: Native handling of diverse data formats
-4. **Statistical Rigor**: Implementation of well-established statistical methods for drift detection
+4. **Statistical Rigor**: Implementation of well-established statistical methods for drift and anomaly detection
 5. **Privacy Awareness**: Built-in PII detection and data masking capabilities
+6. **Extensibility**: Modular architecture enabling seamless integration of custom validators
 
 ### 1.3 Contributions
 
@@ -63,7 +64,8 @@ This work presents:
 
 - A unified data adapter layer supporting multiple input formats
 - Optimized validation algorithms using Polars LazyFrame for memory-efficient processing
-- Implementation of four statistical drift detection methods
+- Implementation of comprehensive statistical drift detection methods
+- Advanced anomaly detection algorithms including ML-based approaches
 - Automatic schema inference and fingerprint-based caching system
 - Comprehensive PII detection patterns including Korean-specific identifiers
 
@@ -92,16 +94,22 @@ This work presents:
           ▼                    ▼                    ▼
 ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
 │   Validators    │  │  Drift Detectors │  │   PII Scanners  │
+│   (169 total)   │  │    (11 types)    │  │   (8 patterns)  │
 ├─────────────────┤  ├─────────────────┤  ├─────────────────┤
-│ • NullValidator │  │ • KS Test       │  │ • Email         │
-│ • TypeValidator │  │ • PSI           │  │ • Phone         │
-│ • RangeValidator│  │ • Chi-Square    │  │ • SSN           │
-│ • OutlierValidator│ │ • Jensen-Shannon│  │ • Credit Card   │
-│ • DuplicateValidator│              │  │ • Korean RRN    │
-│ • FormatValidator│                  │  │ • Korean Phone  │
-│ • UniqueValidator│                  │  │ • Bank Account  │
-│ • SchemaValidator│                  │  │ • Passport      │
-└────────┬────────┘  └────────┬───────┘  └────────┬────────┘
+│ • Schema (14)   │  │ • KS Test       │  │ • Email         │
+│ • Completeness  │  │ • Chi-Square    │  │ • Phone         │
+│ • Uniqueness    │  │ • Wasserstein   │  │ • SSN           │
+│ • Distribution  │  │ • PSI           │  │ • Credit Card   │
+│ • String (17)   │  │ • Jensen-Shannon│  │ • Korean RRN    │
+│ • Datetime (10) │  │ • Earth Mover   │  │ • Korean Phone  │
+│ • Aggregate (8) │  │ • KL Divergence │  │ • Bank Account  │
+│ • Multi-column  │  │ • Histogram     │  │ • Passport      │
+│ • Anomaly (13)  │  │ • Cosine Sim    │  └────────┬────────┘
+│ • Drift (11)    │  │ • Feature Drift │           │
+│ • Geospatial    │  │ • Concept Drift │           │
+│ • Query (5)     │  └────────┬───────┘           │
+│ • Table (7)     │           │                    │
+└────────┬────────┘           │                    │
          │                    │                    │
          └────────────────────┼────────────────────┘
                               ▼
@@ -126,44 +134,79 @@ The architecture follows several key design principles:
 - **Lazy Evaluation**: All data transformations are performed using Polars LazyFrame to enable query optimization and memory-efficient processing
 - **Single Collection Pattern**: Validators are optimized to minimize `collect()` calls, reducing computational overhead
 - **Batch Query Optimization**: Statistical computations are batched into single queries where possible
+- **Modular Extensibility**: Base classes and mixins enable rapid development of specialized validators
 
 ---
 
 ## 3. Core Components
 
-### 3.1 Validators (91 Total)
+### 3.1 Validators (169 Total)
 
-Truthound provides **91 validators** across **8 categories**, comparable to Great Expectations:
+Truthound provides **169 validators** across **14 categories**, offering comprehensive data quality coverage:
 
 | Category | Count | Key Validators |
 |----------|-------|----------------|
-| **Schema** | 14 | `ColumnExistsValidator`, `ColumnTypeValidator`, `TableSchemaValidator`, `ReferentialIntegrityValidator`, `ColumnPairInSetValidator` |
+| **Schema** | 14 | `ColumnExistsValidator`, `ColumnTypeValidator`, `TableSchemaValidator`, `ReferentialIntegrityValidator` |
 | **Completeness** | 7 | `NullValidator`, `NotNullValidator`, `CompletenessRatioValidator`, `ConditionalNullValidator` |
-| **Uniqueness** | 13 | `UniqueValidator`, `DuplicateValidator`, `PrimaryKeyValidator`, `CompoundKeyValidator`, `UniqueWithinRecordValidator` |
+| **Uniqueness** | 13 | `UniqueValidator`, `DuplicateValidator`, `PrimaryKeyValidator`, `CompoundKeyValidator` |
 | **Distribution** | 15 | `RangeValidator`, `BetweenValidator`, `OutlierValidator`, `KLDivergenceValidator`, `ChiSquareValidator` |
 | **String** | 17 | `RegexValidator`, `EmailValidator`, `PhoneValidator`, `JsonSchemaValidator`, `LikePatternValidator` |
 | **Datetime** | 10 | `DateFormatValidator`, `DateBetweenValidator`, `RecentDataValidator`, `DateutilParseableValidator` |
 | **Aggregate** | 8 | `MeanBetweenValidator`, `MedianBetweenValidator`, `SumBetweenValidator`, `TypeValidator` |
 | **Cross-table** | 4 | `CrossTableRowCountValidator`, `CrossTableAggregateValidator`, `CrossTableDistinctCountValidator` |
+| **Multi-column** | 16 | `ColumnComparisonValidator`, `ConditionalValidator`, `MutualExclusivityValidator`, `CascadeNullValidator` |
+| **Query** | 5 | `SQLExpressionValidator`, `CustomExpressionValidator`, `AggregateExpressionValidator` |
+| **Table** | 7 | `RowCountValidator`, `ColumnCountValidator`, `DataFreshnessValidator`, `TableCompletenessValidator` |
+| **Geospatial** | 6 | `LatitudeValidator`, `LongitudeValidator`, `CoordinatePairValidator`, `BoundingBoxValidator` |
+| **Drift** | 11 | `KSTestValidator`, `ChiSquareDriftValidator`, `WassersteinValidator`, `PSIValidator`, `JensenShannonValidator` |
+| **Anomaly** | 13 | `IsolationForestValidator`, `LOFValidator`, `MahalanobisValidator`, `IQRAnomalyValidator`, `DBSCANAnomalyValidator` |
+
+> **Detailed Documentation**: For comprehensive descriptions of each validator, including usage examples and configuration options, see **[Validator Reference (docs/VALIDATORS.md)](docs/VALIDATORS.md)**.
 
 #### Key Features
 
 - **`mostly` parameter**: All validators support partial pass rates (e.g., `mostly=0.95` allows 5% failures)
-- **Statistical tests**: KL Divergence, Chi-Square for distribution validation
+- **Statistical tests**: KL Divergence, Chi-Square, Kolmogorov-Smirnov for distribution validation
+- **ML-based anomaly detection**: Isolation Forest, LOF, One-Class SVM, DBSCAN
 - **SQL LIKE patterns**: `LikePatternValidator` supports `%` and `_` wildcards
 - **Flexible date parsing**: `DateutilParseableValidator` handles multiple date formats automatically
 - **Cross-table validation**: Compare row counts, aggregates between related tables
+- **Geospatial validation**: Coordinate validation with bounding box support
 
 ### 3.2 Drift Detectors
 
 | Detector | Method | Best For | Threshold |
 |----------|--------|----------|-----------|
-| `KSTestDetector` | Kolmogorov-Smirnov Test | Continuous numeric distributions | p-value < 0.05 |
-| `PSIDetector` | Population Stability Index | Model feature monitoring | PSI ≥ 0.1 (moderate), ≥ 0.25 (significant) |
-| `ChiSquareDetector` | Chi-Square Test | Categorical distributions | p-value < 0.05 |
-| `JensenShannonDetector` | Jensen-Shannon Divergence | Any distribution (symmetric, bounded) | JS ≥ 0.1 |
+| `KSTestValidator` | Kolmogorov-Smirnov Test | Continuous numeric distributions | p-value < 0.05 |
+| `ChiSquareDriftValidator` | Chi-Square Test | Categorical distributions | p-value < 0.05 |
+| `WassersteinValidator` | Earth Mover's Distance | Distribution shape comparison | Context-dependent |
+| `PSIValidator` | Population Stability Index | Model feature monitoring | PSI >= 0.1 (moderate), >= 0.25 (significant) |
+| `JensenShannonValidator` | Jensen-Shannon Divergence | Any distribution (symmetric, bounded) | JS >= 0.1 |
+| `KLDivergenceValidator` | Kullback-Leibler Divergence | Information loss measurement | KL > threshold |
+| `HistogramDriftValidator` | Histogram Intersection | Visual distribution comparison | Intersection < 0.8 |
+| `CosineSimilarityValidator` | Cosine Similarity | High-dimensional data | Similarity < 0.9 |
+| `FeatureDriftValidator` | Multi-feature Analysis | Feature importance changes | Context-dependent |
+| `ConceptDriftValidator` | Concept Change Detection | Label distribution shifts | Context-dependent |
 
-### 3.3 Schema System
+### 3.3 Anomaly Detectors
+
+| Detector | Method | Best For | Characteristics |
+|----------|--------|----------|-----------------|
+| `IsolationForestValidator` | Tree-based Isolation | High-dimensional data | No distribution assumptions |
+| `LOFValidator` | Local Outlier Factor | Clustered data | Density-based detection |
+| `OneClassSVMValidator` | Support Vector Machine | Complex boundaries | Kernel-based separation |
+| `DBSCANAnomalyValidator` | Density Clustering | Noise detection | Cluster-based outliers |
+| `MahalanobisValidator` | Covariance Distance | Multivariate normal data | Correlation-aware |
+| `EllipticEnvelopeValidator` | Robust Gaussian | Contaminated data | Robust covariance estimation |
+| `PCAAnomalyValidator` | Reconstruction Error | High-dimensional reduction | Principal component analysis |
+| `IQRAnomalyValidator` | Interquartile Range | Univariate outliers | Distribution-free |
+| `MADAnomalyValidator` | Median Absolute Deviation | Robust univariate | Resistant to extremes |
+| `GrubbsTestValidator` | Statistical Test | Single outlier detection | Iterative removal |
+| `TukeyFencesValidator` | Fence Classification | Inner/outer outliers | Traditional method |
+| `PercentileAnomalyValidator` | Percentile Bounds | Custom thresholds | Flexible boundaries |
+| `ZScoreMultivariateValidator` | Combined Z-scores | Multi-column analysis | Configurable aggregation |
+
+### 3.4 Schema System
 
 The schema system provides automatic constraint inference:
 
@@ -188,7 +231,7 @@ class ColumnSchema:
     quantiles: dict[str, float] | None = None
 ```
 
-### 3.4 Auto Schema Caching
+### 3.5 Auto Schema Caching
 
 The fingerprint-based caching system enables true zero-configuration validation:
 
@@ -206,8 +249,8 @@ The Interquartile Range (IQR) method identifies statistical outliers:
 
 ```
 IQR = Q3 - Q1
-Lower Bound = Q1 - k × IQR
-Upper Bound = Q3 + k × IQR
+Lower Bound = Q1 - k * IQR
+Upper Bound = Q3 + k * IQR
 ```
 
 Where `k = 1.5` for standard outliers, `k = 3.0` for extreme outliers.
@@ -219,7 +262,7 @@ Where `k = 1.5` for standard outliers, `k = 3.0` for extreme outliers.
 Measures maximum difference between empirical cumulative distribution functions:
 
 ```
-D = max|F₁(x) - F₂(x)|
+D = max|F1(x) - F2(x)|
 ```
 
 P-value approximation uses the asymptotic Kolmogorov distribution.
@@ -229,22 +272,22 @@ P-value approximation uses the asymptotic Kolmogorov distribution.
 Quantifies distribution shift between baseline and current populations:
 
 ```
-PSI = Σ (Pᵢ - Qᵢ) × ln(Pᵢ / Qᵢ)
+PSI = sum((Pi - Qi) * ln(Pi / Qi))
 ```
 
-Where Pᵢ and Qᵢ are proportions in bin i for baseline and current distributions.
+Where Pi and Qi are proportions in bin i for baseline and current distributions.
 
 **Industry Standard Interpretation**:
 - PSI < 0.1: No significant change
-- 0.1 ≤ PSI < 0.25: Moderate change
-- PSI ≥ 0.25: Significant change
+- 0.1 <= PSI < 0.25: Moderate change
+- PSI >= 0.25: Significant change
 
 ### 4.4 Chi-Square Test
 
 Tests independence between observed and expected categorical frequencies:
 
 ```
-χ² = Σ (Oᵢ - Eᵢ)² / Eᵢ
+chi2 = sum((Oi - Ei)^2 / Ei)
 ```
 
 P-value computed using Wilson-Hilferty approximation.
@@ -254,10 +297,30 @@ P-value computed using Wilson-Hilferty approximation.
 Symmetric measure of distribution similarity (bounded [0, 1]):
 
 ```
-JS(P||Q) = ½ KL(P||M) + ½ KL(Q||M)
+JS(P||Q) = 0.5 * KL(P||M) + 0.5 * KL(Q||M)
 ```
 
-Where M = ½(P + Q) and KL is the Kullback-Leibler divergence.
+Where M = 0.5 * (P + Q) and KL is the Kullback-Leibler divergence.
+
+### 4.6 Mahalanobis Distance
+
+Multivariate distance accounting for correlations:
+
+```
+D = sqrt((x - mu)^T * Sigma^(-1) * (x - mu))
+```
+
+Where mu is the mean vector and Sigma is the covariance matrix.
+
+### 4.7 Isolation Forest
+
+Anomaly score based on path length in random trees:
+
+```
+s(x, n) = 2^(-E(h(x)) / c(n))
+```
+
+Where h(x) is the path length and c(n) is the average path length for n samples.
 
 ---
 
@@ -281,7 +344,7 @@ Where M = ½(P + Q) and KL is the Kullback-Leibler divergence.
 
 | Dataset Size | Without Sampling | With Sampling (10K) | Speedup |
 |--------------|------------------|---------------------|---------|
-| 5M vs 5M rows | 3.68s | 0.04s | **92× faster** |
+| 5M vs 5M rows | 3.68s | 0.04s | **92x faster** |
 
 ### 5.4 Throughput Testing
 
@@ -306,14 +369,20 @@ The LazyFrame-based architecture enables processing of datasets larger than avai
 
 | Test Suite | Test Count | Status |
 |------------|------------|--------|
-| Unit Tests | 39 | ✅ Pass |
-| Stress Tests | 53 | ✅ Pass |
-| Extreme Stress Tests | 14 | ✅ Pass |
-| Validator Tests (P0) | 32 | ✅ Pass |
-| Validator Tests (P1) | 27 | ✅ Pass |
-| Validator Tests (P2) | 27 | ✅ Pass |
-| Integration Tests | 112 | ✅ Pass |
-| **Total** | **304** | **✅ All Pass** |
+| Unit Tests | 39 | Pass |
+| Stress Tests | 53 | Pass |
+| Extreme Stress Tests | 14 | Pass |
+| Validator Tests (P0) | 32 | Pass |
+| Validator Tests (P1) | 27 | Pass |
+| Validator Tests (P2) | 27 | Pass |
+| Drift Validator Tests | 52 | Pass |
+| Anomaly Validator Tests | 31 | Pass |
+| Multi-column Validator Tests | 43 | Pass |
+| Query Validator Tests | 14 | Pass |
+| Table Validator Tests | 21 | Pass |
+| Geospatial Validator Tests | 26 | Pass |
+| Integration Tests | 138 | Pass |
+| **Total** | **517** | **All Pass** |
 
 ### 6.2 Test Categories
 
@@ -340,7 +409,7 @@ The LazyFrame-based architecture enables processing of datasets larger than avai
 | US SSN | `XXX-XX-XXXX` | 98% |
 | Phone (International) | ITU-T E.164 | 90% |
 | Credit Card | Luhn algorithm validated | 85% |
-| Korean RRN (주민등록번호) | `XXXXXX-XXXXXXX` | 98% |
+| Korean RRN | `XXXXXX-XXXXXXX` | 98% |
 | Korean Phone | `0XX-XXXX-XXXX` | 90% |
 | Korean Bank Account | Bank-specific formats | 80% |
 | Korean Passport | `MXXXXXXXX` | 85% |
@@ -422,27 +491,31 @@ truthound compare train.parquet prod.parquet --method psi --sample-size 10000
 
 | Feature | Truthound | Great Expectations | Pandera | Soda Core |
 |---------|-----------|-------------------|---------|-----------|
-| Zero Configuration | ✅ | ❌ | ❌ | ❌ |
-| Polars Native | ✅ | ❌ | ❌ | ❌ |
-| LazyFrame Support | ✅ | ❌ | ❌ | ❌ |
-| Drift Detection | ✅ | ⚠️ (Plugin) | ❌ | ✅ |
-| PII Detection | ✅ | ❌ | ❌ | ✅ |
-| Schema Inference | ✅ | ✅ | ✅ | ✅ |
-| Auto Caching | ✅ | ❌ | ❌ | ❌ |
-| `mostly` Parameter | ✅ | ✅ | ❌ | ❌ |
-| Cross-table Validation | ✅ | ✅ | ❌ | ✅ |
-| Statistical Tests (KL, χ²) | ✅ | ✅ | ❌ | ❌ |
-| Validator Count | 91 | 300+ | 50+ | 100+ |
+| Zero Configuration | Yes | No | No | No |
+| Polars Native | Yes | No | No | No |
+| LazyFrame Support | Yes | No | No | No |
+| Drift Detection | Yes (11 methods) | Plugin | No | Yes |
+| Anomaly Detection | Yes (13 methods) | No | No | Limited |
+| PII Detection | Yes | No | No | Yes |
+| Schema Inference | Yes | Yes | Yes | Yes |
+| Auto Caching | Yes | No | No | No |
+| `mostly` Parameter | Yes | Yes | No | No |
+| Cross-table Validation | Yes | Yes | No | Yes |
+| Statistical Tests (KL, Chi2) | Yes | Yes | No | No |
+| Geospatial Validation | Yes | No | No | No |
+| Validator Count | 169 | 300+ | 50+ | 100+ |
 
 ### 8.2 Honest Assessment
 
 **Strengths**:
 1. Performance advantage from Polars (not unique to Truthound)
 2. True zero-configuration with auto schema caching
-3. Statistical drift detection with multiple methods
-4. Korean-specific PII patterns
-5. 91 validators covering most common data quality checks
-6. Great Expectations-compatible `mostly` parameter
+3. Comprehensive drift detection with 11 statistical methods
+4. Advanced anomaly detection including ML-based approaches
+5. Korean-specific PII patterns
+6. 169 validators covering most common data quality checks
+7. Great Expectations-compatible `mostly` parameter
+8. Geospatial coordinate validation
 
 **Limitations** (see Section 11):
 1. No production deployment validation yet
@@ -464,10 +537,29 @@ truthound compare train.parquet prod.parquet --method psi --sample-size 10000
 ### 9.2 Installation
 
 ```bash
+# Basic installation
 pip install truthound
+
+# With drift detection support (scipy)
+pip install truthound[drift]
+
+# With anomaly detection support (scipy + scikit-learn)
+pip install truthound[anomaly]
+
+# Full installation with all optional dependencies
+pip install truthound[all]
 ```
 
-### 9.3 Development Setup
+### 9.3 Optional Dependencies
+
+| Extra | Packages | Features |
+|-------|----------|----------|
+| `drift` | scipy | Statistical drift tests (KS, Chi-square, Wasserstein) |
+| `anomaly` | scipy, scikit-learn | ML-based anomaly detection (Isolation Forest, LOF, SVM) |
+| `all` | jinja2, pandas, scipy, scikit-learn | All optional features |
+| `dev` | pytest, pytest-cov, ruff, mypy | Development tools |
+
+### 9.4 Development Setup
 
 ```bash
 git clone https://github.com/seadonggyun4/Truthound.git
@@ -519,13 +611,13 @@ drift = th.compare("train.csv", "production.csv")
 print(drift)
 
 if drift.has_high_drift:
-    print("⚠️ Significant drift detected!")
+    print("Warning: Significant drift detected!")
 
 # Large dataset with sampling
 drift = th.compare(
     "historical.parquet",
     "current.parquet",
-    sample_size=10000  # 92× speedup
+    sample_size=10000  # 92x speedup
 )
 
 # Export for CI/CD
@@ -533,7 +625,37 @@ with open("drift_report.json", "w") as f:
     f.write(drift.to_json())
 ```
 
-### 10.4 PII Detection
+### 10.4 Anomaly Detection
+
+```python
+from truthound.validators.anomaly import (
+    IsolationForestValidator,
+    MahalanobisValidator,
+    IQRAnomalyValidator,
+)
+
+# Isolation Forest for multi-dimensional anomalies
+validator = IsolationForestValidator(
+    columns=["feature1", "feature2", "feature3"],
+    contamination=0.05,
+    max_anomaly_ratio=0.1
+)
+issues = validator.validate(df.lazy())
+
+# Mahalanobis distance for correlated features
+validator = MahalanobisValidator(
+    columns=["x", "y", "z"],
+    threshold=3.0  # Chi-square threshold
+)
+
+# IQR-based detection for single columns
+validator = IQRAnomalyValidator(
+    column="value",
+    k=1.5  # 1.5 for standard, 3.0 for extreme
+)
+```
+
+### 10.5 PII Detection
 
 ```python
 # Scan for PII
@@ -555,13 +677,20 @@ masked_df.write_parquet("anonymized.parquet")
 3. **Documentation**: Minimal API documentation and tutorials
 4. **Community**: No established user community or support channels
 
-### 11.2 Planned Improvements
+### 11.2 Completed Improvements
 
-1. ~~**Phase 1**: Expand validator library (50+ validators)~~ ✅ **Completed** (91 validators)
-2. **Phase 2**: Add pipeline integrations (Airflow, Prefect)
-3. **Phase 3**: Web dashboard for visualization
-4. **Phase 4**: Database connectors (PostgreSQL, BigQuery)
-5. **Phase 5**: Real-time streaming validation
+- ~~**Phase 1**: Expand validator library (50+ validators)~~ **Completed** (169 validators)
+- ~~**Phase 1.1**: Add drift detection validators~~ **Completed** (11 validators)
+- ~~**Phase 1.2**: Add anomaly detection validators~~ **Completed** (13 validators)
+- ~~**Phase 1.3**: Add multi-column validators~~ **Completed** (16 validators)
+- ~~**Phase 1.4**: Add geospatial validators~~ **Completed** (6 validators)
+
+### 11.3 Planned Improvements
+
+1. **Phase 2**: Add pipeline integrations (Airflow, Prefect)
+2. **Phase 3**: Web dashboard for visualization
+3. **Phase 4**: Database connectors (PostgreSQL, BigQuery)
+4. **Phase 5**: Real-time streaming validation
 
 ---
 
@@ -571,8 +700,11 @@ masked_df.write_parquet("anonymized.parquet")
 2. Kolmogorov, A. N. (1933). "Sulla determinazione empirica di una legge di distribuzione"
 3. Pearson, K. (1900). "On the criterion that a given system of deviations..."
 4. Lin, J. (1991). "Divergence measures based on the Shannon entropy"
-5. Great Expectations Documentation. https://greatexpectations.io/
-6. Pandera Documentation. https://pandera.readthedocs.io/
+5. Liu, F. T., Ting, K. M., & Zhou, Z. H. (2008). "Isolation Forest"
+6. Breunig, M. M., et al. (2000). "LOF: Identifying Density-Based Local Outliers"
+7. Mahalanobis, P. C. (1936). "On the generalized distance in statistics"
+8. Great Expectations Documentation. https://greatexpectations.io/
+9. Pandera Documentation. https://pandera.readthedocs.io/
 
 ---
 
@@ -590,6 +722,8 @@ Built with:
 - [Polars](https://pola.rs/) — High-performance DataFrame library
 - [Rich](https://rich.readthedocs.io/) — Terminal formatting
 - [Typer](https://typer.tiangolo.com/) — CLI framework
+- [scikit-learn](https://scikit-learn.org/) — Machine learning library (optional)
+- [SciPy](https://scipy.org/) — Scientific computing library (optional)
 
 ---
 
