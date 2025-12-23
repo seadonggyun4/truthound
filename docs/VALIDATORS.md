@@ -1,0 +1,1798 @@
+# Truthound Validator Reference
+
+This document provides a comprehensive reference for all 169 validators implemented in Truthound v0.2.0. Each validator is designed to address specific data quality concerns and follows consistent patterns for configuration and usage.
+
+---
+
+## Table of Contents
+
+1. [Schema Validators](#1-schema-validators)
+2. [Completeness Validators](#2-completeness-validators)
+3. [Uniqueness Validators](#3-uniqueness-validators)
+4. [Distribution Validators](#4-distribution-validators)
+5. [String Validators](#5-string-validators)
+6. [Datetime Validators](#6-datetime-validators)
+7. [Aggregate Validators](#7-aggregate-validators)
+8. [Cross-Table Validators](#8-cross-table-validators)
+9. [Query Validators](#9-query-validators)
+10. [Multi-Column Validators](#10-multi-column-validators)
+11. [Table Validators](#11-table-validators)
+12. [Geospatial Validators](#12-geospatial-validators)
+13. [Drift Validators](#13-drift-validators)
+14. [Anomaly Validators](#14-anomaly-validators)
+
+---
+
+## 1. Schema Validators
+
+Schema validators verify the structural integrity of datasets, ensuring that column definitions, data types, and relationships conform to specified constraints.
+
+### 1.1 ColumnExistsValidator
+
+Validates the presence of specified columns within a dataset.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `columns` | `list[str]` | Column names that must exist |
+
+```python
+validator = ColumnExistsValidator(columns=["id", "name", "email"])
+```
+
+### 1.2 ColumnNotExistsValidator
+
+Ensures that specified columns are absent from the dataset, useful for preventing the inclusion of deprecated or sensitive fields.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `columns` | `list[str]` | Column names that must not exist |
+
+### 1.3 ColumnCountValidator
+
+Validates that the dataset contains an expected number of columns.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `expected` | `int` | Expected column count |
+| `min_count` | `int \| None` | Minimum column count |
+| `max_count` | `int \| None` | Maximum column count |
+
+### 1.4 RowCountValidator
+
+Ensures the dataset contains a specified number of rows.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `min_count` | `int \| None` | Minimum row count |
+| `max_count` | `int \| None` | Maximum row count |
+| `expected` | `int \| None` | Exact expected count |
+
+### 1.5 ColumnTypeValidator
+
+Validates that columns conform to expected data types.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column name |
+| `expected_type` | `type[pl.DataType]` | Expected Polars data type |
+
+```python
+validator = ColumnTypeValidator(column="age", expected_type=pl.Int64)
+```
+
+### 1.6 ColumnOrderValidator
+
+Ensures columns appear in a specified order within the dataset.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `expected_order` | `list[str]` | Expected column order |
+| `strict` | `bool` | If True, no additional columns allowed |
+
+### 1.7 TableSchemaValidator
+
+Validates the complete schema of a dataset against a reference specification.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `schema` | `dict[str, type]` | Column name to type mapping |
+| `strict` | `bool` | Reject extra columns if True |
+
+### 1.8 ColumnPairValidator
+
+Validates relationships between two columns.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column_a` | `str` | First column |
+| `column_b` | `str` | Second column |
+| `relationship` | `str` | Expected relationship type |
+
+### 1.9 MultiColumnUniqueValidator
+
+Ensures uniqueness across a combination of columns (composite key validation).
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `columns` | `list[str]` | Columns forming composite key |
+
+### 1.10 ReferentialIntegrityValidator
+
+Validates foreign key relationships between tables.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Foreign key column |
+| `reference_data` | `pl.DataFrame` | Reference table |
+| `reference_column` | `str` | Primary key column in reference |
+
+```python
+validator = ReferentialIntegrityValidator(
+    column="department_id",
+    reference_data=departments_df,
+    reference_column="id"
+)
+```
+
+### 1.11 MultiColumnSumValidator
+
+Validates that the sum of specified columns equals an expected value.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `columns` | `list[str]` | Columns to sum |
+| `expected_sum` | `float` | Expected sum value |
+| `tolerance` | `float` | Acceptable tolerance |
+
+### 1.12 MultiColumnCalculationValidator
+
+Validates arbitrary arithmetic relationships between columns.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `expression` | `str` | Mathematical expression |
+| `tolerance` | `float` | Acceptable tolerance |
+
+### 1.13 ColumnPairInSetValidator
+
+Validates that column value pairs exist within a predefined set.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column_a` | `str` | First column |
+| `column_b` | `str` | Second column |
+| `valid_pairs` | `set[tuple]` | Set of valid (a, b) pairs |
+
+### 1.14 ColumnPairNotInSetValidator
+
+Ensures column value pairs do not exist within a forbidden set.
+
+---
+
+## 2. Completeness Validators
+
+Completeness validators assess the presence and validity of data values, detecting null values, empty strings, and other indicators of missing information.
+
+### 2.1 NullValidator
+
+Detects and reports null values within specified columns.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `columns` | `list[str] \| None` | Target columns (None = all) |
+| `mostly` | `float \| None` | Acceptable non-null ratio |
+
+### 2.2 NotNullValidator
+
+Ensures specified columns contain no null values.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+
+### 2.3 CompletenessRatioValidator
+
+Validates that the completeness ratio meets a minimum threshold.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `min_ratio` | `float` | Minimum completeness ratio (0.0-1.0) |
+
+```python
+validator = CompletenessRatioValidator(column="phone", min_ratio=0.95)
+```
+
+### 2.4 EmptyStringValidator
+
+Detects empty strings in string columns.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `columns` | `list[str] \| None` | Target string columns |
+
+### 2.5 WhitespaceOnlyValidator
+
+Identifies values containing only whitespace characters.
+
+### 2.6 ConditionalNullValidator
+
+Validates null values based on conditional logic.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `condition` | `pl.Expr` | Polars expression defining condition |
+
+```python
+# If status is "active", email must not be null
+validator = ConditionalNullValidator(
+    column="email",
+    condition=pl.col("status") == "active"
+)
+```
+
+### 2.7 DefaultValueValidator
+
+Detects values matching default or placeholder patterns.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `default_values` | `list` | Values considered as defaults |
+
+---
+
+## 3. Uniqueness Validators
+
+Uniqueness validators verify the distinctness of values, detecting duplicates and validating primary key constraints.
+
+### 3.1 UniqueValidator
+
+Ensures all values in a column are unique.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `mostly` | `float \| None` | Minimum unique ratio |
+
+### 3.2 UniqueRatioValidator
+
+Validates that the unique value ratio meets a threshold.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `min_ratio` | `float` | Minimum unique ratio |
+| `max_ratio` | `float` | Maximum unique ratio |
+
+### 3.3 DistinctCountValidator
+
+Validates the number of distinct values.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `min_count` | `int \| None` | Minimum distinct count |
+| `max_count` | `int \| None` | Maximum distinct count |
+
+### 3.4 DuplicateValidator
+
+Detects duplicate values within specified columns.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `columns` | `list[str] \| None` | Columns to check |
+
+### 3.5 DuplicateWithinGroupValidator
+
+Detects duplicates within specified groups.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Column to check for duplicates |
+| `group_by` | `list[str]` | Grouping columns |
+
+### 3.6 PrimaryKeyValidator
+
+Validates primary key constraints (unique and non-null).
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Primary key column |
+
+### 3.7 CompoundKeyValidator
+
+Validates composite primary key constraints.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `columns` | `list[str]` | Columns forming compound key |
+
+### 3.8 DistinctValuesInSetValidator
+
+Ensures all distinct values belong to a specified set.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `value_set` | `set` | Allowed values |
+
+### 3.9 DistinctValuesEqualSetValidator
+
+Validates that distinct values exactly match a specified set.
+
+### 3.10 DistinctValuesContainSetValidator
+
+Ensures distinct values contain all elements of a specified set.
+
+### 3.11 DistinctCountBetweenValidator
+
+Validates that distinct count falls within a range.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `min_count` | `int` | Minimum distinct count |
+| `max_count` | `int` | Maximum distinct count |
+
+### 3.12 UniqueWithinRecordValidator
+
+Ensures specified columns have unique values within each record.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `columns` | `list[str]` | Columns to compare |
+
+### 3.13 AllColumnsUniqueWithinRecordValidator
+
+Validates that all values within each record are unique.
+
+---
+
+## 4. Distribution Validators
+
+Distribution validators analyze the statistical properties of data, verifying that values fall within expected ranges and conform to anticipated distributions.
+
+### 4.1 BetweenValidator
+
+Validates that values fall within a specified range (inclusive).
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `min_value` | `float` | Minimum value |
+| `max_value` | `float` | Maximum value |
+| `mostly` | `float \| None` | Acceptable pass ratio |
+
+### 4.2 RangeValidator
+
+Validates value ranges with optional inclusivity control.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `min_value` | `float \| None` | Minimum value |
+| `max_value` | `float \| None` | Maximum value |
+| `inclusive_min` | `bool` | Include minimum |
+| `inclusive_max` | `bool` | Include maximum |
+
+### 4.3 PositiveValidator
+
+Ensures all values are strictly positive (> 0).
+
+### 4.4 NonNegativeValidator
+
+Ensures all values are non-negative (>= 0).
+
+### 4.5 InSetValidator
+
+Validates that values belong to a predefined set.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `value_set` | `set` | Allowed values |
+| `mostly` | `float \| None` | Acceptable pass ratio |
+
+### 4.6 NotInSetValidator
+
+Ensures values do not belong to a forbidden set.
+
+### 4.7 IncreasingValidator
+
+Validates that values are monotonically increasing.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `strict` | `bool` | Strictly increasing if True |
+
+### 4.8 DecreasingValidator
+
+Validates that values are monotonically decreasing.
+
+### 4.9 OutlierValidator
+
+Detects statistical outliers using the IQR method.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `iqr_multiplier` | `float` | IQR multiplier (default: 1.5) |
+
+**Mathematical Definition**:
+```
+IQR = Q3 - Q1
+Lower Bound = Q1 - k × IQR
+Upper Bound = Q3 + k × IQR
+```
+
+### 4.10 ZScoreOutlierValidator
+
+Detects outliers using Z-score methodology.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `threshold` | `float` | Z-score threshold (default: 3.0) |
+
+### 4.11 QuantileValidator
+
+Validates that values fall within specified quantile bounds.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `quantile` | `float` | Quantile value (0.0-1.0) |
+| `max_value` | `float` | Maximum allowed value at quantile |
+
+### 4.12 DistributionValidator
+
+Validates that data follows an expected distribution pattern.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `distribution` | `str` | Expected distribution type |
+
+### 4.13 KLDivergenceValidator
+
+Validates distribution similarity using Kullback-Leibler divergence.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `reference_distribution` | `dict` | Reference probability distribution |
+| `threshold` | `float` | Maximum allowed KL divergence |
+
+**Mathematical Definition**:
+```
+D_KL(P||Q) = Σ P(x) × log(P(x) / Q(x))
+```
+
+### 4.14 ChiSquareValidator
+
+Performs chi-square goodness-of-fit testing.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `expected_frequencies` | `dict` | Expected frequency distribution |
+| `alpha` | `float` | Significance level (default: 0.05) |
+
+### 4.15 MostCommonValueValidator
+
+Validates the most common value and its frequency.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `expected_value` | `Any` | Expected most common value |
+| `min_frequency` | `float` | Minimum frequency ratio |
+
+---
+
+## 5. String Validators
+
+String validators verify the format, structure, and content of text data using pattern matching and format validation.
+
+### 5.1 RegexValidator
+
+Validates strings against a regular expression pattern.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `pattern` | `str` | Regular expression pattern |
+| `mostly` | `float \| None` | Acceptable match ratio |
+
+### 5.2 RegexListValidator
+
+Validates against multiple regex patterns (any match passes).
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `patterns` | `list[str]` | List of patterns |
+
+### 5.3 NotMatchRegexValidator
+
+Ensures values do not match a specified pattern.
+
+### 5.4 NotMatchRegexListValidator
+
+Ensures values do not match any pattern in a list.
+
+### 5.5 LengthValidator
+
+Validates string length constraints.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `min_length` | `int \| None` | Minimum length |
+| `max_length` | `int \| None` | Maximum length |
+
+### 5.6 EmailValidator
+
+Validates email address format using RFC 5322 patterns.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+
+### 5.7 UrlValidator
+
+Validates URL format.
+
+### 5.8 PhoneValidator
+
+Validates phone number format with international support.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `country_code` | `str \| None` | Expected country code |
+
+### 5.9 UuidValidator
+
+Validates UUID format (versions 1-5).
+
+### 5.10 IpAddressValidator
+
+Validates IPv4 and IPv6 address formats.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `version` | `int \| None` | IP version (4 or 6) |
+
+### 5.11 FormatValidator
+
+Validates common format types.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `format_type` | `str` | Format name (email, url, phone, etc.) |
+
+### 5.12 JsonParseableValidator
+
+Ensures string values are valid JSON.
+
+### 5.13 JsonSchemaValidator
+
+Validates JSON strings against a JSON Schema.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `schema` | `dict` | JSON Schema specification |
+
+### 5.14 AlphanumericValidator
+
+Ensures values contain only alphanumeric characters.
+
+### 5.15 ConsistentCasingValidator
+
+Validates consistent casing patterns (snake_case, camelCase, etc.).
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `casing` | `str` | Expected casing style |
+
+### 5.16 LikePatternValidator
+
+SQL LIKE pattern matching with `%` and `_` wildcards.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `pattern` | `str` | LIKE pattern |
+
+```python
+validator = LikePatternValidator(column="code", pattern="PRD-%")
+```
+
+### 5.17 NotLikePatternValidator
+
+Ensures values do not match a LIKE pattern.
+
+---
+
+## 6. Datetime Validators
+
+Datetime validators verify temporal data integrity, ensuring dates and times conform to expected formats and ranges.
+
+### 6.1 DateFormatValidator
+
+Validates date/datetime format.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `format` | `str` | Expected strptime format |
+
+### 6.2 DateBetweenValidator
+
+Validates dates within a specified range.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `min_date` | `date \| datetime` | Minimum date |
+| `max_date` | `date \| datetime` | Maximum date |
+
+### 6.3 FutureDateValidator
+
+Ensures dates are in the future.
+
+### 6.4 PastDateValidator
+
+Ensures dates are in the past.
+
+### 6.5 DateOrderValidator
+
+Validates chronological ordering between date columns.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `start_column` | `str` | Start date column |
+| `end_column` | `str` | End date column |
+
+```python
+validator = DateOrderValidator(
+    start_column="start_date",
+    end_column="end_date"
+)
+```
+
+### 6.6 TimezoneValidator
+
+Validates timezone-aware datetime values.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `expected_timezone` | `str \| None` | Expected timezone |
+
+### 6.7 RecentDataValidator
+
+Ensures data contains recent entries.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Datetime column |
+| `max_age_days` | `int` | Maximum age in days |
+
+### 6.8 DatePartCoverageValidator
+
+Validates coverage across date parts (days, months, hours).
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Datetime column |
+| `date_part` | `str` | Date part to check |
+| `min_coverage` | `float` | Minimum coverage ratio |
+
+### 6.9 GroupedRecentDataValidator
+
+Validates recency within groups.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `datetime_column` | `str` | Datetime column |
+| `group_column` | `str` | Grouping column |
+| `max_age_days` | `int` | Maximum age per group |
+
+### 6.10 DateutilParseableValidator
+
+Validates that strings can be parsed as dates using dateutil.
+
+---
+
+## 7. Aggregate Validators
+
+Aggregate validators verify statistical properties computed across entire columns.
+
+### 7.1 MeanBetweenValidator
+
+Validates column mean within a range.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `min_value` | `float` | Minimum mean |
+| `max_value` | `float` | Maximum mean |
+
+### 7.2 MedianBetweenValidator
+
+Validates column median within a range.
+
+### 7.3 StdBetweenValidator
+
+Validates column standard deviation within a range.
+
+### 7.4 VarianceBetweenValidator
+
+Validates column variance within a range.
+
+### 7.5 MinBetweenValidator
+
+Validates column minimum within a range.
+
+### 7.6 MaxBetweenValidator
+
+Validates column maximum within a range.
+
+### 7.7 SumBetweenValidator
+
+Validates column sum within a range.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `min_value` | `float` | Minimum sum |
+| `max_value` | `float` | Maximum sum |
+
+### 7.8 TypeValidator
+
+Validates column data types at an aggregate level.
+
+---
+
+## 8. Cross-Table Validators
+
+Cross-table validators verify relationships and consistency between multiple datasets.
+
+### 8.1 CrossTableRowCountValidator
+
+Compares row counts between tables.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `reference_data` | `pl.DataFrame` | Reference table |
+| `operator` | `str` | Comparison operator |
+| `tolerance` | `float` | Acceptable tolerance |
+
+### 8.2 CrossTableRowCountFactorValidator
+
+Validates row count ratio between tables.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `reference_data` | `pl.DataFrame` | Reference table |
+| `expected_factor` | `float` | Expected ratio |
+| `tolerance` | `float` | Acceptable tolerance |
+
+### 8.3 CrossTableAggregateValidator
+
+Compares aggregate statistics between tables.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `reference_data` | `pl.DataFrame` | Reference table |
+| `aggregate` | `str` | Aggregate function |
+| `operator` | `str` | Comparison operator |
+
+### 8.4 CrossTableDistinctCountValidator
+
+Compares distinct value counts between tables.
+
+---
+
+## 9. Query Validators
+
+Query validators enable flexible validation through SQL-like expressions and custom queries.
+
+### 9.1 QueryValidator
+
+Base class for query-based validation.
+
+### 9.2 ExpressionValidator
+
+Validates using Polars expressions.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `expression` | `pl.Expr` | Polars expression |
+| `description` | `str` | Validation description |
+
+```python
+validator = ExpressionValidator(
+    expression=pl.col("price") > 0,
+    description="Price must be positive"
+)
+```
+
+### 9.3 QueryReturnsSingleValueValidator
+
+Ensures a query returns exactly one value.
+
+### 9.4 QueryReturnsNoRowsValidator
+
+Ensures a query returns no rows (useful for finding violations).
+
+### 9.5 QueryReturnsRowsValidator
+
+Ensures a query returns at least one row.
+
+### 9.6 QueryResultMatchesValidator
+
+Validates that query results match expected values.
+
+### 9.7 QueryRowCountValidator
+
+Validates query result row count.
+
+### 9.8 QueryRowCountRatioValidator
+
+Validates ratio of rows matching a condition.
+
+### 9.9 QueryRowCountCompareValidator
+
+Compares row counts between queries.
+
+### 9.10 QueryColumnValuesValidator
+
+Validates column values in query results.
+
+### 9.11 QueryColumnUniqueValidator
+
+Ensures query result column values are unique.
+
+### 9.12 QueryColumnNotNullValidator
+
+Ensures query result column has no nulls.
+
+### 9.13 QueryAggregateValidator
+
+Validates aggregate values from queries.
+
+### 9.14 QueryGroupAggregateValidator
+
+Validates aggregates within groups.
+
+### 9.15 QueryAggregateCompareValidator
+
+Compares aggregates between queries.
+
+### 9.16 CustomExpressionValidator
+
+Validates using custom Polars expression strings.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `expression_str` | `str` | Expression as string |
+
+### 9.17 ConditionalExpressionValidator
+
+Validates expressions with conditional logic.
+
+### 9.18 MultiConditionValidator
+
+Validates multiple conditions simultaneously.
+
+### 9.19 RowLevelValidator
+
+Validates at the individual row level.
+
+---
+
+## 10. Multi-Column Validators
+
+Multi-column validators verify relationships and constraints across multiple columns within the same dataset.
+
+### 10.1 MultiColumnValidator
+
+Base class for multi-column validation.
+
+### 10.2 ColumnArithmeticValidator
+
+Validates arithmetic relationships between columns.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `columns` | `list[str]` | Input columns |
+| `operation` | `str` | Arithmetic operation |
+| `result_column` | `str` | Result column |
+
+### 10.3 ColumnSumValidator
+
+Validates that columns sum to a target column.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `columns` | `list[str]` | Columns to sum |
+| `target_column` | `str` | Expected sum column |
+| `tolerance` | `float` | Acceptable tolerance |
+
+```python
+validator = ColumnSumValidator(
+    columns=["subtotal", "tax", "shipping"],
+    target_column="total",
+    tolerance=0.01
+)
+```
+
+### 10.4 ColumnProductValidator
+
+Validates column multiplication relationships.
+
+### 10.5 ColumnDifferenceValidator
+
+Validates difference between columns.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column_a` | `str` | First column |
+| `column_b` | `str` | Second column |
+| `expected_difference` | `float` | Expected difference |
+
+### 10.6 ColumnRatioValidator
+
+Validates ratio between columns.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `numerator_column` | `str` | Numerator column |
+| `denominator_column` | `str` | Denominator column |
+| `expected_ratio` | `float` | Expected ratio |
+| `tolerance` | `float` | Acceptable tolerance |
+
+### 10.7 ColumnPercentageValidator
+
+Validates percentage relationships.
+
+### 10.8 ColumnComparisonValidator
+
+Validates comparison relationships (>, <, >=, <=, ==, !=).
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column_a` | `str` | First column |
+| `column_b` | `str` | Second column |
+| `operator` | `str` | Comparison operator |
+
+```python
+validator = ColumnComparisonValidator(
+    column_a="end_date",
+    column_b="start_date",
+    operator=">"
+)
+```
+
+### 10.9 ColumnChainComparisonValidator
+
+Validates ordered relationships across multiple columns.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `columns` | `list[str]` | Columns in order |
+| `operator` | `str` | Comparison operator |
+
+### 10.10 ColumnMaxValidator
+
+Identifies maximum value across columns.
+
+### 10.11 ColumnMinValidator
+
+Identifies minimum value across columns.
+
+### 10.12 ColumnMeanValidator
+
+Validates mean across columns.
+
+### 10.13 ColumnConsistencyValidator
+
+Validates consistency patterns between columns.
+
+### 10.14 ColumnMutualExclusivityValidator
+
+Ensures columns are mutually exclusive (at most one non-null per row).
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `columns` | `list[str]` | Mutually exclusive columns |
+
+### 10.15 ColumnCoexistenceValidator
+
+Ensures columns coexist (all null or all non-null).
+
+### 10.16 ColumnDependencyValidator
+
+Validates functional dependencies between columns.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `determinant_column` | `str` | Determinant column |
+| `dependent_column` | `str` | Dependent column |
+
+### 10.17 ColumnImplicationValidator
+
+Validates conditional implications (if A then B).
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `antecedent` | `pl.Expr` | Condition expression |
+| `consequent` | `pl.Expr` | Result expression |
+
+### 10.18 ColumnCorrelationValidator
+
+Validates correlation between numeric columns.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column_a` | `str` | First column |
+| `column_b` | `str` | Second column |
+| `min_correlation` | `float` | Minimum correlation |
+| `max_correlation` | `float` | Maximum correlation |
+
+### 10.19 ColumnCovarianceValidator
+
+Validates covariance between columns.
+
+### 10.20 MultiColumnVarianceValidator
+
+Validates variance across multiple columns.
+
+---
+
+## 11. Table Validators
+
+Table validators verify metadata and structural properties of entire datasets.
+
+### 11.1 TableValidator
+
+Base class for table-level validation.
+
+### 11.2 TableRowCountRangeValidator
+
+Validates row count within a range.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `min_rows` | `int \| None` | Minimum row count |
+| `max_rows` | `int \| None` | Maximum row count |
+
+### 11.3 TableRowCountExactValidator
+
+Validates exact row count.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `expected_rows` | `int` | Expected row count |
+| `tolerance` | `int` | Acceptable tolerance |
+
+### 11.4 TableRowCountCompareValidator
+
+Compares row count with reference table.
+
+### 11.5 TableNotEmptyValidator
+
+Ensures table is not empty.
+
+### 11.6 TableColumnCountValidator
+
+Validates column count.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `expected_count` | `int \| None` | Expected column count |
+| `min_count` | `int \| None` | Minimum column count |
+| `max_count` | `int \| None` | Maximum column count |
+
+### 11.7 TableRequiredColumnsValidator
+
+Ensures required columns are present.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `required_columns` | `list[str]` | Required column names |
+
+### 11.8 TableForbiddenColumnsValidator
+
+Ensures forbidden columns are absent.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `forbidden_columns` | `list[str]` | Forbidden column names |
+
+### 11.9 TableFreshnessValidator
+
+Validates data freshness.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `datetime_column` | `str` | Timestamp column |
+| `max_age_hours` | `int` | Maximum age in hours |
+
+### 11.10 TableDataRecencyValidator
+
+Validates recent data presence.
+
+### 11.11 TableUpdateFrequencyValidator
+
+Validates expected update frequency.
+
+### 11.12 TableSchemaMatchValidator
+
+Validates schema matches specification.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `expected_schema` | `dict` | Expected schema |
+| `strict` | `bool` | Reject extra columns |
+
+### 11.13 TableSchemaCompareValidator
+
+Compares schema with reference table.
+
+### 11.14 TableColumnTypesValidator
+
+Validates column types match expectations.
+
+### 11.15 TableMemorySizeValidator
+
+Validates estimated memory usage.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `min_size_mb` | `float \| None` | Minimum size in MB |
+| `max_size_mb` | `float \| None` | Maximum size in MB |
+
+### 11.16 TableRowToColumnRatioValidator
+
+Validates row-to-column ratio.
+
+### 11.17 TableDimensionsValidator
+
+Validates table dimensions (rows and columns).
+
+---
+
+## 12. Geospatial Validators
+
+Geospatial validators verify geographic coordinates and spatial data integrity.
+
+### 12.1 GeoValidator
+
+Base class for geospatial validation with Haversine distance calculation.
+
+**Haversine Formula**:
+```
+a = sin²(Δlat/2) + cos(lat₁) × cos(lat₂) × sin²(Δlon/2)
+c = 2 × atan2(√a, √(1-a))
+d = R × c
+```
+
+### 12.2 LatitudeValidator
+
+Validates latitude values (-90 to 90).
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Latitude column |
+| `min_lat` | `float` | Minimum latitude |
+| `max_lat` | `float` | Maximum latitude |
+
+### 12.3 LongitudeValidator
+
+Validates longitude values (-180 to 180).
+
+### 12.4 CoordinateValidator
+
+Validates latitude/longitude coordinate pairs.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `lat_column` | `str` | Latitude column |
+| `lon_column` | `str` | Longitude column |
+
+### 12.5 CoordinateNotNullIslandValidator
+
+Detects "null island" coordinates (0, 0).
+
+### 12.6 GeoDistanceValidator
+
+Validates distances between coordinate pairs.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `lat_column_a` | `str` | First latitude column |
+| `lon_column_a` | `str` | First longitude column |
+| `lat_column_b` | `str` | Second latitude column |
+| `lon_column_b` | `str` | Second longitude column |
+| `max_distance_km` | `float` | Maximum distance |
+
+### 12.7 GeoDistanceFromPointValidator
+
+Validates distance from a reference point.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `lat_column` | `str` | Latitude column |
+| `lon_column` | `str` | Longitude column |
+| `reference_lat` | `float` | Reference latitude |
+| `reference_lon` | `float` | Reference longitude |
+| `max_distance_km` | `float` | Maximum distance |
+
+### 12.8 GeoBoundingBoxValidator
+
+Validates coordinates within a bounding box.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `lat_column` | `str` | Latitude column |
+| `lon_column` | `str` | Longitude column |
+| `min_lat` | `float` | Minimum latitude |
+| `max_lat` | `float` | Maximum latitude |
+| `min_lon` | `float` | Minimum longitude |
+| `max_lon` | `float` | Maximum longitude |
+
+### 12.9 GeoCountryValidator
+
+Validates coordinates are within a country's boundaries.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `lat_column` | `str` | Latitude column |
+| `lon_column` | `str` | Longitude column |
+| `country_code` | `str` | ISO country code |
+
+---
+
+## 13. Drift Validators
+
+Drift validators detect distributional changes between reference and current datasets, essential for monitoring machine learning model inputs and data pipeline integrity.
+
+**Installation**: `pip install truthound[drift]`
+
+### 13.1 DriftValidator
+
+Base class for drift detection.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `reference_data` | `pl.DataFrame` | Baseline dataset |
+
+### 13.2 ColumnDriftValidator
+
+Base class for single-column drift detection.
+
+### 13.3 KSTestValidator
+
+Kolmogorov-Smirnov test for numeric distribution drift.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `reference_data` | `pl.DataFrame` | Reference data |
+| `p_value_threshold` | `float` | Significance level (default: 0.05) |
+| `statistic_threshold` | `float \| None` | Optional KS statistic threshold |
+
+**Mathematical Definition**:
+```
+D = max|F_ref(x) - F_curr(x)|
+```
+
+The test rejects the null hypothesis (no drift) when D exceeds the critical value.
+
+```python
+validator = KSTestValidator(
+    column="feature_value",
+    reference_data=training_df,
+    p_value_threshold=0.05
+)
+```
+
+### 13.4 ChiSquareDriftValidator
+
+Chi-square test for categorical distribution drift.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `reference_data` | `pl.DataFrame` | Reference data |
+| `p_value_threshold` | `float` | Significance level |
+| `min_expected_frequency` | `float` | Minimum expected frequency per category |
+
+**Mathematical Definition**:
+```
+χ² = Σ (O_i - E_i)² / E_i
+```
+
+### 13.5 WassersteinDriftValidator
+
+Wasserstein distance (Earth Mover's Distance) for numeric drift detection.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `reference_data` | `pl.DataFrame` | Reference data |
+| `threshold` | `float` | Maximum allowed distance |
+| `normalize` | `bool` | Normalize by standard deviation |
+
+The Wasserstein distance measures the minimum "work" required to transform one distribution into another, providing an interpretable metric in the same units as the data.
+
+### 13.6 PSIValidator
+
+Population Stability Index for distribution drift monitoring.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `reference_data` | `pl.DataFrame` | Reference data |
+| `threshold` | `float` | PSI threshold (default: 0.25) |
+| `n_bins` | `int` | Number of bins (default: 10) |
+| `is_categorical` | `bool` | Categorical column flag |
+
+**Mathematical Definition**:
+```
+PSI = Σ (P_curr,i - P_ref,i) × ln(P_curr,i / P_ref,i)
+```
+
+**Industry Standard Thresholds**:
+- PSI < 0.10: No significant change
+- 0.10 ≤ PSI < 0.25: Moderate change (investigation recommended)
+- PSI ≥ 0.25: Significant change (action required)
+
+```python
+validator = PSIValidator(
+    column="credit_score",
+    reference_data=baseline_df,
+    threshold=0.25,
+    n_bins=10
+)
+```
+
+### 13.7 CSIValidator
+
+Characteristic Stability Index for per-bin PSI analysis.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `reference_data` | `pl.DataFrame` | Reference data |
+| `threshold_per_bin` | `float` | Per-bin PSI threshold |
+| `n_bins` | `int` | Number of bins |
+
+### 13.8 MeanDriftValidator
+
+Detects drift in column mean.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `reference_data` | `pl.DataFrame` | Reference data |
+| `threshold_pct` | `float \| None` | Percentage threshold |
+| `threshold_abs` | `float \| None` | Absolute threshold |
+
+### 13.9 VarianceDriftValidator
+
+Detects drift in column variance or standard deviation.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `reference_data` | `pl.DataFrame` | Reference data |
+| `threshold_pct` | `float` | Percentage threshold |
+| `use_std` | `bool` | Use standard deviation instead of variance |
+
+### 13.10 QuantileDriftValidator
+
+Detects drift in specific quantiles.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `reference_data` | `pl.DataFrame` | Reference data |
+| `quantiles` | `list[float]` | Quantiles to monitor |
+| `threshold_pct` | `float` | Percentage threshold |
+
+### 13.11 RangeDriftValidator
+
+Detects drift in value range (min/max).
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `reference_data` | `pl.DataFrame` | Reference data |
+| `threshold_pct` | `float` | Percentage threshold |
+| `allow_expansion` | `bool` | Allow range expansion |
+
+### 13.12 FeatureDriftValidator
+
+Multi-feature drift detection with configurable methods.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `columns` | `list[str]` | Columns to monitor |
+| `reference_data` | `pl.DataFrame` | Reference data |
+| `method` | `str` | Detection method (psi, ks, wasserstein, chi_square) |
+| `threshold` | `float` | Drift threshold |
+| `alert_on_any` | `bool` | Alert if any column drifts |
+| `min_drift_count` | `int` | Minimum columns that must drift |
+| `categorical_columns` | `list[str]` | Categorical column list |
+
+```python
+validator = FeatureDriftValidator(
+    columns=["age", "income", "credit_score"],
+    reference_data=training_df,
+    method="psi",
+    threshold=0.15,
+    alert_on_any=True
+)
+```
+
+### 13.13 JSDivergenceValidator
+
+Jensen-Shannon divergence for distribution similarity.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `reference_data` | `pl.DataFrame` | Reference data |
+| `threshold` | `float` | Maximum JS divergence |
+| `is_categorical` | `bool` | Categorical column flag |
+
+**Mathematical Definition**:
+```
+JS(P||Q) = ½ D_KL(P||M) + ½ D_KL(Q||M)
+where M = ½(P + Q)
+```
+
+Jensen-Shannon divergence is symmetric and bounded [0, 1], making it suitable for comparing distributions of different sizes.
+
+---
+
+## 14. Anomaly Validators
+
+Anomaly validators detect unusual patterns, outliers, and data points that deviate significantly from expected behavior. These validators employ both statistical and machine learning approaches.
+
+**Installation**: `pip install truthound[anomaly]`
+
+### 14.1 AnomalyValidator
+
+Base class for table-wide anomaly detection.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `columns` | `list[str] \| None` | Columns to analyze |
+| `max_anomaly_ratio` | `float` | Maximum acceptable anomaly ratio |
+
+### 14.2 ColumnAnomalyValidator
+
+Base class for single-column anomaly detection.
+
+### 14.3 IQRAnomalyValidator
+
+Interquartile Range anomaly detection with configurable sensitivity.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `iqr_multiplier` | `float` | IQR multiplier (1.5=standard, 3.0=extreme) |
+| `max_anomaly_ratio` | `float` | Maximum anomaly ratio |
+| `detect_lower` | `bool` | Detect lower bound anomalies |
+| `detect_upper` | `bool` | Detect upper bound anomalies |
+
+**Mathematical Definition**:
+```
+IQR = Q3 - Q1
+Lower Bound = Q1 - k × IQR
+Upper Bound = Q3 + k × IQR
+```
+
+- k = 1.5: Standard outliers (Tukey's fences)
+- k = 3.0: Extreme outliers
+
+```python
+validator = IQRAnomalyValidator(
+    column="transaction_amount",
+    iqr_multiplier=1.5,
+    max_anomaly_ratio=0.05
+)
+```
+
+### 14.4 MADAnomalyValidator
+
+Median Absolute Deviation anomaly detection, robust to outliers.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `threshold` | `float` | Modified Z-score threshold (default: 3.5) |
+| `max_anomaly_ratio` | `float` | Maximum anomaly ratio |
+
+**Mathematical Definition**:
+```
+MAD = median(|X_i - median(X)|)
+Modified Z-score = 0.6745 × (X - median(X)) / MAD
+```
+
+The constant 0.6745 makes MAD consistent with standard deviation for normal distributions. MAD is preferred over standard deviation when data contains outliers.
+
+### 14.5 GrubbsTestValidator
+
+Grubbs' test for iterative single outlier detection.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `alpha` | `float` | Significance level (default: 0.05) |
+| `max_iterations` | `int` | Maximum iterations |
+| `max_anomaly_ratio` | `float` | Maximum anomaly ratio |
+
+**Mathematical Definition**:
+```
+G = max|X_i - mean(X)| / std(X)
+```
+
+Grubbs' test assumes the data follows an approximately normal distribution and is designed to detect a single outlier at a time. The validator runs iteratively, removing detected outliers and retesting until no more outliers are found or the maximum iterations are reached.
+
+### 14.6 TukeyFencesValidator
+
+Tukey's method with inner and outer fences for classifying outliers.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `detect_mild` | `bool` | Report mild outliers (k=1.5) |
+| `detect_extreme` | `bool` | Report extreme outliers (k=3.0) |
+| `max_anomaly_ratio` | `float` | Maximum anomaly ratio |
+
+**Fence Definitions**:
+- Inner fences: [Q1 - 1.5×IQR, Q3 + 1.5×IQR] — mild outliers outside
+- Outer fences: [Q1 - 3.0×IQR, Q3 + 3.0×IQR] — extreme outliers outside
+
+### 14.7 PercentileAnomalyValidator
+
+Percentile-based anomaly detection with configurable bounds.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `column` | `str` | Target column |
+| `lower_percentile` | `float` | Lower percentile (default: 1.0) |
+| `upper_percentile` | `float` | Upper percentile (default: 99.0) |
+| `max_anomaly_ratio` | `float` | Maximum anomaly ratio |
+
+```python
+validator = PercentileAnomalyValidator(
+    column="response_time",
+    lower_percentile=1,
+    upper_percentile=99,
+    max_anomaly_ratio=0.05
+)
+```
+
+### 14.8 MahalanobisValidator
+
+Multivariate anomaly detection using Mahalanobis distance.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `columns` | `list[str] \| None` | Columns to analyze |
+| `threshold_percentile` | `float` | Chi-squared percentile threshold |
+| `use_robust_covariance` | `bool` | Use robust covariance estimation |
+| `max_anomaly_ratio` | `float` | Maximum anomaly ratio |
+
+**Mathematical Definition**:
+```
+D²_M(x) = (x - μ)ᵀ Σ⁻¹ (x - μ)
+```
+
+The Mahalanobis distance accounts for correlations between variables and is scale-invariant. For multivariate normal data, squared Mahalanobis distances follow a chi-squared distribution with degrees of freedom equal to the number of dimensions.
+
+```python
+validator = MahalanobisValidator(
+    columns=["feature1", "feature2", "feature3"],
+    threshold_percentile=97.5,
+    use_robust_covariance=True
+)
+```
+
+### 14.9 EllipticEnvelopeValidator
+
+Robust Gaussian fitting for multivariate anomaly detection.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `columns` | `list[str] \| None` | Columns to analyze |
+| `contamination` | `float` | Expected proportion of outliers |
+| `max_anomaly_ratio` | `float` | Maximum anomaly ratio |
+
+The Elliptic Envelope fits a robust covariance estimate to the data and defines an elliptical decision boundary. Points outside this boundary are classified as anomalies. Best suited for approximately Gaussian data.
+
+### 14.10 PCAAnomalyValidator
+
+Principal Component Analysis reconstruction error for anomaly detection.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `columns` | `list[str] \| None` | Columns to analyze |
+| `n_components` | `int \| float \| None` | Number of components |
+| `error_percentile` | `float` | Error threshold percentile |
+| `max_anomaly_ratio` | `float` | Maximum anomaly ratio |
+
+This method projects data onto principal components and uses reconstruction error to identify anomalies. Points with high reconstruction error (deviating from the main variance directions) are classified as anomalies.
+
+### 14.11 ZScoreMultivariateValidator
+
+Multivariate Z-score anomaly detection.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `columns` | `list[str] \| None` | Columns to analyze |
+| `threshold` | `float` | Z-score threshold (default: 3.0) |
+| `method` | `str` | Combination method (any, all, mean) |
+| `max_anomaly_ratio` | `float` | Maximum anomaly ratio |
+
+**Combination Methods**:
+- `any`: Anomaly if any column exceeds threshold
+- `all`: Anomaly if all columns exceed threshold
+- `mean`: Anomaly if mean Z-score exceeds threshold
+
+### 14.12 IsolationForestValidator
+
+Isolation Forest for efficient high-dimensional anomaly detection.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `columns` | `list[str] \| None` | Columns to analyze |
+| `contamination` | `float \| str` | Expected anomaly proportion or "auto" |
+| `n_estimators` | `int` | Number of trees (default: 100) |
+| `max_samples` | `int \| float \| str` | Samples per tree |
+| `random_state` | `int \| None` | Random seed |
+| `max_anomaly_ratio` | `float` | Maximum anomaly ratio |
+
+Isolation Forest isolates anomalies by randomly selecting features and split values. Anomalies are easier to isolate, resulting in shorter path lengths. This method is computationally efficient and works well for high-dimensional data without assuming any particular distribution.
+
+```python
+validator = IsolationForestValidator(
+    columns=["feature1", "feature2", "feature3"],
+    contamination=0.05,
+    n_estimators=100,
+    random_state=42
+)
+```
+
+### 14.13 LOFValidator
+
+Local Outlier Factor for density-based anomaly detection.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `columns` | `list[str] \| None` | Columns to analyze |
+| `n_neighbors` | `int` | Number of neighbors (default: 20) |
+| `contamination` | `float \| str` | Expected anomaly proportion |
+| `metric` | `str` | Distance metric |
+| `max_anomaly_ratio` | `float` | Maximum anomaly ratio |
+
+LOF measures the local density deviation of a point compared to its neighbors. Points with substantially lower density than their neighbors are considered outliers. This method excels at detecting local anomalies in clustered data.
+
+### 14.14 OneClassSVMValidator
+
+One-Class Support Vector Machine for boundary-based anomaly detection.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `columns` | `list[str] \| None` | Columns to analyze |
+| `kernel` | `str` | Kernel type (rbf, linear, poly, sigmoid) |
+| `nu` | `float` | Upper bound on anomaly fraction |
+| `gamma` | `str \| float` | Kernel coefficient |
+| `max_anomaly_ratio` | `float` | Maximum anomaly ratio |
+
+One-Class SVM learns a decision boundary around normal data. Points outside this boundary are classified as anomalies. Works well for high-dimensional data but can be slower than tree-based methods.
+
+### 14.15 DBSCANAnomalyValidator
+
+DBSCAN clustering for density-based anomaly detection.
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `columns` | `list[str] \| None` | Columns to analyze |
+| `eps` | `float` | Maximum distance for neighbors |
+| `min_samples` | `int` | Minimum cluster size |
+| `metric` | `str` | Distance metric |
+| `max_anomaly_ratio` | `float` | Maximum anomaly ratio |
+
+DBSCAN identifies outliers as noise points that don't belong to any cluster. This method can discover clusters of arbitrary shape and automatically determines the number of clusters.
+
+```python
+validator = DBSCANAnomalyValidator(
+    columns=["x", "y"],
+    eps=0.5,
+    min_samples=5,
+    max_anomaly_ratio=0.1
+)
+```
+
+---
+
+## Appendix A: Validator Categories Summary
+
+| Category | Count | Dependencies | Description |
+|----------|-------|--------------|-------------|
+| Schema | 14 | Core | Structural validation |
+| Completeness | 7 | Core | Missing value detection |
+| Uniqueness | 13 | Core | Duplicate and key validation |
+| Distribution | 15 | Core | Range and statistical checks |
+| String | 17 | Core | Pattern and format validation |
+| Datetime | 10 | Core | Temporal data validation |
+| Aggregate | 8 | Core | Statistical aggregate checks |
+| Cross-Table | 4 | Core | Multi-table relationships |
+| Query | 17 | Core | Expression-based validation |
+| Multi-Column | 18 | Core | Column relationships |
+| Table | 13 | Core | Table metadata validation |
+| Geospatial | 8 | Core | Geographic coordinates |
+| Drift | 11 | scipy | Distribution change detection |
+| Anomaly | 13 | scipy, scikit-learn | Outlier detection |
+| **Total** | **169** | | |
+
+---
+
+## Appendix B: Installation Options
+
+```bash
+# Core validators only
+pip install truthound
+
+# With drift detection (adds scipy)
+pip install truthound[drift]
+
+# With anomaly detection (adds scipy and scikit-learn)
+pip install truthound[anomaly]
+
+# All optional dependencies
+pip install truthound[all]
+```
+
+---
+
+## Appendix C: Quick Reference
+
+### Common Parameters
+
+| Parameter | Type | Description | Default |
+|-----------|------|-------------|---------|
+| `column` | `str` | Target column name | Required |
+| `columns` | `list[str]` | Multiple target columns | `None` (all) |
+| `mostly` | `float` | Minimum pass ratio | `None` (100%) |
+| `max_anomaly_ratio` | `float` | Maximum anomaly ratio | `0.1` |
+| `reference_data` | `pl.DataFrame` | Baseline dataset | Required (drift) |
+
+### Severity Levels
+
+| Severity | Description | Typical Ratio |
+|----------|-------------|---------------|
+| `LOW` | Minor issue | < 1% |
+| `MEDIUM` | Moderate concern | 1-5% |
+| `HIGH` | Significant issue | 5-10% |
+| `CRITICAL` | Severe problem | > 10% |
+
+---
+
+*Document Version: 0.2.0*
+*Last Updated: December 2025*
