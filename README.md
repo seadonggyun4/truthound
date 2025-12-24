@@ -261,84 +261,19 @@ The fingerprint-based caching system enables true zero-configuration validation:
 
 ## 4. Statistical Methods
 
-### 4.1 Outlier Detection (IQR Method)
+Truthound implements well-established statistical methods for drift detection, anomaly detection, and distribution analysis.
 
-The Interquartile Range (IQR) method identifies statistical outliers:
+> **Detailed Documentation**: For comprehensive explanations of each method including formulas, interpretation guidelines, and implementation examples, see **[Statistical Methods (docs/STATISTICAL_METHODS.md)](docs/STATISTICAL_METHODS.md)**.
 
-```
-IQR = Q3 - Q1
-Lower Bound = Q1 - k * IQR
-Upper Bound = Q3 + k * IQR
-```
-
-Where `k = 1.5` for standard outliers, `k = 3.0` for extreme outliers.
-
-**Implementation Optimization**: Single-pass computation of Q1, Q3, and outlier counts for all numeric columns.
-
-### 4.2 Kolmogorov-Smirnov Test
-
-Measures maximum difference between empirical cumulative distribution functions:
-
-```
-D = max|F1(x) - F2(x)|
-```
-
-P-value approximation uses the asymptotic Kolmogorov distribution.
-
-### 4.3 Population Stability Index (PSI)
-
-Quantifies distribution shift between baseline and current populations:
-
-```
-PSI = sum((Pi - Qi) * ln(Pi / Qi))
-```
-
-Where Pi and Qi are proportions in bin i for baseline and current distributions.
-
-**Industry Standard Interpretation**:
-- PSI < 0.1: No significant change
-- 0.1 <= PSI < 0.25: Moderate change
-- PSI >= 0.25: Significant change
-
-### 4.4 Chi-Square Test
-
-Tests independence between observed and expected categorical frequencies:
-
-```
-chi2 = sum((Oi - Ei)^2 / Ei)
-```
-
-P-value computed using Wilson-Hilferty approximation.
-
-### 4.5 Jensen-Shannon Divergence
-
-Symmetric measure of distribution similarity (bounded [0, 1]):
-
-```
-JS(P||Q) = 0.5 * KL(P||M) + 0.5 * KL(Q||M)
-```
-
-Where M = 0.5 * (P + Q) and KL is the Kullback-Leibler divergence.
-
-### 4.6 Mahalanobis Distance
-
-Multivariate distance accounting for correlations:
-
-```
-D = sqrt((x - mu)^T * Sigma^(-1) * (x - mu))
-```
-
-Where mu is the mean vector and Sigma is the covariance matrix.
-
-### 4.7 Isolation Forest
-
-Anomaly score based on path length in random trees:
-
-```
-s(x, n) = 2^(-E(h(x)) / c(n))
-```
-
-Where h(x) is the path length and c(n) is the average path length for n samples.
+| Method | Use Case | Key Metric |
+|--------|----------|------------|
+| **IQR** | Univariate outliers | Q1 - 1.5×IQR to Q3 + 1.5×IQR |
+| **Kolmogorov-Smirnov** | Distribution comparison | D statistic, p-value |
+| **PSI** | Model monitoring | PSI < 0.1 (stable), ≥ 0.25 (significant) |
+| **Chi-Square** | Categorical drift | χ² statistic, p-value |
+| **Jensen-Shannon** | Symmetric divergence | JS ∈ [0, 1] |
+| **Mahalanobis** | Multivariate outliers | Distance threshold |
+| **Isolation Forest** | ML-based anomaly | Anomaly score |
 
 ---
 
@@ -383,61 +318,16 @@ The LazyFrame-based architecture enables processing of datasets larger than avai
 
 ## 6. Test Coverage
 
-### 6.1 Test Summary
+Truthound maintains comprehensive test coverage with **717 tests** across all validation features.
 
-| Test Suite | Test Count | Status |
-|------------|------------|--------|
-| Unit Tests | 39 | Pass |
-| Stress Tests | 53 | Pass |
-| Extreme Stress Tests | 14 | Pass |
-| Validator Tests (P0) | 32 | Pass |
-| Validator Tests (P1) | 27 | Pass |
-| Validator Tests (P2) | 27 | Pass |
-| Drift Validator Tests | 52 | Pass |
-| Anomaly Validator Tests | 31 | Pass |
-| Multi-column Validator Tests | 43 | Pass |
-| Query Validator Tests | 14 | Pass |
-| Table Validator Tests | 21 | Pass |
-| Geospatial Validator Tests | 26 | Pass |
-| Business Rule Validator Tests | 22 | Pass |
-| Localization Validator Tests | 28 | Pass |
-| ML Feature Validator Tests | 23 | Pass |
-| Profiling Validator Tests | 23 | Pass |
-| Referential Validator Tests | 28 | Pass |
-| Time Series Validator Tests | 30 | Pass |
-| Privacy Validator Tests | 46 | Pass |
-| Integration Tests | 138 | Pass |
+> **Detailed Documentation**: For complete test suite information, including stress tests, extreme stress tests, and PII detection coverage, see **[Test Coverage (docs/TEST_COVERAGE.md)](docs/TEST_COVERAGE.md)**.
+
+| Category | Tests | Status |
+|----------|-------|--------|
+| Core Tests (Unit, Stress, Extreme) | 106 | All Pass |
+| Validator Tests (P0-P2, All Categories) | 473 | All Pass |
+| Integration Tests | 138 | All Pass |
 | **Total** | **717** | **All Pass** |
-
-### 6.2 Test Categories
-
-**Stress Tests** (`test_stress.py`):
-- Edge cases (empty data, single row/column)
-- All Polars data types (Int8-Int64, Float32/64, String, Boolean, Date, Datetime, Duration, Categorical, List, Struct)
-- Real-world patterns (high cardinality, sparse data, time series)
-- Malicious inputs (SQL injection patterns, XSS, null bytes, Unicode)
-- Memory pressure scenarios
-
-**Extreme Stress Tests** (`test_extreme_stress.py`):
-- 10M row datasets
-- Financial tick data simulation (stock/crypto)
-- Mixed type columns
-- High duplicate rates
-- Wide datasets (100+ columns)
-- Concurrent operations
-
-### 6.3 PII Detection Coverage
-
-| PII Type | Pattern | Confidence |
-|----------|---------|------------|
-| Email | RFC 5322 compliant | 95% |
-| US SSN | `XXX-XX-XXXX` | 98% |
-| Phone (International) | ITU-T E.164 | 90% |
-| Credit Card | Luhn algorithm validated | 85% |
-| Korean RRN | `XXXXXX-XXXXXXX` | 98% |
-| Korean Phone | `0XX-XXXX-XXXX` | 90% |
-| Korean Bank Account | Bank-specific formats | 80% |
-| Korean Passport | `MXXXXXXXX` | 85% |
 
 ---
 
@@ -607,97 +497,35 @@ hatch run test
 
 ## 10. Usage Examples
 
-### 10.1 Basic Validation
+> **Detailed Documentation**: For comprehensive examples including cross-table validation, time series validation, privacy compliance, CI/CD integration, and custom validators, see **[Usage Examples (docs/EXAMPLES.md)](docs/EXAMPLES.md)**.
+
+### Quick Start
 
 ```python
 import truthound as th
 
-# Simple validation
+# Basic validation
 report = th.check("data.csv")
-print(report)
 
-# With severity filter
-report = th.check(df, min_severity="medium")
-
-# Specific validators
-report = th.check(df, validators=["null", "duplicate", "outlier"])
-```
-
-### 10.2 Schema-Based Validation
-
-```python
-# Learn schema from baseline data
+# Schema-based validation
 schema = th.learn("baseline.csv")
-schema.save("schema.yaml")
+report = th.check("new_data.csv", schema=schema)
 
-# Validate new data against schema
-report = th.check("new_data.csv", schema="schema.yaml")
-
-# Zero-config with auto caching
-report = th.check("data.csv", auto_schema=True)
-```
-
-### 10.3 Drift Detection
-
-```python
-# Basic comparison
+# Drift detection
 drift = th.compare("train.csv", "production.csv")
-print(drift)
 
-if drift.has_high_drift:
-    print("Warning: Significant drift detected!")
-
-# Large dataset with sampling
-drift = th.compare(
-    "historical.parquet",
-    "current.parquet",
-    sample_size=10000  # 92x speedup
-)
-
-# Export for CI/CD
-with open("drift_report.json", "w") as f:
-    f.write(drift.to_json())
-```
-
-### 10.4 Anomaly Detection
-
-```python
-from truthound.validators.anomaly import (
-    IsolationForestValidator,
-    MahalanobisValidator,
-    IQRAnomalyValidator,
-)
-
-# Isolation Forest for multi-dimensional anomalies
-validator = IsolationForestValidator(
-    columns=["feature1", "feature2", "feature3"],
-    contamination=0.05,
-    max_anomaly_ratio=0.1
-)
-issues = validator.validate(df.lazy())
-
-# Mahalanobis distance for correlated features
-validator = MahalanobisValidator(
-    columns=["x", "y", "z"],
-    threshold=3.0  # Chi-square threshold
-)
-
-# IQR-based detection for single columns
-validator = IQRAnomalyValidator(
-    column="value",
-    k=1.5  # 1.5 for standard, 3.0 for extreme
-)
-```
-
-### 10.5 PII Detection
-
-```python
-# Scan for PII
+# PII scanning and masking
 pii_report = th.scan(df)
-
-# Mask sensitive data
 masked_df = th.mask(df, strategy="hash")
-masked_df.write_parquet("anonymized.parquet")
+```
+
+### CLI Quick Start
+
+```bash
+truthound check data.csv                    # Validate
+truthound check data.csv --strict           # CI/CD mode
+truthound compare baseline.csv current.csv  # Drift detection
+truthound scan data.csv                     # PII scanning
 ```
 
 ---
