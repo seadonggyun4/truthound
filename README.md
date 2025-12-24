@@ -38,11 +38,22 @@ Truthound is a high-performance data quality validation framework designed for m
 6. [Test Coverage](#6-test-coverage)
 7. [API Reference](#7-api-reference)
 8. [Storage & Reporting](#8-storage--reporting)
+   - [8.3 Data Sources & Execution Engines](#83-data-sources--execution-engines)
 9. [Comparative Analysis](#9-comparative-analysis)
 10. [Installation](#10-installation)
 11. [Usage Examples](#11-usage-examples)
 12. [Limitations and Future Work](#12-limitations-and-future-work)
 13. [References](#13-references)
+
+**Additional Documentation:**
+- [Data Sources Usage (docs/DATASOURCES.md)](docs/DATASOURCES.md)
+- [Data Sources Architecture (docs/DATASOURCES_ARCHITECTURE.md)](docs/DATASOURCES_ARCHITECTURE.md)
+- [Validators Reference (docs/VALIDATORS.md)](docs/VALIDATORS.md)
+- [Statistical Methods (docs/STATISTICAL_METHODS.md)](docs/STATISTICAL_METHODS.md)
+- [Storage Backends (docs/STORES.md)](docs/STORES.md)
+- [Reporters (docs/REPORTERS.md)](docs/REPORTERS.md)
+- [Usage Examples (docs/EXAMPLES.md)](docs/EXAMPLES.md)
+- [Test Coverage (docs/TEST_COVERAGE.md)](docs/TEST_COVERAGE.md)
 
 ---
 
@@ -59,14 +70,19 @@ Truthound was designed with the following objectives:
 1. **Zero Configuration**: Immediate usability without boilerplate setup code
 2. **High Performance**: Leveraging Rust-based Polars for computational efficiency
 3. **Universal Input Support**: Native handling of diverse data formats
-4. **Statistical Rigor**: Implementation of well-established statistical methods for drift and anomaly detection
-5. **Privacy Awareness**: Built-in PII detection and data masking capabilities
-6. **Extensibility**: Modular architecture enabling seamless integration of custom validators
+4. **Multi-Backend Support**: Unified abstraction for Polars, Pandas, SQL, and Spark
+5. **Statistical Rigor**: Implementation of well-established statistical methods for drift and anomaly detection
+6. **Privacy Awareness**: Built-in PII detection and data masking capabilities
+7. **Extensibility**: Modular architecture enabling seamless integration of custom validators
 
 ### 1.3 Contributions
 
 This work presents:
 
+- A unified data source abstraction supporting Polars, Pandas, SQL databases, and Spark
+- Enterprise data sources: BigQuery, Snowflake, Redshift, Databricks, Oracle, SQL Server
+- Execution engines with backend-specific optimizations (SQL pushdown, lazy evaluation)
+- Cost-aware query execution for cloud data warehouses (BigQuery dry-run cost estimation)
 - A unified data adapter layer supporting multiple input formats
 - Optimized validation algorithms using Polars LazyFrame for memory-efficient processing
 - Implementation of comprehensive statistical drift detection methods
@@ -319,7 +335,7 @@ The LazyFrame-based architecture enables processing of datasets larger than avai
 
 ## 6. Test Coverage
 
-Truthound maintains comprehensive test coverage with **815 tests** across all validation features.
+Truthound maintains comprehensive test coverage with **1004 tests** across all validation features.
 
 > **Detailed Documentation**: For complete test suite information, including stress tests, extreme stress tests, and PII detection coverage, see **[Test Coverage (docs/TEST_COVERAGE.md)](docs/TEST_COVERAGE.md)**.
 
@@ -329,7 +345,8 @@ Truthound maintains comprehensive test coverage with **815 tests** across all va
 | Validator Tests (P0-P2, All Categories) | 473 | All Pass |
 | Integration Tests | 138 | All Pass |
 | Storage & Reporter Tests | 98 | All Pass |
-| **Total** | **815** | **All Pass** |
+| Data Source Tests (SQL, Enterprise) | 194 | All Pass |
+| **Total** | **1004** | **All Pass** |
 
 ---
 
@@ -471,7 +488,23 @@ md_reporter.write(result, "REPORT.md")
 
 > **Detailed Documentation**: See **[Reporters (docs/REPORTERS.md)](docs/REPORTERS.md)** for customization, templates, and integration examples.
 
-### 8.3 Architecture Overview
+### 8.3 Data Sources & Execution Engines
+
+Truthound supports 10+ data backends through a unified abstraction layer.
+
+| Category | Sources | Features |
+|----------|---------|----------|
+| **DataFrame** | Polars, Pandas, PySpark | Native operations, auto-sampling |
+| **Core SQL** | PostgreSQL, MySQL, SQLite | Connection pooling, SQL pushdown |
+| **Cloud DW** | BigQuery, Snowflake, Redshift, Databricks | Cost control, IAM auth |
+| **Enterprise** | Oracle, SQL Server | Windows auth, TNS support |
+| **File** | CSV, Parquet, JSON, NDJSON | Lazy loading, streaming |
+
+> **Usage Guide**: See **[Data Sources (docs/DATASOURCES.md)](docs/DATASOURCES.md)** for examples and configuration.
+>
+> **Architecture Deep Dive**: See **[Data Sources Architecture (docs/DATASOURCES_ARCHITECTURE.md)](docs/DATASOURCES_ARCHITECTURE.md)** for design patterns, extensibility guide, and quality assessment.
+
+### 8.4 Architecture Overview
 
 > **Detailed Documentation**: For comprehensive architecture documentation including design patterns, type system, and extension points, see **[Architecture (docs/ARCHITECTURE.md)](docs/ARCHITECTURE.md)**.
 
@@ -562,6 +595,13 @@ pip install truthound[all]
 | `s3` | boto3 | AWS S3 storage backend |
 | `gcs` | google-cloud-storage | Google Cloud Storage backend |
 | `database` | sqlalchemy | SQL database storage backend |
+| `bigquery` | google-cloud-bigquery | Google BigQuery data source |
+| `snowflake` | snowflake-connector-python | Snowflake data source |
+| `redshift` | redshift-connector | Amazon Redshift data source |
+| `databricks` | databricks-sql-connector | Databricks SQL data source |
+| `oracle` | oracledb | Oracle Database data source |
+| `sqlserver` | pyodbc / pymssql | SQL Server data source |
+| `enterprise` | (all enterprise sources) | All enterprise data backends |
 
 ### 10.4 Development Setup
 
@@ -634,12 +674,13 @@ truthound scan data.csv                     # PII scanning
 - ~~**Phase 1.10**: Add time series validators~~ **Completed** (12 validators)
 - ~~**Phase 1.11**: Add privacy compliance validators (GDPR/CCPA)~~ **Completed** (14 validators)
 - ~~**Phase 4**: Storage backends & reporters infrastructure~~ **Completed** (5 backends, 4 formats)
+- ~~**Phase 5**: Enterprise data sources (BigQuery, Snowflake, etc.)~~ **Completed** (6 sources)
 
 ### 12.3 Planned Improvements
 
-1. **Phase 2**: Add pipeline integrations (Airflow, Prefect)
-2. **Phase 3**: Web dashboard for visualization
-3. **Phase 5**: Real-time streaming validation
+1. **Phase 6**: Add pipeline integrations (Airflow, Prefect)
+2. **Phase 7**: Web dashboard for visualization
+3. **Phase 8**: Real-time streaming validation
 
 ---
 

@@ -17,19 +17,25 @@ from truthound.validators import BUILTIN_VALIDATORS, Validator, get_validator
 
 if TYPE_CHECKING:
     from truthound.schema import Schema
+    from truthound.datasources.base import BaseDataSource
+    from truthound.execution.base import BaseExecutionEngine
 
 
 def check(
-    data: Any,
+    data: Any = None,
+    source: "BaseDataSource | None" = None,
     validators: list[str | Validator] | None = None,
     min_severity: str | Severity | None = None,
     schema: str | Path | Schema | None = None,
     auto_schema: bool = False,
+    use_engine: bool = False,
 ) -> Report:
     """Perform data quality validation on the input data.
 
     Args:
         data: Input data (file path, DataFrame, dict, etc.)
+        source: Optional DataSource instance. If provided, data is ignored.
+                This enables validation on SQL databases, Spark, etc.
         validators: Optional list of validator names or Validator instances.
                    If None, all built-in validators are used.
         min_severity: Minimum severity level to include in results.
@@ -41,6 +47,8 @@ def check(
         auto_schema: If True, automatically learns and caches a schema from the data.
                     On subsequent runs with the same data source, validates against
                     the cached schema. This enables true "zero-config" validation.
+        use_engine: If True, uses execution engine for validation (experimental).
+                   Currently validators still use Polars LazyFrame fallback.
 
     Returns:
         Report containing all validation issues found.
@@ -62,12 +70,53 @@ def check(
 
         >>> # Zero-config with auto schema caching
         >>> report = th.check("data.csv", auto_schema=True)
-    """
-    # Convert input to LazyFrame
-    lf = to_lazyframe(data)
 
-    # Get source name for report
-    source = str(data) if isinstance(data, str) else type(data).__name__
+        >>> # Using DataSource for SQL database
+        >>> from truthound.datasources.sql import PostgreSQLDataSource
+        >>> source = PostgreSQLDataSource(
+        ...     table="users",
+        ...     host="localhost",
+        ...     database="mydb",
+        ...     user="postgres",
+        ... )
+        >>> report = th.check(source=source, validators=["null", "duplicate"])
+
+        >>> # Using auto-detection with DataSource
+        >>> from truthound.datasources import get_datasource
+        >>> source = get_datasource(spark_df)  # PySpark DataFrame
+        >>> if source.needs_sampling():
+        ...     source = source.sample(n=100_000)
+        >>> report = th.check(source=source)
+    """
+    # Handle DataSource if provided
+    if source is not None:
+        from truthound.datasources.base import BaseDataSource
+
+        if not isinstance(source, BaseDataSource):
+            raise ValueError(
+                f"source must be a DataSource instance, got {type(source).__name__}"
+            )
+
+        # Check size limits and warn if needed
+        if source.needs_sampling():
+            import warnings
+            warnings.warn(
+                f"Data source '{source.name}' has {source.row_count:,} rows, "
+                f"which exceeds the limit of {source.config.max_rows:,}. "
+                "Consider using source.sample() for better performance.",
+                UserWarning,
+            )
+
+        # Get LazyFrame from data source
+        lf = source.to_polars_lazyframe()
+        source_name = source.name
+    else:
+        if data is None:
+            raise ValueError("Either 'data' or 'source' must be provided")
+
+        # Convert input to LazyFrame (legacy path)
+        lf = to_lazyframe(data)
+        source_name = str(data) if isinstance(data, str) else type(data).__name__
 
     # Collect metadata
     polars_schema = lf.collect_schema()
@@ -120,7 +169,7 @@ def check(
     # Create report
     report = Report(
         issues=all_issues,
-        source=source,
+        source=source_name,
         row_count=row_count,
         column_count=column_count,
     )

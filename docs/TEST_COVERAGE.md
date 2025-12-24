@@ -27,8 +27,13 @@ Truthound maintains comprehensive test coverage to ensure reliability and correc
 | Referential Validator Tests | 28 | Pass |
 | Time Series Validator Tests | 30 | Pass |
 | Privacy Validator Tests | 46 | Pass |
+| Stores Tests | 43 | Pass |
+| Reporters Tests | 55 | Pass |
+| Data Sources Tests | 40 | Pass |
+| Execution Engines Tests | 66 | Pass |
+| SQL Data Sources Tests | 30 | Pass |
 | Integration Tests | 138 | Pass |
-| **Total** | **717** | **All Pass** |
+| **Total** | **946** | **All Pass** |
 
 ---
 
