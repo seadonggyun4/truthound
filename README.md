@@ -37,11 +37,12 @@ Truthound is a high-performance data quality validation framework designed for m
 5. [Performance Analysis](#5-performance-analysis)
 6. [Test Coverage](#6-test-coverage)
 7. [API Reference](#7-api-reference)
-8. [Comparative Analysis](#8-comparative-analysis)
-9. [Installation](#9-installation)
-10. [Usage Examples](#10-usage-examples)
-11. [Limitations and Future Work](#11-limitations-and-future-work)
-12. [References](#12-references)
+8. [Storage & Reporting](#8-storage--reporting)
+9. [Comparative Analysis](#9-comparative-analysis)
+10. [Installation](#10-installation)
+11. [Usage Examples](#11-usage-examples)
+12. [Limitations and Future Work](#12-limitations-and-future-work)
+13. [References](#13-references)
 
 ---
 
@@ -318,7 +319,7 @@ The LazyFrame-based architecture enables processing of datasets larger than avai
 
 ## 6. Test Coverage
 
-Truthound maintains comprehensive test coverage with **717 tests** across all validation features.
+Truthound maintains comprehensive test coverage with **815 tests** across all validation features.
 
 > **Detailed Documentation**: For complete test suite information, including stress tests, extreme stress tests, and PII detection coverage, see **[Test Coverage (docs/TEST_COVERAGE.md)](docs/TEST_COVERAGE.md)**.
 
@@ -327,7 +328,8 @@ Truthound maintains comprehensive test coverage with **717 tests** across all va
 | Core Tests (Unit, Stress, Extreme) | 106 | All Pass |
 | Validator Tests (P0-P2, All Categories) | 473 | All Pass |
 | Integration Tests | 138 | All Pass |
-| **Total** | **717** | **All Pass** |
+| Storage & Reporter Tests | 98 | All Pass |
+| **Total** | **815** | **All Pass** |
 
 ---
 
@@ -400,9 +402,84 @@ truthound compare train.parquet prod.parquet --method psi --sample-size 10000
 
 ---
 
-## 8. Comparative Analysis
+## 8. Storage & Reporting
 
-### 8.1 Feature Comparison
+Truthound provides enterprise-ready infrastructure for persisting validation results and generating reports.
+
+### 8.1 Storage Backends
+
+Store validation results across different backends for tracking, auditing, and trend analysis.
+
+```python
+from truthound.stores import get_store, ValidationResult
+import truthound as th
+
+# Create store
+store = get_store("filesystem", base_path=".truthound/results")
+store.initialize()
+
+# Save validation results
+report = th.check("data.csv")
+result = ValidationResult.from_report(report, "data.csv")
+run_id = store.save(result)
+
+# Retrieve and query results
+retrieved = store.get(run_id)
+all_runs = store.list_ids()
+```
+
+| Backend | Package | Description |
+|---------|---------|-------------|
+| `filesystem` | (built-in) | Local JSON storage with optional compression |
+| `memory` | (built-in) | In-memory storage for testing |
+| `s3` | boto3 | AWS S3 storage |
+| `gcs` | google-cloud-storage | Google Cloud Storage |
+| `database` | sqlalchemy | SQL database (PostgreSQL, MySQL, SQLite) |
+
+> **Detailed Documentation**: See **[Storage Backends (docs/STORES.md)](docs/STORES.md)** for configuration options, cloud setup, and custom backend implementation.
+
+### 8.2 Report Formats
+
+Generate validation reports in multiple formats.
+
+```python
+from truthound.reporters import get_reporter
+
+# JSON for API integration
+json_reporter = get_reporter("json")
+json_reporter.write(result, "report.json")
+
+# HTML for web dashboards
+html_reporter = get_reporter("html", title="Quality Report")
+html_reporter.write(result, "report.html")
+
+# Console for terminal output
+console_reporter = get_reporter("console", color=True)
+console_reporter.report(result)
+
+# Markdown for documentation
+md_reporter = get_reporter("markdown")
+md_reporter.write(result, "REPORT.md")
+```
+
+| Format | Package | Use Case |
+|--------|---------|----------|
+| `json` | (built-in) | API integration, programmatic access |
+| `console` | rich | Terminal output, debugging |
+| `markdown` | (built-in) | Documentation, GitHub/GitLab |
+| `html` | jinja2 | Web dashboards, email reports |
+
+> **Detailed Documentation**: See **[Reporters (docs/REPORTERS.md)](docs/REPORTERS.md)** for customization, templates, and integration examples.
+
+### 8.3 Architecture Overview
+
+> **Detailed Documentation**: For comprehensive architecture documentation including design patterns, type system, and extension points, see **[Architecture (docs/ARCHITECTURE.md)](docs/ARCHITECTURE.md)**.
+
+---
+
+## 9. Comparative Analysis
+
+### 9.1 Feature Comparison
 
 | Feature | Truthound | Great Expectations | Pandera | Soda Core |
 |---------|-----------|-------------------|---------|-----------|
@@ -424,7 +501,7 @@ truthound compare train.parquet prod.parquet --method psi --sample-size 10000
 | Privacy Compliance (GDPR/CCPA) | Yes (14) | No | No | Limited |
 | Validator Count | 239 | 300+ | 50+ | 100+ |
 
-### 8.2 Honest Assessment
+### 9.2 Honest Assessment
 
 **Strengths**:
 1. Performance advantage from Polars (not unique to Truthound)
@@ -448,9 +525,9 @@ truthound compare train.parquet prod.parquet --method psi --sample-size 10000
 
 ---
 
-## 9. Installation
+## 10. Installation
 
-### 9.1 Requirements
+### 10.1 Requirements
 
 - Python 3.11+
 - Polars 1.x
@@ -458,7 +535,7 @@ truthound compare train.parquet prod.parquet --method psi --sample-size 10000
 - Rich (for console output)
 - Typer (for CLI)
 
-### 9.2 Installation
+### 10.2 Installation
 
 ```bash
 # Basic installation
@@ -474,7 +551,7 @@ pip install truthound[anomaly]
 pip install truthound[all]
 ```
 
-### 9.3 Optional Dependencies
+### 10.3 Optional Dependencies
 
 | Extra | Packages | Features |
 |-------|----------|----------|
@@ -482,8 +559,11 @@ pip install truthound[all]
 | `anomaly` | scipy, scikit-learn | ML-based anomaly detection (Isolation Forest, LOF, SVM) |
 | `all` | jinja2, pandas, scipy, scikit-learn | All optional features |
 | `dev` | pytest, pytest-cov, ruff, mypy | Development tools |
+| `s3` | boto3 | AWS S3 storage backend |
+| `gcs` | google-cloud-storage | Google Cloud Storage backend |
+| `database` | sqlalchemy | SQL database storage backend |
 
-### 9.4 Development Setup
+### 10.4 Development Setup
 
 ```bash
 git clone https://github.com/seadonggyun4/Truthound.git
@@ -495,7 +575,7 @@ hatch run test
 
 ---
 
-## 10. Usage Examples
+## 11. Usage Examples
 
 > **Detailed Documentation**: For comprehensive examples including cross-table validation, time series validation, privacy compliance, CI/CD integration, and custom validators, see **[Usage Examples (docs/EXAMPLES.md)](docs/EXAMPLES.md)**.
 
@@ -530,16 +610,16 @@ truthound scan data.csv                     # PII scanning
 
 ---
 
-## 11. Limitations and Future Work
+## 12. Limitations and Future Work
 
-### 11.1 Current Limitations
+### 12.1 Current Limitations
 
 1. **No Production Validation**: Untested in large-scale production environments
 2. **Limited Integrations**: No native support for Airflow, dbt, Dagster, etc.
 3. **Documentation**: Minimal API documentation and tutorials
 4. **Community**: No established user community or support channels
 
-### 11.2 Completed Improvements
+### 12.2 Completed Improvements
 
 - ~~**Phase 1**: Expand validator library (50+ validators)~~ **Completed** (239 validators)
 - ~~**Phase 1.1**: Add drift detection validators~~ **Completed** (11 validators)
@@ -553,17 +633,17 @@ truthound scan data.csv                     # PII scanning
 - ~~**Phase 1.9**: Add referential integrity validators~~ **Completed** (11 validators)
 - ~~**Phase 1.10**: Add time series validators~~ **Completed** (12 validators)
 - ~~**Phase 1.11**: Add privacy compliance validators (GDPR/CCPA)~~ **Completed** (14 validators)
+- ~~**Phase 4**: Storage backends & reporters infrastructure~~ **Completed** (5 backends, 4 formats)
 
-### 11.3 Planned Improvements
+### 12.3 Planned Improvements
 
 1. **Phase 2**: Add pipeline integrations (Airflow, Prefect)
 2. **Phase 3**: Web dashboard for visualization
-3. **Phase 4**: Database connectors (PostgreSQL, BigQuery)
-4. **Phase 5**: Real-time streaming validation
+3. **Phase 5**: Real-time streaming validation
 
 ---
 
-## 12. References
+## 13. References
 
 1. Polars Documentation. https://pola.rs/
 2. Kolmogorov, A. N. (1933). "Sulla determinazione empirica di una legge di distribuzione"
