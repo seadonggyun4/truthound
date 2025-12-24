@@ -21,6 +21,7 @@
 ---
 
 ## Abstract
+<img width="300" height="300" alt="logo" src="https://github.com/user-attachments/assets/633eb14d-6715-4110-9bbd-8bb9a43ffd87" />
 
 Truthound is a high-performance data quality validation framework designed for modern data engineering pipelines. The library leverages the computational efficiency of Polars—a Rust-based DataFrame library—to achieve order-of-magnitude performance improvements over traditional Python-based validation solutions. This document presents the architectural design, implemented features, performance benchmarks, and empirical validation results of Truthound.
 
