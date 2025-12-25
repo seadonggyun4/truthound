@@ -1,0 +1,490 @@
+"""Validation suite generator.
+
+This module provides the main ValidationSuiteGenerator that combines
+all rule generators to create a complete validation suite from a profile.
+"""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any, Callable, Sequence, TYPE_CHECKING
+
+from truthound.profiler.base import (
+    ProfilerConfig,
+    Strictness,
+    TableProfile,
+)
+from truthound.profiler.generators.base import (
+    GeneratedRule,
+    RuleCategory,
+    RuleConfidence,
+    RuleGenerator,
+    rule_generator_registry,
+)
+
+if TYPE_CHECKING:
+    from truthound.validators.base import Validator
+
+
+@dataclass(frozen=True)
+class ValidationSuite:
+    """A complete validation suite generated from a profile.
+
+    This is an immutable collection of generated rules that can be
+    exported, filtered, and converted to actual validators.
+    """
+
+    name: str
+    rules: tuple[GeneratedRule, ...] = field(default_factory=tuple)
+    source_profile: str = ""  # Reference to source profile
+    strictness: Strictness = Strictness.MEDIUM
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __len__(self) -> int:
+        return len(self.rules)
+
+    def __iter__(self):
+        return iter(self.rules)
+
+    def filter_by_category(
+        self,
+        *categories: RuleCategory,
+    ) -> "ValidationSuite":
+        """Filter rules by category."""
+        filtered = tuple(r for r in self.rules if r.category in categories)
+        return ValidationSuite(
+            name=self.name,
+            rules=filtered,
+            source_profile=self.source_profile,
+            strictness=self.strictness,
+            metadata=self.metadata,
+        )
+
+    def filter_by_confidence(
+        self,
+        min_confidence: RuleConfidence,
+    ) -> "ValidationSuite":
+        """Filter rules by minimum confidence level."""
+        confidence_order = {
+            RuleConfidence.LOW: 0,
+            RuleConfidence.MEDIUM: 1,
+            RuleConfidence.HIGH: 2,
+        }
+        min_level = confidence_order[min_confidence]
+
+        filtered = tuple(
+            r for r in self.rules
+            if confidence_order[r.confidence] >= min_level
+        )
+        return ValidationSuite(
+            name=self.name,
+            rules=filtered,
+            source_profile=self.source_profile,
+            strictness=self.strictness,
+            metadata=self.metadata,
+        )
+
+    def filter_by_columns(self, *columns: str) -> "ValidationSuite":
+        """Filter rules that apply to specific columns."""
+        column_set = set(columns)
+        filtered = tuple(
+            r for r in self.rules
+            if not r.columns or any(c in column_set for c in r.columns)
+        )
+        return ValidationSuite(
+            name=self.name,
+            rules=filtered,
+            source_profile=self.source_profile,
+            strictness=self.strictness,
+            metadata=self.metadata,
+        )
+
+    def exclude_categories(
+        self,
+        *categories: RuleCategory,
+    ) -> "ValidationSuite":
+        """Exclude rules in specific categories."""
+        excluded = set(categories)
+        filtered = tuple(r for r in self.rules if r.category not in excluded)
+        return ValidationSuite(
+            name=self.name,
+            rules=filtered,
+            source_profile=self.source_profile,
+            strictness=self.strictness,
+            metadata=self.metadata,
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "name": self.name,
+            "rules": [r.to_dict() for r in self.rules],
+            "source_profile": self.source_profile,
+            "strictness": self.strictness.value,
+            "metadata": self.metadata,
+            "summary": {
+                "total_rules": len(self.rules),
+                "by_category": self._count_by_category(),
+                "by_confidence": self._count_by_confidence(),
+            },
+        }
+
+    def _count_by_category(self) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for rule in self.rules:
+            cat = rule.category.value
+            counts[cat] = counts.get(cat, 0) + 1
+        return counts
+
+    def _count_by_confidence(self) -> dict[str, int]:
+        counts: dict[str, int] = {}
+        for rule in self.rules:
+            conf = rule.confidence.value
+            counts[conf] = counts.get(conf, 0) + 1
+        return counts
+
+    def to_yaml(self) -> str:
+        """Convert to YAML format for human-readable output."""
+        lines = [
+            f"# Validation Suite: {self.name}",
+            f"# Strictness: {self.strictness.value}",
+            f"# Total rules: {len(self.rules)}",
+            "",
+            "rules:",
+        ]
+
+        for rule in self.rules:
+            lines.append(f"  - name: {rule.name}")
+            lines.append(f"    validator: {rule.validator_class}")
+            lines.append(f"    category: {rule.category.value}")
+            lines.append(f"    confidence: {rule.confidence.value}")
+
+            if rule.columns:
+                lines.append(f"    columns: {list(rule.columns)}")
+
+            if rule.parameters:
+                lines.append("    parameters:")
+                for k, v in rule.parameters.items():
+                    lines.append(f"      {k}: {v}")
+
+            if rule.mostly is not None:
+                lines.append(f"    mostly: {rule.mostly}")
+
+            if rule.description:
+                lines.append(f"    description: \"{rule.description}\"")
+
+            lines.append("")
+
+        return "\n".join(lines)
+
+    def to_python_code(self) -> str:
+        """Generate Python code to create validators."""
+        lines = [
+            '"""Auto-generated validation suite."""',
+            "",
+            "from truthound.validators import (",
+        ]
+
+        # Collect unique validator classes
+        validators = sorted(set(r.validator_class for r in self.rules))
+        for v in validators:
+            lines.append(f"    {v},")
+        lines.append(")")
+        lines.append("")
+        lines.append("")
+        lines.append("def create_validators():")
+        lines.append('    """Create validation rules."""')
+        lines.append("    validators = []")
+        lines.append("")
+
+        for rule in self.rules:
+            lines.append(f"    # {rule.name}")
+            if rule.description:
+                lines.append(f"    # {rule.description}")
+
+            # Build parameters
+            params = []
+            if rule.columns:
+                params.append(f"columns={list(rule.columns)}")
+            for k, v in rule.parameters.items():
+                if isinstance(v, str):
+                    params.append(f'{k}="{v}"')
+                else:
+                    params.append(f"{k}={v!r}")
+            if rule.mostly is not None:
+                params.append(f"mostly={rule.mostly}")
+
+            param_str = ", ".join(params)
+            lines.append(f"    validators.append({rule.validator_class}({param_str}))")
+            lines.append("")
+
+        lines.append("    return validators")
+        lines.append("")
+
+        return "\n".join(lines)
+
+
+class ValidationSuiteGenerator:
+    """Generates validation suites by combining multiple rule generators.
+
+    This is the main entry point for automatic rule generation. It
+    orchestrates multiple generators and combines their output into
+    a cohesive validation suite.
+
+    Example:
+        generator = ValidationSuiteGenerator()
+        suite = generator.generate_from_profile(
+            profile,
+            strictness=Strictness.MEDIUM,
+            include_categories=["schema", "completeness", "format"]
+        )
+
+        # Export
+        suite.to_yaml()
+        suite.to_python_code()
+    """
+
+    def __init__(
+        self,
+        generators: Sequence[RuleGenerator] | None = None,
+        **kwargs: Any,
+    ):
+        """Initialize suite generator.
+
+        Args:
+            generators: Custom list of generators to use.
+                       If None, uses all registered generators.
+            **kwargs: Additional arguments passed to generators.
+        """
+        if generators is not None:
+            self.generators = list(generators)
+        else:
+            # Use all registered generators
+            self.generators = rule_generator_registry.create_all(**kwargs)
+
+    def add_generator(self, generator: RuleGenerator) -> None:
+        """Add a custom generator."""
+        self.generators.append(generator)
+        # Re-sort by priority
+        self.generators.sort(key=lambda g: -g.priority)
+
+    def generate_from_profile(
+        self,
+        profile: TableProfile,
+        *,
+        strictness: Strictness = Strictness.MEDIUM,
+        include_categories: Sequence[str] | None = None,
+        exclude_categories: Sequence[str] | None = None,
+        min_confidence: RuleConfidence | None = None,
+        name: str | None = None,
+    ) -> ValidationSuite:
+        """Generate a validation suite from a profile.
+
+        Args:
+            profile: Table profile to generate rules from
+            strictness: How strict the generated rules should be
+            include_categories: Only include rules from these categories
+            exclude_categories: Exclude rules from these categories
+            min_confidence: Only include rules with at least this confidence
+            name: Name for the suite (defaults to profile name)
+
+        Returns:
+            Generated validation suite
+        """
+        all_rules: list[GeneratedRule] = []
+
+        # Convert category strings to enums
+        include_cats = None
+        if include_categories:
+            include_cats = {RuleCategory(c) for c in include_categories}
+
+        exclude_cats = set()
+        if exclude_categories:
+            exclude_cats = {RuleCategory(c) for c in exclude_categories}
+
+        # Run each generator
+        for generator in self.generators:
+            # Skip if generator doesn't produce any included categories
+            if include_cats:
+                if not generator.categories & include_cats:
+                    continue
+
+            # Skip if all generator categories are excluded
+            if exclude_cats:
+                if generator.categories <= exclude_cats:
+                    continue
+
+            try:
+                rules = generator.generate(profile, strictness)
+
+                # Filter by category
+                if include_cats:
+                    rules = [r for r in rules if r.category in include_cats]
+                if exclude_cats:
+                    rules = [r for r in rules if r.category not in exclude_cats]
+
+                all_rules.extend(rules)
+            except Exception:
+                # Skip failed generators
+                pass
+
+        # Filter by confidence
+        if min_confidence:
+            confidence_order = {
+                RuleConfidence.LOW: 0,
+                RuleConfidence.MEDIUM: 1,
+                RuleConfidence.HIGH: 2,
+            }
+            min_level = confidence_order[min_confidence]
+            all_rules = [
+                r for r in all_rules
+                if confidence_order[r.confidence] >= min_level
+            ]
+
+        # Deduplicate rules (same name = same rule)
+        seen_names: set[str] = set()
+        unique_rules: list[GeneratedRule] = []
+        for rule in all_rules:
+            if rule.name not in seen_names:
+                seen_names.add(rule.name)
+                unique_rules.append(rule)
+
+        return ValidationSuite(
+            name=name or profile.name or "generated_suite",
+            rules=tuple(unique_rules),
+            source_profile=profile.name,
+            strictness=strictness,
+            metadata={
+                "profile_row_count": profile.row_count,
+                "profile_column_count": profile.column_count,
+                "generators_used": [g.name for g in self.generators],
+            },
+        )
+
+
+# =============================================================================
+# Convenience Functions
+# =============================================================================
+
+
+def generate_suite(
+    profile: TableProfile,
+    *,
+    strictness: str | Strictness = "medium",
+    include_categories: Sequence[str] | None = None,
+    exclude_categories: Sequence[str] | None = None,
+    min_confidence: str | RuleConfidence | None = None,
+    name: str | None = None,
+) -> ValidationSuite:
+    """Convenience function to generate a validation suite.
+
+    Args:
+        profile: Table profile to generate rules from
+        strictness: "loose", "medium", or "strict"
+        include_categories: Only include rules from these categories
+        exclude_categories: Exclude rules from these categories
+        min_confidence: "low", "medium", or "high"
+        name: Name for the suite
+
+    Returns:
+        Generated validation suite
+
+    Example:
+        from truthound.profiler import profile_file, generate_suite
+
+        profile = profile_file("data.parquet")
+        suite = generate_suite(
+            profile,
+            strictness="medium",
+            include_categories=["schema", "completeness", "format"]
+        )
+
+        # View as YAML
+        print(suite.to_yaml())
+
+        # Generate Python code
+        print(suite.to_python_code())
+    """
+    # Convert strings to enums
+    if isinstance(strictness, str):
+        strictness = Strictness(strictness)
+
+    if isinstance(min_confidence, str):
+        min_confidence = RuleConfidence(min_confidence)
+
+    generator = ValidationSuiteGenerator()
+    return generator.generate_from_profile(
+        profile,
+        strictness=strictness,
+        include_categories=include_categories,
+        exclude_categories=exclude_categories,
+        min_confidence=min_confidence,
+        name=name,
+    )
+
+
+def save_suite(
+    suite: ValidationSuite,
+    path: str | Path,
+    format: str = "json",
+) -> None:
+    """Save a validation suite to a file.
+
+    Args:
+        suite: Suite to save
+        path: Output file path
+        format: "json", "yaml", or "python"
+    """
+    path = Path(path)
+
+    if format == "json":
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(suite.to_dict(), f, indent=2, ensure_ascii=False)
+    elif format == "yaml":
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(suite.to_yaml())
+    elif format == "python":
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(suite.to_python_code())
+    else:
+        raise ValueError(f"Unknown format: {format}. Use 'json', 'yaml', or 'python'")
+
+
+def load_suite(path: str | Path) -> ValidationSuite:
+    """Load a validation suite from a JSON file.
+
+    Args:
+        path: Path to the suite JSON file
+
+    Returns:
+        Loaded validation suite
+    """
+    path = Path(path)
+
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+
+    rules = tuple(
+        GeneratedRule(
+            name=r["name"],
+            validator_class=r["validator_class"],
+            category=RuleCategory(r["category"]),
+            parameters=r.get("parameters", {}),
+            columns=tuple(r.get("columns", [])),
+            confidence=RuleConfidence(r.get("confidence", "medium")),
+            description=r.get("description", ""),
+            rationale=r.get("rationale", ""),
+            mostly=r.get("mostly"),
+        )
+        for r in data.get("rules", [])
+    )
+
+    return ValidationSuite(
+        name=data.get("name", ""),
+        rules=rules,
+        source_profile=data.get("source_profile", ""),
+        strictness=Strictness(data.get("strictness", "medium")),
+        metadata=data.get("metadata", {}),
+    )
