@@ -49,6 +49,7 @@ Truthound is a high-performance data quality validation framework designed for m
 **Additional Documentation:**
 - [Data Sources Usage (docs/DATASOURCES.md)](docs/DATASOURCES.md)
 - [Data Sources Architecture (docs/DATASOURCES_ARCHITECTURE.md)](docs/DATASOURCES_ARCHITECTURE.md)
+- [Checkpoint & CI/CD Integration (docs/CHECKPOINT.md)](docs/CHECKPOINT.md)
 - [Validators Reference (docs/VALIDATORS.md)](docs/VALIDATORS.md)
 - [Statistical Methods (docs/STATISTICAL_METHODS.md)](docs/STATISTICAL_METHODS.md)
 - [Storage Backends (docs/STORES.md)](docs/STORES.md)
@@ -676,12 +677,14 @@ truthound scan data.csv                     # PII scanning
 - ~~**Phase 1.11**: Add privacy compliance validators (GDPR/CCPA)~~ **Completed** (14 validators)
 - ~~**Phase 4**: Storage backends & reporters infrastructure~~ **Completed** (5 backends, 4 formats)
 - ~~**Phase 5**: Enterprise data sources (BigQuery, Snowflake, etc.)~~ **Completed** (6 sources)
+- ~~**Phase 6**: Checkpoint & CI/CD integration~~ **Completed** (12 CI platforms, async execution, Saga pattern)
 
 ### 12.3 Planned Improvements
 
-1. **Phase 6**: Add pipeline integrations (Airflow, Prefect)
-2. **Phase 7**: Web dashboard for visualization
-3. **Phase 8**: Real-time streaming validation
+1. **Phase 7**: Auto-Profiling & rule generation
+2. **Phase 8**: Web dashboard (Data Docs)
+3. **Phase 9**: Plugin architecture
+4. **Phase 10**: Real-time streaming validation
 
 ---
 
