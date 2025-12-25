@@ -21,626 +21,46 @@
 ---
 
 ## Abstract
-<img width="300" height="300" alt="logo" src="https://github.com/user-attachments/assets/633eb14d-6715-4110-9bbd-8bb9a43ffd87" />
 
-Truthound is a high-performance data quality validation framework designed for modern data engineering pipelines. The library leverages the computational efficiency of Polars—a Rust-based DataFrame library—to achieve order-of-magnitude performance improvements over traditional Python-based validation solutions. This document presents the architectural design, implemented features, performance benchmarks, and empirical validation results of Truthound.
+Truthound is a high-performance data quality validation framework designed for modern data engineering pipelines. The library leverages the computational efficiency of Polars—a Rust-based DataFrame library—to achieve order-of-magnitude performance improvements over traditional Python-based validation solutions.
 
 **Keywords**: Data Quality, Data Validation, Statistical Drift Detection, Anomaly Detection, PII Detection, Polars, Schema Inference
 
 ---
 
-## Table of Contents
+## Key Features
 
-1. [Introduction](#1-introduction)
-2. [System Architecture](#2-system-architecture)
-3. [Core Components](#3-core-components)
-4. [Statistical Methods](#4-statistical-methods)
-5. [Performance Analysis](#5-performance-analysis)
-6. [Test Coverage](#6-test-coverage)
-7. [API Reference](#7-api-reference)
-8. [Storage & Reporting](#8-storage--reporting)
-   - [8.3 Data Sources & Execution Engines](#83-data-sources--execution-engines)
-9. [Comparative Analysis](#9-comparative-analysis)
-10. [Installation](#10-installation)
-11. [Usage Examples](#11-usage-examples)
-12. [Limitations and Future Work](#12-limitations-and-future-work)
-13. [References](#13-references)
-
-**Additional Documentation:**
-- [Auto-Profiling & Rule Generation (docs/PROFILER.md)](docs/PROFILER.md) **NEW**
-- [Data Sources Usage (docs/DATASOURCES.md)](docs/DATASOURCES.md)
-- [Data Sources Architecture (docs/DATASOURCES_ARCHITECTURE.md)](docs/DATASOURCES_ARCHITECTURE.md)
-- [Checkpoint & CI/CD Integration (docs/CHECKPOINT.md)](docs/CHECKPOINT.md)
-- [Validators Reference (docs/VALIDATORS.md)](docs/VALIDATORS.md)
-- [Statistical Methods (docs/STATISTICAL_METHODS.md)](docs/STATISTICAL_METHODS.md)
-- [Storage Backends (docs/STORES.md)](docs/STORES.md)
-- [Reporters (docs/REPORTERS.md)](docs/REPORTERS.md)
-- [Usage Examples (docs/EXAMPLES.md)](docs/EXAMPLES.md)
-- [Test Coverage (docs/TEST_COVERAGE.md)](docs/TEST_COVERAGE.md)
+| Feature | Description |
+|---------|-------------|
+| **265+ Validators** | Schema, completeness, uniqueness, distribution, string patterns, datetime, and more |
+| **Zero Configuration** | Automatic schema inference with fingerprint-based caching |
+| **High Performance** | Polars LazyFrame architecture for memory-efficient processing |
+| **Statistical Analysis** | 11 drift detection methods, 15 anomaly detection algorithms |
+| **Privacy Compliance** | GDPR, CCPA, LGPD, PIPEDA, APPI pattern detection |
+| **Multi-Backend Support** | Polars, Pandas, SQL databases, Spark, and cloud data warehouses |
+| **CI/CD Integration** | Native support for 12 CI platforms with checkpoint orchestration |
+| **Auto-Profiling** | Automatic rule generation from data profiling |
+| **Data Docs** | Interactive HTML reports with 5 themes and 4 chart libraries |
+| **Plugin Architecture** | Extensible system for custom validators, reporters, and datasources |
+| **ML Integration** | Anomaly detection, drift detection, and rule learning |
+| **Data Lineage** | Graph-based lineage tracking and impact analysis |
+| **Realtime Validation** | Streaming support with Kafka, Kinesis, and Pub/Sub |
 
 ---
 
-## 1. Introduction
+## Quick Start
 
-### 1.1 Problem Statement
-
-Data quality issues represent a significant challenge in modern data engineering workflows. According to industry reports, data scientists spend approximately 60-80% of their time on data preparation and cleaning tasks. Traditional data quality tools often require extensive configuration, suffer from performance limitations when processing large datasets, and lack native support for modern columnar data formats.
-
-### 1.2 Design Goals
-
-Truthound was designed with the following objectives:
-
-1. **Zero Configuration**: Immediate usability without boilerplate setup code
-2. **High Performance**: Leveraging Rust-based Polars for computational efficiency
-3. **Universal Input Support**: Native handling of diverse data formats
-4. **Multi-Backend Support**: Unified abstraction for Polars, Pandas, SQL, and Spark
-5. **Statistical Rigor**: Implementation of well-established statistical methods for drift and anomaly detection
-6. **Privacy Awareness**: Built-in PII detection and data masking capabilities
-7. **Extensibility**: Modular architecture enabling seamless integration of custom validators
-
-### 1.3 Contributions
-
-This work presents:
-
-- A unified data source abstraction supporting Polars, Pandas, SQL databases, and Spark
-- Enterprise data sources: BigQuery, Snowflake, Redshift, Databricks, Oracle, SQL Server
-- Execution engines with backend-specific optimizations (SQL pushdown, lazy evaluation)
-- Cost-aware query execution for cloud data warehouses (BigQuery dry-run cost estimation)
-- A unified data adapter layer supporting multiple input formats
-- Optimized validation algorithms using Polars LazyFrame for memory-efficient processing
-- Implementation of comprehensive statistical drift detection methods
-- Advanced anomaly detection algorithms including ML-based approaches
-- Automatic schema inference and fingerprint-based caching system
-- Comprehensive PII detection patterns including Korean-specific identifiers
-
----
-
-## 2. System Architecture
-
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                           User Interface Layer                          │
-├─────────────────────────────────────────────────────────────────────────┤
-│  Python API (th.check, th.scan, th.compare)  │  CLI (truthound check)  │
-└──────────────────────────────┬──────────────────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         Input Adapter Layer                             │
-├─────────────────────────────────────────────────────────────────────────┤
-│  pandas.DataFrame  │  polars.DataFrame  │  polars.LazyFrame  │  dict   │
-│  CSV               │  JSON              │  Parquet           │  Path   │
-│                               ↓                                         │
-│                    Unified Polars LazyFrame                             │
-└──────────────────────────────┬──────────────────────────────────────────┘
-                               │
-          ┌────────────────────┼────────────────────┐
-          ▼                    ▼                    ▼
-┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
-│   Validators    │  │  Drift Detectors │  │   PII Scanners  │
-│   (239 total)   │  │    (11 types)    │  │   (8 patterns)  │
-├─────────────────┤  ├─────────────────┤  ├─────────────────┤
-│ • Schema (14)   │  │ • KS Test       │  │ • Email         │
-│ • Completeness  │  │ • Chi-Square    │  │ • Phone         │
-│ • Uniqueness    │  │ • Wasserstein   │  │ • SSN           │
-│ • Distribution  │  │ • PSI           │  │ • Credit Card   │
-│ • String (17)   │  │ • Jensen-Shannon│  │ • Korean RRN    │
-│ • Datetime (10) │  │ • Earth Mover   │  │ • Korean Phone  │
-│ • Aggregate (8) │  │ • KL Divergence │  │ • Bank Account  │
-│ • Multi-column  │  │ • Histogram     │  │ • Passport      │
-│ • Anomaly (13)  │  │ • Cosine Sim    │  └────────┬────────┘
-│ • Drift (11)    │  │ • Feature Drift │           │
-│ • Geospatial    │  │ • Concept Drift │           │
-│ • Query (5)     │  └────────┬────────┘           │
-│ • Table (7)     │           │                    │
-│ • Business (6)  │           │                    │
-│ • Localization  │           │                    │
-│ • ML Feature    │           │                    │
-│ • Profiling (6) │           │                    │
-│ • Referential   │           │                    │
-│ • TimeSeries    │           │                    │
-│ • Privacy (14)  │           │                    │
-└────────┬────────┘           │                    │
-         │                    │                    │
-         └────────────────────┼────────────────────┘
-                              ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                           Schema System                                  │
-├─────────────────────────────────────────────────────────────────────────┤
-│  Schema Learning (th.learn)  │  YAML Serialization  │  Fingerprint Cache│
-└──────────────────────────────┬──────────────────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                     Auto-Profiling System (Phase 7)                      │
-├─────────────────────────────────────────────────────────────────────────┤
-│  DataProfiler  │  RuleGenerators  │  SuiteExport  │  StreamingMatcher   │
-│  • Sampling    │  • Schema rules  │  • YAML       │  • Chunk processing │
-│  • Patterns    │  • Stats rules   │  • JSON       │  • Aggregation      │
-│  • Caching     │  • Pattern rules │  • Python     │  • Pattern state    │
-└──────────────────────────────┬──────────────────────────────────────────┘
-                               │
-                               ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                          Output Layer                                    │
-├─────────────────────────────────────────────────────────────────────────┤
-│      Console (Rich)      │       JSON        │        HTML              │
-└─────────────────────────────────────────────────────────────────────────┘
-```
-
-### 2.1 Design Principles
-
-The architecture follows several key design principles:
-
-- **Lazy Evaluation**: All data transformations are performed using Polars LazyFrame to enable query optimization and memory-efficient processing
-- **Single Collection Pattern**: Validators are optimized to minimize `collect()` calls, reducing computational overhead
-- **Batch Query Optimization**: Statistical computations are batched into single queries where possible
-- **Modular Extensibility**: Base classes and mixins enable rapid development of specialized validators
-
----
-
-## 3. Core Components
-
-### 3.1 Validators (239 Total)
-
-Truthound provides **239 validators** across **21 categories**, offering comprehensive data quality coverage:
-
-| Category | Count | Key Validators |
-|----------|-------|----------------|
-| **Schema** | 14 | `ColumnExistsValidator`, `ColumnTypeValidator`, `TableSchemaValidator`, `ReferentialIntegrityValidator` |
-| **Completeness** | 7 | `NullValidator`, `NotNullValidator`, `CompletenessRatioValidator`, `ConditionalNullValidator` |
-| **Uniqueness** | 13 | `UniqueValidator`, `DuplicateValidator`, `PrimaryKeyValidator`, `CompoundKeyValidator` |
-| **Distribution** | 15 | `RangeValidator`, `BetweenValidator`, `OutlierValidator`, `KLDivergenceValidator`, `ChiSquareValidator` |
-| **String** | 17 | `RegexValidator`, `EmailValidator`, `PhoneValidator`, `JsonSchemaValidator`, `LikePatternValidator` |
-| **Datetime** | 10 | `DateFormatValidator`, `DateBetweenValidator`, `RecentDataValidator`, `DateutilParseableValidator` |
-| **Aggregate** | 8 | `MeanBetweenValidator`, `MedianBetweenValidator`, `SumBetweenValidator`, `TypeValidator` |
-| **Cross-table** | 4 | `CrossTableRowCountValidator`, `CrossTableAggregateValidator`, `CrossTableDistinctCountValidator` |
-| **Multi-column** | 16 | `ColumnComparisonValidator`, `ConditionalValidator`, `MutualExclusivityValidator`, `CascadeNullValidator` |
-| **Query** | 5 | `SQLExpressionValidator`, `CustomExpressionValidator`, `AggregateExpressionValidator` |
-| **Table** | 7 | `RowCountValidator`, `ColumnCountValidator`, `DataFreshnessValidator`, `TableCompletenessValidator` |
-| **Geospatial** | 6 | `LatitudeValidator`, `LongitudeValidator`, `CoordinatePairValidator`, `BoundingBoxValidator` |
-| **Drift** | 11 | `KSTestValidator`, `ChiSquareDriftValidator`, `WassersteinValidator`, `PSIValidator`, `JensenShannonValidator` |
-| **Anomaly** | 13 | `IsolationForestValidator`, `LOFValidator`, `MahalanobisValidator`, `IQRAnomalyValidator`, `DBSCANAnomalyValidator` |
-| **Business Rule** | 6 | `LuhnValidator`, `ISBNValidator`, `CreditCardValidator`, `IBANValidator`, `VATValidator`, `SWIFTValidator` |
-| **Localization** | 8 | `KoreanBusinessNumberValidator`, `KoreanRRNValidator`, `JapanesePostalCodeValidator`, `ChineseIDValidator` |
-| **ML Feature** | 4 | `FeatureNullImpactValidator`, `FeatureScaleValidator`, `FeatureCorrelationMatrixValidator`, `TargetLeakageValidator` |
-| **Profiling** | 6 | `CardinalityValidator`, `UniquenessRatioValidator`, `EntropyValidator`, `ValueFrequencyValidator` |
-| **Referential** | 11 | `ForeignKeyValidator`, `CompositeForeignKeyValidator`, `OrphanRecordValidator`, `CircularReferenceValidator` |
-| **Time Series** | 12 | `TimeSeriesGapValidator`, `TimeSeriesMonotonicValidator`, `SeasonalityValidator`, `TrendValidator` |
-| **Privacy** | 14 | `GDPRComplianceValidator`, `CCPAComplianceValidator`, `GlobalPrivacyValidator`, `DataRetentionValidator` |
-
-> **Detailed Documentation**: For comprehensive descriptions of each validator, including usage examples and configuration options, see **[Validator Reference (docs/VALIDATORS.md)](docs/VALIDATORS.md)**.
-
-#### Key Features
-
-- **`mostly` parameter**: All validators support partial pass rates (e.g., `mostly=0.95` allows 5% failures)
-- **Statistical tests**: KL Divergence, Chi-Square, Kolmogorov-Smirnov for distribution validation
-- **ML-based anomaly detection**: Isolation Forest, LOF, One-Class SVM, DBSCAN
-- **SQL LIKE patterns**: `LikePatternValidator` supports `%` and `_` wildcards
-- **Flexible date parsing**: `DateutilParseableValidator` handles multiple date formats automatically
-- **Cross-table validation**: Compare row counts, aggregates between related tables
-- **Geospatial validation**: Coordinate validation with bounding box support
-
-### 3.2 Drift Detectors
-
-| Detector | Method | Best For | Threshold |
-|----------|--------|----------|-----------|
-| `KSTestValidator` | Kolmogorov-Smirnov Test | Continuous numeric distributions | p-value < 0.05 |
-| `ChiSquareDriftValidator` | Chi-Square Test | Categorical distributions | p-value < 0.05 |
-| `WassersteinValidator` | Earth Mover's Distance | Distribution shape comparison | Context-dependent |
-| `PSIValidator` | Population Stability Index | Model feature monitoring | PSI >= 0.1 (moderate), >= 0.25 (significant) |
-| `JensenShannonValidator` | Jensen-Shannon Divergence | Any distribution (symmetric, bounded) | JS >= 0.1 |
-| `KLDivergenceValidator` | Kullback-Leibler Divergence | Information loss measurement | KL > threshold |
-| `HistogramDriftValidator` | Histogram Intersection | Visual distribution comparison | Intersection < 0.8 |
-| `CosineSimilarityValidator` | Cosine Similarity | High-dimensional data | Similarity < 0.9 |
-| `FeatureDriftValidator` | Multi-feature Analysis | Feature importance changes | Context-dependent |
-| `ConceptDriftValidator` | Concept Change Detection | Label distribution shifts | Context-dependent |
-
-### 3.3 Anomaly Detectors
-
-| Detector | Method | Best For | Characteristics |
-|----------|--------|----------|-----------------|
-| `IsolationForestValidator` | Tree-based Isolation | High-dimensional data | No distribution assumptions |
-| `LOFValidator` | Local Outlier Factor | Clustered data | Density-based detection |
-| `OneClassSVMValidator` | Support Vector Machine | Complex boundaries | Kernel-based separation |
-| `DBSCANAnomalyValidator` | Density Clustering | Noise detection | Cluster-based outliers |
-| `MahalanobisValidator` | Covariance Distance | Multivariate normal data | Correlation-aware |
-| `EllipticEnvelopeValidator` | Robust Gaussian | Contaminated data | Robust covariance estimation |
-| `PCAAnomalyValidator` | Reconstruction Error | High-dimensional reduction | Principal component analysis |
-| `IQRAnomalyValidator` | Interquartile Range | Univariate outliers | Distribution-free |
-| `MADAnomalyValidator` | Median Absolute Deviation | Robust univariate | Resistant to extremes |
-| `GrubbsTestValidator` | Statistical Test | Single outlier detection | Iterative removal |
-| `TukeyFencesValidator` | Fence Classification | Inner/outer outliers | Traditional method |
-| `PercentileAnomalyValidator` | Percentile Bounds | Custom thresholds | Flexible boundaries |
-| `ZScoreMultivariateValidator` | Combined Z-scores | Multi-column analysis | Configurable aggregation |
-
-### 3.4 Schema System
-
-The schema system provides automatic constraint inference:
-
-```python
-@dataclass
-class ColumnSchema:
-    name: str
-    dtype: str
-    nullable: bool = True
-    unique: bool = False
-
-    # Constraints (inferred)
-    min_value: float | None = None
-    max_value: float | None = None
-    allowed_values: list[Any] | None = None
-
-    # Statistics (learned)
-    null_ratio: float | None = None
-    unique_ratio: float | None = None
-    mean: float | None = None
-    std: float | None = None
-    quantiles: dict[str, float] | None = None
-```
-
-### 3.5 Auto Schema Caching
-
-The fingerprint-based caching system enables true zero-configuration validation:
-
-1. **Fingerprint Generation**: Combines file path, modification time, and size
-2. **Cache Storage**: `.truthound/` directory with JSON index
-3. **Invalidation**: Automatic re-learning when data changes
-
----
-
-## 4. Statistical Methods
-
-Truthound implements well-established statistical methods for drift detection, anomaly detection, and distribution analysis.
-
-> **Detailed Documentation**: For comprehensive explanations of each method including formulas, interpretation guidelines, and implementation examples, see **[Statistical Methods (docs/STATISTICAL_METHODS.md)](docs/STATISTICAL_METHODS.md)**.
-
-| Method | Use Case | Key Metric |
-|--------|----------|------------|
-| **IQR** | Univariate outliers | Q1 - 1.5×IQR to Q3 + 1.5×IQR |
-| **Kolmogorov-Smirnov** | Distribution comparison | D statistic, p-value |
-| **PSI** | Model monitoring | PSI < 0.1 (stable), ≥ 0.25 (significant) |
-| **Chi-Square** | Categorical drift | χ² statistic, p-value |
-| **Jensen-Shannon** | Symmetric divergence | JS ∈ [0, 1] |
-| **Mahalanobis** | Multivariate outliers | Distance threshold |
-| **Isolation Forest** | ML-based anomaly | Anomaly score |
-
----
-
-## 5. Performance Analysis
-
-### 5.1 Benchmark Environment
-
-- **Hardware**: Apple Silicon / x86_64
-- **Python**: 3.11+
-- **Polars**: 1.x
-
-### 5.2 Large-Scale Performance (10M Rows)
-
-| Operation | Time | Throughput |
-|-----------|------|------------|
-| `th.check()` | 3.53s | 2.83M rows/sec |
-| `th.profile()` | 0.15s | 66.7M rows/sec |
-| `th.learn()` | 0.27s | 37.0M rows/sec |
-
-### 5.3 Drift Detection Performance
-
-| Dataset Size | Without Sampling | With Sampling (10K) | Speedup |
-|--------------|------------------|---------------------|---------|
-| 5M vs 5M rows | 3.68s | 0.04s | **92x faster** |
-
-### 5.4 Throughput Testing
-
-Repeated validation operations on 1,000 iterations:
-
-- **Throughput**: 258.7 operations/second
-- **Average Latency**: 3.87ms per operation
-
-### 5.5 Memory Efficiency
-
-The LazyFrame-based architecture enables processing of datasets larger than available RAM through:
-
-1. Predicate pushdown
-2. Projection pushdown
-3. Streaming execution
-
----
-
-## 6. Test Coverage
-
-Truthound maintains comprehensive test coverage with **1004 tests** across all validation features.
-
-> **Detailed Documentation**: For complete test suite information, including stress tests, extreme stress tests, and PII detection coverage, see **[Test Coverage (docs/TEST_COVERAGE.md)](docs/TEST_COVERAGE.md)**.
-
-| Category | Tests | Status |
-|----------|-------|--------|
-| Core Tests (Unit, Stress, Extreme) | 106 | All Pass |
-| Validator Tests (P0-P2, All Categories) | 473 | All Pass |
-| Integration Tests | 138 | All Pass |
-| Storage & Reporter Tests | 98 | All Pass |
-| Data Source Tests (SQL, Enterprise) | 194 | All Pass |
-| **Total** | **1004** | **All Pass** |
-
----
-
-## 7. API Reference
-
-### 7.1 Primary Functions
-
-```python
-import truthound as th
-
-# Data Quality Validation
-report = th.check(
-    data,                    # Any supported format
-    validators=None,         # Optional: list of validator names
-    min_severity=None,       # Optional: "low", "medium", "high", "critical"
-    schema=None,             # Optional: Schema object or path
-    auto_schema=False        # Enable automatic schema caching
-)
-
-# PII Scanning
-pii_report = th.scan(data)
-
-# Data Masking
-masked_df = th.mask(
-    data,
-    columns=None,            # Optional: specific columns
-    strategy="redact"        # "redact", "hash", or "fake"
-)
-
-# Statistical Profiling
-profile = th.profile(data)
-
-# Schema Learning
-schema = th.learn(
-    data,
-    infer_constraints=True,  # Infer min/max, allowed values
-    categorical_threshold=20 # Max unique values for categorical
-)
-schema.save("schema.yaml")
-
-# Drift Detection
-drift = th.compare(
-    baseline,                # Reference dataset
-    current,                 # Current dataset
-    columns=None,            # Optional: specific columns
-    method="auto",           # "auto", "ks", "psi", "chi2", "js"
-    threshold=None,          # Optional: custom threshold
-    sample_size=None         # Optional: for large datasets
-)
-```
-
-### 7.2 Command Line Interface
-
-```bash
-# Validation
-truthound check data.csv
-truthound check data.csv --validators null,duplicate --min-severity medium
-truthound check data.csv --format json --strict
-
-# PII Scanning
-truthound scan data.csv
-
-# Profiling
-truthound profile data.csv
-
-# Drift Detection
-truthound compare baseline.csv current.csv
-truthound compare train.parquet prod.parquet --method psi --sample-size 10000
-
-# Auto-Profiling & Rule Generation (Phase 7)
-truthound auto-profile data.csv -o profile.json
-truthound generate-suite profile.json -o rules.yaml --strictness strict
-truthound quick-suite data.csv -o rules.yaml --preset ci_cd
-truthound list-formats    # Available export formats
-truthound list-presets    # Configuration presets
-truthound list-categories # Rule categories
-```
-
----
-
-## 8. Storage & Reporting
-
-Truthound provides enterprise-ready infrastructure for persisting validation results and generating reports.
-
-### 8.1 Storage Backends
-
-Store validation results across different backends for tracking, auditing, and trend analysis.
-
-```python
-from truthound.stores import get_store, ValidationResult
-import truthound as th
-
-# Create store
-store = get_store("filesystem", base_path=".truthound/results")
-store.initialize()
-
-# Save validation results
-report = th.check("data.csv")
-result = ValidationResult.from_report(report, "data.csv")
-run_id = store.save(result)
-
-# Retrieve and query results
-retrieved = store.get(run_id)
-all_runs = store.list_ids()
-```
-
-| Backend | Package | Description |
-|---------|---------|-------------|
-| `filesystem` | (built-in) | Local JSON storage with optional compression |
-| `memory` | (built-in) | In-memory storage for testing |
-| `s3` | boto3 | AWS S3 storage |
-| `gcs` | google-cloud-storage | Google Cloud Storage |
-| `database` | sqlalchemy | SQL database (PostgreSQL, MySQL, SQLite) |
-
-> **Detailed Documentation**: See **[Storage Backends (docs/STORES.md)](docs/STORES.md)** for configuration options, cloud setup, and custom backend implementation.
-
-### 8.2 Report Formats
-
-Generate validation reports in multiple formats.
-
-```python
-from truthound.reporters import get_reporter
-
-# JSON for API integration
-json_reporter = get_reporter("json")
-json_reporter.write(result, "report.json")
-
-# HTML for web dashboards
-html_reporter = get_reporter("html", title="Quality Report")
-html_reporter.write(result, "report.html")
-
-# Console for terminal output
-console_reporter = get_reporter("console", color=True)
-console_reporter.report(result)
-
-# Markdown for documentation
-md_reporter = get_reporter("markdown")
-md_reporter.write(result, "REPORT.md")
-```
-
-| Format | Package | Use Case |
-|--------|---------|----------|
-| `json` | (built-in) | API integration, programmatic access |
-| `console` | rich | Terminal output, debugging |
-| `markdown` | (built-in) | Documentation, GitHub/GitLab |
-| `html` | jinja2 | Web dashboards, email reports |
-
-> **Detailed Documentation**: See **[Reporters (docs/REPORTERS.md)](docs/REPORTERS.md)** for customization, templates, and integration examples.
-
-### 8.3 Data Sources & Execution Engines
-
-Truthound supports 10+ data backends through a unified abstraction layer.
-
-| Category | Sources | Features |
-|----------|---------|----------|
-| **DataFrame** | Polars, Pandas, PySpark | Native operations, auto-sampling |
-| **Core SQL** | PostgreSQL, MySQL, SQLite | Connection pooling, SQL pushdown |
-| **Cloud DW** | BigQuery, Snowflake, Redshift, Databricks | Cost control, IAM auth |
-| **Enterprise** | Oracle, SQL Server | Windows auth, TNS support |
-| **File** | CSV, Parquet, JSON, NDJSON | Lazy loading, streaming |
-
-> **Usage Guide**: See **[Data Sources (docs/DATASOURCES.md)](docs/DATASOURCES.md)** for examples and configuration.
->
-> **Architecture Deep Dive**: See **[Data Sources Architecture (docs/DATASOURCES_ARCHITECTURE.md)](docs/DATASOURCES_ARCHITECTURE.md)** for design patterns, extensibility guide, and quality assessment.
-
-### 8.4 Architecture Overview
-
-> **Detailed Documentation**: For comprehensive architecture documentation including design patterns, type system, and extension points, see **[Architecture (docs/ARCHITECTURE.md)](docs/ARCHITECTURE.md)**.
-
----
-
-## 9. Comparative Analysis
-
-### 9.1 Feature Comparison
-
-| Feature | Truthound | Great Expectations | Pandera | Soda Core |
-|---------|-----------|-------------------|---------|-----------|
-| Zero Configuration | Yes | No | No | No |
-| Polars Native | Yes | No | No | No |
-| LazyFrame Support | Yes | No | No | No |
-| Drift Detection | Yes (11 methods) | Plugin | No | Yes |
-| Anomaly Detection | Yes (13 methods) | No | No | Limited |
-| PII Detection | Yes | No | No | Yes |
-| Schema Inference | Yes | Yes | Yes | Yes |
-| Auto Caching | Yes | No | No | No |
-| `mostly` Parameter | Yes | Yes | No | No |
-| Cross-table Validation | Yes | Yes | No | Yes |
-| Statistical Tests (KL, Chi2) | Yes | Yes | No | No |
-| Geospatial Validation | Yes | No | No | No |
-| Time Series Validation | Yes (12) | No | No | Limited |
-| Referential Integrity | Yes (11) | Plugin | No | Yes |
-| ML Feature Validation | Yes (4) | No | No | No |
-| Privacy Compliance (GDPR/CCPA) | Yes (14) | No | No | Limited |
-| Validator Count | 239 | 300+ | 50+ | 100+ |
-
-### 9.2 Honest Assessment
-
-**Strengths**:
-1. Performance advantage from Polars (not unique to Truthound)
-2. True zero-configuration with auto schema caching
-3. Comprehensive drift detection with 11 statistical methods
-4. Advanced anomaly detection including ML-based approaches
-5. Korean-specific PII patterns
-6. 239 validators covering most common data quality checks
-7. Great Expectations-compatible `mostly` parameter
-8. Geospatial coordinate validation
-9. Time series validation with gap, seasonality, and trend detection
-10. Referential integrity validation for complex data relationships
-11. ML feature quality validation (leakage, correlation, scale)
-12. Asian localization support (Korean, Japanese, Chinese)
-13. Global privacy compliance (GDPR, CCPA, LGPD, PIPEDA, APPI)
-
-**Limitations** (see Section 11):
-1. No production deployment validation yet
-2. No ecosystem integrations (Airflow, dbt, etc.)
-3. Limited documentation and community
-
----
-
-## 10. Installation
-
-### 10.1 Requirements
-
-- Python 3.11+
-- Polars 1.x
-- PyYAML
-- Rich (for console output)
-- Typer (for CLI)
-
-### 10.2 Installation
+### Installation
 
 ```bash
 # Basic installation
 pip install truthound
 
-# With drift detection support (scipy)
-pip install truthound[drift]
-
-# With anomaly detection support (scipy + scikit-learn)
-pip install truthound[anomaly]
-
-# Full installation with all optional dependencies
+# With all optional features
 pip install truthound[all]
 ```
 
-### 10.3 Optional Dependencies
-
-| Extra | Packages | Features |
-|-------|----------|----------|
-| `drift` | scipy | Statistical drift tests (KS, Chi-square, Wasserstein) |
-| `anomaly` | scipy, scikit-learn | ML-based anomaly detection (Isolation Forest, LOF, SVM) |
-| `all` | jinja2, pandas, scipy, scikit-learn | All optional features |
-| `dev` | pytest, pytest-cov, ruff, mypy | Development tools |
-| `s3` | boto3 | AWS S3 storage backend |
-| `gcs` | google-cloud-storage | Google Cloud Storage backend |
-| `database` | sqlalchemy | SQL database storage backend |
-| `bigquery` | google-cloud-bigquery | Google BigQuery data source |
-| `snowflake` | snowflake-connector-python | Snowflake data source |
-| `redshift` | redshift-connector | Amazon Redshift data source |
-| `databricks` | databricks-sql-connector | Databricks SQL data source |
-| `oracle` | oracledb | Oracle Database data source |
-| `sqlserver` | pyodbc / pymssql | SQL Server data source |
-| `enterprise` | (all enterprise sources) | All enterprise data backends |
-
-### 10.4 Development Setup
-
-```bash
-git clone https://github.com/seadonggyun4/Truthound.git
-cd Truthound
-pip install hatch
-hatch env create
-hatch run test
-```
-
----
-
-## 11. Usage Examples
-
-> **Detailed Documentation**: For comprehensive examples including cross-table validation, time series validation, privacy compliance, CI/CD integration, and custom validators, see **[Usage Examples (docs/EXAMPLES.md)](docs/EXAMPLES.md)**.
-
-### Quick Start
+### Python API
 
 ```python
 import truthound as th
@@ -658,94 +78,191 @@ drift = th.compare("train.csv", "production.csv")
 # PII scanning and masking
 pii_report = th.scan(df)
 masked_df = th.mask(df, strategy="hash")
+
+# Statistical profiling
+profile = th.profile("data.csv")
 ```
 
-### CLI Quick Start
+### CLI
 
 ```bash
 truthound check data.csv                    # Validate
 truthound check data.csv --strict           # CI/CD mode
 truthound compare baseline.csv current.csv  # Drift detection
 truthound scan data.csv                     # PII scanning
+truthound auto-profile data.csv -o profile.json  # Profiling
+truthound docs generate profile.json -o report.html  # HTML report
 ```
 
 ---
 
-## 12. Limitations and Future Work
+## Performance
 
-### 12.1 Current Limitations
+| Operation | 10M Rows | Throughput |
+|-----------|----------|------------|
+| `th.check()` | 3.53s | 2.83M rows/sec |
+| `th.profile()` | 0.15s | 66.7M rows/sec |
+| `th.learn()` | 0.27s | 37.0M rows/sec |
 
-1. **No Production Validation**: Untested in large-scale production environments
-2. **Limited Integrations**: No native support for Airflow, dbt, Dagster, etc.
-3. **Documentation**: Minimal API documentation and tutorials
-4. **Community**: No established user community or support channels
-
-### 12.2 Completed Improvements
-
-- ~~**Phase 1**: Expand validator library (50+ validators)~~ **Completed** (239 validators)
-- ~~**Phase 1.1**: Add drift detection validators~~ **Completed** (11 validators)
-- ~~**Phase 1.2**: Add anomaly detection validators~~ **Completed** (13 validators)
-- ~~**Phase 1.3**: Add multi-column validators~~ **Completed** (16 validators)
-- ~~**Phase 1.4**: Add geospatial validators~~ **Completed** (6 validators)
-- ~~**Phase 1.5**: Add business rule validators~~ **Completed** (6 validators)
-- ~~**Phase 1.6**: Add localization validators~~ **Completed** (8 validators)
-- ~~**Phase 1.7**: Add ML feature validators~~ **Completed** (4 validators)
-- ~~**Phase 1.8**: Add profiling validators~~ **Completed** (6 validators)
-- ~~**Phase 1.9**: Add referential integrity validators~~ **Completed** (11 validators)
-- ~~**Phase 1.10**: Add time series validators~~ **Completed** (12 validators)
-- ~~**Phase 1.11**: Add privacy compliance validators (GDPR/CCPA)~~ **Completed** (14 validators)
-- ~~**Phase 4**: Storage backends & reporters infrastructure~~ **Completed** (5 backends, 4 formats)
-- ~~**Phase 5**: Enterprise data sources (BigQuery, Snowflake, etc.)~~ **Completed** (6 sources)
-- ~~**Phase 6**: Checkpoint & CI/CD integration~~ **Completed** (12 CI platforms, async execution, Saga pattern)
-- ~~**Phase 7**: Auto-Profiling & rule generation~~ **Completed** (See [docs/PROFILER.md](docs/PROFILER.md))
-  - 8 sampling strategies (Random, Stratified, Reservoir, Adaptive, etc.)
-  - Streaming pattern matching with 6 aggregation strategies
-  - Rule generators (Schema, Stats, Pattern, ML-based)
-  - Validation suite export (YAML, JSON, Python, TOML)
-  - Process isolation with timeout handling
-  - Caching with Redis/File/Memory backends
-  - OpenTelemetry observability integration
-  - Distributed processing framework (Spark, Dask, Ray)
-  - CLI commands: `auto-profile`, `generate-suite`, `quick-suite`
-
-### 12.3 Planned Improvements
-
-1. **Phase 8**: Web dashboard (Data Docs) - Interactive HTML reports
-2. **Phase 9**: Plugin architecture - External validator/reporter plugins
-3. **Phase 10**: Advanced features (ML anomaly, Data Lineage, Real-time)
+Drift detection with sampling achieves **92x speedup** on 5M row datasets.
 
 ---
 
-## 13. References
+## Documentation
+
+### Getting Started
+- **[Getting Started Guide](docs/GETTING_STARTED.md)** — Installation, quick start, and basic usage
+
+### Core Concepts
+- **[Architecture Overview](docs/ARCHITECTURE.md)** — System design and core principles
+- **[Validators Reference](docs/VALIDATORS.md)** — Complete reference for all 265+ validators
+- **[Statistical Methods](docs/STATISTICAL_METHODS.md)** — Mathematical foundations for drift and anomaly detection
+
+### Features by Phase
+
+| Phase | Documentation | Description |
+|-------|---------------|-------------|
+| **Phase 1-3** | [Core Validators](docs/VALIDATORS.md) | 265 validators across 21 categories |
+| **Phase 4** | [Storage & Reporters](docs/STORES.md), [Reporters](docs/REPORTERS.md) | Persistence and output formats |
+| **Phase 5** | [Data Sources](docs/DATASOURCES.md) | Multi-backend support (BigQuery, Snowflake, etc.) |
+| **Phase 6** | [Checkpoint & CI/CD](docs/CHECKPOINT.md) | Orchestration and CI/CD integration |
+| **Phase 7** | [Auto-Profiling](docs/PROFILER.md) | Automatic rule generation |
+| **Phase 8** | [Data Docs](docs/DATADOCS.md) | HTML report generation |
+| **Phase 9** | [Plugin Architecture](docs/PLUGINS.md) | Extensibility framework |
+| **Phase 10** | [Advanced Features](docs/ADVANCED.md) | ML, Lineage, and Realtime modules |
+
+### Reference
+- **[API Reference](docs/API_REFERENCE.md)** — Complete API documentation
+- **[Examples](docs/EXAMPLES.md)** — Usage examples and patterns
+- **[Test Coverage](docs/TEST_COVERAGE.md)** — 1004 tests across all features
+
+---
+
+## Validator Categories
+
+| Category | Count | Description |
+|----------|-------|-------------|
+| Schema | 14 | Column structure, types, relationships |
+| Completeness | 7 | Null detection, required fields |
+| Uniqueness | 13 | Duplicates, primary keys, composite keys |
+| Distribution | 15 | Range, outliers, statistical tests |
+| String | 18 | Regex, email, URL, JSON validation |
+| Datetime | 10 | Format, range, sequence validation |
+| Aggregate | 8 | Mean, median, sum constraints |
+| Cross-table | 4 | Multi-table relationships |
+| Multi-column | 21 | Column comparisons, conditional logic |
+| Query | 20 | SQL/Polars expression validation |
+| Table | 18 | Row count, freshness, metadata |
+| Geospatial | 9 | Coordinates, bounding boxes |
+| Drift | 13 | KS, PSI, Chi-square, Wasserstein |
+| Anomaly | 15 | IQR, Z-score, Isolation Forest, LOF |
+| Business | 8 | Luhn, IBAN, VAT, ISBN validation |
+| Localization | 9 | Korean, Japanese, Chinese identifiers |
+| ML Feature | 5 | Leakage detection, correlation |
+| Profiling | 7 | Cardinality, entropy, frequency |
+| Referential | 13 | Foreign keys, orphan records |
+| Time Series | 14 | Gaps, seasonality, trend detection |
+| Privacy | 15 | GDPR, CCPA, LGPD compliance |
+
+---
+
+## Data Sources
+
+| Category | Sources |
+|----------|---------|
+| **DataFrame** | Polars, Pandas, PySpark |
+| **Core SQL** | PostgreSQL, MySQL, SQLite |
+| **Cloud DW** | BigQuery, Snowflake, Redshift, Databricks |
+| **Enterprise** | Oracle, SQL Server |
+| **File** | CSV, Parquet, JSON, NDJSON |
+
+---
+
+## Installation Options
+
+```bash
+# Core installation
+pip install truthound
+
+# Feature-specific extras
+pip install truthound[drift]      # Drift detection (scipy)
+pip install truthound[anomaly]    # Anomaly detection (scikit-learn)
+pip install truthound[pdf]        # PDF export (weasyprint)
+pip install truthound[dashboard]  # Interactive dashboard (reflex)
+
+# Data source extras
+pip install truthound[bigquery]   # Google BigQuery
+pip install truthound[snowflake]  # Snowflake
+pip install truthound[redshift]   # Amazon Redshift
+pip install truthound[databricks] # Databricks
+pip install truthound[oracle]     # Oracle Database
+pip install truthound[sqlserver]  # SQL Server
+pip install truthound[enterprise] # All enterprise sources
+
+# Full installation
+pip install truthound[all]
+```
+
+---
+
+## Comparative Analysis
+
+| Feature | Truthound | Great Expectations | Pandera |
+|---------|-----------|-------------------|---------|
+| Zero Configuration | Yes | No | No |
+| Polars Native | Yes | No | No |
+| LazyFrame Support | Yes | No | No |
+| Drift Detection | 13 methods | Plugin | No |
+| Anomaly Detection | 15 methods | No | No |
+| PII Detection | Yes | No | No |
+| Cross-table Validation | Yes | Yes | No |
+| Geospatial Validation | Yes | No | No |
+| Time Series Validation | 14 validators | No | No |
+| Privacy Compliance | GDPR/CCPA/LGPD | No | No |
+| Validator Count | 265+ | 300+ | 50+ |
+
+---
+
+## Requirements
+
+- Python 3.11+
+- Polars 1.x
+- PyYAML
+- Rich (console output)
+- Typer (CLI)
+
+---
+
+## Development
+
+```bash
+git clone https://github.com/seadonggyun4/Truthound.git
+cd Truthound
+pip install hatch
+hatch env create
+hatch run test
+```
+
+---
+
+## References
 
 1. Polars Documentation. https://pola.rs/
 2. Kolmogorov, A. N. (1933). "Sulla determinazione empirica di una legge di distribuzione"
-3. Pearson, K. (1900). "On the criterion that a given system of deviations..."
-4. Lin, J. (1991). "Divergence measures based on the Shannon entropy"
-5. Liu, F. T., Ting, K. M., & Zhou, Z. H. (2008). "Isolation Forest"
-6. Breunig, M. M., et al. (2000). "LOF: Identifying Density-Based Local Outliers"
-7. Mahalanobis, P. C. (1936). "On the generalized distance in statistics"
-8. Great Expectations Documentation. https://greatexpectations.io/
-9. Pandera Documentation. https://pandera.readthedocs.io/
+3. Liu, F. T., Ting, K. M., & Zhou, Z. H. (2008). "Isolation Forest"
+4. Breunig, M. M., et al. (2000). "LOF: Identifying Density-Based Local Outliers"
 
 ---
 
 ## License
 
-MIT License
-
-Copyright (c) 2024-2025 Truthound Contributors
+MIT License — Copyright (c) 2024-2025 Truthound Contributors
 
 ---
 
 ## Acknowledgments
 
-Built with:
-- [Polars](https://pola.rs/) — High-performance DataFrame library
-- [Rich](https://rich.readthedocs.io/) — Terminal formatting
-- [Typer](https://typer.tiangolo.com/) — CLI framework
-- [scikit-learn](https://scikit-learn.org/) — Machine learning library (optional)
-- [SciPy](https://scipy.org/) — Scientific computing library (optional)
+Built with [Polars](https://pola.rs/), [Rich](https://rich.readthedocs.io/), [Typer](https://typer.tiangolo.com/), [scikit-learn](https://scikit-learn.org/), and [SciPy](https://scipy.org/).
 
 ---
 
