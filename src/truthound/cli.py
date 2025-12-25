@@ -25,6 +25,10 @@ checkpoint_app = typer.Typer(
 )
 app.add_typer(checkpoint_app, name="checkpoint")
 
+# Phase 9: Plugin management commands
+from truthound.plugins.cli import app as plugin_app
+app.add_typer(plugin_app, name="plugin")
+
 
 @app.command(name="learn")
 def learn_cmd(
@@ -1524,6 +1528,723 @@ def _print_profile_summary(profile) -> None:
 
         if col.suggested_validators:
             typer.echo(f"  Suggested: {len(col.suggested_validators)} validators")
+
+
+# =============================================================================
+# Data Docs Commands (Phase 8)
+# =============================================================================
+
+docs_app = typer.Typer(
+    name="docs",
+    help="Generate data documentation and reports (Phase 8)",
+)
+app.add_typer(docs_app, name="docs")
+
+
+@docs_app.command(name="generate")
+def docs_generate_cmd(
+    profile_file: Annotated[
+        Path,
+        typer.Argument(help="Path to profile JSON file (from auto-profile)"),
+    ],
+    output: Annotated[
+        Optional[Path],
+        typer.Option("--output", "-o", help="Output file path"),
+    ] = None,
+    title: Annotated[
+        str,
+        typer.Option("--title", "-t", help="Report title"),
+    ] = "Data Profile Report",
+    subtitle: Annotated[
+        str,
+        typer.Option("--subtitle", "-s", help="Report subtitle"),
+    ] = "",
+    theme: Annotated[
+        str,
+        typer.Option("--theme", help="Report theme (light, dark, professional, minimal, modern)"),
+    ] = "professional",
+    chart_library: Annotated[
+        str,
+        typer.Option("--charts", "-c", help="Chart library (apexcharts, chartjs, plotly, svg)"),
+    ] = "apexcharts",
+    format: Annotated[
+        str,
+        typer.Option("--format", "-f", help="Output format (html, pdf)"),
+    ] = "html",
+) -> None:
+    """Generate HTML report from profile data.
+
+    This creates a static, self-contained HTML report that can be:
+    - Saved as CI/CD artifact
+    - Shared via email or Slack
+    - Viewed offline in any browser
+
+    Examples:
+        # Basic usage
+        truthound docs generate profile.json -o report.html
+
+        # With custom title and theme
+        truthound docs generate profile.json -o report.html --title "Q4 Data Report" --theme dark
+
+        # Using different chart library
+        truthound docs generate profile.json -o report.html --charts chartjs
+
+        # Export to PDF (requires weasyprint)
+        truthound docs generate profile.json -o report.pdf --format pdf
+    """
+    if not profile_file.exists():
+        typer.echo(f"Error: Profile file not found: {profile_file}", err=True)
+        raise typer.Exit(1)
+
+    # Default output path
+    if not output:
+        output = profile_file.with_suffix(f".{format}")
+
+    try:
+        from truthound.datadocs import (
+            generate_html_report,
+            export_to_pdf,
+            ReportTheme,
+            ChartLibrary,
+        )
+
+        # Load profile
+        with open(profile_file, "r", encoding="utf-8") as f:
+            profile = json.load(f)
+
+        typer.echo(f"Generating {format.upper()} report...")
+        typer.echo(f"  Profile: {profile_file}")
+        typer.echo(f"  Theme: {theme}")
+        typer.echo(f"  Charts: {chart_library}")
+
+        if format == "html":
+            html_content = generate_html_report(
+                profile=profile,
+                title=title,
+                subtitle=subtitle,
+                theme=theme,
+                chart_library=chart_library,
+                output_path=output,
+            )
+            typer.echo(f"\nReport saved to: {output}")
+            typer.echo(f"  Size: {len(html_content):,} bytes")
+
+        elif format == "pdf":
+            try:
+                output_path = export_to_pdf(
+                    profile=profile,
+                    output_path=output,
+                    title=title,
+                    subtitle=subtitle,
+                    theme=theme,
+                    chart_library="svg",  # SVG works best for PDF
+                )
+                typer.echo(f"\nPDF report saved to: {output_path}")
+            except ImportError:
+                typer.echo(
+                    "Error: PDF export requires weasyprint. "
+                    "Install with: pip install truthound[pdf]",
+                    err=True,
+                )
+                raise typer.Exit(1)
+
+        else:
+            typer.echo(f"Error: Unsupported format '{format}'", err=True)
+            raise typer.Exit(1)
+
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1)
+
+
+@docs_app.command(name="themes")
+def docs_themes_cmd() -> None:
+    """List available report themes."""
+    try:
+        from truthound.datadocs import get_available_themes
+
+        typer.echo("Available report themes:")
+        typer.echo("")
+
+        themes_info = {
+            "light": "Clean and bright, suitable for most use cases",
+            "dark": "Dark mode with vibrant colors, easy on the eyes",
+            "professional": "Corporate style, subdued colors (default)",
+            "minimal": "Minimalist design with monochrome accents",
+            "modern": "Contemporary design with vibrant gradients",
+        }
+
+        for theme in get_available_themes():
+            desc = themes_info.get(theme, "")
+            typer.echo(f"  {theme:14} - {desc}")
+
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1)
+
+
+@app.command(name="dashboard")
+def dashboard_cmd(
+    profile: Annotated[
+        Optional[Path],
+        typer.Option("--profile", "-p", help="Path to profile JSON file"),
+    ] = None,
+    port: Annotated[
+        int,
+        typer.Option("--port", help="Server port"),
+    ] = 8080,
+    host: Annotated[
+        str,
+        typer.Option("--host", help="Server host"),
+    ] = "localhost",
+    title: Annotated[
+        str,
+        typer.Option("--title", "-t", help="Dashboard title"),
+    ] = "Truthound Dashboard",
+    debug: Annotated[
+        bool,
+        typer.Option("--debug", help="Enable debug mode"),
+    ] = False,
+) -> None:
+    """Launch interactive dashboard for data exploration.
+
+    This requires the dashboard extra to be installed:
+        pip install truthound[dashboard]
+
+    The dashboard provides:
+    - Interactive data exploration
+    - Column filtering and search
+    - Real-time quality metrics
+    - Pattern visualization
+
+    Examples:
+        # Launch with profile
+        truthound dashboard --profile profile.json
+
+        # Custom port and title
+        truthound dashboard --profile profile.json --port 3000 --title "My Dashboard"
+    """
+    try:
+        from truthound.datadocs import launch_dashboard
+
+        if profile and not profile.exists():
+            typer.echo(f"Error: Profile file not found: {profile}", err=True)
+            raise typer.Exit(1)
+
+        typer.echo(f"Launching dashboard on http://{host}:{port}")
+        if profile:
+            typer.echo(f"  Profile: {profile}")
+
+        launch_dashboard(
+            profile_path=profile,
+            port=port,
+            host=host,
+            title=title,
+            debug=debug,
+        )
+
+    except ImportError:
+        typer.echo(
+            "Error: Dashboard requires additional dependencies. "
+            "Install with: pip install truthound[dashboard]",
+            err=True,
+        )
+        raise typer.Exit(1)
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1)
+
+
+# =============================================================================
+# Phase 10: ML, Lineage, and Realtime Commands
+# =============================================================================
+
+# ML subcommand group
+ml_app = typer.Typer(
+    name="ml",
+    help="Machine learning based validation commands",
+)
+app.add_typer(ml_app, name="ml")
+
+
+@ml_app.command(name="anomaly")
+def ml_anomaly_cmd(
+    file: Annotated[Path, typer.Argument(help="Path to the data file")],
+    method: Annotated[
+        str,
+        typer.Option("--method", "-m", help="Detection method (zscore, iqr, mad, isolation_forest)"),
+    ] = "zscore",
+    contamination: Annotated[
+        float,
+        typer.Option("--contamination", "-c", help="Expected proportion of outliers (0.0 to 0.5)"),
+    ] = 0.1,
+    columns: Annotated[
+        Optional[str],
+        typer.Option("--columns", help="Comma-separated columns to analyze"),
+    ] = None,
+    output: Annotated[
+        Optional[Path],
+        typer.Option("--output", "-o", help="Output file path for results"),
+    ] = None,
+    format: Annotated[
+        str,
+        typer.Option("--format", "-f", help="Output format (console, json)"),
+    ] = "console",
+) -> None:
+    """Detect anomalies in data using ML methods.
+
+    Examples:
+        truthound ml anomaly data.csv
+        truthound ml anomaly data.csv --method isolation_forest --contamination 0.05
+        truthound ml anomaly data.csv --columns "amount,price" --output anomalies.json
+    """
+    import polars as pl
+    from truthound.ml import (
+        ZScoreAnomalyDetector,
+        IQRAnomalyDetector,
+        MADAnomalyDetector,
+        IsolationForestDetector,
+        AnomalyConfig,
+    )
+
+    if not file.exists():
+        typer.echo(f"Error: File not found: {file}", err=True)
+        raise typer.Exit(1)
+
+    try:
+        # Load data
+        df = pl.read_csv(file) if str(file).endswith(".csv") else pl.read_parquet(file)
+
+        # Select detector
+        detector_map = {
+            "zscore": ZScoreAnomalyDetector,
+            "iqr": IQRAnomalyDetector,
+            "mad": MADAnomalyDetector,
+            "isolation_forest": IsolationForestDetector,
+        }
+
+        if method not in detector_map:
+            typer.echo(f"Error: Unknown method '{method}'. Available: {list(detector_map.keys())}", err=True)
+            raise typer.Exit(1)
+
+        config = AnomalyConfig(contamination=contamination)
+        if columns:
+            config.columns = [c.strip() for c in columns.split(",")]
+
+        detector = detector_map[method](config=config)
+        detector.fit(df.lazy())
+        result = detector.predict(df.lazy())
+
+        # Output results
+        if format == "json":
+            output_data = result.to_dict()
+            if output:
+                with open(output, "w") as f:
+                    json.dump(output_data, f, indent=2)
+                typer.echo(f"Results saved to {output}")
+            else:
+                typer.echo(json.dumps(output_data, indent=2))
+        else:
+            typer.echo(f"\nAnomaly Detection Results ({method})")
+            typer.echo("=" * 50)
+            typer.echo(f"Total points: {result.total_points}")
+            typer.echo(f"Anomalies found: {result.anomaly_count}")
+            typer.echo(f"Anomaly ratio: {result.anomaly_ratio:.2%}")
+            typer.echo(f"Threshold used: {result.threshold_used:.4f}")
+
+            if result.anomaly_count > 0:
+                typer.echo("\nTop anomalies:")
+                anomalies = sorted(result.get_anomalies(), key=lambda x: x.score, reverse=True)[:10]
+                for a in anomalies:
+                    typer.echo(f"  Index {a.index}: score={a.score:.4f}, confidence={a.confidence:.2%}")
+
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1)
+
+
+@ml_app.command(name="drift")
+def ml_drift_cmd(
+    baseline: Annotated[Path, typer.Argument(help="Path to baseline/reference data file")],
+    current: Annotated[Path, typer.Argument(help="Path to current data file")],
+    method: Annotated[
+        str,
+        typer.Option("--method", "-m", help="Detection method (distribution, feature, multivariate)"),
+    ] = "feature",
+    threshold: Annotated[
+        float,
+        typer.Option("--threshold", "-t", help="Drift detection threshold"),
+    ] = 0.1,
+    columns: Annotated[
+        Optional[str],
+        typer.Option("--columns", help="Comma-separated columns to analyze"),
+    ] = None,
+    output: Annotated[
+        Optional[Path],
+        typer.Option("--output", "-o", help="Output file path"),
+    ] = None,
+) -> None:
+    """Detect data drift between baseline and current datasets.
+
+    Examples:
+        truthound ml drift baseline.csv current.csv
+        truthound ml drift ref.parquet new.parquet --method multivariate
+        truthound ml drift old.csv new.csv --threshold 0.2 --output drift_report.json
+    """
+    import polars as pl
+    from truthound.ml.drift_detection import (
+        DistributionDriftDetector,
+        FeatureDriftDetector,
+        MultivariateDriftDetector,
+    )
+
+    if not baseline.exists():
+        typer.echo(f"Error: Baseline file not found: {baseline}", err=True)
+        raise typer.Exit(1)
+    if not current.exists():
+        typer.echo(f"Error: Current file not found: {current}", err=True)
+        raise typer.Exit(1)
+
+    try:
+        # Load data
+        read_func = lambda p: pl.read_csv(p) if str(p).endswith(".csv") else pl.read_parquet(p)
+        baseline_df = read_func(baseline)
+        current_df = read_func(current)
+
+        detector_map = {
+            "distribution": DistributionDriftDetector,
+            "feature": FeatureDriftDetector,
+            "multivariate": MultivariateDriftDetector,
+        }
+
+        if method not in detector_map:
+            typer.echo(f"Error: Unknown method '{method}'. Available: {list(detector_map.keys())}", err=True)
+            raise typer.Exit(1)
+
+        detector = detector_map[method](threshold=threshold)
+        detector.fit(baseline_df.lazy())
+
+        cols = [c.strip() for c in columns.split(",")] if columns else None
+        result = detector.detect(baseline_df.lazy(), current_df.lazy(), columns=cols)
+
+        # Output results
+        typer.echo(f"\nDrift Detection Results ({method})")
+        typer.echo("=" * 50)
+        typer.echo(f"Drift detected: {'YES' if result.is_drifted else 'NO'}")
+        typer.echo(f"Drift score: {result.drift_score:.4f}")
+        typer.echo(f"Drift type: {result.drift_type}")
+
+        if result.column_scores:
+            typer.echo("\nPer-column drift scores:")
+            for col, score in sorted(result.column_scores, key=lambda x: x[1], reverse=True):
+                status = "[DRIFTED]" if score >= threshold else ""
+                typer.echo(f"  {col}: {score:.4f} {status}")
+
+        if output:
+            with open(output, "w") as f:
+                json.dump(result.to_dict(), f, indent=2)
+            typer.echo(f"\nResults saved to {output}")
+
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1)
+
+
+@ml_app.command(name="learn-rules")
+def ml_learn_rules_cmd(
+    file: Annotated[Path, typer.Argument(help="Path to the data file")],
+    output: Annotated[
+        Path,
+        typer.Option("--output", "-o", help="Output file for learned rules"),
+    ] = Path("learned_rules.json"),
+    strictness: Annotated[
+        str,
+        typer.Option("--strictness", "-s", help="Rule strictness (loose, medium, strict)"),
+    ] = "medium",
+    min_confidence: Annotated[
+        float,
+        typer.Option("--min-confidence", help="Minimum rule confidence"),
+    ] = 0.9,
+    max_rules: Annotated[
+        int,
+        typer.Option("--max-rules", help="Maximum number of rules to generate"),
+    ] = 100,
+) -> None:
+    """Learn validation rules from data.
+
+    Examples:
+        truthound ml learn-rules data.csv
+        truthound ml learn-rules data.csv --strictness strict --min-confidence 0.95
+        truthound ml learn-rules data.parquet --output my_rules.json
+    """
+    import polars as pl
+    from truthound.ml.rule_learning import DataProfileRuleLearner, PatternRuleLearner
+
+    if not file.exists():
+        typer.echo(f"Error: File not found: {file}", err=True)
+        raise typer.Exit(1)
+
+    try:
+        df = pl.read_csv(file) if str(file).endswith(".csv") else pl.read_parquet(file)
+
+        typer.echo(f"Learning rules from {file}...")
+        typer.echo(f"  Rows: {len(df):,}, Columns: {len(df.columns)}")
+
+        # Use profile learner
+        learner = DataProfileRuleLearner(
+            strictness=strictness,
+            min_confidence=min_confidence,
+            max_rules=max_rules,
+        )
+
+        result = learner.learn_rules(df.lazy())
+
+        typer.echo(f"\nLearned {len(result.rules)} rules ({result.filtered_rules} filtered)")
+        typer.echo(f"Learning time: {result.learning_time_ms:.1f}ms")
+
+        # Show rules by type
+        rule_types = {}
+        for rule in result.rules:
+            rule_types[rule.rule_type] = rule_types.get(rule.rule_type, 0) + 1
+
+        typer.echo("\nRules by type:")
+        for rtype, count in sorted(rule_types.items(), key=lambda x: x[1], reverse=True):
+            typer.echo(f"  {rtype}: {count}")
+
+        # Save rules
+        with open(output, "w") as f:
+            json.dump(result.to_dict(), f, indent=2)
+        typer.echo(f"\nRules saved to {output}")
+
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1)
+
+
+# Lineage subcommand group
+lineage_app = typer.Typer(
+    name="lineage",
+    help="Data lineage tracking and analysis commands",
+)
+app.add_typer(lineage_app, name="lineage")
+
+
+@lineage_app.command(name="show")
+def lineage_show_cmd(
+    lineage_file: Annotated[Path, typer.Argument(help="Path to lineage JSON file")],
+    node: Annotated[
+        Optional[str],
+        typer.Option("--node", "-n", help="Show lineage for specific node"),
+    ] = None,
+    direction: Annotated[
+        str,
+        typer.Option("--direction", "-d", help="Direction (upstream, downstream, both)"),
+    ] = "both",
+    format: Annotated[
+        str,
+        typer.Option("--format", "-f", help="Output format (console, json, dot)"),
+    ] = "console",
+) -> None:
+    """Display lineage information.
+
+    Examples:
+        truthound lineage show lineage.json
+        truthound lineage show lineage.json --node my_table --direction upstream
+        truthound lineage show lineage.json --format dot > lineage.dot
+    """
+    from truthound.lineage import LineageGraph
+
+    if not lineage_file.exists():
+        typer.echo(f"Error: File not found: {lineage_file}", err=True)
+        raise typer.Exit(1)
+
+    try:
+        graph = LineageGraph.load(lineage_file)
+
+        if node:
+            if not graph.has_node(node):
+                typer.echo(f"Error: Node '{node}' not found", err=True)
+                raise typer.Exit(1)
+
+            node_obj = graph.get_node(node)
+            typer.echo(f"\nLineage for: {node}")
+            typer.echo(f"Type: {node_obj.node_type.value}")
+
+            if direction in ("upstream", "both"):
+                upstream = graph.get_upstream(node)
+                typer.echo(f"\nUpstream ({len(upstream)} nodes):")
+                for n in upstream:
+                    typer.echo(f"  <- {n.name} ({n.node_type.value})")
+
+            if direction in ("downstream", "both"):
+                downstream = graph.get_downstream(node)
+                typer.echo(f"\nDownstream ({len(downstream)} nodes):")
+                for n in downstream:
+                    typer.echo(f"  -> {n.name} ({n.node_type.value})")
+        else:
+            typer.echo(f"\nLineage Graph Summary")
+            typer.echo("=" * 40)
+            typer.echo(f"Nodes: {graph.node_count}")
+            typer.echo(f"Edges: {graph.edge_count}")
+
+            roots = graph.get_roots()
+            typer.echo(f"\nRoot nodes ({len(roots)}):")
+            for r in roots[:10]:
+                typer.echo(f"  {r.name} ({r.node_type.value})")
+
+            leaves = graph.get_leaves()
+            typer.echo(f"\nLeaf nodes ({len(leaves)}):")
+            for l in leaves[:10]:
+                typer.echo(f"  {l.name} ({l.node_type.value})")
+
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1)
+
+
+@lineage_app.command(name="impact")
+def lineage_impact_cmd(
+    lineage_file: Annotated[Path, typer.Argument(help="Path to lineage JSON file")],
+    node: Annotated[str, typer.Argument(help="Node to analyze impact for")],
+    max_depth: Annotated[
+        int,
+        typer.Option("--max-depth", help="Maximum depth for impact analysis"),
+    ] = -1,
+    output: Annotated[
+        Optional[Path],
+        typer.Option("--output", "-o", help="Output file for results"),
+    ] = None,
+) -> None:
+    """Analyze impact of changes to a data asset.
+
+    Examples:
+        truthound lineage impact lineage.json raw_data
+        truthound lineage impact lineage.json my_table --max-depth 3
+    """
+    from truthound.lineage import LineageGraph, ImpactAnalyzer
+
+    if not lineage_file.exists():
+        typer.echo(f"Error: File not found: {lineage_file}", err=True)
+        raise typer.Exit(1)
+
+    try:
+        graph = LineageGraph.load(lineage_file)
+        analyzer = ImpactAnalyzer(graph)
+
+        result = analyzer.analyze_impact(node, max_depth=max_depth)
+
+        typer.echo(result.summary())
+
+        if result.affected_nodes:
+            typer.echo("\nAffected nodes:")
+            for affected in result.affected_nodes[:20]:
+                level_marker = {
+                    "critical": "[!!!]",
+                    "high": "[!!]",
+                    "medium": "[!]",
+                    "low": "[-]",
+                    "none": "[ ]",
+                }.get(affected.impact_level.value, "")
+                typer.echo(f"  {level_marker} {affected.node.name} (depth={affected.distance})")
+
+        if output:
+            with open(output, "w") as f:
+                json.dump(result.to_dict(), f, indent=2)
+            typer.echo(f"\nResults saved to {output}")
+
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1)
+
+
+# Realtime subcommand group
+realtime_app = typer.Typer(
+    name="realtime",
+    help="Real-time and streaming validation commands",
+)
+app.add_typer(realtime_app, name="realtime")
+
+
+@realtime_app.command(name="validate")
+def realtime_validate_cmd(
+    source: Annotated[str, typer.Argument(help="Streaming source (mock, kafka:topic, kinesis:stream)")],
+    validators: Annotated[
+        Optional[str],
+        typer.Option("--validators", "-v", help="Comma-separated validators"),
+    ] = None,
+    batch_size: Annotated[
+        int,
+        typer.Option("--batch-size", "-b", help="Batch size"),
+    ] = 1000,
+    max_batches: Annotated[
+        int,
+        typer.Option("--max-batches", help="Maximum batches to process (0=unlimited)"),
+    ] = 10,
+    output: Annotated[
+        Optional[Path],
+        typer.Option("--output", "-o", help="Output file for results"),
+    ] = None,
+) -> None:
+    """Validate streaming data in real-time.
+
+    Examples:
+        truthound realtime validate mock --max-batches 5
+        truthound realtime validate mock --validators null,range --batch-size 500
+    """
+    from truthound.realtime import MockStreamingSource, StreamingValidator, StreamingConfig
+
+    try:
+        # Parse source
+        if source.startswith("mock"):
+            stream = MockStreamingSource(
+                records_per_batch=batch_size,
+                num_batches=max_batches if max_batches > 0 else 100,
+            )
+        else:
+            typer.echo(f"Source '{source}' requires additional configuration.")
+            typer.echo("For now, using mock source for demonstration.")
+            stream = MockStreamingSource(
+                records_per_batch=batch_size,
+                num_batches=max_batches if max_batches > 0 else 100,
+            )
+
+        validator_list = [v.strip() for v in validators.split(",")] if validators else None
+        config = StreamingConfig(batch_size=batch_size)
+        streaming_validator = StreamingValidator(
+            validators=validator_list,
+            config=config,
+        )
+
+        results = []
+        with stream:
+            typer.echo(f"Starting streaming validation...")
+            typer.echo(f"  Source: {source}")
+            typer.echo(f"  Batch size: {batch_size}")
+            typer.echo(f"  Validators: {validator_list or 'all'}")
+            typer.echo()
+
+            for result in streaming_validator.validate_stream(stream, max_batches=max_batches if max_batches > 0 else None):
+                status = "[ISSUES]" if result.has_issues else "[OK]"
+                typer.echo(f"Batch {result.batch_id}: {result.record_count} records, {result.issue_count} issues {status}")
+                results.append(result.to_dict())
+
+        stats = streaming_validator.get_stats()
+        typer.echo(f"\nSummary")
+        typer.echo("=" * 40)
+        typer.echo(f"Batches processed: {stats['batch_count']}")
+        typer.echo(f"Total records: {stats['total_records']}")
+        typer.echo(f"Total issues: {stats['total_issues']}")
+        typer.echo(f"Issue rate: {stats['issue_rate']:.2%}")
+        typer.echo(f"Avg processing time: {stats['avg_processing_time_ms']:.1f}ms")
+
+        if output:
+            with open(output, "w") as f:
+                json.dump({"batches": results, "stats": stats}, f, indent=2)
+            typer.echo(f"\nResults saved to {output}")
+
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1)
 
 
 def main() -> None:
