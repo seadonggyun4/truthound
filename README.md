@@ -5,7 +5,7 @@
 <h1 align="center">Truthound</h1>
 
 <p align="center">
-  <strong>Zero-Configuration Data Quality Toolkit Powered by Polars</strong>
+  <strong>Zero-Configuration Data Quality Framework Powered by Polars</strong>
 </p>
 
 <p align="center">
