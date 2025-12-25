@@ -26,6 +26,64 @@ from truthound.profiler import (
     ColumnProfile,
 )
 
+# Data Docs - HTML Reports and Dashboard (Phase 8)
+from truthound import datadocs
+from truthound.datadocs import (
+    HTMLReportBuilder,
+    generate_html_report,
+    generate_report_from_file,
+    ReportConfig,
+    ReportTheme,
+    ChartLibrary,
+)
+
+# Advanced Features - ML, Lineage, Realtime (Phase 10)
+from truthound import ml
+from truthound import lineage
+from truthound import realtime
+
+# ML exports
+from truthound.ml import (
+    ModelRegistry,
+    AnomalyDetector,
+    MLDriftDetector,
+    RuleLearner,
+    ModelType,
+    ModelState,
+)
+from truthound.ml.anomaly_models import (
+    ZScoreAnomalyDetector,
+    IQRAnomalyDetector,
+    IsolationForestDetector,
+    EnsembleAnomalyDetector,
+)
+from truthound.ml.drift_detection import (
+    DistributionDriftDetector,
+    FeatureDriftDetector,
+)
+
+# Lineage exports
+from truthound.lineage import (
+    LineageGraph,
+    LineageNode,
+    LineageEdge,
+    LineageTracker,
+    ImpactAnalyzer,
+    NodeType,
+    EdgeType,
+)
+
+# Realtime exports
+from truthound.realtime import (
+    StreamingValidator,
+    IncrementalValidator,
+    StreamingConfig,
+    CheckpointManager,
+    MemoryStateStore,
+    BatchResult,
+    StreamingMode,
+)
+
 __version__ = "0.1.0"
 __all__ = [
     # Core API
@@ -54,4 +112,44 @@ __all__ = [
     "ValidationSuite",
     "TableProfile",
     "ColumnProfile",
+    # Phase 8: Data Docs (HTML Reports & Dashboard)
+    "datadocs",
+    "HTMLReportBuilder",
+    "generate_html_report",
+    "generate_report_from_file",
+    "ReportConfig",
+    "ReportTheme",
+    "ChartLibrary",
+    # Phase 10: Advanced Features - ML
+    "ml",
+    "ModelRegistry",
+    "AnomalyDetector",
+    "MLDriftDetector",
+    "RuleLearner",
+    "ModelType",
+    "ModelState",
+    "ZScoreAnomalyDetector",
+    "IQRAnomalyDetector",
+    "IsolationForestDetector",
+    "EnsembleAnomalyDetector",
+    "DistributionDriftDetector",
+    "FeatureDriftDetector",
+    # Phase 10: Advanced Features - Lineage
+    "lineage",
+    "LineageGraph",
+    "LineageNode",
+    "LineageEdge",
+    "LineageTracker",
+    "ImpactAnalyzer",
+    "NodeType",
+    "EdgeType",
+    # Phase 10: Advanced Features - Realtime
+    "realtime",
+    "StreamingValidator",
+    "IncrementalValidator",
+    "StreamingConfig",
+    "CheckpointManager",
+    "MemoryStateStore",
+    "BatchResult",
+    "StreamingMode",
 ]
