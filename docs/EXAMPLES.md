@@ -16,6 +16,9 @@ This document provides comprehensive examples for using Truthound in various dat
 8. [Privacy Compliance](#8-privacy-compliance)
 9. [CI/CD Integration](#9-cicd-integration)
 10. [Custom Validators](#10-custom-validators)
+11. [Data Profiling](#11-data-profiling)
+12. [Advanced Patterns](#12-advanced-patterns)
+13. [CLI Reference](#13-cli-reference)
 
 ---
 
@@ -34,6 +37,14 @@ print(report)
 import polars as pl
 df = pl.read_parquet("data.parquet")
 report = th.check(df)
+
+# Check validation status
+if report.passed:
+    print("All validations passed!")
+else:
+    print(f"Found {len(report.issues)} issues")
+    for issue in report.issues:
+        print(f"  [{issue.severity}] {issue.column}: {issue.message}")
 ```
 
 ### Filtering by Severity
@@ -41,6 +52,9 @@ report = th.check(df)
 ```python
 # Only show medium severity and above
 report = th.check(df, min_severity="medium")
+
+# Only show high severity and above
+report = th.check(df, min_severity="high")
 
 # Only show critical issues
 report = th.check(df, min_severity="critical")
@@ -54,16 +68,25 @@ report = th.check(df, validators=["null", "duplicate", "outlier"])
 
 # Run schema-related validators
 report = th.check(df, validators=["column_exists", "column_type", "range"])
+
+# Validate specific columns only
+report = th.check(df, columns=["email", "phone", "ssn"])
 ```
 
 ### Strict Mode (CI/CD)
 
 ```python
+import sys
+
 # Exit with error code if any issues found
 report = th.check("data.csv", strict=True)
 
 # Combine with severity filter
 report = th.check("data.csv", min_severity="high", strict=True)
+
+# In CI/CD pipelines
+if not report.passed:
+    sys.exit(1)
 ```
 
 ---
@@ -85,6 +108,16 @@ schema = th.learn(
 # View the schema
 print(schema)
 
+# View inferred constraints
+for col in schema.columns:
+    print(f"{col.name}:")
+    print(f"  Type: {col.dtype}")
+    print(f"  Nullable: {col.nullable}")
+    if col.min_value is not None:
+        print(f"  Range: [{col.min_value}, {col.max_value}]")
+    if col.allowed_values:
+        print(f"  Allowed: {col.allowed_values}")
+
 # Save to YAML
 schema.save("schema.yaml")
 ```
@@ -98,6 +131,10 @@ report = th.check("new_data.csv", schema="schema.yaml")
 # Validate with in-memory schema
 schema = th.learn("baseline.csv")
 report = th.check("new_data.csv", schema=schema)
+
+# Load from YAML
+loaded_schema = th.Schema.from_yaml("schema.yaml")
+report = th.check("new_data.csv", schema=loaded_schema)
 ```
 
 ### Zero-Configuration with Auto Caching
@@ -110,6 +147,7 @@ report = th.check("data.csv", auto_schema=True)
 report = th.check("data.csv", auto_schema=True)
 
 # Cache is automatically invalidated when file changes
+# Schema is cached by data fingerprint
 ```
 
 ### Manual Schema Definition
@@ -127,7 +165,8 @@ schema = Schema(columns=[
     ColumnSchema(
         name="email",
         dtype="String",
-        nullable=False
+        nullable=False,
+        patterns=["email"]
     ),
     ColumnSchema(
         name="age",
@@ -139,10 +178,52 @@ schema = Schema(columns=[
         name="status",
         dtype="String",
         allowed_values=["active", "inactive", "pending"]
+    ),
+    ColumnSchema(
+        name="created_at",
+        dtype="Datetime",
+        nullable=False
     )
 ])
 
 report = th.check(df, schema=schema)
+```
+
+### YAML Schema Format
+
+```yaml
+# schema.yaml
+name: customer_data
+version: "1.0"
+columns:
+  - name: customer_id
+    dtype: Int64
+    nullable: false
+    unique: true
+
+  - name: email
+    dtype: String
+    nullable: true
+    patterns:
+      - email
+
+  - name: age
+    dtype: Int64
+    nullable: true
+    min_value: 0
+    max_value: 150
+
+  - name: status
+    dtype: String
+    nullable: false
+    allowed_values:
+      - active
+      - inactive
+      - pending
+
+  - name: created_at
+    dtype: Datetime
+    nullable: false
 ```
 
 ---
@@ -158,28 +239,35 @@ import truthound as th
 drift = th.compare("train.csv", "production.csv")
 print(drift)
 
+# Check for drift
+if drift.has_drift:
+    print("Data drift detected!")
+
 # Check for high drift
 if drift.has_high_drift:
     print("Warning: Significant drift detected!")
-    for col, result in drift.results.items():
+    for col, result in drift.column_results.items():
         if result.has_drift:
-            print(f"  - {col}: {result.method} = {result.value:.4f}")
+            print(f"  - {col}: {result.method} = {result.score:.4f}")
 ```
 
 ### Specifying Detection Method
 
 ```python
-# Kolmogorov-Smirnov test (numeric data)
+# Kolmogorov-Smirnov test (continuous numeric data)
 drift = th.compare(baseline, current, method="ks")
 
 # Chi-square test (categorical data)
 drift = th.compare(baseline, current, method="chi2")
 
-# Population Stability Index
+# Population Stability Index (model monitoring)
 drift = th.compare(baseline, current, method="psi")
 
-# Jensen-Shannon divergence
+# Jensen-Shannon divergence (any distribution)
 drift = th.compare(baseline, current, method="js")
+
+# Wasserstein distance (distribution shape)
+drift = th.compare(baseline, current, method="wasserstein")
 
 # Auto-select based on data type
 drift = th.compare(baseline, current, method="auto")
@@ -192,7 +280,8 @@ drift = th.compare(baseline, current, method="auto")
 drift = th.compare(
     "historical.parquet",  # 5M rows
     "current.parquet",      # 5M rows
-    sample_size=10000
+    sample_size=10000,
+    sample_seed=42  # Reproducible sampling
 )
 ```
 
@@ -204,6 +293,13 @@ drift = th.compare(
     baseline,
     current,
     columns=["feature1", "feature2", "target"]
+)
+
+# Exclude columns
+drift = th.compare(
+    baseline,
+    current,
+    exclude_columns=["id", "timestamp"]
 )
 ```
 
@@ -219,6 +315,40 @@ with open("drift_report.json", "w") as f:
 
 # Export as dict
 drift_dict = drift.to_dict()
+```
+
+### Model Monitoring Pipeline
+
+```python
+import truthound as th
+
+def monitor_model_data(train_path: str, prod_path: str) -> dict:
+    """Monitor production data for drift from training data."""
+
+    # Detect drift
+    drift = th.compare(train_path, prod_path, method="psi")
+
+    # Categorize drift severity
+    alerts = {
+        "critical": [],
+        "warning": [],
+        "ok": []
+    }
+
+    for col, result in drift.column_results.items():
+        if result.score >= 0.25:
+            alerts["critical"].append((col, result.score))
+        elif result.score >= 0.1:
+            alerts["warning"].append((col, result.score))
+        else:
+            alerts["ok"].append((col, result.score))
+
+    return alerts
+
+# Usage
+alerts = monitor_model_data("train.csv", "production.csv")
+if alerts["critical"]:
+    print("CRITICAL: Model retraining recommended")
 ```
 
 ---
@@ -269,6 +399,19 @@ validator = IQRAnomalyValidator(
 )
 ```
 
+### Z-Score Detection
+
+```python
+from truthound.ml import ZScoreAnomalyDetector
+
+detector = ZScoreAnomalyDetector(threshold=3.0)
+detector.fit(df)
+result = detector.detect(df)
+
+# View anomalies
+anomalies = result.get_anomaly_indices()
+```
+
 ### Local Outlier Factor (Clustered Data)
 
 ```python
@@ -294,6 +437,22 @@ validator = DBSCANAnomalyValidator(
 )
 ```
 
+### Ensemble Anomaly Detection
+
+```python
+from truthound.ml import EnsembleAnomalyDetector, ZScoreAnomalyDetector, IQRAnomalyDetector
+
+ensemble = EnsembleAnomalyDetector(
+    detectors=[
+        ZScoreAnomalyDetector(threshold=3.0),
+        IQRAnomalyDetector(multiplier=1.5)
+    ],
+    voting_strategy="majority"  # or "unanimous", "any"
+)
+ensemble.fit(df)
+result = ensemble.detect(df)
+```
+
 ---
 
 ## 5. PII Detection and Masking
@@ -309,12 +468,25 @@ print(pii_report)
 
 # View detected PII by column
 for finding in pii_report.findings:
-    print(f"{finding.column}: {finding.pii_type} ({finding.confidence}%)")
+    print(f"{finding.column}:")
+    print(f"  Type: {finding.pii_type}")
+    print(f"  Confidence: {finding.confidence:.0%}")
+    print(f"  Sample matches: {finding.sample_count}")
 ```
 
 ### Masking Sensitive Data
 
 ```python
+import polars as pl
+import truthound as th
+
+df = pl.DataFrame({
+    "name": ["John Doe", "Jane Smith"],
+    "email": ["john@example.com", "jane@example.com"],
+    "ssn": ["123-45-6789", "987-65-4321"],
+    "phone": ["555-123-4567", "555-987-6543"]
+})
+
 # Redact PII (replace with ***)
 masked_df = th.mask(df, strategy="redact")
 
@@ -326,6 +498,13 @@ masked_df = th.mask(df, strategy="fake")
 
 # Mask specific columns only
 masked_df = th.mask(df, columns=["email", "phone"], strategy="redact")
+
+# Custom masking per column
+masked_df = th.mask(df, strategies={
+    "email": "hash",
+    "ssn": "redact",
+    "phone": "fake"
+})
 ```
 
 ### Export Anonymized Data
@@ -372,13 +551,27 @@ validator = CrossTableAggregateValidator(
 
 ```python
 from truthound.validators.referential import ForeignKeyValidator
+import polars as pl
+
+# Parent table
+customers = pl.DataFrame({
+    "customer_id": [1, 2, 3, 4, 5],
+    "name": ["Alice", "Bob", "Carol", "Diana", "Eve"]
+})
+
+# Child table
+orders = pl.DataFrame({
+    "order_id": [101, 102, 103, 104],
+    "customer_id": [1, 2, 6, 3],  # 6 is orphan
+    "amount": [100, 200, 150, 300]
+})
 
 validator = ForeignKeyValidator(
     column="customer_id",
-    reference_data=customers_df,
-    reference_column="id"
+    reference_data=customers,
+    reference_column="customer_id"
 )
-issues = validator.validate(orders_df.lazy())
+issues = validator.validate(orders.lazy())
 ```
 
 ### Composite Foreign Key
@@ -390,6 +583,18 @@ validator = CompositeForeignKeyValidator(
     columns=["store_id", "product_id"],
     reference_data=inventory_df,
     reference_columns=["store_id", "product_id"]
+)
+```
+
+### Orphan Record Detection
+
+```python
+from truthound.validators.referential import OrphanRecordValidator
+
+validator = OrphanRecordValidator(
+    column="order_id",
+    reference_data=order_items,
+    reference_column="order_id"
 )
 ```
 
@@ -447,6 +652,18 @@ validator = TrendValidator(
 )
 ```
 
+### Temporal Ordering
+
+```python
+from truthound.validators.timeseries import TemporalOrderValidator
+
+validator = TemporalOrderValidator(
+    datetime_column="event_time",
+    sequence_column="sequence_id",
+    order="ascending"
+)
+```
+
 ---
 
 ## 8. Privacy Compliance
@@ -475,6 +692,21 @@ validator = CCPAComplianceValidator(
 )
 ```
 
+### Multi-Regulation Check
+
+```python
+import truthound as th
+
+# Check multiple regulations
+report = th.scan(df, regulations=["gdpr", "ccpa", "lgpd"])
+
+# Check for compliance
+if report.has_violations:
+    print("Privacy violations detected:")
+    for violation in report.violations:
+        print(f"  {violation.regulation}: {violation.column} - {violation.message}")
+```
+
 ### Data Retention Validation
 
 ```python
@@ -499,6 +731,9 @@ name: Data Quality Check
 
 on:
   push:
+    paths:
+      - 'data/**'
+  pull_request:
     paths:
       - 'data/**'
 
@@ -527,6 +762,7 @@ jobs:
 
 ```python
 #!/usr/bin/env python3
+"""Data quality check for CI/CD pipelines."""
 import sys
 import truthound as th
 
@@ -572,6 +808,30 @@ repos:
         args: ['--strict', '--min-severity', 'high']
 ```
 
+### Checkpoint Integration
+
+```python
+from truthound.checkpoint import Checkpoint, CheckpointConfig
+
+# Configure checkpoint
+config = CheckpointConfig(
+    store_backend="s3",
+    store_config={"bucket": "validation-results"},
+    fail_on_error=True,
+    notifications=["slack", "email"]
+)
+
+# Create checkpoint
+checkpoint = Checkpoint("production_validation", config)
+
+# Run validation with checkpointing
+with checkpoint:
+    report = th.check("data.csv")
+    checkpoint.record(report)
+
+# Results are stored and notifications sent automatically
+```
+
 ---
 
 ## 10. Custom Validators
@@ -579,27 +839,28 @@ repos:
 ### Creating a Custom Validator
 
 ```python
-from truthound.validators.base import BaseValidator
-from truthound.types import Issue, Severity
+from truthound.validators.base import Validator, ValidationIssue, Severity
 import polars as pl
 
-class BusinessRuleValidator(BaseValidator):
+class BusinessRuleValidator(Validator):
     """Validates custom business rules."""
 
     name = "business_rule"
+    category = "custom"
 
     def __init__(
         self,
         rule_name: str,
         expression: pl.Expr,
-        severity: Severity = "medium",
+        severity: Severity = Severity.MEDIUM,
         mostly: float = 1.0
     ):
-        super().__init__(severity=severity, mostly=mostly)
         self.rule_name = rule_name
         self.expression = expression
+        self.severity = severity
+        self.mostly = mostly
 
-    def validate(self, lf: pl.LazyFrame) -> list[Issue]:
+    def validate(self, lf: pl.LazyFrame) -> list[ValidationIssue]:
         # Count violations
         total = lf.select(pl.len()).collect().item()
         violations = lf.filter(~self.expression).select(pl.len()).collect().item()
@@ -607,7 +868,7 @@ class BusinessRuleValidator(BaseValidator):
         pass_rate = 1 - (violations / total) if total > 0 else 1.0
 
         if pass_rate < self.mostly:
-            return [Issue(
+            return [ValidationIssue(
                 validator=self.name,
                 column=None,
                 message=f"Business rule '{self.rule_name}' violated: {violations}/{total} rows failed",
@@ -622,38 +883,270 @@ class BusinessRuleValidator(BaseValidator):
 
 ```python
 import polars as pl
+import truthound as th
 
 # Define business rule
 validator = BusinessRuleValidator(
     rule_name="revenue_positive",
     expression=pl.col("revenue") > 0,
-    severity="high",
+    severity=Severity.HIGH,
     mostly=0.99
 )
 
 # Validate
 issues = validator.validate(df.lazy())
+
+# Or use with th.check()
+report = th.check(df, validators=[validator])
 ```
 
 ### Registering Custom Validators
 
 ```python
-from truthound.validators.registry import register_validator
+from truthound.validators.base import register_validator
 
 @register_validator("my_custom_validator")
-class MyCustomValidator(BaseValidator):
-    # ... implementation
-    pass
+class MyCustomValidator(Validator):
+    name = "my_custom_validator"
+    category = "custom"
+
+    def validate(self, lf: pl.LazyFrame) -> list[ValidationIssue]:
+        # Implementation
+        ...
 
 # Now usable via th.check()
 report = th.check(df, validators=["my_custom_validator"])
 ```
 
+### Parametric Validator
+
+```python
+from dataclasses import dataclass
+
+@dataclass
+class RangeConfig:
+    min_value: float | None = None
+    max_value: float | None = None
+    inclusive: bool = True
+
+class ConfigurableRangeValidator(Validator):
+    """Validate values within configurable range."""
+
+    name = "configurable_range"
+    category = "custom"
+
+    def __init__(self, column: str, config: RangeConfig):
+        self.column = column
+        self.config = config
+
+    def validate(self, lf: pl.LazyFrame) -> list[ValidationIssue]:
+        # Implementation
+        ...
+```
+
 ---
 
-## Command Line Examples
+## 11. Data Profiling
 
-### Basic CLI Usage
+### Basic Profiling
+
+```python
+import truthound as th
+
+# Generate profile
+profile = th.profile("data.csv")
+
+# Summary statistics
+print(f"Rows: {profile.row_count}")
+print(f"Columns: {profile.column_count}")
+print(f"Memory: {profile.memory_usage_mb:.2f} MB")
+
+# Column details
+for col in profile.columns:
+    print(f"\n{col.name} ({col.dtype}):")
+    print(f"  Null ratio: {col.null_ratio:.2%}")
+    print(f"  Unique ratio: {col.unique_ratio:.2%}")
+    if col.mean is not None:
+        print(f"  Mean: {col.mean:.2f}")
+        print(f"  Std: {col.std:.2f}")
+        print(f"  Range: [{col.min}, {col.max}]")
+```
+
+### Generating Validation Rules
+
+```python
+from truthound.profiler import AutoProfiler
+
+# Create profiler
+profiler = AutoProfiler()
+
+# Profile and generate rules
+profile = profiler.profile("data.csv")
+rules = profiler.generate_rules(profile)
+
+# Save rules
+rules.save("generated_rules.yaml")
+
+# Use rules for validation
+report = th.check("new_data.csv", rules=rules)
+```
+
+### HTML Report Generation
+
+```python
+from truthound.datadocs import generate_html_report
+
+# Generate HTML report
+profile = th.profile("data.csv")
+html = generate_html_report(
+    profile=profile.to_dict(),
+    title="Data Quality Report",
+    theme="professional",
+    output_path="report.html"
+)
+```
+
+---
+
+## 12. Advanced Patterns
+
+### Validation Pipeline
+
+```python
+import truthound as th
+from dataclasses import dataclass
+
+@dataclass
+class ValidationPipeline:
+    """Reusable validation pipeline."""
+
+    schema_path: str
+    drift_baseline: str | None = None
+    pii_check: bool = True
+    strict: bool = False
+
+    def run(self, data_path: str) -> dict:
+        results = {}
+
+        # Schema validation
+        schema = th.Schema.from_yaml(self.schema_path)
+        results["validation"] = th.check(data_path, schema=schema)
+
+        # Drift detection
+        if self.drift_baseline:
+            results["drift"] = th.compare(self.drift_baseline, data_path)
+
+        # PII scan
+        if self.pii_check:
+            results["pii"] = th.scan(data_path)
+
+        # Aggregate status
+        results["passed"] = all([
+            results["validation"].passed,
+            not results.get("drift", type("", (), {"has_drift": False})).has_drift,
+            not results.get("pii", type("", (), {"has_pii": False})).has_pii
+        ])
+
+        return results
+
+# Usage
+pipeline = ValidationPipeline(
+    schema_path="schema.yaml",
+    drift_baseline="baseline.csv",
+    pii_check=True
+)
+results = pipeline.run("new_data.csv")
+```
+
+### Batch Validation
+
+```python
+import truthound as th
+from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor
+
+def validate_file(path: Path) -> tuple[str, bool, list]:
+    """Validate a single file."""
+    report = th.check(str(path))
+    return str(path), report.passed, report.issues
+
+def batch_validate(directory: str, pattern: str = "*.csv") -> dict:
+    """Validate all matching files in directory."""
+    files = list(Path(directory).glob(pattern))
+
+    results = {}
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        futures = [executor.submit(validate_file, f) for f in files]
+        for future in futures:
+            path, passed, issues = future.result()
+            results[path] = {"passed": passed, "issues": issues}
+
+    return results
+
+# Usage
+results = batch_validate("data/", "*.csv")
+for path, result in results.items():
+    status = "PASS" if result["passed"] else "FAIL"
+    print(f"{status}: {path} ({len(result['issues'])} issues)")
+```
+
+### Multi-Environment Validation
+
+```python
+import truthound as th
+
+class EnvironmentValidator:
+    """Validate data across multiple environments."""
+
+    def __init__(self, environments: dict[str, str]):
+        self.environments = environments
+
+    def validate_all(self, schema_path: str) -> dict:
+        """Validate all environments against schema."""
+        schema = th.Schema.from_yaml(schema_path)
+        results = {}
+
+        for env, path in self.environments.items():
+            report = th.check(path, schema=schema)
+            results[env] = {
+                "passed": report.passed,
+                "issue_count": len(report.issues),
+                "issues": report.issues
+            }
+
+        return results
+
+    def compare_environments(self, baseline_env: str, target_env: str) -> dict:
+        """Compare two environments for drift."""
+        baseline = self.environments[baseline_env]
+        target = self.environments[target_env]
+
+        drift = th.compare(baseline, target)
+
+        return {
+            "has_drift": drift.has_drift,
+            "drifted_columns": [
+                col for col, result in drift.column_results.items()
+                if result.has_drift
+            ]
+        }
+
+# Usage
+validator = EnvironmentValidator({
+    "dev": "data/dev/customers.csv",
+    "staging": "data/staging/customers.csv",
+    "prod": "data/prod/customers.csv"
+})
+
+results = validator.validate_all("schema.yaml")
+drift = validator.compare_environments("staging", "prod")
+```
+
+---
+
+## 13. CLI Reference
+
+### Basic Commands
 
 ```bash
 # Validate a file
@@ -695,16 +1188,37 @@ truthound compare baseline.csv current.csv --method psi
 truthound compare train.parquet prod.parquet --sample-size 10000
 ```
 
-### Profiling
+### Profiling and Reports
 
 ```bash
 # Generate data profile
-truthound profile data.csv
+truthound auto-profile data.csv -o profile.json
 
-# Output as JSON
-truthound profile data.csv --format json
+# Generate validation suite from profile
+truthound generate-suite profile.json -o rules.yaml
+
+# One-step profile and suite generation
+truthound quick-suite data.csv -o rules.yaml
+
+# With specific categories
+truthound quick-suite data.csv -o rules.yaml --categories completeness,uniqueness,range
+
+# Generate HTML report
+truthound docs generate profile.json -o report.html --theme professional
+
+# List available options
+truthound list-formats      # Export formats
+truthound list-presets      # Configuration presets
+truthound list-categories   # Rule categories
+truthound docs themes       # Available themes
 ```
 
 ---
 
-[← Back to README](../README.md)
+## See Also
+
+- [Getting Started](GETTING_STARTED.md) — Quick start guide
+- [Validators Reference](VALIDATORS.md) — Complete validator documentation
+- [Statistical Methods](STATISTICAL_METHODS.md) — Drift and anomaly methods
+- [API Reference](API_REFERENCE.md) — Complete API documentation
+- [Plugin Architecture](PLUGINS.md) — Creating custom plugins
