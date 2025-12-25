@@ -47,6 +47,7 @@ Truthound is a high-performance data quality validation framework designed for m
 13. [References](#13-references)
 
 **Additional Documentation:**
+- [Auto-Profiling & Rule Generation (docs/PROFILER.md)](docs/PROFILER.md) **NEW**
 - [Data Sources Usage (docs/DATASOURCES.md)](docs/DATASOURCES.md)
 - [Data Sources Architecture (docs/DATASOURCES_ARCHITECTURE.md)](docs/DATASOURCES_ARCHITECTURE.md)
 - [Checkpoint & CI/CD Integration (docs/CHECKPOINT.md)](docs/CHECKPOINT.md)
@@ -147,6 +148,16 @@ This work presents:
 │                           Schema System                                  │
 ├─────────────────────────────────────────────────────────────────────────┤
 │  Schema Learning (th.learn)  │  YAML Serialization  │  Fingerprint Cache│
+└──────────────────────────────┬──────────────────────────────────────────┘
+                               │
+                               ▼
+┌─────────────────────────────────────────────────────────────────────────┐
+│                     Auto-Profiling System (Phase 7)                      │
+├─────────────────────────────────────────────────────────────────────────┤
+│  DataProfiler  │  RuleGenerators  │  SuiteExport  │  StreamingMatcher   │
+│  • Sampling    │  • Schema rules  │  • YAML       │  • Chunk processing │
+│  • Patterns    │  • Stats rules   │  • JSON       │  • Aggregation      │
+│  • Caching     │  • Pattern rules │  • Python     │  • Pattern state    │
 └──────────────────────────────┬──────────────────────────────────────────┘
                                │
                                ▼
@@ -417,6 +428,14 @@ truthound profile data.csv
 # Drift Detection
 truthound compare baseline.csv current.csv
 truthound compare train.parquet prod.parquet --method psi --sample-size 10000
+
+# Auto-Profiling & Rule Generation (Phase 7)
+truthound auto-profile data.csv -o profile.json
+truthound generate-suite profile.json -o rules.yaml --strictness strict
+truthound quick-suite data.csv -o rules.yaml --preset ci_cd
+truthound list-formats    # Available export formats
+truthound list-presets    # Configuration presets
+truthound list-categories # Rule categories
 ```
 
 ---
@@ -678,13 +697,22 @@ truthound scan data.csv                     # PII scanning
 - ~~**Phase 4**: Storage backends & reporters infrastructure~~ **Completed** (5 backends, 4 formats)
 - ~~**Phase 5**: Enterprise data sources (BigQuery, Snowflake, etc.)~~ **Completed** (6 sources)
 - ~~**Phase 6**: Checkpoint & CI/CD integration~~ **Completed** (12 CI platforms, async execution, Saga pattern)
+- ~~**Phase 7**: Auto-Profiling & rule generation~~ **Completed** (See [docs/PROFILER.md](docs/PROFILER.md))
+  - 8 sampling strategies (Random, Stratified, Reservoir, Adaptive, etc.)
+  - Streaming pattern matching with 6 aggregation strategies
+  - Rule generators (Schema, Stats, Pattern, ML-based)
+  - Validation suite export (YAML, JSON, Python, TOML)
+  - Process isolation with timeout handling
+  - Caching with Redis/File/Memory backends
+  - OpenTelemetry observability integration
+  - Distributed processing framework (Spark, Dask, Ray)
+  - CLI commands: `auto-profile`, `generate-suite`, `quick-suite`
 
 ### 12.3 Planned Improvements
 
-1. **Phase 7**: Auto-Profiling & rule generation
-2. **Phase 8**: Web dashboard (Data Docs)
-3. **Phase 9**: Plugin architecture
-4. **Phase 10**: Real-time streaming validation
+1. **Phase 8**: Web dashboard (Data Docs) - Interactive HTML reports
+2. **Phase 9**: Plugin architecture - External validator/reporter plugins
+3. **Phase 10**: Advanced features (ML anomaly, Data Lineage, Real-time)
 
 ---
 
