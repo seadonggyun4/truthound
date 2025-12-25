@@ -14,6 +14,18 @@ from truthound.datasources import get_datasource, get_sql_datasource
 # Checkpoint and CI/CD integration (Phase 6)
 from truthound import checkpoint
 
+# Auto-profiling and rule generation (Phase 7)
+from truthound import profiler
+from truthound.profiler import (
+    DataProfiler,
+    profile_file,
+    profile_dataframe,
+    generate_suite,
+    ValidationSuite,
+    TableProfile,
+    ColumnProfile,
+)
+
 __version__ = "0.1.0"
 __all__ = [
     # Core API
@@ -33,4 +45,13 @@ __all__ = [
     "get_sql_datasource",
     # Phase 6: Checkpoint & CI/CD
     "checkpoint",
+    # Phase 7: Auto-profiling & Rule Generation
+    "profiler",
+    "DataProfiler",
+    "profile_file",
+    "profile_dataframe",
+    "generate_suite",
+    "ValidationSuite",
+    "TableProfile",
+    "ColumnProfile",
 ]
