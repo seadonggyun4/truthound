@@ -11,6 +11,9 @@ from truthound import datasources
 from truthound import execution
 from truthound.datasources import get_datasource, get_sql_datasource
 
+# Checkpoint and CI/CD integration (Phase 6)
+from truthound import checkpoint
+
 __version__ = "0.1.0"
 __all__ = [
     # Core API
@@ -28,4 +31,6 @@ __all__ = [
     "execution",
     "get_datasource",
     "get_sql_datasource",
+    # Phase 6: Checkpoint & CI/CD
+    "checkpoint",
 ]

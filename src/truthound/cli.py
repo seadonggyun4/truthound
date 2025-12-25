@@ -1,5 +1,6 @@
 """Command-line interface for Truthound."""
 
+import json
 from pathlib import Path
 from typing import Annotated, Optional
 
@@ -14,6 +15,13 @@ app = typer.Typer(
     help="Zero-configuration data quality toolkit powered by Polars",
     add_completion=False,
 )
+
+# Create checkpoint subcommand group
+checkpoint_app = typer.Typer(
+    name="checkpoint",
+    help="Checkpoint and CI/CD integration commands",
+)
+app.add_typer(checkpoint_app, name="checkpoint")
 
 
 @app.command(name="learn")
@@ -314,6 +322,332 @@ def compare_cmd(
     # Exit with error if strict mode and drift found
     if strict and drift_report.has_drift:
         raise typer.Exit(1)
+
+
+# =============================================================================
+# Checkpoint Commands
+# =============================================================================
+
+
+@checkpoint_app.command(name="run")
+def checkpoint_run_cmd(
+    name: Annotated[str, typer.Argument(help="Name of checkpoint to run")],
+    config_file: Annotated[
+        Optional[Path],
+        typer.Option("--config", "-c", help="Checkpoint configuration file (YAML/JSON)"),
+    ] = None,
+    data_source: Annotated[
+        Optional[Path],
+        typer.Option("--data", "-d", help="Override data source path"),
+    ] = None,
+    validators: Annotated[
+        Optional[list[str]],
+        typer.Option("--validators", "-v", help="Override validators (comma-separated)"),
+    ] = None,
+    output: Annotated[
+        Optional[Path],
+        typer.Option("--output", "-o", help="Output file for results (JSON)"),
+    ] = None,
+    format: Annotated[
+        str,
+        typer.Option("--format", "-f", help="Output format (console, json)"),
+    ] = "console",
+    strict: Annotated[
+        bool,
+        typer.Option("--strict", help="Exit with code 1 if issues are found"),
+    ] = False,
+    store_result: Annotated[
+        Optional[Path],
+        typer.Option("--store", help="Store results to directory"),
+    ] = None,
+    notify_slack: Annotated[
+        Optional[str],
+        typer.Option("--slack", help="Slack webhook URL for notifications"),
+    ] = None,
+    notify_webhook: Annotated[
+        Optional[str],
+        typer.Option("--webhook", help="Webhook URL for notifications"),
+    ] = None,
+    github_summary: Annotated[
+        bool,
+        typer.Option("--github-summary", help="Write GitHub Actions job summary"),
+    ] = False,
+) -> None:
+    """Run a checkpoint validation pipeline."""
+    from truthound.checkpoint import Checkpoint, CheckpointRegistry
+    from truthound.checkpoint.actions import (
+        StoreValidationResult,
+        SlackNotification,
+        WebhookAction,
+        GitHubAction,
+    )
+
+    try:
+        # Load from config file or create ad-hoc
+        if config_file:
+            if not config_file.exists():
+                typer.echo(f"Error: Config file not found: {config_file}", err=True)
+                raise typer.Exit(1)
+
+            registry = CheckpointRegistry()
+            registry.load_from_yaml(config_file) if config_file.suffix in (".yaml", ".yml") else registry.load_from_json(config_file)
+
+            if name not in registry:
+                typer.echo(f"Error: Checkpoint '{name}' not found in config", err=True)
+                typer.echo(f"Available: {', '.join(registry.list_names())}")
+                raise typer.Exit(1)
+
+            checkpoint = registry.get(name)
+        else:
+            # Create ad-hoc checkpoint
+            if not data_source:
+                typer.echo("Error: --data is required when not using config file", err=True)
+                raise typer.Exit(1)
+
+            if not data_source.exists():
+                typer.echo(f"Error: Data file not found: {data_source}", err=True)
+                raise typer.Exit(1)
+
+            validator_list = None
+            if validators:
+                validator_list = [v.strip() for v in ",".join(validators).split(",")]
+
+            actions = []
+
+            # Add actions based on CLI options
+            if store_result:
+                actions.append(StoreValidationResult(store_path=str(store_result)))
+
+            if notify_slack:
+                actions.append(SlackNotification(
+                    webhook_url=notify_slack,
+                    notify_on="failure",
+                ))
+
+            if notify_webhook:
+                actions.append(WebhookAction(url=notify_webhook))
+
+            if github_summary:
+                actions.append(GitHubAction(
+                    set_summary=True,
+                    set_output=True,
+                ))
+
+            checkpoint = Checkpoint(
+                name=name,
+                data_source=str(data_source),
+                validators=validator_list,
+                actions=actions,
+            )
+
+        # Run checkpoint
+        result = checkpoint.run()
+
+        # Output results
+        if format == "json":
+            result_json = json.dumps(result.to_dict(), indent=2, default=str)
+            if output:
+                output.write_text(result_json)
+                typer.echo(f"Results written to {output}")
+            else:
+                typer.echo(result_json)
+        else:
+            typer.echo(result.summary())
+
+        # Exit code based on status
+        if strict and result.status.value in ("failure", "error"):
+            raise typer.Exit(1)
+
+    except typer.Exit:
+        raise
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1)
+
+
+@checkpoint_app.command(name="list")
+def checkpoint_list_cmd(
+    config_file: Annotated[
+        Optional[Path],
+        typer.Option("--config", "-c", help="Checkpoint configuration file"),
+    ] = None,
+    format: Annotated[
+        str,
+        typer.Option("--format", "-f", help="Output format (console, json)"),
+    ] = "console",
+) -> None:
+    """List available checkpoints."""
+    from truthound.checkpoint import CheckpointRegistry
+
+    try:
+        registry = CheckpointRegistry()
+
+        if config_file:
+            if not config_file.exists():
+                typer.echo(f"Error: Config file not found: {config_file}", err=True)
+                raise typer.Exit(1)
+
+            if config_file.suffix in (".yaml", ".yml"):
+                registry.load_from_yaml(config_file)
+            else:
+                registry.load_from_json(config_file)
+
+        checkpoints = registry.list_all()
+
+        if not checkpoints:
+            typer.echo("No checkpoints registered.")
+            return
+
+        if format == "json":
+            result = json.dumps([cp.to_dict() for cp in checkpoints], indent=2)
+            typer.echo(result)
+        else:
+            typer.echo(f"Checkpoints ({len(checkpoints)}):")
+            for cp in checkpoints:
+                typer.echo(f"  - {cp.name}")
+                typer.echo(f"      Data: {cp.config.data_source}")
+                typer.echo(f"      Actions: {len(cp.actions)}")
+                typer.echo(f"      Triggers: {len(cp.triggers)}")
+
+    except typer.Exit:
+        raise
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1)
+
+
+@checkpoint_app.command(name="validate")
+def checkpoint_validate_cmd(
+    config_file: Annotated[
+        Path,
+        typer.Argument(help="Checkpoint configuration file to validate"),
+    ],
+) -> None:
+    """Validate a checkpoint configuration file."""
+    from truthound.checkpoint import CheckpointRegistry
+
+    try:
+        if not config_file.exists():
+            typer.echo(f"Error: Config file not found: {config_file}", err=True)
+            raise typer.Exit(1)
+
+        registry = CheckpointRegistry()
+
+        if config_file.suffix in (".yaml", ".yml"):
+            checkpoints = registry.load_from_yaml(config_file)
+        else:
+            checkpoints = registry.load_from_json(config_file)
+
+        all_valid = True
+
+        for cp in checkpoints:
+            errors = cp.validate()
+            if errors:
+                all_valid = False
+                typer.echo(f"Checkpoint '{cp.name}' has errors:")
+                for err in errors:
+                    typer.echo(f"  - {err}")
+            else:
+                typer.echo(f"Checkpoint '{cp.name}' is valid")
+
+        if all_valid:
+            typer.echo(f"\nAll {len(checkpoints)} checkpoint(s) are valid.")
+        else:
+            typer.echo("\nSome checkpoints have validation errors.", err=True)
+            raise typer.Exit(1)
+
+    except typer.Exit:
+        raise
+    except Exception as e:
+        typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1)
+
+
+@checkpoint_app.command(name="init")
+def checkpoint_init_cmd(
+    output: Annotated[
+        Path,
+        typer.Option("--output", "-o", help="Output file path"),
+    ] = Path("truthound.yaml"),
+    format: Annotated[
+        str,
+        typer.Option("--format", "-f", help="Config format (yaml, json)"),
+    ] = "yaml",
+) -> None:
+    """Initialize a sample checkpoint configuration file."""
+    import yaml
+
+    sample_config = {
+        "checkpoints": [
+            {
+                "name": "daily_data_validation",
+                "data_source": "data/production.csv",
+                "validators": ["null", "duplicate", "range", "regex"],
+                "min_severity": "medium",
+                "auto_schema": True,
+                "tags": {
+                    "environment": "production",
+                    "team": "data-platform",
+                },
+                "actions": [
+                    {
+                        "type": "store_result",
+                        "store_path": "./truthound_results",
+                        "partition_by": "date",
+                    },
+                    {
+                        "type": "update_docs",
+                        "site_path": "./truthound_docs",
+                        "include_history": True,
+                    },
+                    {
+                        "type": "slack",
+                        "webhook_url": "https://hooks.slack.com/services/YOUR/WEBHOOK/URL",
+                        "notify_on": "failure",
+                        "channel": "#data-quality",
+                    },
+                ],
+                "triggers": [
+                    {
+                        "type": "schedule",
+                        "interval_hours": 24,
+                        "run_on_weekdays": [0, 1, 2, 3, 4],  # Mon-Fri
+                    },
+                ],
+            },
+            {
+                "name": "hourly_metrics_check",
+                "data_source": "data/metrics.parquet",
+                "validators": ["null", "range"],
+                "actions": [
+                    {
+                        "type": "webhook",
+                        "url": "https://api.example.com/data-quality/events",
+                        "auth_type": "bearer",
+                        "auth_credentials": {"token": "${API_TOKEN}"},
+                    },
+                ],
+                "triggers": [
+                    {
+                        "type": "cron",
+                        "expression": "0 * * * *",  # Every hour
+                    },
+                ],
+            },
+        ],
+    }
+
+    if format == "json":
+        output = output.with_suffix(".json")
+        output.write_text(json.dumps(sample_config, indent=2))
+    else:
+        output = output.with_suffix(".yaml")
+        import yaml
+        output.write_text(yaml.dump(sample_config, default_flow_style=False, sort_keys=False))
+
+    typer.echo(f"Sample checkpoint config created: {output}")
+    typer.echo("\nEdit the file to configure your checkpoints, then run:")
+    typer.echo(f"  truthound checkpoint run <checkpoint_name> --config {output}")
 
 
 def main() -> None:

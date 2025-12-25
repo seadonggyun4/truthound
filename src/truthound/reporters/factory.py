@@ -2,6 +2,8 @@
 
 This module provides a registry-based factory pattern for creating reporter
 instances. New reporter types can be registered at runtime.
+
+Includes support for CI/CD platform-specific reporters.
 """
 
 from __future__ import annotations
@@ -15,6 +17,17 @@ ReporterConstructor = Callable[..., BaseReporter[Any, Any]]
 
 # Registry of reporter constructors
 _reporter_registry: dict[str, ReporterConstructor] = {}
+
+# CI platform identifiers for routing
+_CI_PLATFORMS = frozenset({
+    "github", "github_actions", "github-actions",
+    "gitlab", "gitlab_ci", "gitlab-ci",
+    "jenkins",
+    "azure", "azure_devops", "azure-devops", "azdo", "vsts",
+    "circleci", "circle", "circle_ci", "circle-ci",
+    "bitbucket", "bitbucket_pipelines", "bitbucket-pipelines",
+    "ci", "ci-auto", "auto-ci",
+})
 
 
 def register_reporter(name: str) -> Callable[[ReporterConstructor], ReporterConstructor]:
@@ -51,6 +64,8 @@ def get_reporter(format: str, **kwargs: Any) -> BaseReporter[Any, Any]:
             - "html": HTML format output (requires jinja2)
             - "console": Console/terminal output (using Rich)
             - "markdown": Markdown format output
+            - CI platforms: "github", "gitlab", "jenkins", "azure",
+              "circleci", "bitbucket", or "ci" for auto-detection
         **kwargs: Format-specific configuration options.
 
     Returns:
@@ -68,6 +83,12 @@ def get_reporter(format: str, **kwargs: Any) -> BaseReporter[Any, Any]:
         >>>
         >>> # Console reporter
         >>> reporter = get_reporter("console", color=True)
+        >>>
+        >>> # CI reporter (auto-detect platform)
+        >>> reporter = get_reporter("ci")
+        >>>
+        >>> # Specific CI platform
+        >>> reporter = get_reporter("github")
     """
     # Normalize format name
     format = format.lower().strip()
@@ -75,6 +96,15 @@ def get_reporter(format: str, **kwargs: Any) -> BaseReporter[Any, Any]:
     # Check if already registered
     if format in _reporter_registry:
         return _reporter_registry[format](**kwargs)
+
+    # Route CI platforms to CI reporter factory
+    if format in _CI_PLATFORMS:
+        from truthound.reporters.ci import get_ci_reporter
+
+        # Map generic "ci" to auto-detection
+        if format in ("ci", "ci-auto", "auto-ci"):
+            return get_ci_reporter(None, **kwargs)
+        return get_ci_reporter(format, **kwargs)
 
     # Lazy load built-in reporters
     if format == "json":
@@ -109,6 +139,13 @@ def get_reporter(format: str, **kwargs: Any) -> BaseReporter[Any, Any]:
             "html",
             "console",
             "markdown",
+            "ci",
+            "github",
+            "gitlab",
+            "jenkins",
+            "azure",
+            "circleci",
+            "bitbucket",
         ]
         raise ReporterError(
             f"Unknown reporter format: {format}. "
@@ -132,6 +169,9 @@ def list_available_formats() -> list[str]:
         formats.append("html")
     except ImportError:
         pass
+
+    # CI platforms
+    formats.extend(["ci", "github", "gitlab", "jenkins", "azure", "circleci", "bitbucket"])
 
     # Add registered formats
     formats.extend(_reporter_registry.keys())
@@ -163,5 +203,9 @@ def is_format_available(format: str) -> bool:
             return True
         except ImportError:
             return False
+
+    # CI platforms are always available
+    if format in _CI_PLATFORMS:
+        return True
 
     return False
