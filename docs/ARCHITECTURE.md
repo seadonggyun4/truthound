@@ -1,103 +1,271 @@
-# Truthound Architecture
+# Architecture Overview
 
-This document provides a comprehensive overview of Truthound's internal architecture, design patterns, and extension points.
+This document provides a comprehensive overview of Truthound's internal architecture, design principles, and system structure.
+
+---
 
 ## Table of Contents
 
-1. [System Overview](#1-system-overview)
-2. [Core Components](#2-core-components)
-3. [Design Patterns](#3-design-patterns)
-4. [Module Structure](#4-module-structure)
-5. [Type System](#5-type-system)
-6. [Extension Points](#6-extension-points)
-7. [Testing Architecture](#7-testing-architecture)
+1. [Design Philosophy](#1-design-philosophy)
+2. [System Architecture](#2-system-architecture)
+3. [Core Components](#3-core-components)
+4. [Data Flow](#4-data-flow)
+5. [Validator Framework](#5-validator-framework)
+6. [Execution Model](#6-execution-model)
+7. [Extension Points](#7-extension-points)
+8. [Phase Overview](#8-phase-overview)
+9. [Testing Architecture](#9-testing-architecture)
 
 ---
 
-## 1. System Overview
+## 1. Design Philosophy
 
-Truthound follows a layered architecture with clear separation of concerns:
+### Core Principles
+
+| Principle | Description |
+|-----------|-------------|
+| **Zero Configuration** | Immediate usability with sensible defaults; no boilerplate required |
+| **Performance First** | Polars LazyFrame architecture for efficient memory usage and computation |
+| **Type Safety** | Strong typing throughout with comprehensive runtime validation |
+| **Extensibility** | Modular architecture supporting custom validators, sources, and reporters |
+| **Composability** | Components designed for combination and reuse |
+| **Observability** | Rich output formats and detailed diagnostics |
+
+### Architectural Constraints
+
+1. **Polars Native**: All core operations implemented using Polars for consistent performance
+2. **Lazy Evaluation**: Deferred computation until results are required
+3. **Immutability**: Data structures are immutable where possible
+4. **Protocol-Based**: Components interact through well-defined protocols
+5. **Fail-Fast**: Validation errors raised immediately with clear context
+
+---
+
+## 2. System Architecture
+
+### High-Level Overview
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                              User Interface Layer                            │
-├─────────────────────────────────────────────────────────────────────────────┤
-│   Python API (th.check, th.scan, th.compare)   │   CLI (truthound check)   │
-└──────────────────────────────────┬──────────────────────────────────────────┘
-                                   │
-                                   ▼
+│                              User Interface                                   │
+│  ┌──────────────────────────────────┐  ┌─────────────────────────────────┐  │
+│  │         Python API               │  │             CLI                 │  │
+│  │  th.check() th.scan() th.compare │  │  truthound check data.csv       │  │
+│  └─────────────────┬────────────────┘  └───────────────┬─────────────────┘  │
+└────────────────────┼───────────────────────────────────┼────────────────────┘
+                     │                                   │
+                     └─────────────────┬─────────────────┘
+                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                            Input Adapter Layer                               │
-├─────────────────────────────────────────────────────────────────────────────┤
-│  pandas.DataFrame │ polars.DataFrame │ polars.LazyFrame │ dict │ CSV/JSON  │
-│                              ↓                                               │
-│                   Unified Polars LazyFrame                                   │
-└──────────────────────────────────┬──────────────────────────────────────────┘
-                                   │
-                                   ▼
+│                              Input Layer                                      │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │                        Data Source Factory                           │    │
+│  │  Polars │ Pandas │ Spark │ SQL │ BigQuery │ Snowflake │ Files      │    │
+│  └────────────────────────────────┬────────────────────────────────────┘    │
+└───────────────────────────────────┼─────────────────────────────────────────┘
+                                    ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                           Validation Engine                                  │
-├────────────────┬────────────────┬────────────────┬─────────────────────────┤
-│   Validators   │ Drift Detectors│   PII Scanners │   Anomaly Detectors     │
-│   (239 total)  │   (11 types)   │   (8 patterns) │     (13 methods)        │
-└────────────────┴────────────────┴────────────────┴─────────────────────────┘
-                                   │
-                                   ▼
+│                              Core Engine                                      │
+│  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐  ┌─────────────┐        │
+│  │   Schema    │  │  Validator  │  │    Drift    │  │     PII     │        │
+│  │  Inference  │  │   Engine    │  │   Engine    │  │   Scanner   │        │
+│  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘  └──────┬──────┘        │
+│         │                │                │                │                 │
+│         └────────────────┼────────────────┼────────────────┘                 │
+│                          ▼                ▼                                   │
+│  ┌───────────────────────────────────────────────────────────────────┐      │
+│  │                    Polars LazyFrame Processing                     │      │
+│  └───────────────────────────────────────────────────────────────────┘      │
+└────────────────────────────────────────────────────────────────────────┬────┘
+                                                                         │
+                                                                         ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                          Results & Storage Layer                             │
-├─────────────────────────────────────────────────────────────────────────────┤
-│    ValidationResult    │    ResultStore (5 backends)    │    Expectations   │
-└──────────────────────────────────┬──────────────────────────────────────────┘
-                                   │
-                                   ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                            Output Layer                                      │
-├─────────────────────────────────────────────────────────────────────────────┤
-│     Console (Rich)     │     JSON     │     HTML     │     Markdown         │
+│                              Output Layer                                     │
+│  ┌─────────────────────────────────────────────────────────────────────┐    │
+│  │                          Reporter Factory                            │    │
+│  │     Console │ JSON │ HTML │ Markdown │ JUnit │ Stores (S3/GCS/DB)  │    │
+│  └─────────────────────────────────────────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 1.1 Design Principles
+### Module Structure
 
-- **Lazy Evaluation**: Polars LazyFrame enables query optimization and memory-efficient processing
-- **Single Collection Pattern**: Validators minimize `collect()` calls to reduce computational overhead
-- **Protocol-Based Typing**: Optional dependencies use Protocol definitions for type safety without runtime imports
-- **Factory Pattern**: Extensible creation of stores and reporters via registry-based factories
-- **Modular Extensibility**: Base classes and mixins enable rapid development of specialized validators
+```
+src/truthound/
+├── __init__.py              # Public API exports
+├── cli.py                   # CLI interface (Typer)
+├── types.py                 # Type definitions
+├── core/                    # Core validation logic
+├── validators/              # 265+ validator implementations
+│   ├── base.py              # Validator base classes
+│   ├── schema/              # Schema validators (14)
+│   ├── completeness/        # Completeness validators (7)
+│   ├── uniqueness/          # Uniqueness validators (13)
+│   ├── distribution/        # Distribution validators (15)
+│   ├── string/              # String validators (18)
+│   ├── datetime/            # Datetime validators (10)
+│   ├── aggregate/           # Aggregate validators (8)
+│   ├── multicolumn/         # Multi-column validators (21)
+│   ├── query/               # Query validators (20)
+│   ├── table/               # Table validators (18)
+│   ├── geospatial/          # Geospatial validators (9)
+│   ├── drift/               # Drift validators (13)
+│   ├── anomaly/             # Anomaly validators (15)
+│   ├── privacy/             # Privacy validators (15)
+│   ├── business/            # Business validators (8)
+│   ├── localization/        # Localization validators (9)
+│   ├── ml/                  # ML feature validators (5)
+│   ├── profiling/           # Profiling validators (7)
+│   ├── referential/         # Referential validators (13)
+│   └── timeseries/          # Time series validators (14)
+├── datasources/             # Data source adapters
+│   ├── base.py              # DataSource protocol
+│   ├── polars_source.py     # Polars adapter
+│   ├── pandas_source.py     # Pandas adapter
+│   ├── spark_source.py      # Spark adapter
+│   └── sql/                 # SQL adapters (SQLite, PostgreSQL, BigQuery, etc.)
+├── execution/               # Execution engines
+├── profiler/                # Auto-profiling system
+├── checkpoint/              # Checkpoint & CI/CD system
+├── stores/                  # Result storage backends
+├── reporters/               # Output formatters
+├── datadocs/                # HTML report generation
+├── plugins/                 # Plugin architecture
+├── ml/                      # ML module (anomaly, drift, rule learning)
+├── lineage/                 # Data lineage tracking
+└── realtime/                # Streaming validation
+```
 
 ---
 
-## 2. Core Components
+## 3. Core Components
 
-### 2.1 Validators (`src/truthound/validators/`)
+### 3.1 DataSource
 
-Validators are the core building blocks for data quality checks.
+The `DataSource` abstraction provides a unified interface for accessing data from various backends.
+
+```python
+from truthound.datasources import BaseDataSource
+
+class DataSource(Protocol):
+    """Protocol for data source implementations."""
+
+    @property
+    def schema(self) -> dict[str, ColumnType]:
+        """Return column name to type mapping."""
+        ...
+
+    def to_lazyframe(self) -> pl.LazyFrame:
+        """Convert to Polars LazyFrame for processing."""
+        ...
+
+    def get_execution_engine(self) -> ExecutionEngine:
+        """Return execution engine for this source."""
+        ...
+
+    def needs_sampling(self) -> bool:
+        """Check if data exceeds size limits."""
+        ...
+
+    def sample(self, n: int) -> DataSource:
+        """Return sampled data source."""
+        ...
+```
+
+### 3.2 ExecutionEngine
+
+The `ExecutionEngine` handles actual validation operations with backend-specific optimizations.
+
+```python
+from truthound.execution import ExecutionEngine
+
+class ExecutionEngine(Protocol):
+    """Protocol for execution engine implementations."""
+
+    def count_rows(self) -> int:
+        """Return total row count."""
+        ...
+
+    def count_nulls(self, column: str) -> int:
+        """Return null count for column."""
+        ...
+
+    def count_distinct(self, column: str) -> int:
+        """Return distinct value count."""
+        ...
+
+    def get_stats(self, column: str) -> dict:
+        """Return statistical summary for column."""
+        ...
+
+    def count_matching(self, condition: str) -> int:
+        """Return count matching condition."""
+        ...
+```
+
+### 3.3 Validator
+
+All validators inherit from the `Validator` base class and implement the validation protocol.
 
 ```python
 from truthound.validators.base import Validator
 
-class MyValidator(Validator):
-    name = "my_validator"
+class Validator(ABC):
+    """Base class for all validators."""
 
-    def validate(self, lf: pl.LazyFrame) -> ValidatorResult:
-        # Validation logic here
-        pass
+    name: str                    # Unique validator name
+    category: str                # Validator category
+    description: str             # Human-readable description
+
+    @abstractmethod
+    def validate(self, lf: pl.LazyFrame) -> list[ValidationIssue]:
+        """Execute validation and return issues."""
+        ...
+
+    @abstractmethod
+    def get_config(self) -> dict:
+        """Return validator configuration."""
+        ...
 ```
 
-**Categories (21 total, 239 validators)**:
-- Schema (14): Column existence, types, referential integrity
-- Completeness (7): Null checks, completeness ratios
-- Uniqueness (13): Duplicate detection, primary keys
-- Distribution (15): Range, outlier, statistical tests
-- String (17): Regex, email, phone, JSON schema
-- Datetime (10): Format, range, freshness
-- Aggregate (8): Mean, median, sum constraints
-- Multi-column (16): Column comparisons, conditional rules
-- Drift (11): KS test, PSI, Jensen-Shannon
-- Anomaly (13): Isolation Forest, LOF, Mahalanobis
-- And more...
+### 3.4 ValidationIssue
 
-### 2.2 Stores (`src/truthound/stores/`)
+```python
+@dataclass
+class ValidationIssue:
+    """Represents a single validation issue."""
+
+    validator: str       # Validator that found the issue
+    column: str | None   # Affected column (if applicable)
+    severity: Severity   # low, medium, high, critical
+    message: str         # Human-readable message
+    details: dict        # Additional context
+    row_indices: list[int] | None  # Affected rows (if available)
+```
+
+### 3.5 Reporter
+
+Reporters transform validation results into various output formats.
+
+```python
+from truthound.reporters.base import ValidationReporter
+
+class ValidationReporter(Protocol[C]):
+    """Protocol for reporter implementations."""
+
+    name: str                    # Reporter name
+    file_extension: str          # Output file extension
+
+    def render(self, data: ValidationResult) -> str:
+        """Render result to string format."""
+        ...
+
+    def save(self, data: ValidationResult, path: Path) -> None:
+        """Save result to file."""
+        ...
+```
+
+### 3.6 Store
 
 Stores persist validation results and expectations.
 
@@ -116,6 +284,7 @@ result = store.get(run_id)
 ```
 
 **Available Backends**:
+
 | Backend | Package | Description |
 |---------|---------|-------------|
 | `filesystem` | (built-in) | Local filesystem storage |
@@ -124,48 +293,337 @@ result = store.get(run_id)
 | `gcs` | google-cloud-storage | Google Cloud Storage |
 | `database` | sqlalchemy | SQL database storage |
 
-### 2.3 Reporters (`src/truthound/reporters/`)
+---
 
-Reporters generate output in various formats.
+## 4. Data Flow
 
-```python
-from truthound.reporters import get_reporter
+### Validation Flow
 
-# Create reporter
-reporter = get_reporter("html", title="Validation Report")
+```
+Input                    Processing                     Output
+─────                    ──────────                     ──────
 
-# Generate output
-html = reporter.render(validation_result)
-reporter.write(validation_result, "report.html")
+Data Source         ┌─────────────────┐
+(CSV, Parquet,  ───►│  Input Adapter  │
+ DataFrame, SQL)    └────────┬────────┘
+                             │
+                             ▼
+                    ┌─────────────────┐
+                    │  LazyFrame      │  (Polars lazy evaluation)
+                    └────────┬────────┘
+                             │
+                    ┌────────┼────────┐
+                    ▼        ▼        ▼
+              ┌──────────┬──────────┬──────────┐
+              │ Schema   │ Pattern  │ Statist- │
+              │ Valid-   │ Valid-   │ ical     │  (Parallel execution)
+              │ ators    │ ators    │ Valid.   │
+              └────┬─────┴────┬─────┴────┬─────┘
+                   │          │          │
+                   └──────────┼──────────┘
+                              ▼
+                    ┌─────────────────┐
+                    │ Issue Collector │
+                    └────────┬────────┘
+                             │
+                             ▼
+                    ┌─────────────────┐            ┌──────────┐
+                    │ ValidationResult│───────────►│ Reporter │───► Output
+                    └─────────────────┘            └──────────┘
 ```
 
-**Available Formats**:
-| Format | Package | Description |
-|--------|---------|-------------|
-| `json` | (built-in) | JSON format output |
-| `console` | rich | Terminal output with formatting |
-| `markdown` | (built-in) | Markdown format output |
-| `html` | jinja2 | HTML pages with styling |
+### Drift Detection Flow
+
+```
+Baseline Data           Current Data
+     │                       │
+     ▼                       ▼
+┌─────────────┐        ┌─────────────┐
+│  LazyFrame  │        │  LazyFrame  │
+└──────┬──────┘        └──────┬──────┘
+       │                      │
+       └──────────┬───────────┘
+                  ▼
+         ┌─────────────────┐
+         │ Column Sampling │  (Optional)
+         └────────┬────────┘
+                  │
+         ┌────────┼────────┐
+         ▼        ▼        ▼
+   ┌──────────┬──────────┬──────────┐
+   │  KS Test │ PSI      │ Chi-Sq   │  (Method selection)
+   └────┬─────┴────┬─────┴────┬─────┘
+        │          │          │
+        └──────────┼──────────┘
+                   ▼
+          ┌─────────────────┐
+          │  Drift Report   │
+          └─────────────────┘
+```
 
 ---
 
-## 3. Design Patterns
+## 5. Validator Framework
 
-### 3.1 Factory Pattern with Registry
+### Validator Categories
 
-Stores and reporters use a registry-based factory pattern for extensibility:
+Validators are organized into 21 categories based on their validation focus:
+
+| Category | Count | Focus |
+|----------|-------|-------|
+| Schema | 14 | Column structure, types, relationships |
+| Completeness | 7 | Null detection, required fields |
+| Uniqueness | 13 | Duplicates, primary keys |
+| Distribution | 15 | Range, outliers, statistics |
+| String | 18 | Patterns, formats, encoding |
+| Datetime | 10 | Format, range, sequence |
+| Aggregate | 8 | Statistical constraints |
+| Cross-table | 4 | Multi-table relationships |
+| Multi-column | 21 | Column comparisons |
+| Query | 20 | Expression-based validation |
+| Table | 18 | Metadata, freshness |
+| Geospatial | 9 | Coordinates, boundaries |
+| Drift | 13 | Distribution changes |
+| Anomaly | 15 | Outlier detection |
+| Privacy | 15 | PII detection |
+| Business | 8 | Business rules (Luhn, IBAN) |
+| Localization | 9 | Regional formats |
+| ML Feature | 5 | Feature quality |
+| Profiling | 7 | Data characteristics |
+| Referential | 13 | Foreign key integrity |
+| Time Series | 14 | Temporal patterns |
+
+### Validator Registration
+
+Validators are automatically registered using decorators:
 
 ```python
-# Registration via decorator
-@register_store("my_backend")
-class MyStore(BaseStore):
-    pass
+from truthound.validators.base import register_validator
 
-# Usage via factory
-store = get_store("my_backend", **config)
+@register_validator("null_check")
+class NullCheckValidator(Validator):
+    """Check for null values in columns."""
+
+    name = "null_check"
+    category = "completeness"
+
+    def validate(self, lf: pl.LazyFrame) -> list[ValidationIssue]:
+        # Implementation
+        ...
 ```
 
-### 3.2 Protocol-Based Optional Dependencies
+### Validator Discovery
+
+```python
+from truthound.validators import get_validator, list_validators
+
+# Get specific validator
+validator = get_validator("null_check")
+
+# List all validators
+all_validators = list_validators()
+
+# List by category
+completeness_validators = list_validators(category="completeness")
+```
+
+---
+
+## 6. Execution Model
+
+### Lazy Evaluation
+
+Truthound leverages Polars' lazy evaluation for efficient processing:
+
+1. **Plan Construction**: Validation operations build a query plan
+2. **Optimization**: Polars optimizes the plan (predicate pushdown, projection)
+3. **Execution**: Plan executed only when results are collected
+
+```python
+# Query plan is built but not executed
+lf = pl.scan_csv("large_file.csv")
+
+# Validators add operations to plan
+validator.validate(lf)
+
+# Execution happens on collect()
+issues = validator.validate(lf)  # Executes optimized plan
+```
+
+### Parallel Execution
+
+Multiple validators can execute concurrently:
+
+```python
+from concurrent.futures import ThreadPoolExecutor
+
+def run_validators(lf: pl.LazyFrame, validators: list[Validator]) -> list[ValidationIssue]:
+    issues = []
+    with ThreadPoolExecutor() as executor:
+        futures = [executor.submit(v.validate, lf) for v in validators]
+        for future in futures:
+            issues.extend(future.result())
+    return issues
+```
+
+### Memory Management
+
+```python
+from truthound.datasources.base import DataSourceConfig
+
+config = DataSourceConfig(
+    max_rows=10_000_000,      # Maximum rows before sampling
+    max_memory_mb=4096,        # Memory threshold
+    sample_size=100_000,       # Default sample size
+    sample_seed=42,            # Reproducible sampling
+)
+```
+
+---
+
+## 7. Extension Points
+
+### 7.1 Custom Validators
+
+```python
+from truthound.validators.base import Validator, register_validator
+
+@register_validator("custom_check")
+class CustomValidator(Validator):
+    name = "custom_check"
+    category = "custom"
+
+    def __init__(self, column: str, threshold: float):
+        self.column = column
+        self.threshold = threshold
+
+    def validate(self, lf: pl.LazyFrame) -> list[ValidationIssue]:
+        # Custom validation logic
+        ...
+```
+
+### 7.2 Custom Data Sources
+
+```python
+from truthound.datasources import BaseDataSource, register_source
+
+@register_source("custom")
+class CustomDataSource(BaseDataSource):
+    source_type = "custom"
+
+    def to_lazyframe(self) -> pl.LazyFrame:
+        # Convert custom format to LazyFrame
+        ...
+```
+
+### 7.3 Custom Reporters
+
+```python
+from truthound.reporters import ValidationReporter, register_reporter
+
+@register_reporter("xml")
+class XMLReporter(ValidationReporter):
+    name = "xml"
+    file_extension = ".xml"
+
+    def render(self, data: ValidationResult) -> str:
+        # Render to XML format
+        ...
+```
+
+### 7.4 Plugin System
+
+The plugin architecture enables external extensions:
+
+```python
+from truthound.plugins import ValidatorPlugin, register_plugin
+
+@register_plugin
+class MyValidatorPlugin(ValidatorPlugin):
+    def get_validators(self) -> list[type]:
+        return [MyCustomValidator1, MyCustomValidator2]
+```
+
+See [Plugin Architecture](PLUGINS.md) for comprehensive plugin documentation.
+
+---
+
+## 8. Phase Overview
+
+Truthound's development follows a phased approach:
+
+| Phase | Status | Description |
+|-------|--------|-------------|
+| **Phase 1** | Complete | Core validation engine with LazyFrame architecture |
+| **Phase 2** | Complete | Advanced validators (aggregate, cross-table, drift, anomaly, privacy) |
+| **Phase 3** | Complete | Extensibility (referential, time series, business, localization, ML) |
+| **Phase 4** | Complete | Storage backends and reporters infrastructure |
+| **Phase 5** | Complete | Multi-data source support (BigQuery, Snowflake, Databricks, etc.) |
+| **Phase 6** | Complete | Checkpoint orchestration and CI/CD integration |
+| **Phase 7** | Complete | Auto-profiling and rule generation |
+| **Phase 8** | Complete | Data Docs (HTML report generation) |
+| **Phase 9** | Complete | Plugin architecture |
+| **Phase 10** | Complete | Advanced features (ML, Lineage, Realtime) |
+
+### Feature Distribution
+
+```
+┌────────────────────────────────────────────────────────────────────────────┐
+│                         Truthound Feature Map                               │
+├────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│  Phase 1-3: Core Engine                                                     │
+│  ├── 265+ Validators across 21 categories                                  │
+│  ├── Schema inference and learning                                          │
+│  ├── Pattern detection (email, phone, credit card, etc.)                   │
+│  └── Statistical validation (range, distribution, outliers)                │
+│                                                                             │
+│  Phase 4: Infrastructure                                                    │
+│  ├── Storage backends (Filesystem, S3, GCS, Database)                      │
+│  └── Reporters (Console, JSON, HTML, Markdown, JUnit)                      │
+│                                                                             │
+│  Phase 5: Multi-Source                                                      │
+│  ├── DataFrame (Polars, Pandas, Spark)                                     │
+│  ├── SQL (PostgreSQL, MySQL, SQLite)                                       │
+│  └── Cloud DW (BigQuery, Snowflake, Redshift, Databricks)                 │
+│                                                                             │
+│  Phase 6: CI/CD                                                             │
+│  ├── Checkpoint orchestration                                               │
+│  ├── 12 CI platform support                                                 │
+│  ├── Async execution                                                        │
+│  └── Transaction management (Saga pattern)                                  │
+│                                                                             │
+│  Phase 7: Auto-Profiling                                                    │
+│  ├── Statistical profiling                                                  │
+│  ├── Pattern detection                                                      │
+│  └── Rule generation                                                        │
+│                                                                             │
+│  Phase 8: Data Docs                                                         │
+│  ├── HTML report generation                                                 │
+│  ├── 5 themes, 4 chart libraries                                           │
+│  └── Interactive dashboard (optional)                                       │
+│                                                                             │
+│  Phase 9: Plugin Architecture                                               │
+│  ├── Validator plugins                                                      │
+│  ├── Reporter plugins                                                       │
+│  ├── DataSource plugins                                                     │
+│  └── Hook system                                                            │
+│                                                                             │
+│  Phase 10: Advanced                                                         │
+│  ├── ML Module (anomaly detection, drift, rule learning)                   │
+│  ├── Lineage Module (graph, tracking, impact analysis)                     │
+│  └── Realtime Module (streaming, incremental, checkpointing)              │
+│                                                                             │
+└────────────────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+## 9. Testing Architecture
+
+### Design Patterns
+
+#### Protocol-Based Optional Dependencies
 
 Optional dependencies (boto3, sqlalchemy, jinja2) use Protocol definitions for type safety:
 
@@ -175,267 +633,11 @@ Optional dependencies (boto3, sqlalchemy, jinja2) use Protocol definitions for t
 class S3ClientProtocol(Protocol):
     def put_object(self, *, Bucket: str, Key: str, Body: bytes) -> dict[str, Any]: ...
     def get_object(self, *, Bucket: str, Key: str) -> dict[str, Any]: ...
-
-# In implementation
-if TYPE_CHECKING:
-    from ._protocols import S3ClientProtocol
-
-class S3Store(ValidationStore):
-    def __init__(self):
-        self._client: S3ClientProtocol | None = None
 ```
 
-This approach:
-- Avoids `Any` type usage
-- Provides IDE autocompletion
-- Enables mock-based testing without real dependencies
-- Has zero runtime cost (TYPE_CHECKING block)
-
-### 3.3 Lazy Import Pattern
-
-Optional packages are imported lazily to avoid ImportError:
-
-```python
-# Lazy import with flag
-try:
-    import boto3
-    HAS_BOTO3 = True
-except ImportError:
-    HAS_BOTO3 = False
-
-def _require_boto3() -> None:
-    if not HAS_BOTO3:
-        raise ImportError(
-            "boto3 is required for S3Store. "
-            "Install with: pip install truthound[s3]"
-        )
-```
-
-### 3.4 Configuration Dataclasses
-
-Each component uses typed configuration:
-
-```python
-@dataclass
-class S3Config(StoreConfig):
-    bucket: str = ""
-    prefix: str = ""
-    use_compression: bool = False
-    compression_level: int = 6
-```
-
----
-
-## 4. Module Structure
-
-```
-src/truthound/
-├── __init__.py              # Public API (th.check, th.scan, etc.)
-├── _api.py                  # API implementation
-├── _inputs.py               # Input adapter layer
-│
-├── validators/              # Validation logic
-│   ├── __init__.py
-│   ├── base.py              # Base Validator class
-│   ├── schema.py            # Schema validators
-│   ├── completeness.py      # Null/completeness validators
-│   ├── uniqueness.py        # Uniqueness validators
-│   ├── distribution.py      # Distribution validators
-│   ├── string.py            # String validators
-│   ├── datetime_validators.py
-│   ├── aggregate.py
-│   ├── multi_column.py
-│   ├── drift.py             # Drift detection
-│   ├── anomaly.py           # Anomaly detection
-│   └── ...
-│
-├── stores/                  # Result persistence
-│   ├── __init__.py
-│   ├── base.py              # BaseStore, StoreConfig
-│   ├── factory.py           # get_store(), register_store()
-│   ├── results.py           # ValidationResult, ValidatorResult
-│   ├── expectations.py      # Expectation, ExpectationSuite
-│   └── backends/
-│       ├── __init__.py
-│       ├── _protocols.py    # Protocol definitions
-│       ├── filesystem.py    # FileSystemStore
-│       ├── memory.py        # MemoryStore
-│       ├── s3.py            # S3Store
-│       ├── gcs.py           # GCSStore
-│       └── database.py      # DatabaseStore
-│
-├── reporters/               # Report generation
-│   ├── __init__.py
-│   ├── base.py              # BaseReporter, ReporterConfig
-│   ├── factory.py           # get_reporter(), register_reporter()
-│   ├── _protocols.py        # Jinja2 Protocol definitions
-│   ├── json_reporter.py
-│   ├── console_reporter.py
-│   ├── markdown_reporter.py
-│   └── html_reporter.py
-│
-└── schema/                  # Schema inference & caching
-    ├── __init__.py
-    ├── inference.py
-    └── cache.py
-```
-
----
-
-## 5. Type System
-
-### 5.1 Generic Types
-
-Stores and reporters use generic types for type safety:
-
-```python
-T = TypeVar("T")  # Item type
-C = TypeVar("C", bound="StoreConfig")  # Config type
-
-class BaseStore(Generic[T, C], ABC):
-    _config: C
-
-    def save(self, item: T) -> str: ...
-    def get(self, item_id: str) -> T: ...
-```
-
-### 5.2 Protocol Definitions
-
-Optional dependency interfaces are defined as Protocols:
-
-```python
-# stores/backends/_protocols.py
-@runtime_checkable
-class S3ClientProtocol(Protocol):
-    def head_bucket(self, *, Bucket: str) -> dict[str, Any]: ...
-    def get_object(self, *, Bucket: str, Key: str) -> dict[str, Any]: ...
-    def put_object(self, *, Bucket: str, Key: str, Body: bytes, ...) -> dict[str, Any]: ...
-    def head_object(self, *, Bucket: str, Key: str) -> dict[str, Any]: ...
-    def delete_object(self, *, Bucket: str, Key: str) -> dict[str, Any]: ...
-    def list_objects_v2(self, *, Bucket: str, Prefix: str = "") -> dict[str, Any]: ...
-
-@runtime_checkable
-class GCSClientProtocol(Protocol):
-    def bucket(self, bucket_name: str) -> "GCSBucketProtocol": ...
-
-@runtime_checkable
-class SQLEngineProtocol(Protocol):
-    def connect(self) -> Any: ...
-    def dispose(self) -> None: ...
-```
-
-### 5.3 Result Types
-
-```python
-@dataclass
-class ValidationResult:
-    run_id: str
-    run_time: datetime
-    data_asset: str
-    status: ResultStatus
-    results: list[ValidatorResult]
-    statistics: ResultStatistics
-    tags: dict[str, str] = field(default_factory=dict)
-
-@dataclass
-class ValidatorResult:
-    validator_name: str
-    success: bool
-    column: str | None = None
-    issue_type: str | None = None
-    count: int | None = None
-    severity: str | None = None
-    message: str | None = None
-```
-
----
-
-## 6. Extension Points
-
-### 6.1 Custom Validators
-
-```python
-from truthound.validators.base import Validator, ValidatorResult
-
-class CustomBusinessValidator(Validator):
-    name = "custom_business"
-
-    def __init__(self, threshold: float = 0.9):
-        self.threshold = threshold
-
-    def validate(self, lf: pl.LazyFrame) -> ValidatorResult:
-        # Your validation logic
-        passed = self._check_business_rule(lf)
-        return ValidatorResult(
-            validator_name=self.name,
-            success=passed,
-            message="Business rule validation"
-        )
-```
-
-### 6.2 Custom Store Backend
-
-```python
-from truthound.stores import register_store, BaseStore, StoreConfig
-
-@dataclass
-class RedisConfig(StoreConfig):
-    host: str = "localhost"
-    port: int = 6379
-    db: int = 0
-
-@register_store("redis")
-class RedisStore(BaseStore[ValidationResult, RedisConfig]):
-    def save(self, item: ValidationResult) -> str:
-        # Implementation
-        pass
-
-    def get(self, item_id: str) -> ValidationResult:
-        # Implementation
-        pass
-```
-
-### 6.3 Custom Reporter
-
-```python
-from truthound.reporters import register_reporter, BaseReporter, ReporterConfig
-
-@dataclass
-class SlackReporterConfig(ReporterConfig):
-    webhook_url: str = ""
-    channel: str = "#data-quality"
-
-@register_reporter("slack")
-class SlackReporter(BaseReporter[SlackReporterConfig]):
-    def render(self, data: ValidationResult) -> str:
-        # Build Slack message
-        pass
-
-    def write(self, data: ValidationResult, path: str | Path) -> None:
-        # Send to Slack
-        pass
-```
-
----
-
-## 7. Testing Architecture
-
-### 7.1 Mock-Based Testing
+#### Mock-Based Testing
 
 Optional dependencies are tested using comprehensive mocks:
-
-```
-tests/
-├── mocks/
-│   ├── __init__.py
-│   ├── cloud_mocks.py      # MockS3Client, MockGCSClient
-│   ├── database_mocks.py   # MockSQLEngine, MockSession
-│   └── reporter_mocks.py   # MockJinja2Template
-├── test_stores_optional_backends.py
-└── test_reporters_optional.py
-```
-
-Mock implementations mirror real behavior:
 
 ```python
 class MockS3Client:
@@ -455,29 +657,24 @@ class MockS3Client:
         return {"Body": io.BytesIO(obj.body)}
 ```
 
-### 7.2 Test Categories
+### Test Categories
 
 | Category | Count | Description |
 |----------|-------|-------------|
-| Unit Tests | 106 | Core functionality |
-| Validator Tests | 473 | All 239 validators |
-| Integration Tests | 138 | End-to-end workflows |
-| Mock Backend Tests | 31 | Optional dependency testing |
-| **Total** | **748+** | All passing |
+| Unit Tests | 150+ | Core functionality |
+| Validator Tests | 500+ | All 265 validators |
+| Integration Tests | 200+ | End-to-end workflows |
+| Mock Backend Tests | 50+ | Optional dependency testing |
+| E2E Tests | 100+ | Complete pipeline tests |
+| **Total** | **1004** | All passing |
 
 ---
 
-## Summary
+## See Also
 
-Truthound's architecture prioritizes:
-
-1. **Performance**: Polars LazyFrame for efficient data processing
-2. **Type Safety**: Protocol-based optional dependencies, generics
-3. **Extensibility**: Registry-based factories, plugin architecture
-4. **Testability**: Comprehensive mocks for optional dependencies
-5. **Modularity**: Clear separation between validators, stores, reporters
-
-For specific component documentation, see:
-- [Stores Documentation](STORES.md)
-- [Reporters Documentation](REPORTERS.md)
-- [Validator Reference](VALIDATORS.md)
+- [Getting Started](GETTING_STARTED.md) — Quick start guide
+- [Validators Reference](VALIDATORS.md) — Complete validator documentation
+- [Data Sources](DATASOURCES.md) — Data source adapters
+- [Storage Backends](STORES.md) — Result persistence
+- [Plugin Architecture](PLUGINS.md) — Extension system
+- [API Reference](API_REFERENCE.md) — Complete API documentation
