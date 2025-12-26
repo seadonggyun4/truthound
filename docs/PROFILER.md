@@ -1,6 +1,6 @@
 # Auto-Profiling & Rule Generation (Phase 7)
 
-This document describes Truthound's Auto-Profiling system, which automatically analyzes datasets and generates validation rules without manual configuration.
+This document describes Truthound's Auto-Profiling system, a streaming profiler with schema versioning and distributed processing capabilities. The system automatically analyzes datasets and generates validation rules without manual configuration.
 
 ## Table of Contents
 
@@ -22,15 +22,17 @@ This document describes Truthound's Auto-Profiling system, which automatically a
 
 ## Overview
 
-The Auto-Profiling system provides:
+The Auto-Profiling system provides enterprise-grade capabilities for data quality analysis:
 
-- **Automatic Data Profiling**: Analyze column statistics, patterns, and data types
-- **Rule Generation**: Generate validation rules from profile results
-- **Validation Suite Export**: Export rules to YAML, JSON, Python, or TOML
-- **Streaming Support**: Process large files in chunks with pattern aggregation
-- **Memory Safety**: Sampling strategies and OOM prevention
-- **Process Isolation**: Timeout handling with multiprocessing
+- **Automatic Data Profiling**: Column statistics, patterns, and data types with 100M+ rows/sec throughput
+- **Rule Generation**: Generate validation rules from profile results with configurable strictness
+- **Validation Suite Export**: Export rules to YAML, JSON, Python, or TOML formats
+- **Streaming Support**: Process large files in chunks with pattern aggregation strategies
+- **Memory Safety**: Sampling strategies and OOM prevention through LazyFrame architecture
+- **Process Isolation**: Timeout handling with multiprocessing and circuit breaker patterns
+- **Schema Versioning**: Forward/backward compatible profile serialization with automatic migration
 - **Caching**: Incremental profiling with fingerprint-based cache invalidation
+- **Distributed Processing**: Multi-threaded local processing with framework support for Spark, Dask, and Ray
 
 ### Architecture
 
@@ -594,14 +596,17 @@ profiler = DataProfiler(config, progress_callback=my_callback)
 
 ## Distributed Processing
 
+The distributed processing module enables parallel profiling across multiple cores or nodes, achieving linear scalability for large datasets.
+
 ### Available Backends
 
-| Backend | Description | Status |
-|---------|-------------|--------|
-| `local` | Multi-threaded local | ✅ Ready |
-| `spark` | Apache Spark | ⚠️ Framework only |
-| `dask` | Dask distributed | ⚠️ Framework only |
-| `ray` | Ray framework | ⚠️ Framework only |
+| Backend | Description | Execution Strategy | Status |
+|---------|-------------|-------------------|--------|
+| `local` | Multi-threaded local | ThreadPoolExecutor with adaptive sizing | ✅ Ready |
+| `process` | Multi-process local | ProcessPoolExecutor with isolation | ✅ Ready |
+| `spark` | Apache Spark | SparkContext-based distribution | ⚠️ Framework |
+| `dask` | Dask distributed | Delayed computation graph | ⚠️ Framework |
+| `ray` | Ray framework | Actor-based parallelism | ⚠️ Framework |
 
 ### Usage
 
@@ -623,12 +628,31 @@ profile = profiler.profile("hdfs://data/large.parquet")
 
 ### Partition Strategies
 
-| Strategy | Description |
-|----------|-------------|
-| `row_based` | Split by row ranges |
-| `column_based` | Profile columns in parallel |
-| `hybrid` | Combine both strategies |
-| `hash` | Hash-based partitioning |
+| Strategy | Description | Optimal Use Case |
+|----------|-------------|------------------|
+| `row_based` | Split by row ranges | Large row counts, uniform columns |
+| `column_based` | Profile columns in parallel | Many columns, limited rows |
+| `hybrid` | Combine both strategies | Balanced datasets |
+| `hash` | Hash-based partitioning | Reproducible results |
+
+### Execution Backend Selection
+
+The `AdaptiveStrategy` automatically selects the optimal execution backend based on operation characteristics:
+
+```python
+from truthound.profiler import AdaptiveStrategy, ExecutionBackend
+
+strategy = AdaptiveStrategy()
+
+# Automatic selection based on data size and operation type
+backend = strategy.select(
+    estimated_rows=10_000_000,
+    operation_type="profile_column",
+    cpu_bound=True,
+)
+# Returns: ExecutionBackend.THREAD for I/O-bound
+# Returns: ExecutionBackend.PROCESS for CPU-bound with large data
+```
 
 ---
 
@@ -842,6 +866,55 @@ jobs:
           truthound check data/production.csv \
             --schema rules.yaml \
             --strict
+```
+
+---
+
+## Schema Versioning
+
+The profiler implements semantic versioning for profile serialization, ensuring forward and backward compatibility across versions.
+
+### Version Format
+
+```
+major.minor.patch
+```
+
+- **major**: Breaking changes requiring migration
+- **minor**: New features, backward compatible
+- **patch**: Bug fixes, fully compatible
+
+### Automatic Migration
+
+```python
+from truthound.profiler import ProfileSerializer, SchemaVersion
+
+serializer = ProfileSerializer()
+
+# Load profile from any compatible version
+profile = serializer.deserialize(old_profile_data)
+# Automatically migrates from source version to current
+
+# Save with current schema version
+data = serializer.serialize(profile)
+# Includes schema_version field for future compatibility
+```
+
+### Validation
+
+```python
+from truthound.profiler import SchemaValidator, ValidationResult
+
+validator = SchemaValidator()
+result = validator.validate(profile_data, fix_issues=True)
+
+if result.result == ValidationResult.VALID:
+    print("Profile data is valid")
+elif result.result == ValidationResult.RECOVERABLE:
+    print(f"Fixed issues: {result.warnings}")
+    data = result.fixed_data
+else:
+    print(f"Invalid: {result.errors}")
 ```
 
 ---

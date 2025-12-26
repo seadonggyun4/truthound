@@ -33,17 +33,17 @@ Truthound is a high-performance data quality validation framework designed for m
 
 | Feature | Description |
 |---------|-------------|
-| **265+ Validators** | Schema, completeness, uniqueness, distribution, string patterns, datetime, and more |
+| **275+ Validators** | Schema, completeness, uniqueness, distribution, string patterns, datetime, and more |
 | **Zero Configuration** | Automatic schema inference with fingerprint-based caching |
-| **High Performance** | Polars LazyFrame architecture for memory-efficient processing |
-| **Statistical Analysis** | 11 drift detection methods, 15 anomaly detection algorithms |
+| **High Performance** | Polars LazyFrame architecture achieving 100M+ rows/sec throughput |
+| **Statistical Analysis** | 13 drift detection methods, 15 anomaly detection algorithms |
 | **Privacy Compliance** | GDPR, CCPA, LGPD, PIPEDA, APPI pattern detection |
 | **Multi-Backend Support** | Polars, Pandas, SQL databases, Spark, and cloud data warehouses |
 | **CI/CD Integration** | Native support for 12 CI platforms with checkpoint orchestration |
-| **Auto-Profiling** | Automatic rule generation from data profiling |
+| **Auto-Profiling** | Streaming profiler with schema versioning and distributed processing |
 | **Data Docs** | Interactive HTML reports with 5 themes and 4 chart libraries |
 | **Plugin Architecture** | Extensible system for custom validators, reporters, and datasources |
-| **ML Integration** | Anomaly detection, drift detection, and rule learning |
+| **ML Integration** | Anomaly detection, drift detection, and ML-based type inference |
 | **Data Lineage** | Graph-based lineage tracking and impact analysis |
 | **Realtime Validation** | Streaming support with Kafka, Kinesis, and Pub/Sub |
 
@@ -123,11 +123,11 @@ Drift detection with sampling achieves **92x speedup** on 5M row datasets.
 
 | Phase | Documentation | Description |
 |-------|---------------|-------------|
-| **Phase 1-3** | [Core Validators](docs/VALIDATORS.md) | 265 validators across 21 categories |
+| **Phase 1-3** | [Core Validators](docs/VALIDATORS.md) | 275 validators across 22 categories |
 | **Phase 4** | [Storage & Reporters](docs/STORES.md), [Reporters](docs/REPORTERS.md) | Persistence and output formats |
 | **Phase 5** | [Data Sources](docs/DATASOURCES.md) | Multi-backend support (BigQuery, Snowflake, etc.) |
 | **Phase 6** | [Checkpoint & CI/CD](docs/CHECKPOINT.md) | Orchestration and CI/CD integration |
-| **Phase 7** | [Auto-Profiling](docs/PROFILER.md) | Automatic rule generation |
+| **Phase 7** | [Auto-Profiling](docs/PROFILER.md) | Streaming profiler with distributed processing |
 | **Phase 8** | [Data Docs](docs/DATADOCS.md) | HTML report generation |
 | **Phase 9** | [Plugin Architecture](docs/PLUGINS.md) | Extensibility framework |
 | **Phase 10** | [Advanced Features](docs/ADVANCED.md) | ML, Lineage, and Realtime modules |

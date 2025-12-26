@@ -1,6 +1,6 @@
 # Truthound Validator Reference
 
-This document provides a comprehensive reference for all 169 validators implemented in Truthound v0.2.0. Each validator is designed to address specific data quality concerns and follows consistent patterns for configuration and usage.
+This document provides a comprehensive reference for all 275 validators implemented in Truthound. Each validator is designed to address specific data quality concerns and follows consistent patterns for configuration and usage.
 
 ---
 
@@ -1739,17 +1739,24 @@ validator = DBSCANAnomalyValidator(
 | Completeness | 7 | Core | Missing value detection |
 | Uniqueness | 13 | Core | Duplicate and key validation |
 | Distribution | 15 | Core | Range and statistical checks |
-| String | 17 | Core | Pattern and format validation |
+| String | 18 | Core | Pattern and format validation |
 | Datetime | 10 | Core | Temporal data validation |
 | Aggregate | 8 | Core | Statistical aggregate checks |
 | Cross-Table | 4 | Core | Multi-table relationships |
-| Query | 17 | Core | Expression-based validation |
-| Multi-Column | 18 | Core | Column relationships |
-| Table | 13 | Core | Table metadata validation |
-| Geospatial | 8 | Core | Geographic coordinates |
-| Drift | 11 | scipy | Distribution change detection |
-| Anomaly | 13 | scipy, scikit-learn | Outlier detection |
-| **Total** | **169** | | |
+| Query | 20 | Core | Expression-based validation |
+| Multi-Column | 21 | Core | Column relationships |
+| Table | 18 | Core | Table metadata validation |
+| Geospatial | 9 | Core | Geographic coordinates |
+| Drift | 13 | scipy | Distribution change detection |
+| Anomaly | 15 | scipy, scikit-learn | Outlier detection |
+| Business | 8 | Core | Domain-specific validation (Luhn, IBAN, VAT, ISBN) |
+| Localization | 9 | Core | Regional identifiers (Korean, Japanese, Chinese) |
+| ML Feature | 5 | Core | Leakage detection, correlation analysis |
+| Profiling | 7 | Core | Cardinality, entropy, frequency analysis |
+| Referential | 13 | Core | Foreign key and orphan record validation |
+| Time Series | 14 | Core | Gap detection, seasonality, trend analysis |
+| Privacy | 15 | Core | GDPR, CCPA, LGPD compliance patterns |
+| **Total** | **275** | | |
 
 ---
 
@@ -1794,5 +1801,5 @@ pip install truthound[all]
 
 ---
 
-*Document Version: 0.2.0*
+*Document Version: 1.0.0*
 *Last Updated: December 2025*
