@@ -9,6 +9,14 @@ This module provides comprehensive validators for global privacy regulations:
 - PIPEDA (Canada Personal Information Protection)
 - APPI (Japan Act on Protection of Personal Information)
 
+**Plugin-Based Regulations (Extensible):**
+- POPIA (South Africa Protection of Personal Information Act)
+- PDPA Thailand (Personal Data Protection Act)
+- PDPB India (Personal Data Protection Bill)
+- KVKK Turkey (Kişisel Verilerin Korunması Kanunu)
+- HIPAA Healthcare (US Health Insurance Portability)
+- PCI-DSS Financial (Payment Card Industry Data Security)
+
 **Validator Categories:**
 
 1. **PII Detection Validators**
@@ -31,6 +39,15 @@ This module provides comprehensive validators for global privacy regulations:
    - CCPADoNotSellValidator: Opt-out tracking
    - CCPAConsumerRightsValidator: Rights infrastructure
 
+4. **Plugin-Based Validators**
+   - PluginBasedValidator: Use any registered privacy plugin
+   - POPIAPlugin: South Africa POPIA compliance
+   - PDPAThailandPlugin: Thailand PDPA compliance
+   - PDPBIndiaPlugin: India PDPB compliance
+   - KVKKTurkeyPlugin: Turkey KVKK compliance
+   - HIPAAHealthcarePlugin: US HIPAA healthcare compliance
+   - PCIDSSFinancialPlugin: PCI-DSS payment card compliance
+
 **Usage Example:**
 
     from truthound.validators.privacy import (
@@ -51,6 +68,27 @@ This module provides comprehensive validators for global privacy regulations:
     global_validator = GlobalPrivacyValidator()
     issues = global_validator.validate(df.lazy())
 
+**Plugin System Example:**
+
+    from truthound.validators.privacy import (
+        get_privacy_plugin,
+        list_privacy_plugins,
+        PluginBasedValidator,
+    )
+
+    # List available plugins
+    plugins = list_privacy_plugins()
+    # ['popia', 'pdpa_thailand', 'pdpb_india', 'kvkk_turkey', ...]
+
+    # Use a plugin
+    plugin = get_privacy_plugin("popia")
+    validator = plugin.create_validator()
+    issues = validator.validate(df.lazy())
+
+    # Or directly
+    validator = PluginBasedValidator(regulation_code="hipaa_healthcare")
+    issues = validator.validate(df.lazy())
+
 Validators:
     GDPRComplianceValidator: GDPR Article 4 personal data detection
     GDPRSpecialCategoryValidator: GDPR Article 9 special categories
@@ -66,6 +104,7 @@ Validators:
     LGPDComplianceValidator: Brazil LGPD compliance
     PIPEDAComplianceValidator: Canada PIPEDA compliance
     APPIComplianceValidator: Japan APPI compliance
+    PluginBasedValidator: Plugin-based privacy compliance
 """
 
 from truthound.validators.privacy.base import (
@@ -116,6 +155,23 @@ from truthound.validators.privacy.global_patterns import (
     APPIComplianceValidator,
 )
 
+from truthound.validators.privacy.plugins import (
+    # Plugin system
+    PrivacyRegulationPlugin,
+    PluginBasedValidator,
+    register_privacy_plugin,
+    get_privacy_plugin,
+    list_privacy_plugins,
+    # Regional plugins
+    POPIAPlugin,
+    PDPAThailandPlugin,
+    PDPBIndiaPlugin,
+    KVKKTurkeyPlugin,
+    # Industry plugins
+    HIPAAHealthcarePlugin,
+    PCIDSSFinancialPlugin,
+)
+
 __all__ = [
     # Enums
     "PrivacyRegulation",
@@ -150,4 +206,18 @@ __all__ = [
     "LGPDComplianceValidator",
     "PIPEDAComplianceValidator",
     "APPIComplianceValidator",
+    # Plugin system
+    "PrivacyRegulationPlugin",
+    "PluginBasedValidator",
+    "register_privacy_plugin",
+    "get_privacy_plugin",
+    "list_privacy_plugins",
+    # Regional plugins
+    "POPIAPlugin",
+    "PDPAThailandPlugin",
+    "PDPBIndiaPlugin",
+    "KVKKTurkeyPlugin",
+    # Industry plugins
+    "HIPAAHealthcarePlugin",
+    "PCIDSSFinancialPlugin",
 ]
