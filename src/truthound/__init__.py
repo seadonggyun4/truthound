@@ -1,4 +1,4 @@
-"""Truthound - Zero-configuration data quality toolkit powered by Polars."""
+"""Truthound - Zero-Configuration Data Quality Framework Powered by Polars."""
 
 from truthound.api import check, mask, profile, scan
 from truthound.decorators import validator

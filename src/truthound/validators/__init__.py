@@ -1,6 +1,6 @@
 """Built-in validators for data quality checks.
 
-This module provides 239 validators across 21 categories:
+This module provides 275+ validators across 22 categories:
 - schema: Table structure validation (14 validators)
 - completeness: Null and missing value detection (7 validators)
 - uniqueness: Duplicate, primary key, and distinct value checks (13 validators)
@@ -12,7 +12,7 @@ This module provides 239 validators across 21 categories:
 - query: SQL and expression-based validation (17 validators)
 - multi_column: Multi-column compound checks (18 validators)
 - table: Table metadata validation (13 validators)
-- geospatial: Geographic coordinate validation (8 validators)
+- geospatial: Geographic coordinate validation (11 validators)
 - drift: Data drift detection (11 validators)
 - anomaly: Anomaly and outlier detection (13 validators)
 - referential: Referential integrity validation (11 validators)
@@ -21,7 +21,8 @@ This module provides 239 validators across 21 categories:
 - profiling: Data profiling validation (6 validators)
 - localization: Asian localization validation (8 validators)
 - ml_feature: ML feature validation (4 validators)
-- privacy: GDPR/CCPA/Global privacy compliance (14 validators)
+- privacy: GDPR/CCPA/Global privacy compliance (20+ validators)
+- gpu: GPU-accelerated validation with RAPIDS cuDF (5 validators)
 """
 
 from __future__ import annotations
@@ -406,6 +407,46 @@ from truthound.validators.privacy import (
     APPIComplianceValidator,
 )
 
+# GPU validators (optional, requires RAPIDS cuDF)
+try:
+    from truthound.validators.gpu import (
+        # GPU detection
+        is_gpu_available,
+        get_gpu_info,
+        GPUConfig,
+        # Base classes
+        GPUValidator,
+        GPUValidatorMixin,
+        # Conversion utilities
+        polars_to_cudf,
+        cudf_to_polars,
+        # Core validators
+        GPUNullValidator,
+        GPURangeValidator,
+        GPUPatternValidator,
+        GPUUniqueValidator,
+        GPUStatisticsValidator,
+        # Factory
+        create_gpu_validator,
+    )
+    GPU_AVAILABLE = True
+except ImportError:
+    # GPU not available - define stubs
+    is_gpu_available = lambda: False  # type: ignore
+    get_gpu_info = lambda: {"available": False}  # type: ignore
+    GPUConfig = None  # type: ignore
+    GPUValidator = None  # type: ignore
+    GPUValidatorMixin = None  # type: ignore
+    polars_to_cudf = None  # type: ignore
+    cudf_to_polars = None  # type: ignore
+    GPUNullValidator = None  # type: ignore
+    GPURangeValidator = None  # type: ignore
+    GPUPatternValidator = None  # type: ignore
+    GPUUniqueValidator = None  # type: ignore
+    GPUStatisticsValidator = None  # type: ignore
+    create_gpu_validator = None  # type: ignore
+    GPU_AVAILABLE = False
+
 __all__ = [
     # Base
     "ValidationIssue",
@@ -719,6 +760,21 @@ __all__ = [
     "LGPDComplianceValidator",
     "PIPEDAComplianceValidator",
     "APPIComplianceValidator",
+    # GPU validators
+    "GPU_AVAILABLE",
+    "is_gpu_available",
+    "get_gpu_info",
+    "GPUConfig",
+    "GPUValidator",
+    "GPUValidatorMixin",
+    "polars_to_cudf",
+    "cudf_to_polars",
+    "GPUNullValidator",
+    "GPURangeValidator",
+    "GPUPatternValidator",
+    "GPUUniqueValidator",
+    "GPUStatisticsValidator",
+    "create_gpu_validator",
 ]
 
 

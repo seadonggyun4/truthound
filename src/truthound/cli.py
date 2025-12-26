@@ -14,7 +14,7 @@ from truthound.schema import learn
 
 app = typer.Typer(
     name="truthound",
-    help="Zero-configuration data quality toolkit powered by Polars",
+    help="Zero-Configuration Data Quality Framework Powered by Polars",
     add_completion=False,
 )
 
