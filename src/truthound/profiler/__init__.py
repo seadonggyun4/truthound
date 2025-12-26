@@ -195,6 +195,33 @@ from truthound.profiler.sampling import (
     calculate_sample_size,
 )
 
+# Enterprise-scale sampling for 100M+ datasets
+from truthound.profiler.enterprise_sampling import (
+    # Scale classification
+    ScaleCategory,
+    SamplingQuality,
+    # Configuration
+    MemoryBudgetConfig,
+    EnterpriseScaleConfig,
+    # Extended metrics
+    BlockSamplingMetrics,
+    ProgressiveResult,
+    # Monitoring
+    MemoryMonitor,
+    TimeBudgetManager,
+    # Strategies
+    BlockSamplingStrategy,
+    MultiStageSamplingStrategy,
+    ColumnAwareSamplingStrategy,
+    ProgressiveSamplingStrategy,
+    # Main interface
+    EnterpriseScaleSampler,
+    # Convenience functions
+    sample_large_dataset,
+    estimate_optimal_sample_size,
+    classify_dataset_scale,
+)
+
 from truthound.profiler.sampled_matcher import (
     # Results
     SampledPatternMatchResult,
@@ -1138,6 +1165,30 @@ __all__ = [
     "create_sampler",
     "sample_data",
     "calculate_sample_size",
+    # === Enterprise-Scale Sampling (100M+ rows) ===
+    # Scale classification
+    "ScaleCategory",
+    "SamplingQuality",
+    # Configuration
+    "MemoryBudgetConfig",
+    "EnterpriseScaleConfig",
+    # Extended metrics
+    "BlockSamplingMetrics",
+    "ProgressiveResult",
+    # Monitoring
+    "MemoryMonitor",
+    "TimeBudgetManager",
+    # Strategies
+    "BlockSamplingStrategy",
+    "MultiStageSamplingStrategy",
+    "ColumnAwareSamplingStrategy",
+    "ProgressiveSamplingStrategy",
+    # Main interface
+    "EnterpriseScaleSampler",
+    # Convenience functions
+    "sample_large_dataset",
+    "estimate_optimal_sample_size",
+    "classify_dataset_scale",
     # === P0 Critical: Sampled Pattern Matcher ===
     # Results
     "SampledPatternMatchResult",

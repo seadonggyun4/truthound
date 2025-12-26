@@ -29,6 +29,8 @@ def check(
     schema: str | Path | Schema | None = None,
     auto_schema: bool = False,
     use_engine: bool = False,
+    parallel: bool = False,
+    max_workers: int | None = None,
 ) -> Report:
     """Perform data quality validation on the input data.
 
@@ -49,6 +51,12 @@ def check(
                     the cached schema. This enables true "zero-config" validation.
         use_engine: If True, uses execution engine for validation (experimental).
                    Currently validators still use Polars LazyFrame fallback.
+        parallel: If True, uses DAG-based parallel execution for validators.
+                 Validators are grouped by dependency and executed in parallel
+                 when possible. This can significantly improve performance for
+                 large datasets with many validators.
+        max_workers: Maximum number of worker threads for parallel execution.
+                    Only used when parallel=True. Defaults to min(32, cpu_count + 4).
 
     Returns:
         Report containing all validation issues found.
@@ -162,9 +170,32 @@ def check(
 
     # Run all validators and collect issues
     all_issues = []
-    for validator in validator_instances:
-        issues = validator.validate(lf)
-        all_issues.extend(issues)
+
+    if parallel and len(validator_instances) > 1:
+        # Use DAG-based parallel execution
+        from truthound.validators.optimization.orchestrator import (
+            ValidatorDAG,
+            ParallelExecutionStrategy,
+            AdaptiveExecutionStrategy,
+        )
+
+        dag = ValidatorDAG()
+        dag.add_validators(validator_instances)
+        plan = dag.build_execution_plan()
+
+        # Choose strategy based on max_workers
+        if max_workers is not None:
+            strategy = ParallelExecutionStrategy(max_workers=max_workers)
+        else:
+            strategy = AdaptiveExecutionStrategy()
+
+        result = plan.execute(lf, strategy)
+        all_issues = result.all_issues
+    else:
+        # Sequential execution (original behavior)
+        for validator in validator_instances:
+            issues = validator.validate(lf)
+            all_issues.extend(issues)
 
     # Create report
     report = Report(
