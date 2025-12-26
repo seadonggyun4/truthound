@@ -15,6 +15,7 @@ from truthound.validators.anomaly.base import (
     AnomalyValidator,
     StatisticalAnomalyMixin,
 )
+from truthound.validators.optimization import BatchCovarianceMixin
 
 
 @register_validator
@@ -520,6 +521,124 @@ class ZScoreMultivariateValidator(AnomalyValidator, StatisticalAnomalyMixin):
                         f"Z-score ({info['method']}, threshold={info['threshold']}) detected "
                         f"{anomaly_count} anomalies ({anomaly_ratio:.2%}). "
                         f"Per-column: {col_details}"
+                    ),
+                    expected=f"Anomaly ratio <= {self.max_anomaly_ratio:.2%}",
+                )
+            )
+
+        return issues
+
+
+@register_validator
+class OptimizedMahalanobisValidator(AnomalyValidator, StatisticalAnomalyMixin, BatchCovarianceMixin):
+    """Optimized Mahalanobis distance validator with incremental covariance.
+
+    Uses BatchCovarianceMixin for memory-efficient covariance computation:
+    - Incremental covariance for large datasets (O(n) memory vs O(n×d))
+    - Woodbury matrix updates for streaming scenarios
+    - Robust estimation with subsampling for datasets > 5000 rows
+
+    Example:
+        validator = OptimizedMahalanobisValidator(
+            columns=["feature1", "feature2", "feature3"],
+            threshold_percentile=97.5,
+            batch_size=10000,  # Process in batches
+        )
+    """
+
+    name = "optimized_mahalanobis"
+
+    def __init__(
+        self,
+        columns: list[str] | None = None,
+        threshold_percentile: float = 97.5,
+        use_robust_covariance: bool = True,
+        max_anomaly_ratio: float = 0.1,
+        batch_size: int = 10000,
+        **kwargs: Any,
+    ):
+        """Initialize optimized Mahalanobis validator.
+
+        Args:
+            columns: Columns to use. If None, uses all numeric columns.
+            threshold_percentile: Chi-squared percentile for threshold
+            use_robust_covariance: Use robust covariance estimation
+            max_anomaly_ratio: Maximum acceptable ratio of anomalies
+            batch_size: Batch size for incremental covariance computation
+            **kwargs: Additional config
+        """
+        super().__init__(columns=columns, max_anomaly_ratio=max_anomaly_ratio, **kwargs)
+        self.threshold_percentile = threshold_percentile
+        self.use_robust_covariance = use_robust_covariance
+        self._batch_size = batch_size
+
+    def detect_anomalies(
+        self, data: np.ndarray, column_names: list[str]
+    ) -> tuple[np.ndarray, dict[str, Any]]:
+        """Detect anomalies using optimized Mahalanobis distance."""
+        from scipy import stats
+
+        n_samples, n_features = data.shape
+
+        # Use BatchCovarianceMixin for efficient covariance computation
+        cov_result = self.compute_covariance_auto(data, use_robust=self.use_robust_covariance)
+
+        # Compute Mahalanobis distances using the mixin
+        sq_distances = self.compute_mahalanobis_distances(data, cov_result)
+
+        # Chi-squared threshold
+        threshold = stats.chi2.ppf(self.threshold_percentile / 100, df=n_features)
+
+        anomaly_mask = sq_distances > threshold
+
+        return anomaly_mask, {
+            "threshold": threshold,
+            "n_features": n_features,
+            "max_distance": float(np.max(sq_distances)),
+            "mean_distance": float(np.mean(sq_distances)),
+            "percentile": self.threshold_percentile,
+            "is_robust": cov_result.is_robust,
+            "n_samples_used": cov_result.n_samples,
+        }
+
+    def validate(self, lf: pl.LazyFrame) -> list[ValidationIssue]:
+        issues: list[ValidationIssue] = []
+
+        columns = self._get_anomaly_columns(lf)
+        if len(columns) < 2:
+            return issues
+
+        df = lf.select([pl.col(c) for c in columns]).collect()
+        df_clean = df.drop_nulls()
+
+        if len(df_clean) < len(columns) * 3:
+            return issues
+
+        data = df_clean.to_numpy()
+
+        try:
+            anomaly_mask, info = self.detect_anomalies(data, columns)
+        except np.linalg.LinAlgError:
+            return issues
+
+        anomaly_count = int(anomaly_mask.sum())
+        anomaly_ratio = anomaly_count / len(data)
+
+        if anomaly_ratio > self.max_anomaly_ratio:
+            severity = self._calculate_severity(anomaly_ratio)
+
+            robust_str = " (robust)" if info["is_robust"] else ""
+            issues.append(
+                ValidationIssue(
+                    column=", ".join(columns),
+                    issue_type="optimized_mahalanobis_anomaly",
+                    count=anomaly_count,
+                    severity=severity,
+                    details=(
+                        f"Mahalanobis distance{robust_str} (P{info['percentile']}) detected "
+                        f"{anomaly_count} anomalies ({anomaly_ratio:.2%}). "
+                        f"Threshold: {info['threshold']:.2f}, "
+                        f"Max distance: {info['max_distance']:.2f}"
                     ),
                     expected=f"Anomaly ratio <= {self.max_anomaly_ratio:.2%}",
                 )
