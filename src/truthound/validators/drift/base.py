@@ -2,6 +2,12 @@
 
 This module provides base classes and utilities for detecting data drift
 between reference (baseline) and current datasets.
+
+Key Features:
+- Memory-efficient reference data handling with statistics caching
+- LRU cache for reference statistics (no raw data retention)
+- Thread-safe operations
+- Automatic cache invalidation
 """
 
 from abc import abstractmethod
@@ -11,6 +17,14 @@ import polars as pl
 
 from truthound.types import Severity
 from truthound.validators.base import ValidationIssue, Validator
+from truthound.validators.cache import (
+    ReferenceCache,
+    CacheConfig,
+    NumericStatistics,
+    CategoricalStatistics,
+    get_global_cache,
+    make_cache_key,
+)
 
 
 class DriftValidator(Validator):
@@ -26,10 +40,28 @@ class DriftValidator(Validator):
         - Drift score: A metric quantifying the difference between distributions
         - Threshold: The acceptable level of drift before triggering an alert
 
+    Memory Optimization:
+        - By default, only statistical summaries are cached (not raw data)
+        - Use `cache_reference=True` to enable caching (recommended)
+        - Use `cache_raw_data=True` only when statistical summary is insufficient
+
     Usage Pattern:
         1. Initialize with reference data and thresholds
         2. Call validate() with current data
         3. Check returned issues for drift detection results
+
+    Example:
+        # Memory-efficient: cache statistics only
+        validator = MyDriftValidator(
+            reference_data=large_df,
+            cache_reference=True,  # Cache statistics, release raw data
+        )
+
+        # Traditional: keep raw data (higher memory)
+        validator = MyDriftValidator(
+            reference_data=large_df,
+            cache_reference=False,  # Keep raw LazyFrame
+        )
     """
 
     name = "drift_base"
@@ -38,26 +70,88 @@ class DriftValidator(Validator):
     def __init__(
         self,
         reference_data: pl.LazyFrame | pl.DataFrame,
+        cache_reference: bool = True,
+        cache_config: CacheConfig | None = None,
+        cache_key: str | None = None,
         **kwargs: Any,
     ):
         """Initialize drift validator.
 
         Args:
             reference_data: Baseline data to compare against
+            cache_reference: If True, cache statistics and optionally release raw data
+            cache_config: Optional cache configuration
+            cache_key: Optional custom cache key (auto-generated if None)
             **kwargs: Additional config passed to base Validator
         """
         super().__init__(**kwargs)
 
+        self._cache_reference = cache_reference
+        self._cache_key = cache_key
+        self._cache: ReferenceCache | None = None
+
+        if cache_config:
+            self._cache = ReferenceCache(cache_config)
+
         # Ensure reference data is LazyFrame for consistent handling
         if isinstance(reference_data, pl.DataFrame):
-            self._reference_data = reference_data.lazy()
+            self._reference_data: pl.LazyFrame | None = reference_data.lazy()
         else:
             self._reference_data = reference_data
 
+        # Flag to track if statistics have been cached
+        self._stats_cached: bool = False
+
     @property
     def reference_data(self) -> pl.LazyFrame:
-        """Get the reference data as LazyFrame."""
+        """Get the reference data as LazyFrame.
+
+        Note: If caching is enabled and raw data was released,
+        this may return an empty LazyFrame.
+        Use get_reference_statistics() for cached statistics.
+        """
+        if self._reference_data is None:
+            # Return empty LazyFrame if raw data was released
+            return pl.LazyFrame()
         return self._reference_data
+
+    def get_cache(self) -> ReferenceCache:
+        """Get the cache instance (local or global)."""
+        if self._cache is not None:
+            return self._cache
+        return get_global_cache()
+
+    def get_cache_key(self, suffix: str = "") -> str:
+        """Generate cache key for this validator.
+
+        Args:
+            suffix: Optional suffix to append
+
+        Returns:
+            Cache key string
+        """
+        if self._cache_key:
+            return f"{self._cache_key}:{suffix}" if suffix else self._cache_key
+
+        return make_cache_key(
+            validator_name=self.name,
+            column=getattr(self, 'column', '_all'),
+            version="v1",
+            extra=suffix,
+        )
+
+    def release_reference_data(self) -> None:
+        """Release raw reference data to free memory.
+
+        Call this after caching statistics if memory is a concern.
+        Subsequent calls to reference_data will return an empty LazyFrame.
+        """
+        self._reference_data = None
+        self.logger.debug(f"Released raw reference data for {self.name}")
+
+    def is_statistics_cached(self) -> bool:
+        """Check if reference statistics are cached."""
+        return self._stats_cached or self.get_cache_key() in self.get_cache()
 
     @abstractmethod
     def calculate_drift_score(
@@ -110,6 +204,13 @@ class ColumnDriftValidator(DriftValidator):
     """Base class for single-column drift validators.
 
     Validates drift for a specific column between reference and current data.
+    Supports caching of reference column statistics for memory efficiency.
+
+    Memory Optimization:
+        When cache_reference=True (default), the validator will:
+        1. Compute and cache column statistics on first use
+        2. Optionally release raw data after caching (call release_reference_data())
+        3. Use cached statistics for subsequent drift calculations
     """
 
     name = "column_drift_base"
@@ -119,6 +220,8 @@ class ColumnDriftValidator(DriftValidator):
         self,
         column: str,
         reference_data: pl.LazyFrame | pl.DataFrame,
+        is_categorical: bool = False,
+        n_histogram_bins: int = 50,
         **kwargs: Any,
     ):
         """Initialize column drift validator.
@@ -126,10 +229,17 @@ class ColumnDriftValidator(DriftValidator):
         Args:
             column: Column name to check for drift
             reference_data: Baseline data to compare against
-            **kwargs: Additional config
+            is_categorical: If True, treat column as categorical
+            n_histogram_bins: Number of histogram bins for numeric columns
+            **kwargs: Additional config (including cache_reference)
         """
         super().__init__(reference_data=reference_data, **kwargs)
         self.column = column
+        self.is_categorical = is_categorical
+        self.n_histogram_bins = n_histogram_bins
+
+        # Cached reference statistics
+        self._ref_stats: NumericStatistics | CategoricalStatistics | None = None
 
     def _get_column_values(
         self, lf: pl.LazyFrame, drop_nulls: bool = True
@@ -146,6 +256,79 @@ class ColumnDriftValidator(DriftValidator):
         if drop_nulls:
             return lf.select(pl.col(self.column)).drop_nulls().collect().to_series()
         return lf.select(pl.col(self.column)).collect().to_series()
+
+    def get_reference_statistics(
+        self,
+        force_recompute: bool = False,
+    ) -> NumericStatistics | CategoricalStatistics:
+        """Get cached reference statistics, computing if necessary.
+
+        This method provides memory-efficient access to reference data
+        statistics. Statistics are cached and can be retrieved without
+        holding the raw reference data in memory.
+
+        Args:
+            force_recompute: If True, recompute even if cached
+
+        Returns:
+            NumericStatistics or CategoricalStatistics for the reference column
+        """
+        # Return cached stats if available
+        if self._ref_stats is not None and not force_recompute:
+            return self._ref_stats
+
+        # Check global cache
+        cache_key = self.get_cache_key()
+        if not force_recompute:
+            cached = self.get_cache().get(cache_key)
+            if cached is not None:
+                self._ref_stats = cached
+                self._stats_cached = True
+                return cached
+
+        # Compute statistics from reference data
+        if self._reference_data is None:
+            raise ValueError(
+                "Reference data has been released and statistics are not cached. "
+                "Call get_reference_statistics() before release_reference_data()."
+            )
+
+        if self.is_categorical:
+            stats = CategoricalStatistics.from_lazyframe(
+                self._reference_data,
+                self.column,
+            )
+        else:
+            stats = NumericStatistics.from_lazyframe(
+                self._reference_data,
+                self.column,
+                n_bins=self.n_histogram_bins,
+            )
+
+        # Cache the statistics
+        if self._cache_reference:
+            self.get_cache().put(cache_key, stats)
+            self._stats_cached = True
+
+        self._ref_stats = stats
+        return stats
+
+    def cache_and_release(self) -> None:
+        """Cache reference statistics and release raw data.
+
+        This is a convenience method that:
+        1. Computes and caches reference statistics
+        2. Releases raw reference data to free memory
+
+        Use this for memory-constrained environments.
+        """
+        # Ensure statistics are cached
+        self.get_reference_statistics()
+        # Release raw data
+        self.release_reference_data()
+        self.logger.info(
+            f"Cached statistics and released raw data for {self.name}:{self.column}"
+        )
 
 
 class NumericDriftMixin:

@@ -126,6 +126,189 @@ class KSTestValidator(ColumnDriftValidator, NumericDriftMixin):
 
 
 @register_validator
+class StreamingKSTestValidator(ColumnDriftValidator, NumericDriftMixin):
+    """Memory-efficient KS test using streaming ECDF.
+
+    This validator uses T-Digest for streaming quantile estimation,
+    allowing KS test computation without loading both datasets into memory.
+
+    Memory Complexity:
+        - Standard KS test: O(n + m) for n, m samples
+        - This implementation: O(compression) constant memory
+
+    Use this for datasets > 1M rows where standard KS test would be slow or OOM.
+
+    Example:
+        # For large datasets
+        validator = StreamingKSTestValidator(
+            column="purchase_amount",
+            reference_data=huge_baseline_df,  # Can be very large
+            compression=200,  # T-Digest compression factor
+        )
+    """
+
+    name = "streaming_ks_test"
+    category = "drift"
+
+    def __init__(
+        self,
+        column: str,
+        reference_data: pl.LazyFrame | pl.DataFrame,
+        p_value_threshold: float = 0.05,
+        statistic_threshold: float | None = None,
+        compression: float = 200.0,
+        chunk_size: int = 100000,
+        **kwargs: Any,
+    ):
+        """Initialize streaming KS test validator.
+
+        Args:
+            column: Numeric column to test
+            reference_data: Baseline data for comparison
+            p_value_threshold: P-value below which drift is detected
+            statistic_threshold: Optional KS statistic threshold
+            compression: T-Digest compression factor (higher = more accurate)
+            chunk_size: Chunk size for streaming processing
+            **kwargs: Additional config
+        """
+        super().__init__(column=column, reference_data=reference_data, **kwargs)
+        self.p_value_threshold = p_value_threshold
+        self.statistic_threshold = statistic_threshold
+        self.compression = compression
+        self.chunk_size = chunk_size
+
+        # Cached reference ECDF
+        self._ref_ecdf = None
+
+    def _build_reference_ecdf(self) -> None:
+        """Build streaming ECDF from reference data."""
+        if self._ref_ecdf is not None:
+            return
+
+        from truthound.validators.memory import StreamingECDF
+        from truthound.validators.memory.base import DataChunker
+
+        self._ref_ecdf = StreamingECDF(compression=self.compression)
+
+        chunker = DataChunker(
+            chunk_size=self.chunk_size,
+            columns=[self.column],
+            drop_nulls=True,
+        )
+
+        for chunk_df in chunker.iterate(self.reference_data):
+            values = chunk_df.to_series().to_numpy()
+            self._ref_ecdf.update(values)
+
+    def calculate_drift_score(
+        self, reference: pl.LazyFrame, current: pl.LazyFrame
+    ) -> tuple[float, float]:
+        """Calculate streaming KS statistic and approximate p-value.
+
+        Returns:
+            Tuple of (ks_statistic, p_value)
+        """
+        import math
+        import numpy as np
+        from truthound.validators.memory import StreamingECDF
+        from truthound.validators.memory.base import DataChunker
+
+        # Build reference ECDF if not cached
+        self._build_reference_ecdf()
+
+        # Build current ECDF
+        curr_ecdf = StreamingECDF(compression=self.compression)
+
+        chunker = DataChunker(
+            chunk_size=self.chunk_size,
+            columns=[self.column],
+            drop_nulls=True,
+        )
+
+        for chunk_df in chunker.iterate(current):
+            values = chunk_df.to_series().to_numpy()
+            curr_ecdf.update(values)
+
+        if self._ref_ecdf.count == 0 or curr_ecdf.count == 0:
+            return 0.0, 1.0
+
+        # Compute max deviation at quantile points
+        quantile_points = np.linspace(0.001, 0.999, 1000)
+
+        max_deviation = 0.0
+        for q in quantile_points:
+            ref_val = self._ref_ecdf.quantile(q)
+            curr_val = curr_ecdf.quantile(q)
+
+            # CDF differences at both values
+            dev1 = abs(self._ref_ecdf.cdf(ref_val) - curr_ecdf.cdf(ref_val))
+            dev2 = abs(self._ref_ecdf.cdf(curr_val) - curr_ecdf.cdf(curr_val))
+
+            max_deviation = max(max_deviation, dev1, dev2)
+
+        ks_stat = max_deviation
+
+        # Approximate p-value using asymptotic distribution
+        n_eff = min(self._ref_ecdf.count, curr_ecdf.count)
+        lambda_val = (math.sqrt(n_eff) + 0.12 + 0.11 / math.sqrt(n_eff)) * ks_stat
+
+        p_value = 0.0
+        for k in range(1, 100):
+            term = 2 * ((-1) ** (k + 1)) * math.exp(-2 * k * k * lambda_val * lambda_val)
+            p_value += term
+            if abs(term) < 1e-10:
+                break
+
+        p_value = max(0.0, min(1.0, p_value))
+
+        return float(ks_stat), float(p_value)
+
+    def validate(self, lf: pl.LazyFrame) -> list[ValidationIssue]:
+        issues: list[ValidationIssue] = []
+
+        ks_statistic, p_value = self.calculate_drift_score(self.reference_data, lf)
+
+        # Check for drift
+        drift_detected = False
+        if self.statistic_threshold is not None:
+            drift_detected = ks_statistic > self.statistic_threshold
+            threshold_desc = f"KS statistic > {self.statistic_threshold}"
+        else:
+            drift_detected = p_value < self.p_value_threshold
+            threshold_desc = f"p-value < {self.p_value_threshold}"
+
+        if drift_detected:
+            severity = self._calculate_severity_from_ks(ks_statistic)
+            issues.append(
+                ValidationIssue(
+                    column=self.column,
+                    issue_type="streaming_ks_drift_detected",
+                    count=1,
+                    severity=severity,
+                    details=(
+                        f"Streaming KS test detected drift: "
+                        f"statistic={ks_statistic:.4f}, p-value={p_value:.4e} "
+                        f"(compression={self.compression})"
+                    ),
+                    expected=f"No significant drift ({threshold_desc})",
+                )
+            )
+
+        return issues
+
+    def _calculate_severity_from_ks(self, ks_statistic: float) -> Severity:
+        """Calculate severity based on KS statistic magnitude."""
+        if ks_statistic < 0.1:
+            return Severity.LOW
+        elif ks_statistic < 0.2:
+            return Severity.MEDIUM
+        elif ks_statistic < 0.3:
+            return Severity.HIGH
+        else:
+            return Severity.CRITICAL
+
+
+@register_validator
 class ChiSquareDriftValidator(ColumnDriftValidator, CategoricalDriftMixin):
     """Chi-square test for detecting drift in categorical columns.
 

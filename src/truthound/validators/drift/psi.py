@@ -2,6 +2,11 @@
 
 PSI is widely used in credit risk and ML model monitoring to detect
 distribution shifts. It's particularly valued for its interpretability.
+
+Memory Optimization:
+    These validators support caching of reference statistics to avoid
+    keeping large reference datasets in memory. Use cache_reference=True
+    (default) and call cache_and_release() for memory-constrained environments.
 """
 
 from typing import Any
@@ -16,6 +21,7 @@ from truthound.validators.drift.base import (
     NumericDriftMixin,
     CategoricalDriftMixin,
 )
+from truthound.validators.cache import NumericStatistics, CategoricalStatistics
 from truthound.validators.registry import register_validator
 
 
@@ -31,6 +37,19 @@ class PSIValidator(ColumnDriftValidator, NumericDriftMixin, CategoricalDriftMixi
         - PSI < 0.1: No significant drift (stable)
         - 0.1 <= PSI < 0.25: Moderate drift (investigate)
         - PSI >= 0.25: Significant drift (action required)
+
+    Memory Optimization:
+        When cache_reference=True (default), reference statistics are cached
+        and raw data can be released. This dramatically reduces memory usage
+        for large reference datasets.
+
+        # Memory-efficient usage:
+        validator = PSIValidator(
+            column="credit_score",
+            reference_data=large_df,  # 10GB DataFrame
+            cache_reference=True,
+        )
+        validator.cache_and_release()  # Release raw data, keep ~1KB stats
 
     Example:
         # Numeric column with auto-binning
@@ -75,20 +94,54 @@ class PSIValidator(ColumnDriftValidator, NumericDriftMixin, CategoricalDriftMixi
             n_bins: Number of bins for numeric columns
             is_categorical: True if column is categorical
             min_frequency: Minimum frequency to avoid log(0)
-            **kwargs: Additional config
+            **kwargs: Additional config (including cache_reference)
         """
-        super().__init__(column=column, reference_data=reference_data, **kwargs)
+        # Pass is_categorical to base class for proper caching
+        super().__init__(
+            column=column,
+            reference_data=reference_data,
+            is_categorical=is_categorical,
+            n_histogram_bins=n_bins,
+            **kwargs,
+        )
         self.threshold = threshold
         self.n_bins = n_bins
-        self.is_categorical = is_categorical
         self.min_frequency = min_frequency
 
-        # Cache reference distribution for efficiency
+        # Legacy cache fields (for backward compatibility)
         self._ref_distribution: dict | list | None = None
         self._bin_edges: list[float] | None = None
 
     def _compute_reference_distribution(self) -> None:
-        """Pre-compute reference distribution for efficiency."""
+        """Pre-compute reference distribution for efficiency.
+
+        This method now uses cached statistics when available,
+        dramatically reducing memory usage for large datasets.
+        """
+        # Try to use cached statistics first
+        if self._cache_reference:
+            try:
+                stats = self.get_reference_statistics()
+
+                if self.is_categorical:
+                    if isinstance(stats, CategoricalStatistics):
+                        self._ref_distribution = stats.frequencies
+                        return
+                else:
+                    if isinstance(stats, NumericStatistics):
+                        self._bin_edges = stats.histogram_edges
+                        self._ref_distribution = stats.histogram_counts
+                        return
+            except (ValueError, AttributeError):
+                # Fall back to computing from raw data
+                pass
+
+        # Fallback: compute from raw reference data
+        if self._reference_data is None:
+            self._ref_distribution = [] if not self.is_categorical else {}
+            self._bin_edges = []
+            return
+
         ref_values = self._get_column_values(self.reference_data)
 
         if self.is_categorical:
@@ -125,10 +178,12 @@ class PSIValidator(ColumnDriftValidator, NumericDriftMixin, CategoricalDriftMixi
 
         PSI = Σ (P_current - P_reference) * ln(P_current / P_reference)
 
+        This method uses cached statistics when available for memory efficiency.
+
         Returns:
             PSI score
         """
-        # Ensure reference distribution is computed
+        # Ensure reference distribution is computed (uses cache if available)
         if self._ref_distribution is None:
             self._compute_reference_distribution()
 
