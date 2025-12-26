@@ -2,6 +2,18 @@
 
 This module provides extensible base classes for implementing various
 referential integrity checks between tables.
+
+Performance Optimization:
+    For large tables, use sample-based validation to reduce memory and time:
+
+    validator = ForeignKeyValidator(
+        child_table="orders",
+        child_columns=["customer_id"],
+        parent_table="customers",
+        parent_columns=["id"],
+        sample_size=100000,  # Validate on sample
+        sample_seed=42,      # Reproducible sampling
+    )
 """
 
 from abc import abstractmethod
@@ -12,6 +24,11 @@ import polars as pl
 
 from truthound.types import Severity
 from truthound.validators.base import ValidationIssue, Validator
+
+
+# Default sampling configuration
+DEFAULT_SAMPLE_SIZE = 100_000
+DEFAULT_SAMPLE_SEED = 42
 
 
 @dataclass
@@ -70,6 +87,12 @@ class ReferentialValidator(Validator):
     Referential validators check relationships between multiple tables,
     ensuring data consistency across table boundaries.
 
+    Performance:
+        For large tables, use sample_size parameter to validate on a sample:
+        - Reduces memory usage and validation time
+        - Provides statistical estimate of violation rate
+        - Reproducible with sample_seed parameter
+
     Subclasses should implement:
         - validate_reference(): Check the specific referential constraint
     """
@@ -79,16 +102,22 @@ class ReferentialValidator(Validator):
     def __init__(
         self,
         tables: dict[str, pl.LazyFrame] | None = None,
+        sample_size: int | None = None,
+        sample_seed: int = DEFAULT_SAMPLE_SEED,
         **kwargs: Any,
     ):
         """Initialize referential validator.
 
         Args:
             tables: Dictionary mapping table names to LazyFrames
+            sample_size: If set, validate on a sample of this size (for large tables)
+            sample_seed: Random seed for reproducible sampling
             **kwargs: Additional config
         """
         super().__init__(**kwargs)
         self._tables = tables or {}
+        self._sample_size = sample_size
+        self._sample_seed = sample_seed
 
     def register_table(self, name: str, lf: pl.LazyFrame) -> None:
         """Register a table for validation.
@@ -129,13 +158,40 @@ class ReferentialValidator(Validator):
             result = result.unique()
         return result.collect()
 
+    def _sample_lazyframe(
+        self, lf: pl.LazyFrame, sample_size: int | None = None
+    ) -> tuple[pl.DataFrame, int, bool]:
+        """Sample a LazyFrame if needed for large dataset handling.
+
+        Args:
+            lf: LazyFrame to sample
+            sample_size: Max rows to sample (uses instance default if None)
+
+        Returns:
+            Tuple of (sampled_df, original_count, was_sampled)
+        """
+        effective_sample_size = sample_size or self._sample_size
+
+        # Get total count
+        total_count = lf.select(pl.len()).collect().item()
+
+        if effective_sample_size is None or total_count <= effective_sample_size:
+            # No sampling needed
+            return lf.collect(), total_count, False
+
+        # Sample the data
+        df = lf.collect()
+        sampled = df.sample(n=effective_sample_size, seed=self._sample_seed)
+        return sampled, total_count, True
+
     def _find_orphans(
         self,
         child_lf: pl.LazyFrame,
         child_cols: list[str],
         parent_lf: pl.LazyFrame,
         parent_cols: list[str],
-    ) -> pl.DataFrame:
+        sample_size: int | None = None,
+    ) -> tuple[pl.DataFrame, int, bool]:
         """Find orphan records in child table.
 
         Args:
@@ -143,22 +199,23 @@ class ReferentialValidator(Validator):
             child_cols: Foreign key columns in child
             parent_lf: Parent table LazyFrame
             parent_cols: Primary key columns in parent
+            sample_size: Optional sample size override
 
         Returns:
-            DataFrame containing orphan records
+            Tuple of (orphan_df, original_child_count, was_sampled)
         """
-        # Get parent keys
+        # Get parent keys (always get all unique keys - they're typically smaller)
         parent_keys = parent_lf.select([pl.col(c) for c in parent_cols]).unique()
 
         # Rename parent columns for join
         rename_map = {p: f"_parent_{p}" for p in parent_cols}
         parent_keys = parent_keys.rename(rename_map)
 
-        # Build join condition
-        child_df = child_lf.collect()
-
-        # Create join expressions
-        join_cols = list(zip(child_cols, [f"_parent_{p}" for p in parent_cols]))
+        # Sample child table if needed
+        child_df, original_count, was_sampled = self._sample_lazyframe(
+            child_lf.select([pl.col(c) for c in child_cols]),
+            sample_size,
+        )
 
         # Left join and filter for nulls (orphans)
         parent_df = parent_keys.collect()
@@ -171,7 +228,7 @@ class ReferentialValidator(Validator):
             how="anti",
         )
 
-        return orphans
+        return orphans, original_count, was_sampled
 
     def _calculate_severity(self, violation_ratio: float) -> Severity:
         """Calculate severity based on violation ratio.

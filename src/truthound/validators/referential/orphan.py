@@ -16,6 +16,7 @@ from truthound.validators.referential.base import (
     ForeignKeyRelation,
     MultiTableValidator,
     ReferentialValidator,
+    DEFAULT_SAMPLE_SEED,
 )
 
 
@@ -48,7 +49,9 @@ class OrphanRecordValidator(ReferentialValidator):
         parent_columns: list[str] | str,
         tables: dict[str, pl.LazyFrame] | None = None,
         include_null_fk: bool = False,
-        sample_size: int = 10,
+        max_sample_display: int = 10,
+        sample_size: int | None = None,
+        sample_seed: int = DEFAULT_SAMPLE_SEED,
         **kwargs: Any,
     ):
         """Initialize orphan record validator.
@@ -60,10 +63,12 @@ class OrphanRecordValidator(ReferentialValidator):
             parent_columns: PK column(s) in parent table
             tables: Pre-registered tables
             include_null_fk: Whether to count NULL FKs as orphans
-            sample_size: Number of sample orphans to include in details
+            max_sample_display: Number of sample orphans to include in details
+            sample_size: If set, validate on a sample of this size (for large tables)
+            sample_seed: Random seed for reproducible sampling
             **kwargs: Additional config
         """
-        super().__init__(tables=tables, **kwargs)
+        super().__init__(tables=tables, sample_size=sample_size, sample_seed=sample_seed, **kwargs)
 
         if isinstance(child_columns, str):
             child_columns = [child_columns]
@@ -77,7 +82,7 @@ class OrphanRecordValidator(ReferentialValidator):
             parent_columns=parent_columns,
         )
         self.include_null_fk = include_null_fk
-        self.sample_size = sample_size
+        self.max_sample_display = max_sample_display
 
     def validate_reference(
         self, relation: ForeignKeyRelation
@@ -98,8 +103,14 @@ class OrphanRecordValidator(ReferentialValidator):
         if child_lf is None or parent_lf is None:
             return issues
 
-        # Find orphans
-        orphans = self._find_orphans(
+        # Get total rows first
+        total_rows = child_lf.select(pl.len()).collect().item()
+
+        if total_rows == 0:
+            return issues
+
+        # Find orphans (with sampling support)
+        orphans, sample_count, was_sampled = self._find_orphans(
             child_lf,
             relation.child_columns,
             parent_lf,
@@ -116,24 +127,42 @@ class OrphanRecordValidator(ReferentialValidator):
         orphan_count = len(orphans)
 
         if orphan_count > 0:
-            child_df = child_lf.collect()
-            total_rows = len(child_df)
-            orphan_ratio = orphan_count / total_rows if total_rows > 0 else 0
+            # Calculate ratio based on sample
+            sample_orphan_ratio = orphan_count / sample_count if sample_count > 0 else 0
+
+            # Estimate total violations if sampled
+            if was_sampled:
+                estimated_total_orphans = int(sample_orphan_ratio * total_rows)
+                orphan_ratio = sample_orphan_ratio
+            else:
+                estimated_total_orphans = orphan_count
+                orphan_ratio = orphan_count / total_rows if total_rows > 0 else 0
 
             # Get sample orphan records
-            sample_orphans = orphans.head(self.sample_size).to_dicts()
+            sample_orphans = orphans.head(self.max_sample_display).to_dicts()
+
+            # Build details message
+            if was_sampled:
+                details = (
+                    f"Found {orphan_count} orphan records in sample of {sample_count:,} rows "
+                    f"({sample_orphan_ratio:.2%}). Estimated {estimated_total_orphans:,} total "
+                    f"orphans in '{relation.child_table}' ({total_rows:,} rows) with no matching "
+                    f"parent in '{relation.parent_table}'. Samples: {sample_orphans}"
+                )
+            else:
+                details = (
+                    f"Found {orphan_count} orphan records ({orphan_ratio:.2%}) in "
+                    f"'{relation.child_table}' with no matching parent in "
+                    f"'{relation.parent_table}'. Samples: {sample_orphans}"
+                )
 
             issues.append(
                 ValidationIssue(
                     column=", ".join(relation.child_columns),
                     issue_type="orphan_record_detected",
-                    count=orphan_count,
+                    count=estimated_total_orphans if was_sampled else orphan_count,
                     severity=self._calculate_severity(orphan_ratio),
-                    details=(
-                        f"Found {orphan_count} orphan records ({orphan_ratio:.2%}) in "
-                        f"'{relation.child_table}' with no matching parent in "
-                        f"'{relation.parent_table}'. Samples: {sample_orphans}"
-                    ),
+                    details=details,
                     expected="All child records should have valid parent references",
                 )
             )

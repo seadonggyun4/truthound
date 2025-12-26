@@ -14,6 +14,8 @@ from truthound.validators.registry import register_validator
 from truthound.validators.referential.base import (
     ForeignKeyRelation,
     ReferentialValidator,
+    DEFAULT_SAMPLE_SIZE,
+    DEFAULT_SAMPLE_SEED,
 )
 
 
@@ -24,6 +26,17 @@ class ForeignKeyValidator(ReferentialValidator):
     This validator checks that all foreign key values in a child table
     exist in the referenced parent table. Supports composite keys and
     provides detailed violation reporting.
+
+    Performance:
+        For large tables, use sample_size to validate on a sample:
+
+        validator = ForeignKeyValidator(
+            child_table="orders",
+            child_columns=["customer_id"],
+            parent_table="customers",
+            parent_columns=["id"],
+            sample_size=100000,  # Validate 100k sample rows
+        )
 
     Example:
         # Simple FK validation
@@ -54,6 +67,8 @@ class ForeignKeyValidator(ReferentialValidator):
         tables: dict[str, pl.LazyFrame] | None = None,
         allow_null: bool = True,
         max_violations: int = 100,
+        sample_size: int | None = None,
+        sample_seed: int = DEFAULT_SAMPLE_SEED,
         **kwargs: Any,
     ):
         """Initialize foreign key validator.
@@ -66,9 +81,11 @@ class ForeignKeyValidator(ReferentialValidator):
             tables: Pre-registered tables
             allow_null: Whether NULL values are allowed in FK columns
             max_violations: Maximum violations to report in details
+            sample_size: If set, validate on a sample of this size (for large tables)
+            sample_seed: Random seed for reproducible sampling
             **kwargs: Additional config
         """
-        super().__init__(tables=tables, **kwargs)
+        super().__init__(tables=tables, sample_size=sample_size, sample_seed=sample_seed, **kwargs)
 
         # Normalize to lists
         if isinstance(child_columns, str):
@@ -108,24 +125,18 @@ class ForeignKeyValidator(ReferentialValidator):
         child_cols = relation.child_columns
         parent_cols = relation.parent_columns
 
-        child_df = child_lf.select([pl.col(c) for c in child_cols]).collect()
-        total_rows = len(child_df)
+        # Get total rows first (before sampling)
+        total_rows = child_lf.select(pl.len()).collect().item()
 
         if total_rows == 0:
             return issues
 
-        # Filter out nulls if allowed
-        if self.allow_null:
-            # Create filter for non-null rows
-            non_null_filter = pl.lit(True)
+        # Check for nulls if not allowed
+        if not self.allow_null:
+            null_filter = pl.lit(False)
             for col in child_cols:
-                non_null_filter = non_null_filter & pl.col(col).is_not_null()
-            child_df = child_df.filter(non_null_filter)
-        else:
-            # Check for nulls
-            null_count = 0
-            for col in child_cols:
-                null_count += child_df.filter(pl.col(col).is_null()).height
+                null_filter = null_filter | pl.col(col).is_null()
+            null_count = child_lf.filter(null_filter).select(pl.len()).collect().item()
             if null_count > 0:
                 issues.append(
                     ValidationIssue(
@@ -141,11 +152,8 @@ class ForeignKeyValidator(ReferentialValidator):
                     )
                 )
 
-        if len(child_df) == 0:
-            return issues
-
-        # Find orphans using anti-join
-        orphans = self._find_orphans(
+        # Find orphans using anti-join (with sampling support)
+        orphans, sample_count, was_sampled = self._find_orphans(
             child_lf, child_cols, parent_lf, parent_cols
         )
 
@@ -159,24 +167,45 @@ class ForeignKeyValidator(ReferentialValidator):
         orphan_count = len(orphans)
 
         if orphan_count > 0:
-            violation_ratio = orphan_count / total_rows
+            # Calculate violation ratio based on sampled data
+            sample_violation_ratio = orphan_count / sample_count if sample_count > 0 else 0
+
+            # Estimate total violations if sampled
+            if was_sampled:
+                estimated_total_violations = int(sample_violation_ratio * total_rows)
+                violation_ratio = sample_violation_ratio
+            else:
+                estimated_total_violations = orphan_count
+                violation_ratio = orphan_count / total_rows if total_rows > 0 else 0
+
             severity = self._calculate_severity(violation_ratio)
 
             # Get sample violations
             sample_violations = orphans.head(self.max_violations)
             sample_list = sample_violations.to_dicts()
 
+            # Build details message
+            if was_sampled:
+                details = (
+                    f"Found {orphan_count} violations in sample of {sample_count:,} rows "
+                    f"({sample_violation_ratio:.2%}). Estimated {estimated_total_violations:,} "
+                    f"total violations in {total_rows:,} rows. "
+                    f"Sample violations: {sample_list[:5]}"
+                )
+            else:
+                details = (
+                    f"Found {orphan_count} records ({violation_ratio:.2%}) in "
+                    f"'{relation.child_table}' with no matching record in "
+                    f"'{relation.parent_table}'. Sample violations: {sample_list[:5]}"
+                )
+
             issues.append(
                 ValidationIssue(
                     column=", ".join(child_cols),
                     issue_type="fk_constraint_violation",
-                    count=orphan_count,
+                    count=estimated_total_violations if was_sampled else orphan_count,
                     severity=severity,
-                    details=(
-                        f"Found {orphan_count} records ({violation_ratio:.2%}) in "
-                        f"'{relation.child_table}' with no matching record in "
-                        f"'{relation.parent_table}'. Sample violations: {sample_list[:5]}"
-                    ),
+                    details=details,
                     expected=f"All {', '.join(child_cols)} values exist in {relation.parent_table}",
                 )
             )
@@ -230,6 +259,8 @@ class CompositeForeignKeyValidator(ReferentialValidator):
         parent_columns: list[str],
         tables: dict[str, pl.LazyFrame] | None = None,
         check_partial_matches: bool = False,
+        sample_size: int | None = None,
+        sample_seed: int = DEFAULT_SAMPLE_SEED,
         **kwargs: Any,
     ):
         """Initialize composite FK validator.
@@ -241,9 +272,11 @@ class CompositeForeignKeyValidator(ReferentialValidator):
             parent_columns: Composite key columns in parent
             tables: Pre-registered tables
             check_partial_matches: Check for partial key matches
+            sample_size: If set, validate on a sample of this size (for large tables)
+            sample_seed: Random seed for reproducible sampling
             **kwargs: Additional config
         """
-        super().__init__(tables=tables, **kwargs)
+        super().__init__(tables=tables, sample_size=sample_size, sample_seed=sample_seed, **kwargs)
         self.relation = ForeignKeyRelation(
             child_table=child_table,
             child_columns=child_columns,
@@ -274,8 +307,16 @@ class CompositeForeignKeyValidator(ReferentialValidator):
         child_cols = relation.child_columns
         parent_cols = relation.parent_columns
 
-        # Standard FK validation
-        orphans = self._find_orphans(child_lf, child_cols, parent_lf, parent_cols)
+        # Get total rows first (before any sampling)
+        total_rows = child_lf.select(pl.len()).collect().item()
+
+        if total_rows == 0:
+            return issues
+
+        # Standard FK validation (with sampling support)
+        orphans, sample_count, was_sampled = self._find_orphans(
+            child_lf, child_cols, parent_lf, parent_cols
+        )
 
         # Filter out nulls
         non_null_filter = pl.lit(True)
@@ -286,21 +327,40 @@ class CompositeForeignKeyValidator(ReferentialValidator):
         orphan_count = len(orphans)
 
         if orphan_count > 0:
-            child_df = child_lf.collect()
-            total_rows = len(child_df)
-            violation_ratio = orphan_count / total_rows if total_rows > 0 else 0
+            # Calculate violation ratio based on sampled data
+            sample_violation_ratio = orphan_count / sample_count if sample_count > 0 else 0
+
+            # Estimate total violations if sampled
+            if was_sampled:
+                estimated_total_violations = int(sample_violation_ratio * total_rows)
+                violation_ratio = sample_violation_ratio
+            else:
+                estimated_total_violations = orphan_count
+                violation_ratio = orphan_count / total_rows if total_rows > 0 else 0
+
+            # Build details message
+            if was_sampled:
+                details = (
+                    f"Composite FK violation: Found {orphan_count} violations in sample of "
+                    f"{sample_count:,} rows ({sample_violation_ratio:.2%}). "
+                    f"Estimated {estimated_total_violations:,} total violations in "
+                    f"'{relation.child_table}' ({total_rows:,} rows) with no matching "
+                    f"composite key in '{relation.parent_table}'"
+                )
+            else:
+                details = (
+                    f"Composite FK violation: {orphan_count} records in "
+                    f"'{relation.child_table}' have no matching composite key "
+                    f"in '{relation.parent_table}'"
+                )
 
             issues.append(
                 ValidationIssue(
                     column=", ".join(child_cols),
                     issue_type="composite_fk_violation",
-                    count=orphan_count,
+                    count=estimated_total_violations if was_sampled else orphan_count,
                     severity=self._calculate_severity(violation_ratio),
-                    details=(
-                        f"Composite FK violation: {orphan_count} records in "
-                        f"'{relation.child_table}' have no matching composite key "
-                        f"in '{relation.parent_table}'"
-                    ),
+                    details=details,
                     expected="All composite keys must exist in parent table",
                 )
             )
@@ -415,6 +475,8 @@ class SelfReferentialFKValidator(ReferentialValidator):
         tables: dict[str, pl.LazyFrame] | None = None,
         allow_null: bool = True,
         max_depth: int = 100,
+        sample_size: int | None = None,
+        sample_seed: int = DEFAULT_SAMPLE_SEED,
         **kwargs: Any,
     ):
         """Initialize self-referential FK validator.
@@ -426,9 +488,11 @@ class SelfReferentialFKValidator(ReferentialValidator):
             tables: Pre-registered tables
             allow_null: Allow NULL FK values (for root nodes)
             max_depth: Maximum hierarchy depth to check
+            sample_size: If set, validate on a sample of this size (for large tables)
+            sample_seed: Random seed for reproducible sampling
             **kwargs: Additional config
         """
-        super().__init__(tables=tables, **kwargs)
+        super().__init__(tables=tables, sample_size=sample_size, sample_seed=sample_seed, **kwargs)
         self.table_name = table
         self.fk_column = fk_column
         self.pk_column = pk_column
@@ -459,16 +523,25 @@ class SelfReferentialFKValidator(ReferentialValidator):
         if table_lf is None:
             return issues
 
-        df = table_lf.collect()
-        total_rows = len(df)
+        # Get total rows first
+        total_rows = table_lf.select(pl.len()).collect().item()
 
         if total_rows == 0:
             return issues
 
-        # Get all PK values
-        pk_values = set(df.select(pl.col(self.pk_column)).to_series().to_list())
+        # Sample or collect all data
+        df, sample_count, was_sampled = self._sample_lazyframe(table_lf)
 
-        # Get all FK values (excluding nulls)
+        # Get all PK values (always need all PKs for reference)
+        if was_sampled:
+            # For self-referential, we need all PK values from full table
+            pk_values = set(
+                table_lf.select(pl.col(self.pk_column)).collect().to_series().to_list()
+            )
+        else:
+            pk_values = set(df.select(pl.col(self.pk_column)).to_series().to_list())
+
+        # Get FK values from sampled data (excluding nulls)
         fk_df = df.filter(pl.col(self.fk_column).is_not_null())
         fk_values = fk_df.select(pl.col(self.fk_column)).to_series().to_list()
 
@@ -477,32 +550,61 @@ class SelfReferentialFKValidator(ReferentialValidator):
         orphan_count = len(orphan_fks)
 
         if orphan_count > 0:
+            # Calculate violation ratio based on sampled data
+            sample_violation_ratio = orphan_count / sample_count if sample_count > 0 else 0
+
+            # Estimate total violations if sampled
+            if was_sampled:
+                estimated_total_violations = int(sample_violation_ratio * total_rows)
+                violation_ratio = sample_violation_ratio
+                details = (
+                    f"Self-referential FK violation: Found {orphan_count} violations in "
+                    f"sample of {sample_count:,} rows ({sample_violation_ratio:.2%}). "
+                    f"Estimated {estimated_total_violations:,} total violations in "
+                    f"{total_rows:,} rows referencing non-existent {self.pk_column} values. "
+                    f"Sample invalid refs: {orphan_fks[:5]}"
+                )
+            else:
+                estimated_total_violations = orphan_count
+                violation_ratio = orphan_count / total_rows if total_rows > 0 else 0
+                details = (
+                    f"Self-referential FK violation: {orphan_count} records "
+                    f"reference non-existent {self.pk_column} values. "
+                    f"Sample invalid refs: {orphan_fks[:5]}"
+                )
+
             issues.append(
                 ValidationIssue(
                     column=self.fk_column,
                     issue_type="self_ref_fk_violation",
-                    count=orphan_count,
-                    severity=self._calculate_severity(orphan_count / total_rows),
-                    details=(
-                        f"Self-referential FK violation: {orphan_count} records "
-                        f"reference non-existent {self.pk_column} values. "
-                        f"Sample invalid refs: {orphan_fks[:5]}"
-                    ),
+                    count=estimated_total_violations,
+                    severity=self._calculate_severity(violation_ratio),
+                    details=details,
                     expected=f"All {self.fk_column} values exist as {self.pk_column}",
                 )
             )
 
-        # Check for null if not allowed
+        # Check for null if not allowed (on sampled data)
         if not self.allow_null:
             null_count = df.filter(pl.col(self.fk_column).is_null()).height
             if null_count > 0:
+                if was_sampled:
+                    estimated_null_count = int((null_count / sample_count) * total_rows)
+                    details = (
+                        f"Found {null_count} NULL values in sample ({sample_count:,} rows). "
+                        f"Estimated {estimated_null_count:,} total NULLs in {self.fk_column}"
+                    )
+                else:
+                    estimated_null_count = null_count
+                    details = f"Found {null_count} NULL values in {self.fk_column}"
+
                 issues.append(
                     ValidationIssue(
                         column=self.fk_column,
                         issue_type="self_ref_null_violation",
-                        count=null_count,
+                        count=estimated_null_count,
                         severity=Severity.MEDIUM,
-                        details=f"Found {null_count} NULL values in {self.fk_column}",
+                        details=details,
                         expected="Non-null self-referential FK values",
                     )
                 )

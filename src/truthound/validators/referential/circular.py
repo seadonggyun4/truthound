@@ -17,6 +17,7 @@ from truthound.validators.referential.base import (
     MultiTableValidator,
     ReferentialValidator,
 )
+from truthound.validators.optimization import GraphTraversalMixin
 
 
 @register_validator
@@ -428,6 +429,129 @@ class HierarchyDepthValidator(ReferentialValidator):
 
     def validate(self, lf: pl.LazyFrame) -> list[ValidationIssue]:
         """Validate hierarchy depth.
+
+        Args:
+            lf: Table LazyFrame
+
+        Returns:
+            List of validation issues
+        """
+        self.register_table(self.table_name, lf)
+        return self.validate_reference(self.relation)
+
+
+@register_validator
+class OptimizedHierarchyCircularValidator(ReferentialValidator, GraphTraversalMixin):
+    """Optimized hierarchy circular validator using Tarjan's SCC algorithm.
+
+    Uses GraphTraversalMixin for stack-safe, efficient cycle detection:
+    - Iterative DFS (no Python recursion limit)
+    - Tarjan's SCC algorithm O(V+E)
+    - Handles graphs with millions of nodes
+
+    Example:
+        validator = OptimizedHierarchyCircularValidator(
+            table="employees",
+            id_column="employee_id",
+            parent_column="manager_id",
+        )
+    """
+
+    name = "optimized_hierarchy_circular"
+
+    def __init__(
+        self,
+        table: str,
+        id_column: str,
+        parent_column: str,
+        tables: dict[str, pl.LazyFrame] | None = None,
+        max_depth: int = 1000,
+        **kwargs: Any,
+    ):
+        """Initialize optimized hierarchy circular validator.
+
+        Args:
+            table: Table name
+            id_column: Primary key column
+            parent_column: Self-referencing FK column
+            tables: Pre-registered tables
+            max_depth: Maximum traversal depth (cycle detection limit)
+            **kwargs: Additional config
+        """
+        super().__init__(tables=tables, **kwargs)
+        self.table_name = table
+        self.id_column = id_column
+        self.parent_column = parent_column
+        self.max_depth = max_depth
+        self.relation = ForeignKeyRelation(
+            child_table=table,
+            child_columns=[parent_column],
+            parent_table=table,
+            parent_columns=[id_column],
+        )
+
+    def validate_reference(
+        self, relation: ForeignKeyRelation
+    ) -> list[ValidationIssue]:
+        """Find circular references using optimized Tarjan's algorithm.
+
+        Args:
+            relation: The self-referential relation
+
+        Returns:
+            List of validation issues
+        """
+        issues: list[ValidationIssue] = []
+
+        table_lf = self.get_table(self.table_name)
+        if table_lf is None:
+            return issues
+
+        df = table_lf.collect()
+
+        if len(df) == 0:
+            return issues
+
+        # Build child->parent mapping using mixin
+        child_to_parent = self.build_child_to_parent(
+            df, self.id_column, self.parent_column
+        )
+
+        # Use optimized hierarchy cycle detection
+        cycles = self.find_hierarchy_cycles(child_to_parent, max_depth=self.max_depth)
+
+        if cycles:
+            # Group by cycle length for reporting
+            by_length: dict[int, list[list[Any]]] = {}
+            for cycle_info in cycles:
+                length = cycle_info.length
+                if length not in by_length:
+                    by_length[length] = []
+                by_length[length].append(cycle_info.nodes)
+
+            for length, paths in by_length.items():
+                sample_paths = paths[:3]
+                sample_str = "; ".join([str(cycle_info) for cycle_info in sample_paths[:3]])
+
+                issues.append(
+                    ValidationIssue(
+                        column=self.parent_column,
+                        issue_type="optimized_hierarchy_cycle_detected",
+                        count=len(paths),
+                        severity=Severity.CRITICAL,
+                        details=(
+                            f"Found {len(paths)} circular reference(s) of length {length} "
+                            f"in '{self.table_name}' using Tarjan's SCC. "
+                            f"Sample cycles: {sample_str}"
+                        ),
+                        expected="Acyclic hierarchy (tree structure)",
+                    )
+                )
+
+        return issues
+
+    def validate(self, lf: pl.LazyFrame) -> list[ValidationIssue]:
+        """Validate hierarchy for circular references.
 
         Args:
             lf: Table LazyFrame
