@@ -8,6 +8,21 @@ Design Principles:
 2. Support both SQL strings and Polars expressions
 3. Provide clear error messages with query context
 4. Enable parameterized queries for reusability
+5. SQL Injection protection through query validation
+
+Security:
+    This module implements SQL injection protection for Polars SQL queries:
+    - Validates query structure before execution
+    - Blocks dangerous SQL patterns (DDL, DCL, multiple statements)
+    - Supports safe parameterized queries
+    - Whitelist-based table name validation
+
+    The security module (truthound.validators.security) provides:
+    - Multi-level security policies (STRICT, STANDARD, PERMISSIVE)
+    - Pluggable pattern registry for custom blocking rules
+    - Fluent SecureSQLBuilder API
+    - ParameterizedQuery for safe parameter substitution
+    - QueryAuditLogger for security monitoring
 """
 
 from abc import abstractmethod
@@ -19,12 +34,37 @@ from truthound.types import Severity
 from truthound.validators.base import ValidationIssue, Validator, ValidatorConfig
 from truthound.validators.registry import register_validator
 
+# Import from the comprehensive security module
+from truthound.validators.security import (
+    SQLSecurityError,
+    SQLInjectionError,
+    QueryValidationError,
+    SQLQueryValidator,
+    validate_sql_query,
+    SecureSQLBuilder,
+    ParameterizedQuery,
+    WhitelistValidator,
+    SchemaWhitelist,
+    SecurityPolicy,
+    SecurityLevel,
+    SecureQueryMixin,
+    QueryAuditLogger,
+    AuditEntry,
+)
+
+# Backward compatibility alias
+SQLValidationError = QueryValidationError
+
 
 class QueryValidator(Validator):
     """Base class for query-based validators.
 
     Provides infrastructure for executing Polars SQL queries and validating results.
     Subclasses implement specific validation logic on query results.
+
+    Security:
+        SQL queries are validated before execution to prevent injection attacks.
+        Set validate_sql=False to disable validation (not recommended).
 
     Example:
         class MyQueryValidator(QueryValidator):
@@ -41,6 +81,8 @@ class QueryValidator(Validator):
         query: str | None = None,
         expression: pl.Expr | None = None,
         table_name: str = "data",
+        validate_sql: bool = True,
+        allowed_tables: list[str] | None = None,
         **kwargs: Any,
     ):
         """Initialize query validator.
@@ -49,15 +91,33 @@ class QueryValidator(Validator):
             query: SQL query string (uses Polars SQL context)
             expression: Polars expression as alternative to SQL
             table_name: Name to use for the table in SQL context
+            validate_sql: Whether to validate SQL for security (default: True)
+            allowed_tables: Whitelist of allowed table names for SQL validation
             **kwargs: Additional validator config
         """
         super().__init__(**kwargs)
         self.query = query
         self.expression = expression
         self.table_name = table_name
+        self.validate_sql = validate_sql
+
+        # Set up allowed tables (always include the main table)
+        if allowed_tables:
+            self.allowed_tables = list(allowed_tables)
+            if table_name not in self.allowed_tables:
+                self.allowed_tables.append(table_name)
+        else:
+            self.allowed_tables = [table_name]
 
         if query is None and expression is None:
             raise ValueError("Either 'query' or 'expression' must be provided")
+
+        # Validate SQL query if provided
+        if query and validate_sql:
+            try:
+                validate_sql_query(query, self.allowed_tables)
+            except SQLValidationError as e:
+                raise ValueError(f"SQL query validation failed: {e}")
 
     def _execute_query(self, lf: pl.LazyFrame) -> pl.DataFrame:
         """Execute the query and return results.
