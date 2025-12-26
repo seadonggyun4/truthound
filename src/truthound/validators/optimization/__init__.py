@@ -2,31 +2,11 @@
 
 This module provides reusable mixins for optimizing common validation patterns:
 
-Architecture:
-    ┌─────────────────────────────────────────────────────────────────┐
-    │                    Optimization Mixins                          │
-    │  (Performance patterns for specific algorithm categories)       │
-    └─────────────────────────────────────────────────────────────────┘
-                                    │
-    ┌───────────────┬───────────────┼───────────────┬─────────────────┐
-    │               │               │               │                 │
-    ▼               ▼               ▼               ▼                 ▼
-┌─────────┐   ┌─────────┐    ┌──────────┐   ┌──────────┐    ┌─────────┐
-│ Graph   │   │ Batch   │    │Vectorized│   │  Lazy    │    │Parallel │
-│Traversal│   │Covariance│   │   Geo    │   │Aggregation│   │ Compute │
-│ Mixin   │   │  Mixin   │    │  Mixin   │   │  Mixin   │    │ Mixin  │
-└─────────┘   └─────────┘    └──────────┘   └──────────┘    └─────────┘
-     │             │               │              │               │
-     ▼             ▼               ▼              ▼               ▼
- Hierarchy   Mahalanobis     GeoDistance    CrossTable      Anomaly
- Validators  Validators     Validators     Validators     Validators
-
 Performance Improvements:
-    - GraphTraversalMixin: Tarjan's SCC O(V+E), iterative DFS (no stack overflow)
+    - GraphTraversalMixin: Tarjan's SCC O(V+E), iterative DFS
     - BatchCovarianceMixin: Incremental covariance O(n), Woodbury updates
     - VectorizedGeoMixin: SIMD-friendly Haversine, batch processing
     - LazyAggregationMixin: Polars lazy evaluation, predicate pushdown
-    - ParallelComputeMixin: Multiprocessing for independent computations
 
 Usage:
     from truthound.validators.optimization import (
@@ -35,11 +15,6 @@ Usage:
         VectorizedGeoMixin,
         LazyAggregationMixin,
     )
-
-    class OptimizedHierarchyValidator(HierarchyValidator, GraphTraversalMixin):
-        def _find_cycles_in_data(self, df):
-            # Uses optimized iterative Tarjan's algorithm
-            return self.find_all_cycles(adjacency_dict)
 """
 
 from truthound.validators.optimization.graph import (
