@@ -1,6 +1,6 @@
 """Geospatial validators.
 
-This module provides 8 validators for geographic coordinate validation:
+This module provides 11 validators for geographic coordinate validation:
 
 Coordinate Validators:
 - LatitudeValidator: Validate latitude values within range
@@ -15,6 +15,11 @@ Distance Validators:
 Boundary Validators:
 - GeoBoundingBoxValidator: Validate coordinates within bounding box
 - GeoCountryValidator: Validate coordinates within country bounds
+
+Polygon Validators (requires Shapely):
+- PolygonValidator: Validate coordinates within polygon boundary
+- MultiPolygonValidator: Validate coordinates within multiple polygons
+- PolygonDistanceValidator: Validate distance to polygon boundary
 """
 
 from truthound.validators.geospatial.base import (
@@ -37,6 +42,20 @@ from truthound.validators.geospatial.boundary import (
     GeoCountryValidator,
 )
 
+# Polygon validators (optional, requires Shapely)
+try:
+    from truthound.validators.geospatial.polygon import (
+        PolygonValidator,
+        MultiPolygonValidator,
+        PolygonDistanceValidator,
+        SHAPELY_AVAILABLE,
+    )
+except ImportError:
+    PolygonValidator = None
+    MultiPolygonValidator = None
+    PolygonDistanceValidator = None
+    SHAPELY_AVAILABLE = False
+
 __all__ = [
     # Base
     "GeoValidator",
@@ -53,4 +72,9 @@ __all__ = [
     # Boundary
     "GeoBoundingBoxValidator",
     "GeoCountryValidator",
+    # Polygon (optional)
+    "PolygonValidator",
+    "MultiPolygonValidator",
+    "PolygonDistanceValidator",
+    "SHAPELY_AVAILABLE",
 ]
