@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "truthound"
 version = "0.2.0"
-description = "Zero-configuration data quality toolkit powered by Polars"
+description = "Zero-Configuration Data Quality Framework Powered by Polars"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.11"
@@ -172,4 +172,5 @@ pythonpath = ["src"]
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "e2e: marks tests as end-to-end tests",
+    "scale_100m: marks tests as 100M+ scale tests (run with '-m scale_100m')",
 ]
