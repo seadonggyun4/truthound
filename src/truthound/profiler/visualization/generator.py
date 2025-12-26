@@ -84,15 +84,21 @@ class HTMLReportGenerator:
 
         self._theme = THEME_CONFIGS.get(self.config.theme, THEME_CONFIGS[ReportTheme.LIGHT])
 
-    def generate(self, data: ProfileData) -> str:
+    def generate(self, data: ProfileData, config: ReportConfig | None = None) -> str:
         """Generate HTML report from profile data.
 
         Args:
             data: Profile data to visualize
+            config: Optional config override (uses generator's config if not provided)
 
         Returns:
             Complete HTML document string
         """
+        # Use provided config or fall back to generator's config
+        if config is not None:
+            old_config = self.config
+            self.config = config
+            self._theme = THEME_CONFIGS.get(config.theme, THEME_CONFIGS[ReportTheme.LIGHT])
         parts = []
 
         # HTML document start
@@ -132,6 +138,23 @@ class HTMLReportGenerator:
         parts.append('</body></html>')
 
         return '\n'.join(parts)
+
+    def save(self, data: ProfileData, path: str | Path, config: ReportConfig | None = None) -> Path:
+        """Generate and save HTML report to file.
+
+        Args:
+            data: Profile data to visualize
+            path: Output file path
+            config: Optional config override
+
+        Returns:
+            Path to the saved file
+        """
+        html_content = self.generate(data, config)
+        output_path = Path(path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(html_content, encoding="utf-8")
+        return output_path
 
     def _render_head(self, data: ProfileData) -> str:
         """Render HTML head section."""
@@ -660,7 +683,73 @@ class HTMLReportGenerator:
 
 
 class ReportExporter:
-    """Export reports to various formats."""
+    """Export reports to various formats.
+
+    Supports both static methods and instance-based API.
+    """
+
+    def __init__(self, config: ReportConfig | None = None) -> None:
+        """Initialize exporter with optional configuration.
+
+        Args:
+            config: Report configuration for exports
+        """
+        self._config = config
+        self._generator = HTMLReportGenerator(config)
+
+    def to_html(self, profile: ProfileData, config: ReportConfig | None = None) -> str:
+        """Export profile to HTML string.
+
+        Args:
+            profile: Profile data to export
+            config: Optional config override
+
+        Returns:
+            HTML string
+        """
+        return self._generator.generate(profile, config or self._config)
+
+    def to_json(self, profile: ProfileData) -> str:
+        """Export profile to JSON string.
+
+        Args:
+            profile: Profile data to export
+
+        Returns:
+            JSON string
+        """
+        data = ProfileDataConverter.to_dict(profile)
+        return json.dumps(data, indent=2, default=str)
+
+    def to_file(
+        self,
+        profile: ProfileData,
+        path: str | Path,
+        format: str = "html",
+        config: ReportConfig | None = None,
+    ) -> None:
+        """Export profile to file.
+
+        Args:
+            profile: Profile data to export
+            path: Output file path
+            format: Output format ("html", "json", "pdf")
+            config: Optional config override for HTML
+        """
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+
+        if format == "html":
+            content = self.to_html(profile, config)
+            path.write_text(content, encoding="utf-8")
+        elif format == "json":
+            content = self.to_json(profile)
+            path.write_text(content, encoding="utf-8")
+        elif format == "pdf":
+            html_content = self.to_html(profile, config)
+            self.to_pdf(html_content, path)
+        else:
+            raise ValueError(f"Unknown format: {format}")
 
     @staticmethod
     def save_html(html_content: str, path: str | Path) -> None:
@@ -706,23 +795,29 @@ def generate_report(
     title: str = "",
     theme: str | ReportTheme = "light",
     renderer: str = "auto",
+    config: ReportConfig | None = None,
+    output_path: str | Path | None = None,
     **kwargs: Any,
-) -> str:
+) -> str | Path:
     """Generate an HTML report from profile data.
 
     Args:
         data: Profile data (ProfileData or dict)
-        title: Report title
-        theme: Theme name or ReportTheme enum
-        renderer: Chart renderer ("svg", "plotly", "echarts", "auto")
-        **kwargs: Additional ReportConfig options
+        title: Report title (ignored if config is provided)
+        theme: Theme name or ReportTheme enum (ignored if config is provided)
+        renderer: Chart renderer ("svg", "plotly", "echarts", "auto") (ignored if config is provided)
+        config: Pre-built ReportConfig (if provided, title/theme/renderer are ignored)
+        output_path: Optional path to save the report (if provided, returns Path instead of string)
+        **kwargs: Additional ReportConfig options (ignored if config is provided)
 
     Returns:
-        HTML string
+        HTML string if output_path is None, Path to saved file otherwise
     """
     if isinstance(data, dict):
+        # Extract table_name from dict, checking both 'table_name' and 'name' keys
+        table_name = data.get("table_name", data.get("name", "data"))
         data = ProfileData(
-            table_name=data.get("name", "data"),
+            table_name=table_name,
             row_count=data.get("row_count", 0),
             column_count=data.get("column_count", len(data.get("columns", []))),
             columns=data.get("columns", []),
@@ -733,48 +828,84 @@ def generate_report(
             timestamp=data.get("timestamp"),
         )
 
-    if isinstance(theme, str):
-        theme = ReportTheme(theme)
+    # Use provided config or build one from parameters
+    if config is None:
+        if isinstance(theme, str):
+            theme = ReportTheme(theme)
 
-    config = ReportConfig(
-        title=title or f"Profile: {data.table_name}",
-        theme=theme,
-        renderer=renderer,
-        **kwargs,
-    )
+        config = ReportConfig(
+            title=title or f"Profile: {data.table_name}",
+            theme=theme,
+            renderer=renderer,
+        )
 
     generator = HTMLReportGenerator(config)
-    return generator.generate(data)
+    html_content = generator.generate(data)
+
+    if output_path is not None:
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(html_content, encoding="utf-8")
+        return output_path
+
+    return html_content
 
 
 def compare_profiles(
-    profile_a: ProfileData,
-    profile_b: ProfileData,
+    profiles: ProfileData | List[ProfileData],
+    profile_b: ProfileData | None = None,
     title: str = "Profile Comparison",
+    labels: List[str] | None = None,
     **kwargs: Any,
 ) -> str:
-    """Generate a comparison report between two profiles.
+    """Generate a comparison report between profiles.
+
+    Can be called with either:
+    - compare_profiles(profile_a, profile_b) - two profile arguments
+    - compare_profiles([profile1, profile2], labels=["Before", "After"]) - list of profiles
 
     Args:
-        profile_a: First profile
-        profile_b: Second profile
+        profiles: First profile or list of profiles to compare
+        profile_b: Second profile (optional if profiles is a list)
         title: Report title
+        labels: Labels for each profile (e.g., ["Before", "After"])
         **kwargs: Additional options
 
     Returns:
         HTML comparison report
     """
+    # Handle list of profiles
+    if isinstance(profiles, list):
+        if len(profiles) < 2:
+            raise ValueError("Need at least 2 profiles to compare")
+        profile_a = profiles[0]
+        profile_b = profiles[1]
+        if labels and len(labels) >= 2:
+            label_a, label_b = labels[0], labels[1]
+        else:
+            label_a = profile_a.table_name
+            label_b = profile_b.table_name
+    else:
+        profile_a = profiles
+        if profile_b is None:
+            raise ValueError("profile_b is required when profiles is not a list")
+        label_a = profile_a.table_name
+        label_b = profile_b.table_name
+
     # Create comparison data
     comparison_data = ProfileData(
-        table_name=f"{profile_a.table_name} vs {profile_b.table_name}",
+        table_name=f"{label_a} vs {label_b}",
         row_count=profile_a.row_count,
         column_count=profile_a.column_count,
         columns=[],
         metadata={
             "comparison": True,
-            "profile_a": profile_a.table_name,
-            "profile_b": profile_b.table_name,
+            "profile_a": label_a,
+            "profile_b": label_b,
         },
+        recommendations=[
+            f"Comparing {label_a} with {label_b}",
+        ],
     )
 
     # Compare columns
@@ -829,14 +960,23 @@ class ThemeRegistry:
 
     _instance: Optional["ThemeRegistry"] = None
     _lock: threading.Lock = threading.Lock()
+    _initialized: bool = False
 
     def __new__(cls) -> "ThemeRegistry":
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
                     cls._instance = super().__new__(cls)
-                    cls._instance._themes: Dict[str, ThemeConfig] = dict(THEME_CONFIGS)
         return cls._instance
+
+    def __init__(self) -> None:
+        # Only initialize themes once
+        if not ThemeRegistry._initialized:
+            self._themes: Dict[str, ThemeConfig] = {}
+            # Populate with built-in themes
+            for theme_enum, theme_config in THEME_CONFIGS.items():
+                self._themes[theme_enum.value] = theme_config
+            ThemeRegistry._initialized = True
 
     def register(self, name: str, theme: ThemeConfig) -> None:
         """Register a custom theme."""
@@ -866,7 +1006,16 @@ class ProfileDataConverter:
     """Convert between different profile data formats.
 
     Handles conversion from raw dict data to ProfileData and vice versa.
+    Supports both static methods and instance-based API.
     """
+
+    def __init__(self, profile: ProfileData | None = None) -> None:
+        """Initialize converter with optional profile data.
+
+        Args:
+            profile: ProfileData to convert/process
+        """
+        self._profile = profile
 
     @staticmethod
     def from_dict(data: Dict[str, Any]) -> ProfileData:
@@ -923,6 +1072,52 @@ class ProfileDataConverter:
 
         return result
 
+    def create_overview_section(self) -> SectionContent:
+        """Create overview section from profile data.
+
+        Returns:
+            SectionContent for overview section
+        """
+        if self._profile is None:
+            raise ValueError("No profile data set")
+
+        from truthound.profiler.visualization.base import SectionContent
+
+        return SectionContent(
+            section_type=SectionType.OVERVIEW,
+            title="Overview",
+            text_blocks=[
+                f"Table: {self._profile.table_name}",
+                f"Rows: {self._profile.row_count:,}",
+                f"Columns: {self._profile.column_count}",
+            ],
+        )
+
+    def create_quality_section(self) -> SectionContent:
+        """Create data quality section from profile data.
+
+        Returns:
+            SectionContent for quality section
+        """
+        if self._profile is None:
+            raise ValueError("No profile data set")
+
+        from truthound.profiler.visualization.base import SectionContent
+
+        text_blocks = []
+        if self._profile.quality_scores:
+            for key, value in self._profile.quality_scores.items():
+                if isinstance(value, float):
+                    text_blocks.append(f"{key}: {value:.1%}")
+                else:
+                    text_blocks.append(f"{key}: {value}")
+
+        return SectionContent(
+            section_type=SectionType.DATA_QUALITY,
+            title="Data Quality",
+            text_blocks=text_blocks,
+        )
+
 
 # =============================================================================
 # Report Template
@@ -933,11 +1128,12 @@ class ReportTemplate:
     """Customizable report template.
 
     Allows for complete customization of the report structure and styling.
+    Can be initialized with a ThemeConfig or individual template parameters.
     """
 
     def __init__(
         self,
-        name: str = "default",
+        name_or_theme: str | ThemeConfig = "default",
         base_css: str = "",
         header_template: str = "",
         footer_template: str = "",
@@ -946,17 +1142,87 @@ class ReportTemplate:
         """Initialize report template.
 
         Args:
-            name: Template name
-            base_css: Base CSS styles
+            name_or_theme: Template name (str) or ThemeConfig instance
+            base_css: Base CSS styles (ignored if ThemeConfig passed)
             header_template: HTML template for header
             footer_template: HTML template for footer
             section_templates: HTML templates for each section type
         """
-        self.name = name
-        self.base_css = base_css
+        if isinstance(name_or_theme, ThemeConfig):
+            self._theme = name_or_theme
+            self.name = name_or_theme.name
+            self.base_css = ""
+        else:
+            self._theme = None
+            self.name = name_or_theme
+            self.base_css = base_css
+
         self.header_template = header_template
         self.footer_template = footer_template
         self.section_templates = section_templates or {}
+
+    def get_css(self) -> str:
+        """Get CSS styles for this template.
+
+        Returns:
+            CSS string with theme variables
+        """
+        if self._theme:
+            return self._theme.to_css_vars()
+        return self.base_css
+
+    def get_js(self) -> str:
+        """Get JavaScript for this template.
+
+        Returns:
+            JavaScript string for interactivity
+        """
+        return '''
+            // Collapsible sections
+            document.querySelectorAll('.collapsible .card-header').forEach(header => {
+                header.addEventListener('click', () => {
+                    header.parentElement.classList.toggle('collapsed');
+                });
+            });
+
+            // Smooth scroll for TOC
+            document.querySelectorAll('.toc-item').forEach(link => {
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const target = document.querySelector(link.getAttribute('href'));
+                    if (target) {
+                        target.scrollIntoView({ behavior: 'smooth' });
+                    }
+                });
+            });
+        '''
+
+    def render_header(self, config: ReportConfig) -> str:
+        """Render the header section.
+
+        Args:
+            config: Report configuration
+
+        Returns:
+            HTML string for header
+        """
+        title = config.title or "Data Profile Report"
+        subtitle = config.subtitle or ""
+
+        timestamp = ""
+        if config.include_timestamp:
+            ts = datetime.now()
+            timestamp = f'<span class="timestamp">Generated: {ts.strftime("%Y-%m-%d %H:%M:%S")}</span>'
+
+        return f'''
+        <header class="report-header">
+            <div class="header-text">
+                <h1>{html.escape(title)}</h1>
+                {f'<p class="subtitle">{html.escape(subtitle)}</p>' if subtitle else ""}
+                {timestamp}
+            </div>
+        </header>
+        '''
 
     def apply(self, generator: HTMLReportGenerator) -> None:
         """Apply this template to a generator.
@@ -964,11 +1230,12 @@ class ReportTemplate:
         Args:
             generator: HTMLReportGenerator to modify
         """
-        if self.base_css:
+        css = self.get_css()
+        if css:
             if generator.config.custom_css:
-                generator.config.custom_css += "\n" + self.base_css
+                generator.config.custom_css += "\n" + css
             else:
-                generator.config.custom_css = self.base_css
+                generator.config.custom_css = css
 
     @classmethod
     def load_from_file(cls, path: str | Path) -> "ReportTemplate":
@@ -984,7 +1251,7 @@ class ReportTemplate:
         data = json.loads(path.read_text())
 
         return cls(
-            name=data.get("name", path.stem),
+            name_or_theme=data.get("name", path.stem),
             base_css=data.get("base_css", ""),
             header_template=data.get("header_template", ""),
             footer_template=data.get("footer_template", ""),

@@ -46,7 +46,7 @@ from truthound.profiler import (
     CURRENT_SCHEMA_VERSION,
     ProfileSerializer,
     SchemaValidator,
-    ValidationResult,
+    SchemaValidationStatus as ValidationResult,
     validate_profile,
     save_profile_versioned,
     load_profile_versioned,

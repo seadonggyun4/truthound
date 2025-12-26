@@ -237,7 +237,7 @@ from truthound.profiler.schema import (
     # Serialization
     ProfileSerializer,
     # Validation
-    ValidationResult,
+    SchemaValidationStatus,
     SchemaValidationResult,
     SchemaValidator,
     # Convenience (these override table_profiler versions with versioning support)
@@ -1167,7 +1167,7 @@ __all__ = [
     "SchemaMigrator",
     "schema_migrator",
     "ProfileSerializer",
-    "ValidationResult",
+    "SchemaValidationStatus",
     "SchemaValidationResult",
     "SchemaValidator",
     "save_profile_versioned",

@@ -583,9 +583,11 @@ class RandomSamplingStrategy(SamplingStrategy):
 
         # Polars sample is on DataFrame, need to collect first for true random
         # For LazyFrame, we use a workaround with row index
+        # Use higher precision (10000) to avoid fraction becoming 0 for small ratios
+        threshold = max(1, int(fraction * 10000))
         sampled_lf = (
             lf.with_row_index("__sample_idx")
-            .filter(pl.col("__sample_idx").hash(seed) % 100 < int(fraction * 100))
+            .filter(pl.col("__sample_idx").hash(seed) % 10000 < threshold)
             .drop("__sample_idx")
         )
 
@@ -702,19 +704,20 @@ class HashSamplingStrategy(SamplingStrategy):
             return NoSamplingStrategy().sample(lf, config, total_rows)
 
         # Calculate threshold for hash-based filtering
-        threshold = int((sample_size / total_rows) * 100)
+        # Use higher precision (10000) to avoid threshold becoming 0 for small ratios
+        threshold = max(1, int((sample_size / total_rows) * 10000))
         seed = config.seed if config.seed is not None else 42
 
         if self.hash_column:
             # Hash specific column
             sampled_lf = lf.filter(
-                pl.col(self.hash_column).hash(seed) % 100 < threshold
+                pl.col(self.hash_column).hash(seed) % 10000 < threshold
             )
         else:
             # Hash row index
             sampled_lf = (
                 lf.with_row_index("__hash_idx")
-                .filter(pl.col("__hash_idx").hash(seed) % 100 < threshold)
+                .filter(pl.col("__hash_idx").hash(seed) % 10000 < threshold)
                 .drop("__hash_idx")
             )
 
@@ -1256,13 +1259,19 @@ def calculate_sample_size(
     population_size: int,
     confidence_level: float = 0.95,
     margin_of_error: float = 0.05,
+    min_sample_size: int = 1,
 ) -> int:
     """Calculate required sample size for given parameters.
+
+    Uses Cochran's formula with finite population correction.
+    By default, returns the pure statistical calculation without
+    minimum size constraints.
 
     Args:
         population_size: Total population
         confidence_level: Confidence level (0-1)
         margin_of_error: Margin of error (0-1)
+        min_sample_size: Minimum sample size (default 1 for pure statistical result)
 
     Returns:
         Required sample size
@@ -1274,5 +1283,6 @@ def calculate_sample_size(
     config = SamplingConfig(
         confidence_level=confidence_level,
         margin_of_error=margin_of_error,
+        min_sample_size=min_sample_size,
     )
     return config.calculate_required_sample_size(population_size)

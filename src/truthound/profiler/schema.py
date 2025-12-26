@@ -391,12 +391,16 @@ class ProfileSerializer:
 # =============================================================================
 
 
-class ValidationResult(Enum):
+class SchemaValidationStatus(Enum):
     """Result of schema validation."""
 
     VALID = "valid"
     RECOVERABLE = "recoverable"  # Has issues but can be fixed
     INVALID = "invalid"  # Cannot be processed
+
+
+# Alias for backward compatibility
+ValidationResult = SchemaValidationStatus
 
 
 @dataclass

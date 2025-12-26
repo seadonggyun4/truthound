@@ -286,3 +286,8 @@ class LocalBackend(DistributedBackend):
                 agg["std"] = variance ** 0.5 if variance > 0 else 0
 
         return aggregated
+
+
+# Register with global registry
+from truthound.profiler.distributed.base import backend_registry
+backend_registry.register("local", LocalBackend)
