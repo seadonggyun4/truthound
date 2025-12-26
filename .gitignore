@@ -86,6 +86,7 @@ Thumbs.db
 
 # Claude Code
 .claude/
+CLAUDE.md
 
 # Truthound cache
 .truthound/
