@@ -22,20 +22,38 @@ from truthound.validators.uniqueness.distinct_values import (
 from truthound.validators.uniqueness.within_record import (
     UniqueWithinRecordValidator,
     AllColumnsUniqueWithinRecordValidator,
+    ColumnPairUniqueValidator,
+)
+from truthound.validators.uniqueness.approximate import (
+    HyperLogLog,
+    ApproximateDistinctCountValidator,
+    ApproximateUniqueRatioValidator,
+    StreamingDistinctCountValidator,
 )
 
 __all__ = [
+    # Exact uniqueness
     "UniqueValidator",
     "UniqueRatioValidator",
     "DistinctCountValidator",
+    # Duplicate detection
     "DuplicateValidator",
     "DuplicateWithinGroupValidator",
+    # Primary key
     "PrimaryKeyValidator",
     "CompoundKeyValidator",
+    # Distinct value sets
     "DistinctValuesInSetValidator",
     "DistinctValuesEqualSetValidator",
     "DistinctValuesContainSetValidator",
     "DistinctCountBetweenValidator",
+    # Within record
     "UniqueWithinRecordValidator",
     "AllColumnsUniqueWithinRecordValidator",
+    "ColumnPairUniqueValidator",
+    # Approximate (HyperLogLog)
+    "HyperLogLog",
+    "ApproximateDistinctCountValidator",
+    "ApproximateUniqueRatioValidator",
+    "StreamingDistinctCountValidator",
 ]

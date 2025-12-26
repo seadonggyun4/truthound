@@ -31,27 +31,58 @@ class DateutilParseableValidator(Validator, StringValidatorMixin):
     category = "datetime"
 
     # Common date formats to try if dateutil is not available
+    # Ordered by specificity: more specific formats first
     COMMON_FORMATS = [
+        # ISO formats
         "%Y-%m-%d",
         "%Y/%m/%d",
-        "%d-%m-%Y",
-        "%d/%m/%Y",
-        "%m-%d-%Y",
-        "%m/%d/%Y",
-        "%Y-%m-%d %H:%M:%S",
-        "%Y/%m/%d %H:%M:%S",
-        "%d-%m-%Y %H:%M:%S",
-        "%d/%m/%Y %H:%M:%S",
         "%Y-%m-%dT%H:%M:%S",
         "%Y-%m-%dT%H:%M:%SZ",
         "%Y-%m-%dT%H:%M:%S.%f",
         "%Y-%m-%dT%H:%M:%S.%fZ",
-        "%B %d, %Y",
-        "%b %d, %Y",
-        "%d %B %Y",
-        "%d %b %Y",
-        "%B %d %Y",
-        "%b %d %Y",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y/%m/%d %H:%M:%S",
+        # Day-Month-Year formats
+        "%d-%m-%Y",
+        "%d/%m/%Y",
+        "%d-%m-%Y %H:%M:%S",
+        "%d/%m/%Y %H:%M:%S",
+        # Month-Day-Year formats (US style)
+        "%m-%d-%Y",
+        "%m/%d/%Y",
+        "%m-%d-%Y %H:%M:%S",
+        "%m/%d/%Y %H:%M:%S",
+        # Named month formats - with comma
+        "%B %d, %Y",              # January 15, 2024
+        "%b %d, %Y",              # Jan 15, 2024
+        "%d %B, %Y",              # 15 January, 2024
+        "%d %b, %Y",              # 15 Jan, 2024
+        # Named month formats - without comma
+        "%B %d %Y",               # January 15 2024
+        "%b %d %Y",               # Jan 15 2024
+        "%d %B %Y",               # 15 January 2024
+        "%d %b %Y",               # 15 Jan 2024
+        # Named month with hyphen
+        "%d-%b-%Y",               # 15-Jan-2024
+        "%d-%B-%Y",               # 15-January-2024
+        "%b-%d-%Y",               # Jan-15-2024
+        "%B-%d-%Y",               # January-15-2024
+        # Named month with time - 12-hour format
+        "%b %d %Y %I:%M %p",      # Jan 15 2024 10:30 AM
+        "%B %d %Y %I:%M %p",      # January 15 2024 10:30 AM
+        "%b %d, %Y %I:%M %p",     # Jan 15, 2024 10:30 AM
+        "%B %d, %Y %I:%M %p",     # January 15, 2024 10:30 AM
+        "%d %b %Y %I:%M %p",      # 15 Jan 2024 10:30 AM
+        "%d %B %Y %I:%M %p",      # 15 January 2024 10:30 AM
+        # Named month with time - 24-hour format
+        "%b %d %Y %H:%M",         # Jan 15 2024 10:30
+        "%B %d %Y %H:%M",         # January 15 2024 10:30
+        "%b %d %Y %H:%M:%S",      # Jan 15 2024 10:30:00
+        "%B %d %Y %H:%M:%S",      # January 15 2024 10:30:00
+        # Other common formats
+        "%Y%m%d",                 # 20240115
+        "%d.%m.%Y",               # 15.01.2024
+        "%Y.%m.%d",               # 2024.01.15
     ]
 
     def __init__(
