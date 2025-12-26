@@ -312,6 +312,165 @@ def sample(self, lf: pl.LazyFrame) -> pl.LazyFrame:
 
 ---
 
+## Enterprise-Scale Sampling (100M+ rows)
+
+For datasets exceeding 100 million rows, Truthound provides specialized sampling strategies with O(1) memory footprint.
+
+### Scale Categories
+
+| Category | Row Count | Recommended Strategy |
+|----------|-----------|---------------------|
+| SMALL | < 1M | No sampling needed |
+| MEDIUM | 1M - 10M | Systematic or adaptive |
+| LARGE | 10M - 100M | Block sampling |
+| XLARGE | 100M - 1B | Multi-stage sampling |
+| XXLARGE | > 1B | Probabilistic sketches |
+
+### Enterprise Sampling Strategies
+
+#### Block Sampling
+
+Processes data in fixed-size blocks with O(1) memory:
+
+```python
+from truthound.profiler.enterprise_sampling import (
+    BlockSamplingStrategy,
+    EnterpriseScaleConfig,
+)
+
+config = EnterpriseScaleConfig(
+    target_rows=100_000,
+    memory_budget_mb=512,
+)
+strategy = BlockSamplingStrategy(config)
+result = strategy.sample(lf, base_config)
+```
+
+#### Multi-Stage Sampling
+
+Hierarchical sampling for billion-row datasets:
+
+```python
+from truthound.profiler.enterprise_sampling import MultiStageSamplingStrategy
+
+strategy = MultiStageSamplingStrategy(config, num_stages=3)
+result = strategy.sample(lf, base_config)
+```
+
+#### Column-Aware Sampling
+
+Weights samples based on column types and cardinality:
+
+```python
+from truthound.profiler.enterprise_sampling import ColumnAwareSamplingStrategy
+
+strategy = ColumnAwareSamplingStrategy(config)
+result = strategy.sample(lf, base_config)
+```
+
+#### Progressive Sampling
+
+Iteratively refines sample until convergence:
+
+```python
+from truthound.profiler.enterprise_sampling import ProgressiveSamplingStrategy
+
+strategy = ProgressiveSamplingStrategy(
+    config,
+    convergence_threshold=0.01,
+    max_stages=5,
+)
+result = strategy.sample(lf, base_config)
+```
+
+### Enterprise Sampler Interface
+
+```python
+from truthound.profiler.enterprise_sampling import (
+    EnterpriseScaleSampler,
+    EnterpriseScaleConfig,
+    MemoryBudgetConfig,
+    SamplingQuality,
+)
+
+# Configure for enterprise scale
+config = EnterpriseScaleConfig(
+    target_rows=100_000,
+    memory_budget=MemoryBudgetConfig(max_memory_mb=1024),
+    time_budget_seconds=60.0,
+    quality=SamplingQuality.STANDARD,
+    confidence_level=0.95,
+)
+
+# Create sampler
+sampler = EnterpriseScaleSampler(config)
+
+# Auto-select best strategy
+result = sampler.sample(lf)
+
+# Or specify strategy explicitly
+result = sampler.sample(lf, strategy="block")
+result = sampler.sample(lf, strategy="multi_stage")
+result = sampler.sample(lf, strategy="column_aware")
+result = sampler.sample(lf, strategy="progressive")
+```
+
+### Convenience Functions
+
+```python
+from truthound.profiler.enterprise_sampling import (
+    sample_large_dataset,
+    estimate_optimal_sample_size,
+    classify_dataset_scale,
+)
+
+# Quick sampling
+result = sample_large_dataset(
+    lf,
+    target_rows=50_000,
+    quality="standard",
+    time_budget_seconds=30.0,
+)
+
+# Estimate optimal sample size
+size = estimate_optimal_sample_size(
+    total_rows=100_000_000,
+    confidence_level=0.95,
+    margin_of_error=0.05,
+)
+
+# Classify dataset scale
+scale = classify_dataset_scale(total_rows)  # Returns ScaleCategory enum
+```
+
+### Sampling in Validators
+
+Use `EnterpriseScaleSamplingMixin` in custom validators:
+
+```python
+from truthound.validators.base import Validator, EnterpriseScaleSamplingMixin
+
+class MyLargeDataValidator(Validator, EnterpriseScaleSamplingMixin):
+    sampling_threshold = 10_000_000   # Enable sampling above 10M rows
+    sampling_target_rows = 100_000    # Target sample size
+    sampling_quality = "standard"
+
+    def validate(self, lf):
+        # Automatically samples if dataset is large
+        sampled_lf, metrics = self._sample_for_validation(lf)
+
+        # Validate on sampled data
+        issues = self._do_validation(sampled_lf)
+
+        # Extrapolate counts if sampled
+        if metrics.is_sampled:
+            issues = self._extrapolate_issues(issues, metrics)
+
+        return issues
+```
+
+---
+
 ## Streaming Pattern Matching
 
 For large files that don't fit in memory, use streaming mode with chunk-aware pattern aggregation.

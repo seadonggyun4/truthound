@@ -36,7 +36,8 @@ Truthound is a high-performance data quality validation framework designed for m
 | **275+ Validators** | Schema, completeness, uniqueness, distribution, string patterns, datetime, and more |
 | **Zero Configuration** | Automatic schema inference with fingerprint-based caching |
 | **High Performance** | Polars LazyFrame architecture achieving 1M+ rows/sec throughput |
-| **100M+ Scale** | Streaming validation with chunked processing and memory-efficient algorithms |
+| **100M+ Scale** | Enterprise sampling strategies with O(1) memory footprint |
+| **Parallel Execution** | DAG-based validator orchestration with dependency-aware parallel execution |
 | **Statistical Analysis** | 13 drift detection methods, 15 anomaly detection algorithms |
 | **Privacy Compliance** | GDPR, CCPA, LGPD, PIPEDA, APPI + plugin-based regulation system |
 | **SQL Security** | Multi-level SQL injection protection with parameterized queries |
@@ -72,6 +73,9 @@ import truthound as th
 
 # Basic validation
 report = th.check("data.csv")
+
+# Parallel validation (DAG-based execution)
+report = th.check("data.csv", parallel=True, max_workers=4)
 
 # Schema-based validation
 schema = th.learn("baseline.csv")
@@ -110,6 +114,10 @@ truthound docs generate profile.json -o report.html  # HTML report
 | `th.learn()` | 0.27s | - | 37.0M rows/sec |
 
 **Enterprise Scale Features:**
+- **DAG-based Parallel Execution**: Dependency-aware validator orchestration with `parallel=True`
+- **Enterprise Sampling (100M+ rows)**: Block, multi-stage, column-aware, and progressive sampling strategies
+- **Validator Performance Profiling**: Per-validator timing, memory, and throughput metrics with Prometheus export
+- **Memory-Aware Processing**: O(1) memory footprint with backpressure and time budgets
 - Streaming validation with bounded memory (~300MB for 100GB files)
 - Sampling-based validation for ML anomaly detection
 - Approximate k-NN (Annoy, HNSW, Faiss) for memory-efficient LOF

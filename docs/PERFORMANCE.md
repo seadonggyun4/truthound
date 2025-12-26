@@ -310,6 +310,47 @@ issues = validator.validate(transactions_lf)
 
 ### 5.5 Parallel Execution
 
+Truthound provides built-in DAG-based parallel execution that automatically handles dependencies:
+
+```python
+import truthound as th
+
+# Simple parallel execution via API
+report = th.check("data.csv", parallel=True)
+
+# With custom worker count
+report = th.check("data.csv", parallel=True, max_workers=8)
+```
+
+For advanced control:
+
+```python
+from truthound.validators.optimization import (
+    ValidatorDAG,
+    ParallelExecutionStrategy,
+    AdaptiveExecutionStrategy,
+)
+
+# Build execution plan
+dag = ValidatorDAG()
+dag.add_validators([
+    NullValidator(column="id"),
+    RangeValidator(column="amount", min_value=0),
+    PatternValidator(column="email", pattern=r"^[\w.-]+@[\w.-]+\.\w+$"),
+])
+
+plan = dag.build_execution_plan()
+
+# Execute with parallel strategy
+strategy = ParallelExecutionStrategy(max_workers=4)
+result = plan.execute(lf, strategy)
+
+print(f"Total issues: {len(result.all_issues)}")
+print(f"Execution time: {result.total_duration_ms:.2f}ms")
+```
+
+Manual parallel execution (legacy approach):
+
 ```python
 from concurrent.futures import ThreadPoolExecutor
 from truthound.validators import NullValidator, RangeValidator, PatternValidator
@@ -327,6 +368,43 @@ with ThreadPoolExecutor(max_workers=4) as executor:
     futures = [executor.submit(run_validator, v, lf) for v in validators]
     all_issues = [f.result() for f in futures]
 ```
+
+### 5.6 Enterprise-Scale Sampling
+
+For 100M+ row datasets, use enterprise sampling strategies:
+
+```python
+from truthound.profiler.enterprise_sampling import (
+    EnterpriseScaleSampler,
+    EnterpriseScaleConfig,
+    MemoryBudgetConfig,
+)
+
+# Configure for large dataset
+config = EnterpriseScaleConfig(
+    target_rows=100_000,
+    memory_budget=MemoryBudgetConfig(max_memory_mb=512),
+    time_budget_seconds=60.0,
+)
+
+sampler = EnterpriseScaleSampler(config)
+
+# Auto-select best strategy based on data size
+result = sampler.sample(lf)
+
+# Or specify strategy explicitly
+result = sampler.sample(lf, strategy="block")       # For 10M-100M rows
+result = sampler.sample(lf, strategy="multi_stage") # For 100M+ rows
+```
+
+Available strategies:
+
+| Strategy | Best For | Memory | Speed |
+|----------|----------|--------|-------|
+| `block` | 10M-100M rows | O(1) | Fast |
+| `multi_stage` | 100M-1B rows | O(1) | Medium |
+| `column_aware` | Mixed column types | O(1) | Medium |
+| `progressive` | Unknown distributions | O(1) | Adaptive |
 
 ---
 

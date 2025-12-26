@@ -20,6 +20,7 @@ This document provides a comprehensive reference for all 275 validators implemen
 12. [Geospatial Validators](#12-geospatial-validators)
 13. [Drift Validators](#13-drift-validators)
 14. [Anomaly Validators](#14-anomaly-validators)
+15. [DAG-Based Execution](#15-dag-based-execution)
 
 ---
 
@@ -1727,6 +1728,204 @@ validator = DBSCANAnomalyValidator(
     min_samples=5,
     max_anomaly_ratio=0.1
 )
+```
+
+---
+
+## 15. DAG-Based Execution
+
+Truthound supports DAG (Directed Acyclic Graph) based validator execution, enabling dependency-aware parallel processing for improved performance with multiple validators.
+
+### 15.1 Overview
+
+When running multiple validators, Truthound can automatically:
+- Detect dependencies between validators
+- Group independent validators for parallel execution
+- Execute dependent validators in correct order
+- Optimize execution based on validator phases
+
+### 15.2 Execution Phases
+
+Validators are automatically categorized into phases for optimal execution order:
+
+| Phase | Order | Description |
+|-------|-------|-------------|
+| SCHEMA | 1 | Column structure, types |
+| COMPLETENESS | 2 | Null detection, required fields |
+| UNIQUENESS | 3 | Duplicates, primary keys |
+| FORMAT | 4 | String patterns, regex |
+| RANGE | 5 | Value bounds, distributions |
+| STATISTICAL | 6 | Aggregates, drift, anomalies |
+| CROSS_TABLE | 7 | Multi-table relationships |
+| CUSTOM | 8 | User-defined validators |
+
+### 15.3 Usage
+
+```python
+import truthound as th
+
+# Enable parallel execution with th.check()
+report = th.check("data.csv", parallel=True)
+
+# With custom worker count
+report = th.check("data.csv", parallel=True, max_workers=8)
+```
+
+### 15.4 Advanced Usage
+
+```python
+from truthound.validators.optimization import (
+    ValidatorDAG,
+    ParallelExecutionStrategy,
+    AdaptiveExecutionStrategy,
+)
+
+# Create DAG manually
+dag = ValidatorDAG()
+
+# Add validators with explicit dependencies
+dag.add_validator(schema_validator)
+dag.add_validator(null_validator, dependencies={"schema"})
+dag.add_validator(range_validator, dependencies={"null"})
+
+# Build execution plan
+plan = dag.build_execution_plan()
+
+# Execute with parallel strategy
+strategy = ParallelExecutionStrategy(max_workers=4)
+result = plan.execute(lf, strategy)
+
+print(f"Total issues: {len(result.all_issues)}")
+print(f"Execution time: {result.total_duration_ms:.2f}ms")
+```
+
+### 15.5 Execution Strategies
+
+| Strategy | Description | Best For |
+|----------|-------------|----------|
+| `SequentialExecutionStrategy` | Single-threaded execution | Debugging, small datasets |
+| `ParallelExecutionStrategy` | ThreadPoolExecutor-based | Large datasets, many validators |
+| `AdaptiveExecutionStrategy` | Auto-selects based on validator count | General use (default) |
+
+### 15.6 Custom Validator Dependencies
+
+Define dependencies in custom validators:
+
+```python
+class MyValidator(Validator):
+    name = "my_validator"
+    category = "custom"
+    dependencies = {"null", "schema"}  # Runs after null and schema
+    provides = {"my_check"}            # Other validators can depend on this
+    priority = 50                       # Lower = runs earlier within phase
+
+    def validate(self, lf):
+        ...
+```
+
+---
+
+## 16. Validator Performance Profiling
+
+Truthound provides comprehensive profiling capabilities to measure and analyze validator performance.
+
+### 16.1 Overview
+
+The profiling framework tracks:
+- **Timing**: Mean, median, p50, p90, p95, p99 execution times
+- **Memory**: Peak usage, delta, GC collections
+- **Throughput**: Rows processed per second
+- **Issues**: Validation issues found per execution
+
+### 16.2 Basic Usage
+
+```python
+from truthound.validators.optimization import (
+    ValidatorProfiler,
+    profile_validator,
+)
+
+# Simple profiling with context manager
+with profile_validator(my_validator, rows_processed=10000) as ctx:
+    issues = my_validator.validate(lf)
+    ctx.set_issue_count(len(issues))
+
+print(ctx.metrics.to_dict())
+```
+
+### 16.3 Session-Based Profiling
+
+```python
+from truthound.validators.optimization import ValidatorProfiler
+
+profiler = ValidatorProfiler()
+profiler.start_session("validation_run_1")
+
+for validator in validators:
+    with profiler.profile(validator, rows_processed=row_count) as ctx:
+        issues = validator.validate(lf)
+        ctx.set_issue_count(len(issues))
+
+session = profiler.end_session()
+
+# Get performance insights
+slowest = profiler.get_slowest_validators(10)
+memory_heavy = profiler.get_memory_intensive_validators(10)
+
+# Export results
+print(session.to_json())
+print(profiler.to_prometheus())
+```
+
+### 16.4 Profiler Modes
+
+| Mode | Description | Metrics |
+|------|-------------|---------|
+| `DISABLED` | No profiling (zero overhead) | None |
+| `BASIC` | Timing only | Execution time |
+| `STANDARD` | Default mode | Timing + memory |
+| `DETAILED` | Full metrics + snapshots | All metrics + per-execution snapshots |
+| `DIAGNOSTIC` | Maximum detail | All metrics + extended snapshots |
+
+```python
+from truthound.validators.optimization import ProfilerConfig, ValidatorProfiler
+
+# Use detailed mode for debugging
+profiler = ValidatorProfiler(ProfilerConfig.detailed())
+```
+
+### 16.5 Decorator-Based Profiling
+
+```python
+from truthound.validators.optimization import profiled
+
+class MyValidator(Validator):
+    name = "my_validator"
+    category = "custom"
+
+    @profiled()
+    def validate(self, lf):
+        # Automatically profiled
+        return issues
+```
+
+### 16.6 Report Generation
+
+```python
+from truthound.validators.optimization import ProfilingReport
+
+report = ProfilingReport(profiler)
+
+# Text summary
+print(report.text_summary())
+
+# HTML report
+html = report.html_report()
+with open("profiling_report.html", "w") as f:
+    f.write(html)
+
+# Prometheus format (for monitoring integration)
+prometheus_metrics = profiler.to_prometheus()
 ```
 
 ---
