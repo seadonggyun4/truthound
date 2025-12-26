@@ -35,15 +35,19 @@ Truthound is a high-performance data quality validation framework designed for m
 |---------|-------------|
 | **275+ Validators** | Schema, completeness, uniqueness, distribution, string patterns, datetime, and more |
 | **Zero Configuration** | Automatic schema inference with fingerprint-based caching |
-| **High Performance** | Polars LazyFrame architecture achieving 100M+ rows/sec throughput |
+| **High Performance** | Polars LazyFrame architecture achieving 1M+ rows/sec throughput |
+| **100M+ Scale** | Streaming validation with chunked processing and memory-efficient algorithms |
 | **Statistical Analysis** | 13 drift detection methods, 15 anomaly detection algorithms |
-| **Privacy Compliance** | GDPR, CCPA, LGPD, PIPEDA, APPI pattern detection |
+| **Privacy Compliance** | GDPR, CCPA, LGPD, PIPEDA, APPI + plugin-based regulation system |
+| **SQL Security** | Multi-level SQL injection protection with parameterized queries |
 | **Multi-Backend Support** | Polars, Pandas, SQL databases, Spark, and cloud data warehouses |
 | **CI/CD Integration** | Native support for 12 CI platforms with checkpoint orchestration |
+| **Streaming Sources** | Parquet, CSV, JSONL, Arrow IPC, Arrow Flight streaming |
 | **Auto-Profiling** | Streaming profiler with schema versioning and distributed processing |
 | **Data Docs** | Interactive HTML reports with 5 themes and 4 chart libraries |
 | **Plugin Architecture** | Extensible system for custom validators, reporters, and datasources |
-| **ML Integration** | Anomaly detection, drift detection, and ML-based type inference |
+| **ML Integration** | Anomaly detection with sampling, approximate k-NN, online SVM |
+| **Geospatial** | Shapely polygon support with point-in-polygon validation |
 | **Data Lineage** | Graph-based lineage tracking and impact analysis |
 | **Realtime Validation** | Streaming support with Kafka, Kinesis, and Pub/Sub |
 
@@ -99,13 +103,17 @@ truthound docs generate profile.json -o report.html  # HTML report
 
 ## Performance
 
-| Operation | 10M Rows | Throughput |
-|-----------|----------|------------|
-| `th.check()` | 3.53s | 2.83M rows/sec |
-| `th.profile()` | 0.15s | 66.7M rows/sec |
-| `th.learn()` | 0.27s | 37.0M rows/sec |
+| Operation | 10M Rows | 100M Rows | Throughput |
+|-----------|----------|-----------|------------|
+| `th.check()` | 9.4s | ~94s | 1.06M rows/sec |
+| `th.profile()` | 0.15s | - | 66.7M rows/sec |
+| `th.learn()` | 0.27s | - | 37.0M rows/sec |
 
-Drift detection with sampling achieves **92x speedup** on 5M row datasets.
+**Enterprise Scale Features:**
+- Streaming validation with bounded memory (~300MB for 100GB files)
+- Sampling-based validation for ML anomaly detection
+- Approximate k-NN (Annoy, HNSW, Faiss) for memory-efficient LOF
+- LRU cache for reference data statistics
 
 ---
 
@@ -134,6 +142,7 @@ Drift detection with sampling achieves **92x speedup** on 5M row datasets.
 
 ### Reference
 - **[API Reference](docs/API_REFERENCE.md)** — Complete API documentation
+- **[Performance Guide](docs/PERFORMANCE.md)** — Benchmarks and optimization strategies
 - **[Examples](docs/EXAMPLES.md)** — Usage examples and patterns
 - **[Test Coverage](docs/TEST_COVERAGE.md)** — 1004 tests across all features
 
@@ -154,7 +163,7 @@ Drift detection with sampling achieves **92x speedup** on 5M row datasets.
 | Multi-column | 21 | Column comparisons, conditional logic |
 | Query | 20 | SQL/Polars expression validation |
 | Table | 18 | Row count, freshness, metadata |
-| Geospatial | 9 | Coordinates, bounding boxes |
+| Geospatial | 12 | Coordinates, bounding boxes, Shapely polygons |
 | Drift | 13 | KS, PSI, Chi-square, Wasserstein |
 | Anomaly | 15 | IQR, Z-score, Isolation Forest, LOF |
 | Business | 8 | Luhn, IBAN, VAT, ISBN validation |
@@ -163,7 +172,7 @@ Drift detection with sampling achieves **92x speedup** on 5M row datasets.
 | Profiling | 7 | Cardinality, entropy, frequency |
 | Referential | 13 | Foreign keys, orphan records |
 | Time Series | 14 | Gaps, seasonality, trend detection |
-| Privacy | 15 | GDPR, CCPA, LGPD compliance |
+| Privacy | 21 | GDPR, CCPA, LGPD + 6 plugin regulations |
 
 ---
 
