@@ -145,18 +145,3 @@ class ChecksumValidator(BusinessRuleValidator):
             List of integer digits
         """
         return [int(c) for c in value if c.isdigit()]
-
-    def _remove_separators(self, value: str, separators: str = " -") -> str:
-        """Remove common separators from a value.
-
-        Args:
-            value: Input string
-            separators: Characters to remove
-
-        Returns:
-            Cleaned string
-        """
-        result = value
-        for sep in separators:
-            result = result.replace(sep, "")
-        return result
