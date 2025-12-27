@@ -9,9 +9,12 @@ This document provides comprehensive documentation for Truthound's storage backe
 3. [Built-in Backends](#3-built-in-backends)
 4. [Cloud Backends](#4-cloud-backends)
 5. [Database Backend](#5-database-backend)
-6. [Configuration Reference](#6-configuration-reference)
-7. [Custom Backends](#7-custom-backends)
-8. [Best Practices](#8-best-practices)
+6. [Streaming Storage](#6-streaming-storage)
+7. [Compression](#7-compression)
+8. [Encryption](#8-encryption)
+9. [Configuration Reference](#9-configuration-reference)
+10. [Custom Backends](#10-custom-backends)
+11. [Best Practices](#11-best-practices)
 
 ---
 
@@ -328,7 +331,439 @@ CREATE INDEX ix_namespace ON validation_results(namespace);
 
 ---
 
-## 6. Configuration Reference
+## 6. Streaming Storage
+
+For large-scale validation results that cannot fit in memory, use streaming stores.
+
+### 6.1 StreamingFileSystemStore
+
+JSONL-based streaming with memory-efficient reads and writes.
+
+```python
+from truthound.stores.streaming import StreamingFileSystemStore
+
+# Create streaming store
+store = StreamingFileSystemStore(base_path=".truthound/streaming")
+
+# Create a session for incremental writes
+session = store.create_session("run_001", "large_dataset.csv")
+
+# Write results incrementally (memory-efficient)
+with store.create_writer(session) as writer:
+    for batch in validation_batches:  # Millions of results
+        for result in batch:
+            writer.write_result(result)
+        writer.checkpoint()  # Save progress for recovery
+
+# Finalize the session
+final_result = store.finalize_result(session)
+
+# Read results back efficiently (streaming)
+for result in store.iter_results("run_001"):
+    process(result)
+```
+
+### 6.2 Key Features
+
+| Feature | Description |
+|---------|-------------|
+| **Incremental Writes** | Write results without memory overflow |
+| **Checkpointing** | Save progress for failure recovery |
+| **Streaming Reads** | Chunk-based memory-efficient reads |
+| **Compression** | gzip, zstd, lz4 compression support |
+| **Async Support** | Async read/write APIs |
+
+### 6.3 StreamingS3Store
+
+Multipart upload-based S3 streaming for cloud environments.
+
+```python
+from truthound.stores.streaming import StreamingS3Store
+
+store = StreamingS3Store(
+    bucket="my-validation-results",
+    prefix="streaming/",
+    compression="gzip",
+)
+
+# Same API as StreamingFileSystemStore
+session = store.create_session("run_001", "dataset.csv")
+# ...
+```
+
+---
+
+## 7. Compression
+
+Enterprise-grade compression for validation results.
+
+### 7.1 Supported Algorithms
+
+| Algorithm | Package | Ratio | Speed | Use Case |
+|-----------|---------|-------|-------|----------|
+| gzip | (built-in) | Good | Moderate | General purpose |
+| zstd | `zstandard` | Excellent | Fast | Large datasets |
+| lz4 | `lz4` | Moderate | Very Fast | Real-time |
+| snappy | `python-snappy` | Moderate | Fast | Streaming |
+| brotli | `brotli` | Excellent | Slow | Archival |
+| lzma | (built-in) | Best | Slowest | Maximum compression |
+
+### 7.2 Basic Usage
+
+```python
+from truthound.stores.compression import (
+    get_compressor,
+    CompressionAlgorithm,
+    CompressionLevel,
+)
+
+# Simple compression
+compressor = get_compressor(CompressionAlgorithm.GZIP, level=CompressionLevel.HIGH)
+compressed = compressor.compress(data)
+original = compressor.decompress(compressed)
+```
+
+### 7.3 Adaptive Compression
+
+Automatically selects the best algorithm based on data characteristics:
+
+```python
+from truthound.stores.compression import AdaptiveCompressor, CompressionGoal
+
+adaptive = AdaptiveCompressor(goal=CompressionGoal.BALANCED)
+result = adaptive.compress_with_metrics(data)
+
+print(f"Selected: {result.metrics.algorithm}")
+print(f"Ratio: {result.metrics.compression_ratio:.2f}x")
+print(f"Time: {result.metrics.compression_time_ms:.1f}ms")
+```
+
+### 7.4 Compression Pipeline
+
+Chain transforms with compression:
+
+```python
+from truthound.stores.compression import (
+    CompressionPipeline,
+    DeduplicationTransform,
+    get_compressor,
+    CompressionAlgorithm,
+)
+
+pipeline = (
+    CompressionPipeline("json_optimized")
+    .add_transform(DeduplicationTransform(block_size=1024))
+    .add_compression(get_compressor(CompressionAlgorithm.ZSTD))
+    .add_checksum()
+)
+
+result = pipeline.process(json_data)
+original = pipeline.reverse(result.data)
+```
+
+---
+
+## 8. Encryption
+
+Enterprise-grade encryption for protecting sensitive validation results.
+
+### 8.1 Overview
+
+Truthound provides comprehensive encryption capabilities:
+
+- **AEAD Algorithms**: AES-256-GCM, ChaCha20-Poly1305, XChaCha20-Poly1305
+- **Key Derivation**: Argon2id, PBKDF2, scrypt, HKDF
+- **Key Management**: Storage backends, rotation, expiration
+- **Streaming Encryption**: Memory-efficient large file handling
+- **Envelope Encryption**: DEK/KEK pattern for enterprise use
+
+### 8.2 Quick Start
+
+```python
+from truthound.stores.encryption import (
+    get_encryptor,
+    generate_key,
+    EncryptionAlgorithm,
+)
+
+# Generate a key
+key = generate_key(EncryptionAlgorithm.AES_256_GCM)
+
+# Encrypt data
+encryptor = get_encryptor("aes-256-gcm")
+encrypted = encryptor.encrypt(b"sensitive validation results", key)
+
+# Decrypt data
+decrypted = encryptor.decrypt(encrypted, key)
+```
+
+### 8.3 Supported Algorithms
+
+| Algorithm | Key Size | Nonce Size | Use Case |
+|-----------|----------|------------|----------|
+| AES-128-GCM | 128-bit | 96-bit | Lightweight encryption |
+| AES-256-GCM | 256-bit | 96-bit | Default, widely supported |
+| ChaCha20-Poly1305 | 256-bit | 96-bit | Fast on CPUs without AES-NI |
+| XChaCha20-Poly1305 | 256-bit | 192-bit | Extended nonce for high-volume |
+| Fernet | 128-bit | - | Simple symmetric encryption |
+
+### 8.4 Password-Based Encryption
+
+Derive encryption keys from passwords using secure KDFs:
+
+```python
+from truthound.stores.encryption import derive_key, KeyDerivation
+
+# Derive key from password (Argon2id recommended)
+key, salt = derive_key(
+    "my_secure_password",
+    kdf=KeyDerivation.ARGON2ID,
+)
+
+# Store salt alongside encrypted data for decryption
+# Later, derive the same key:
+key2, _ = derive_key("my_secure_password", salt=salt, kdf=KeyDerivation.ARGON2ID)
+```
+
+**Supported KDFs:**
+
+| KDF | Security | Speed | Use Case |
+|-----|----------|-------|----------|
+| Argon2id | Highest | Slow | Password hashing (recommended) |
+| scrypt | High | Slow | Memory-hard derivation |
+| PBKDF2-SHA256 | Good | Fast | Compatibility |
+| HKDF-SHA256 | N/A | Fast | Key expansion (not for passwords) |
+
+### 8.5 Encryption Pipeline
+
+Combine compression and encryption (recommended pattern):
+
+```python
+from truthound.stores.encryption import (
+    create_secure_pipeline,
+    create_fast_pipeline,
+    create_password_pipeline,
+    generate_key,
+    EncryptionAlgorithm,
+)
+
+# Secure pipeline: compress → encrypt → checksum
+key = generate_key(EncryptionAlgorithm.AES_256_GCM)
+pipeline = create_secure_pipeline(key, compression="gzip")
+
+# Process data
+result = pipeline.process(sensitive_data)
+print(f"Original: {len(sensitive_data)} bytes")
+print(f"Encrypted: {len(result.data)} bytes")
+print(f"Compression ratio: {result.metrics.compression_ratio:.2f}x")
+
+# Reverse the pipeline
+original = pipeline.reverse(result.data, result.header)
+assert original == sensitive_data
+
+# Fast pipeline: uses ChaCha20-Poly1305 for better performance
+fast_pipeline = create_fast_pipeline(key)
+
+# Password-based pipeline
+password_pipeline, salt = create_password_pipeline("my_password")
+# Store `salt` for later decryption
+```
+
+### 8.6 Custom Pipeline Configuration
+
+Build pipelines with custom stages:
+
+```python
+from truthound.stores.encryption import (
+    EncryptionPipeline,
+    EncryptionAlgorithm,
+)
+
+pipeline = (
+    EncryptionPipeline()
+    .add_compression("zstd")  # Compress first
+    .add_encryption(EncryptionAlgorithm.AES_256_GCM, key=key)
+    .add_checksum("sha256")  # Integrity verification
+)
+
+# Fluent API for configuration
+result = pipeline.process(data)
+serialized = pipeline.process_to_bytes(data)  # With header
+original = pipeline.reverse_from_bytes(serialized)
+```
+
+### 8.7 Key Management
+
+Manage encryption keys with built-in key stores:
+
+```python
+from truthound.stores.encryption import (
+    KeyManager,
+    KeyManagerConfig,
+    FileKeyStore,
+    InMemoryKeyStore,
+    EnvironmentKeyStore,
+)
+
+# File-based key store (encrypted with master password)
+store = FileKeyStore(
+    path=".keys",
+    master_password="master_secret_password",
+)
+
+# Create key manager
+manager = KeyManager(
+    store=store,
+    config=KeyManagerConfig(
+        default_algorithm=EncryptionAlgorithm.AES_256_GCM,
+        auto_rotate_days=90,  # Auto-rotate after 90 days
+    ),
+)
+
+# Create a new key
+key = manager.create_key(key_id="validation_key_2024")
+
+# Retrieve key
+key = manager.get_key("validation_key_2024")
+
+# Rotate key (creates new version)
+new_key = manager.rotate_key("validation_key_2024")
+
+# List all keys
+keys = manager.list_keys()
+
+# Delete key (secure wipe)
+manager.delete_key("old_key")
+```
+
+**Available Key Stores:**
+
+| Store | Use Case |
+|-------|----------|
+| `InMemoryKeyStore` | Testing, temporary keys |
+| `FileKeyStore` | Local development, small deployments |
+| `EnvironmentKeyStore` | Container environments, CI/CD |
+
+### 8.8 Envelope Encryption
+
+For large datasets, use envelope encryption (DEK/KEK pattern):
+
+```python
+from truthound.stores.encryption import EnvelopeEncryption, generate_key
+
+# Master key (KEK - Key Encryption Key)
+master_key = generate_key(EncryptionAlgorithm.AES_256_GCM)
+
+# Create envelope encryption
+envelope = EnvelopeEncryption(master_key)
+
+# Encrypt data (generates random DEK, encrypts data, wraps DEK)
+encrypted_data, wrapped_dek = envelope.encrypt(large_dataset)
+
+# Store encrypted_data and wrapped_dek
+# ...
+
+# Decrypt data
+original = envelope.decrypt(encrypted_data, wrapped_dek)
+```
+
+**Benefits:**
+- DEK (Data Encryption Key) is random per encryption
+- Only master key needs secure storage
+- Key rotation only re-wraps DEKs
+- Supports key hierarchy (multiple master keys)
+
+### 8.9 Streaming Encryption
+
+For large files that don't fit in memory:
+
+```python
+from truthound.stores.encryption import (
+    StreamingEncryptor,
+    StreamingDecryptor,
+    generate_key,
+    EncryptionAlgorithm,
+)
+
+key = generate_key(EncryptionAlgorithm.AES_256_GCM)
+
+# Encrypt large file
+with StreamingEncryptor(key, "output.enc") as enc:
+    for chunk in read_large_file("input.bin", chunk_size=1024*1024):
+        enc.write(chunk)
+
+# Decrypt
+with StreamingDecryptor(key, "output.enc") as dec:
+    for chunk in dec:
+        process_chunk(chunk)
+```
+
+### 8.10 Chunked Encryption (Random Access)
+
+For files requiring random access to encrypted content:
+
+```python
+from truthound.stores.encryption import (
+    ChunkedEncryptor,
+    ChunkedDecryptor,
+    generate_key,
+    EncryptionAlgorithm,
+)
+
+key = generate_key(EncryptionAlgorithm.AES_256_GCM)
+
+# Encrypt with chunk index
+encryptor = ChunkedEncryptor(key, chunk_size=64*1024)
+encrypted_data, chunk_index = encryptor.encrypt(large_data)
+
+# Save chunk_index for random access
+index_bytes = chunk_index.to_bytes()
+
+# Decrypt specific chunk (random access)
+decryptor = ChunkedDecryptor(key)
+chunk_5 = decryptor.decrypt_chunk(encrypted_data, chunk_index, chunk_index=5)
+
+# Decrypt range of chunks
+chunks_10_to_20 = decryptor.decrypt_range(encrypted_data, chunk_index, start=10, end=20)
+
+# Decrypt all
+all_data = decryptor.decrypt_all(encrypted_data, chunk_index)
+```
+
+### 8.11 Metrics and Monitoring
+
+Track encryption performance:
+
+```python
+from truthound.stores.encryption import EncryptionStats
+
+stats = EncryptionStats()
+
+# Record metrics from operations
+encryptor = get_encryptor("aes-256-gcm")
+result = encryptor.encrypt(data, key)
+stats.record(result.metrics)
+
+# View statistics
+print(f"Total operations: {stats.total_operations}")
+print(f"Total plaintext bytes: {stats.total_plaintext_bytes}")
+print(f"Average throughput: {stats.average_throughput_mbps:.2f} MB/s")
+print(f"Algorithm usage: {stats.algorithm_usage}")
+```
+
+### 8.12 Security Best Practices
+
+1. **Always use AEAD**: All supported algorithms provide authenticated encryption
+2. **Never reuse nonces**: The library handles this automatically
+3. **Compress before encrypting**: Use `create_secure_pipeline()` for optimal security
+4. **Use strong KDFs for passwords**: Prefer Argon2id over PBKDF2
+5. **Rotate keys regularly**: Use `KeyManager.rotate_key()`
+6. **Secure key storage**: Use `FileKeyStore` with strong master password
+7. **Clear sensitive data**: Call `key.clear()` when done with keys
+
+---
+
+## 9. Configuration Reference
 
 ### Common Store Methods
 
@@ -443,7 +878,7 @@ result = ValidationResult(
 
 ---
 
-## 7. Custom Backends
+## 10. Custom Backends
 
 Create custom storage backends by implementing the `BaseStore` interface:
 
@@ -539,9 +974,9 @@ store = get_store("redis", host="localhost", port=6379)
 
 ---
 
-## 8. Best Practices
+## 11. Best Practices
 
-### 8.1 Choosing a Backend
+### 11.1 Choosing a Backend
 
 | Scenario | Recommended Backend |
 |----------|---------------------|
@@ -553,7 +988,7 @@ store = get_store("redis", host="localhost", port=6379)
 | Multi-region, high availability | `s3` or `gcs` |
 | Existing PostgreSQL | `database` |
 
-### 8.2 Namespace Organization
+### 11.2 Namespace Organization
 
 Use namespaces to organize results:
 
@@ -571,7 +1006,7 @@ finance_store = get_store("database", connection_url="...", namespace="finance")
 marketing_store = get_store("database", connection_url="...", namespace="marketing")
 ```
 
-### 8.3 Compression
+### 11.3 Compression
 
 Enable compression for cloud storage:
 
@@ -588,7 +1023,7 @@ Benefits:
 - Lower storage costs
 - Faster network transfer
 
-### 8.4 Error Handling
+### 11.4 Error Handling
 
 ```python
 from truthound.stores.base import (
@@ -616,7 +1051,7 @@ except StoreWriteError as e:
     print(f"Failed to save: {e}")
 ```
 
-### 8.5 Resource Cleanup
+### 11.5 Resource Cleanup
 
 Always close stores when done:
 
@@ -646,7 +1081,18 @@ Truthound stores provide flexible, extensible storage for validation results:
 - **5 built-in backends**: filesystem, memory, S3, GCS, database
 - **Unified interface**: Same API across all backends
 - **Rich queries**: Filter by asset, status, time range
+- **Streaming storage**: Memory-efficient handling of large results
+- **Enterprise compression**: 8 algorithms with adaptive selection
+- **Enterprise encryption**: AES-256-GCM, ChaCha20-Poly1305, key management
 - **Easy extension**: Register custom backends with `@register_store`
+
+### Feature Matrix
+
+| Feature | Module | Description |
+|---------|--------|-------------|
+| Streaming Storage | `truthound.stores.streaming` | Incremental writes, checkpointing |
+| Compression | `truthound.stores.compression` | gzip, zstd, lz4, adaptive selection |
+| Encryption | `truthound.stores.encryption` | AEAD, key derivation, pipelines |
 
 For more information:
 - [Architecture Overview](ARCHITECTURE.md)
