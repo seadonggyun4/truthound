@@ -31,6 +31,7 @@ def check(
     use_engine: bool = False,
     parallel: bool = False,
     max_workers: int | None = None,
+    pushdown: bool | None = None,
 ) -> Report:
     """Perform data quality validation on the input data.
 
@@ -57,6 +58,10 @@ def check(
                  large datasets with many validators.
         max_workers: Maximum number of worker threads for parallel execution.
                     Only used when parallel=True. Defaults to min(32, cpu_count + 4).
+        pushdown: If True, enables query pushdown for SQL data sources.
+                 Validation logic is executed server-side when possible,
+                 reducing data transfer and improving performance.
+                 If None (default), auto-detects based on data source type.
 
     Returns:
         Report containing all validation issues found.
@@ -95,18 +100,45 @@ def check(
         >>> if source.needs_sampling():
         ...     source = source.sample(n=100_000)
         >>> report = th.check(source=source)
+
+        >>> # With query pushdown for SQL data sources
+        >>> from truthound.datasources.sql import PostgreSQLDataSource
+        >>> source = PostgreSQLDataSource(table="users", host="localhost", database="mydb")
+        >>> report = th.check(source=source, pushdown=True)  # Execute validations server-side
     """
     # Handle DataSource if provided
+    use_pushdown = False
+    sql_source = None
+
     if source is not None:
         from truthound.datasources.base import BaseDataSource
+        from truthound.datasources._protocols import DataSourceCapability
 
         if not isinstance(source, BaseDataSource):
             raise ValueError(
                 f"source must be a DataSource instance, got {type(source).__name__}"
             )
 
-        # Check size limits and warn if needed
-        if source.needs_sampling():
+        # Determine if pushdown should be used
+        if pushdown is True:
+            use_pushdown = True
+        elif pushdown is None:
+            # Auto-detect: use pushdown for SQL sources with SQL_PUSHDOWN capability
+            use_pushdown = DataSourceCapability.SQL_PUSHDOWN in source.capabilities
+
+        if use_pushdown:
+            # Verify it's actually a SQL data source
+            try:
+                from truthound.datasources.sql.base import BaseSQLDataSource
+                if isinstance(source, BaseSQLDataSource):
+                    sql_source = source
+                else:
+                    use_pushdown = False
+            except ImportError:
+                use_pushdown = False
+
+        # Check size limits and warn if needed (only if not using pushdown)
+        if not use_pushdown and source.needs_sampling():
             import warnings
             warnings.warn(
                 f"Data source '{source.name}' has {source.row_count:,} rows, "
@@ -115,25 +147,34 @@ def check(
                 UserWarning,
             )
 
-        # Get LazyFrame from data source
-        lf = source.to_polars_lazyframe()
         source_name = source.name
     else:
         if data is None:
             raise ValueError("Either 'data' or 'source' must be provided")
 
         # Convert input to LazyFrame (legacy path)
-        lf = to_lazyframe(data)
         source_name = str(data) if isinstance(data, str) else type(data).__name__
 
-    # Collect metadata
-    polars_schema = lf.collect_schema()
-    df_collected = lf.collect()
-    row_count = len(df_collected)
-    column_count = len(polars_schema)
+    # For pushdown path, get metadata without loading all data
+    if use_pushdown and sql_source is not None:
+        row_count = sql_source.row_count or 0
+        column_count = len(sql_source.columns)
+        lf = None  # Will be loaded lazily if needed for non-pushdown validators
+    else:
+        # Standard path: load data into Polars
+        if source is not None:
+            lf = source.to_polars_lazyframe()
+        else:
+            lf = to_lazyframe(data)
 
-    # Re-create lazy frame after collecting metadata
-    lf = df_collected.lazy()
+        # Collect metadata
+        polars_schema = lf.collect_schema()
+        df_collected = lf.collect()
+        row_count = len(df_collected)
+        column_count = len(polars_schema)
+
+        # Re-create lazy frame after collecting metadata
+        lf = df_collected.lazy()
 
     # Determine which validators to use
     validator_instances: list[Validator] = []
@@ -171,7 +212,14 @@ def check(
     # Run all validators and collect issues
     all_issues = []
 
-    if parallel and len(validator_instances) > 1:
+    if use_pushdown and sql_source is not None:
+        # Use pushdown validation engine for SQL data sources
+        from truthound.validators.pushdown_support import PushdownValidationEngine
+
+        engine = PushdownValidationEngine(sql_source)
+        all_issues = engine.validate(validator_instances)
+
+    elif parallel and len(validator_instances) > 1:
         # Use DAG-based parallel execution
         from truthound.validators.optimization.orchestrator import (
             ValidatorDAG,
