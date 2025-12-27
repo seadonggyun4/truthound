@@ -51,6 +51,8 @@ Truthound is a high-performance data quality validation framework designed for m
 | **Geospatial** | Shapely polygon support with point-in-polygon validation |
 | **Data Lineage** | Graph-based lineage tracking and impact analysis |
 | **Realtime Validation** | Streaming support with Kafka, Kinesis, and Pub/Sub |
+| **Enterprise Encryption** | AES-256-GCM, ChaCha20-Poly1305 with key management and streaming |
+| **Compression** | gzip, zstd, lz4, snappy, brotli with adaptive selection |
 
 ---
 
@@ -64,6 +66,9 @@ pip install truthound
 
 # With all optional features
 pip install truthound[all]
+
+# With encryption support
+pip install truthound[encryption]
 ```
 
 ### Python API
@@ -217,9 +222,62 @@ pip install truthound[oracle]     # Oracle Database
 pip install truthound[sqlserver]  # SQL Server
 pip install truthound[enterprise] # All enterprise sources
 
+# Security & storage extras
+pip install truthound[encryption] # Encryption (cryptography)
+pip install truthound[compression] # Advanced compression (zstd, lz4)
+
 # Full installation
 pip install truthound[all]
 ```
+
+---
+
+## Security Features
+
+### Encryption
+
+Truthound provides enterprise-grade encryption for sensitive validation results:
+
+```python
+from truthound.stores.encryption import (
+    get_encryptor,
+    generate_key,
+    EncryptionAlgorithm,
+    create_secure_pipeline,
+    derive_key,
+    KeyDerivation,
+)
+
+# Generate encryption key
+key = generate_key(EncryptionAlgorithm.AES_256_GCM)
+
+# Simple encryption
+encryptor = get_encryptor("aes-256-gcm")
+encrypted = encryptor.encrypt(sensitive_data, key)
+decrypted = encryptor.decrypt(encrypted, key)
+
+# Password-based encryption
+key, salt = derive_key("my_password", kdf=KeyDerivation.ARGON2ID)
+
+# Compress-then-encrypt pipeline (recommended)
+pipeline = create_secure_pipeline(key, compression="gzip")
+result = pipeline.process(data)
+original = pipeline.reverse(result.data, result.header)
+```
+
+**Supported Algorithms:**
+| Algorithm | Key Size | Use Case |
+|-----------|----------|----------|
+| AES-256-GCM | 256-bit | Default, widely supported |
+| ChaCha20-Poly1305 | 256-bit | Fast on CPUs without AES-NI |
+| XChaCha20-Poly1305 | 256-bit | Extended nonce for high-volume |
+| Fernet | 128-bit | Simple symmetric encryption |
+
+**Key Derivation Functions:**
+- Argon2id (recommended for passwords)
+- PBKDF2-SHA256/SHA512
+- scrypt
+- HKDF-SHA256
 
 ---
 
