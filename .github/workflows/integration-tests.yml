@@ -1,0 +1,448 @@
+name: Cloud DW Integration Tests
+
+on:
+  # Run on push to main (after PR merge)
+  push:
+    branches:
+      - main
+    paths:
+      - 'src/truthound/datasources/**'
+      - 'src/truthound/validators/**'
+      - 'tests/integration/**'
+      - '.github/workflows/integration-tests.yml'
+
+  # Run on PR (dry-run mode only)
+  pull_request:
+    branches:
+      - main
+    paths:
+      - 'src/truthound/datasources/**'
+      - 'src/truthound/validators/**'
+      - 'tests/integration/**'
+
+  # Allow manual trigger
+  workflow_dispatch:
+    inputs:
+      backends:
+        description: 'Backends to test (comma-separated, or "all")'
+        required: false
+        default: 'all'
+      dry_run:
+        description: 'Run in dry-run mode'
+        required: false
+        default: 'false'
+        type: boolean
+      max_cost:
+        description: 'Maximum cost limit (USD)'
+        required: false
+        default: '5.0'
+      include_expensive:
+        description: 'Include expensive tests (performance benchmarks)'
+        required: false
+        default: 'false'
+        type: boolean
+      include_truthound:
+        description: 'Include Truthound validator tests'
+        required: false
+        default: 'true'
+        type: boolean
+
+  # Scheduled run (weekly on Sunday at midnight UTC)
+  schedule:
+    - cron: '0 0 * * 0'
+
+# Limit concurrent runs
+concurrency:
+  group: integration-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHON_VERSION: '3.11'
+  TRUTHOUND_TEST_LOG_QUERIES: 'true'
+  TRUTHOUND_TEST_METRICS: 'true'
+  TRUTHOUND_TEST_COST_TRACKING: 'true'
+
+jobs:
+  # Pre-flight checks
+  preflight:
+    name: Pre-flight Checks
+    runs-on: ubuntu-latest
+    outputs:
+      backends: ${{ steps.detect.outputs.backends }}
+      is_pr: ${{ steps.detect.outputs.is_pr }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Detect available backends
+        id: detect
+        run: |
+          # Determine which backends are configured
+          BACKENDS=""
+
+          if [ -n "${{ secrets.BIGQUERY_PROJECT }}" ]; then
+            BACKENDS="${BACKENDS}bigquery,"
+          fi
+
+          if [ -n "${{ secrets.SNOWFLAKE_ACCOUNT }}" ]; then
+            BACKENDS="${BACKENDS}snowflake,"
+          fi
+
+          if [ -n "${{ secrets.REDSHIFT_HOST }}" ]; then
+            BACKENDS="${BACKENDS}redshift,"
+          fi
+
+          if [ -n "${{ secrets.DATABRICKS_HOST }}" ]; then
+            BACKENDS="${BACKENDS}databricks,"
+          fi
+
+          # Remove trailing comma
+          BACKENDS="${BACKENDS%,}"
+
+          # Check if manual input overrides
+          if [ "${{ github.event.inputs.backends }}" != "" ] && [ "${{ github.event.inputs.backends }}" != "all" ]; then
+            BACKENDS="${{ github.event.inputs.backends }}"
+          fi
+
+          echo "backends=${BACKENDS:-none}" >> $GITHUB_OUTPUT
+          echo "is_pr=${{ github.event_name == 'pull_request' }}" >> $GITHUB_OUTPUT
+
+          echo "Detected backends: ${BACKENDS:-none}"
+
+  # BigQuery Integration Tests
+  bigquery:
+    name: BigQuery Tests
+    needs: preflight
+    if: contains(needs.preflight.outputs.backends, 'bigquery')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          pip install -e ".[dev,bigquery]"
+
+      - name: Authenticate to GCP
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+
+      - name: Run BigQuery tests
+        env:
+          BIGQUERY_PROJECT: ${{ secrets.BIGQUERY_PROJECT }}
+          BIGQUERY_LOCATION: ${{ secrets.BIGQUERY_LOCATION || 'US' }}
+          TRUTHOUND_TEST_DRY_RUN: ${{ needs.preflight.outputs.is_pr == 'true' || github.event.inputs.dry_run == 'true' }}
+          TRUTHOUND_TEST_MAX_COST_USD: ${{ github.event.inputs.max_cost || '5.0' }}
+        run: |
+          MARKERS="bigquery"
+          SKIP_EXPENSIVE=""
+
+          # Skip expensive tests unless explicitly requested
+          if [ "${{ github.event.inputs.include_expensive }}" != "true" ]; then
+            SKIP_EXPENSIVE="--skip-expensive"
+          fi
+
+          # Include Truthound validator tests
+          if [ "${{ github.event.inputs.include_truthound }}" = "true" ] || [ "${{ github.event.inputs.include_truthound }}" = "" ]; then
+            MARKERS="${MARKERS} and truthound"
+          fi
+
+          pytest tests/integration/cloud_dw/ \
+            -v \
+            -m "${MARKERS}" \
+            ${SKIP_EXPENSIVE} \
+            --tb=short \
+            --junitxml=test-results/bigquery.xml \
+            2>&1 | tee test-results/bigquery.log
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bigquery-results
+          path: test-results/
+
+  # Snowflake Integration Tests
+  snowflake:
+    name: Snowflake Tests
+    needs: preflight
+    if: contains(needs.preflight.outputs.backends, 'snowflake')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          pip install -e ".[dev,snowflake]"
+
+      - name: Run Snowflake tests
+        env:
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+          SNOWFLAKE_WAREHOUSE: ${{ secrets.SNOWFLAKE_WAREHOUSE }}
+          SNOWFLAKE_DATABASE: ${{ secrets.SNOWFLAKE_DATABASE }}
+          SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
+          TRUTHOUND_TEST_DRY_RUN: ${{ needs.preflight.outputs.is_pr == 'true' || github.event.inputs.dry_run == 'true' }}
+          TRUTHOUND_TEST_MAX_COST_USD: ${{ github.event.inputs.max_cost || '5.0' }}
+        run: |
+          pytest tests/integration/cloud_dw/ \
+            -v \
+            -m snowflake \
+            --tb=short \
+            --junitxml=test-results/snowflake.xml
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: snowflake-results
+          path: test-results/
+
+  # Redshift Integration Tests
+  redshift:
+    name: Redshift Tests
+    needs: preflight
+    if: contains(needs.preflight.outputs.backends, 'redshift')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          pip install -e ".[dev,redshift]"
+
+      - name: Run Redshift tests
+        env:
+          REDSHIFT_HOST: ${{ secrets.REDSHIFT_HOST }}
+          REDSHIFT_DATABASE: ${{ secrets.REDSHIFT_DATABASE }}
+          REDSHIFT_USER: ${{ secrets.REDSHIFT_USER }}
+          REDSHIFT_PASSWORD: ${{ secrets.REDSHIFT_PASSWORD }}
+          REDSHIFT_PORT: ${{ secrets.REDSHIFT_PORT || '5439' }}
+          AWS_REGION: ${{ secrets.AWS_REGION || 'us-east-1' }}
+          TRUTHOUND_TEST_DRY_RUN: ${{ needs.preflight.outputs.is_pr == 'true' || github.event.inputs.dry_run == 'true' }}
+          TRUTHOUND_TEST_MAX_COST_USD: ${{ github.event.inputs.max_cost || '5.0' }}
+        run: |
+          pytest tests/integration/cloud_dw/ \
+            -v \
+            -m redshift \
+            --tb=short \
+            --junitxml=test-results/redshift.xml
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: redshift-results
+          path: test-results/
+
+  # Databricks Integration Tests
+  databricks:
+    name: Databricks Tests
+    needs: preflight
+    if: contains(needs.preflight.outputs.backends, 'databricks')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          pip install -e ".[dev,databricks]"
+
+      - name: Run Databricks tests
+        env:
+          DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+          DATABRICKS_HTTP_PATH: ${{ secrets.DATABRICKS_HTTP_PATH }}
+          DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+          DATABRICKS_CATALOG: ${{ secrets.DATABRICKS_CATALOG }}
+          TRUTHOUND_TEST_DRY_RUN: ${{ needs.preflight.outputs.is_pr == 'true' || github.event.inputs.dry_run == 'true' }}
+          TRUTHOUND_TEST_MAX_COST_USD: ${{ github.event.inputs.max_cost || '5.0' }}
+        run: |
+          pytest tests/integration/cloud_dw/ \
+            -v \
+            -m databricks \
+            --tb=short \
+            --junitxml=test-results/databricks.xml
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: databricks-results
+          path: test-results/
+
+  # Aggregate results
+  summary:
+    name: Test Summary
+    needs: [preflight, bigquery, snowflake, redshift, databricks]
+    if: always()
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-results/
+
+      - name: Generate summary
+        run: |
+          echo "## Cloud DW Integration Test Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Backend | Status | Tests | Duration |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|--------|-------|----------|" >> $GITHUB_STEP_SUMMARY
+
+          TOTAL_TESTS=0
+          TOTAL_PASSED=0
+          TOTAL_FAILED=0
+
+          # Check each backend result
+          for backend in bigquery snowflake redshift databricks; do
+            if [ -d "all-results/${backend}-results" ]; then
+              if [ -f "all-results/${backend}-results/${backend}.xml" ]; then
+                # Parse JUnit XML for pass/fail
+                tests=$(grep -o 'tests="[0-9]*"' "all-results/${backend}-results/${backend}.xml" | head -1 | grep -o '[0-9]*' || echo "0")
+                failures=$(grep -o 'failures="[0-9]*"' "all-results/${backend}-results/${backend}.xml" | head -1 | grep -o '[0-9]*' || echo "0")
+                errors=$(grep -o 'errors="[0-9]*"' "all-results/${backend}-results/${backend}.xml" | head -1 | grep -o '[0-9]*' || echo "0")
+                time=$(grep -o 'time="[0-9.]*"' "all-results/${backend}-results/${backend}.xml" | head -1 | grep -o '[0-9.]*' || echo "0")
+
+                TOTAL_TESTS=$((TOTAL_TESTS + tests))
+
+                if [ "${failures:-0}" = "0" ] && [ "${errors:-0}" = "0" ]; then
+                  echo "| ${backend} | ✅ Passed | ${tests} | ${time}s |" >> $GITHUB_STEP_SUMMARY
+                  TOTAL_PASSED=$((TOTAL_PASSED + tests))
+                else
+                  echo "| ${backend} | ❌ Failed | ${failures}/${tests} failed | ${time}s |" >> $GITHUB_STEP_SUMMARY
+                  TOTAL_FAILED=$((TOTAL_FAILED + failures))
+                fi
+              else
+                echo "| ${backend} | ⚠️ No results | - | - |" >> $GITHUB_STEP_SUMMARY
+              fi
+            else
+              echo "| ${backend} | ⏭️ Skipped | - | - |" >> $GITHUB_STEP_SUMMARY
+            fi
+          done
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "- **Total Tests:** ${TOTAL_TESTS}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Passed:** ${TOTAL_PASSED}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Failed:** ${TOTAL_FAILED}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Run mode:** ${{ needs.preflight.outputs.is_pr == 'true' && 'Dry-run (PR)' || 'Full execution' }}" >> $GITHUB_STEP_SUMMARY
+          echo "- **Cost limit:** \${{ github.event.inputs.max_cost || '5.0' }} USD" >> $GITHUB_STEP_SUMMARY
+
+          # Parse cost from logs if available
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "### Cost Tracking" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Backend | Bytes Processed | Estimated Cost |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|-----------------|----------------|" >> $GITHUB_STEP_SUMMARY
+
+          for backend in bigquery snowflake redshift databricks; do
+            if [ -f "all-results/${backend}-results/${backend}.log" ]; then
+              bytes=$(grep -o 'bytes_processed=[0-9]*' "all-results/${backend}-results/${backend}.log" | tail -1 | cut -d= -f2 || echo "N/A")
+              cost=$(grep -o 'estimated_cost=\$[0-9.]*' "all-results/${backend}-results/${backend}.log" | tail -1 | cut -d= -f2 || echo "N/A")
+              echo "| ${backend} | ${bytes:-N/A} | ${cost:-N/A} |" >> $GITHUB_STEP_SUMMARY
+            fi
+          done
+
+      - name: Check for failures
+        run: |
+          # Exit with error if any backend failed
+          for dir in all-results/*-results; do
+            if [ -d "$dir" ]; then
+              for xml in $dir/*.xml; do
+                if [ -f "$xml" ]; then
+                  failures=$(grep -o 'failures="[0-9]*"' "$xml" | head -1 | grep -o '[0-9]*')
+                  errors=$(grep -o 'errors="[0-9]*"' "$xml" | head -1 | grep -o '[0-9]*')
+                  if [ "${failures:-0}" != "0" ] || [ "${errors:-0}" != "0" ]; then
+                    echo "Tests failed in $(basename $dir)"
+                    exit 1
+                  fi
+                fi
+              done
+            fi
+          done
+          echo "All tests passed!"
+
+  # Cleanup stale resources (weekly only)
+  cleanup:
+    name: Cleanup Stale Resources
+    needs: summary
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install dependencies
+        run: |
+          pip install -e ".[dev,bigquery,snowflake]"
+
+      - name: Authenticate to GCP
+        if: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.GCP_SERVICE_ACCOUNT_KEY }}
+
+      - name: Cleanup stale resources
+        env:
+          BIGQUERY_PROJECT: ${{ secrets.BIGQUERY_PROJECT }}
+          SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+          SNOWFLAKE_PASSWORD: ${{ secrets.SNOWFLAKE_PASSWORD }}
+        run: |
+          python -c "
+          from tests.integration.cloud_dw.backends import get_available_backends, get_backend
+          from tests.integration.cloud_dw.base import IntegrationTestConfig
+
+          config = IntegrationTestConfig(cleanup_after_hours=24)
+
+          for backend_name in get_available_backends():
+              try:
+                  print(f'Cleaning up stale resources in {backend_name}...')
+                  backend = get_backend(backend_name, config)
+                  backend.connect()
+                  cleaned = backend.cleanup_stale_datasets(max_hours=24)
+                  print(f'  Cleaned up {cleaned} stale datasets')
+                  backend.disconnect()
+              except Exception as e:
+                  print(f'  Error: {e}')
+          "
