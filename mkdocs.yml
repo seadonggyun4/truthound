@@ -1,0 +1,202 @@
+# MkDocs Configuration for Truthound Documentation
+# https://www.mkdocs.org/
+
+site_name: Truthound Documentation
+site_description: Zero-Configuration Data Quality Framework Powered by Polars
+site_author: Truthound Team
+site_url: https://truthound.io/
+
+# Repository
+repo_name: seadonggyun4/Truthound
+repo_url: https://github.com/seadonggyun4/Truthound
+edit_uri: edit/main/docs/
+
+# Copyright
+copyright: Copyright &copy; 2025 Truthound
+
+# Theme Configuration
+theme:
+  name: material
+  language: en
+  logo: assets/truthound_icon.png
+  favicon: assets/truthound_icon.png
+  palette:
+    # Light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: custom
+      accent: orange
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: custom
+      accent: orange
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  font:
+    text: Roboto
+    code: Roboto Mono
+  features:
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.expand
+    - navigation.path
+    - navigation.indexes
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - search.share
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - toc.follow
+  icon:
+    repo: fontawesome/brands/github
+
+# Plugins
+plugins:
+  - search:
+      separator: '[\s\-,:!=\[\]()"/]+|(?!\b)(?=[A-Z][a-z])|\.(?!\d)|&[lg]t;'
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            docstring_style: google
+            show_source: true
+            show_root_heading: true
+            show_root_full_path: false
+            show_signature: true
+            show_signature_annotations: true
+            separate_signature: true
+            line_length: 80
+            merge_init_into_class: true
+            show_if_no_docstring: false
+  # Optional plugins - install with: pip install mkdocs-gen-files mkdocs-literate-nav mkdocs-section-index mkdocs-minify-plugin
+  # - gen-files:
+  #     scripts:
+  #       - docs/scripts/gen_ref_pages.py
+  #       - docs/scripts/gen_cli_docs.py
+  # - literate-nav:
+  #     nav_file: SUMMARY.md
+  # - section-index
+  # - minify:
+  #     minify_html: true
+
+# Markdown Extensions
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      toc_depth: 3
+  - pymdownx.arithmatex:
+      generic: true
+  - pymdownx.betterem:
+      smart_enable: all
+  - pymdownx.caret
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.magiclink:
+      repo_url_shorthand: true
+      user: seadonggyun4
+      repo: Truthound
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.snippets:
+      auto_append:
+        - includes/abbreviations.md
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+
+# Navigation Structure
+nav:
+  - Home: index.md
+  - Getting Started:
+    - getting-started/index.md
+    - Installation: getting-started/installation.md
+    - Quick Start: getting-started/quickstart.md
+    - First Validation: getting-started/first-validation.md
+  - User Guide:
+    - user-guide/index.md
+    - CLI Reference: user-guide/cli-reference.md
+    - Validators: user-guide/validators.md
+    - Profiling: user-guide/profiling.md
+    - CI/CD Integration: user-guide/ci-cd.md
+    - Configuration: user-guide/configuration.md
+  - API Reference:
+    - api-reference/index.md
+    # Auto-generated from docstrings
+  - Tutorials:
+    - tutorials/index.md
+    - Custom Validator: tutorials/custom-validator.md
+    - Data Profiling: tutorials/data-profiling.md
+    - Enterprise Setup: tutorials/enterprise-setup.md
+  - Reference:
+    - reference/index.md
+    - Validators Catalog: reference/validators-catalog.md
+    - Error Codes: reference/error-codes.md
+    - Changelog: reference/changelog.md
+  - Contributing:
+    - contributing/index.md
+    - Development: contributing/development.md
+    - Guidelines: contributing/guidelines.md
+
+# Extra Configuration
+extra:
+  version:
+    provider: mike
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/seadonggyun4/Truthound
+    - icon: fontawesome/brands/python
+      link: https://pypi.org/project/truthound/
+  analytics:
+    provider: google
+    property: G-XXXXXXXXXX  # Replace with actual tracking ID
+  consent:
+    title: Cookie consent
+    description: >-
+      We use cookies to recognize your repeated visits and preferences.
+
+# Extra CSS
+extra_css:
+  - stylesheets/extra.css
+
+# Extra JavaScript
+extra_javascript:
+  - javascripts/mathjax.js
+  - https://polyfill.io/v3/polyfill.min.js?features=es6
+  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
+
+# Watch for changes
+watch:
+  - src/truthound
+  - docs

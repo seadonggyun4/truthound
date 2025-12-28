@@ -1,0 +1,14 @@
+/* Truthound Custom Theme Colors */
+
+:root {
+  --md-primary-fg-color: #fd9e4b;
+  --md-primary-fg-color--light: #febc7f;
+  --md-primary-fg-color--dark: #e88a3a;
+}
+
+/* Dark mode adjustments */
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #fd9e4b;
+  --md-primary-fg-color--light: #febc7f;
+  --md-primary-fg-color--dark: #e88a3a;
+}
