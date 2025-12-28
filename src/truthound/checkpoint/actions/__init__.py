@@ -87,6 +87,15 @@ from truthound.checkpoint.actions.opsgenie import (
     create_escalation_alert,
     register_template as register_opsgenie_template,
 )
+from truthound.checkpoint.actions.discord_notify import (
+    DiscordNotification,
+    DiscordConfig,
+)
+from truthound.checkpoint.actions.telegram_notify import (
+    TelegramNotification,
+    TelegramConfig,
+    TelegramNotificationWithPhoto,
+)
 
 __all__ = [
     # Base
@@ -145,4 +154,11 @@ __all__ = [
     "create_team_alert",
     "create_escalation_alert",
     "register_opsgenie_template",
+    # Discord
+    "DiscordNotification",
+    "DiscordConfig",
+    # Telegram
+    "TelegramNotification",
+    "TelegramConfig",
+    "TelegramNotificationWithPhoto",
 ]
