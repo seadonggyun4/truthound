@@ -237,3 +237,104 @@ class Jinja2EnvironmentProtocol(Protocol):
     def get_template(self, name: str) -> Jinja2TemplateProtocol:
         """Get a template by name."""
         ...
+
+
+# =============================================================================
+# Azure Blob Storage Protocol (azure-storage-blob)
+# =============================================================================
+
+
+class AzureBlobPropertiesProtocol(Protocol):
+    """Protocol for Azure Blob Properties."""
+
+    content_settings: Any
+    last_modified: Any
+    creation_time: Any
+    etag: str | None
+    content_length: int
+
+
+@runtime_checkable
+class AzureBlobClientProtocol(Protocol):
+    """Protocol for Azure Blob Client.
+
+    Defines the minimal interface used by AzureBlobStore.
+    """
+
+    def upload_blob(
+        self,
+        data: bytes | str,
+        *,
+        overwrite: bool = False,
+        content_settings: Any = None,
+        metadata: dict[str, str] | None = None,
+        **kwargs: Any,
+    ) -> dict[str, Any]:
+        """Upload data to the blob."""
+        ...
+
+    def download_blob(self) -> "AzureStorageStreamDownloaderProtocol":
+        """Download the blob content."""
+        ...
+
+    def exists(self) -> bool:
+        """Check if the blob exists."""
+        ...
+
+    def delete_blob(self) -> None:
+        """Delete the blob."""
+        ...
+
+    def get_blob_properties(self) -> AzureBlobPropertiesProtocol:
+        """Get blob properties."""
+        ...
+
+
+class AzureStorageStreamDownloaderProtocol(Protocol):
+    """Protocol for Azure Storage Stream Downloader."""
+
+    def readall(self) -> bytes:
+        """Read all bytes from the blob."""
+        ...
+
+
+@runtime_checkable
+class AzureContainerClientProtocol(Protocol):
+    """Protocol for Azure Container Client."""
+
+    def get_blob_client(self, blob: str) -> AzureBlobClientProtocol:
+        """Get a blob client."""
+        ...
+
+    def exists(self) -> bool:
+        """Check if the container exists."""
+        ...
+
+    def list_blobs(
+        self,
+        name_starts_with: str | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        """List blobs in the container."""
+        ...
+
+
+@runtime_checkable
+class AzureBlobServiceClientProtocol(Protocol):
+    """Protocol for Azure Blob Service Client.
+
+    Defines the minimal interface used by AzureBlobStore.
+    """
+
+    def get_container_client(self, container: str) -> AzureContainerClientProtocol:
+        """Get a container client."""
+        ...
+
+    @classmethod
+    def from_connection_string(
+        cls,
+        conn_str: str,
+        **kwargs: Any,
+    ) -> "AzureBlobServiceClientProtocol":
+        """Create client from connection string."""
+        ...

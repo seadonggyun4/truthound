@@ -123,6 +123,18 @@ def get_store(backend: str, **kwargs: Any) -> BaseStore[Any, Any]:
 
         return DatabaseStore(**kwargs)
 
+    elif backend in ("azure", "azure_blob", "azureblob"):
+        try:
+            import azure.storage.blob  # noqa: F401
+        except ImportError:
+            raise StoreError(
+                "Azure Blob backend requires azure-storage-blob. "
+                "Install with: pip install truthound[azure]"
+            )
+        from truthound.stores.backends.azure_blob import AzureBlobStore
+
+        return AzureBlobStore(**kwargs)
+
     else:
         available = list(_store_registry.keys()) + [
             "filesystem",
@@ -130,6 +142,7 @@ def get_store(backend: str, **kwargs: Any) -> BaseStore[Any, Any]:
             "s3",
             "gcs",
             "database",
+            "azure",
         ]
         raise StoreError(
             f"Unknown store backend: {backend}. "
@@ -165,6 +178,13 @@ def list_available_backends() -> list[str]:
         import sqlalchemy
 
         backends.append("database")
+    except ImportError:
+        pass
+
+    try:
+        import azure.storage.blob
+
+        backends.append("azure")
     except ImportError:
         pass
 
@@ -210,6 +230,14 @@ def is_backend_available(backend: str) -> bool:
     if backend in ("database", "db", "sql"):
         try:
             import sqlalchemy
+
+            return True
+        except ImportError:
+            return False
+
+    if backend in ("azure", "azure_blob", "azureblob"):
+        try:
+            import azure.storage.blob
 
             return True
         except ImportError:
