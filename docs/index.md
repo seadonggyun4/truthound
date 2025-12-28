@@ -1,3 +1,7 @@
+<div align="center">
+  <img src="assets/truthound_banner.png" alt="Truthound Banner" style="width: 100%; max-width: 1200px;" />
+</div>
+
 # Truthound
 
 <div align="center">

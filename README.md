@@ -1,5 +1,5 @@
 <div align="center">
-  <img width="500" height="500" alt="logo" src="https://github.com/user-attachments/assets/4b4dea6c-46b9-49e5-af19-744a3b216bf8" />
+  <img width="100%" alt="Truthound Banner" src="docs/assets/truthound_banner.png" />
 </div>
 
 <h1 align="center">Truthound</h1>
@@ -13,6 +13,7 @@
 </p>
 
 <p align="center">
+  <a href="https://truthound.netlify.app/"><img src="https://img.shields.io/badge/docs-truthound.netlify.app-blue" alt="Documentation"></a>
   <a href="https://pypi.org/project/truthound/"><img src="https://img.shields.io/pypi/v/truthound" alt="PyPI"></a>
   <a href="https://pypi.org/project/truthound/"><img src="https://img.shields.io/pypi/pyversions/truthound" alt="Python"></a>
 </p>
