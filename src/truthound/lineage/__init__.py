@@ -4,7 +4,8 @@ This module provides data lineage capabilities:
 - Lineage graph representation
 - Data flow tracking
 - Impact analysis
-- Lineage visualization
+- Lineage visualization (D3, Cytoscape, Graphviz, Mermaid)
+- OpenLineage integration for cross-platform compatibility
 
 Example:
     >>> from truthound import lineage
@@ -16,6 +17,17 @@ Example:
     >>> # Analyze impact
     >>> impact = tracker.analyze_impact("raw_data")
     >>> print(f"Affected: {impact.affected_nodes}")
+
+Example with visualization:
+    >>> from truthound.lineage.visualization import D3Renderer, RenderConfig
+    >>> renderer = D3Renderer()
+    >>> html = renderer.render_html(tracker.get_graph(), RenderConfig())
+
+Example with OpenLineage:
+    >>> from truthound.lineage.integrations.openlineage import OpenLineageEmitter
+    >>> emitter = OpenLineageEmitter()
+    >>> run = emitter.start_run("my-job")
+    >>> emitter.emit_complete(run, outputs=[...])
 """
 
 from truthound.lineage.base import (
