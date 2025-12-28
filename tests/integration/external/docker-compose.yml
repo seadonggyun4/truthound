@@ -1,0 +1,190 @@
+# Docker Compose configuration for external service integration tests
+#
+# Usage:
+#   # Start all services
+#   docker-compose -f tests/integration/external/docker-compose.yml up -d
+#
+#   # Start specific services
+#   docker-compose -f tests/integration/external/docker-compose.yml up -d redis elasticsearch
+#
+#   # Stop all services
+#   docker-compose -f tests/integration/external/docker-compose.yml down
+#
+#   # View logs
+#   docker-compose -f tests/integration/external/docker-compose.yml logs -f
+
+version: '3.8'
+
+services:
+  # Redis - In-memory cache and distributed coordination
+  redis:
+    image: redis:7-alpine
+    container_name: truthound_test_redis
+    ports:
+      - "6379:6379"
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+    labels:
+      - "truthound.test=true"
+      - "truthound.service=redis"
+
+  # Elasticsearch - Search and logging
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: truthound_test_elasticsearch
+    ports:
+      - "9200:9200"
+      - "9300:9300"
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    volumes:
+      - elasticsearch_data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"\\|\"status\":\"yellow\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    labels:
+      - "truthound.test=true"
+      - "truthound.service=elasticsearch"
+
+  # HashiCorp Vault - Secrets management
+  vault:
+    image: hashicorp/vault:1.15
+    container_name: truthound_test_vault
+    ports:
+      - "8200:8200"
+    environment:
+      - VAULT_DEV_ROOT_TOKEN_ID=root-token
+      - VAULT_DEV_LISTEN_ADDRESS=0.0.0.0:8200
+    cap_add:
+      - IPC_LOCK
+    command: server -dev
+    healthcheck:
+      test: ["CMD", "vault", "status"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+    labels:
+      - "truthound.test=true"
+      - "truthound.service=vault"
+
+  # LocalStack - AWS service emulation (KMS, S3, etc.)
+  localstack:
+    image: localstack/localstack:latest
+    container_name: truthound_test_localstack
+    ports:
+      - "4566:4566"  # LocalStack Gateway
+      - "4510-4559:4510-4559"  # External services port range
+    environment:
+      - SERVICES=kms,s3,secretsmanager
+      - DEBUG=1
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - localstack_data:/var/lib/localstack
+      - /var/run/docker.sock:/var/run/docker.sock
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:4566/_localstack/health | grep -q '\"kms\":\"available\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 20s
+    labels:
+      - "truthound.test=true"
+      - "truthound.service=localstack"
+
+  # Grafana Loki - Log aggregation
+  loki:
+    image: grafana/loki:2.9.0
+    container_name: truthound_test_loki
+    ports:
+      - "3100:3100"
+    command: -config.file=/etc/loki/local-config.yaml
+    healthcheck:
+      test: ["CMD-SHELL", "wget --quiet --tries=1 --output-document=- http://localhost:3100/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    labels:
+      - "truthound.test=true"
+      - "truthound.service=loki"
+
+  # Fluentd - Log forwarding
+  fluentd:
+    image: fluent/fluentd:v1.16-1
+    container_name: truthound_test_fluentd
+    ports:
+      - "24224:24224"
+      - "24224:24224/udp"
+    volumes:
+      - ./fluentd.conf:/fluentd/etc/fluent.conf
+    depends_on:
+      - elasticsearch
+    labels:
+      - "truthound.test=true"
+      - "truthound.service=fluentd"
+
+  # PostgreSQL - For database integration tests
+  postgres:
+    image: postgres:16-alpine
+    container_name: truthound_test_postgres
+    ports:
+      - "5432:5432"
+    environment:
+      - POSTGRES_USER=truthound
+      - POSTGRES_PASSWORD=truthound_test
+      - POSTGRES_DB=truthound_test
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U truthound -d truthound_test"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    labels:
+      - "truthound.test=true"
+      - "truthound.service=postgres"
+
+  # MinIO - S3-compatible object storage
+  minio:
+    image: minio/minio:latest
+    container_name: truthound_test_minio
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=minioadmin
+      - MINIO_ROOT_PASSWORD=minioadmin123
+    command: server /data --console-address ":9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    labels:
+      - "truthound.test=true"
+      - "truthound.service=minio"
+
+volumes:
+  redis_data:
+  elasticsearch_data:
+  localstack_data:
+  postgres_data:
+  minio_data:
+
+networks:
+  default:
+    name: truthound_test_network
+    labels:
+      - "truthound.test=true"

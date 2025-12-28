@@ -41,7 +41,6 @@ from typing import (
 import hashlib
 import hmac
 import os
-import secrets
 
 
 # =============================================================================
@@ -879,7 +878,7 @@ def generate_key(algorithm: EncryptionAlgorithm) -> bytes:
     Returns:
         Random key bytes.
     """
-    return secrets.token_bytes(algorithm.key_size)
+    return os.urandom(algorithm.key_size)
 
 
 def generate_nonce(algorithm: EncryptionAlgorithm) -> bytes:
@@ -891,7 +890,7 @@ def generate_nonce(algorithm: EncryptionAlgorithm) -> bytes:
     Returns:
         Random nonce bytes.
     """
-    return secrets.token_bytes(algorithm.nonce_size)
+    return os.urandom(algorithm.nonce_size)
 
 
 def generate_salt(size: int = 16) -> bytes:
@@ -903,7 +902,7 @@ def generate_salt(size: int = 16) -> bytes:
     Returns:
         Random salt bytes.
     """
-    return secrets.token_bytes(size)
+    return os.urandom(size)
 
 
 def generate_key_id() -> str:
@@ -912,7 +911,7 @@ def generate_key_id() -> str:
     Returns:
         Unique key ID string.
     """
-    return secrets.token_hex(16)
+    return os.urandom(16).hex()
 
 
 def constant_time_compare(a: bytes, b: bytes) -> bool:
