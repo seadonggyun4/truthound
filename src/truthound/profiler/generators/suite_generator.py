@@ -26,6 +26,7 @@ from truthound.profiler.generators.base import (
 
 if TYPE_CHECKING:
     from truthound.validators.base import Validator
+    from truthound.profiler.integration.protocols import ExecutionContext, ExecutionResult
 
 
 @dataclass(frozen=True)
@@ -178,6 +179,95 @@ class ValidationSuite:
             lines.append("")
 
         return "\n".join(lines)
+
+    def execute(
+        self,
+        data: Any,
+        *,
+        parallel: bool = False,
+        fail_fast: bool = False,
+        max_workers: int | None = None,
+        timeout_seconds: float | None = None,
+        context: "ExecutionContext | None" = None,
+    ) -> "ExecutionResult":
+        """Execute the validation suite against data.
+
+        This method provides a convenient way to run all validators
+        in the suite against the provided data.
+
+        Args:
+            data: Data to validate (LazyFrame, DataFrame, or file path).
+            parallel: Whether to run validators in parallel.
+            fail_fast: Whether to stop on first failure.
+            max_workers: Maximum number of parallel workers.
+            timeout_seconds: Maximum execution time per validator.
+            context: Pre-configured execution context (overrides other params).
+
+        Returns:
+            ExecutionResult with validation report and metrics.
+
+        Example:
+            suite = generate_suite(profile)
+            result = suite.execute(data, parallel=True)
+
+            if result.success:
+                print(f"All {result.passed_rules} rules passed!")
+            else:
+                print(f"Failed: {result.failed_rules} rules")
+        """
+        from truthound.profiler.integration.executor import SuiteExecutor
+        from truthound.profiler.integration.protocols import ExecutionContext as ExecCtx
+
+        # Create context if not provided
+        if context is None:
+            context = ExecCtx(
+                parallel=parallel,
+                fail_fast=fail_fast,
+                max_workers=max_workers,
+                timeout_seconds=timeout_seconds,
+            )
+
+        # Create executor and run
+        executor = SuiteExecutor(
+            parallel=context.parallel,
+            fail_fast=context.fail_fast,
+            max_workers=context.max_workers,
+            timeout_seconds=context.timeout_seconds,
+        )
+
+        return executor.execute(self, data, context)
+
+    async def execute_async(
+        self,
+        data: Any,
+        *,
+        parallel: bool = True,
+        fail_fast: bool = False,
+        context: "ExecutionContext | None" = None,
+    ) -> "ExecutionResult":
+        """Execute the validation suite asynchronously.
+
+        Args:
+            data: Data to validate.
+            parallel: Whether to run validators in parallel.
+            fail_fast: Whether to stop on first failure.
+            context: Pre-configured execution context.
+
+        Returns:
+            ExecutionResult with validation report and metrics.
+        """
+        from truthound.profiler.integration.executor import AsyncSuiteExecutor
+        from truthound.profiler.integration.protocols import ExecutionContext as ExecCtx
+
+        if context is None:
+            context = ExecCtx(parallel=parallel, fail_fast=fail_fast)
+
+        executor = AsyncSuiteExecutor(
+            parallel=context.parallel,
+            fail_fast=context.fail_fast,
+        )
+
+        return await executor.execute_async(self, data, context)
 
     def to_python_code(self) -> str:
         """Generate Python code to create validators."""
