@@ -29,6 +29,10 @@ app.add_typer(checkpoint_app, name="checkpoint")
 from truthound.plugins.cli import app as plugin_app
 app.add_typer(plugin_app, name="plugin")
 
+# Scaffolding commands (th new validator, th new reporter, th new plugin)
+from truthound.cli_modules.scaffolding.commands import app as new_app
+app.add_typer(new_app, name="new")
+
 
 @app.command(name="learn")
 def learn_cmd(

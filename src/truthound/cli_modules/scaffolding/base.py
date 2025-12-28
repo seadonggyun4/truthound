@@ -1,0 +1,631 @@
+"""Base scaffolding system with protocols and registry.
+
+This module provides the core abstractions for the scaffolding system:
+    - ScaffoldProtocol: Interface for scaffold implementations
+    - ScaffoldConfig: Configuration for generation
+    - ScaffoldResult: Result of generation
+    - ScaffoldRegistry: Central registry for scaffold types
+"""
+
+from __future__ import annotations
+
+import logging
+import re
+from abc import abstractmethod
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
+from enum import Enum, auto
+from pathlib import Path
+from typing import (
+    Any,
+    Callable,
+    ClassVar,
+    Protocol,
+    TypeVar,
+    runtime_checkable,
+)
+
+logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# Utility Functions
+# =============================================================================
+
+
+def snake_to_pascal(name: str) -> str:
+    """Convert snake_case to PascalCase.
+
+    Args:
+        name: Snake case string (e.g., "my_validator")
+
+    Returns:
+        Pascal case string (e.g., "MyValidator")
+    """
+    return "".join(word.capitalize() for word in name.split("_"))
+
+
+def snake_to_kebab(name: str) -> str:
+    """Convert snake_case to kebab-case.
+
+    Args:
+        name: Snake case string (e.g., "my_validator")
+
+    Returns:
+        Kebab case string (e.g., "my-validator")
+    """
+    return name.replace("_", "-")
+
+
+def pascal_to_snake(name: str) -> str:
+    """Convert PascalCase to snake_case.
+
+    Args:
+        name: Pascal case string (e.g., "MyValidator")
+
+    Returns:
+        Snake case string (e.g., "my_validator")
+    """
+    s1 = re.sub(r"(.)([A-Z][a-z]+)", r"\1_\2", name)
+    return re.sub(r"([a-z0-9])([A-Z])", r"\1_\2", s1).lower()
+
+
+def validate_name(name: str, pattern: str = r"^[a-z][a-z0-9_]*$") -> bool:
+    """Validate a name against a pattern.
+
+    Args:
+        name: Name to validate
+        pattern: Regex pattern to match
+
+    Returns:
+        True if valid, False otherwise
+    """
+    return bool(re.match(pattern, name))
+
+
+# =============================================================================
+# Data Classes
+# =============================================================================
+
+
+class ScaffoldType(Enum):
+    """Types of scaffolds available."""
+
+    VALIDATOR = auto()
+    REPORTER = auto()
+    PLUGIN = auto()
+    DATASOURCE = auto()
+    HOOK = auto()
+    ACTION = auto()
+    CUSTOM = auto()
+
+
+@dataclass(frozen=True)
+class ScaffoldMetadata:
+    """Metadata about a scaffold type.
+
+    Attributes:
+        name: Scaffold type name (e.g., "validator")
+        description: Human-readable description
+        category: Category for grouping
+        aliases: Alternative names
+        examples: Example usage strings
+    """
+
+    name: str
+    description: str
+    category: str = "general"
+    aliases: tuple[str, ...] = ()
+    examples: tuple[str, ...] = ()
+
+
+@dataclass
+class ScaffoldConfig:
+    """Configuration for scaffold generation.
+
+    Attributes:
+        name: Component name (snake_case)
+        output_dir: Output directory
+        scaffold_type: Type of scaffold to generate
+        template_variant: Template variant (basic, full, enterprise)
+        author: Author name
+        version: Initial version
+        description: Component description
+        category: Component category
+        license_type: License type
+        include_tests: Generate test files
+        include_docs: Generate documentation
+        include_examples: Generate example files
+        extra: Additional scaffold-specific options
+    """
+
+    name: str
+    output_dir: Path = field(default_factory=lambda: Path("."))
+    scaffold_type: ScaffoldType = ScaffoldType.VALIDATOR
+    template_variant: str = "basic"
+    author: str = ""
+    version: str = "0.1.0"
+    description: str = ""
+    category: str = "custom"
+    license_type: str = "MIT"
+    include_tests: bool = True
+    include_docs: bool = False
+    include_examples: bool = False
+    extra: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        """Validate configuration after initialization."""
+        if not validate_name(self.name):
+            raise ValueError(
+                f"Invalid name '{self.name}'. Must start with a lowercase letter "
+                "and contain only lowercase letters, numbers, and underscores."
+            )
+
+        if isinstance(self.output_dir, str):
+            object.__setattr__(self, "output_dir", Path(self.output_dir))
+
+    @property
+    def class_name(self) -> str:
+        """Get PascalCase class name."""
+        return snake_to_pascal(self.name)
+
+    @property
+    def kebab_name(self) -> str:
+        """Get kebab-case name."""
+        return snake_to_kebab(self.name)
+
+    @property
+    def title_name(self) -> str:
+        """Get human-readable title."""
+        return self.name.replace("_", " ").title()
+
+
+@dataclass
+class ScaffoldFile:
+    """A file generated by scaffolding.
+
+    Attributes:
+        path: Relative path from output directory
+        content: File content
+        executable: Whether to make file executable
+        overwrite: Whether to overwrite existing file
+    """
+
+    path: Path
+    content: str
+    executable: bool = False
+    overwrite: bool = False
+
+    @property
+    def absolute_path(self) -> Path:
+        """Get absolute path (requires setting root)."""
+        return self.path
+
+
+@dataclass
+class ScaffoldResult:
+    """Result of scaffold generation.
+
+    Attributes:
+        success: Whether generation succeeded
+        files: List of generated files
+        errors: List of errors encountered
+        warnings: List of warnings
+        metadata: Additional metadata
+    """
+
+    success: bool
+    files: list[ScaffoldFile] = field(default_factory=list)
+    errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def file_count(self) -> int:
+        """Get number of files generated."""
+        return len(self.files)
+
+    def add_file(
+        self,
+        path: Path | str,
+        content: str,
+        executable: bool = False,
+        overwrite: bool = False,
+    ) -> None:
+        """Add a file to the result.
+
+        Args:
+            path: File path
+            content: File content
+            executable: Whether to make file executable
+            overwrite: Whether to overwrite existing file
+        """
+        if isinstance(path, str):
+            path = Path(path)
+        self.files.append(
+            ScaffoldFile(path=path, content=content, executable=executable, overwrite=overwrite)
+        )
+
+    def add_error(self, message: str) -> None:
+        """Add an error message."""
+        self.errors.append(message)
+        self.success = False
+
+    def add_warning(self, message: str) -> None:
+        """Add a warning message."""
+        self.warnings.append(message)
+
+    def write_files(self, base_dir: Path) -> list[Path]:
+        """Write all files to disk.
+
+        Args:
+            base_dir: Base directory for output
+
+        Returns:
+            List of written file paths
+        """
+        written: list[Path] = []
+
+        for scaffold_file in self.files:
+            full_path = base_dir / scaffold_file.path
+
+            # Create parent directories
+            full_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # Check if file exists
+            if full_path.exists() and not scaffold_file.overwrite:
+                logger.warning(f"Skipping existing file: {full_path}")
+                continue
+
+            # Write file
+            full_path.write_text(scaffold_file.content, encoding="utf-8")
+            written.append(full_path)
+
+            # Set executable if needed
+            if scaffold_file.executable:
+                import os
+                import stat
+
+                st = os.stat(full_path)
+                os.chmod(full_path, st.st_mode | stat.S_IEXEC)
+
+        return written
+
+
+# =============================================================================
+# Protocol
+# =============================================================================
+
+
+@runtime_checkable
+class ScaffoldProtocol(Protocol):
+    """Protocol for scaffold generators.
+
+    Implement this protocol to create a new scaffold type.
+    """
+
+    name: ClassVar[str]
+    description: ClassVar[str]
+    aliases: ClassVar[tuple[str, ...]]
+
+    def generate(self, config: ScaffoldConfig) -> ScaffoldResult:
+        """Generate scaffold files.
+
+        Args:
+            config: Scaffold configuration
+
+        Returns:
+            Result with generated files
+        """
+        ...
+
+    def get_template_variants(self) -> list[str]:
+        """Get available template variants.
+
+        Returns:
+            List of variant names (e.g., ["basic", "full", "enterprise"])
+        """
+        ...
+
+    def get_options(self) -> dict[str, Any]:
+        """Get scaffold-specific options.
+
+        Returns:
+            Dictionary of option names to their metadata
+        """
+        ...
+
+
+# =============================================================================
+# Base Scaffold Class
+# =============================================================================
+
+
+class BaseScaffold:
+    """Base class for scaffold implementations.
+
+    Provides common functionality for all scaffolds.
+    """
+
+    name: ClassVar[str] = "base"
+    description: ClassVar[str] = "Base scaffold"
+    aliases: ClassVar[tuple[str, ...]] = ()
+
+    # Available template variants
+    TEMPLATE_VARIANTS: ClassVar[tuple[str, ...]] = ("basic", "full")
+
+    def __init__(self) -> None:
+        """Initialize the scaffold."""
+        self.logger = logging.getLogger(f"{__name__}.{self.name}")
+
+    def generate(self, config: ScaffoldConfig) -> ScaffoldResult:
+        """Generate scaffold files.
+
+        Args:
+            config: Scaffold configuration
+
+        Returns:
+            Result with generated files
+        """
+        result = ScaffoldResult(success=True)
+
+        # Validate configuration
+        self._validate_config(config, result)
+        if not result.success:
+            return result
+
+        # Generate files based on variant
+        try:
+            self._generate_files(config, result)
+        except Exception as e:
+            result.add_error(f"Generation failed: {e}")
+
+        return result
+
+    def _validate_config(self, config: ScaffoldConfig, result: ScaffoldResult) -> None:
+        """Validate configuration.
+
+        Args:
+            config: Configuration to validate
+            result: Result to add errors to
+        """
+        if config.template_variant not in self.TEMPLATE_VARIANTS:
+            result.add_error(
+                f"Invalid template variant '{config.template_variant}'. "
+                f"Available: {', '.join(self.TEMPLATE_VARIANTS)}"
+            )
+
+    @abstractmethod
+    def _generate_files(self, config: ScaffoldConfig, result: ScaffoldResult) -> None:
+        """Generate scaffold files.
+
+        Args:
+            config: Scaffold configuration
+            result: Result to add files to
+        """
+        pass
+
+    def get_template_variants(self) -> list[str]:
+        """Get available template variants."""
+        return list(self.TEMPLATE_VARIANTS)
+
+    def get_options(self) -> dict[str, Any]:
+        """Get scaffold-specific options."""
+        return {}
+
+    def _get_header(self, config: ScaffoldConfig) -> str:
+        """Get file header with metadata."""
+        now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        return f'''"""
+{config.description or f'{config.title_name} component.'}
+
+Author: {config.author or 'Unknown'}
+Version: {config.version}
+License: {config.license_type}
+Created: {now}
+"""
+'''
+
+
+# =============================================================================
+# Registry
+# =============================================================================
+
+
+class ScaffoldRegistry:
+    """Central registry for scaffold types.
+
+    This class manages all available scaffold implementations and
+    provides lookup and generation capabilities.
+
+    Example:
+        registry = ScaffoldRegistry()
+        registry.register(ValidatorScaffold())
+
+        result = registry.generate("validator", config)
+    """
+
+    _instance: ClassVar["ScaffoldRegistry | None"] = None
+
+    def __init__(self) -> None:
+        """Initialize the registry."""
+        self._scaffolds: dict[str, BaseScaffold] = {}
+        self._aliases: dict[str, str] = {}
+        self.logger = logging.getLogger(__name__)
+
+    @classmethod
+    def get_instance(cls) -> "ScaffoldRegistry":
+        """Get the singleton registry instance.
+
+        Returns:
+            The global registry instance
+        """
+        if cls._instance is None:
+            cls._instance = cls()
+        return cls._instance
+
+    def register(self, scaffold: BaseScaffold) -> None:
+        """Register a scaffold implementation.
+
+        Args:
+            scaffold: Scaffold to register
+
+        Raises:
+            ValueError: If scaffold name is already registered
+        """
+        name = scaffold.name.lower()
+
+        if name in self._scaffolds:
+            raise ValueError(f"Scaffold '{name}' is already registered")
+
+        self._scaffolds[name] = scaffold
+
+        # Register aliases
+        for alias in scaffold.aliases:
+            alias_lower = alias.lower()
+            if alias_lower in self._aliases:
+                self.logger.warning(
+                    f"Alias '{alias_lower}' already registered for "
+                    f"'{self._aliases[alias_lower]}'"
+                )
+            self._aliases[alias_lower] = name
+
+        self.logger.debug(f"Registered scaffold: {name}")
+
+    def unregister(self, name: str) -> bool:
+        """Unregister a scaffold.
+
+        Args:
+            name: Scaffold name to unregister
+
+        Returns:
+            True if unregistered, False if not found
+        """
+        name_lower = name.lower()
+        name_lower = self._aliases.get(name_lower, name_lower)
+
+        if name_lower not in self._scaffolds:
+            return False
+
+        scaffold = self._scaffolds.pop(name_lower)
+
+        # Remove aliases
+        for alias in scaffold.aliases:
+            self._aliases.pop(alias.lower(), None)
+
+        return True
+
+    def get(self, name: str) -> BaseScaffold | None:
+        """Get a scaffold by name or alias.
+
+        Args:
+            name: Scaffold name or alias
+
+        Returns:
+            Scaffold instance or None if not found
+        """
+        name_lower = name.lower()
+        name_lower = self._aliases.get(name_lower, name_lower)
+        return self._scaffolds.get(name_lower)
+
+    def list_scaffolds(self) -> list[tuple[str, str]]:
+        """List all registered scaffolds.
+
+        Returns:
+            List of (name, description) tuples
+        """
+        return [(s.name, s.description) for s in self._scaffolds.values()]
+
+    def list_names(self) -> list[str]:
+        """List all scaffold names.
+
+        Returns:
+            List of scaffold names
+        """
+        return list(self._scaffolds.keys())
+
+    def generate(self, scaffold_type: str, config: ScaffoldConfig) -> ScaffoldResult:
+        """Generate scaffold using the specified type.
+
+        Args:
+            scaffold_type: Type of scaffold to generate
+            config: Scaffold configuration
+
+        Returns:
+            Generation result
+        """
+        scaffold = self.get(scaffold_type)
+
+        if scaffold is None:
+            result = ScaffoldResult(success=False)
+            result.add_error(
+                f"Unknown scaffold type '{scaffold_type}'. "
+                f"Available: {', '.join(self.list_names())}"
+            )
+            return result
+
+        return scaffold.generate(config)
+
+    def __contains__(self, name: str) -> bool:
+        """Check if a scaffold is registered."""
+        return self.get(name) is not None
+
+    def __len__(self) -> int:
+        """Get number of registered scaffolds."""
+        return len(self._scaffolds)
+
+
+def get_registry() -> ScaffoldRegistry:
+    """Get the global scaffold registry.
+
+    Returns:
+        The singleton registry instance
+    """
+    return ScaffoldRegistry.get_instance()
+
+
+# =============================================================================
+# Decorator
+# =============================================================================
+
+
+ScaffoldT = TypeVar("ScaffoldT", bound=BaseScaffold)
+
+
+def register_scaffold(
+    name: str | None = None,
+    description: str | None = None,
+    aliases: tuple[str, ...] = (),
+) -> Callable[[type[ScaffoldT]], type[ScaffoldT]]:
+    """Decorator to register a scaffold class.
+
+    Args:
+        name: Optional override for scaffold name
+        description: Optional override for description
+        aliases: Additional aliases for the scaffold
+
+    Returns:
+        Decorator function
+
+    Example:
+        @register_scaffold("my_scaffold", "My custom scaffold")
+        class MyScaffold(BaseScaffold):
+            ...
+    """
+
+    def decorator(cls: type[ScaffoldT]) -> type[ScaffoldT]:
+        # Override class attributes if provided
+        if name:
+            cls.name = name
+        if description:
+            cls.description = description
+        if aliases:
+            cls.aliases = aliases
+
+        # Create instance and register
+        instance = cls()
+        get_registry().register(instance)
+
+        return cls
+
+    return decorator
