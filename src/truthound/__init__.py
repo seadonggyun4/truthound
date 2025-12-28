@@ -84,7 +84,14 @@ from truthound.realtime import (
     StreamingMode,
 )
 
-__version__ = "0.1.0"
+# Version: Single source of truth from pyproject.toml
+try:
+    from importlib.metadata import version, PackageNotFoundError
+
+    __version__ = version("truthound")
+except PackageNotFoundError:
+    # Package not installed (development mode)
+    __version__ = "0.0.0.dev"
 __all__ = [
     # Core API
     "check",

@@ -43,16 +43,18 @@ Truthound is a high-performance data quality validation framework designed for m
 | **SQL Security** | Multi-level SQL injection protection with parameterized queries |
 | **ReDoS Protection** | Regex safety analysis, ML-based prediction, complexity scoring, safe execution, trainable models |
 | **Multi-Backend Support** | Polars, Pandas, SQL databases, Spark, and cloud data warehouses |
-| **CI/CD Integration** | Native support for 12 CI platforms with checkpoint orchestration |
+| **CI/CD Integration** | Native support for 12 CI platforms with checkpoint orchestration, 9 notification providers |
 | **Streaming Sources** | Parquet, CSV, JSONL, Arrow IPC, Arrow Flight streaming |
-| **Auto-Profiling** | Streaming profiler with schema versioning and distributed processing |
-| **Data Docs** | Interactive HTML reports with 5 themes and 4 chart libraries |
-| **Plugin Architecture** | Extensible system for custom validators, reporters, and datasources |
+| **Auto-Profiling** | Streaming profiler with schema versioning, distributed processing, and incremental scheduling |
+| **Schema Evolution** | Automatic schema change detection, compatibility analysis, and breaking change alerts |
+| **Unified Resilience** | Circuit breaker, retry with backoff, bulkhead, rate limiting with fluent builder |
+| **Data Docs** | Pipeline engine, 15-language i18n, report versioning, custom templates, white-labeling |
+| **Plugin Architecture** | Enterprise plugin system with security sandbox, code signing, version constraints, dependency management, hot reload |
 | **Internationalization** | Error messages in 7 languages (EN, KO, JA, ZH, DE, FR, ES) |
-| **ML Integration** | Anomaly detection, ReDoS ML training, approximate k-NN, online SVM |
+| **ML Integration** | Anomaly detection, model monitoring, drift alerting, ReDoS ML training, approximate k-NN, online SVM |
 | **Geospatial** | Shapely polygon support with point-in-polygon validation |
-| **Data Lineage** | Graph-based lineage tracking and impact analysis |
-| **Realtime Validation** | Streaming support with Kafka, Kinesis, and Pub/Sub |
+| **Data Lineage** | Graph-based lineage tracking, impact analysis, 4 visualization renderers (D3, Cytoscape, Graphviz, Mermaid), OpenLineage integration |
+| **Realtime Validation** | Protocol-based streaming with Kafka (aiokafka), Kinesis (aiobotocore), Pub/Sub, Testcontainers integration testing |
 | **Distributed Timeout** | Deadline propagation, cascading timeout, and graceful degradation |
 | **Enterprise Encryption** | AES-256-GCM, ChaCha20-Poly1305 with key management and streaming |
 | **Compression** | gzip, zstd, lz4, snappy, brotli with adaptive selection |
@@ -62,6 +64,8 @@ Truthound is a high-performance data quality validation framework designed for m
 | **Batch Write Optimization** | Memory-aware buffering, async batch writer, automatic flush |
 | **Result Caching** | LRU, LFU, TTL caches with 4 cache modes (read-through, write-through, write-behind, cache-aside) |
 | **Cross-region Replication** | Sync/Async/Semi-Sync modes, conflict resolution, health monitoring, disaster recovery |
+| **Job Queue Monitoring** | InMemory, Redis, Prometheus collectors with aggregators and views |
+| **Historical Analytics** | Time-bucket aggregation, rollup, trend analysis, forecasting, gap filling |
 | **Enterprise SDK** | Sandbox execution, code signing, versioning, licensing, fuzzing |
 | **Enterprise i18n** | 15+ languages, CLDR plurals, RTL support, TMS integration |
 | **Enterprise Infrastructure** | Structured logging, Prometheus metrics, audit logging, Cloud KMS |
@@ -107,6 +111,11 @@ masked_df = th.mask(df, strategy="hash")
 
 # Statistical profiling
 profile = th.profile("data.csv")
+
+# Generate and execute validation suite
+from truthound.profiler import generate_suite
+suite = generate_suite(profile)
+result = suite.execute("new_data.csv", parallel=True)
 
 # Internationalized error messages
 from truthound.validators.i18n import set_validator_locale
@@ -169,11 +178,11 @@ truthound new list --verbose                # List available templates
 | **Phase 1-3** | [Core Validators](docs/VALIDATORS.md) | 275 validators across 22 categories |
 | **Phase 4** | [Storage & Reporters](docs/STORES.md), [Reporters](docs/REPORTERS.md) | Persistence and output formats |
 | **Phase 5** | [Data Sources](docs/DATASOURCES.md) | Multi-backend support (BigQuery, Snowflake, etc.) |
-| **Phase 6** | [Checkpoint & CI/CD](docs/CHECKPOINT.md) | Orchestration and CI/CD integration |
+| **Phase 6** | [Checkpoint & CI/CD](docs/CHECKPOINT.md) | Saga pattern, 9 notification providers, job monitoring, analytics |
 | **Phase 7** | [Auto-Profiling](docs/PROFILER.md) | Streaming profiler with distributed processing |
-| **Phase 8** | [Data Docs](docs/DATADOCS.md) | HTML report generation |
-| **Phase 9** | [Plugin Architecture](docs/PLUGINS.md) | Extensibility framework |
-| **Phase 10** | [Advanced Features](docs/ADVANCED.md) | ML, Lineage, and Realtime modules |
+| **Phase 8** | [Data Docs](docs/DATADOCS.md) | Pipeline engine, i18n, versioning, themes, PDF |
+| **Phase 9** | [Plugin Architecture](docs/PLUGINS.md) | Enterprise plugins with security, versioning, hot reload |
+| **Phase 10** | [Advanced Features](docs/ADVANCED.md) | ML monitoring, Lineage visualization, OpenLineage, Protocol-based streaming |
 | **Enterprise** | [Enterprise Features](#enterprise-features) | SDK, Security, i18n, Infrastructure |
 
 ### Reference
@@ -878,6 +887,560 @@ async with replicated_store:
 | **ASYNC** | Fire and forget | High throughput |
 | **SEMI_SYNC** | Wait for N replicas | Balance consistency/performance |
 
+### Data Docs - Enterprise Reporting
+
+Generate beautiful, internationalized reports with versioning and custom branding:
+
+```python
+from truthound.datadocs import (
+    # Pipeline engine
+    ReportPipeline, ReportContext, ComponentRegistry,
+    # I18n support
+    ReportCatalog, PluralRules, NumberFormatter, DateFormatter,
+    # Versioning
+    InMemoryVersionStorage, FileVersionStorage,
+    IncrementalStrategy, SemanticStrategy, TimestampStrategy, GitLikeStrategy,
+    ReportDiffer, diff_versions,
+    # Themes & Renderers
+    HTMLReportBuilder, generate_html_report,
+)
+
+# 1. Multi-language Reports with CLDR plurals
+catalog = ReportCatalog(locale="ko")
+message = catalog.get("validation_passed", count=5)
+# -> "5개 검증 통과"
+
+# 2. Locale-aware formatting
+formatter = NumberFormatter(locale="de-DE")
+print(formatter.format(1234567.89))  # -> "1.234.567,89"
+
+date_formatter = DateFormatter(locale="ja-JP")
+print(date_formatter.format(datetime.now()))  # -> "2025年12月28日"
+
+# 3. Report versioning with diff
+storage = FileVersionStorage("/reports")
+v1 = storage.save("my_report", report_html, message="Initial version")
+v2 = storage.save("my_report", updated_html, message="Updated charts")
+
+# Compare versions
+differ = ReportDiffer()
+diff_result = differ.compare(v1, v2)
+print(f"Changes: {diff_result.added_count} added, {diff_result.removed_count} removed")
+print(differ.format_diff(diff_result, format="unified"))
+
+# Rollback to previous version
+old_version = storage.load("my_report", version=1)
+
+# 4. Custom branded reports
+builder = HTMLReportBuilder(theme=ReportTheme.PROFESSIONAL)
+builder.set_branding(
+    logo_url="https://company.com/logo.png",
+    primary_color="#1a365d",
+    company_name="Acme Corp",
+)
+html = builder.build(profile)
+```
+
+**Supported Languages (15):**
+
+| Core (7) | Extended (8) |
+|----------|--------------|
+| English, Korean, Japanese | Portuguese (BR/PT), Italian, Russian |
+| Chinese, German, French, Spanish | Arabic, Hebrew, Turkish, Polish |
+
+**Versioning Strategies:**
+
+| Strategy | Description | Use Case |
+|----------|-------------|----------|
+| `IncrementalStrategy` | Simple 1, 2, 3... numbering | Most common |
+| `SemanticStrategy` | 0.0.1, 0.1.0, 1.0.0 format | API/schema changes |
+| `TimestampStrategy` | Millisecond timestamps | Audit trails |
+| `GitLikeStrategy` | Content-based hashing | Deduplication |
+
+### Schema Evolution Detection
+
+Automatically detect and alert on schema changes in your data pipelines:
+
+```python
+from truthound.profiler.evolution import (
+    SchemaEvolutionDetector,
+    SchemaCompatibilityAnalyzer,
+    SchemaChangeAlertManager,
+    ConsoleAlertHandler,
+)
+
+# Detect schema changes with rename detection
+detector = SchemaEvolutionDetector(detect_renames=True)
+changes = detector.detect_changes(current_schema, baseline_schema)
+
+for change in changes:
+    print(f"{change.change_type}: {change.column}")
+    if change.breaking:
+        print(f"  ⚠️ BREAKING CHANGE: {change.description}")
+
+# Analyze compatibility level
+analyzer = SchemaCompatibilityAnalyzer()
+result = analyzer.analyze(old_schema, new_schema)
+print(f"Compatible: {result.is_compatible}")
+print(f"Level: {result.level}")  # FULL, BACKWARD, FORWARD, NONE
+
+# Alert on breaking changes
+manager = SchemaChangeAlertManager(handlers=[
+    ConsoleAlertHandler(use_colors=True),
+])
+manager.alert_if_breaking(changes)
+```
+
+**Change Types Detected:**
+
+| Type | Description | Breaking |
+|------|-------------|----------|
+| `COLUMN_ADDED` | New column added | No |
+| `COLUMN_REMOVED` | Column deleted | Yes |
+| `TYPE_CHANGED` | Column type changed | Depends |
+| `COLUMN_RENAMED` | Column renamed (detected via similarity) | Yes |
+| `NULLABLE_CHANGED` | Nullability changed | Depends |
+
+### Unified Resilience Patterns
+
+Enterprise-grade resilience patterns consolidated in `common/resilience/`:
+
+```python
+from truthound.common.resilience import (
+    # Circuit Breaker
+    CircuitBreaker, CircuitBreakerConfig, CircuitBreakerState,
+    CircuitBreakerRegistry,
+    # Retry
+    RetryPolicy, RetryConfig, RetryExhaustedError,
+    ExponentialBackoff, LinearBackoff, ConstantBackoff,
+    # Bulkhead
+    SemaphoreBulkhead, BulkheadConfig, BulkheadFullError,
+    # Rate Limiting
+    TokenBucketRateLimiter, FixedWindowRateLimiter, RateLimiterConfig,
+    # Composite Builder
+    ResilienceBuilder, ResilientWrapper,
+)
+
+# 1. Circuit Breaker - Prevent cascading failures
+cb = CircuitBreaker("my-service", CircuitBreakerConfig.aggressive())
+with cb.protect():
+    external_service.call()
+
+# 2. Retry with exponential backoff
+retry = RetryPolicy(RetryConfig.exponential())
+result = retry.execute(flaky_function)
+
+# 3. Bulkhead - Limit concurrent operations
+bulkhead = SemaphoreBulkhead("db-pool", BulkheadConfig(max_concurrent=10))
+with bulkhead.limit():
+    database.query()
+
+# 4. Rate Limiting - Control throughput
+limiter = TokenBucketRateLimiter("api", RateLimiterConfig.per_second(100))
+with limiter.limit():
+    api.call()
+
+# 5. Combined patterns with fluent builder
+wrapper = (
+    ResilienceBuilder("database")
+    .with_rate_limit(RateLimiterConfig.per_second(100))
+    .with_bulkhead(BulkheadConfig(max_concurrent=10))
+    .with_circuit_breaker(CircuitBreakerConfig.for_database())
+    .with_retry(RetryConfig.quick())
+    .build()
+)
+
+@wrapper
+def protected_operation():
+    return database.execute_query()
+
+# Presets for common use cases
+db_wrapper = ResilienceBuilder.for_database("postgres")
+api_wrapper = ResilienceBuilder.for_external_api("payment-gateway")
+simple_wrapper = ResilienceBuilder.simple("my-service")
+```
+
+**Resilience Pattern Summary:**
+
+| Pattern | Purpose | Use Case |
+|---------|---------|----------|
+| **Circuit Breaker** | Fail fast when downstream is unhealthy | External APIs, databases |
+| **Retry** | Handle transient failures | Network timeouts, rate limits |
+| **Bulkhead** | Isolate resources | Connection pools, thread pools |
+| **Rate Limiter** | Control throughput | API rate limiting, quota management |
+| **Composite** | Combine multiple patterns | Production services |
+
+### Enterprise Plugin Architecture
+
+Secure, extensible plugin system with enterprise-grade features:
+
+```python
+from truthound.plugins import (
+    # Core Plugin System
+    PluginManager, PluginRegistry, PluginDiscovery,
+    Plugin, PluginConfig, PluginType,
+    # Security
+    SecurityPolicyPresets, create_policy, IsolationLevel,
+    SandboxFactory, SigningServiceImpl, SignatureAlgorithm,
+    TrustStoreImpl, TrustLevel, create_verification_chain,
+    # Versioning & Dependencies
+    parse_constraint, VersionConstraint,
+    DependencyGraph, DependencyResolver, DependencyType,
+    # Lifecycle
+    LifecycleManager, HotReloadManager, ReloadStrategy,
+    # Documentation
+    DocumentationExtractor, render_documentation,
+    # Enterprise Manager
+    create_enterprise_manager,
+)
+
+# 1. Create enterprise plugin manager with security preset
+manager = create_enterprise_manager(
+    security_preset=SecurityPolicyPresets.ENTERPRISE,
+)
+
+# 2. Load plugin with signature verification
+await manager.load("my-plugin", verify_signature=True)
+
+# 3. Execute plugin in sandbox
+result = await manager.execute_in_sandbox(
+    "my-plugin",
+    my_function,
+    arg1, arg2,
+)
+
+# 4. Hot reload without restart
+await manager.reload("my-plugin")
+
+# 5. Generate plugin documentation
+docs = manager.generate_docs("my-plugin")
+
+# Custom security policy
+policy = create_policy(
+    preset="standard",
+    isolation_level="container",
+    max_memory_mb=512,
+    max_execution_time_sec=30,
+    allow_network=False,
+    blocked_modules=["os", "subprocess", "socket"],
+)
+
+# Plugin signing with Ed25519
+service = SigningServiceImpl(
+    algorithm=SignatureAlgorithm.ED25519,
+    signer_id="my-org",
+)
+signature = service.sign(
+    plugin_path=Path("my_plugin/"),
+    private_key=private_key,
+)
+
+# Verify with trust chain
+trust_store = TrustStoreImpl()
+trust_store.set_signer_trust("my-org", TrustLevel.TRUSTED)
+chain = create_verification_chain(trust_store=trust_store)
+result = chain.verify(plugin_path, signature, context={})
+
+# Version constraints (semver)
+constraint = parse_constraint("^1.2.3")  # >=1.2.3 && <2.0.0
+constraint.is_satisfied_by("1.5.0")  # True
+constraint.is_satisfied_by("2.0.0")  # False
+
+# Dependency management
+graph = DependencyGraph()
+graph.add_node("plugin-c", "1.0.0")
+graph.add_node("plugin-b", "1.0.0",
+    dependencies={"plugin-c": DependencyType.REQUIRED})
+graph.add_node("plugin-a", "1.0.0",
+    dependencies={"plugin-b": DependencyType.REQUIRED})
+
+order = graph.get_load_order()  # ['plugin-c', 'plugin-b', 'plugin-a']
+cycles = graph.detect_cycles()  # Circular dependency detection
+
+# Hot reload with rollback
+reload_manager = HotReloadManager(
+    lifecycle_manager,
+    default_strategy=ReloadStrategy.GRACEFUL,
+)
+await reload_manager.watch("my-plugin", Path("plugins/my-plugin/"), auto_reload=True)
+result = await reload_manager.reload("my-plugin")
+if not result.success and result.rolled_back:
+    print("Rolled back to previous version")
+```
+
+**Security Policy Presets:**
+
+| Preset | Isolation | Network | Subprocess | Signatures | Use Case |
+|--------|-----------|---------|------------|------------|----------|
+| **DEVELOPMENT** | None | Yes | Yes | 0 | Local dev |
+| **TESTING** | None | Yes | Yes | 0 | Test environment |
+| **STANDARD** | Process | No | No | 1 | General production |
+| **ENTERPRISE** | Process | No | No | 1 + trusted | Enterprise |
+| **STRICT** | Container | No | No | 2 + trusted | High-security |
+| **AIRGAPPED** | Container | No | No | 2 + trusted + blocked syscalls | Air-gapped |
+
+**Sandbox Engines:**
+
+| Engine | Isolation Level | Features |
+|--------|----------------|----------|
+| **NoopSandboxEngine** | NONE | Timeout only, development use |
+| **ProcessSandboxEngine** | PROCESS | Subprocess isolation, resource limits, module blocking |
+| **ContainerSandboxEngine** | CONTAINER | Docker/Podman, network isolation, cgroups |
+
+**Signature Algorithms:**
+
+| Algorithm | Description | Recommended |
+|-----------|-------------|-------------|
+| SHA256/SHA512 | Hash only (integrity) | No |
+| HMAC_SHA256/512 | Symmetric key | Yes (internal) |
+| RSA_SHA256 | Asymmetric key | Yes (public distribution) |
+| ED25519 | Modern asymmetric | Yes (recommended) |
+
+**Plugin Lifecycle States:**
+
+```
+DISCOVERED → LOADING → LOADED → ACTIVATING → ACTIVE
+     ↓          ↓         ↓          ↓          ↓
+  FAILED    FAILED    FAILED    FAILED    DEACTIVATING
+                                              ↓
+                                          UNLOADING
+                                              ↓
+                                          UNLOADED
+```
+
+### ML Model Monitoring
+
+Enterprise-grade ML model observability and alerting:
+
+```python
+from truthound.ml.monitoring import (
+    ModelMonitor, InMemoryMetricStore,
+    ThresholdRule, ThresholdConfig, AlertSeverity,
+    SlackAlertHandler, SlackConfig,
+    PerformanceCollector, QualityCollector,
+)
+
+# Create monitor with collectors
+store = InMemoryMetricStore()
+monitor = ModelMonitor(store=store)
+monitor.add_collector(PerformanceCollector())
+monitor.add_collector(QualityCollector())
+
+# Add alert rules
+monitor.add_rule(ThresholdRule(
+    name="high-latency",
+    config=ThresholdConfig(
+        metric_name="latency_ms",
+        threshold=100.0,
+        comparison="gt",
+    ),
+    severity=AlertSeverity.WARNING,
+))
+
+# Add handlers (Slack, Webhook)
+monitor.add_handler(SlackAlertHandler(SlackConfig(
+    webhook_url="https://hooks.slack.com/...",
+)))
+
+# Collect metrics and evaluate alerts
+await monitor.collect({
+    "model_id": "fraud-detection-v2",
+    "latency_ms": 45.2,
+    "predictions": 1000,
+})
+alerts = await monitor.evaluate()
+```
+
+### Lineage Visualization
+
+Multi-format lineage graph rendering:
+
+```python
+from truthound.lineage import LineageTracker
+from truthound.lineage.visualization.renderers import (
+    D3Renderer, CytoscapeRenderer, GraphvizRenderer, MermaidRenderer,
+)
+from truthound.lineage.visualization.protocols import RenderConfig
+
+# Build lineage
+tracker = LineageTracker()
+tracker.track_source("raw_data", source_type="csv")
+tracker.track_transformation("cleaned", sources=["raw_data"])
+tracker.track_output("warehouse", sources=["cleaned"])
+
+graph = tracker.graph
+config = RenderConfig(width=1200, height=800, orientation="LR")
+
+# Render to different formats
+d3_json = D3Renderer().render(graph, config)       # D3.js JSON
+cyto_json = CytoscapeRenderer().render(graph, config)  # Cytoscape.js
+dot = GraphvizRenderer().render(graph, config)     # DOT format
+mermaid = MermaidRenderer().render(graph, config)  # Mermaid syntax
+
+# Generate interactive HTML pages
+d3_html = D3Renderer().render_html(graph, config)
+mermaid_md = MermaidRenderer().render_markdown(graph, config)
+```
+
+**Visualization Renderers:**
+
+| Renderer | Output | Use Case |
+|----------|--------|----------|
+| **D3Renderer** | JSON + HTML | Interactive web dashboards |
+| **CytoscapeRenderer** | JSON + HTML | Complex graph analysis |
+| **GraphvizRenderer** | DOT, SVG, PNG | Static documentation |
+| **MermaidRenderer** | Markdown | GitHub/GitLab README |
+
+### OpenLineage Integration
+
+Industry-standard lineage event emission:
+
+```python
+from truthound.lineage.integrations import OpenLineageEmitter
+
+emitter = OpenLineageEmitter(
+    namespace="my-company",
+    producer="truthound",
+)
+
+# Start a run with inputs
+run = emitter.start_run(
+    job_name="data-validation",
+    inputs=[
+        emitter.build_dataset("raw_sales"),
+        emitter.build_dataset("raw_customers"),
+    ],
+)
+
+# Complete with outputs
+emitter.emit_complete(run, outputs=[
+    emitter.build_dataset("validated_sales"),
+])
+
+# Convert Truthound graph to OpenLineage events
+runs = emitter.emit_from_graph(graph, job_name="pipeline")
+```
+
+### Protocol-based Streaming
+
+Unified streaming adapter abstraction for Kafka and Kinesis:
+
+```python
+from truthound.realtime import create_adapter, register_adapter
+
+# Create Kafka adapter
+kafka = create_adapter("kafka", {
+    "bootstrap_servers": "localhost:9092",
+    "topic": "validation-events",
+    "consumer_group": "truthound-validators",
+})
+
+# Or Kinesis adapter
+kinesis = create_adapter("kinesis", {
+    "stream_name": "validation-stream",
+    "region": "us-east-1",
+})
+
+# Unified interface
+async with kafka:
+    await kafka.produce({"event": "validated", "result": True})
+
+    async for message in kafka.consume():
+        result = validate(message.value)
+        await kafka.produce(result)
+```
+
+**Streaming Adapters:**
+
+| Adapter | Library | Features |
+|---------|---------|----------|
+| **KafkaAdapter** | aiokafka | Auto-reconnect, batch produce, consumer groups, partition info |
+| **KinesisAdapter** | aiobotocore | Stream management, shard iterators, batch put |
+
+### Testcontainers Integration Testing
+
+Docker-based integration testing for streaming:
+
+```python
+from truthound.realtime.testing import (
+    KafkaTestContainer, RedisTestContainer, LocalStackTestContainer,
+    StreamTestEnvironment,
+)
+
+# Single container
+async with KafkaTestContainer() as kafka:
+    adapter = create_adapter("kafka", {
+        "bootstrap_servers": kafka.get_bootstrap_servers(),
+    })
+    # Run tests against real Kafka
+
+# Multi-container environment
+env = StreamTestEnvironment()
+env.add_container("kafka", KafkaTestContainer())
+env.add_container("redis", RedisTestContainer())
+
+async with env:
+    # Kafka + Redis integration tests
+    pass
+```
+
+### Incremental Profiling Scheduling
+
+Schedule automatic profiling with various trigger strategies:
+
+```python
+from truthound.profiler.scheduling import (
+    create_scheduler,
+    CronTrigger, IntervalTrigger, DataChangeTrigger,
+    CompositeTrigger, ManualTrigger,
+    InMemoryProfileStorage, FileProfileStorage,
+)
+
+# Cron-based scheduling (e.g., every day at 2am)
+scheduler = create_scheduler(
+    profiler=profiler,
+    trigger_type="cron",
+    expression="0 2 * * *",
+)
+
+# Interval-based scheduling (e.g., every hour)
+scheduler = create_scheduler(
+    profiler=profiler,
+    trigger_type="interval",
+    interval_seconds=3600,
+)
+
+# Data change-based scheduling (profile when data changes by 5%)
+scheduler = create_scheduler(
+    profiler=profiler,
+    trigger_type="data_change",
+    change_threshold=0.05,
+)
+
+# Run profiling if trigger conditions are met
+profile = scheduler.run_if_needed(data)
+if profile:
+    print(f"New profile: {profile.profiled_at}")
+else:
+    print("Profile not needed yet")
+
+# Get scheduler metrics
+metrics = scheduler.get_metrics()
+print(f"Total runs: {metrics['total_runs']}")
+print(f"Skipped: {metrics['skipped_runs']}")
+```
+
+**Trigger Types:**
+
+| Trigger | Description |
+|---------|-------------|
+| `CronTrigger` | Cron expression based scheduling |
+| `IntervalTrigger` | Fixed time interval |
+| `DataChangeTrigger` | Trigger on data changes (row count, hash) |
+| `EventTrigger` | Event-driven triggering |
+| `ManualTrigger` | On-demand triggering |
+| `CompositeTrigger` | Combine multiple triggers (ANY/ALL mode) |
+
 ---
 
 ## Validator Categories
@@ -911,6 +1474,15 @@ async with replicated_store:
 | Timeout | 90 | Deadline, cascade, degradation, priority, SLA |
 | i18n | 118 | 15+ languages, CLDR plurals, RTL, TMS |
 | Infrastructure | 162 | Logging, metrics, config, audit, encryption |
+| Resilience | 41 | Circuit breaker, retry, bulkhead, rate limiting |
+| Schema Evolution | 33 | Change detection, compatibility, alerts |
+| Scheduling | 30 | Cron, interval, data change triggers |
+| Data Docs | 190 | Pipeline, i18n (15 langs), versioning, themes, PDF |
+| Plugin Architecture | 190 | Security sandbox, signing, versioning, dependencies, lifecycle, hot reload |
+| ML Monitoring | 11 | Model metrics, alerting, drift detection, handlers |
+| Lineage Visualization | 5 | D3, Cytoscape, Graphviz, Mermaid renderers |
+| OpenLineage | 6 | Industry-standard lineage events, run lifecycle |
+| Streaming Adapters | 21 | Kafka (aiokafka), Kinesis (aiobotocore), Testcontainers |
 
 ---
 
