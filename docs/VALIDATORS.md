@@ -21,6 +21,11 @@ This document provides a comprehensive reference for all 275 validators implemen
 13. [Drift Validators](#13-drift-validators)
 14. [Anomaly Validators](#14-anomaly-validators)
 15. [DAG-Based Execution](#15-dag-based-execution)
+16. [Validator Performance Profiling](#16-validator-performance-profiling)
+17. [Custom Validator SDK](#17-custom-validator-sdk)
+18. [ReDoS Protection](#18-redos-protection)
+19. [Internationalization (i18n)](#19-internationalization-i18n)
+20. [Distributed Timeout](#20-distributed-timeout)
 
 ---
 
@@ -1930,6 +1935,281 @@ prometheus_metrics = profiler.to_prometheus()
 
 ---
 
+## 17. Custom Validator SDK
+
+Truthound provides a comprehensive SDK for developing custom validators with decorators, fluent builder, testing utilities, and pre-built templates.
+
+### 17.1 Decorator-Based Development
+
+```python
+from truthound.validators.sdk import custom_validator
+from truthound.validators.base import Validator, StringValidatorMixin
+
+@custom_validator(
+    name="email_format",
+    category="string",
+    description="Validates email address format",
+    tags=["format", "string", "email"],
+)
+class EmailFormatValidator(Validator, StringValidatorMixin):
+    def validate(self, lf: pl.LazyFrame) -> list[ValidationIssue]:
+        # Implementation
+        ...
+```
+
+### 17.2 Fluent Builder API
+
+```python
+from truthound.validators.sdk import ValidatorBuilder
+
+validator = (
+    ValidatorBuilder("null_check")
+    .category("completeness")
+    .for_numeric_columns()
+    .check(lambda col, lf: lf.filter(pl.col(col).is_null()).collect().height)
+    .with_issue_type("null_value")
+    .with_severity("high")
+    .build()
+)
+```
+
+### 17.3 Pre-built Templates
+
+| Template | Description |
+|----------|-------------|
+| `SimplePatternValidator` | Regex pattern matching |
+| `SimpleRangeValidator` | Numeric range validation |
+| `SimpleColumnValidator` | Single column validation |
+| `SimpleAggregateValidator` | Aggregate function validation |
+
+```python
+from truthound.validators.sdk import SimplePatternValidator
+
+validator = SimplePatternValidator(
+    name="phone_format",
+    pattern=r"\d{3}-\d{4}-\d{4}",
+    description="Validates Korean phone format",
+)
+```
+
+### 17.4 Testing Utilities
+
+```python
+from truthound.validators.sdk import ValidatorTestCase
+
+class TestMyValidator(ValidatorTestCase):
+    validator_class = MyValidator
+
+    def test_valid_data(self):
+        result = self.validate_with({"column": [1, 2, 3]})
+        self.assert_no_issues(result)
+
+    def test_invalid_data(self):
+        result = self.validate_with({"column": [None, 2, None]})
+        self.assert_has_issues(result, count=2)
+```
+
+---
+
+## 18. ReDoS Protection
+
+Truthound includes comprehensive protection against Regular Expression Denial of Service (ReDoS) attacks.
+
+### 18.1 Regex Safety Checker
+
+```python
+from truthound.validators.security import RegexSafetyChecker, ReDoSRisk
+
+checker = RegexSafetyChecker()
+result = checker.analyze("(a+)+$")
+
+print(result.risk)  # ReDoSRisk.CRITICAL
+print(result.patterns)  # ["nested_quantifiers"]
+```
+
+### 18.2 Risk Levels
+
+| Level | Description | Action |
+|-------|-------------|--------|
+| `NONE` | Safe pattern | Allow |
+| `LOW` | Minor complexity | Allow with monitoring |
+| `MEDIUM` | Moderate complexity | Review recommended |
+| `HIGH` | Significant risk | Consider alternatives |
+| `CRITICAL` | Dangerous pattern | Block or refactor |
+
+### 18.3 Safe Regex Executor
+
+```python
+from truthound.validators.security import SafeRegexExecutor
+
+executor = SafeRegexExecutor(timeout_seconds=1.0)
+result = executor.execute(pattern, text)
+
+if result.matched:
+    print(result.groups)
+else:
+    print(result.error)  # Timeout or pattern error
+```
+
+### 18.4 Complexity Analysis
+
+```python
+from truthound.validators.security import RegexComplexityAnalyzer
+
+analyzer = RegexComplexityAnalyzer()
+analysis = analyzer.analyze("(a|b)*c+d?")
+
+print(analysis.complexity_score)  # 0-100
+print(analysis.nesting_depth)
+print(analysis.quantifier_count)
+```
+
+---
+
+## 19. Internationalization (i18n)
+
+Truthound supports error messages in 7 languages.
+
+### 19.1 Supported Languages
+
+| Code | Language |
+|------|----------|
+| `en` | English (default) |
+| `ko` | 한국어 (Korean) |
+| `ja` | 日本語 (Japanese) |
+| `zh` | 中文 (Chinese) |
+| `de` | Deutsch (German) |
+| `fr` | Français (French) |
+| `es` | Español (Spanish) |
+
+### 19.2 Usage
+
+```python
+from truthound.validators.i18n import (
+    set_validator_locale,
+    get_validator_message,
+    ValidatorMessageCode,
+)
+
+# Set locale
+set_validator_locale("ko")
+
+# Get localized message
+msg = get_validator_message(
+    ValidatorMessageCode.NULL_VALUES_FOUND,
+    column="email",
+    count=10,
+)
+# -> "'email' 컬럼에서 10개의 null 값이 발견되었습니다"
+```
+
+### 19.3 Custom Catalogs
+
+```python
+from truthound.validators.i18n import ValidatorMessageCatalog
+
+catalog = (
+    ValidatorMessageCatalog.builder("ko_formal")
+    .add_null(values_found="'{column}' 항목에서 {count}건의 누락이 확인되었습니다")
+    .add_unique(duplicates_found="'{column}' 항목에서 {count}건의 중복이 확인되었습니다")
+    .build()
+)
+```
+
+### 19.4 Message Codes
+
+| Category | Codes |
+|----------|-------|
+| Null | `NULL_VALUES_FOUND`, `NULL_COLUMN_EMPTY`, `NULL_ABOVE_THRESHOLD` |
+| Unique | `UNIQUE_DUPLICATES_FOUND`, `UNIQUE_COMPOSITE_DUPLICATES`, `UNIQUE_KEY_VIOLATION` |
+| Type | `TYPE_MISMATCH`, `TYPE_COERCION_FAILED`, `TYPE_INFERENCE_FAILED` |
+| Format | `FORMAT_INVALID_EMAIL`, `FORMAT_INVALID_PHONE`, `FORMAT_PATTERN_MISMATCH` |
+| Range | `RANGE_OUT_OF_BOUNDS`, `RANGE_BELOW_MINIMUM`, `RANGE_ABOVE_MAXIMUM` |
+| Timeout | `TIMEOUT_EXCEEDED`, `TIMEOUT_PARTIAL_RESULT` |
+
+---
+
+## 20. Distributed Timeout
+
+Truthound provides timeout management for distributed validation environments.
+
+### 20.1 Deadline Context
+
+```python
+from truthound.validators.timeout import DeadlineContext
+
+with DeadlineContext.from_seconds(60) as ctx:
+    # Allocate budget for sub-operations
+    budget = ctx.allocate(validators=40, reporting=15, cleanup=5)
+
+    # Execute with deadline awareness
+    result = validate_with_deadline(data, budget.validators)
+
+    # Check remaining time
+    if ctx.remaining_seconds < 10:
+        # Use fast path
+        ...
+```
+
+### 20.2 Timeout Budget
+
+```python
+from truthound.validators.timeout import TimeoutBudget
+
+budget = TimeoutBudget(total_seconds=120)
+
+# Allocate time for operations
+validation_budget = budget.allocate("validation", 60)
+report_budget = budget.allocate("reporting", 30)
+
+# Use allocated time
+with budget.use("validation") as ctx:
+    validate(data)
+
+print(budget.get_summary())
+```
+
+### 20.3 Graceful Degradation
+
+```python
+from truthound.validators.timeout import (
+    GracefulDegradation,
+    DegradationPolicy,
+)
+
+degradation = GracefulDegradation(
+    policy=DegradationPolicy.SAMPLE,
+    sample_fraction=0.1,
+)
+
+# Execute with fallback
+result = degradation.execute(operation, timeout=10)
+
+if result.degraded:
+    print(f"Used fallback: {result.policy}")
+```
+
+### 20.4 Cascade Timeout
+
+```python
+from truthound.validators.timeout import (
+    CascadeTimeoutHandler,
+    CascadePolicy,
+)
+
+handler = CascadeTimeoutHandler(
+    total_timeout=60,
+    policy=CascadePolicy.PROPORTIONAL,
+)
+
+# Execute with cascading timeouts
+with handler.cascade() as cascade:
+    result1 = cascade.execute("phase1", operation1, 20)
+    result2 = cascade.execute("phase2", operation2, 30)
+```
+
+---
+
 ## Appendix A: Validator Categories Summary
 
 | Category | Count | Dependencies | Description |
@@ -1955,7 +2235,8 @@ prometheus_metrics = profiler.to_prometheus()
 | Referential | 13 | Core | Foreign key and orphan record validation |
 | Time Series | 14 | Core | Gap detection, seasonality, trend analysis |
 | Privacy | 15 | Core | GDPR, CCPA, LGPD compliance patterns |
-| **Total** | **275** | | |
+| Security | 8 | Core | SQL injection, ReDoS protection |
+| **Total** | **280+** | | |
 
 ---
 
