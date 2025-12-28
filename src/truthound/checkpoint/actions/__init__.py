@@ -57,6 +57,36 @@ from truthound.checkpoint.actions.custom import (
     CustomAction,
     CustomActionConfig,
 )
+from truthound.checkpoint.actions.teams_notify import (
+    TeamsNotification,
+    TeamsConfig,
+    AdaptiveCardBuilder,
+    MessageTemplate,
+    MessageTheme,
+    TeamsConnectorType,
+    create_teams_notification,
+    create_failure_alert,
+    create_summary_notification,
+    register_template,
+)
+from truthound.checkpoint.actions.opsgenie import (
+    OpsGenieAction,
+    OpsGenieConfig,
+    OpsGenieRegion,
+    AlertPriority,
+    AlertAction,
+    ResponderType,
+    Responder,
+    AlertPayloadBuilder,
+    AlertTemplate,
+    OpsGenieHTTPClient,
+    OpsGenieAPIError,
+    create_opsgenie_action,
+    create_critical_alert as create_opsgenie_critical_alert,
+    create_team_alert,
+    create_escalation_alert,
+    register_template as register_opsgenie_template,
+)
 
 __all__ = [
     # Base
@@ -87,4 +117,32 @@ __all__ = [
     # Custom
     "CustomAction",
     "CustomActionConfig",
+    # Microsoft Teams
+    "TeamsNotification",
+    "TeamsConfig",
+    "AdaptiveCardBuilder",
+    "MessageTemplate",
+    "MessageTheme",
+    "TeamsConnectorType",
+    "create_teams_notification",
+    "create_failure_alert",
+    "create_summary_notification",
+    "register_template",
+    # OpsGenie
+    "OpsGenieAction",
+    "OpsGenieConfig",
+    "OpsGenieRegion",
+    "AlertPriority",
+    "AlertAction",
+    "ResponderType",
+    "Responder",
+    "AlertPayloadBuilder",
+    "AlertTemplate",
+    "OpsGenieHTTPClient",
+    "OpsGenieAPIError",
+    "create_opsgenie_action",
+    "create_opsgenie_critical_alert",
+    "create_team_alert",
+    "create_escalation_alert",
+    "register_opsgenie_template",
 ]
