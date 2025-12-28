@@ -1,10 +1,11 @@
-"""Security module for SQL injection protection and query sanitization.
+"""Security module for SQL injection protection, query sanitization, and ReDoS protection.
 
-This module provides comprehensive SQL security features:
-- Query validation and sanitization
+This module provides comprehensive security features:
+- SQL query validation and sanitization
 - Parameterized query support
 - Whitelist-based validation
 - Pluggable security policies
+- ReDoS (Regular Expression Denial of Service) protection
 
 Architecture:
     ┌─────────────────────────────────────────────────────────────────┐
@@ -64,26 +65,117 @@ from truthound.validators.security.sql_security import (
     AuditEntry,
 )
 
+from truthound.validators.security.redos import (
+    # Core ReDoS classes
+    RegexSafetyChecker,
+    RegexComplexityAnalyzer,
+    SafeRegexConfig,
+    SafeRegexExecutor,
+    RegexAnalysisResult,
+    ReDoSRisk,
+    # Convenience functions
+    check_regex_safety,
+    analyze_regex_complexity,
+    create_safe_regex,
+    safe_match,
+    safe_search,
+    # ML Analyzer
+    MLPatternAnalyzer,
+    MLPredictionResult,
+    FeatureExtractor,
+    predict_redos_risk,
+    # Optimizer
+    PatternOptimizer,
+    OptimizationResult,
+    OptimizationRule,
+    optimize_pattern,
+    # CVE Database
+    CVEDatabase,
+    CVEEntry,
+    CVEMatchResult,
+    check_cve_vulnerability,
+    # CPU Monitor
+    CPUMonitor,
+    CPUMonitorResult,
+    ResourceLimits,
+    execute_with_monitoring,
+    # Profiler
+    PatternProfiler,
+    ProfileResult,
+    BenchmarkConfig,
+    profile_pattern,
+    # RE2 Engine
+    RE2Engine,
+    RE2CompileError,
+    RE2MatchResult,
+    safe_match_re2,
+    safe_search_re2,
+)
+
 __all__ = [
-    # Errors
+    # SQL Security - Errors
     "SQLSecurityError",
     "SQLInjectionError",
     "QueryValidationError",
-    # Validation
+    # SQL Security - Validation
     "SQLQueryValidator",
     "validate_sql_query",
-    # Parameterized queries
+    # SQL Security - Parameterized queries
     "SecureSQLBuilder",
     "ParameterizedQuery",
-    # Whitelist
+    # SQL Security - Whitelist
     "WhitelistValidator",
     "SchemaWhitelist",
-    # Policies
+    # SQL Security - Policies
     "SecurityPolicy",
     "SecurityLevel",
-    # Mixins
+    # SQL Security - Mixins
     "SecureQueryMixin",
-    # Audit
+    # SQL Security - Audit
     "QueryAuditLogger",
     "AuditEntry",
+    # ReDoS Protection - Classes
+    "RegexSafetyChecker",
+    "RegexComplexityAnalyzer",
+    "SafeRegexConfig",
+    "SafeRegexExecutor",
+    "RegexAnalysisResult",
+    "ReDoSRisk",
+    # ReDoS Protection - Functions
+    "check_regex_safety",
+    "analyze_regex_complexity",
+    "create_safe_regex",
+    "safe_match",
+    "safe_search",
+    # ReDoS - ML Analyzer
+    "MLPatternAnalyzer",
+    "MLPredictionResult",
+    "FeatureExtractor",
+    "predict_redos_risk",
+    # ReDoS - Optimizer
+    "PatternOptimizer",
+    "OptimizationResult",
+    "OptimizationRule",
+    "optimize_pattern",
+    # ReDoS - CVE Database
+    "CVEDatabase",
+    "CVEEntry",
+    "CVEMatchResult",
+    "check_cve_vulnerability",
+    # ReDoS - CPU Monitor
+    "CPUMonitor",
+    "CPUMonitorResult",
+    "ResourceLimits",
+    "execute_with_monitoring",
+    # ReDoS - Profiler
+    "PatternProfiler",
+    "ProfileResult",
+    "BenchmarkConfig",
+    "profile_pattern",
+    # ReDoS - RE2 Engine
+    "RE2Engine",
+    "RE2CompileError",
+    "RE2MatchResult",
+    "safe_match_re2",
+    "safe_search_re2",
 ]
