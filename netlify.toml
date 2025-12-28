@@ -1,5 +1,5 @@
 [build]
-  command = "pip install mkdocs-material mkdocstrings[python] && mkdocs build"
+  command = "pip install mkdocs-material mkdocstrings[python] && python -m mkdocs build"
   publish = "site"
 
 [build.environment]
