@@ -190,7 +190,7 @@ truthound new list --verbose                # List available templates
 
 | Phase | Name | Status | Repository | Description |
 |-------|------|--------|------------|-------------|
-| **Phase 11** | Workflow Integration | 🚧 Planned | `truthound-integrations` | Airflow, dbt, Dagster, Prefect |
+| **Phase 11** | Workflow Integration | 🚧 Planned | `truthound-orchestration` | Airflow, dbt, Dagster, Prefect |
 | **Phase 12** | Web UI & API | 🚧 Planned | `truthound-dashboard` | FastAPI + React Dashboard |
 | **Phase 13** | Enterprise Identity | 🚧 Planned | `truthound-dashboard` | SSO, SAML, OAuth 2.0, OIDC |
 | **Phase 14** | Business Glossary | 🚧 Planned | `truthound-governance` | Data Catalog, Lineage Browser |
