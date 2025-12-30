@@ -1642,7 +1642,7 @@ hatch run test
 
 ## License
 
-MIT License — Copyright (c) 2024-2025 Truthound Contributors
+Apache License 2.0 — Copyright (c) 2024-2025 Truthound Contributors
 
 ---
 
