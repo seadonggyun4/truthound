@@ -186,6 +186,18 @@ truthound new list --verbose                # List available templates
 | **Phase 10** | [Advanced Features](docs/ADVANCED.md) | ML monitoring, Lineage visualization, OpenLineage, Protocol-based streaming |
 | **Enterprise** | [Enterprise Features](#enterprise-features) | SDK, Security, i18n, Infrastructure |
 
+### Roadmap (Phase 11-17)
+
+| Phase | Name | Status | Repository | Description |
+|-------|------|--------|------------|-------------|
+| **Phase 11** | Workflow Integration | 🚧 Planned | `truthound-integrations` | Airflow, dbt, Dagster, Prefect |
+| **Phase 12** | Web UI & API | 🚧 Planned | `truthound-dashboard` | FastAPI + React Dashboard |
+| **Phase 13** | Enterprise Identity | 🚧 Planned | `truthound-dashboard` | SSO, SAML, OAuth 2.0, OIDC |
+| **Phase 14** | Business Glossary | 🚧 Planned | `truthound-governance` | Data Catalog, Lineage Browser |
+| **Phase 15** | Enterprise DataSources | 🚧 Planned | `truthound[sap]` | SAP, Mainframe, Legacy systems |
+| **Phase 16** | Notifications | ✅ Partial | `truthound` | 9 providers implemented in Phase 6 |
+| **Phase 17** | Compliance | 🚧 Planned | `truthound[compliance]` | SOC 2, ISO 27001, HIPAA |
+
 ### Reference
 - **[API Reference](docs/API_REFERENCE.md)** — Complete API documentation
 - **[Performance Guide](docs/PERFORMANCE.md)** — Benchmarks and optimization strategies
