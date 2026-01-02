@@ -270,16 +270,34 @@ result = await manager.execute_in_sandbox("my-plugin", my_function, arg1, arg2)
 | Phase 9 | Plugin Architecture |
 | Phase 10 | ML, Lineage, Realtime |
 
-### Planned Features (Phase 11-17)
+### Phase 11-17: Enterprise Features
 
-| Phase | Name | Status |
-|-------|------|--------|
-| Phase 11 | Workflow Integration (Airflow, dbt, Dagster) | Planned |
-| Phase 12 | Web UI and REST API | Planned |
-| Phase 13 | Enterprise Identity (SSO, SAML, OIDC) | Planned |
-| Phase 14 | Business Glossary and Data Catalog | Planned |
-| Phase 15 | Enterprise DataSources (SAP, Mainframe) | Planned |
-| Phase 17 | Compliance Certification (SOC 2, ISO 27001) | Planned |
+| Phase | Name | Status | Repository |
+|-------|------|--------|------------|
+| Phase 11 | Workflow Integration | Complete | [truthound-orchestration](https://github.com/seadonggyun4/truthound-orchestration) |
+| Phase 12 | Web UI and REST API | Planned | truthound-dashboard |
+| Phase 13 | Enterprise Identity (SSO, SAML, OIDC) | Planned | truthound-dashboard |
+| Phase 14 | Business Glossary and Data Catalog | Planned | truthound-governance |
+| Phase 15 | Enterprise DataSources (SAP, Mainframe) | Planned | truthound (extras) |
+| Phase 17 | Compliance Certification (SOC 2, ISO 27001) | Planned | truthound (extras) |
+
+### Workflow Integration (Phase 11)
+
+Truthound integrates with major workflow orchestration platforms via the [truthound-orchestration](https://github.com/seadonggyun4/truthound-orchestration) package:
+
+```bash
+pip install truthound-orchestration[airflow]   # Apache Airflow
+pip install truthound-orchestration[dagster]   # Dagster
+pip install truthound-orchestration[prefect]   # Prefect
+```
+
+For dbt integration, add to `packages.yml`:
+
+```yaml
+packages:
+  - package: truthound/truthound
+    version: ">=0.1.0"
+```
 
 ---
 
