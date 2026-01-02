@@ -154,6 +154,7 @@ class AnomalyConfig(MLConfig):
         sensitivity: Detection sensitivity (0.0 to 1.0)
         min_samples: Minimum samples required for detection
         window_size: Window size for temporal anomaly detection
+        columns: Specific columns to analyze (None for all numeric columns)
     """
 
     contamination: float = 0.1
@@ -161,6 +162,7 @@ class AnomalyConfig(MLConfig):
     min_samples: int = 100
     window_size: int | None = None
     score_threshold: float | None = None
+    columns: list[str] | None = None
 
 
 @dataclass

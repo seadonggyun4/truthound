@@ -80,35 +80,42 @@ def anomaly_cmd(
         IQRAnomalyDetector,
         MADAnomalyDetector,
         IsolationForestDetector,
-        AnomalyConfig,
     )
+    from truthound.ml.anomaly_models.statistical import StatisticalConfig
+    from truthound.ml.anomaly_models.isolation_forest import IsolationForestConfig
 
     require_file(file)
 
     try:
         df = _read_data(file)
 
-        # Select detector
-        detector_map = {
-            "zscore": ZScoreAnomalyDetector,
-            "iqr": IQRAnomalyDetector,
-            "mad": MADAnomalyDetector,
-            "isolation_forest": IsolationForestDetector,
-        }
+        # Parse columns
+        cols = [c.strip() for c in columns.split(",")] if columns else None
 
-        if method not in detector_map:
+        # Select detector and appropriate config
+        # Use min_samples=10 for CLI to allow smaller datasets
+        if method == "isolation_forest":
+            config = IsolationForestConfig(
+                contamination=contamination, columns=cols, min_samples=10
+            )
+            detector = IsolationForestDetector(config=config)
+        elif method in ("zscore", "iqr", "mad"):
+            config = StatisticalConfig(
+                contamination=contamination, columns=cols, min_samples=10
+            )
+            detector_map = {
+                "zscore": ZScoreAnomalyDetector,
+                "iqr": IQRAnomalyDetector,
+                "mad": MADAnomalyDetector,
+            }
+            detector = detector_map[method](config=config)
+        else:
             typer.echo(
                 f"Error: Unknown method '{method}'. "
-                f"Available: {list(detector_map.keys())}",
+                f"Available: zscore, iqr, mad, isolation_forest",
                 err=True,
             )
             raise typer.Exit(1)
-
-        config = AnomalyConfig(contamination=contamination)
-        if columns:
-            config.columns = [c.strip() for c in columns.split(",")]
-
-        detector = detector_map[method](config=config)
         detector.fit(df.lazy())
         result = detector.predict(df.lazy())
 
