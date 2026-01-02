@@ -1,0 +1,48 @@
+version: '1.0'
+row_count: 3
+columns:
+  name:
+    name: name
+    dtype: String
+    nullable: false
+    unique: true
+    allowed_values:
+    - Bob
+    - Jane
+    - John
+    min_length: 3
+    max_length: 4
+    null_ratio: 0.0
+    unique_ratio: 1.0
+  age:
+    name: age
+    dtype: Int64
+    nullable: false
+    unique: true
+    min_value: 25.0
+    max_value: 35.0
+    allowed_values:
+    - 25
+    - 30
+    - 35
+    null_ratio: 0.0
+    unique_ratio: 1.0
+    mean: 30.0
+    std: 5.0
+    quantiles:
+      25%: 30.0
+      50%: 30.0
+      75%: 35.0
+  email:
+    name: email
+    dtype: String
+    nullable: false
+    unique: true
+    allowed_values:
+    - bob@demo.org
+    - jane@test.com
+    - john@example.com
+    min_length: 12
+    max_length: 16
+    null_ratio: 0.0
+    unique_ratio: 1.0

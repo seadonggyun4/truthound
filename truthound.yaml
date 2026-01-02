@@ -1,0 +1,47 @@
+checkpoints:
+- name: daily_data_validation
+  data_source: data/production.csv
+  validators:
+  - 'null'
+  - duplicate
+  - range
+  - regex
+  min_severity: medium
+  auto_schema: true
+  tags:
+    environment: production
+    team: data-platform
+  actions:
+  - type: store_result
+    store_path: ./truthound_results
+    partition_by: date
+  - type: update_docs
+    site_path: ./truthound_docs
+    include_history: true
+  - type: slack
+    webhook_url: https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+    notify_on: failure
+    channel: '#data-quality'
+  triggers:
+  - type: schedule
+    interval_hours: 24
+    run_on_weekdays:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
+- name: hourly_metrics_check
+  data_source: data/metrics.parquet
+  validators:
+  - 'null'
+  - range
+  actions:
+  - type: webhook
+    url: https://api.example.com/data-quality/events
+    auth_type: bearer
+    auth_credentials:
+      token: ${API_TOKEN}
+  triggers:
+  - type: cron
+    expression: 0 * * * *
