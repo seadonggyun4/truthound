@@ -165,85 +165,50 @@ validator = ForeignKeyValidator(
 
 ## 4. Benchmarks
 
-### Test Environment
+### Important Notice
 
-| Specification | Value |
-|---------------|-------|
-| CPU | Apple M1 Pro (10 cores) |
-| RAM | 32GB |
-| Storage | NVMe SSD |
-| Python | 3.11 |
-| Polars | 0.20.x |
+The benchmark values in this section are illustrative examples based on the expected behavior of Polars-based operations. Actual performance depends on:
 
-### Single Validator Performance
+- Hardware specifications (CPU, RAM, storage)
+- Data characteristics (column types, cardinality, null ratio)
+- Polars version and configuration
+- Operating system and Python version
 
-#### Null Check Validator
+**Users should run their own benchmarks** to establish baseline performance for their specific environment and workloads.
 
-| Rows | Columns | Time (ms) | Memory (MB) | Throughput (M rows/s) |
-|------|---------|-----------|-------------|----------------------|
-| 100K | 10 | 5 | 8 | 20.0 |
-| 1M | 10 | 45 | 80 | 22.2 |
-| 10M | 10 | 420 | 800 | 23.8 |
-| 100M | 10 | 4,200 | 8,000 | 23.8 |
+### Running Your Own Benchmarks
 
-#### Range Validator
+```python
+import time
+import polars as pl
+from truthound.validators.completeness import NullValidator
 
-| Rows | Columns | Time (ms) | Memory (MB) | Throughput (M rows/s) |
-|------|---------|-----------|-------------|----------------------|
-| 100K | 10 | 8 | 8 | 12.5 |
-| 1M | 10 | 65 | 80 | 15.4 |
-| 10M | 10 | 600 | 800 | 16.7 |
-| 100M | 10 | 5,800 | 8,000 | 17.2 |
+# Load your data
+lf = pl.scan_parquet("your_data.parquet")
+row_count = lf.select(pl.count()).collect().item()
 
-#### Foreign Key Validator (with sampling)
+# Benchmark a validator
+validator = NullValidator(column="your_column")
+start = time.perf_counter()
+issues = validator.validate(lf)
+duration = time.perf_counter() - start
 
-| Child Rows | Parent Rows | Sample Size | Time (ms) | Memory (MB) |
-|------------|-------------|-------------|-----------|-------------|
-| 1M | 100K | Full | 250 | 120 |
-| 10M | 100K | Full | 2,400 | 1,200 |
-| 10M | 100K | 100K | 280 | 150 |
-| 100M | 1M | 100K | 320 | 180 |
+print(f"Rows: {row_count:,}")
+print(f"Duration: {duration:.3f}s")
+print(f"Throughput: {row_count / duration / 1_000_000:.2f}M rows/s")
+```
 
-### Multi-Validator Performance
+### Performance Characteristics
 
-Running multiple validators in a single pass:
+The following describes general performance characteristics, not specific benchmarks:
 
-| Validators | Rows | Time (ms) | vs Sequential | Memory (MB) |
-|------------|------|-----------|---------------|-------------|
-| 5 | 1M | 180 | 1.0x (baseline) | 100 |
-| 5 | 1M | 150 | 0.83x (optimized) | 100 |
-| 10 | 10M | 1,800 | 1.0x (baseline) | 900 |
-| 10 | 10M | 1,200 | 0.67x (optimized) | 900 |
-
-### Streaming Validation Performance
-
-| File Size | Chunk Size | Time (s) | Peak Memory (MB) | Throughput |
-|-----------|------------|----------|------------------|------------|
-| 1GB | 100K rows | 12 | 250 | 83 MB/s |
-| 10GB | 100K rows | 115 | 280 | 87 MB/s |
-| 100GB | 100K rows | 1,150 | 300 | 87 MB/s |
-| 1TB | 100K rows | 11,500 | 350 | 87 MB/s |
-
-### Drift Detection Performance
-
-| Baseline Rows | Current Rows | Method | Time (ms) |
-|---------------|--------------|--------|-----------|
-| 100K | 100K | KS Test | 85 |
-| 1M | 1M | KS Test | 750 |
-| 100K | 100K | PSI | 45 |
-| 1M | 1M | PSI | 380 |
-| 100K | 100K | Chi-Square | 35 |
-| 1M | 1M | Chi-Square | 280 |
-
-### ML Anomaly Detection Performance
-
-| Rows | Features | Algorithm | Sample Size | Time (ms) | Memory (MB) |
-|------|----------|-----------|-------------|-----------|-------------|
-| 10K | 10 | IsolationForest | Full | 120 | 15 |
-| 100K | 10 | IsolationForest | 10K | 140 | 18 |
-| 1M | 10 | IsolationForest | 10K | 180 | 25 |
-| 10K | 10 | LocalOutlierFactor | Full | 450 | 20 |
-| 100K | 10 | LocalOutlierFactor | 5K | 220 | 15 |
+| Operation Type | Complexity | Notes |
+|----------------|------------|-------|
+| Null/Range checks | O(n) | Linear scan, highly efficient |
+| Uniqueness checks | O(n log n) | Hash-based deduplication |
+| Cross-table joins | O(n + m) | Depends on join strategy |
+| Streaming validation | O(n) | Bounded memory with chunking |
+| ML-based detection | O(n * features) | Depends on algorithm |
 
 ---
 

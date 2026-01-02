@@ -96,28 +96,36 @@ src/truthound/
 ├── cli.py                   # CLI interface (Typer)
 ├── types.py                 # Type definitions
 ├── core/                    # Core validation logic
-├── validators/              # 265+ validator implementations
+├── validators/              # 148 validator implementations across 28 categories
 │   ├── base.py              # Validator base classes
-│   ├── schema/              # Schema validators (14)
-│   ├── completeness/        # Completeness validators (7)
-│   ├── uniqueness/          # Uniqueness validators (13)
-│   ├── distribution/        # Distribution validators (15)
-│   ├── string/              # String validators (18)
-│   ├── datetime/            # Datetime validators (10)
-│   ├── aggregate/           # Aggregate validators (8)
-│   ├── multicolumn/         # Multi-column validators (21)
-│   ├── query/               # Query validators (20)
-│   ├── table/               # Table validators (18)
-│   ├── geospatial/          # Geospatial validators (9)
-│   ├── drift/               # Drift validators (13)
-│   ├── anomaly/             # Anomaly validators (15)
-│   ├── privacy/             # Privacy validators (15)
-│   ├── business/            # Business validators (8)
-│   ├── localization/        # Localization validators (9)
-│   ├── ml/                  # ML feature validators (5)
-│   ├── profiling/           # Profiling validators (7)
-│   ├── referential/         # Referential validators (13)
-│   └── timeseries/          # Time series validators (14)
+│   ├── schema/              # Schema validators (10)
+│   ├── completeness/        # Completeness validators (5)
+│   ├── uniqueness/          # Uniqueness validators (6)
+│   ├── distribution/        # Distribution validators (7)
+│   ├── string/              # String validators (9)
+│   ├── datetime/            # Datetime validators (6)
+│   ├── aggregate/           # Aggregate validators (5)
+│   ├── multi_column/        # Multi-column validators (5)
+│   ├── query/               # Query validators (6)
+│   ├── table/               # Table validators (6)
+│   ├── geospatial/          # Geospatial validators (5)
+│   ├── drift/               # Drift validators (5)
+│   ├── anomaly/             # Anomaly validators (4)
+│   ├── privacy/             # Privacy validators (5)
+│   ├── business_rule/       # Business validators (3)
+│   ├── localization/        # Localization validators (4)
+│   ├── ml_feature/          # ML feature validators (5)
+│   ├── profiling/           # Profiling validators (4)
+│   ├── referential/         # Referential validators (5)
+│   ├── timeseries/          # Time series validators (6)
+│   ├── cross_table/         # Cross-table validators (2)
+│   ├── streaming/           # Streaming validators (5)
+│   ├── memory/              # Memory validators (4)
+│   ├── optimization/        # Optimization validators (6)
+│   ├── i18n/                # i18n validators (10)
+│   ├── timeout/             # Timeout validators (4)
+│   ├── security/            # Security validators (2)
+│   └── sdk/                 # SDK validators (4)
 ├── datasources/             # Data source adapters
 │   ├── base.py              # DataSource protocol
 │   ├── polars_source.py     # Polars adapter
@@ -573,7 +581,7 @@ Truthound's development follows a phased approach:
 ├────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
 │  Phase 1-3: Core Engine                                                     │
-│  ├── 265+ Validators across 21 categories                                  │
+│  ├── 148 Validators across 28 categories                                   │
 │  ├── Schema inference and learning                                          │
 │  ├── Pattern detection (email, phone, credit card, etc.)                   │
 │  └── Statistical validation (range, distribution, outliers)                │
@@ -659,14 +667,15 @@ class MockS3Client:
 
 ### Test Categories
 
-| Category | Count | Description |
-|----------|-------|-------------|
-| Unit Tests | 150+ | Core functionality |
-| Validator Tests | 500+ | All 265 validators |
-| Integration Tests | 200+ | End-to-end workflows |
-| Mock Backend Tests | 50+ | Optional dependency testing |
-| E2E Tests | 100+ | Complete pipeline tests |
-| **Total** | **1004** | All passing |
+Note: Test counts change as the codebase evolves. Run `pytest --collect-only` for current counts.
+
+| Category | Description |
+|----------|-------------|
+| Unit Tests | Core functionality |
+| Validator Tests | Validator implementations |
+| Integration Tests | End-to-end workflows |
+| Mock Backend Tests | Optional dependency testing |
+| E2E Tests | Complete pipeline tests |
 
 ---
 

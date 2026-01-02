@@ -1,6 +1,8 @@
 # Truthound Validator Reference
 
-This document provides a comprehensive reference for all 275 validators implemented in Truthound. Each validator is designed to address specific data quality concerns and follows consistent patterns for configuration and usage.
+This document provides a reference for validators implemented in Truthound. Each validator is designed to address specific data quality concerns and follows consistent patterns for configuration and usage.
+
+**Current Implementation: 148 validator modules across 28 categories.**
 
 ---
 
@@ -2068,7 +2070,7 @@ print(analysis.quantifier_count)
 
 ## 19. Internationalization (i18n)
 
-Truthound supports error messages in 7 languages.
+Truthound validator error messages support 7 languages (en, ko, ja, zh, de, fr, es).
 
 ### 19.1 Supported Languages
 
@@ -2214,29 +2216,35 @@ with handler.cascade() as cascade:
 
 | Category | Count | Dependencies | Description |
 |----------|-------|--------------|-------------|
-| Schema | 14 | Core | Structural validation |
-| Completeness | 7 | Core | Missing value detection |
-| Uniqueness | 13 | Core | Duplicate and key validation |
-| Distribution | 15 | Core | Range and statistical checks |
-| String | 18 | Core | Pattern and format validation |
-| Datetime | 10 | Core | Temporal data validation |
-| Aggregate | 8 | Core | Statistical aggregate checks |
-| Cross-Table | 4 | Core | Multi-table relationships |
-| Query | 20 | Core | Expression-based validation |
-| Multi-Column | 21 | Core | Column relationships |
-| Table | 18 | Core | Table metadata validation |
-| Geospatial | 9 | Core | Geographic coordinates |
-| Drift | 13 | scipy | Distribution change detection |
-| Anomaly | 15 | scipy, scikit-learn | Outlier detection |
-| Business | 8 | Core | Domain-specific validation (Luhn, IBAN, VAT, ISBN) |
-| Localization | 9 | Core | Regional identifiers (Korean, Japanese, Chinese) |
+| Schema | 10 | Core | Structural validation |
+| Completeness | 5 | Core | Missing value detection |
+| Uniqueness | 6 | Core | Duplicate and key validation |
+| Distribution | 7 | Core | Range and statistical checks |
+| String | 9 | Core | Pattern and format validation |
+| Datetime | 6 | Core | Temporal data validation |
+| Aggregate | 5 | Core | Statistical aggregate checks |
+| Cross-Table | 2 | Core | Multi-table relationships |
+| Query | 6 | Core | Expression-based validation |
+| Multi-Column | 5 | Core | Column relationships |
+| Table | 6 | Core | Table metadata validation |
+| Geospatial | 5 | Core | Geographic coordinates |
+| Drift | 5 | scipy | Distribution change detection |
+| Anomaly | 4 | scipy, scikit-learn | Outlier detection |
+| Business Rule | 3 | Core | Domain-specific validation (Luhn, IBAN, VAT) |
+| Localization | 4 | Core | Regional identifiers (Korean, Japanese, Chinese) |
 | ML Feature | 5 | Core | Leakage detection, correlation analysis |
-| Profiling | 7 | Core | Cardinality, entropy, frequency analysis |
-| Referential | 13 | Core | Foreign key and orphan record validation |
-| Time Series | 14 | Core | Gap detection, seasonality, trend analysis |
-| Privacy | 15 | Core | GDPR, CCPA, LGPD compliance patterns |
-| Security | 8 | Core | SQL injection, ReDoS protection |
-| **Total** | **280+** | | |
+| Profiling | 4 | Core | Cardinality, entropy, frequency analysis |
+| Referential | 5 | Core | Foreign key and orphan record validation |
+| Time Series | 6 | Core | Gap detection, seasonality, trend analysis |
+| Privacy | 5 | Core | GDPR, CCPA, LGPD compliance patterns |
+| Security | 2 | Core | SQL injection, ReDoS protection |
+| Streaming | 5 | Core | Streaming data validation |
+| Memory | 4 | Core | Memory-aware processing |
+| Optimization | 6 | Core | Validator execution optimization |
+| i18n | 10 | Core | Internationalized error messages |
+| Timeout | 4 | Core | Distributed timeout management |
+| SDK | 4 | Core | Custom validator development tools |
+| **Total** | **148** | | |
 
 ---
 

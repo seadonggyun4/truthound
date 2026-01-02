@@ -138,7 +138,7 @@ Truthound is built on the following principles:
           ▼                   ▼                   ▼
    ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
    │ Validators  │     │   Drift     │     │    PII      │
-   │   (265+)    │     │  Detectors  │     │  Scanners   │
+   │             │     │  Detectors  │     │  Scanners   │
    └─────────────┘     └─────────────┘     └─────────────┘
           │                   │                   │
           └───────────────────┼───────────────────┘

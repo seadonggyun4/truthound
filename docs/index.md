@@ -18,8 +18,8 @@ Truthound is a high-performance data quality framework built on [Polars](https:/
 ### Key Features
 
 - **Zero Configuration**: Start validating data immediately without complex setup
-- **275+ Built-in Validators**: Comprehensive coverage for all data quality needs
-- **High Performance**: Polars-native implementation for blazing fast validation
+- **148 Validators**: Coverage across 28 categories for data quality needs
+- **High Performance**: Polars-native implementation for efficient validation
 - **Schema Inference**: Automatically learn schemas from your data
 - **PII Detection**: Built-in scanning for personally identifiable information
 - **CI/CD Integration**: Seamlessly integrate with your deployment pipeline
@@ -101,17 +101,18 @@ schema.save("schema.yaml")
 
 ### Performance
 
-Built on Polars, Truthound handles large datasets efficiently:
+Built on Polars, Truthound leverages:
 
-| Operation | 10M rows | 100M rows |
-|-----------|----------|-----------|
-| `check()` | < 10s    | < 100s    |
-| `profile()` | < 0.2s | < 2s      |
-| `learn()` | < 0.3s   | < 3s      |
+- Lazy evaluation for query optimization
+- Columnar memory layout for cache efficiency
+- SIMD vectorized operations
+- Multi-threaded execution
+
+Actual performance depends on hardware, data characteristics, and Polars version. Run your own benchmarks for accurate measurements.
 
 ### Comprehensive Validation
 
-275+ validators across 22 categories including:
+Validators across multiple categories including:
 
 - Schema validation
 - Format validation (email, phone, URL, etc.)
@@ -123,14 +124,14 @@ Built on Polars, Truthound handles large datasets efficiently:
 ### Enterprise Ready
 
 - Security: ReDoS protection, SQL injection prevention
-- i18n: 15+ language support
+- i18n: English and Korean language support
 - Storage: S3, GCS, Azure Blob, Database backends
 - CI/CD: 12 platform integrations
 - Notifications: 9 providers (Slack, Teams, PagerDuty, etc.)
 
 ## License
 
-Truthound is open source under the MIT License.
+Truthound is open source under the Apache License 2.0.
 
 ## Support
 

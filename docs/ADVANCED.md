@@ -282,12 +282,25 @@ with source as s:
 
 #### Available Sources
 
+Truthound provides two different streaming architectures:
+
+**Protocol-based Adapters** (async, implements `IStreamAdapter`):
+
+| Adapter | Library | Configuration |
+|---------|---------|---------------|
+| `KafkaAdapter` | aiokafka | `bootstrap_servers`, `topic`, `consumer_group` |
+| `KinesisAdapter` | aiobotocore | `stream_name`, `region` |
+
+**StreamingSource Pattern** (sync, extends `StreamingSource` base class):
+
 | Source | Description | Configuration |
 |--------|-------------|---------------|
 | `MockStreamingSource` | Test source with generated data | `n_records` |
-| `KafkaSource` | Apache Kafka | `bootstrap_servers`, `topic` |
-| `KinesisSource` | AWS Kinesis | `stream_name`, `region` |
-| `PubSubSource` | Google Pub/Sub | `project`, `subscription` |
+| `ParquetSource` | Parquet file streaming | `path`, `batch_size` |
+| `CSVSource` | CSV file streaming | `path`, `batch_size` |
+| `PubSubSource` | Google Cloud Pub/Sub | `project_id`, `subscription_id` |
+
+Note: Kafka and Kinesis use the protocol-based adapter architecture with async operations. Pub/Sub uses the StreamingSource pattern with synchronous operations.
 
 ### Incremental Validation
 
@@ -480,12 +493,13 @@ from truthound.lineage import (
 
 ```python
 from truthound.realtime import (
-    # Sources
+    # Protocol-based Adapters (async)
+    # from truthound.realtime.adapters import KafkaAdapter, KinesisAdapter
+
+    # StreamingSource Pattern (sync)
     StreamingSource,
     MockStreamingSource,
-    KafkaSource,
-    KinesisSource,
-    PubSubSource,
+    PubSubSource,  # Uses StreamingSource pattern
 
     # Validation
     StreamingValidator,
