@@ -199,7 +199,7 @@ class TestSuiteResult:
                 )
             elif result.status == TestStatus.SKIPPED:
                 lines.append(
-                    f'    <skipped message="{result.message or "Test skipped}"/>'
+                    f'    <skipped message="{result.message or "Test skipped"}"/>'
                 )
 
             lines.append("  </testcase>")
