@@ -340,7 +340,8 @@ class ChiSquareDetector(DriftDetector):
         # Wilson-Hilferty approximation
         z = ((x / df) ** (1 / 3) - (1 - 2 / (9 * df))) / sqrt(2 / (9 * df))
         # Standard normal CDF approximation
-        p = 0.5 * (1 + (1 - 2.718281828 ** (-0.5 * z * abs(z))) ** 0.5 * (1 if z >= 0 else -1))
+        # Use z * z (always positive) to avoid complex numbers from negative sqrt argument
+        p = 0.5 * (1 + (1 - 2.718281828 ** (-0.5 * z * z)) ** 0.5 * (1 if z >= 0 else -1))
         return max(0.0, min(1.0, 1 - p))
 
 
