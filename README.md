@@ -23,6 +23,8 @@
 
 Truthound is a data quality validation framework built on Polars, a Rust-based DataFrame library. The framework provides zero-configuration validation through automatic schema inference and supports a wide range of validation scenarios from basic schema checks to statistical drift detection.
 
+**Documentation**: [https://truthound.netlify.app](https://truthound.netlify.app/)
+
 ---
 
 ## Implementation Status
