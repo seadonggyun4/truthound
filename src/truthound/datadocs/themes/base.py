@@ -271,6 +271,16 @@ class BaseTheme(ABC):
         """Get logo URL."""
         return self._config.assets.logo_url
 
+    def to_css_vars(self) -> str:
+        """Generate CSS custom properties block.
+
+        Delegates to the underlying ThemeConfig.to_css_vars().
+
+        Returns:
+            CSS :root block with all variables.
+        """
+        return self._config.to_css_vars()
+
     def get_css(self) -> str:
         """Get the complete CSS for this theme.
 
