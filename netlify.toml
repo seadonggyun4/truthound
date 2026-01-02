@@ -1,5 +1,14 @@
 [build]
-  command = "pip install mkdocs-material mkdocstrings[python] && python -m mkdocs build"
+  command = """
+git clone --depth 1 --filter=blob:none --sparse \
+  https://github.com/seadonggyun4/truthound-orchestration.git _temp_orch && \
+cd _temp_orch && git sparse-checkout set docs && cd .. && \
+mkdir -p docs/orchestration && \
+cp -r _temp_orch/docs/* docs/orchestration/ && \
+rm -rf _temp_orch && \
+pip install mkdocs-material mkdocstrings[python] && \
+python -m mkdocs build
+"""
   publish = "site"
 
 [build.environment]

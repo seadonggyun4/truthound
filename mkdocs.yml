@@ -159,6 +159,34 @@ nav:
     - Custom Validator: tutorials/custom-validator.md
     - Data Profiling: tutorials/data-profiling.md
     - Enterprise Setup: tutorials/enterprise-setup.md
+  - Orchestration:
+    - orchestration/index.md
+    - Getting Started: orchestration/getting-started.md
+    - Airflow:
+      - Overview: orchestration/airflow/index.md
+      - Operators: orchestration/airflow/operators.md
+      - Sensors: orchestration/airflow/sensors.md
+      - Hooks: orchestration/airflow/hooks.md
+    - Dagster:
+      - Overview: orchestration/dagster/index.md
+      - Resources: orchestration/dagster/resources.md
+      - Assets: orchestration/dagster/assets.md
+      - Ops: orchestration/dagster/ops.md
+    - Prefect:
+      - Overview: orchestration/prefect/index.md
+      - Blocks: orchestration/prefect/blocks.md
+      - Tasks: orchestration/prefect/tasks.md
+      - Flows: orchestration/prefect/flows.md
+    - dbt:
+      - Overview: orchestration/dbt/index.md
+      - Macros: orchestration/dbt/macros.md
+    - Enterprise:
+      - Engine Adapters: orchestration/enterprise/engines.md
+      - Notifications: orchestration/enterprise/notifications.md
+      - Multi-Tenant: orchestration/enterprise/multi-tenant.md
+    - API Reference:
+      - Common Module: orchestration/api-reference/common.md
+      - Engines: orchestration/api-reference/engines.md
   - Reference:
     - reference/index.md
     - Validators Catalog: reference/validators-catalog.md
