@@ -9,7 +9,10 @@
 </p>
 
 <p align="center">
-  <a href="https://truthound.netlify.app/"><img src="https://img.shields.io/badge/docs-truthound.netlify.app-blue" alt="Documentation"></a>
+  <em>Sniffs out bad data</em>
+</p>
+
+<p align="center">
   <a href="https://pypi.org/project/truthound/"><img src="https://img.shields.io/pypi/v/truthound" alt="PyPI"></a>
   <a href="https://pypi.org/project/truthound/"><img src="https://img.shields.io/pypi/pyversions/truthound" alt="Python"></a>
   <a href="https://pepy.tech/project/truthound"><img src="https://pepy.tech/badge/truthound" alt="Downloads"></a>
