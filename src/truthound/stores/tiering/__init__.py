@@ -56,10 +56,17 @@ Example:
 from truthound.stores.tiering.base import (
     StorageTier,
     TierInfo,
+    TierType,
     TieringConfig,
     TierPolicy,
     TieringResult,
+    TieringError,
+    TierNotFoundError,
     TierMigrationError,
+    TierAccessError,
+    MigrationDirection,
+    TierMetadataStore,
+    InMemoryTierMetadataStore,
 )
 from truthound.stores.tiering.store import TieredStore
 from truthound.stores.tiering.policies import (
@@ -75,10 +82,19 @@ __all__ = [
     # Base types
     "StorageTier",
     "TierInfo",
+    "TierType",
     "TieringConfig",
     "TierPolicy",
     "TieringResult",
+    "MigrationDirection",
+    # Errors
+    "TieringError",
+    "TierNotFoundError",
     "TierMigrationError",
+    "TierAccessError",
+    # Metadata stores
+    "TierMetadataStore",
+    "InMemoryTierMetadataStore",
     # Policies
     "AgeBasedTierPolicy",
     "AccessBasedTierPolicy",

@@ -290,8 +290,9 @@ class VersionedStore(ValidationStore[ConfigT], Generic[ConfigT]):
         checksum = self._compute_checksum(data)
 
         # Create a copy with versioned ID for storage
-        versioned_item = ValidationResult.from_dict(data)
-        versioned_item._run_id = versioned_id
+        versioned_data = data.copy()
+        versioned_data["run_id"] = versioned_id
+        versioned_item = ValidationResult.from_dict(versioned_data)
 
         try:
             self._base_store.save(versioned_item)
@@ -353,7 +354,7 @@ class VersionedStore(ValidationStore[ConfigT], Generic[ConfigT]):
         result = self._base_store.get(versioned_id)
 
         # Restore original ID
-        result._run_id = item_id
+        result.run_id = item_id
         return result
 
     def exists(self, item_id: str, version: int | None = None) -> bool:

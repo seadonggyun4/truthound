@@ -500,9 +500,29 @@ class ConcurrentIndex:
                 version=self._cache_version,
             )
 
+    def begin_transaction(self) -> IndexTransaction:
+        """Start a transaction for batch updates.
+
+        Returns:
+            IndexTransaction for making changes.
+            Caller is responsible for calling commit() or rollback().
+
+        Example:
+            >>> txn = index.begin_transaction()
+            >>> try:
+            ...     txn.add("item", {"key": "value"})
+            ...     txn.commit()
+            ... except Exception:
+            ...     txn.rollback()
+            ...     raise
+        """
+        self.initialize()
+        snapshot = self.snapshot()
+        return IndexTransaction(self, snapshot)
+
     @contextmanager
     def transaction(self) -> Iterator[IndexTransaction]:
-        """Start a transaction for batch updates.
+        """Start a transaction for batch updates with context manager.
 
         Yields:
             IndexTransaction for making changes.
@@ -512,10 +532,7 @@ class ConcurrentIndex:
             ...     txn.add("item", {"key": "value"})
             ...     txn.commit()
         """
-        self.initialize()
-
-        snapshot = self.snapshot()
-        txn = IndexTransaction(self, snapshot)
+        txn = self.begin_transaction()
 
         try:
             yield txn

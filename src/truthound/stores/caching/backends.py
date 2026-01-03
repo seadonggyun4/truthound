@@ -100,7 +100,9 @@ class InMemoryCache(BaseCache[T]):
 
             # Check if we need to evict
             if key not in self._cache and len(self._cache) >= self._config.max_size:
-                self._evict(self._config.eviction_batch_size)
+                # Evict at least 1, but don't evict more than needed to make room
+                evict_count = min(self._config.eviction_batch_size, max(1, len(self._cache) - self._config.max_size + 1))
+                self._evict(evict_count)
 
             # Remove old entry if exists
             if key in self._cache:

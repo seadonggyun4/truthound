@@ -643,9 +643,9 @@ class ConcurrentFileSystemStore(ValidationStore[ConcurrentFileSystemConfig]):
         """
         self.initialize()
 
-        # Start an index transaction
-        with self._index.transaction() as txn:
-            return BatchContext(self, txn)
+        # Create an index transaction (caller is responsible for commit/rollback)
+        txn = self._index.begin_transaction()
+        return BatchContext(self, txn)
 
     def rebuild_index(self) -> int:
         """Rebuild the index from stored files.

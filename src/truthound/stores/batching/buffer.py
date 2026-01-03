@@ -342,6 +342,10 @@ class MemoryAwareBuffer(Generic[T]):
     def get_stats(self) -> dict[str, Any]:
         """Get buffer statistics."""
         with self._lock:
+            is_full = (
+                len(self._items) >= self._max_size
+                or self._current_memory_bytes >= self._max_memory_bytes
+            )
             return {
                 "size": len(self._items),
                 "max_size": self._max_size,
@@ -352,7 +356,7 @@ class MemoryAwareBuffer(Generic[T]):
                     if self._max_memory_bytes > 0
                     else 0
                 ),
-                "is_full": self.is_full,
+                "is_full": is_full,
             }
 
     def __len__(self) -> int:
