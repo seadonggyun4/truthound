@@ -172,12 +172,14 @@ class TestMemoryAwareBuffer:
         """Test draining by byte limit."""
         buffer = MemoryAwareBuffer[bytes](max_size=100, max_memory_mb=10.0)
         # Add items of known size
-        buffer.add(b"a" * 100)
+        # Note: sys.getsizeof includes Python object overhead (~33 bytes for bytes)
+        buffer.add(b"a" * 100)  # ~133 bytes with overhead
         buffer.add(b"b" * 100)
-        buffer.add(b"c" * 100)
+        buffer.add(c := b"c" * 100)
 
-        # Drain up to ~200 bytes
-        items = buffer.drain_bytes(250)
+        # Drain up to enough bytes for at least 2 items
+        # sys.getsizeof(b"x" * 100) is ~133 bytes, so 300 bytes should get 2
+        items = buffer.drain_bytes(300)
         assert len(items) >= 2
 
     def test_memory_pressure(self) -> None:

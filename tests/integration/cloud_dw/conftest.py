@@ -119,18 +119,16 @@ def pytest_configure(config: pytest.Config) -> None:
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
-    """Add custom command line options."""
+    """Add custom command line options.
+
+    Note: --skip-expensive is defined in the parent conftest.py
+    (tests/integration/conftest.py) to avoid duplication.
+    """
     parser.addoption(
         "--dry-run",
         action="store_true",
         default=False,
         help="Run tests in dry-run mode (validate queries without executing)",
-    )
-    parser.addoption(
-        "--skip-expensive",
-        action="store_true",
-        default=False,
-        help="Skip expensive tests",
     )
     parser.addoption(
         "--max-cost",

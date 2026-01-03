@@ -123,25 +123,17 @@ def pytest_configure(config: pytest.Config) -> None:
 
 
 def pytest_addoption(parser: pytest.Parser) -> None:
-    """Add custom command line options."""
+    """Add custom command line options.
+
+    Note: --skip-slow and --skip-expensive are defined in the parent
+    conftest.py (tests/integration/conftest.py) to avoid duplication.
+    """
     parser.addoption(
         "--provider",
         action="store",
         default=None,
         choices=["docker", "mock", "local", "cloud"],
         help="Service provider to use (docker, mock, local, cloud)",
-    )
-    parser.addoption(
-        "--skip-slow",
-        action="store_true",
-        default=False,
-        help="Skip slow tests",
-    )
-    parser.addoption(
-        "--skip-expensive",
-        action="store_true",
-        default=False,
-        help="Skip expensive tests (cloud costs)",
     )
     parser.addoption(
         "--service",
