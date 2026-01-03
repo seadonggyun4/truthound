@@ -1,17 +1,69 @@
 version: '1.0'
-row_count: 3
+row_count: 10
 columns:
+  id:
+    name: id
+    dtype: Int64
+    nullable: false
+    unique: true
+    min_value: 1.0
+    max_value: 10.0
+    allowed_values:
+    - 1
+    - 2
+    - 3
+    - 4
+    - 5
+    - 6
+    - 7
+    - 8
+    - 9
+    - 10
+    null_ratio: 0.0
+    unique_ratio: 1.0
+    mean: 5.5
+    std: 3.0277
+    quantiles:
+      25%: 3.0
+      50%: 6.0
+      75%: 8.0
   name:
     name: name
+    dtype: String
+    nullable: true
+    unique: true
+    allowed_values:
+    - Alice Brown
+    - Bob Johnson
+    - Charlie Wilson
+    - David Lee
+    - Eva Martinez
+    - Frank Garcia
+    - Grace Kim
+    - Jane Smith
+    - John Doe
+    min_length: 8
+    max_length: 14
+    null_ratio: 0.1
+    unique_ratio: 1.0
+  email:
+    name: email
     dtype: String
     nullable: false
     unique: true
     allowed_values:
-    - Bob
-    - Jane
-    - John
-    min_length: 3
-    max_length: 4
+    - alice@example.com
+    - bob@invalid
+    - charlie@example.com
+    - david@example.com
+    - eva@example.com
+    - frank@example.com
+    - grace@example.com
+    - jane@example.com
+    - john@example.com
+    - missing@example.com
+    min_length: 11
+    max_length: 19
     null_ratio: 0.0
     unique_ratio: 1.0
   age:
@@ -19,30 +71,103 @@ columns:
     dtype: Int64
     nullable: false
     unique: true
-    min_value: 25.0
-    max_value: 35.0
+    min_value: -5.0
+    max_value: 55.0
     allowed_values:
-    - 25
-    - 30
-    - 35
+    - -5
+    - 27
+    - 28
+    - 29
+    - 32
+    - 33
+    - 38
+    - 41
+    - 45
+    - 55
     null_ratio: 0.0
     unique_ratio: 1.0
-    mean: 30.0
-    std: 5.0
+    mean: 32.3
+    std: 15.7554
     quantiles:
-      25%: 30.0
-      50%: 30.0
-      75%: 35.0
-  email:
-    name: email
+      25%: 28.0
+      50%: 33.0
+      75%: 41.0
+  salary:
+    name: salary
+    dtype: Int64
+    nullable: false
+    unique: true
+    min_value: 0.0
+    max_value: 120000.0
+    allowed_values:
+    - 0
+    - 65000
+    - 68000
+    - 72000
+    - 75000
+    - 78000
+    - 82000
+    - 88000
+    - 95000
+    - 120000
+    null_ratio: 0.0
+    unique_ratio: 1.0
+    mean: 74300.0
+    std: 30605.192
+    quantiles:
+      25%: 68000.0
+      50%: 78000.0
+      75%: 88000.0
+  department:
+    name: department
+    dtype: String
+    nullable: false
+    unique: false
+    allowed_values:
+    - Engineering
+    - HR
+    - Marketing
+    - Sales
+    min_length: 2
+    max_length: 11
+    null_ratio: 0.0
+    unique_ratio: 0.4
+  join_date:
+    name: join_date
     dtype: String
     nullable: false
     unique: true
     allowed_values:
-    - bob@demo.org
-    - jane@test.com
-    - john@example.com
-    min_length: 12
-    max_length: 16
+    - '2018-11-30'
+    - '2019-07-10'
+    - '2020-01-15'
+    - '2020-05-17'
+    - '2021-03-22'
+    - '2021-09-08'
+    - '2022-01-05'
+    - '2022-08-23'
+    - '2023-02-14'
+    - invalid-date
+    min_length: 10
+    max_length: 12
     null_ratio: 0.0
+    unique_ratio: 1.0
+  phone:
+    name: phone
+    dtype: String
+    nullable: true
+    unique: true
+    allowed_values:
+    - 012-345-6789
+    - 123-456-7890
+    - 234-567-8901
+    - 345-678-9012
+    - 456-789-0123
+    - 567-890-1234
+    - 789-012-3456
+    - 890-123-4567
+    - 901-234-5678
+    min_length: 12
+    max_length: 12
+    null_ratio: 0.1
     unique_ratio: 1.0
