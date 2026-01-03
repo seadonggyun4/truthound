@@ -900,19 +900,22 @@ class WindowBuilder:
         self,
         column: ExprLike,
         desc: bool = False,
+        descending: bool | None = None,
         nulls: NullsPosition | None = None,
     ) -> "WindowBuilder":
         """Add ORDER BY clause.
 
         Args:
             column: Column to order by.
-            desc: Whether to sort descending.
+            desc: Whether to sort descending (short form).
+            descending: Whether to sort descending (long form, alias for desc).
             nulls: Position of nulls.
 
         Returns:
             Self for chaining.
         """
-        order = SortOrder.DESC if desc else SortOrder.ASC
+        is_descending = descending if descending is not None else desc
+        order = SortOrder.DESC if is_descending else SortOrder.ASC
         self._order_by.append(OrderByItem(_to_expr(column), order, nulls))
         return self
 
@@ -1329,22 +1332,31 @@ class QueryBuilder:
         self,
         column: ExprLike | OrderByItem,
         desc: bool = False,
+        descending: bool | None = None,
         nulls: NullsPosition | None = None,
     ) -> "QueryBuilder":
         """Add ORDER BY clause.
 
         Args:
             column: Column or expression to order by.
-            desc: Whether to sort descending.
-            nulls: Position of nulls.
+            desc: Whether to sort descending (short form).
+            descending: Whether to sort descending (long form, alias for desc).
+            nulls: Position of nulls (NULLS FIRST/LAST).
 
         Returns:
             Self for chaining.
+
+        Example:
+            >>> query.order_by("name")  # ASC
+            >>> query.order_by("age", desc=True)  # DESC
+            >>> query.order_by("created_at", descending=True)  # DESC (alias)
         """
         if isinstance(column, OrderByItem):
             self._order_by_items.append(column)
         else:
-            order = SortOrder.DESC if desc else SortOrder.ASC
+            # Support both 'desc' and 'descending' parameters
+            is_descending = descending if descending is not None else desc
+            order = SortOrder.DESC if is_descending else SortOrder.ASC
             self._order_by_items.append(OrderByItem(_to_expr(column), order, nulls))
         return self
 

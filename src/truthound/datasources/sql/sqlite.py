@@ -52,13 +52,25 @@ class SQLiteDataSource(BaseSQLDataSource):
     SQLite is a file-based database that requires no server setup.
     It's great for testing and smaller datasets.
 
+    Supports two modes:
+    - **Table mode**: Validate an existing table
+    - **Query mode**: Validate results from a custom SQL query
+
     Example:
+        >>> # Table mode
         >>> source = SQLiteDataSource(
         ...     table="users",
         ...     database="data.db",
         ... )
         >>> engine = source.get_execution_engine()
         >>> print(engine.count_rows())
+
+        >>> # Query mode
+        >>> source = SQLiteDataSource(
+        ...     database="data.db",
+        ...     query="SELECT id, name FROM users WHERE active = 1",
+        ... )
+        >>> lf = source.to_polars_lazyframe()
 
         >>> # In-memory database
         >>> source = SQLiteDataSource(
@@ -71,23 +83,27 @@ class SQLiteDataSource(BaseSQLDataSource):
 
     def __init__(
         self,
-        table: str,
+        table: str | None = None,
         database: str = ":memory:",
+        query: str | None = None,
         config: SQLiteDataSourceConfig | None = None,
     ) -> None:
         """Initialize SQLite data source.
 
         Args:
-            table: Table name to validate.
+            table: Table name to validate. Mutually exclusive with query.
             database: Path to database file or ":memory:".
+            query: Custom SQL query to validate. Mutually exclusive with table.
             config: Optional configuration.
+
+        Raises:
+            ValueError: If neither or both table and query are provided.
+            DataSourceError: If database file does not exist.
         """
         if config is None:
             config = SQLiteDataSourceConfig(database=database)
         else:
             config.database = database
-
-        super().__init__(table=table, config=config)
 
         self._database = database
 
@@ -96,6 +112,8 @@ class SQLiteDataSource(BaseSQLDataSource):
             db_path = Path(database)
             if not db_path.exists():
                 raise DataSourceError(f"Database file not found: {database}")
+
+        super().__init__(table=table, query=query, config=config)
 
     @classmethod
     def _default_config(cls) -> SQLiteDataSourceConfig:
@@ -125,14 +143,22 @@ class SQLiteDataSource(BaseSQLDataSource):
     def _get_table_schema_query(self) -> str:
         """Get SQLite schema query using PRAGMA."""
         # SQLite uses PRAGMA table_info
+        if self._table is None:
+            raise ValueError("Cannot get table schema in query mode")
         return f"PRAGMA table_info({self._quote_identifier(self._table)})"
 
     def _fetch_schema(self) -> list[tuple[str, str]]:
         """Fetch schema from SQLite database.
 
+        In query mode, uses the base class method to infer from query results.
+        In table mode, uses PRAGMA table_info.
+
         SQLite's PRAGMA table_info returns:
         (cid, name, type, notnull, dflt_value, pk)
         """
+        if self._is_query_mode:
+            return self._fetch_schema_from_query()
+
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(self._get_table_schema_query())
@@ -142,8 +168,34 @@ class SQLiteDataSource(BaseSQLDataSource):
             # Extract (name, type) from PRAGMA result
             return [(row[1], row[2]) for row in result]
 
+    def _get_type_name_from_description(self, desc: tuple) -> str:
+        """Convert SQLite cursor description to type name.
+
+        SQLite type affinity: TEXT, NUMERIC, INTEGER, REAL, BLOB
+        """
+        # SQLite cursor description doesn't include type info reliably
+        # We need to infer from sample data or return a default
+        # desc format: (name, type_code, display_size, internal_size, precision, scale, null_ok)
+        type_code = desc[1] if len(desc) > 1 else None
+
+        # SQLite type_code is often None, so we return a generic type
+        if type_code is None:
+            return "TEXT"
+
+        # Map Python type codes to SQL types
+        type_map = {
+            str: "TEXT",
+            int: "INTEGER",
+            float: "REAL",
+            bytes: "BLOB",
+            type(None): "NULL",
+        }
+        return type_map.get(type_code, "TEXT")
+
     def _get_row_count_query(self) -> str:
-        """Get SQLite row count query."""
+        """Get SQLite row count query for table mode."""
+        if self._table is None:
+            raise ValueError("Cannot get row count query in query mode")
         return f"SELECT COUNT(*) FROM {self._quote_identifier(self._table)}"
 
     def _quote_identifier(self, identifier: str) -> str:

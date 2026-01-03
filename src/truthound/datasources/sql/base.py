@@ -185,28 +185,55 @@ class BaseSQLDataSource(BaseDataSource[SQLDataSourceConfig]):
     This class provides common functionality for all SQL databases,
     including connection pooling, schema introspection, and query execution.
 
+    Supports two modes of operation:
+    - **Table mode**: Validate an existing table or view
+    - **Query mode**: Validate results from a custom SQL query
+
     Subclasses must implement:
     - _create_connection(): Create a database connection
     - _get_table_schema(): Get column names and types from database
     - _get_row_count_query(): Get SQL for counting rows
+
+    Example:
+        >>> # Table mode
+        >>> source = SQLiteDataSource(database="db.sqlite", table="users")
+        >>>
+        >>> # Query mode
+        >>> source = SQLiteDataSource(
+        ...     database="db.sqlite",
+        ...     query="SELECT id, name FROM users WHERE active = 1"
+        ... )
     """
 
     source_type = "sql"
 
     def __init__(
         self,
-        table: str,
+        table: str | None = None,
+        query: str | None = None,
         config: SQLDataSourceConfig | None = None,
     ) -> None:
         """Initialize SQL data source.
 
         Args:
-            table: Table or view name to validate.
+            table: Table or view name to validate. Mutually exclusive with query.
+            query: Custom SQL query to validate. Mutually exclusive with table.
             config: Optional configuration.
+
+        Raises:
+            ValueError: If neither or both table and query are provided.
         """
         super().__init__(config)
 
+        # Validate mutually exclusive parameters
+        if table is None and query is None:
+            raise ValueError("Either 'table' or 'query' must be provided")
+        if table is not None and query is not None:
+            raise ValueError("'table' and 'query' are mutually exclusive; provide only one")
+
         self._table = table
+        self._query = query
+        self._is_query_mode = query is not None
         self._pool: SQLConnectionPool | None = None
         self._db_schema: list[tuple[str, str]] | None = None
 
@@ -215,20 +242,40 @@ class BaseSQLDataSource(BaseDataSource[SQLDataSourceConfig]):
         return SQLDataSourceConfig()
 
     @property
-    def table_name(self) -> str:
-        """Get the table name."""
+    def table_name(self) -> str | None:
+        """Get the table name (None if in query mode)."""
         return self._table
+
+    @property
+    def query_sql(self) -> str | None:
+        """Get the custom SQL query (None if in table mode)."""
+        return self._query
+
+    @property
+    def is_query_mode(self) -> bool:
+        """Check if data source is in query mode."""
+        return self._is_query_mode
 
     @property
     def name(self) -> str:
         """Get the data source name."""
         if self._config.name:
             return self._config.name
+        if self._is_query_mode:
+            # Truncate query for display
+            query_preview = self._query[:50] + "..." if len(self._query) > 50 else self._query
+            return f"{self.source_type}:query({query_preview})"
         return f"{self.source_type}:{self._table}"
 
     @property
     def full_table_name(self) -> str:
-        """Get the fully qualified table name."""
+        """Get the fully qualified table name or subquery expression.
+
+        For query mode, returns a subquery wrapped in parentheses with alias.
+        """
+        if self._is_query_mode:
+            # Wrap query as subquery with alias for use in FROM clauses
+            return f"({self._query}) AS _query_result"
         if self._config.schema_name:
             return f"{self._config.schema_name}.{self._table}"
         return self._table
@@ -311,13 +358,71 @@ class BaseSQLDataSource(BaseDataSource[SQLDataSourceConfig]):
     # -------------------------------------------------------------------------
 
     def _fetch_schema(self) -> list[tuple[str, str]]:
-        """Fetch schema from database."""
+        """Fetch schema from database.
+
+        In table mode, uses the table schema query.
+        In query mode, infers schema from query result metadata.
+        """
+        if self._is_query_mode:
+            return self._fetch_schema_from_query()
+
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(self._get_table_schema_query())
             result = cursor.fetchall()
             cursor.close()
             return result
+
+    def _fetch_schema_from_query(self) -> list[tuple[str, str]]:
+        """Infer schema from query result metadata.
+
+        Executes the query with LIMIT 0 to get column info without data.
+        """
+        # Use LIMIT 0 to get metadata without fetching actual data
+        # Wrap in subquery to ensure LIMIT works with any query
+        schema_query = f"SELECT * FROM ({self._query}) AS _schema_check LIMIT 0"
+
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            try:
+                cursor.execute(schema_query)
+            except Exception:
+                # Fallback: try direct query (some DBs don't support LIMIT 0 well)
+                cursor.execute(self._query)
+
+            # Get column names and types from cursor description
+            if cursor.description is None:
+                cursor.close()
+                return []
+
+            result = []
+            for desc in cursor.description:
+                col_name = desc[0]
+                # Type info varies by database driver
+                # desc[1] is type_code in DB-API 2.0
+                col_type = self._get_type_name_from_description(desc)
+                result.append((col_name, col_type))
+
+            cursor.close()
+            return result
+
+    def _get_type_name_from_description(self, desc: tuple) -> str:
+        """Convert cursor description to type name.
+
+        Override in subclasses for database-specific type mapping.
+
+        Args:
+            desc: Cursor description tuple (name, type_code, ...).
+
+        Returns:
+            SQL type name string.
+        """
+        # Default implementation - return type_code as string
+        # Subclasses should override for proper type mapping
+        type_code = desc[1] if len(desc) > 1 else None
+        if type_code is None:
+            return "UNKNOWN"
+        return str(type_code)
 
     @property
     def schema(self) -> dict[str, ColumnType]:
@@ -349,11 +454,21 @@ class BaseSQLDataSource(BaseDataSource[SQLDataSourceConfig]):
         if self._cached_row_count is None:
             with self._get_connection() as conn:
                 cursor = conn.cursor()
-                cursor.execute(self._get_row_count_query())
+                query = self._get_effective_row_count_query()
+                cursor.execute(query)
                 result = cursor.fetchone()
                 cursor.close()
                 self._cached_row_count = result[0] if result else 0
         return self._cached_row_count
+
+    def _get_effective_row_count_query(self) -> str:
+        """Get the row count query for current mode.
+
+        In query mode, wraps the custom query to count its results.
+        """
+        if self._is_query_mode:
+            return f"SELECT COUNT(*) FROM ({self._query}) AS _count_query"
+        return self._get_row_count_query()
 
     # -------------------------------------------------------------------------
     # Query Execution
@@ -446,6 +561,9 @@ class BaseSQLDataSource(BaseDataSource[SQLDataSourceConfig]):
         """Convert to Polars LazyFrame by fetching all data.
 
         Warning: This loads all data into memory.
+
+        In query mode, executes the custom query directly.
+        In table mode, fetches all rows from the table.
         """
         import polars as pl
 
@@ -453,7 +571,12 @@ class BaseSQLDataSource(BaseDataSource[SQLDataSourceConfig]):
         self.check_size_limits()
 
         # Fetch all data
-        query = f"SELECT * FROM {self.full_table_name}"
+        if self._is_query_mode:
+            # In query mode, execute the custom query directly
+            query = self._query
+        else:
+            query = f"SELECT * FROM {self.full_table_name}"
+
         with self._get_connection() as conn:
             cursor = conn.cursor()
             cursor.execute(query)

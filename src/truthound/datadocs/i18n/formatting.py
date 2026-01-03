@@ -180,12 +180,37 @@ class NumberFormatter:
         if decimals is not None:
             value = round(value, decimals)
 
+        # Handle negative values
+        is_negative = value < 0
+        value = abs(value)
+
         # Split integer and decimal parts
-        if isinstance(value, int) or (decimals == 0):
+        if decimals == 0:
+            int_part = str(int(value))
+            dec_part = ""
+        elif isinstance(value, int) and decimals is None:
+            # Integer with auto decimals: no decimal part
             int_part = str(int(value))
             dec_part = ""
         else:
-            str_val = f"{value:.10f}".rstrip("0").rstrip(".")
+            # Use Decimal for precise string representation to avoid
+            # floating-point precision issues (e.g., 1234567.89 -> 1234567.8899999999)
+            from decimal import Decimal, ROUND_HALF_UP
+
+            if decimals is not None:
+                # Round to specified decimals
+                dec_value = Decimal(str(value)).quantize(
+                    Decimal(10) ** -decimals, rounding=ROUND_HALF_UP
+                )
+                str_val = str(dec_value)
+            else:
+                # Auto: remove trailing zeros
+                dec_value = Decimal(str(value))
+                str_val = str(dec_value.normalize())
+                # Handle scientific notation for very small numbers
+                if "E" in str_val:
+                    str_val = f"{float(dec_value):.10f}".rstrip("0").rstrip(".")
+
             if "." in str_val:
                 int_part, dec_part = str_val.split(".")
                 if decimals is not None:
@@ -204,9 +229,14 @@ class NumberFormatter:
             int_part = self._formats.thousands_separator.join(reversed(parts))
 
         # Combine
+        result = int_part
         if dec_part:
-            return f"{int_part}{self._formats.decimal_separator}{dec_part}"
-        return int_part
+            result = f"{int_part}{self._formats.decimal_separator}{dec_part}"
+
+        if is_negative:
+            result = f"-{result}"
+
+        return result
 
     def format_percentage(
         self,
