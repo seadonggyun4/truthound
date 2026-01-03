@@ -114,17 +114,30 @@ from truthound.stores.expectations import (
 from truthound.stores.factory import get_store, register_store
 
 # Lazy import for submodules
+_SUBMODULES = {
+    "streaming",
+    "encryption",
+    "compression",
+    "versioning",
+    "caching",
+    "tiering",
+    "backpressure",
+    "batching",
+    "retention",
+    "replication",
+    "migration",
+    "observability",
+    "concurrency",
+}
+
+
 def __getattr__(name: str):
     """Lazy import submodules."""
-    if name == "streaming":
-        from truthound.stores import streaming
-        return streaming
-    if name == "encryption":
-        from truthound.stores import encryption
-        return encryption
-    if name == "compression":
-        from truthound.stores import compression
-        return compression
+    if name in _SUBMODULES:
+        import importlib
+        module = importlib.import_module(f"truthound.stores.{name}")
+        globals()[name] = module
+        return module
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
@@ -151,4 +164,14 @@ __all__ = [
     "streaming",
     "encryption",
     "compression",
+    "versioning",
+    "caching",
+    "tiering",
+    "backpressure",
+    "batching",
+    "retention",
+    "replication",
+    "migration",
+    "observability",
+    "concurrency",
 ]
