@@ -12,11 +12,36 @@ from truthound.schema import learn
 
 # Phase 7: Auto-profiling imports (lazy loaded to avoid startup overhead)
 
+def _version_callback(value: bool) -> None:
+    """Print version and exit."""
+    if value:
+        from truthound import __version__
+        typer.echo(f"truthound {__version__}")
+        raise typer.Exit()
+
+
 app = typer.Typer(
     name="truthound",
     help="Zero-Configuration Data Quality Framework Powered by Polars",
     add_completion=False,
 )
+
+
+@app.callback()
+def main(
+    version: Annotated[
+        bool,
+        typer.Option(
+            "--version",
+            "-V",
+            callback=_version_callback,
+            is_eager=True,
+            help="Show version and exit.",
+        ),
+    ] = False,
+) -> None:
+    """Truthound - Zero-Configuration Data Quality Framework."""
+    pass
 
 # Create checkpoint subcommand group
 checkpoint_app = typer.Typer(

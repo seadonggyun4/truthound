@@ -548,6 +548,28 @@ class Validator(ABC):
     - Graceful degradation on errors
     - Dependency-aware execution ordering
 
+    Data Type Support:
+        Validators ONLY accept Polars LazyFrame (pl.LazyFrame) directly.
+        For other data types, use the public API (th.check()) which handles conversion:
+
+        - th.check("data.csv")      → Automatically converts to LazyFrame
+        - th.check(pl.DataFrame())  → Converts DataFrame to LazyFrame
+        - th.check(pd.DataFrame())  → Converts pandas DataFrame to LazyFrame
+        - th.check({"col": [1,2]})  → Converts dict to LazyFrame
+
+        If using validators directly, convert data first::
+
+            import polars as pl
+            from truthound.adapters import to_lazyframe
+
+            # Option 1: Use the adapter
+            lf = to_lazyframe(your_data)
+            issues = NullValidator().validate(lf)
+
+            # Option 2: Convert manually
+            lf = pl.DataFrame(your_data).lazy()
+            issues = NullValidator().validate(lf)
+
     Class Attributes:
         name: Unique identifier for this validator
         category: Validator category (schema, completeness, uniqueness, etc.)

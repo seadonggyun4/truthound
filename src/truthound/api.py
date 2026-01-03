@@ -35,6 +35,22 @@ def check(
 ) -> Report:
     """Perform data quality validation on the input data.
 
+    This is the main entry point for data quality validation. It accepts various
+    input types and automatically converts them to Polars LazyFrame internally.
+
+    Supported Input Types:
+        - str: File path (CSV, JSON, Parquet)
+        - pl.DataFrame: Polars DataFrame (converted to LazyFrame)
+        - pl.LazyFrame: Polars LazyFrame (used directly)
+        - pd.DataFrame: pandas DataFrame (converted via Polars)
+        - dict: Python dictionary (converted to DataFrame then LazyFrame)
+        - BaseDataSource: DataSource instance for SQL databases, Spark, etc.
+
+    Note:
+        Individual Validator classes only accept pl.LazyFrame directly.
+        This API handles the conversion for convenience. If using validators
+        directly, use ``truthound.adapters.to_lazyframe()`` to convert your data.
+
     Args:
         data: Input data (file path, DataFrame, dict, etc.)
         source: Optional DataSource instance. If provided, data is ignored.
