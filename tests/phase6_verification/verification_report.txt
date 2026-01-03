@@ -1,0 +1,674 @@
+Phase 6 Checkpoint & CI/CD 검증 상세 보고서
+======================================================================
+
+
+======================================================================
+test_01_saga_pattern.py
+======================================================================
+============================================================
+Phase 6 검증: Saga Pattern
+============================================================
+
+[1] Import 테스트...
+  ✓ 기본 클래스 import 성공
+  ✓ SagaState import 성공
+
+[2] 보상 정책 import 테스트...
+  ✓ CompensationPolicy import 성공
+  ✓ 8가지 보상 정책 모두 존재: ['BACKWARD', 'FORWARD', 'SEMANTIC', 'PIVOT', 'COUNTERMEASURE', 'PARALLEL', 'SELECTIVE', 'BEST_EFFORT']
+
+[3] Event Store import 테스트...
+  ✓ Event Store import 성공
+
+[4] SagaBuilder 실제 API 테스트...
+  ✓ SagaBuilder 생성 성공
+  ✓ step() 반환 타입: StepBuilder
+  ✓ StepBuilder 반환 확인
+  ✓ StepBuilder.action 존재
+  ✓ StepBuilder.compensate_with 존재
+  ✓ StepBuilder.depends_on 존재
+  ✓ StepBuilder.with_timeout 존재
+  ✓ StepBuilder.with_retry 존재
+  ✓ StepBuilder.as_pivot 존재
+  ✓ StepBuilder.end_step 존재
+
+[5] 실제 Saga 빌드 테스트...
+  ✓ Saga 빌드 성공: SagaDefinition
+  ✓ Steps 수: 2
+    - Step: step1, Action: TestAction(name='test_action_4472944160'), Compensation: TestAction(name='test_action_4472844240')
+    - Step: step2, Action: TestAction(name='test_action_4472845520'), Compensation: None
+
+[6] SagaRunner 메서드 확인...
+  ✓ SagaRunner 생성 성공
+  ✓ SagaRunner.execute 존재 (필수)
+  ✓ SagaRunner.resume 존재 (필수 (문서))
+  △ SagaRunner.pause 없음 (선택 (문서: 일시중지))
+  ✓ SagaRunner.suspend 존재 (선택)
+  ✓ SagaRunner.abort 존재 (선택 (문서: 중단))
+  ✓ SagaRunner.execute 시그니처: (saga: 'SagaDefinition', context: 'SagaExecutionContext') -> 'SagaExecutionResult'
+
+[7] SagaState 상태값 확인...
+  실제 상태값: ['CREATED', 'PENDING', 'STARTING', 'EXECUTING', 'STEP_EXECUTING', 'STEP_COMPLETED', 'STEP_FAILED', 'COMPENSATING', 'STEP_COMPENSATING', 'STEP_COMPENSATED', 'COMPENSATION_FAILED', 'COMPLETED', 'COMPENSATED', 'FAILED', 'ABORTED', 'TIMED_OUT', 'SUSPENDED', 'RESUMING']
+  ✓ 핵심 상태값 'COMPLETED' 존재
+  ✓ 핵심 상태값 'FAILED' 존재
+
+[8] Event Store 기능 테스트...
+  ✓ InMemorySagaEventStore 생성 성공
+  ✓ append 메서드 존재
+  ✓ get_events 메서드 존재
+  ✓ save_snapshot 메서드 존재
+  ✓ FileSagaEventStore 생성 성공
+
+[9] 고급 Saga 패턴 테스트...
+  ✓ 고급 패턴 import 성공
+  ✓ ChainedSagaPattern 사용 가능
+  ✓ NestedSagaPattern 사용 가능
+  ✓ ParallelSagaPattern 사용 가능
+  ✓ ChoreographySagaPattern 사용 가능
+  ✓ OrchestratorSagaPattern 사용 가능
+
+[10] 테스팅 유틸리티 확인...
+  ✓ 테스팅 유틸리티 import 성공
+
+============================================================
+Saga Pattern 검증 결과
+============================================================
+
+  [문서 불일치] 4건:
+    - 문서: SagaStatus → 실제: SagaState
+    - 문서: FileSystemEventStore → 실제: FileSagaEventStore
+    - 문서: .add_step(name, action, compensate=...) → 실제: .step(name).action(...).compensate_with(...).end_step()
+    - 문서: SagaRunner(saga, event_store=...) → 실제: SagaRunner(), runner.execute(saga, context)
+
+  [오류] 0건:
+
+  [경고] 1건:
+    - SagaRunner에 pause 메서드 없음 (선택 (문서: 일시중지))
+
+결과: △ PASS (문서 업데이트 필요)
+
+
+======================================================================
+test_02_notification_providers.py
+======================================================================
+============================================================
+Phase 6 검증: Notification Providers
+============================================================
+
+[1] checkpoint.actions 패키지 export 확인...
+  Export된 항목 수: 75
+  ✓ SlackNotification export됨
+  ✓ EmailNotification export됨
+  ✓ PagerDutyAction export됨
+  ✓ GitHubAction export됨
+  ✓ WebhookAction export됨
+  ✓ TeamsNotification export됨
+  ✓ OpsGenieAction export됨
+  ✓ DiscordNotification export됨
+  ✓ TelegramNotification export됨
+
+[2] 개별 프로바이더 import 테스트...
+  ✓ slack: SlackNotification
+  ✓ slack: SlackConfig
+  ✓ email: EmailNotification
+  ✓ email: EmailConfig
+  ✓ pagerduty: PagerDutyAction
+  ✓ github: GitHubAction
+  ✓ webhook: WebhookAction
+  ✓ teams: TeamsNotification
+  ✓ opsgenie: OpsGenieAction
+  ✓ opsgenie: Responder
+  ✓ discord: DiscordNotification
+  ✓ telegram: TelegramNotification
+
+[3] NotifyCondition 열거형 확인...
+  ✓ NotifyCondition.ALWAYS
+  ✓ NotifyCondition.SUCCESS
+  ✓ NotifyCondition.FAILURE
+  ✓ NotifyCondition.ERROR
+  ✓ NotifyCondition.WARNING
+  ✓ NotifyCondition.FAILURE_OR_ERROR
+  ✓ NotifyCondition.NOT_SUCCESS
+
+[4] Slack 프로바이더 상세 테스트...
+  ✓ SlackNotification 생성 성공
+  ✓ action_type: slack_notification
+  ✓ config.webhook_url 존재
+  ✓ config.channel 존재
+
+[5] Teams 프로바이더 상세 테스트...
+  ✓ TeamsNotification 생성 성공
+  ✓ 템플릿 관련 항목: ['CompactTemplate', 'DefaultTemplate', 'DetailedTemplate', 'MessageTemplate', 'MessageTheme', 'MinimalTemplate', '_TEMPLATE_REGISTRY', 'get_template', 'register_template']
+
+[6] OpsGenie 프로바이더 상세 테스트...
+  ✓ Responder 클래스 존재
+  ✓ Responder.team() 메서드 존재
+  ✓ Responder.user() 메서드 존재
+  ✓ OpsGenieAction 생성 성공
+  ✓ config.auto_priority 존재
+
+[7] Discord 프로바이더 테스트...
+  ✓ DiscordNotification 생성 성공
+  ✓ action_type: discord_notification
+
+[8] Telegram 프로바이더 테스트...
+  ✓ TelegramNotification 생성 성공
+  ✓ action_type: telegram_notification
+
+[9] PagerDuty 프로바이더 테스트...
+  ✓ PagerDutyAction 생성 성공
+
+[10] Webhook 프로바이더 테스트...
+  ✓ WebhookAction 생성 성공
+
+============================================================
+Notification Providers 검증 결과
+============================================================
+
+  프로바이더 발견: 9/9
+
+  [문서 불일치] 0건:
+
+  [오류] 0건:
+
+  [경고] 0건:
+
+결과: ✓ PASS
+
+
+======================================================================
+test_03_async_execution.py
+======================================================================
+============================================================
+Phase 6 검증: Async Execution Framework
+============================================================
+
+[1] AsyncCheckpoint import 테스트...
+  ✓ AsyncCheckpoint import 성공
+
+[2] AsyncCheckpointRunner import 테스트...
+  ✓ AsyncCheckpointRunner import 성공
+
+[3] 실행 전략 import 테스트...
+  △ SequentialStrategy 찾을 수 없음
+  △ ConcurrentStrategy 찾을 수 없음
+  △ PipelineStrategy 찾을 수 없음
+
+[4] AsyncCheckpoint 클래스 분석...
+  Public 메서드: ['actions', 'add_action', 'add_trigger', 'config', 'name', 'run', 'run_async', 'to_dict', 'triggers', 'validate']
+  ✓ 비동기 메서드: ['run_async']
+
+[5] AsyncCheckpointRunner 클래스 분석...
+  __init__ 시그니처: (self, config: 'AsyncRunnerConfig | None' = None, result_callback: 'ResultCallback | None' = None, error_callback: 'ErrorCallback | None' = None, **kwargs: 'Any') -> 'None'
+  Public 메서드: ['add_checkpoint', 'checkpoints', 'get_results_async', 'get_stats', 'iter_results_async', 'remove_checkpoint', 'run_all_async', 'run_once_async', 'running', 'start_async', 'stop_async', 'wait_for_completion_async']
+
+[6] 실행 전략 상세 확인...
+  ✓ ConcurrentStrategy 클래스 발견 in truthound.checkpoint.async_checkpoint
+  ✓ ExecutionStrategy 클래스 발견 in truthound.checkpoint.async_checkpoint
+  ✓ SequentialStrategy 클래스 발견 in truthound.checkpoint.async_checkpoint
+
+[7] async_base 모듈 확인...
+  ✓ async_base 모듈 존재
+  내용: ['ABC', 'ActionConfig', 'ActionResult', 'ActionStatus', 'Any', 'AsyncBaseAction', 'AsyncBaseTrigger', 'AsyncExecutable', 'AsyncExecutionContext', 'AsyncIterator', 'Awaitable', 'BaseAction', 'BaseTrigger', 'Callable', 'ConcurrentStrategy', 'ConfigT', 'ExecutionStrategy', 'Generic', 'NotifyCondition', 'PipelineStrategy', 'Protocol', 'SequentialStrategy', 'SyncActionAdapter', 'SyncExecutable', 'T', 'TYPE_CHECKING', 'ThreadPoolExecutor', 'TriggerConfig', 'TriggerConfigT', 'TriggerResult', 'TypeVar', 'Union', 'abstractmethod', 'adapt_to_async', 'annotations', 'asyncio', 'dataclass', 'datetime', 'field', 'functools', 'runtime_checkable', 'with_retry', 'with_semaphore', 'with_timeout']
+
+[8] async_actions 모듈 확인...
+  ✓ async_actions 모듈 존재
+  내용: ['AIOHTTP_AVAILABLE', 'ActionConfig', 'ActionResult', 'ActionStatus', 'Any', 'AsyncBaseAction', 'AsyncCustomAction', 'AsyncCustomConfig', 'AsyncSlackConfig', 'AsyncSlackNotification', 'AsyncStoreConfig', 'AsyncStoreValidationResult', 'AsyncWebhookAction', 'AsyncWebhookConfig', 'NotifyCondition', 'Path', 'TYPE_CHECKING', 'annotations', 'asyncio', 'dataclass', 'datetime', 'field', 'json', 'ssl']
+
+[9] 비동기 실행 테스트...
+    AsyncCheckpoint 파라미터: ['self', 'name', 'config', 'data_source', 'validators', 'actions', 'triggers', 'execution_strategy', 'on_complete', 'on_error', 'kwargs']
+  ✓ 비동기 환경 테스트 성공
+
+============================================================
+Async Execution Framework 검증 결과
+============================================================
+
+  [문서 불일치] 0건:
+
+  [오류] 0건:
+
+  [경고] 3건:
+    - SequentialStrategy 찾을 수 없음
+    - ConcurrentStrategy 찾을 수 없음
+    - PipelineStrategy 찾을 수 없음
+
+결과: △ PASS (확인 필요)
+
+
+======================================================================
+test_04_circuit_breaker.py
+======================================================================
+============================================================
+Phase 6 검증: Circuit Breaker Pattern
+============================================================
+
+[1] Circuit Breaker import 테스트...
+  ✓ CircuitBreaker import 성공
+
+[2] CircuitBreakerRegistry import 테스트...
+  ✓ CircuitBreakerRegistry import 성공
+
+[3] Circuit Breaker 상태 확인...
+  ✓ CircuitState import 성공
+  ✓ CircuitState.CLOSED 존재
+  ✓ CircuitState.OPEN 존재
+  ✓ CircuitState.HALF_OPEN 존재
+
+[4] 실패 감지 전략 확인...
+  ✓ FailureDetectionStrategy import 성공
+  전략 목록: ['COMPOSITE', 'CONSECUTIVE', 'PERCENTAGE', 'TIME_WINDOW', '__add__', '__class__', '__contains__', '__delattr__', '__dir__', '__doc__', '__eq__', '__format__', '__ge__', '__getattribute__', '__getitem__', '__getnewargs__', '__getstate__', '__gt__', '__hash__', '__init__', '__init_subclass__', '__iter__', '__le__', '__len__', '__lt__', '__members__', '__mod__', '__module__', '__mul__', '__name__', '__ne__', '__new__', '__qualname__', '__reduce__', '__reduce_ex__', '__repr__', '__rmod__', '__rmul__', '__setattr__', '__sizeof__', '__str__', '__subclasshook__', 'capitalize', 'casefold', 'center', 'count', 'encode', 'endswith', 'expandtabs', 'find', 'format', 'format_map', 'index', 'isalnum', 'isalpha', 'isascii', 'isdecimal', 'isdigit', 'isidentifier', 'islower', 'isnumeric', 'isprintable', 'isspace', 'istitle', 'isupper', 'join', 'ljust', 'lower', 'lstrip', 'maketrans', 'partition', 'removeprefix', 'removesuffix', 'replace', 'rfind', 'rindex', 'rjust', 'rpartition', 'rsplit', 'rstrip', 'split', 'splitlines', 'startswith', 'strip', 'swapcase', 'title', 'translate', 'upper', 'zfill']
+
+[5] CircuitBreaker 인스턴스 생성 테스트...
+  __init__ 시그니처: (self, name: 'str', config: 'CircuitBreakerConfig | None' = None, detector: 'FailureDetector | None' = None)
+  ✓ CircuitBreaker 인스턴스 생성 성공
+  ✓ 현재 상태: CircuitState.CLOSED
+
+[6] 메트릭 수집 확인...
+  ✓ get_metrics 존재
+
+[7] CircuitBreakerRegistry 기능 테스트...
+  ✓ CircuitBreakerRegistry 인스턴스 생성 성공
+  ✓ get 메서드 존재
+  ✓ register 메서드 존재
+  ✓ get_or_create 메서드 존재
+
+[8] Circuit Breaker 미들웨어 확인...
+  ✓ CircuitBreakerMiddleware import 성공
+
+[9] circuitbreaker 패키지 전체 내용...
+  패키지 내용: ['CallResult', 'CircuitBreaker', 'CircuitBreakerConfig', 'CircuitBreakerError', 'CircuitBreakerMetrics', 'CircuitBreakerMiddleware', 'CircuitBreakerRegistry', 'CircuitBreakerStateMachine', 'CircuitHalfOpenError', 'CircuitOpenError', 'CircuitState', 'CompositeFailureDetector', 'ConsecutiveFailureDetector', 'FailureDetectionStrategy', 'FailureDetector', 'PercentageFailureDetector', 'StateChangeEvent', 'TimeWindowFailureDetector', 'breaker', 'circuit_breaker', 'core', 'create_detector', 'detection', 'get_breaker', 'get_registry', 'middleware', 'register_breaker', 'registry', 'with_circuit_breaker']
+
+============================================================
+Circuit Breaker Pattern 검증 결과
+============================================================
+
+  [문서 불일치] 0건:
+
+  [오류] 0건:
+
+  [경고] 2건:
+    - CircuitBreakerRegistry에 list_all 메서드 없음
+    - CircuitBreakerRegistry에 remove 메서드 없음
+
+결과: △ PASS (경고 있음)
+
+
+======================================================================
+test_05_idempotency.py
+======================================================================
+============================================================
+Phase 6 검증: Idempotency Framework
+============================================================
+
+[1] Idempotency 패키지 import 테스트...
+  ✓ idempotency 패키지 import 성공
+  패키지 내용: ['CompositeFingerprint', 'ContentHashStrategy', 'DistributedLock', 'FileIdempotencyStore', 'FileLock', 'FingerprintStrategy', 'IdempotencyConfig', 'IdempotencyConflictError', 'IdempotencyError', 'IdempotencyExpiredError', 'IdempotencyHashMismatchError', 'IdempotencyMiddleware', 'IdempotencyRecord', 'IdempotencyService', 'IdempotencyStatus', 'IdempotencyStore', 'InMemoryIdempotencyStore', 'InMemoryLock', 'LockAcquisitionError', 'RequestFingerprint', 'SQLIdempotencyStore', 'StructuralHashStrategy', 'core', 'fingerprint', 'idempotent', 'idempotent_action', 'locking', 'service', 'stores']
+
+[2] IdempotencyService import 테스트...
+  ✓ IdempotencyService import 성공
+
+[3] Fingerprint 모듈 확인...
+  △ fingerprint 모듈 내용: ['ABC', 'Any', 'Callable', 'CompositeFingerprint', 'ContentHashStrategy', 'FingerprintStrategy', 'RequestFingerprint', 'Sequence', 'StructuralHashStrategy', 'abstractmethod', 'annotations', 'dataclass', 'datetime', 'field', 'generate_fingerprint', 'hashlib', 'json', 'quick_fingerprint']
+
+[4] Idempotency 상태 확인...
+  ✓ IdempotencyStatus import 성공
+  ✓ IdempotencyStatus.PENDING
+  ✓ IdempotencyStatus.COMPLETED
+  ✓ IdempotencyStatus.FAILED
+  ✓ IdempotencyStatus.EXPIRED
+  ✓ IdempotencyStatus.INVALIDATED
+
+[5] Idempotency Store 확인...
+  ✓ IdempotencyStore, InMemoryIdempotencyStore import 성공
+
+[6] 분산 락 모듈 확인...
+  △ Locking 모듈 확인 실패: cannot import name 'IdempotencyLock' from 'truthound.checkpoint.idempotency.locking' (/Users/dgseo/Desktop/OpenSource/truthound/src/truthound/checkpoint/idempotency/locking.py)
+
+[7] IdempotencyService 기능 테스트...
+  __init__ 시그니처: (self, store: 'IdempotencyStore | None' = None, lock: 'DistributedLock | None' = None, config: 'IdempotencyConfig | None' = None) -> 'None'
+  ✓ invalidate 메서드 존재
+  ✓ get_result 메서드 존재
+
+[8] TTL 기능 확인...
+  ✓ TTL 관련 필드: ['expires_at']
+
+[9] 실제 사용 테스트...
+  ✓ IdempotencyService 인스턴스 생성 성공
+
+============================================================
+Idempotency Framework 검증 결과
+============================================================
+
+  [문서 불일치] 0건:
+
+  [오류] 0건:
+
+  [경고] 6건:
+    - Locking 모듈 확인 실패: cannot import name 'IdempotencyLock' from 'truthound.checkpoint.idempotency.locking' (/Users/dgseo/Desktop/OpenSource/truthound/src/truthound/checkpoint/idempotency/locking.py)
+    - IdempotencyService에 check 메서드 없음
+    - IdempotencyService에 start 메서드 없음
+    - IdempotencyService에 complete 메서드 없음
+    - IdempotencyService에 fail 메서드 없음
+    - IdempotencyService에 is_duplicate 메서드 없음
+
+결과: △ PASS (경고 있음)
+
+
+======================================================================
+test_06_ci_platforms.py
+======================================================================
+============================================================
+Phase 6 검증: CI/CD Platform Integration
+============================================================
+
+[1] CI 패키지 import 테스트...
+  ✓ ci 패키지 import 성공
+  패키지 내용: ['CIEnvironment', 'CIPlatform', 'CIReporter', 'CircleCIReporter', 'GenericCIReporter', 'GitHubActionsReporter', 'GitLabCIReporter', 'JenkinsCIReporter', 'detect_ci_platform', 'detector', 'generate_circleci_config', 'generate_github_workflow', 'generate_gitlab_ci', 'generate_jenkinsfile', 'get_ci_environment', 'get_ci_reporter', 'is_ci_environment', 'reporter', 'templates']
+
+[2] CI Detection 기능 import 테스트...
+  ✓ detect_ci_platform, get_ci_environment, CIEnvironment import 성공
+
+[3] CIEnvironment 속성 확인...
+  CIEnvironment 필드: ['platform', 'is_ci', 'is_pr', 'branch', 'commit_sha', 'commit_message', 'pr_number', 'pr_target_branch', 'repository', 'run_id', 'run_url', 'actor', 'job_name', 'workflow_name', 'environment_vars']
+  ✓ branch 속성 존재
+  ✓ commit 속성 존재
+  ✓ pr 속성 존재
+  ✓ platform 속성 존재
+  △ build_id 속성 없음
+
+[4] CI 플랫폼 감지 기능...
+  ✓ 지원 플랫폼 (CIPlatform): ['GITHUB_ACTIONS', 'GITLAB_CI', 'JENKINS', 'CIRCLECI', 'TRAVIS_CI', 'AZURE_DEVOPS', 'BITBUCKET_PIPELINES', 'TEAMCITY', 'BUILDKITE', 'DRONE', 'AWS_CODEBUILD', 'GOOGLE_CLOUD_BUILD', 'LOCAL', 'UNKNOWN']
+  ✓ detect_ci_platform() 호출 성공: local
+
+[5] 플랫폼별 구현 확인...
+  플랫폼 관련 항목: ['_get_azure_environment', '_get_bitbucket_environment', '_get_buildkite_environment', '_get_circleci_environment', '_get_github_environment', '_get_gitlab_environment', '_get_jenkins_environment', '_get_travis_environment']
+  소스에서 발견된 플랫폼: 12/12
+    ✓ github_actions
+    ✓ gitlab_ci
+    ✓ jenkins
+    ✓ circleci
+    ✓ travis_ci
+    ✓ azure_devops
+    ✓ bitbucket_pipelines
+    ✓ teamcity
+    ✓ buildkite
+    ✓ drone
+    ✓ aws_codebuild
+    ✓ google_cloud_build
+
+[6] CI Reporter 확인...
+  ✓ CIReporter import 성공
+  CIReporter 메서드: ['fail_build', 'log_group', 'platform', 'report_status', 'set_output', 'warn']
+
+[7] CI Templates 확인...
+  △ templates 모듈 내용: ['Any', 'Path', 'annotations', 'generate_circleci_config', 'generate_github_workflow', 'generate_gitlab_ci', 'generate_jenkinsfile', 'write_ci_config']
+
+[8] 실제 CI 환경 감지 테스트...
+  ✓ is_ci_environment() = False
+  ✓ CI 환경 감지됨: platform=local, is_ci=False
+
+============================================================
+CI/CD Platform Integration 검증 결과
+============================================================
+
+  [문서 불일치] 1건:
+    - 문서: CIDetector 클래스 → 실제: detect_ci_platform, get_ci_environment 함수
+
+  [오류] 0건:
+
+  [경고] 1건:
+    - CIEnvironment에 build_id 속성 없음
+
+결과: △ PASS (경고 있음)
+
+
+======================================================================
+test_07_distributed_checkpoint.py
+======================================================================
+============================================================
+Phase 6 검증: Distributed Checkpoint Orchestration
+============================================================
+
+[1] distributed 패키지 import 테스트...
+  ✓ distributed 패키지 import 성공
+  패키지 내용: ['BackendCapability', 'BackendNotAvailableError', 'BackendRegistry', 'BaseDistributedBackend', 'BaseDistributedOrchestrator', 'ClusterState', 'DistributedBackendProtocol', 'DistributedCheckpointOrchestrator', 'DistributedConfig', 'DistributedError', 'DistributedTask', 'DistributedTaskProtocol', 'DistributedTaskResult', 'TaskCancelledError', 'TaskPriority', 'TaskState', 'TaskSubmissionError', 'TaskTimeoutError', 'WorkerInfo', 'WorkerNotAvailableError', 'WorkerState', 'base', 'get_backend', 'get_orchestrator', 'is_backend_available', 'list_backends', 'orchestrator', 'protocols', 'register_backend', 'registry']
+
+[2] get_orchestrator 함수 확인...
+  ✓ get_orchestrator import 성공
+  시그니처: (backend: "str | 'BaseDistributedBackend' | None" = None, config: 'DistributedConfig | None' = None, **kwargs: 'Any') -> "'DistributedCheckpointOrchestrator'"
+
+[3] 백엔드 import 테스트...
+  ✓ LocalBackend import 성공
+  ✓ CeleryBackend import 성공
+  ✓ RayBackend import 성공
+  ✓ KubernetesBackend import 성공
+
+[4] DistributedBackendProtocol 확인...
+  ✓ DistributedBackendProtocol import 성공
+  프로토콜 메서드: ['capabilities', 'connect', 'disconnect', 'get_cluster_state', 'get_task', 'get_workers', 'health_check', 'is_connected', 'name', 'scale_workers', 'submit', 'submit_batch']
+
+[5] Orchestrator 기능 확인...
+  Orchestrator 메서드: ['as_completed', 'backend', 'cancel_scheduled', 'connect', 'disconnect', 'gather', 'gather_async', 'get_cluster_state', 'get_group_status', 'get_group_tasks', 'get_scheduled_tasks', 'get_status', 'get_workers', 'health_check', 'is_connected', 'metrics', 'on_circuit_open', 'on_rate_limited', 'reset_circuit_breaker', 'scale_workers', 'schedule', 'submit', 'submit_batch', 'submit_group', 'wait_for_workers']
+  ✓ Task Submission 기능 존재
+  ✓ Rate Limiting 기능 존재
+  ✓ Circuit Breaker 기능 존재
+  ✓ Task Scheduling 기능 존재
+  ✓ Group Submission 기능 존재
+  ✓ Metrics Collection 기능 존재
+
+[6] LocalBackend 상세 테스트...
+  ✓ LocalBackend 인스턴스 생성 성공
+  ✓ submit 메서드 존재
+
+[7] Backend Registry 확인...
+  ✓ BackendRegistry import 성공
+  등록된 백엔드: [BackendInfo(name='ray', factory=<function BackendRegistry._register_builtin_backends.<locals>.create_ray at 0x10d0ae660>, priority=90, description='Ray distributed computing framework', install_hint='pip install ray', check_available=<function BackendRegistry._register_builtin_backends.<locals>.check_ray at 0x10d0ae5c0>), BackendInfo(name='ray-actor', factory=<function BackendRegistry._register_builtin_backends.<locals>.create_ray_actor at 0x10d0ae700>, priority=85, description='Ray with persistent actors', install_hint='pip install ray', check_available=<function BackendRegistry._register_builtin_backends.<locals>.check_ray at 0x10d0ae5c0>), BackendInfo(name='celery', factory=<function BackendRegistry._register_builtin_backends.<locals>.create_celery at 0x10d0ae520>, priority=80, description='Celery distributed task queue', install_hint='pip install celery[redis]', check_available=<function BackendRegistry._register_builtin_backends.<locals>.check_celery at 0x10d0ae480>), BackendInfo(name='kubernetes', factory=<function BackendRegistry._register_builtin_backends.<locals>.create_kubernetes at 0x10d0ae840>, priority=70, description='Kubernetes Job-based execution', install_hint='pip install kubernetes', check_available=<function BackendRegistry._register_builtin_backends.<locals>.check_kubernetes at 0x10d0ae7a0>), BackendInfo(name='local', factory=<function BackendRegistry._register_builtin_backends.<locals>.create_local at 0x10ce08fe0>, priority=10, description='Local multi-process/thread execution', install_hint='', check_available=<function BackendRegistry._register_builtin_backends.<locals>.<lambda> at 0x104e61580>)]
+
+[8] Context Manager 지원 확인...
+  ✓ Context Manager 지원 (with 문 사용 가능)
+
+============================================================
+Distributed Checkpoint Orchestration 검증 결과
+============================================================
+
+  [문서 불일치] 0건:
+
+  [오류] 0건:
+
+  [경고] 3건:
+    - LocalBackend에 get_result 메서드 없음
+    - LocalBackend에 cancel 메서드 없음
+    - LocalBackend에 status 메서드 없음
+
+결과: △ PASS (확인 필요)
+
+
+======================================================================
+test_08_github_oidc.py
+======================================================================
+============================================================
+Phase 6 검증: GitHub Actions OIDC Integration
+============================================================
+
+[1] GitHub OIDC 패키지 import 테스트...
+  ✓ github OIDC 패키지 import 성공
+  패키지 내용: ['AWSTrustPolicy', 'AzureFederatedCredentialPolicy', 'EnvironmentPolicy', 'GCPWorkloadIdentityPolicy', 'GitHubActionsClaims', 'GitHubActionsContext', 'GitHubActionsJWKS', 'GitHubActionsOIDC', 'GitHubActionsOIDCConfig', 'GitHubActionsOutput', 'JWKSVerifier', 'TokenVerifier', 'TrustPolicyBuilder', 'VaultJWTRolePolicy', 'WorkflowPolicy', 'WorkflowSummary', 'add_mask', 'claims', 'create_summary', 'enhanced_provider', 'log_group', 'parse_github_claims', 'set_env', 'set_failed', 'set_output', 'set_warning', 'trust_policy', 'validate_claims', 'verification', 'verify_token', 'workflow']
+
+[2] GitHubActionsOIDC 클래스 확인...
+  ✓ GitHubActionsOIDC import 성공
+  __init__ 시그니처: (self, audience: 'str | None' = None, *, config: 'GitHubActionsOIDCConfig | None' = None, require_environment: 'str | None' = None, **kwargs: 'Any') -> 'None'
+  ✓ get_aws_credentials 메서드 존재
+  ✓ get_token 메서드 존재
+
+[3] TrustPolicyBuilder 확인...
+  ✓ TrustPolicyBuilder import 성공
+  ✓ TrustPolicyBuilder.aws() 존재
+  ✓ TrustPolicyBuilder.gcp() 존재
+  ✓ TrustPolicyBuilder.azure() 존재
+  ✓ TrustPolicyBuilder.vault() 존재
+  ✓ to_terraform 메서드 존재 (인스턴스)
+
+[4] WorkflowSummary 확인...
+  ✓ WorkflowSummary import 성공
+  ✓ WorkflowSummary.add_heading() 존재
+  ✓ WorkflowSummary.add_validation_result() 존재
+  ✓ WorkflowSummary.write() 존재
+
+[5] claims 모듈 확인...
+  ✓ claims 모듈 import 성공
+  claims 모듈 내용: ['Any', 'ClaimsValidationPolicy', 'ClaimsValidationResult', 'Enum', 'EventType', 'GitHubActionsClaims', 'GitHubActionsContext', 'RefType', 'RepositoryVisibility', 'RunnerEnvironment', 'annotations', 'dataclass', 'datetime', 'field', 'parse_github_claims', 're', 'validate_claims']
+
+[6] verification 모듈 (JWKS 기반 토큰 검증)...
+  ✓ verification 모듈 import 성공
+  verification 모듈 내용: ['ABC', 'Any', 'GITHUB_OIDC_CONFIG_URL', 'GITHUB_OIDC_ISSUER', 'GITHUB_OIDC_JWKS_URL', 'GitHubActionsClaims', 'GitHubActionsJWKS', 'JWK', 'JWKS', 'JWKSVerifier', 'TokenVerificationResult', 'TokenVerifier', 'abstractmethod', 'annotations', 'base64', 'dataclass', 'datetime', 'field', 'get_jwks', 'hashlib', 'json', 'logger', 'logging', 'parse_github_claims', 'time', 'timedelta', 'verify_token']
+  ✓ JWKS 관련 항목: ['GITHUB_OIDC_JWKS_URL', 'GitHubActionsJWKS', 'JWK', 'JWKS', 'JWKSVerifier', 'get_jwks', 'verify_token']
+
+[7] enhanced_provider 모듈 확인...
+  ✓ enhanced_provider 모듈 import 성공
+  enhanced_provider 모듈 내용: ['AWSCredentials', 'AWSTokenExchanger', 'Any', 'AzureCredentials', 'AzureTokenExchanger', 'ClaimsValidationPolicy', 'CloudCredentials', 'CloudProvider', 'EnvironmentPolicy', 'EventType', 'GCPCredentials', 'GCPTokenExchanger', 'GitHubActionsClaims', 'GitHubActionsContext', 'GitHubActionsOIDC', 'GitHubActionsOIDCConfig', 'GitHubActionsOIDCProvider', 'OIDCConfigurationError', 'OIDCError', 'OIDCProviderNotAvailableError', 'OIDCToken', 'TYPE_CHECKING', 'VaultTokenExchanger', 'WorkflowPolicy', 'annotations', 'dataclass', 'field', 'logger', 'logging', 'os', 'parse_github_claims', 'timedelta', 'validate_claims']
+
+[8] workflow 모듈 확인...
+  ✓ workflow 모듈 import 성공
+  workflow 모듈 내용: ['Any', 'Generator', 'GitHubActionsOutput', 'Path', 'Sequence', 'WorkflowOutputConfig', 'WorkflowSummary', 'add_mask', 'add_path', 'annotations', 'contextmanager', 'create_summary', 'dataclass', 'datetime', 'debug', 'field', 'json', 'log_group', 'os', 'report_checkpoint_result', 'set_env', 'set_error', 'set_failed', 'set_notice', 'set_output', 'set_warning', 'sys']
+
+[9] trust_policy 모듈 확인...
+  ✓ trust_policy 모듈 import 성공
+  trust_policy 모듈 내용: ['AWSTrustPolicy', 'Any', 'AzureFederatedCredentialPolicy', 'GCPWorkloadIdentityPolicy', 'GITHUB_OIDC_ISSUER', 'GITHUB_OIDC_ISSUER_URL', 'TrustPolicyBuilder', 'VaultJWTRolePolicy', 'annotations', 'dataclass', 'field', 'json']
+
+============================================================
+GitHub Actions OIDC Integration 검증 결과
+============================================================
+
+  [문서 불일치] 0건:
+
+  [오류] 0건:
+
+  [경고] 1건:
+    - GitHubActionsOIDC에 verify_token 메서드 없음
+
+결과: △ PASS (경고 있음)
+
+
+======================================================================
+test_09_job_queue_monitoring.py
+======================================================================
+============================================================
+Phase 6 검증: Job Queue Monitoring
+============================================================
+
+[1] monitoring 패키지 import 테스트...
+  ✓ monitoring 패키지 import 성공
+  패키지 내용: ['AggregatorError', 'BaseAggregator', 'BaseCollector', 'BaseView', 'CollectorError', 'EventBus', 'EventEmitter', 'InMemoryCollector', 'MetricAggregatorProtocol', 'MetricCollectorProtocol', 'MetricType', 'MonitoringConfig', 'MonitoringError', 'MonitoringEvent', 'MonitoringEventType', 'MonitoringService', 'MonitoringViewProtocol', 'PrometheusCollector', 'QueueMetrics', 'QueueStatusView', 'RealtimeAggregator', 'RedisCollector', 'SlidingWindowAggregator', 'TaskDetailView', 'TaskMetrics', 'WorkerMetrics', 'WorkerStatusView', 'aggregators', 'collectors', 'configure_monitoring', 'event_bus', 'events', 'get_monitoring_service', 'protocols', 'service', 'views']
+
+[2] Collectors 확인...
+  ✓ InMemoryCollector import 성공
+  ✓ RedisCollector import 성공
+  ✓ PrometheusCollector import 성공
+
+[3] Aggregators 확인...
+  ✓ aggregators 패키지 import 성공
+  aggregators 내용: ['BaseAggregator', 'RealtimeAggregator', 'SlidingWindowAggregator', 'base', 'realtime', 'window']
+  ✓ base 모듈: ['ABC', 'AggregatedMetrics', 'AlertSeverity', 'Any', 'BaseAggregator', 'MetricAggregatorProtocol', 'MonitoringEvent', 'MonitoringEventType', 'QueueMetrics', 'WorkerMetrics']
+  ✓ realtime 모듈: ['AlertSeverity', 'Any', 'BaseAggregator', 'MonitoringEvent', 'MonitoringEventType', 'QueueMetrics', 'RealtimeAggregator', 'WorkerMetrics']
+  ✓ window 모듈: ['AggregatedMetrics', 'AlertSeverity', 'Any', 'BaseAggregator', 'Deque', 'MonitoringEvent', 'MonitoringEventType', 'QueueMetrics', 'SlidingWindowAggregator', 'WindowedSample', 'WorkerMetrics']
+
+[4] Views 확인...
+  ✓ views 패키지 import 성공
+  views 내용: ['BaseView', 'QueueStatusView', 'TaskDetailView', 'WorkerStatusView', 'base', 'queue_view', 'task_view', 'worker_view']
+  △ queue_view 모듈 내용: ['Any', 'BaseView', 'QueueMetrics', 'QueueStatusView', 'TaskMetrics', 'WorkerMetrics', 'annotations']
+
+[5] Monitoring Service 확인...
+  ✓ MonitoringService import 성공
+  MonitoringService 메서드: ['add_aggregator', 'add_collector', 'add_view', 'aggregators', 'check_alerts', 'collectors', 'format_queue_summary', 'format_task_list', 'format_worker_summary', 'get_aggregated_metrics', 'get_queue_metrics', 'get_realtime_summary', 'get_task_metrics', 'get_worker_metrics', 'health_check', 'is_started', 'render_for_api', 'start', 'stop', 'subscribe']
+
+[6] Monitoring Protocols 확인...
+  △ protocols 모듈 내용: ['AggregatedMetrics', 'AggregatorError', 'AggregatorT', 'AlertSeverity', 'Any', 'AsyncIterator', 'CollectorError', 'CollectorT', 'Enum', 'MetricAggregatorProtocol', 'MetricCollectorProtocol', 'MetricT', 'MetricType', 'MonitoringError', 'MonitoringEvent', 'MonitoringEventType', 'MonitoringViewProtocol', 'Protocol', 'QueueMetrics', 'TYPE_CHECKING', 'TaskMetrics', 'TypeVar', 'ViewT', 'WorkerMetrics', 'abstractmethod', 'annotations', 'auto', 'dataclass', 'datetime', 'field', 'runtime_checkable']
+
+[7] Monitoring Events 확인...
+  ✓ MonitoringEvent import 성공
+
+[8] 실제 사용 테스트...
+  △ 실제 사용 테스트 실패: cannot import name 'MemoryCollector' from 'truthound.checkpoint.monitoring.collectors.memory_collector' (/Users/dgseo/Desktop/OpenSource/truthound/src/truthound/checkpoint/monitoring/collectors/memory_collector.py)
+
+============================================================
+Job Queue Monitoring 검증 결과
+============================================================
+
+  [문서 불일치] 0건:
+
+  [오류] 0건:
+
+  [경고] 1건:
+    - 실제 사용 테스트 실패: cannot import name 'MemoryCollector' from 'truthound.checkpoint.monitoring.collectors.memory_collector' (/Users/dgseo/Desktop/OpenSource/truthound/src/truthound/checkpoint/monitoring/collectors/memory_collector.py)
+
+결과: △ PASS (경고 있음)
+
+
+======================================================================
+test_10_historical_analytics.py
+======================================================================
+============================================================
+Phase 6 검증: Historical Analytics
+============================================================
+
+[1] analytics 패키지 import 테스트...
+  ✓ analytics 패키지 import 성공
+  패키지 내용: ['AggregationFunction', 'AnalysisSummary', 'AnalyticsConfig', 'AnalyticsError', 'AnalyticsService', 'AnalyzerError', 'AnomalyDetector', 'AnomalyResult', 'AnomalyType', 'BaseTimeSeriesStore', 'BaseTrendAnalyzer', 'BucketResult', 'CheckpointExecution', 'DurationMetrics', 'ExecutionMetrics', 'ForecastResult', 'InMemoryTimeSeriesStore', 'RollupAggregation', 'RollupConfig', 'RollupLevel', 'SQLiteTimeSeriesStore', 'SimpleForecaster', 'SimpleTrendAnalyzer', 'StoreError', 'SuccessRateMetrics', 'TimeBucketAggregation', 'TimeGranularity', 'TimeSeriesPoint', 'TimeSeriesStoreProtocol', 'TimescaleDBStore', 'TrendAnalyzerProtocol', 'TrendDirection', 'TrendResult', 'aggregations', 'analyzers', 'configure_analytics', 'get_analytics_service', 'models', 'protocols', 'service', 'stores']
+
+[2] Aggregations 확인...
+  ✓ aggregations 패키지 import 성공
+  △ time_bucket 모듈 내용: ['AggregationFunction', 'Any', 'BucketResult', 'Callable', 'TimeBucketAggregation', 'TimeGranularity', 'TimeSeriesPoint', 'annotations', 'dataclass', 'datetime', 'field', 'math', 'timedelta']
+  △ rollup 모듈 내용: ['AggregationFunction', 'Any', 'BucketResult', 'Enum', 'RollupAggregation', 'RollupConfig', 'RollupLevel', 'RollupResult', 'TimeBucketAggregation', 'TimeGranularity', 'TimeSeriesPoint', 'annotations', 'dataclass', 'datetime', 'field', 'logger', 'logging', 'timedelta']
+
+[3] Analyzers 확인...
+  ✓ analyzers 패키지 import 성공
+  ✓ anomaly 모듈: ['AnalyzerError', 'AnomalyDetector', 'AnomalyResult', 'AnomalyType', 'Any', 'BaseTrendAnalyzer', 'ForecastResult', 'TimeSeriesPoint', 'TrendDirection', 'TrendResult']
+  ✓ trend 모듈: ['AnalyzerError', 'AnomalyResult', 'AnomalyType', 'Any', 'BaseTrendAnalyzer', 'ForecastResult', 'SimpleTrendAnalyzer', 'TimeSeriesPoint', 'TrendDirection', 'TrendResult']
+  ✓ forecast 모듈: ['AnalyzerError', 'AnomalyResult', 'Any', 'BaseTrendAnalyzer', 'ForecastResult', 'SimpleForecaster', 'TimeSeriesPoint', 'TrendDirection', 'TrendResult']
+  ✓ base 모듈: ['ABC', 'AnalyzerError', 'AnomalyResult', 'AnomalyType', 'Any', 'BaseTrendAnalyzer', 'ForecastResult', 'TimeSeriesPoint', 'TrendAnalyzerProtocol', 'TrendDirection', 'TrendResult']
+
+[4] Analytics Stores 확인...
+  ✓ stores 패키지 import 성공
+  ✓ memory_store 모듈: ['Any', 'BaseTimeSeriesStore', 'InMemoryTimeSeriesStore', 'StoreError', 'TimeGranularity', 'TimeSeriesPoint']
+  ✓ sqlite_store 모듈: ['Any', 'BaseTimeSeriesStore', 'Path', 'SQLiteTimeSeriesStore', 'StoreError', 'TimeGranularity', 'TimeSeriesPoint']
+  ✓ timescale_store 모듈: ['Any', 'BaseTimeSeriesStore', 'StoreError', 'TimeGranularity', 'TimeSeriesPoint', 'TimescaleDBStore']
+
+[5] Analytics Service 확인...
+  ✓ AnalyticsService import 성공
+  AnalyticsService 메서드: ['METRIC_DURATION', 'METRIC_FAILURE_COUNT', 'METRIC_SUCCESS_RATE', 'METRIC_TASK_COUNT', 'analyze_checkpoint_trend', 'detect_anomalies', 'forecast_checkpoint', 'get_aggregated_metrics', 'get_dashboard_summary', 'get_duration_stats', 'get_success_rate', 'health_check', 'is_started', 'record_execution', 'start', 'stop']
+  ✓ analyze 관련 기능 존재
+  ✓ detect_anomalies 관련 기능 존재
+  ✓ forecast 관련 기능 존재
+
+[6] Analytics Models 확인...
+  △ models 모듈 내용: ['Any', 'CheckpointExecution', 'DurationMetrics', 'ExecutionMetrics', 'SuccessRateMetrics', 'annotations', 'dataclass', 'datetime', 'field']
+
+[7] Analytics Protocols 확인...
+  △ protocols 모듈 내용: ['AggregationFunction', 'AnalysisSummary', 'AnalyticsError', 'AnalyzerError', 'AnalyzerT', 'AnomalyResult', 'AnomalyType', 'Any', 'Enum', 'ForecastResult', 'Generic', 'PointT', 'Protocol', 'StoreError', 'StoreT', 'T', 'TimeGranularity', 'TimeSeriesPoint', 'TimeSeriesStoreProtocol', 'TrendAnalyzerProtocol', 'TrendDirection', 'TrendResult', 'TypeVar', 'abstractmethod', 'annotations', 'dataclass', 'datetime', 'field', 'runtime_checkable', 'timedelta']
+
+[8] 실제 사용 테스트...
+  △ 실제 사용 테스트 실패: cannot import name 'MemoryStore' from 'truthound.checkpoint.analytics.stores.memory_store' (/Users/dgseo/Desktop/OpenSource/truthound/src/truthound/checkpoint/analytics/stores/memory_store.py)
+
+============================================================
+Historical Analytics 검증 결과
+============================================================
+
+  [문서 불일치] 0건:
+
+  [오류] 0건:
+
+  [경고] 1건:
+    - 실제 사용 테스트 실패: cannot import name 'MemoryStore' from 'truthound.checkpoint.analytics.stores.memory_store' (/Users/dgseo/Desktop/OpenSource/truthound/src/truthound/checkpoint/analytics/stores/memory_store.py)
+
+결과: △ PASS (경고 있음)
+Traceback (most recent call last):
+  File "/Users/dgseo/Desktop/OpenSource/truthound/tests/phase6_verification/test_10_historical_analytics.py", line 181, in <module>
+    from truthound.checkpoint.analytics.stores.memory_store import MemoryStore
+ImportError: cannot import name 'MemoryStore' from 'truthound.checkpoint.analytics.stores.memory_store' (/Users/dgseo/Desktop/OpenSource/truthound/src/truthound/checkpoint/analytics/stores/memory_store.py). Did you mean: 'MemoryStateStore'?
+
+
+
+종합 결과
+======================================================================
+통과: 10/10
+실패: 0/10
