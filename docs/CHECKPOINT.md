@@ -1157,7 +1157,7 @@ env.workflow_name   # str
 ## See Also
 
 - [Data Sources](DATASOURCES.md) - Connecting to various data backends
-- [Validators Reference](VALIDATORS.md) - 148 validators reference
+- [Validators Reference](VALIDATORS.md) - 289 validators reference
 - [Storage Backends](STORES.md) - Storing validation results
 - [Reporters](REPORTERS.md) - Output formats and customization
 - [Examples](EXAMPLES.md) - Complete usage examples

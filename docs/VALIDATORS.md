@@ -2,7 +2,7 @@
 
 This document provides a reference for validators implemented in Truthound. Each validator is designed to address specific data quality concerns and follows consistent patterns for configuration and usage.
 
-**Current Implementation: 148 validator modules across 28 categories.**
+**Current Implementation: 289 validators across 28 categories (23 validator categories + 5 infrastructure categories).**
 
 ---
 
@@ -2214,37 +2214,47 @@ with handler.cascade() as cascade:
 
 ## Appendix A: Validator Categories Summary
 
+### Validator Classes (23 categories, 289 validators)
+
 | Category | Count | Dependencies | Description |
 |----------|-------|--------------|-------------|
-| Schema | 10 | Core | Structural validation |
-| Completeness | 5 | Core | Missing value detection |
-| Uniqueness | 6 | Core | Duplicate and key validation |
-| Distribution | 7 | Core | Range and statistical checks |
-| String | 9 | Core | Pattern and format validation |
-| Datetime | 6 | Core | Temporal data validation |
-| Aggregate | 5 | Core | Statistical aggregate checks |
-| Cross-Table | 2 | Core | Multi-table relationships |
-| Query | 6 | Core | Expression-based validation |
-| Multi-Column | 5 | Core | Column relationships |
-| Table | 6 | Core | Table metadata validation |
-| Geospatial | 5 | Core | Geographic coordinates |
-| Drift | 5 | scipy | Distribution change detection |
-| Anomaly | 4 | scipy, scikit-learn | Outlier detection |
-| Business Rule | 3 | Core | Domain-specific validation (Luhn, IBAN, VAT) |
-| Localization | 4 | Core | Regional identifiers (Korean, Japanese, Chinese) |
+| Schema | 15 | Core | Structural validation |
+| Completeness | 12 | Core | Missing value detection |
+| Uniqueness | 17 | Core | Duplicate and key validation |
+| Distribution | 15 | Core | Range and statistical checks |
+| String | 20 | Core | Pattern and format validation |
+| Datetime | 10 | Core | Temporal data validation |
+| Aggregate | 8 | Core | Statistical aggregate checks |
+| Cross-Table | 5 | Core | Multi-table relationships |
+| Query | 19 | Core | Expression-based validation |
+| Multi-Column | 20 | Core | Column relationships |
+| Table | 18 | Core | Table metadata validation |
+| Geospatial | 13 | Core | Geographic coordinates |
+| Drift | 14 | scipy | Distribution change detection |
+| Anomaly | 18 | scipy, scikit-learn | Outlier detection |
+| Business Rule | 8 | Core | Domain-specific validation (Luhn, IBAN, VAT) |
+| Localization | 9 | Core | Regional identifiers (Korean, Japanese, Chinese) |
 | ML Feature | 5 | Core | Leakage detection, correlation analysis |
-| Profiling | 4 | Core | Cardinality, entropy, frequency analysis |
-| Referential | 5 | Core | Foreign key and orphan record validation |
-| Time Series | 6 | Core | Gap detection, seasonality, trend analysis |
-| Privacy | 5 | Core | GDPR, CCPA, LGPD compliance patterns |
+| Profiling | 7 | Core | Cardinality, entropy, frequency analysis |
+| Referential | 14 | Core | Foreign key and orphan record validation |
+| Time Series | 14 | Core | Gap detection, seasonality, trend analysis |
+| Privacy | 16 | Core | GDPR, CCPA, LGPD compliance patterns |
+| Streaming | 7 | Core | Streaming data validation |
+| SDK | 5 | Core | Custom validator development tools |
+| **Subtotal** | **289** | | |
+
+### Infrastructure Modules (5 categories, 26 modules)
+
+| Category | Modules | Dependencies | Description |
+|----------|---------|--------------|-------------|
 | Security | 2 | Core | SQL injection, ReDoS protection |
-| Streaming | 5 | Core | Streaming data validation |
-| Memory | 4 | Core | Memory-aware processing |
-| Optimization | 6 | Core | Validator execution optimization |
-| i18n | 10 | Core | Internationalized error messages |
+| Memory | 4 | Core | Memory-aware processing algorithms |
+| Optimization | 6 | Core | DAG orchestration, profiling |
+| i18n | 10 | Core | Internationalized error messages (7 languages) |
 | Timeout | 4 | Core | Distributed timeout management |
-| SDK | 4 | Core | Custom validator development tools |
-| **Total** | **148** | | |
+| **Subtotal** | **26** | | |
+
+| **Total** | **28 categories** | | **289 validators + 26 modules** |
 
 ---
 

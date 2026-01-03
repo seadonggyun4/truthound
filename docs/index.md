@@ -18,7 +18,7 @@ Truthound is a high-performance data quality framework built on [Polars](https:/
 ### Key Features
 
 - **Zero Configuration**: Start validating data immediately without complex setup
-- **148 Validators**: Coverage across 28 categories for data quality needs
+- **289 Validators**: Coverage across 28 categories for data quality needs
 - **High Performance**: Polars-native implementation for efficient validation
 - **Schema Inference**: Automatically learn schemas from your data
 - **PII Detection**: Built-in scanning for personally identifiable information

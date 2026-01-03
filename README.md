@@ -36,10 +36,9 @@ Truthound is a data quality validation framework built on Polars, a Rust-based D
 
 | Metric | Value | Notes |
 |--------|-------|-------|
-| Test Cases | 7,403 | Collected via pytest |
-| Validator Modules | 148 | Python files in validators directory |
+| Test Cases | 7,613 | Collected via pytest |
+| Validators | 289 | Validator classes available |
 | Validator Categories | 28 | Distinct subdirectories |
-| Test Files | 296 | In tests directory |
 
 ### Core Features
 
@@ -163,7 +162,7 @@ The following validator categories are implemented:
 
 ### Protocol-based Adapters
 
-Kafka and Kinesis adapters implement `IStreamAdapter` protocol with async operations:
+Kafka and Kinesis adapters implement `IStreamSource`/`IStreamSink` protocols with async operations:
 
 | Adapter | Library | Features |
 |---------|---------|----------|
@@ -211,10 +210,10 @@ validator = (
 ### ReDoS Protection
 
 ```python
-from truthound.validators.security.redos import ReDoSChecker, SafeRegexExecutor
+from truthound.validators.security.redos import RegexComplexityAnalyzer, SafeRegexExecutor
 
-checker = ReDoSChecker()
-result = checker.analyze(r"(a+)+$")
+analyzer = RegexComplexityAnalyzer()
+result = analyzer.analyze(r"(a+)+$")
 print(f"Safe: {result.is_safe}, Score: {result.complexity_score}")
 
 executor = SafeRegexExecutor(timeout=1.0)

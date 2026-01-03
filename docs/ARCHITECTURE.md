@@ -96,7 +96,7 @@ src/truthound/
 ├── cli.py                   # CLI interface (Typer)
 ├── types.py                 # Type definitions
 ├── core/                    # Core validation logic
-├── validators/              # 148 validator implementations across 28 categories
+├── validators/              # 289 validator implementations across 28 categories
 │   ├── base.py              # Validator base classes
 │   ├── schema/              # Schema validators (10)
 │   ├── completeness/        # Completeness validators (5)
@@ -581,7 +581,7 @@ Truthound's development follows a phased approach:
 ├────────────────────────────────────────────────────────────────────────────┤
 │                                                                             │
 │  Phase 1-3: Core Engine                                                     │
-│  ├── 148 Validators across 28 categories                                   │
+│  ├── 289 Validators across 28 categories                                   │
 │  ├── Schema inference and learning                                          │
 │  ├── Pattern detection (email, phone, credit card, etc.)                   │
 │  └── Statistical validation (range, distribution, outliers)                │

@@ -250,6 +250,6 @@ You've learned how to:
 
 ## Next Steps
 
-- [Validators Guide](../user-guide/validators.md) - Explore 148 built-in validators
+- [Validators Guide](../user-guide/validators.md) - Explore 289 built-in validators
 - [CI/CD Integration](../user-guide/ci-cd.md) - Set up automated pipelines
 - [Custom Validators](../tutorials/custom-validator.md) - Create your own validators

@@ -18,7 +18,7 @@ Comprehensive guide to using Truthound for data quality validation.
 
     ---
 
-    Guide to 148 built-in validators across 28 categories
+    Guide to 289 built-in validators across 28 categories
 
     [:octicons-arrow-right-24: Validators](validators.md)
 

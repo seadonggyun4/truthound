@@ -33,7 +33,7 @@ drift = th.compare(old, new)       # Detect drift
 
 | Module | Description |
 |--------|-------------|
-| [`truthound.validators`](validators/index.md) | 148 built-in validators |
+| [`truthound.validators`](validators/index.md) | 289 built-in validators |
 | [`truthound.validators.sdk`](validators/sdk/index.md) | Custom validator SDK |
 
 ### Profiling
