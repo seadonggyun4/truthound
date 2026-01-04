@@ -45,6 +45,7 @@ from truthound.profiler.integration.context import (
     ExecutionContextBuilder,
     create_context,
 )
+from truthound.profiler.integration.naming import resolve_validator_name
 
 __all__ = [
     # Protocols
@@ -67,4 +68,6 @@ __all__ = [
     "ExecutionConfig",
     "ExecutionContextBuilder",
     "create_context",
+    # Naming
+    "resolve_validator_name",
 ]
