@@ -46,25 +46,27 @@ The ML module provides machine learning capabilities for data quality validation
 
 Detect anomalies in your data using various statistical and ML-based methods.
 
+> **Note**: All ML detectors require `LazyFrame` input and at least 10 samples for training.
+
 ```python
 from truthound.ml import ZScoreAnomalyDetector, IsolationForestDetector, EnsembleAnomalyDetector
 import polars as pl
 
-# Sample data
+# Sample data - use LazyFrame with at least 10 samples
 df = pl.DataFrame({
-    "value": [1.0, 2.0, 3.0, 100.0, 2.5, 1.5],  # 100.0 is an anomaly
-})
+    "value": [1.0, 2.0, 3.0, 2.5, 1.5, 2.8, 1.8, 2.2, 3.1, 2.9, 100.0],  # 100.0 is an anomaly
+}).lazy()
 
 # Z-Score based detection
 zscore_detector = ZScoreAnomalyDetector(threshold=3.0)
 zscore_detector.fit(df)
-result = zscore_detector.detect(df)
+result = zscore_detector.predict(df)
 print(f"Anomalies found: {result.anomaly_count}")
 
 # Isolation Forest (ML-based)
 iso_detector = IsolationForestDetector(contamination=0.1)
 iso_detector.fit(df)
-result = iso_detector.detect(df)
+result = iso_detector.predict(df)
 
 # Ensemble approach (combines multiple detectors)
 ensemble = EnsembleAnomalyDetector(
@@ -72,7 +74,7 @@ ensemble = EnsembleAnomalyDetector(
     voting_strategy="majority"
 )
 ensemble.fit(df)
-result = ensemble.detect(df)
+result = ensemble.predict(df)
 ```
 
 #### Available Detectors
@@ -89,27 +91,31 @@ result = ensemble.detect(df)
 
 Detect distribution drift between baseline and current datasets.
 
+> **Note**: Drift detectors require `LazyFrame` input and at least 10 samples.
+
 ```python
 from truthound.ml import DistributionDriftDetector, FeatureDriftDetector
 import polars as pl
 
-# Baseline and current data
-baseline = pl.DataFrame({"value": [1, 2, 3, 4, 5] * 100})
-current = pl.DataFrame({"value": [10, 11, 12, 13, 14] * 100})  # Drifted!
+# Baseline and current data - use LazyFrame
+baseline = pl.DataFrame({"value": [1, 2, 3, 4, 5] * 20}).lazy()
+current = pl.DataFrame({"value": [10, 11, 12, 13, 14] * 20}).lazy()  # Drifted!
 
 # Distribution drift detection
-detector = DistributionDriftDetector(method="ks_test", threshold=0.05)
+detector = DistributionDriftDetector(method="psi", threshold=0.05)
 detector.fit(baseline)
-result = detector.detect(current)
+result = detector.detect(baseline, current)  # Both reference and current required
 
-if result.has_drift:
+if result.is_drifted:
     print(f"Drift detected! Score: {result.drift_score}")
-    print(f"Drifted columns: {result.drifted_columns}")
+    # Get drifted columns from column_scores
+    drifted = [col for col, score in result.column_scores if score >= 0.5]
+    print(f"Drifted columns: {drifted}")
 
 # Feature-level drift detection
 feature_detector = FeatureDriftDetector()
 feature_detector.fit(baseline)
-result = feature_detector.detect(current)
+result = feature_detector.detect(baseline, current)
 ```
 
 ### Rule Learning
@@ -182,35 +188,61 @@ graph = LineageGraph()
 
 # Add nodes
 source = LineageNode(id="raw_data", name="Raw Data", node_type=NodeType.SOURCE)
-transform = LineageNode(id="cleaned_data", name="Cleaned Data", node_type=NodeType.TRANSFORM)
+transform = LineageNode(id="cleaned_data", name="Cleaned Data", node_type=NodeType.TRANSFORMATION)
 target = LineageNode(id="analytics", name="Analytics Table", node_type=NodeType.TABLE)
 
 graph.add_node(source)
 graph.add_node(transform)
 graph.add_node(target)
 
-# Add edges (data flow)
+# Add edges (data flow) - no 'id' field required
 graph.add_edge(LineageEdge(
-    id="edge1",
     source="raw_data",
     target="cleaned_data",
-    edge_type=EdgeType.TRANSFORMS
+    edge_type=EdgeType.TRANSFORMED_TO
 ))
 graph.add_edge(LineageEdge(
-    id="edge2",
     source="cleaned_data",
     target="analytics",
-    edge_type=EdgeType.POPULATES
+    edge_type=EdgeType.DERIVED_FROM
 ))
 
 # Query lineage
-upstream = graph.get_upstream("analytics")
+upstream = graph.get_upstream("analytics")  # Returns list of LineageNode
 downstream = graph.get_downstream("raw_data")
+print(f"Upstream: {[n.id for n in upstream]}")
+print(f"Downstream: {[n.id for n in downstream]}")
 ```
+
+#### Available NodeTypes
+
+| NodeType | Description |
+|----------|-------------|
+| `SOURCE` | Raw data source |
+| `TABLE` | Database table |
+| `FILE` | File-based data |
+| `STREAM` | Streaming source |
+| `TRANSFORMATION` | Data transformation |
+| `VALIDATION` | Validation checkpoint |
+| `MODEL` | ML model |
+| `REPORT` | Output report |
+
+#### Available EdgeTypes
+
+| EdgeType | Description |
+|----------|-------------|
+| `DERIVED_FROM` | Data derivation |
+| `TRANSFORMED_TO` | Transformation |
+| `VALIDATED_BY` | Validation relationship |
+| `USED_BY` | Usage relationship |
+| `JOINED_WITH` | Join operation |
+| `AGGREGATED_TO` | Aggregation |
+| `FILTERED_TO` | Filter operation |
+| `DEPENDS_ON` | Generic dependency |
 
 ### Lineage Tracker
 
-Automatically track data operations.
+Track data operations with dedicated methods for each operation type.
 
 ```python
 from truthound.lineage import LineageTracker, OperationType
@@ -220,16 +252,47 @@ import polars as pl
 tracker = LineageTracker()
 
 # Track a source
-source_id = tracker.track_source("sales_data.csv", metadata={"format": "csv"})
+source_id = tracker.track_source(
+    "sales_data.csv",
+    source_type="file",  # file, table, stream, external
+    location="/data/sales_data.csv",
+    format="csv"
+)
 
-# Track transformations
-with tracker.track_operation("filter_nulls", OperationType.FILTER) as ctx:
-    # Your data transformation code here
-    df = pl.read_csv("sales_data.csv").drop_nulls()
-    ctx.set_output("filtered_sales")
+# Track transformations using dedicated methods
+transform_id = tracker.track_transformation(
+    "filtered_sales",
+    sources=["sales_data.csv"],
+    operation="filter",
+)
 
-# Get the lineage graph
-graph = tracker.get_graph()
+# Track validation
+validation_id = tracker.track_validation(
+    "sales_validation",
+    sources=["filtered_sales"],
+    validators=["null", "range"],
+)
+
+# Track output
+output_id = tracker.track_output(
+    "sales_report",
+    sources=["filtered_sales"],
+    output_type="report",
+)
+
+# Get the lineage graph (use property, not method)
+graph = tracker.graph
+print(f"Nodes: {graph.node_count}, Edges: {graph.edge_count}")
+```
+
+#### Alternative: Context Manager for Complex Operations
+
+```python
+with tracker.track("my_operation", OperationType.TRANSFORM) as ctx:
+    # Access context sources and targets as lists
+    ctx.sources.append("input_data")
+    ctx.targets.append("output_data")
+    # ... your transformation code ...
 ```
 
 ### Impact Analysis
@@ -536,28 +599,28 @@ from truthound.ml import (
     ModelRegistry,
 )
 
-# Load data
-train_df = pl.read_csv("train.csv")
-prod_df = pl.read_csv("production.csv")
+# Load data as LazyFrame
+train_df = pl.scan_csv("train.csv")
+prod_df = pl.scan_csv("production.csv")
 
 # 1. Train anomaly detector
 detector = ZScoreAnomalyDetector(threshold=3.0)
 detector.fit(train_df)
 
 # 2. Check for drift
-drift_detector = DistributionDriftDetector()
+drift_detector = DistributionDriftDetector(method="psi")
 drift_detector.fit(train_df)
-drift_result = drift_detector.detect(prod_df)
+drift_result = drift_detector.detect(train_df, prod_df)
 
-if drift_result.has_drift:
+if drift_result.is_drifted:
     print("Warning: Data drift detected!")
 
-# 3. Learn rules
+# 3. Learn rules (can use DataFrame)
 learner = DataProfileRuleLearner()
-rules = learner.learn(train_df)
+rules = learner.learn(train_df.collect())
 
 # 4. Detect anomalies in production
-anomaly_result = detector.detect(prod_df)
+anomaly_result = detector.predict(prod_df)
 print(f"Found {anomaly_result.anomaly_count} anomalies")
 ```
 
@@ -571,18 +634,24 @@ import polars as pl
 tracker = LineageTracker()
 
 # Track ETL pipeline
-source_id = tracker.track_source("raw_sales.csv")
+source_id = tracker.track_source("raw_sales.csv", source_type="file")
 
-with tracker.track_operation("clean_data", OperationType.TRANSFORM) as ctx:
-    df = pl.read_csv("raw_sales.csv").drop_nulls()
-    ctx.set_output("cleaned_sales")
+# Track cleaning transformation
+clean_id = tracker.track_transformation(
+    "cleaned_sales",
+    sources=["raw_sales.csv"],
+    operation="filter",
+)
 
-with tracker.track_operation("aggregate", OperationType.AGGREGATE) as ctx:
-    df = df.group_by("region").agg(pl.sum("revenue"))
-    ctx.set_output("sales_by_region")
+# Track aggregation
+agg_id = tracker.track_transformation(
+    "sales_by_region",
+    sources=["cleaned_sales"],
+    operation="aggregate",
+)
 
 # Analyze impact
-graph = tracker.get_graph()
+graph = tracker.graph
 analyzer = ImpactAnalyzer(graph)
 
 impact = analyzer.analyze_downstream("raw_sales.csv")

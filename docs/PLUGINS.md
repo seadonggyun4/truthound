@@ -425,3 +425,141 @@ from truthound.plugins.examples import (
 - `PluginNotFoundError`: 플러그인 미발견
 - `PluginDependencyError`: 의존성 미충족
 - `PluginCompatibilityError`: 버전 비호환
+
+## Enterprise Features
+
+엔터프라이즈 환경을 위한 고급 플러그인 기능이 포함되어 있습니다:
+
+### Enterprise Plugin Manager
+
+```python
+from truthound.plugins import create_enterprise_manager
+
+# 보안 수준과 함께 엔터프라이즈 매니저 생성
+manager = create_enterprise_manager(
+    security_level="enterprise",  # "development", "standard", "enterprise", "strict"
+    require_signature=True,       # 플러그인 서명 요구
+    enable_hot_reload=True,       # 핫 리로드 활성화
+)
+
+# 플러그인 로드
+plugin = await manager.load("my-plugin")
+
+# 샌드박스에서 실행
+result = await manager.execute_in_sandbox("my-plugin", my_function, arg1, arg2)
+```
+
+### Security Sandbox
+
+플러그인을 격리된 환경에서 실행하여 시스템 보안을 강화합니다:
+
+```python
+from truthound.plugins import (
+    SandboxFactory,
+    IsolationLevel,
+    SecurityPolicyPresets,
+)
+
+# 격리 수준별 샌드박스 생성
+sandbox = SandboxFactory().create(IsolationLevel.PROCESS)
+
+# 보안 정책 프리셋 사용
+policy = SecurityPolicyPresets.ENTERPRISE.to_policy()
+```
+
+### Code Signing
+
+플러그인 무결성과 출처를 검증합니다:
+
+```python
+from pathlib import Path
+from truthound.plugins import (
+    SigningServiceImpl,
+    SignatureAlgorithm,
+    TrustStoreImpl,
+    TrustLevel,
+    create_verification_chain,
+)
+
+# 플러그인 서명
+service = SigningServiceImpl(
+    algorithm=SignatureAlgorithm.HMAC_SHA256,
+    signer_id="my-org",
+)
+signature = service.sign(
+    plugin_path=Path("my_plugin/"),
+    private_key=b"secret_key",
+)
+
+# 신뢰 저장소 설정
+trust_store = TrustStoreImpl()
+trust_store.set_signer_trust("my-org", TrustLevel.TRUSTED)
+
+# 서명 검증
+chain = create_verification_chain(trust_store=trust_store)
+result = chain.verify(plugin_path, signature, context={})
+```
+
+### Hot Reload
+
+애플리케이션 재시작 없이 플러그인을 리로드합니다:
+
+```python
+from truthound.plugins import HotReloadManager, ReloadStrategy, LifecycleManager
+
+lifecycle = LifecycleManager()
+reload_manager = HotReloadManager(
+    lifecycle,
+    default_strategy=ReloadStrategy.GRACEFUL,
+)
+
+# 플러그인 감시 시작
+await reload_manager.watch(
+    plugin_id="my-plugin",
+    plugin_path=Path("plugins/my-plugin/"),
+    auto_reload=True,
+)
+
+# 수동 리로드
+result = await reload_manager.reload("my-plugin")
+```
+
+### Version Constraints
+
+시맨틱 버전 제약을 지원합니다:
+
+```python
+from truthound.plugins import parse_constraint
+
+# 다양한 버전 제약 표현
+constraint = parse_constraint("^1.2.3")  # >=1.2.3 && <2.0.0
+constraint = parse_constraint("~1.2.3")  # >=1.2.3 && <1.3.0
+constraint = parse_constraint(">=1.0.0,<2.0.0")  # 범위 지정
+
+# 버전 호환성 확인
+is_compatible = constraint.is_satisfied_by("1.5.0")
+```
+
+### Dependency Graph
+
+플러그인 의존성을 자동으로 관리합니다:
+
+```python
+from truthound.plugins import DependencyGraph, DependencyType
+
+graph = DependencyGraph()
+graph.add_node("plugin-c", "1.0.0")
+graph.add_node("plugin-b", "1.0.0",
+    dependencies={"plugin-c": DependencyType.REQUIRED})
+graph.add_node("plugin-a", "1.0.0",
+    dependencies={"plugin-b": DependencyType.REQUIRED})
+
+# 로드 순서 결정
+load_order = graph.get_load_order()
+# -> ['plugin-c', 'plugin-b', 'plugin-a']
+
+# 순환 의존성 감지
+cycles = graph.detect_cycles()
+```
+
+자세한 Enterprise 기능은 `.claude/docs/phase-09-plugins.md`를 참조하세요.

@@ -32,11 +32,13 @@ Data Docs는 두 단계로 구성됩니다:
 
 - **Zero Dependencies**: npm/node 빌드 불필요, CDN에서 JS 로드
 - **Self-Contained**: 단일 HTML 파일로 오프라인에서도 동작
-- **5가지 테마**: Light, Dark, Professional, Minimal, Modern
+- **6가지 테마**: Default, Light, Dark, Professional, Minimal, Modern + Enterprise
 - **4가지 차트 라이브러리**: ApexCharts, Chart.js, Plotly.js, SVG
 - **반응형 디자인**: 모바일/태블릿/데스크톱 대응
 - **인쇄 최적화**: Print-friendly CSS 포함
 - **PDF 내보내기**: weasyprint 사용 (선택적)
+- **다국어 지원**: 영어(en), 한국어(ko)
+- **리포트 버전관리**: 4개 전략 (Incremental, Semantic, Timestamp, GitLike)
 
 ---
 
@@ -727,13 +729,43 @@ curl -F file=@report.html \
 src/truthound/datadocs/
 ├── __init__.py          # 모듈 exports & lazy imports
 ├── base.py              # 기본 타입, Enums, Protocols, Registry
-├── themes.py            # 5가지 테마 정의
 ├── charts.py            # 4가지 차트 렌더러
 ├── sections.py          # 8가지 섹션 렌더러
 ├── styles.py            # CSS 스타일시트
 ├── builder.py           # HTMLReportBuilder
+│
+├── engine/              # 파이프라인 엔진
+│   ├── context.py       # ReportContext, ReportData
+│   ├── pipeline.py      # ReportPipeline, PipelineBuilder
+│   └── registry.py      # ComponentRegistry
+│
+├── themes/              # 테마 시스템
+│   ├── base.py          # ThemeConfig, ThemeColors
+│   ├── default.py       # 6개 빌트인 테마
+│   ├── enterprise.py    # EnterpriseTheme
+│   └── loader.py        # YAML/JSON 로더
+│
+├── renderers/           # 템플릿 렌더링
+│   ├── jinja.py         # JinjaRenderer
+│   └── custom.py        # StringTemplate, FileTemplate, Callable
+│
+├── exporters/           # 출력 포맷
+│   ├── html.py          # HtmlExporter
+│   ├── pdf.py           # OptimizedPdfExporter
+│   ├── markdown.py      # MarkdownExporter
+│   └── json_exporter.py # JsonExporter
+│
+├── versioning/          # 버전 관리
+│   ├── version.py       # 4개 버전 전략
+│   ├── storage.py       # InMemory, File 스토리지
+│   └── diff.py          # ReportDiffer
+│
+├── i18n/                # 다국어 지원
+│   ├── catalog.py       # 2개 언어 (en, ko)
+│   ├── plurals.py       # CLDR 복수형 규칙
+│   └── formatting.py    # 숫자/날짜 포맷팅
+│
 └── dashboard/           # Stage 2: 대시보드
-    ├── __init__.py
     ├── state.py         # Reflex state management
     ├── components.py    # UI 컴포넌트
     └── app.py           # Reflex 앱
