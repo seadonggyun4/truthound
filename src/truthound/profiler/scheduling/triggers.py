@@ -138,6 +138,18 @@ class CronTrigger(BaseTrigger):
 class IntervalTrigger(BaseTrigger):
     """Interval-based trigger for periodic profiling.
 
+    Supports multiple ways to specify the interval:
+
+    1. Using component parameters:
+        trigger = IntervalTrigger(days=1, hours=6)
+
+    2. Using interval_seconds (total seconds):
+        trigger = IntervalTrigger(interval_seconds=3600)  # 1 hour
+
+    3. Using timedelta directly:
+        from datetime import timedelta
+        trigger = IntervalTrigger(interval=timedelta(hours=6))
+
     Example:
         # Every 6 hours
         trigger = IntervalTrigger(hours=6)
@@ -147,12 +159,16 @@ class IntervalTrigger(BaseTrigger):
 
         # Daily
         trigger = IntervalTrigger(days=1)
+
+        # Using total seconds
+        trigger = IntervalTrigger(interval_seconds=21600)  # 6 hours
     """
 
     days: int = 0
     hours: int = 0
     minutes: int = 0
     seconds: int = 0
+    interval_seconds: float | None = None  # Alternative: specify total seconds
 
     def __post_init__(self) -> None:
         """Initialize trigger."""
@@ -160,7 +176,14 @@ class IntervalTrigger(BaseTrigger):
 
     @property
     def interval(self) -> timedelta:
-        """Get interval as timedelta."""
+        """Get interval as timedelta.
+
+        If interval_seconds is specified, it takes precedence.
+        Otherwise, uses days/hours/minutes/seconds components.
+        """
+        if self.interval_seconds is not None:
+            return timedelta(seconds=self.interval_seconds)
+
         return timedelta(
             days=self.days,
             hours=self.hours,
