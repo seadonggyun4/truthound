@@ -17,7 +17,12 @@ from truthound.profiler.generators.pattern_rules import PatternRuleGenerator
 from truthound.profiler.generators.ml_rules import MLRuleGenerator
 from truthound.profiler.generators.suite_generator import (
     ValidationSuiteGenerator,
+    ValidationSuite,
+    ProfileAdapter,
+    ProfileInput,
     generate_suite,
+    save_suite,
+    load_suite,
 )
 
 __all__ = [
@@ -34,5 +39,10 @@ __all__ = [
     "MLRuleGenerator",
     # Suite
     "ValidationSuiteGenerator",
+    "ValidationSuite",
+    "ProfileAdapter",
+    "ProfileInput",
     "generate_suite",
+    "save_suite",
+    "load_suite",
 ]
