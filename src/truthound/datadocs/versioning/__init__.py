@@ -4,7 +4,7 @@ This module provides version control for generated reports,
 enabling tracking, comparison, and rollback of report versions.
 
 Features:
-- Multiple versioning strategies (Incremental, Semantic, Timestamp)
+- Multiple versioning strategies (Incremental, Semantic, Timestamp, GitLike)
 - Version history tracking
 - Report diff and comparison
 - Integration with existing storage backends
@@ -17,6 +17,7 @@ from truthound.datadocs.versioning.version import (
     IncrementalStrategy,
     SemanticStrategy,
     TimestampStrategy,
+    GitLikeStrategy,
 )
 from truthound.datadocs.versioning.storage import (
     VersionStorage,
@@ -43,6 +44,7 @@ __all__ = [
     "IncrementalStrategy",
     "SemanticStrategy",
     "TimestampStrategy",
+    "GitLikeStrategy",
     # Storage
     "VersionStorage",
     "InMemoryVersionStorage",

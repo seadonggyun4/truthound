@@ -7,6 +7,7 @@ Available Renderers:
 - JinjaRenderer: Jinja2-based template rendering
 - SimpleRenderer: Basic HTML rendering without templates
 - CustomRenderer: Support for user-defined templates
+- CallableRenderer: Render using any Python callable
 """
 
 from truthound.datadocs.renderers.base import (
@@ -22,6 +23,7 @@ from truthound.datadocs.renderers.custom import (
     CustomRenderer,
     StringTemplateRenderer,
     FileTemplateRenderer,
+    CallableRenderer,
 )
 
 __all__ = [
@@ -36,4 +38,5 @@ __all__ = [
     "CustomRenderer",
     "StringTemplateRenderer",
     "FileTemplateRenderer",
+    "CallableRenderer",
 ]
