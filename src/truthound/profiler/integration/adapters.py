@@ -2,6 +2,19 @@
 
 This module provides the bridge between profiler-generated rules
 and the validator system, enabling automatic conversion.
+
+Example:
+    from truthound.profiler.integration.adapters import (
+        create_validator_from_rule,
+        ValidatorRegistry,
+    )
+
+    # Create validator from rule
+    validator = create_validator_from_rule(rule)
+
+    # Or use registry directly
+    registry = ValidatorRegistry.get_instance()
+    validator = registry.create_validator(rule)
 """
 
 from __future__ import annotations
@@ -10,6 +23,8 @@ import logging
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, Callable, TYPE_CHECKING
+
+from truthound.profiler.integration.naming import resolve_validator_name
 
 if TYPE_CHECKING:
     from truthound.profiler.generators.base import GeneratedRule
@@ -55,6 +70,11 @@ class DefaultRuleAdapter(RuleToValidatorAdapter):
 
     This adapter attempts to import the validator class by name
     and instantiate it with the rule's parameters.
+
+    Supports multiple naming conventions:
+    - PascalCase: "ColumnTypeValidator" → "column_type"
+    - snake_case: "column_type" → "column_type"
+    - kebab-case: "column-type" → "column_type"
     """
 
     @property
@@ -78,10 +98,13 @@ class DefaultRuleAdapter(RuleToValidatorAdapter):
             params["mostly"] = rule.mostly
 
         try:
+            # Resolve name to canonical form
+            canonical_name = resolve_validator_name(validator_name)
+
             # Try to get validator by name
-            validator_cls = get_validator(validator_name)
+            validator_cls = get_validator(canonical_name)
             if validator_cls is None:
-                raise ValueError(f"Unknown validator: {validator_name}")
+                raise ValueError(f"Unknown validator: {canonical_name}")
             return validator_cls(**params)
         except Exception as e:
             logger.error(f"Failed to create validator from rule {rule.name}: {e}")
@@ -89,7 +112,11 @@ class DefaultRuleAdapter(RuleToValidatorAdapter):
 
 
 class DynamicImportAdapter(RuleToValidatorAdapter):
-    """Adapter that dynamically imports validator classes."""
+    """Adapter that dynamically imports validator classes.
+
+    Attempts to import validators by their class name from common paths.
+    Supports both PascalCase class names and snake_case module names.
+    """
 
     @property
     def priority(self) -> int:
@@ -110,19 +137,27 @@ class DynamicImportAdapter(RuleToValidatorAdapter):
         if rule.mostly is not None:
             params["mostly"] = rule.mostly
 
+        # Resolve to canonical name for module lookup
+        canonical_name = resolve_validator_name(validator_name)
+
         # Try common module paths
         module_paths = [
-            f"truthound.validators.{validator_name.lower()}",
+            f"truthound.validators.{canonical_name}",
             "truthound.validators",
-            f"truthound.validators.builtin.{validator_name.lower()}",
+            f"truthound.validators.builtin.{canonical_name}",
         ]
+
+        # Class name variations to try
+        pascal_name = ''.join(word.capitalize() for word in canonical_name.split('_'))
+        class_names = [validator_name, pascal_name, pascal_name + "Validator"]
 
         for module_path in module_paths:
             try:
                 module = importlib.import_module(module_path)
-                if hasattr(module, validator_name):
-                    validator_cls = getattr(module, validator_name)
-                    return validator_cls(**params)
+                for class_name in class_names:
+                    if hasattr(module, class_name):
+                        validator_cls = getattr(module, class_name)
+                        return validator_cls(**params)
             except ImportError:
                 continue
 
