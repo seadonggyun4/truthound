@@ -6,6 +6,12 @@ cd _temp_orch && git sparse-checkout set docs && cd .. && \
 mkdir -p docs/orchestration && \
 cp -r _temp_orch/docs/* docs/orchestration/ && \
 rm -rf _temp_orch && \
+git clone --depth 1 --filter=blob:none --sparse \
+  https://github.com/seadonggyun4/truthound-dashboard.git _temp_dash && \
+cd _temp_dash && git sparse-checkout set docs && cd .. && \
+mkdir -p docs/dashboard && \
+cp -r _temp_dash/docs/* docs/dashboard/ && \
+rm -rf _temp_dash && \
 pip install mkdocs-material mkdocstrings[python] && \
 python -m mkdocs build
 """

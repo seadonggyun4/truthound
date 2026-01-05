@@ -302,29 +302,11 @@ truthound serve --port 9000
 | Phase | Name | Status | Repository |
 |-------|------|--------|------------|
 | Phase 11 | Workflow Integration | Complete | [truthound-orchestration](https://github.com/seadonggyun4/truthound-orchestration) |
-| Phase 12 | Web UI and REST API | Planned | truthound-dashboard |
+| Phase 12 | Web UI and REST API | Complete | [truthound-dashboard](https://github.com/seadonggyun4/truthound-dashboard) |
 | Phase 13 | Enterprise Identity (SSO, SAML, OIDC) | Planned | truthound-dashboard |
 | Phase 14 | Business Glossary and Data Catalog | Planned | truthound-governance |
 | Phase 15 | Enterprise DataSources (SAP, Mainframe) | Planned | truthound (extras) |
 | Phase 17 | Compliance Certification (SOC 2, ISO 27001) | Planned | truthound (extras) |
-
-### Workflow Integration (Phase 11)
-
-Truthound integrates with major workflow orchestration platforms via the [truthound-orchestration](https://github.com/seadonggyun4/truthound-orchestration) package:
-
-```bash
-pip install truthound-orchestration[airflow]   # Apache Airflow
-pip install truthound-orchestration[dagster]   # Dagster
-pip install truthound-orchestration[prefect]   # Prefect
-```
-
-For dbt integration, add to `packages.yml`:
-
-```yaml
-packages:
-  - package: truthound/truthound
-    version: ">=0.1.0"
-```
 
 ---
 
@@ -384,6 +366,15 @@ hatch run test
 2. Kolmogorov, A. N. (1933). "Sulla determinazione empirica di una legge di distribuzione"
 3. Liu, F. T., Ting, K. M., & Zhou, Z. H. (2008). "Isolation Forest"
 4. Breunig, M. M., et al. (2000). "LOF: Identifying Density-Based Local Outliers"
+
+---
+
+## Related Projects
+
+| Project | Description |
+|---------|-------------|
+| [truthound-orchestration](https://github.com/seadonggyun4/truthound-orchestration) | Workflow integration for Airflow, Dagster, Prefect, and dbt |
+| [truthound-dashboard](https://github.com/seadonggyun4/truthound-dashboard) | Web-based data quality monitoring dashboard |
 
 ---
 
