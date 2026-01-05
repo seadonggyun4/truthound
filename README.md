@@ -232,6 +232,34 @@ await manager.load("my-plugin", verify_signature=True)
 result = await manager.execute_in_sandbox("my-plugin", my_function, arg1, arg2)
 ```
 
+### CLI Extension System
+
+External packages can extend the truthound CLI via entry points:
+
+```toml
+# pyproject.toml
+[project.entry-points."truthound.cli"]
+serve = "my_package.cli:register_commands"
+```
+
+```python
+# my_package/cli.py
+import typer
+
+def register_commands(app: typer.Typer) -> None:
+    @app.command(name="serve")
+    def serve(port: int = 8765) -> None:
+        """Start my service."""
+        typer.echo(f"Starting on port {port}")
+```
+
+After installation, the command is available:
+
+```bash
+pip install my-package
+truthound serve --port 9000
+```
+
 ### Enterprise Infrastructure
 
 | Component | Features |
