@@ -27,6 +27,12 @@ Truthound is a data quality validation framework built on Polars, a Rust-based D
 
 **Documentation**: [https://truthound.netlify.app](https://truthound.netlify.app/)
 
+**Related Projects**
+| Project | Description |
+|---------|-------------|
+| [truthound-orchestration](https://github.com/seadonggyun4/truthound-orchestration) | Workflow integration for Airflow, Dagster, Prefect, and dbt |
+| [truthound-dashboard](https://github.com/seadonggyun4/truthound-dashboard) | Web-based data quality monitoring dashboard |
+
 ---
 
 ## Implementation Status
@@ -365,15 +371,6 @@ hatch run test
 2. Kolmogorov, A. N. (1933). "Sulla determinazione empirica di una legge di distribuzione"
 3. Liu, F. T., Ting, K. M., & Zhou, Z. H. (2008). "Isolation Forest"
 4. Breunig, M. M., et al. (2000). "LOF: Identifying Density-Based Local Outliers"
-
----
-
-## Related Projects
-
-| Project | Description |
-|---------|-------------|
-| [truthound-orchestration](https://github.com/seadonggyun4/truthound-orchestration) | Workflow integration for Airflow, Dagster, Prefect, and dbt |
-| [truthound-dashboard](https://github.com/seadonggyun4/truthound-dashboard) | Web-based data quality monitoring dashboard |
 
 ---
 
