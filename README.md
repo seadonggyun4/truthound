@@ -302,16 +302,14 @@ truthound serve --port 9000
 | Phase 9 | Plugin Architecture |
 | Phase 10 | ML, Lineage, Realtime |
 
-### Phase 11-17: Enterprise Features
+### Phase 11-14: Enterprise Features
 
 | Phase | Name | Status | Repository |
 |-------|------|--------|------------|
 | Phase 11 | Workflow Integration | Complete | [truthound-orchestration](https://github.com/seadonggyun4/truthound-orchestration) |
 | Phase 12 | Web UI and REST API | Complete | [truthound-dashboard](https://github.com/seadonggyun4/truthound-dashboard) |
-| Phase 13 | Enterprise Identity (SSO, SAML, OIDC) | Planned | truthound-dashboard |
-| Phase 14 | Business Glossary and Data Catalog | Planned | truthound-governance |
-| Phase 15 | Enterprise DataSources (SAP, Mainframe) | Planned | truthound (extras) |
-| Phase 17 | Compliance Certification (SOC 2, ISO 27001) | Planned | truthound (extras) |
+| Phase 13 | Business Glossary and Data Catalog | Planned | truthound-governance |
+| Phase 14 | Advanced Notifications | Planned | truthound |
 
 ---
 
