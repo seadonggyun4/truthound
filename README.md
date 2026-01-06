@@ -12,12 +12,6 @@
   <em>Sniffs out bad data</em>
 </p>
 
-<p align="center">
-  <a href="https://pypi.org/project/truthound/"><img src="https://img.shields.io/pypi/v/truthound" alt="PyPI"></a>
-  <a href="https://pypi.org/project/truthound/"><img src="https://img.shields.io/pypi/pyversions/truthound" alt="Python"></a>
-  <a href="https://pepy.tech/project/truthound"><img src="https://pepy.tech/badge/truthound" alt="Downloads"></a>
-</p>
-
 ---
 
 ## Abstract
@@ -25,6 +19,11 @@
 <img width="300" height="300" alt="Truthound_icon" src="https://github.com/user-attachments/assets/90d9e806-8895-45ec-97dc-f8300da4d997" />
 
 Truthound is a data quality validation framework built on Polars, a Rust-based DataFrame library. The framework provides zero-configuration validation through automatic schema inference and supports a wide range of validation scenarios from basic schema checks to statistical drift detection.
+
+[![PyPI version](https://img.shields.io/pypi/v/truthound.svg)](https://pypi.org/project/truthound/)
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-orange.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Downloads](https://img.shields.io/pepy/dt/truthound?color=brightgreen)](https://pepy.tech/project/truthound)
 
 **Documentation**: [https://truthound.netlify.app](https://truthound.netlify.app/)
 
