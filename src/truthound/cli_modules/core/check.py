@@ -104,15 +104,22 @@ def check_cmd(
         try:
             from truthound.html_report import generate_html_report
 
-            html = generate_html_report(report)
-            output.write_text(html)
+            html = generate_html_report(report, title=f"Validation Report: {file.name}")
+            output.write_text(html, encoding="utf-8")
             typer.echo(f"HTML report written to {output}")
-        except ImportError:
-            typer.echo(
-                "Error: HTML reports require jinja2. "
-                "Install with: pip install truthound[reports]",
-                err=True,
-            )
+        except ImportError as e:
+            error_msg = str(e)
+            if "jinja2" in error_msg.lower():
+                typer.echo(
+                    "Error: HTML reports require jinja2. "
+                    "Install with: pip install truthound[reports] or pip install jinja2",
+                    err=True,
+                )
+            else:
+                typer.echo(f"Error generating HTML report: {e}", err=True)
+            raise typer.Exit(1)
+        except Exception as e:
+            typer.echo(f"Error generating HTML report: {e}", err=True)
             raise typer.Exit(1)
 
     else:

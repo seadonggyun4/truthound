@@ -22,7 +22,7 @@ def scan_cmd(
     ],
     format: Annotated[
         str,
-        typer.Option("--format", "-f", help="Output format (console, json)"),
+        typer.Option("--format", "-f", help="Output format (console, json, html)"),
     ] = "console",
     output: Annotated[
         Optional[Path],
@@ -38,6 +38,7 @@ def scan_cmd(
         truthound scan data.csv
         truthound scan data.parquet --format json
         truthound scan data.csv -o pii_report.json
+        truthound scan data.csv --format html -o pii_report.html
     """
     from truthound.api import scan
 
@@ -53,9 +54,37 @@ def scan_cmd(
     if format == "json":
         result = pii_report.to_json()
         if output:
-            output.write_text(result)
+            output.write_text(result, encoding="utf-8")
             typer.echo(f"Report written to {output}")
         else:
             typer.echo(result)
+
+    elif format == "html":
+        if not output:
+            typer.echo("Error: --output is required for HTML format", err=True)
+            raise typer.Exit(1)
+        try:
+            from truthound.html_report import generate_pii_html_report
+
+            html = generate_pii_html_report(
+                pii_report, title=f"PII Scan Report: {file.name}"
+            )
+            output.write_text(html, encoding="utf-8")
+            typer.echo(f"HTML report written to {output}")
+        except ImportError as e:
+            error_msg = str(e)
+            if "jinja2" in error_msg.lower():
+                typer.echo(
+                    "Error: HTML reports require jinja2. "
+                    "Install with: pip install truthound[reports] or pip install jinja2",
+                    err=True,
+                )
+            else:
+                typer.echo(f"Error generating HTML report: {e}", err=True)
+            raise typer.Exit(1)
+        except Exception as e:
+            typer.echo(f"Error generating HTML report: {e}", err=True)
+            raise typer.Exit(1)
+
     else:
         pii_report.print()
