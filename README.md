@@ -308,7 +308,7 @@ truthound serve --port 9000
 |-------|------|--------|------------|
 | Phase 11 | Workflow Integration | Complete | [truthound-orchestration](https://github.com/seadonggyun4/truthound-orchestration) |
 | Phase 12 | Web UI and REST API | Complete | [truthound-dashboard](https://github.com/seadonggyun4/truthound-dashboard) |
-| Phase 13 | Business Glossary and Data Catalog | Planned | [truthound-dashboard](https://github.com/seadonggyun4/truthound-dashboard) |
+| Phase 13 | Business Glossary and Data Catalog | Complete | [truthound-dashboard](https://github.com/seadonggyun4/truthound-dashboard) |
 | Phase 14 | Advanced Notifications | Planned | truthound |
 
 ---
