@@ -113,11 +113,17 @@ class SuiteExecutor(ValidationExecutor):
             except Exception as e:
                 logger.warning(f"Listener error on suite start: {e}")
 
+        # Handle strictness as either enum or string
+        strictness_value = (
+            suite.strictness.value
+            if hasattr(suite.strictness, 'value')
+            else suite.strictness
+        )
         result = ExecutionResult(
             success=True,
             report=None,
             started_at=datetime.now(),
-            metadata={"suite_name": suite.name, "strictness": suite.strictness.value},
+            metadata={"suite_name": suite.name, "strictness": strictness_value},
         )
 
         # Convert data to LazyFrame
@@ -238,7 +244,16 @@ class SuiteExecutor(ValidationExecutor):
             try:
                 # Execute validator
                 validation_result = validator.validate(lf)
-                success = validation_result.is_valid
+                # validate() returns list[ValidationIssue] - empty means valid
+                if hasattr(validation_result, 'is_valid'):
+                    # If it has is_valid attribute (e.g., ValidatorExecutionResult)
+                    success = validation_result.is_valid
+                elif isinstance(validation_result, list):
+                    # Standard return: empty list = valid, non-empty = issues found
+                    success = len(validation_result) == 0
+                else:
+                    # Default: trust the result
+                    success = bool(validation_result)
                 result.executed_rules += 1
 
                 if success:
@@ -297,7 +312,13 @@ class SuiteExecutor(ValidationExecutor):
 
             try:
                 validation_result = validator.validate(lf)
-                success = validation_result.is_valid
+                # validate() returns list[ValidationIssue] - empty means valid
+                if hasattr(validation_result, 'is_valid'):
+                    success = validation_result.is_valid
+                elif isinstance(validation_result, list):
+                    success = len(validation_result) == 0
+                else:
+                    success = bool(validation_result)
             except Exception as e:
                 error = e
 
@@ -457,11 +478,16 @@ class AsyncSuiteExecutor(SuiteExecutor):
         lf: pl.LazyFrame,
     ) -> bool:
         """Run a single validator asynchronously."""
+        def run_validate() -> bool:
+            result = validator.validate(lf)
+            if hasattr(result, 'is_valid'):
+                return result.is_valid
+            elif isinstance(result, list):
+                return len(result) == 0
+            return bool(result)
+
         loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(
-            None,
-            lambda: validator.validate(lf).is_valid,
-        )
+        return await loop.run_in_executor(None, run_validate)
 
 
 class DryRunExecutor(SuiteExecutor):

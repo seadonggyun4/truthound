@@ -77,6 +77,32 @@ class DefaultRuleAdapter(RuleToValidatorAdapter):
     - kebab-case: "column-type" → "column_type"
     """
 
+    # Parameter transformations: maps (validator_name, param_name) -> transformer
+    # Transformer receives (param_value, rule) and returns transformed params dict
+    PARAMETER_TRANSFORMERS: dict[
+        tuple[str, str],
+        Callable[..., dict[str, Any]]
+    ] = {}
+
+    @classmethod
+    def _init_transformers(cls) -> None:
+        """Initialize parameter transformers for known validators."""
+        if cls.PARAMETER_TRANSFORMERS:
+            return  # Already initialized
+
+        # ColumnTypeValidator: expected_type (single) -> expected_types (dict)
+        def transform_column_type(
+            value: Any,
+            rule: "GeneratedRule",
+        ) -> dict[str, Any]:
+            """Transform expected_type to expected_types dict."""
+            if rule.columns:
+                # Build dict mapping each column to the expected type
+                return {"expected_types": {col: value for col in rule.columns}}
+            return {"expected_types": {"__default__": value}}
+
+        cls.PARAMETER_TRANSFORMERS[("column_type", "expected_type")] = transform_column_type
+
     @property
     def priority(self) -> int:
         return 0  # Lowest priority, fallback
@@ -85,6 +111,38 @@ class DefaultRuleAdapter(RuleToValidatorAdapter):
         """Supports any rule with a validator_class."""
         return bool(rule.validator_class)
 
+    def _transform_parameters(
+        self,
+        validator_name: str,
+        params: dict[str, Any],
+        rule: "GeneratedRule",
+    ) -> dict[str, Any]:
+        """Transform parameters based on validator-specific rules.
+
+        Args:
+            validator_name: Canonical validator name (e.g., "column_type")
+            params: Original parameters from the rule
+            rule: The original rule (for access to columns, etc.)
+
+        Returns:
+            Transformed parameters dict
+        """
+        self._init_transformers()
+
+        transformed = {}
+        processed_keys: set[str] = set()
+
+        for param_key, param_value in params.items():
+            transformer_key = (validator_name, param_key)
+            if transformer_key in self.PARAMETER_TRANSFORMERS:
+                transformer = self.PARAMETER_TRANSFORMERS[transformer_key]
+                transformed.update(transformer(param_value, rule))
+                processed_keys.add(param_key)
+            else:
+                transformed[param_key] = param_value
+
+        return transformed
+
     def convert(self, rule: "GeneratedRule") -> "Validator":
         """Convert by importing and instantiating the validator class."""
         from truthound.validators import get_validator
@@ -92,15 +150,21 @@ class DefaultRuleAdapter(RuleToValidatorAdapter):
         validator_name = rule.validator_class
         params = dict(rule.parameters)
 
-        if rule.columns:
-            params["columns"] = list(rule.columns)
+        # Resolve name to canonical form first (needed for parameter transformation)
+        canonical_name = resolve_validator_name(validator_name)
+
+        # Transform parameters based on validator-specific rules
+        params = self._transform_parameters(canonical_name, params, rule)
+
+        # Add columns only if not already consumed by transformer
+        if rule.columns and "columns" not in params:
+            # Check if validator uses expected_types dict (columns already embedded)
+            if "expected_types" not in params:
+                params["columns"] = list(rule.columns)
         if rule.mostly is not None:
             params["mostly"] = rule.mostly
 
         try:
-            # Resolve name to canonical form
-            canonical_name = resolve_validator_name(validator_name)
-
             # Try to get validator by name
             validator_cls = get_validator(canonical_name)
             if validator_cls is None:
@@ -132,13 +196,27 @@ class DynamicImportAdapter(RuleToValidatorAdapter):
         validator_name = rule.validator_class
         params = dict(rule.parameters)
 
-        if rule.columns:
-            params["columns"] = list(rule.columns)
-        if rule.mostly is not None:
-            params["mostly"] = rule.mostly
-
         # Resolve to canonical name for module lookup
         canonical_name = resolve_validator_name(validator_name)
+
+        # Apply parameter transformations (reuse DefaultRuleAdapter's transformers)
+        DefaultRuleAdapter._init_transformers()
+        transformed_params: dict[str, Any] = {}
+        for param_key, param_value in params.items():
+            transformer_key = (canonical_name, param_key)
+            if transformer_key in DefaultRuleAdapter.PARAMETER_TRANSFORMERS:
+                transformer = DefaultRuleAdapter.PARAMETER_TRANSFORMERS[transformer_key]
+                transformed_params.update(transformer(param_value, rule))
+            else:
+                transformed_params[param_key] = param_value
+        params = transformed_params
+
+        # Add columns only if not already consumed by transformer
+        if rule.columns and "columns" not in params:
+            if "expected_types" not in params:
+                params["columns"] = list(rule.columns)
+        if rule.mostly is not None:
+            params["mostly"] = rule.mostly
 
         # Try common module paths
         module_paths = [

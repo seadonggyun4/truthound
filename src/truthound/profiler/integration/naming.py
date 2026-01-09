@@ -56,6 +56,18 @@ def resolve_validator_name(name: str) -> str:
     result = result.replace("-", "_")
     result = result.replace(".", "_")
 
+    # Handle special acronyms that should stay together
+    # Use lowercase placeholder to avoid further case conversion issues
+    acronyms = [
+        "IQR", "SQL", "CSV", "JSON", "XML", "HTML", "URL", "UUID",
+        "API", "HTTP", "HTTPS", "KS", "PSI", "MAD", "LOF", "PCA", "SVM",
+    ]
+
+    # Preserve acronyms by replacing them with lowercase placeholders
+    for acronym in acronyms:
+        # Replace with lowercase version surrounded by underscores
+        result = result.replace(acronym, f"_{acronym.lower()}_")
+
     # Convert PascalCase to snake_case (only if mixed case)
     # Skip if already all uppercase or all lowercase
     if not result.isupper() and not result.islower():
@@ -71,5 +83,8 @@ def resolve_validator_name(name: str) -> str:
     # Clean up multiple underscores
     while "__" in result:
         result = result.replace("__", "_")
+
+    # Remove leading/trailing underscores
+    result = result.strip("_")
 
     return result
