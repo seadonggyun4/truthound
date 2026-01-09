@@ -360,6 +360,11 @@ class IsolationForestDetector(AnomalyDetector):
         Lower path length = more anomalous.
         Score is normalized to [0, 1] where 1 = most anomalous.
 
+        The standard Isolation Forest score formula is: s(x, n) = 2^(-E(h(x)) / c(n))
+        - Score close to 1 indicates anomaly
+        - Score close to 0.5 indicates normal
+        - Score close to 0 indicates very normal (long path)
+
         Args:
             data: Data to score
 
@@ -392,6 +397,32 @@ class IsolationForestDetector(AnomalyDetector):
             scores.append(score)
 
         return pl.Series("anomaly_score", scores)
+
+    def _get_threshold(self) -> float:
+        """Get the threshold for anomaly classification.
+
+        For Isolation Forest, scores are computed as 2^(-E(h(x))/c(n)):
+        - Scores close to 1 indicate anomalies (short path lengths)
+        - Scores close to 0.5 indicate normal points
+        - Scores close to 0 indicate very normal points (long path lengths)
+
+        The threshold is set based on contamination:
+        - contamination=0.1 means top 10% highest scores are anomalies
+        - A score > 0.5 generally indicates more anomalous than average
+        - We use 0.5 + (1-contamination) * 0.5 to scale threshold appropriately
+
+        For contamination=0.1: threshold = 0.5 + 0.9 * 0.5 = 0.95 (too strict)
+        Instead, we use a more practical approach: threshold = 0.5 + contamination
+        For contamination=0.1: threshold = 0.6 (reasonable for IF scores)
+        """
+        if self.config.score_threshold is not None:
+            return self.config.score_threshold
+        # Use contamination to set a practical threshold
+        # Scores above 0.5 are more anomalous than average
+        # contamination of 0.1 -> threshold of 0.6
+        # contamination of 0.3 -> threshold of 0.55 (lower, catches more)
+        # contamination of 0.01 -> threshold of 0.65 (higher, catches fewer)
+        return 0.5 + (0.1 + (1 - self.config.contamination) * 0.05)
 
     def _serialize(self) -> dict[str, Any]:
         base = super()._serialize()

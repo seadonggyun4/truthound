@@ -174,12 +174,16 @@ class DriftConfig(MLConfig):
         detection_window: Size of detection window
         threshold: Drift detection threshold
         min_samples_per_window: Minimum samples per window
+        n_bins: Number of bins for histogram-based methods (e.g., PSI)
+        detect_gradual: Whether to detect gradual drift
+        detect_sudden: Whether to detect sudden drift
     """
 
     reference_window: int = 1000
     detection_window: int = 100
     threshold: float = 0.05
     min_samples_per_window: int = 30
+    n_bins: int = 10
     detect_gradual: bool = True
     detect_sudden: bool = True
 

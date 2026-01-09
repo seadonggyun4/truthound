@@ -253,22 +253,54 @@ class EnsembleAnomalyDetector(AnomalyDetector):
             return min(scores)
 
         elif strategy == EnsembleStrategy.VOTE:
-            threshold = self.config.contamination
-            votes = sum(1 for s in scores if s >= threshold)
-            vote_ratio = votes / len(scores)
+            # For VOTE strategy, we use per-detector thresholds
+            # Each detector already normalized their scores, so we count
+            # how many detectors consider this point anomalous
+            # Note: This is calculated at predict() level using per-detector thresholds
+            # Here we just return the average score for weighting purposes
+            return sum(scores) / len(scores)
+
+        elif strategy == EnsembleStrategy.UNANIMOUS:
+            # For UNANIMOUS, all detectors must agree
+            # The actual voting logic is in predict()
+            return sum(scores) / len(scores)
+
+        else:
+            return sum(scores) / len(scores)
+
+    def _combine_scores_with_votes(
+        self,
+        scores: list[float],
+        detector_anomaly_flags: list[bool],
+    ) -> float:
+        """Combine scores with voting information.
+
+        Args:
+            scores: Per-detector scores for this data point
+            detector_anomaly_flags: Whether each detector flagged this as anomaly
+
+        Returns:
+            Combined score
+        """
+        strategy = self.config.strategy
+
+        if strategy == EnsembleStrategy.VOTE:
+            vote_ratio = sum(detector_anomaly_flags) / len(detector_anomaly_flags)
             if vote_ratio >= self.config.vote_threshold:
-                return sum(scores) / len(scores)  # Return average of positive votes
+                # Return weighted average of scores from agreeing detectors
+                agreeing_scores = [
+                    s for s, flag in zip(scores, detector_anomaly_flags) if flag
+                ]
+                return sum(agreeing_scores) / len(agreeing_scores) if agreeing_scores else 0.0
             return 0.0
 
         elif strategy == EnsembleStrategy.UNANIMOUS:
-            threshold = self.config.contamination
-            all_agree = all(s >= threshold for s in scores)
-            if all_agree:
+            if all(detector_anomaly_flags):
                 return sum(scores) / len(scores)
             return 0.0
 
         else:
-            return sum(scores) / len(scores)
+            return self._combine_scores(scores)
 
     def predict(self, data: pl.LazyFrame) -> AnomalyResult:
         """Detect anomalies using ensemble.
@@ -290,25 +322,47 @@ class EnsembleAnomalyDetector(AnomalyDetector):
                 model_name=self.info.name,
             )
 
-        scores = self.score(data)
-        threshold = self._get_threshold()
-
-        # Collect per-detector anomaly classifications
-        per_detector: list[list[bool]] = []
+        # Collect per-detector scores and anomaly classifications
+        per_detector_scores: list[list[float]] = []
+        per_detector_flags: list[list[bool]] = []
         for detector in self._detectors:
             detector_scores = detector.score(data)
             detector_threshold = detector._get_threshold()
-            per_detector.append([
-                s >= detector_threshold for s in detector_scores.to_list()
+            score_list = detector_scores.to_list()
+            per_detector_scores.append(score_list)
+            per_detector_flags.append([
+                s >= detector_threshold for s in score_list
             ])
 
+        # Combine scores considering the strategy
+        n_rows = len(per_detector_scores[0]) if per_detector_scores else 0
+        combined_scores = []
+        for i in range(n_rows):
+            row_scores = [scores[i] for scores in per_detector_scores]
+            row_flags = [flags[i] for flags in per_detector_flags]
+
+            # For VOTE and UNANIMOUS strategies, use voting-aware combination
+            if self.config.strategy in (EnsembleStrategy.VOTE, EnsembleStrategy.UNANIMOUS):
+                combined = self._combine_scores_with_votes(row_scores, row_flags)
+            else:
+                combined = self._combine_scores(row_scores)
+            combined_scores.append(combined)
+
+        # Determine threshold for final classification
+        threshold = self._get_threshold()
+
         anomaly_scores = []
-        for idx, score in enumerate(scores.to_list()):
-            is_anomaly = score >= threshold
+        for idx, score in enumerate(combined_scores):
+            # For VOTE/UNANIMOUS, the combined score will be 0.0 if criteria not met
+            # So we check if score > 0 (meaning it passed the voting criteria)
+            if self.config.strategy in (EnsembleStrategy.VOTE, EnsembleStrategy.UNANIMOUS):
+                is_anomaly = score > 0
+            else:
+                is_anomaly = score >= threshold
 
             # Count how many detectors flagged this as anomaly
             detector_votes = sum(
-                1 for d_results in per_detector if d_results[idx]
+                1 for d_flags in per_detector_flags if d_flags[idx]
             )
 
             # Determine anomaly type based on consensus
