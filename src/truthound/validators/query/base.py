@@ -115,7 +115,7 @@ class QueryValidator(Validator):
         # Validate SQL query if provided
         if query and validate_sql:
             try:
-                validate_sql_query(query, self.allowed_tables)
+                validate_sql_query(query, allowed_tables=self.allowed_tables)
             except SQLValidationError as e:
                 raise ValueError(f"SQL query validation failed: {e}")
 
