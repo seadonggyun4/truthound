@@ -125,8 +125,21 @@ class PluginConfig:
     settings: dict[str, Any] = field(default_factory=dict)
     auto_load: bool = True
 
-    def merge(self, other: "PluginConfig") -> "PluginConfig":
-        """Merge with another config, other takes precedence."""
+    def merge(self, other: "PluginConfig | dict[str, Any]") -> "PluginConfig":
+        """Merge with another config, other takes precedence.
+
+        Args:
+            other: Either a PluginConfig instance or a dict with config fields.
+        """
+        if isinstance(other, dict):
+            other_settings = other.get("settings", {})
+            merged_settings = {**self.settings, **other_settings}
+            return PluginConfig(
+                enabled=other.get("enabled", self.enabled),
+                priority=other.get("priority", self.priority),
+                settings=merged_settings,
+                auto_load=other.get("auto_load", self.auto_load),
+            )
         merged_settings = {**self.settings, **other.settings}
         return PluginConfig(
             enabled=other.enabled,
