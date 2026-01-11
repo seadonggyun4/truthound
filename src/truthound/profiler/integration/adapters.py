@@ -145,6 +145,7 @@ class DefaultRuleAdapter(RuleToValidatorAdapter):
 
     def convert(self, rule: "GeneratedRule") -> "Validator":
         """Convert by importing and instantiating the validator class."""
+        import inspect
         from truthound.validators import get_validator
 
         validator_name = rule.validator_class
@@ -156,19 +157,35 @@ class DefaultRuleAdapter(RuleToValidatorAdapter):
         # Transform parameters based on validator-specific rules
         params = self._transform_parameters(canonical_name, params, rule)
 
+        # Get validator class first to check its signature
+        validator_cls = get_validator(canonical_name)
+        if validator_cls is None:
+            raise ValueError(f"Unknown validator: {canonical_name}")
+
+        # Check if validator expects 'column' (singular) vs 'columns' (plural)
+        try:
+            sig = inspect.signature(validator_cls.__init__)
+            validator_params = list(sig.parameters.keys())
+            expects_column = "column" in validator_params
+            expects_columns = "columns" in validator_params
+        except (ValueError, TypeError):
+            expects_column = False
+            expects_columns = False
+
         # Add columns only if not already consumed by transformer
-        if rule.columns and "columns" not in params:
+        if rule.columns and "columns" not in params and "column" not in params:
             # Check if validator uses expected_types dict (columns already embedded)
             if "expected_types" not in params:
-                params["columns"] = list(rule.columns)
+                if expects_column and not expects_columns and len(rule.columns) == 1:
+                    # Single-column validator: use 'column' parameter
+                    params["column"] = rule.columns[0]
+                else:
+                    # Multi-column validator or kwargs-based: use 'columns'
+                    params["columns"] = list(rule.columns)
         if rule.mostly is not None:
             params["mostly"] = rule.mostly
 
         try:
-            # Try to get validator by name
-            validator_cls = get_validator(canonical_name)
-            if validator_cls is None:
-                raise ValueError(f"Unknown validator: {canonical_name}")
             return validator_cls(**params)
         except Exception as e:
             logger.error(f"Failed to create validator from rule {rule.name}: {e}")
@@ -192,6 +209,7 @@ class DynamicImportAdapter(RuleToValidatorAdapter):
     def convert(self, rule: "GeneratedRule") -> "Validator":
         """Convert by dynamically importing the validator class."""
         import importlib
+        import inspect
 
         validator_name = rule.validator_class
         params = dict(rule.parameters)
@@ -211,13 +229,6 @@ class DynamicImportAdapter(RuleToValidatorAdapter):
                 transformed_params[param_key] = param_value
         params = transformed_params
 
-        # Add columns only if not already consumed by transformer
-        if rule.columns and "columns" not in params:
-            if "expected_types" not in params:
-                params["columns"] = list(rule.columns)
-        if rule.mostly is not None:
-            params["mostly"] = rule.mostly
-
         # Try common module paths
         module_paths = [
             f"truthound.validators.{canonical_name}",
@@ -235,7 +246,31 @@ class DynamicImportAdapter(RuleToValidatorAdapter):
                 for class_name in class_names:
                     if hasattr(module, class_name):
                         validator_cls = getattr(module, class_name)
-                        return validator_cls(**params)
+
+                        # Check if validator expects 'column' (singular) vs 'columns' (plural)
+                        try:
+                            sig = inspect.signature(validator_cls.__init__)
+                            validator_params = list(sig.parameters.keys())
+                            expects_column = "column" in validator_params
+                            expects_columns = "columns" in validator_params
+                        except (ValueError, TypeError):
+                            expects_column = False
+                            expects_columns = False
+
+                        # Add columns only if not already consumed by transformer
+                        final_params = dict(params)
+                        if rule.columns and "columns" not in final_params and "column" not in final_params:
+                            if "expected_types" not in final_params:
+                                if expects_column and not expects_columns and len(rule.columns) == 1:
+                                    # Single-column validator: use 'column' parameter
+                                    final_params["column"] = rule.columns[0]
+                                else:
+                                    # Multi-column validator or kwargs-based: use 'columns'
+                                    final_params["columns"] = list(rule.columns)
+                        if rule.mostly is not None:
+                            final_params["mostly"] = rule.mostly
+
+                        return validator_cls(**final_params)
             except ImportError:
                 continue
 
