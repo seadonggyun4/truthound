@@ -278,11 +278,16 @@ def check(
     return report
 
 
-def scan(data: Any) -> PIIReport:
+def scan(
+    data: Any = None,
+    source: "BaseDataSource | None" = None,
+) -> PIIReport:
     """Scan data for personally identifiable information (PII).
 
     Args:
         data: Input data (file path, DataFrame, dict, etc.)
+        source: Optional DataSource instance. If provided, data is ignored.
+                This enables scanning on SQL databases, Spark, etc.
 
     Returns:
         PIIReport containing all PII findings.
@@ -291,9 +296,27 @@ def scan(data: Any) -> PIIReport:
         >>> import truthound as th
         >>> pii_report = th.scan("data.csv")
         >>> print(pii_report)
+
+        >>> # Using DataSource for SQL database
+        >>> from truthound.datasources import get_sql_datasource
+        >>> source = get_sql_datasource("mydb.db", table="users")
+        >>> pii_report = th.scan(source=source)
     """
-    lf = to_lazyframe(data)
-    source = str(data) if isinstance(data, str) else type(data).__name__
+    # Handle DataSource if provided
+    if source is not None:
+        from truthound.datasources.base import BaseDataSource
+
+        if not isinstance(source, BaseDataSource):
+            raise ValueError(
+                f"source must be a DataSource instance, got {type(source).__name__}"
+            )
+        lf = source.to_polars_lazyframe()
+        source_name = source.name
+    else:
+        if data is None:
+            raise ValueError("Either 'data' or 'source' must be provided")
+        lf = to_lazyframe(data)
+        source_name = str(data) if isinstance(data, str) else type(data).__name__
 
     df = lf.collect()
     row_count = len(df)
@@ -302,13 +325,14 @@ def scan(data: Any) -> PIIReport:
 
     return PIIReport(
         findings=findings,
-        source=source,
+        source=source_name,
         row_count=row_count,
     )
 
 
 def mask(
-    data: Any,
+    data: Any = None,
+    source: "BaseDataSource | None" = None,
     columns: list[str] | None = None,
     strategy: str = "redact",
 ) -> pl.DataFrame:
@@ -316,6 +340,8 @@ def mask(
 
     Args:
         data: Input data (file path, DataFrame, dict, etc.)
+        source: Optional DataSource instance. If provided, data is ignored.
+                This enables masking on SQL databases, Spark, etc.
         columns: Optional list of columns to mask.
                 If None, auto-detects PII columns.
         strategy: Masking strategy - "redact", "hash", or "fake".
@@ -332,16 +358,39 @@ def mask(
 
         >>> # Use hash strategy
         >>> masked_df = th.mask(df, strategy="hash")
+
+        >>> # Using DataSource for SQL database
+        >>> from truthound.datasources import get_sql_datasource
+        >>> source = get_sql_datasource("mydb.db", table="users")
+        >>> masked_df = th.mask(source=source)
     """
-    lf = to_lazyframe(data)
+    # Handle DataSource if provided
+    if source is not None:
+        from truthound.datasources.base import BaseDataSource
+
+        if not isinstance(source, BaseDataSource):
+            raise ValueError(
+                f"source must be a DataSource instance, got {type(source).__name__}"
+            )
+        lf = source.to_polars_lazyframe()
+    else:
+        if data is None:
+            raise ValueError("Either 'data' or 'source' must be provided")
+        lf = to_lazyframe(data)
+
     return mask_data(lf, columns=columns, strategy=strategy)
 
 
-def profile(data: Any) -> ProfileReport:
+def profile(
+    data: Any = None,
+    source: "BaseDataSource | None" = None,
+) -> ProfileReport:
     """Generate a statistical profile of the dataset.
 
     Args:
         data: Input data (file path, DataFrame, dict, etc.)
+        source: Optional DataSource instance. If provided, data is ignored.
+                This enables profiling on SQL databases, Spark, etc.
 
     Returns:
         ProfileReport containing statistical summary.
@@ -350,11 +399,29 @@ def profile(data: Any) -> ProfileReport:
         >>> import truthound as th
         >>> profile = th.profile("data.csv")
         >>> print(profile)
-    """
-    lf = to_lazyframe(data)
-    source = str(data) if isinstance(data, str) else type(data).__name__
 
-    profile_dict = profile_data(lf, source=source)
+        >>> # Using DataSource for SQL database
+        >>> from truthound.datasources import get_sql_datasource
+        >>> source = get_sql_datasource("mydb.db", table="users")
+        >>> profile = th.profile(source=source)
+    """
+    # Handle DataSource if provided
+    if source is not None:
+        from truthound.datasources.base import BaseDataSource
+
+        if not isinstance(source, BaseDataSource):
+            raise ValueError(
+                f"source must be a DataSource instance, got {type(source).__name__}"
+            )
+        lf = source.to_polars_lazyframe()
+        source_name = source.name
+    else:
+        if data is None:
+            raise ValueError("Either 'data' or 'source' must be provided")
+        lf = to_lazyframe(data)
+        source_name = str(data) if isinstance(data, str) else type(data).__name__
+
+    profile_dict = profile_data(lf, source=source_name)
 
     return ProfileReport(
         source=profile_dict["source"],

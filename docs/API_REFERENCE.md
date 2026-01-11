@@ -27,7 +27,8 @@ Validates data against rules and returns a validation report.
 
 ```python
 def check(
-    data: DataInput,
+    data: DataInput = None,
+    source: BaseDataSource | None = None,
     *,
     schema: Schema | str | Path | None = None,
     validators: list[str | Validator] | None = None,
@@ -35,20 +36,26 @@ def check(
     min_severity: str | Severity = "low",
     strict: bool = False,
     auto_schema: bool = False,
-    rules: dict | None = None,
+    parallel: bool = False,
+    max_workers: int | None = None,
+    pushdown: bool | None = None,
 ) -> ValidationReport:
     """
     Validate data against rules.
 
     Args:
         data: Input data (DataFrame, file path, dict, etc.)
+        source: DataSource instance for SQL databases, Spark, etc.
+                If provided, data argument is ignored.
         schema: Schema to validate against
         validators: Specific validators to run
         columns: Columns to validate (None = all)
         min_severity: Minimum severity to report
         strict: Raise exception on failures
         auto_schema: Enable automatic schema caching
-        rules: Rule dictionary
+        parallel: Use DAG-based parallel execution
+        max_workers: Max threads for parallel execution
+        pushdown: Enable query pushdown for SQL sources
 
     Returns:
         ValidationReport with issues and statistics
@@ -61,6 +68,7 @@ def check(
 - `pandas.DataFrame`
 - `str` or `Path` (CSV, Parquet, JSON files)
 - `dict` (column name to values mapping)
+- `BaseDataSource` (via `source` parameter)
 
 ### th.learn()
 
@@ -144,7 +152,8 @@ Scans data for PII.
 
 ```python
 def scan(
-    data: DataInput,
+    data: DataInput = None,
+    source: BaseDataSource | None = None,
     *,
     columns: list[str] | None = None,
     regulations: list[str] | None = None,
@@ -155,6 +164,8 @@ def scan(
 
     Args:
         data: Input data
+        source: DataSource instance for SQL databases, Spark, etc.
+                If provided, data argument is ignored.
         columns: Columns to scan (None = all)
         regulations: Regulations to check ("gdpr", "ccpa", "lgpd")
         min_confidence: Minimum confidence threshold
@@ -164,13 +175,22 @@ def scan(
     """
 ```
 
+**Example with DataSource**:
+```python
+from truthound.datasources import get_sql_datasource
+
+source = get_sql_datasource("mydb.db", table="users")
+pii_report = th.scan(source=source)
+```
+
 ### th.mask()
 
 Masks sensitive data.
 
 ```python
 def mask(
-    data: pl.DataFrame,
+    data: pl.DataFrame = None,
+    source: BaseDataSource | None = None,
     *,
     strategy: str = "redact",
     columns: list[str] | None = None,
@@ -182,6 +202,8 @@ def mask(
 
     Args:
         data: Input DataFrame
+        source: DataSource instance for SQL databases, Spark, etc.
+                If provided, data argument is ignored.
         strategy: Default masking strategy ("redact", "hash", "fake")
         columns: Columns to mask (None = auto-detect)
         strategies: Per-column strategy mapping
@@ -192,13 +214,22 @@ def mask(
     """
 ```
 
+**Example with DataSource**:
+```python
+from truthound.datasources import get_sql_datasource
+
+source = get_sql_datasource("mydb.db", table="users")
+masked_df = th.mask(source=source, strategy="hash")
+```
+
 ### th.profile()
 
 Profiles data for statistical characteristics.
 
 ```python
 def profile(
-    data: DataInput,
+    data: DataInput = None,
+    source: BaseDataSource | None = None,
     *,
     sample_size: int | None = None,
 ) -> DataProfile:
@@ -207,11 +238,22 @@ def profile(
 
     Args:
         data: Input data
+        source: DataSource instance for SQL databases, Spark, etc.
+                If provided, data argument is ignored.
         sample_size: Sample size for large datasets
 
     Returns:
         DataProfile with column statistics
     """
+```
+
+**Example with DataSource**:
+```python
+from truthound.datasources import get_sql_datasource
+
+source = get_sql_datasource("mydb.db", table="users")
+profile = th.profile(source=source)
+print(f"Rows: {profile.row_count}, Columns: {len(profile.columns)}")
 ```
 
 ---

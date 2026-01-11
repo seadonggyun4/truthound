@@ -11,6 +11,32 @@ Truthound supports multiple data backends through a unified abstraction layer:
 
 This architecture enables validators to work seamlessly across Polars, Pandas, SQL databases, and Spark.
 
+## Quick Start with DataSource
+
+All core API functions (`check`, `scan`, `mask`, `profile`) support the `source` parameter for DataSource integration:
+
+```python
+import truthound as th
+from truthound.datasources import get_sql_datasource
+
+# Create a DataSource
+source = get_sql_datasource("mydb.db", table="users")
+
+# Use with all core API functions
+report = th.check(source=source)           # Data validation
+pii_report = th.scan(source=source)        # PII detection
+profile = th.profile(source=source)        # Statistical profiling
+masked_df = th.mask(source=source)         # Data masking
+
+# You can also combine with other options
+report = th.check(
+    source=source,
+    validators=["null", "duplicate"],
+    min_severity="medium",
+    parallel=True,
+)
+```
+
 ## Supported Data Sources
 
 Truthound supports a comprehensive range of data backends:
