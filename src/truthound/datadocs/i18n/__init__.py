@@ -23,8 +23,9 @@ Example:
     # Format numbers
     formatted = format_number(1234567.89, "ko")  # "1,234,567.89"
 
-    # Pluralize
-    msg = pluralize(5, "file", "files", "ko")  # "5 files"
+    # Pluralize (selects correct plural form, does NOT translate)
+    msg = pluralize(1, "file", "files", "en")  # "1 file" (ONE form)
+    msg = pluralize(5, "file", "files", "en")  # "5 files" (OTHER form)
 """
 
 from truthound.datadocs.i18n.catalog import (
