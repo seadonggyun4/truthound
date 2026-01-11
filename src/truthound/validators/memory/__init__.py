@@ -62,6 +62,10 @@ from truthound.validators.memory.sgd_online import (
     SGDOnlineMixin,
     OnlineLearnerConfig,
     IncrementalModel,
+    SGDOneClassSVM,
+    OnlineScaler,
+    OnlineStatistics,
+    IncrementalMahalanobis,
 )
 from truthound.validators.memory.streaming_ecdf import (
     StreamingECDFMixin,
@@ -86,6 +90,10 @@ __all__ = [
     "SGDOnlineMixin",
     "OnlineLearnerConfig",
     "IncrementalModel",
+    "SGDOneClassSVM",
+    "OnlineScaler",
+    "OnlineStatistics",
+    "IncrementalMahalanobis",
     # Streaming ECDF
     "StreamingECDFMixin",
     "StreamingECDF",
