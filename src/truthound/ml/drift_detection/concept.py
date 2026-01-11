@@ -329,6 +329,10 @@ class ConceptDriftDetector(MLDriftDetector):
         self, ref: dict[str, Any], curr: dict[str, Any]
     ) -> float:
         """Compute target distribution drift score."""
+        # Handle case where ref is empty (fit() not called)
+        if not ref or "type" not in ref:
+            return 0.0
+
         if ref["type"] != curr.get("type"):
             return 1.0  # Type changed
 
