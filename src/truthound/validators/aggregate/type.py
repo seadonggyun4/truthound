@@ -27,34 +27,41 @@ class TypeValidator(Validator, StringValidatorMixin):
         if not columns:
             return issues
 
-        df = lf.collect()
-        total_rows = len(df)
+        # Build aggregation expressions for all columns at once
+        agg_exprs = []
+        for col in columns:
+            # Strip whitespace and filter non-empty strings
+            stripped = pl.col(col).str.strip_chars()
+            non_empty = stripped.is_not_null() & (stripped != "")
 
-        if total_rows == 0:
+            # Check if value can be parsed as numeric using regex pattern
+            # Matches: optional sign, digits, optional decimal, optional exponent
+            numeric_pattern = r"^[+-]?(\d+\.?\d*|\d*\.?\d+)([eE][+-]?\d+)?$"
+            is_numeric = stripped.str.contains(numeric_pattern)
+
+            # Count numeric values (non-empty strings that match numeric pattern)
+            agg_exprs.append(
+                (non_empty & is_numeric).sum().alias(f"{col}__numeric")
+            )
+            # Count non-numeric values (non-empty strings that don't match)
+            agg_exprs.append(
+                (non_empty & ~is_numeric).sum().alias(f"{col}__non_numeric")
+            )
+
+        if not agg_exprs:
             return issues
 
+        # Single collect for all columns
+        result = lf.select(agg_exprs).collect()
+
+        if result.height == 0:
+            return issues
+
+        row = result.row(0, named=True)
+
         for col in columns:
-            col_data = df.get_column(col).drop_nulls()
-
-            if len(col_data) == 0:
-                continue
-
-            numeric_count = 0
-            string_count = 0
-
-            for val in col_data.to_list():
-                if not isinstance(val, str):
-                    continue
-
-                val_stripped = val.strip()
-                if not val_stripped:
-                    continue
-
-                try:
-                    float(val_stripped)
-                    numeric_count += 1
-                except ValueError:
-                    string_count += 1
+            numeric_count = row.get(f"{col}__numeric", 0) or 0
+            string_count = row.get(f"{col}__non_numeric", 0) or 0
 
             total_non_null = numeric_count + string_count
             if total_non_null == 0:

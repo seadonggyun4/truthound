@@ -1,7 +1,9 @@
 """Report generation for validation results."""
 
+import heapq
 import json
 from dataclasses import dataclass, field
+from typing import Iterator
 
 from rich.console import Console
 from rich.table import Table
@@ -9,15 +11,149 @@ from rich.table import Table
 from truthound.types import Severity
 from truthound.validators.base import ValidationIssue
 
+# Severity ordering for heap (lower value = higher priority)
+_SEVERITY_ORDER: dict[Severity, int] = {
+    Severity.CRITICAL: 0,
+    Severity.HIGH: 1,
+    Severity.MEDIUM: 2,
+    Severity.LOW: 3,
+}
+
 
 @dataclass
 class Report:
-    """Validation report containing all issues found."""
+    """Validation report containing all issues found.
+
+    Issues are maintained in a heap structure for efficient severity-based
+    operations. The heap enables O(1) access to the most severe issue and
+    O(k log n) retrieval of top-k issues by severity.
+    """
 
     issues: list[ValidationIssue] = field(default_factory=list)
     source: str = "unknown"
     row_count: int = 0
     column_count: int = 0
+    _issues_heap: list[tuple[int, int, ValidationIssue]] = field(
+        default_factory=list, repr=False, compare=False
+    )
+    _heap_counter: int = field(default=0, repr=False, compare=False)
+    _sorted_cache: list[ValidationIssue] | None = field(
+        default=None, repr=False, compare=False
+    )
+
+    def __post_init__(self) -> None:
+        """Initialize heap from existing issues if any."""
+        if self.issues:
+            self._rebuild_heap()
+
+    def _rebuild_heap(self) -> None:
+        """Rebuild heap from current issues list."""
+        self._issues_heap = [
+            (_SEVERITY_ORDER[issue.severity], i, issue)
+            for i, issue in enumerate(self.issues)
+        ]
+        heapq.heapify(self._issues_heap)  # O(n) heapify instead of n*log(n) pushes
+        self._heap_counter = len(self.issues)
+        self._sorted_cache = None
+
+    def _invalidate_cache(self) -> None:
+        """Invalidate sorted cache when issues change."""
+        self._sorted_cache = None
+
+    def add_issue(self, issue: ValidationIssue) -> None:
+        """Add an issue maintaining heap property.
+
+        Args:
+            issue: The validation issue to add.
+        """
+        self.issues.append(issue)
+        heapq.heappush(
+            self._issues_heap,
+            (_SEVERITY_ORDER[issue.severity], self._heap_counter, issue),
+        )
+        self._heap_counter += 1
+        self._invalidate_cache()
+
+    def add_issues(self, issues: list[ValidationIssue]) -> None:
+        """Add multiple issues efficiently.
+
+        Args:
+            issues: List of validation issues to add.
+        """
+        for issue in issues:
+            self.issues.append(issue)
+            self._issues_heap.append(
+                (_SEVERITY_ORDER[issue.severity], self._heap_counter, issue)
+            )
+            self._heap_counter += 1
+        heapq.heapify(self._issues_heap)  # Re-heapify once after all additions
+        self._invalidate_cache()
+
+    def get_sorted_issues(self) -> list[ValidationIssue]:
+        """Get issues sorted by severity (highest first).
+
+        Uses cached result if available for repeated access.
+
+        Returns:
+            List of issues sorted by severity.
+        """
+        if self._sorted_cache is not None:
+            return self._sorted_cache
+
+        if not self._issues_heap and self.issues:
+            self._rebuild_heap()
+
+        # Use Timsort for full sort (faster than heap extraction for full list)
+        self._sorted_cache = sorted(
+            self.issues, key=lambda x: _SEVERITY_ORDER[x.severity]
+        )
+        return self._sorted_cache
+
+    def get_top_issues(self, k: int) -> list[ValidationIssue]:
+        """Get top k issues by severity efficiently.
+
+        Uses heap for O(k log n) performance, better than full sort for small k.
+
+        Args:
+            k: Number of top issues to retrieve.
+
+        Returns:
+            List of top k issues sorted by severity.
+        """
+        if not self._issues_heap and self.issues:
+            self._rebuild_heap()
+
+        if k >= len(self._issues_heap):
+            return self.get_sorted_issues()
+
+        # Use nsmallest for efficient top-k (severity 0 = highest priority)
+        return [
+            issue for _, _, issue in heapq.nsmallest(k, self._issues_heap)
+        ]
+
+    def get_most_severe(self) -> ValidationIssue | None:
+        """Get the most severe issue in O(1) time.
+
+        Returns:
+            The most severe issue, or None if no issues exist.
+        """
+        if not self._issues_heap and self.issues:
+            self._rebuild_heap()
+
+        if not self._issues_heap:
+            return None
+
+        return self._issues_heap[0][2]  # Heap root is always min (most severe)
+
+    def iter_by_severity(self) -> Iterator[ValidationIssue]:
+        """Iterate through issues in severity order.
+
+        Uses cached sorted list if available.
+
+        Yields:
+            Issues in descending severity order.
+        """
+        yield from self.get_sorted_issues()
 
     def __str__(self) -> str:
         """Return a formatted string representation using Rich."""
@@ -43,16 +179,8 @@ class Report:
         table.add_column("Count", justify="right")
         table.add_column("Severity", justify="center")
 
-        # Sort issues by severity (highest first)
-        severity_order = {
-            Severity.CRITICAL: 0,
-            Severity.HIGH: 1,
-            Severity.MEDIUM: 2,
-            Severity.LOW: 3,
-        }
-        sorted_issues = sorted(self.issues, key=lambda x: severity_order[x.severity])
-
-        for issue in sorted_issues:
+        # Use pre-sorted heap for O(n) iteration instead of O(n log n) sort
+        for issue in self.iter_by_severity():
             severity_style = self._get_severity_style(issue.severity)
             table.add_row(
                 issue.column,

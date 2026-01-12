@@ -71,7 +71,8 @@ class ConsistentCasingValidator(Validator, StringValidatorMixin):
         if not columns:
             return issues
 
-        df = lf.collect()
+        # Use streaming for large datasets
+        df = lf.collect(engine="streaming")
 
         for col in columns:
             col_data = df.get_column(col).drop_nulls()

@@ -122,7 +122,8 @@ class RegexListValidator(Validator, StringValidatorMixin, RegexValidatorMixin):
             exprs.append(invalid_expr.sum().alias(f"_inv_{col}"))
             exprs.append(pl.col(col).is_not_null().sum().alias(f"_nn_{col}"))
 
-        result = lf.select(exprs).collect()
+        # Use streaming for large datasets
+        result = lf.select(exprs).collect(engine="streaming")
         total_rows = result["_total"][0]
 
         if total_rows == 0:
@@ -165,7 +166,7 @@ class RegexListValidator(Validator, StringValidatorMixin, RegexValidatorMixin):
             lf.filter(invalid_expr)
             .select(col)
             .head(self.config.sample_size)
-            .collect()
+            .collect(engine="streaming")
         )
 
         samples = []
@@ -246,7 +247,8 @@ class NotMatchRegexValidator(Validator, StringValidatorMixin, RegexValidatorMixi
             exprs.append(matching_expr.sum().alias(f"_match_{col}"))
             exprs.append(pl.col(col).is_not_null().sum().alias(f"_nn_{col}"))
 
-        result = lf.select(exprs).collect()
+        # Use streaming for large datasets
+        result = lf.select(exprs).collect(engine="streaming")
         total_rows = result["_total"][0]
 
         if total_rows == 0:
@@ -288,7 +290,7 @@ class NotMatchRegexValidator(Validator, StringValidatorMixin, RegexValidatorMixi
             lf.filter(matching_expr)
             .select(col)
             .head(self.config.sample_size)
-            .collect()
+            .collect(engine="streaming")
         )
 
         samples = []
@@ -382,7 +384,8 @@ class NotMatchRegexListValidator(Validator, StringValidatorMixin, RegexValidator
             exprs.append(matching_expr.sum().alias(f"_match_{col}"))
             exprs.append(pl.col(col).is_not_null().sum().alias(f"_nn_{col}"))
 
-        result = lf.select(exprs).collect()
+        # Use streaming for large datasets
+        result = lf.select(exprs).collect(engine="streaming")
         total_rows = result["_total"][0]
 
         if total_rows == 0:
@@ -423,7 +426,7 @@ class NotMatchRegexListValidator(Validator, StringValidatorMixin, RegexValidator
             lf.filter(matching_expr)
             .select(col)
             .head(self.config.sample_size)
-            .collect()
+            .collect(engine="streaming")
         )
 
         samples = []

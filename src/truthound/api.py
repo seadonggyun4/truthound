@@ -1,7 +1,13 @@
-"""Main API functions for Truthound."""
+"""Main API functions for Truthound.
+
+This module uses lazy imports for heavy submodules (profiler, validators)
+to improve import performance. The imports are deferred until the functions
+that need them are actually called.
+"""
 
 from __future__ import annotations
 
+import functools
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -9,16 +15,47 @@ import polars as pl
 
 from truthound.adapters import to_lazyframe
 from truthound.maskers import mask_data
-from truthound.profiler import profile_data
-from truthound.report import PIIReport, ProfileReport, Report
 from truthound.scanners import scan_pii
 from truthound.types import Severity
-from truthound.validators import BUILTIN_VALIDATORS, Validator, get_validator
+
+
+# =============================================================================
+# Cached helpers - avoid repeated parsing overhead
+# =============================================================================
+
+@functools.lru_cache(maxsize=8)
+def _parse_severity(s: str) -> Severity:
+    """Parse severity string with caching to avoid repeated conversions."""
+    return Severity(s.lower())
 
 if TYPE_CHECKING:
     from truthound.schema import Schema
     from truthound.datasources.base import BaseDataSource
     from truthound.execution.base import BaseExecutionEngine
+    from truthound.report import PIIReport, ProfileReport, Report
+    from truthound.validators.base import Validator
+
+
+# =============================================================================
+# Lazy import helpers - these avoid loading heavy modules at import time
+# =============================================================================
+
+def _get_report_classes() -> tuple[type, type, type]:
+    """Lazily import Report classes."""
+    from truthound.report import PIIReport, ProfileReport, Report
+    return PIIReport, ProfileReport, Report
+
+
+def _get_validator_utils() -> tuple[dict, type, Any]:
+    """Lazily import validator utilities."""
+    from truthound.validators import BUILTIN_VALIDATORS, Validator, get_validator
+    return BUILTIN_VALIDATORS, Validator, get_validator
+
+
+def _get_profile_data() -> Any:
+    """Lazily import profile_data function."""
+    from truthound.profiler import profile_data
+    return profile_data
 
 
 def check(
@@ -183,14 +220,14 @@ def check(
         else:
             lf = to_lazyframe(data)
 
-        # Collect metadata
-        polars_schema = lf.collect_schema()
-        df_collected = lf.collect()
-        row_count = len(df_collected)
+        # Collect metadata without materializing the entire DataFrame
+        polars_schema = lf.collect_schema()  # Lazy operation - only reads schema
+        row_count = lf.select(pl.len()).collect().item()  # Efficient row count
         column_count = len(polars_schema)
+        # lf remains lazy - validators will collect only when needed
 
-        # Re-create lazy frame after collecting metadata
-        lf = df_collected.lazy()
+    # Lazy load validator utilities
+    BUILTIN_VALIDATORS, Validator, get_validator = _get_validator_utils()
 
     # Determine which validators to use
     validator_instances: list[Validator] = []
@@ -256,12 +293,24 @@ def check(
         result = plan.execute(lf, strategy)
         all_issues = result.all_issues
     else:
-        # Sequential execution (original behavior)
-        for validator in validator_instances:
-            issues = validator.validate(lf)
-            all_issues.extend(issues)
+        # Sequential or lightweight parallel execution
+        # For small validator sets, avoid ThreadPool creation overhead
+        if len(validator_instances) < 5:
+            # Sequential execution for small sets
+            for validator in validator_instances:
+                issues = validator.validate(lf)
+                all_issues.extend(issues)
+        else:
+            # Lightweight parallel execution for larger sets
+            from concurrent.futures import ThreadPoolExecutor
 
-    # Create report
+            with ThreadPoolExecutor(max_workers=4) as executor:
+                results = list(executor.map(lambda v: v.validate(lf), validator_instances))
+            for issues in results:
+                all_issues.extend(issues)
+
+    # Create report (lazy import Report class)
+    _, _, Report = _get_report_classes()
     report = Report(
         issues=all_issues,
         source=source_name,
@@ -272,7 +321,7 @@ def check(
     # Filter by severity if specified
     if min_severity is not None:
         if isinstance(min_severity, str):
-            min_severity = Severity(min_severity.lower())
+            min_severity = _parse_severity(min_severity)
         report = report.filter_by_severity(min_severity)
 
     return report
@@ -323,6 +372,8 @@ def scan(
 
     findings = scan_pii(df.lazy())
 
+    # Lazy import PIIReport
+    PIIReport, _, _ = _get_report_classes()
     return PIIReport(
         findings=findings,
         source=source_name,
@@ -420,6 +471,10 @@ def profile(
             raise ValueError("Either 'data' or 'source' must be provided")
         lf = to_lazyframe(data)
         source_name = str(data) if isinstance(data, str) else type(data).__name__
+
+    # Lazy import profile_data and ProfileReport
+    profile_data = _get_profile_data()
+    _, ProfileReport, _ = _get_report_classes()
 
     profile_dict = profile_data(lf, source=source_name)
 

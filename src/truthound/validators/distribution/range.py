@@ -7,15 +7,33 @@ import polars as pl
 from truthound.types import Severity
 from truthound.validators.base import (
     ValidationIssue,
+    ValidationExpressionSpec,
     Validator,
     NumericValidatorMixin,
+    ExpressionValidatorMixin,
 )
 from truthound.validators.registry import register_validator
 
 
 @register_validator
-class BetweenValidator(Validator, NumericValidatorMixin):
-    """Validates that numeric values are within a specified range."""
+class BetweenValidator(Validator, NumericValidatorMixin, ExpressionValidatorMixin):
+    """Validates that numeric values are within a specified range.
+
+    Uses expression-based architecture for optimal performance when
+    combined with other validators via ExpressionBatchExecutor.
+
+    Example:
+        # Standalone usage
+        validator = BetweenValidator(min_value=0, max_value=100)
+        issues = validator.validate(lf)
+
+        # Batched usage
+        from truthound.validators.base import ExpressionBatchExecutor
+        executor = ExpressionBatchExecutor()
+        executor.add_validator(BetweenValidator(min_value=0, max_value=100))
+        executor.add_validator(NullValidator())
+        all_issues = executor.execute(lf)  # Single collect()!
+    """
 
     name = "between"
     category = "distribution"
@@ -32,55 +50,53 @@ class BetweenValidator(Validator, NumericValidatorMixin):
         self.max_value = max_value
         self.inclusive = inclusive
 
-    def validate(self, lf: pl.LazyFrame) -> list[ValidationIssue]:
-        issues: list[ValidationIssue] = []
-        columns = self._get_numeric_columns(lf)
+    def _build_out_of_range_expr(self, col: str) -> pl.Expr:
+        """Build expression for out-of-range values."""
+        if self.inclusive:
+            below = (pl.col(col) < self.min_value) if self.min_value is not None else pl.lit(False)
+            above = (pl.col(col) > self.max_value) if self.max_value is not None else pl.lit(False)
+        else:
+            below = (pl.col(col) <= self.min_value) if self.min_value is not None else pl.lit(False)
+            above = (pl.col(col) >= self.max_value) if self.max_value is not None else pl.lit(False)
 
-        if not columns:
-            return issues
+        return (below | above) & pl.col(col).is_not_null()
 
-        exprs: list[pl.Expr] = [pl.len().alias("_total")]
-
+    def get_validation_exprs(
+        self,
+        lf: pl.LazyFrame,
+        columns: list[str],
+    ) -> list[ValidationExpressionSpec]:
+        """Get validation expressions for range checking."""
+        range_str = f"[{self.min_value}, {self.max_value}]"
+        specs = []
         for col in columns:
-            if self.inclusive:
-                below = (pl.col(col) < self.min_value) if self.min_value is not None else pl.lit(False)
-                above = (pl.col(col) > self.max_value) if self.max_value is not None else pl.lit(False)
-            else:
-                below = (pl.col(col) <= self.min_value) if self.min_value is not None else pl.lit(False)
-                above = (pl.col(col) >= self.max_value) if self.max_value is not None else pl.lit(False)
-
-            exprs.append(
-                ((below | above) & pl.col(col).is_not_null()).sum().alias(f"_out_{col}")
-            )
-
-        result = lf.select(exprs).collect()
-        total_rows = result["_total"][0]
-
-        if total_rows == 0:
-            return issues
-
-        for col in columns:
-            out_count = result[f"_out_{col}"][0]
-            if out_count > 0:
-                ratio = out_count / total_rows
-                range_str = f"[{self.min_value}, {self.max_value}]"
-                issues.append(
-                    ValidationIssue(
-                        column=col,
-                        issue_type="out_of_range",
-                        count=out_count,
-                        severity=self._calculate_severity(ratio, (0.1, 0.05, 0.01)),
-                        details=f"{out_count} values outside {range_str}",
-                        expected=range_str,
-                    )
+            out_of_range_expr = self._build_out_of_range_expr(col)
+            specs.append(
+                ValidationExpressionSpec(
+                    column=col,
+                    validator_name=self.name,
+                    issue_type="out_of_range",
+                    count_expr=out_of_range_expr.sum(),
+                    non_null_expr=pl.len(),
+                    severity_ratio_thresholds=(0.1, 0.05, 0.01),
+                    details_template=f"{{count}} values outside {range_str}",
+                    expected=range_str,
                 )
+            )
+        return specs
 
-        return issues
+    def validate(self, lf: pl.LazyFrame) -> list[ValidationIssue]:
+        """Validate using expression-based approach."""
+        columns = self._get_numeric_columns(lf)
+        return self._validate_with_expressions(lf, columns=columns)
 
 
 @register_validator
-class RangeValidator(Validator, NumericValidatorMixin):
-    """Auto-detects expected ranges based on column names."""
+class RangeValidator(Validator, NumericValidatorMixin, ExpressionValidatorMixin):
+    """Auto-detects expected ranges based on column names.
+
+    Uses expression-based architecture for optimal performance.
+    """
 
     name = "range"
     category = "distribution"
@@ -105,150 +121,132 @@ class RangeValidator(Validator, NumericValidatorMixin):
         "second": (0, 59),
     }
 
-    def validate(self, lf: pl.LazyFrame) -> list[ValidationIssue]:
-        issues: list[ValidationIssue] = []
-        columns = self._get_numeric_columns(lf)
+    def _get_column_range(self, col: str) -> tuple[float | None, float | None] | None:
+        """Get known range for a column based on its name."""
+        col_lower = col.lower()
+        for pattern, range_tuple in self.KNOWN_RANGES.items():
+            if pattern in col_lower:
+                return range_tuple
+        return None
 
-        if not columns:
-            return issues
-
-        # Collect data once
-        df = lf.collect()
-        total_rows = len(df)
-
-        if total_rows == 0:
-            return issues
-
+    def get_validation_exprs(
+        self,
+        lf: pl.LazyFrame,
+        columns: list[str],
+    ) -> list[ValidationExpressionSpec]:
+        """Get validation expressions for auto-detected range checking."""
+        specs = []
         for col in columns:
-            col_lower = col.lower()
-
-            # Find matching range
-            min_val, max_val = None, None
-            for pattern, (pmin, pmax) in self.KNOWN_RANGES.items():
-                if pattern in col_lower:
-                    min_val, max_val = pmin, pmax
-                    break
-
-            if min_val is None and max_val is None:
+            range_tuple = self._get_column_range(col)
+            if range_tuple is None:
                 continue
 
-            col_data = df.get_column(col)
-            out_count = 0
+            min_val, max_val = range_tuple
 
-            if min_val is not None:
-                out_count += col_data.filter(col_data < min_val).drop_nulls().len()
-            if max_val is not None:
-                out_count += col_data.filter(col_data > max_val).drop_nulls().len()
+            # Build out-of-range expression
+            below_min = (pl.col(col) < min_val) if min_val is not None else pl.lit(False)
+            above_max = (pl.col(col) > max_val) if max_val is not None else pl.lit(False)
+            oob_expr = (below_min | above_max) & pl.col(col).is_not_null()
 
-            if out_count > 0:
-                oor_pct = out_count / total_rows
-                range_desc = ""
-                if min_val is not None and max_val is not None:
-                    range_desc = f"[{min_val}, {max_val}]"
-                elif min_val is not None:
-                    range_desc = f">= {min_val}"
-                else:
-                    range_desc = f"<= {max_val}"
+            # Build range description
+            if min_val is not None and max_val is not None:
+                range_desc = f"[{min_val}, {max_val}]"
+            elif min_val is not None:
+                range_desc = f">= {min_val}"
+            else:
+                range_desc = f"<= {max_val}"
 
-                issues.append(
-                    ValidationIssue(
-                        column=col,
-                        issue_type="out_of_range",
-                        count=out_count,
-                        severity=self._calculate_severity(oor_pct, (0.1, 0.05, 0.01)),
-                        details=f"Expected {range_desc}",
-                        expected=range_desc,
-                    )
+            specs.append(
+                ValidationExpressionSpec(
+                    column=col,
+                    validator_name=self.name,
+                    issue_type="out_of_range",
+                    count_expr=oob_expr.sum(),
+                    non_null_expr=pl.len(),
+                    severity_ratio_thresholds=(0.1, 0.05, 0.01),
+                    details_template=f"Expected {range_desc}",
+                    expected=range_desc,
                 )
+            )
+        return specs
 
-        return issues
+    def validate(self, lf: pl.LazyFrame) -> list[ValidationIssue]:
+        """Validate using expression-based approach."""
+        columns = self._get_numeric_columns(lf)
+        return self._validate_with_expressions(lf, columns=columns)
 
 
 @register_validator
-class PositiveValidator(Validator, NumericValidatorMixin):
-    """Validates that numeric values are positive (> 0)."""
+class PositiveValidator(Validator, NumericValidatorMixin, ExpressionValidatorMixin):
+    """Validates that numeric values are positive (> 0).
+
+    Uses expression-based architecture for optimal performance.
+    """
 
     name = "positive"
     category = "distribution"
 
-    def validate(self, lf: pl.LazyFrame) -> list[ValidationIssue]:
-        issues: list[ValidationIssue] = []
-        columns = self._get_numeric_columns(lf)
-
-        if not columns:
-            return issues
-
-        exprs = [
-            pl.len().alias("_total"),
-            *[
-                ((pl.col(c) <= 0) & pl.col(c).is_not_null()).sum().alias(f"_neg_{c}")
-                for c in columns
-            ],
-        ]
-        result = lf.select(exprs).collect()
-        total_rows = result["_total"][0]
-
-        if total_rows == 0:
-            return issues
-
+    def get_validation_exprs(
+        self,
+        lf: pl.LazyFrame,
+        columns: list[str],
+    ) -> list[ValidationExpressionSpec]:
+        """Get validation expressions for positive value checking."""
+        specs = []
         for col in columns:
-            neg_count = result[f"_neg_{col}"][0]
-            if neg_count > 0:
-                ratio = neg_count / total_rows
-                issues.append(
-                    ValidationIssue(
-                        column=col,
-                        issue_type="not_positive",
-                        count=neg_count,
-                        severity=self._calculate_severity(ratio),
-                        details=f"{neg_count} non-positive values",
-                        expected="> 0",
-                    )
+            non_positive_expr = (pl.col(col) <= 0) & pl.col(col).is_not_null()
+            specs.append(
+                ValidationExpressionSpec(
+                    column=col,
+                    validator_name=self.name,
+                    issue_type="not_positive",
+                    count_expr=non_positive_expr.sum(),
+                    non_null_expr=pl.len(),
+                    details_template="{count} non-positive values",
+                    expected="> 0",
                 )
+            )
+        return specs
 
-        return issues
+    def validate(self, lf: pl.LazyFrame) -> list[ValidationIssue]:
+        """Validate using expression-based approach."""
+        columns = self._get_numeric_columns(lf)
+        return self._validate_with_expressions(lf, columns=columns)
 
 
 @register_validator
-class NonNegativeValidator(Validator, NumericValidatorMixin):
-    """Validates that numeric values are non-negative (>= 0)."""
+class NonNegativeValidator(Validator, NumericValidatorMixin, ExpressionValidatorMixin):
+    """Validates that numeric values are non-negative (>= 0).
+
+    Uses expression-based architecture for optimal performance.
+    """
 
     name = "non_negative"
     category = "distribution"
 
-    def validate(self, lf: pl.LazyFrame) -> list[ValidationIssue]:
-        issues: list[ValidationIssue] = []
-        columns = self._get_numeric_columns(lf)
-
-        if not columns:
-            return issues
-
-        exprs = [
-            pl.len().alias("_total"),
-            *[
-                ((pl.col(c) < 0) & pl.col(c).is_not_null()).sum().alias(f"_neg_{c}")
-                for c in columns
-            ],
-        ]
-        result = lf.select(exprs).collect()
-        total_rows = result["_total"][0]
-
-        if total_rows == 0:
-            return issues
-
+    def get_validation_exprs(
+        self,
+        lf: pl.LazyFrame,
+        columns: list[str],
+    ) -> list[ValidationExpressionSpec]:
+        """Get validation expressions for non-negative value checking."""
+        specs = []
         for col in columns:
-            neg_count = result[f"_neg_{col}"][0]
-            if neg_count > 0:
-                ratio = neg_count / total_rows
-                issues.append(
-                    ValidationIssue(
-                        column=col,
-                        issue_type="negative",
-                        count=neg_count,
-                        severity=self._calculate_severity(ratio),
-                        details=f"{neg_count} negative values",
-                        expected=">= 0",
-                    )
+            negative_expr = (pl.col(col) < 0) & pl.col(col).is_not_null()
+            specs.append(
+                ValidationExpressionSpec(
+                    column=col,
+                    validator_name=self.name,
+                    issue_type="negative",
+                    count_expr=negative_expr.sum(),
+                    non_null_expr=pl.len(),
+                    details_template="{count} negative values",
+                    expected=">= 0",
                 )
+            )
+        return specs
 
-        return issues
+    def validate(self, lf: pl.LazyFrame) -> list[ValidationIssue]:
+        """Validate using expression-based approach."""
+        columns = self._get_numeric_columns(lf)
+        return self._validate_with_expressions(lf, columns=columns)

@@ -21,11 +21,12 @@ from truthound.validators.base import (
     StringValidatorMixin,
     RegexValidatorMixin,
     RegexValidationError,
+    SampledEarlyTerminationMixin,
 )
 from truthound.validators.registry import register_validator
 
 
-class VectorizedFormatValidator(Validator, StringValidatorMixin, RegexValidatorMixin):
+class VectorizedFormatValidator(Validator, StringValidatorMixin, RegexValidatorMixin, SampledEarlyTerminationMixin):
     """Base class for vectorized format validators.
 
     Uses Polars' native str.contains() for regex matching instead of
@@ -71,21 +72,63 @@ class VectorizedFormatValidator(Validator, StringValidatorMixin, RegexValidatorM
         if not columns:
             return issues
 
-        # Build expressions for all columns
-        exprs: list[pl.Expr] = [pl.len().alias("_total")]
+        # Check for early termination opportunity
+        early_results = self._check_early_termination(
+            lf,
+            columns=columns,
+            build_invalid_expr=self._build_match_expr,
+        )
+
+        # Separate columns into early-terminatable and full-validation needed
+        early_term_cols: list[str] = []
+        full_validate_cols: list[str] = []
 
         for col in columns:
+            if early_results[col].should_terminate:
+                early_term_cols.append(col)
+            else:
+                full_validate_cols.append(col)
+
+        # Process early termination columns
+        for col in early_term_cols:
+            result = early_results[col]
+
+            # Check mostly threshold with extrapolated values
+            if self._passes_mostly(result.estimated_fail_count, result.total_rows):
+                continue
+
+            samples = self._get_invalid_samples(lf.head(self.early_termination_sample_size), col)
+
+            issues.append(
+                self._build_early_termination_issue(
+                    col=col,
+                    result=result,
+                    issue_type=f"invalid_{self.format_name}",
+                    details=f"Expected {self.format_name} format",
+                    sample_values=samples,
+                )
+            )
+
+        # Full validation for remaining columns
+        if not full_validate_cols:
+            return issues
+
+        # Build expressions for remaining columns
+        exprs: list[pl.Expr] = [pl.len().alias("_total")]
+
+        for col in full_validate_cols:
             invalid_expr = self._build_match_expr(col)
             exprs.append(invalid_expr.sum().alias(f"_inv_{col}"))
             exprs.append(pl.col(col).is_not_null().sum().alias(f"_nn_{col}"))
 
-        result = lf.select(exprs).collect()
+        # Use streaming for large datasets
+        result = lf.select(exprs).collect(engine="streaming")
         total_rows = result["_total"][0]
 
         if total_rows == 0:
             return issues
 
-        for col in columns:
+        for col in full_validate_cols:
             invalid_count = result[f"_inv_{col}"][0]
             non_null_count = result[f"_nn_{col}"][0]
 
@@ -120,7 +163,7 @@ class VectorizedFormatValidator(Validator, StringValidatorMixin, RegexValidatorM
             lf.filter(invalid_expr)
             .select(col)
             .head(self.config.sample_size)
-            .collect()
+            .collect(engine="streaming")
         )
 
         samples = []
@@ -469,7 +512,8 @@ class FormatValidator(Validator, StringValidatorMixin):
                 exprs.append(invalid.sum().alias(f"_inv_{col}"))
                 exprs.append(non_empty.sum().alias(f"_ne_{col}"))
 
-        result = lf.select(exprs).collect()
+        # Use streaming for large datasets
+        result = lf.select(exprs).collect(engine="streaming")
         total_rows = result["_total"][0]
 
         if total_rows == 0:

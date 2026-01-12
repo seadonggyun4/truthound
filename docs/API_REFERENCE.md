@@ -16,6 +16,7 @@ This document provides a complete reference for the Truthound Python API.
 8. [Data Docs](#8-data-docs)
 9. [ML Module](#9-ml-module)
 10. [CLI Reference](#10-cli-reference)
+11. [Performance APIs](#11-performance-apis)
 
 ---
 
@@ -802,9 +803,90 @@ truthound list-categories
 
 ---
 
+## 11. Performance APIs
+
+### Expression-Based Batch Execution
+
+For advanced performance optimization, validators can be batched into a single `collect()` call.
+
+```python
+from truthound.validators.base import (
+    ExpressionBatchExecutor,
+    ValidationExpressionSpec,
+    ExpressionValidatorMixin,
+)
+from truthound.validators.completeness.null import NullValidator
+from truthound.validators.distribution.range import RangeValidator
+
+# Batch multiple validators (single collect())
+executor = ExpressionBatchExecutor()
+executor.add_validator(NullValidator())
+executor.add_validator(RangeValidator(min_value=0, max_value=100))
+all_issues = executor.execute(lf)  # Single collect() for all validators
+```
+
+**ExpressionBatchExecutor**
+
+```python
+class ExpressionBatchExecutor:
+    """Batches multiple expression-based validators into single collect()."""
+
+    def add_validator(
+        self,
+        validator: Validator,
+        columns: list[str] | None = None,
+    ) -> None:
+        """Add validator with optional column filter."""
+
+    def execute(self, lf: pl.LazyFrame) -> list[ValidationIssue]:
+        """Execute all validators with single collect()."""
+```
+
+**Supported Expression-Based Validators**:
+- `NullValidator`, `NotNullValidator`, `CompletenessRatioValidator` (completeness)
+- `BetweenValidator`, `RangeValidator`, `PositiveValidator`, `NonNegativeValidator` (range)
+
+### Lazy Loading Registry
+
+Validators are loaded on-demand to minimize startup time.
+
+```python
+from truthound.validators._lazy import (
+    VALIDATOR_IMPORT_MAP,
+    CATEGORY_MODULES,
+    ValidatorImportMetrics,
+    get_import_metrics,
+)
+
+# Get import metrics
+metrics = get_import_metrics()
+print(f"Loaded: {metrics.loaded_count}")
+print(f"Failed: {metrics.failed_count}")
+print(f"Total time: {metrics.total_import_time_ms:.2f}ms")
+```
+
+### Masking Performance
+
+Data masking uses native Polars expressions and streaming mode for large datasets.
+
+```python
+import truthound as th
+
+# Automatic streaming for large datasets (>1M rows)
+masked_df = th.mask(large_df, strategy="hash")
+
+# Masking strategies use native Polars:
+# - "redact": pl.when/then/otherwise chains
+# - "hash": Polars native hash() function (xxhash3)
+# - "fake": Hash-based deterministic generation
+```
+
+---
+
 ## See Also
 
 - [Getting Started](GETTING_STARTED.md) — Quick start guide
 - [Examples](EXAMPLES.md) — Usage examples
 - [Validators Reference](VALIDATORS.md) — Complete validator documentation
 - [Plugin Architecture](PLUGINS.md) — Creating custom plugins
+- [Performance Guide](PERFORMANCE.md) — Detailed performance optimization

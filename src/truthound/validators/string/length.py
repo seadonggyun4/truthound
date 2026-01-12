@@ -66,7 +66,8 @@ class LengthValidator(Validator, StringValidatorMixin):
         if len(exprs) == 1:
             return issues
 
-        result = lf.select(exprs).collect()
+        # Use streaming for large datasets
+        result = lf.select(exprs).collect(engine="streaming")
         total_rows = result["_total"][0]
 
         if total_rows == 0:

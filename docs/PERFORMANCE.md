@@ -14,6 +14,7 @@ This document provides comprehensive performance characteristics, benchmarks, an
 6. [Large Dataset Handling](#6-large-dataset-handling)
 7. [Streaming Validation](#7-streaming-validation)
 8. [Best Practices](#8-best-practices)
+9. [Internal Performance Optimizations](#9-internal-performance-optimizations)
 
 ---
 
@@ -585,6 +586,165 @@ validator = QueryValidator(
 # - Multiple statements (;SELECT...)
 # - SQL injection patterns (UNION ALL SELECT)
 ```
+
+---
+
+## 9. Internal Performance Optimizations
+
+Truthound implements several internal optimizations for maximum performance. These are automatically applied and don't require user configuration.
+
+### 9.1 Expression-Based Validator Architecture
+
+Validators that support expression-based execution can be batched into a single `collect()` call.
+
+**Implementation**: `src/truthound/validators/base.py`
+
+| Component | Description |
+|-----------|-------------|
+| `ValidationExpressionSpec` | Defines validation expression spec (column, type, count_expr, non_null_expr) |
+| `ExpressionValidatorMixin` | Mixin for single-validator expression-based execution |
+| `ExpressionBatchExecutor` | Batches multiple validators into single collect() |
+
+```python
+from truthound.validators.base import ExpressionBatchExecutor
+from truthound.validators.completeness.null import NullValidator
+from truthound.validators.distribution.range import RangeValidator
+
+# Batch execution (single collect())
+executor = ExpressionBatchExecutor()
+executor.add_validator(NullValidator())
+executor.add_validator(RangeValidator(min_value=0))
+all_issues = executor.execute(lf)  # Single collect() for all validators
+```
+
+**Supported validators**:
+- `NullValidator`, `NotNullValidator`, `CompletenessRatioValidator` (completeness)
+- `BetweenValidator`, `RangeValidator`, `PositiveValidator`, `NonNegativeValidator` (range)
+
+### 9.2 Lazy Loading Validator Registry
+
+The validator registry uses lazy loading to minimize startup time.
+
+**Implementation**: `src/truthound/validators/_lazy.py`
+
+```python
+# 200+ validators mapped to their modules
+VALIDATOR_IMPORT_MAP: dict[str, str] = {
+    "NullValidator": "truthound.validators.completeness.null",
+    "BetweenValidator": "truthound.validators.distribution.range",
+    # ... 200+ validators
+}
+
+# Category-based lazy loading
+CATEGORY_MODULES: dict[str, str] = {
+    "completeness": "truthound.validators.completeness",
+    "distribution": "truthound.validators.distribution",
+    # ... 28 categories
+}
+```
+
+**Metrics tracking**: `ValidatorImportMetrics` class tracks import success/failure counts and timing.
+
+### 9.3 xxhash Cache Optimization
+
+Cache fingerprinting uses xxhash when available for ~10x faster hashing.
+
+**Implementation**: `src/truthound/cache.py`
+
+```python
+try:
+    import xxhash
+    _HAS_XXHASH = True
+except ImportError:
+    _HAS_XXHASH = False
+
+def _fast_hash(content: str) -> str:
+    if _HAS_XXHASH:
+        return xxhash.xxh64(content.encode()).hexdigest()[:16]
+    return hashlib.sha256(content.encode()).hexdigest()[:16]
+```
+
+To enable: `pip install xxhash`
+
+### 9.4 Native Polars Expressions (No map_elements)
+
+All masking operations use native Polars expressions instead of Python callbacks.
+
+**Implementation**: `src/truthound/maskers.py`
+
+| Function | Optimization |
+|----------|-------------|
+| `_apply_redact()` | `pl.when/then/otherwise` chains, `str.replace_all()` |
+| `_apply_hash()` | Polars native `hash()` (xxhash3 internally) |
+| `_apply_fake()` | Hash-based deterministic generation |
+
+```python
+# Hash masking - no Python callbacks
+def _apply_hash(df: pl.DataFrame, col: str) -> pl.DataFrame:
+    c = pl.col(col)
+    hashed = c.hash().cast(pl.String).str.slice(0, 16)
+    return df.with_columns(
+        pl.when(c.is_null()).then(pl.lit(None)).otherwise(hashed).alias(col)
+    )
+```
+
+**Streaming mode**: Large datasets (>1M rows) use streaming engine:
+```python
+df = lf.collect(engine="streaming")
+```
+
+### 9.5 Heap-Based Report Sorting
+
+Validation reports use heap-based sorting for O(1) most-severe-issue access.
+
+**Implementation**: `src/truthound/report.py`
+
+```python
+_SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
+
+def add_issue(self, issue: ValidationIssue) -> None:
+    self.issues.append(issue)
+    heapq.heappush(
+        self._issues_heap,
+        (_SEVERITY_ORDER[issue.severity], self._heap_counter, issue),
+    )
+
+def add_issues(self, issues: Iterable[ValidationIssue]) -> None:
+    for issue in issues:
+        self.issues.append(issue)
+        self._issues_heap.append(...)
+        self._heap_counter += 1
+    heapq.heapify(self._issues_heap)  # Single heapify after batch
+```
+
+### 9.6 Batched Statistics Collection
+
+Schema learning collects all statistics in a single `select()` call.
+
+**Implementation**: `src/truthound/schema.py`
+
+```python
+# Single select() for null_count, n_unique, etc.
+stats_exprs = [
+    pl.col(col).null_count().alias(f"{col}_null_count"),
+    pl.col(col).n_unique().alias(f"{col}_n_unique"),
+    # ...
+]
+stats = lf.select(stats_exprs).collect()
+```
+
+### 9.7 Optimization Summary
+
+| Optimization | Location | Effect |
+|-------------|----------|--------|
+| Expression Batch Executor | `validators/base.py` | Multiple validators, single collect() |
+| Lazy Loading Registry | `validators/_lazy.py` | 200+ validator lazy loading |
+| xxhash Cache | `cache.py` | ~10x faster fingerprinting |
+| Native Polars Masking | `maskers.py` | Eliminates map_elements |
+| Heap-Based Sorting | `report.py` | O(1) severity access |
+| Batched Statistics | `schema.py` | Single select() for stats |
+| Vectorized Validation | `validators/distribution/range.py` | Vectorized range checks |
+| Streaming Mode | `maskers.py` | Streaming for large data |
 
 ---
 

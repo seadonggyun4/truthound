@@ -14,7 +14,8 @@ This document provides a comprehensive overview of Truthound's internal architec
 6. [Execution Model](#6-execution-model)
 7. [Extension Points](#7-extension-points)
 8. [Phase Overview](#8-phase-overview)
-9. [Testing Architecture](#9-testing-architecture)
+9. [Performance Architecture](#9-performance-architecture)
+10. [Testing Architecture](#10-testing-architecture)
 
 ---
 
@@ -627,7 +628,151 @@ Truthound's development follows a phased approach:
 
 ---
 
-## 9. Testing Architecture
+## 9. Performance Architecture
+
+### Expression-Based Validator Architecture
+
+Truthound implements an expression-based architecture that allows multiple validators to execute in a single `collect()` call.
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                   Expression-Based Batch Execution                           │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│    Validator 1          Validator 2          Validator 3                     │
+│  (NullValidator)    (RangeValidator)    (CompletenessRatio)                 │
+│         │                  │                    │                            │
+│         ▼                  ▼                    ▼                            │
+│  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐                      │
+│  │ get_valida- │    │ get_valida- │    │ get_valida- │                      │
+│  │ tion_exprs  │    │ tion_exprs  │    │ tion_exprs  │                      │
+│  └──────┬──────┘    └──────┬──────┘    └──────┬──────┘                      │
+│         │                  │                  │                              │
+│         └──────────────────┼──────────────────┘                              │
+│                            ▼                                                 │
+│                 ┌─────────────────────┐                                      │
+│                 │  Expression Batch   │                                      │
+│                 │     Executor        │                                      │
+│                 └──────────┬──────────┘                                      │
+│                            │                                                 │
+│                            ▼                                                 │
+│                 ┌─────────────────────┐                                      │
+│                 │  lf.select([...])   │  ◄─── Single collect() call         │
+│                 │     .collect()      │                                      │
+│                 └──────────┬──────────┘                                      │
+│                            │                                                 │
+│                            ▼                                                 │
+│                 ┌─────────────────────┐                                      │
+│                 │   ValidationIssue   │                                      │
+│                 │       Results       │                                      │
+│                 └─────────────────────┘                                      │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Key Components** (`src/truthound/validators/base.py`):
+
+| Component | Description |
+|-----------|-------------|
+| `ValidationExpressionSpec` | Defines validation expression (count_expr, non_null_expr, severity thresholds) |
+| `ExpressionValidatorMixin` | Mixin for single-validator expression-based execution |
+| `ExpressionBatchExecutor` | Batches multiple validators into single collect() |
+
+### Lazy Loading Architecture
+
+The validator registry uses lazy loading to minimize startup time.
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                      Lazy Loading Validator Registry                         │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                              │
+│    Application Start                                                         │
+│          │                                                                   │
+│          ▼                                                                   │
+│    ┌─────────────────┐                                                       │
+│    │ VALIDATOR_      │ ◄─── 200+ validators mapped to module paths          │
+│    │ IMPORT_MAP      │      (not loaded yet)                                │
+│    └────────┬────────┘                                                       │
+│             │                                                                │
+│             ▼                                                                │
+│    ┌─────────────────┐                                                       │
+│    │ get_validator() │ ◄─── User requests specific validator                │
+│    └────────┬────────┘                                                       │
+│             │                                                                │
+│             ▼                                                                │
+│    ┌─────────────────┐                                                       │
+│    │ LazyValidator-  │ ◄─── On-demand import                                │
+│    │ Loader          │                                                       │
+│    └────────┬────────┘                                                       │
+│             │                                                                │
+│             ▼                                                                │
+│    ┌─────────────────┐                                                       │
+│    │ ValidatorImport │ ◄─── Metrics tracking (success/failure/timing)       │
+│    │ Metrics         │                                                       │
+│    └─────────────────┘                                                       │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
+```
+
+**Implementation** (`src/truthound/validators/_lazy.py`):
+- `VALIDATOR_IMPORT_MAP`: 200+ validators mapped to their module paths
+- `CATEGORY_MODULES`: 28 category modules for bulk loading
+- `ValidatorImportMetrics`: Tracks import success/failure counts and timing
+
+### Native Polars Optimizations
+
+All data operations use native Polars expressions without Python callbacks.
+
+| Operation | Pattern | File |
+|-----------|---------|------|
+| Masking (redact) | `pl.when/then/otherwise`, `str.replace_all()` | `maskers.py` |
+| Masking (hash) | `pl.col().hash().cast(pl.String)` | `maskers.py` |
+| Statistics | Single `select()` with all aggregations | `schema.py` |
+| Validation | `count_expr`, `non_null_expr` expressions | `validators/base.py` |
+
+### Cache Optimization
+
+Cache fingerprinting uses xxhash for ~10x faster hashing.
+
+```python
+# Implementation in cache.py
+def _fast_hash(content: str) -> str:
+    if _HAS_XXHASH:
+        return xxhash.xxh64(content.encode()).hexdigest()[:16]
+    return hashlib.sha256(content.encode()).hexdigest()[:16]
+```
+
+### Report Optimization
+
+Validation reports use heap-based sorting for O(1) most-severe-issue access.
+
+```python
+# Implementation in report.py
+_SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3, "info": 4}
+
+def add_issue(self, issue: ValidationIssue) -> None:
+    heapq.heappush(
+        self._issues_heap,
+        (_SEVERITY_ORDER[issue.severity], self._heap_counter, issue),
+    )
+```
+
+### Performance Summary
+
+| Optimization | Location | Effect |
+|-------------|----------|--------|
+| Expression Batch Executor | `validators/base.py` | Multiple validators, single collect() |
+| Lazy Loading Registry | `validators/_lazy.py` | 200+ validator on-demand loading |
+| xxhash Cache | `cache.py` | ~10x faster fingerprinting |
+| Native Polars Masking | `maskers.py` | No map_elements callbacks |
+| Heap-Based Sorting | `report.py` | O(1) severity access |
+| Batched Statistics | `schema.py` | Single select() for all stats |
+| Streaming Mode | `maskers.py` | `engine="streaming"` for >1M rows |
+
+---
+
+## 10. Testing Architecture
 
 ### Design Patterns
 

@@ -138,7 +138,8 @@ class JsonSchemaValidator(Validator, StringValidatorMixin):
         if not columns:
             return issues
 
-        df = lf.collect()
+        # Use streaming for large datasets
+        df = lf.collect(engine="streaming")
         total_rows = len(df)
 
         if total_rows == 0:

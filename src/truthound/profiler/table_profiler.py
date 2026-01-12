@@ -53,14 +53,16 @@ class DuplicateRowAnalyzer(TableAnalyzer):
     """Analyzes duplicate rows in the table."""
 
     name = "duplicate_rows"
+    # Threshold for enabling streaming mode (1M rows)
+    STREAMING_THRESHOLD: int = 1_000_000
 
     def analyze(
         self,
         lf: pl.LazyFrame,
         config: ProfilerConfig,
     ) -> dict[str, Any]:
-        # Count total rows
-        total_rows = lf.select(pl.len()).collect().item()
+        # Count total rows - use streaming for large datasets
+        total_rows = lf.select(pl.len()).collect(engine="streaming").item()
 
         if total_rows == 0:
             return {
@@ -68,8 +70,10 @@ class DuplicateRowAnalyzer(TableAnalyzer):
                 "duplicate_row_ratio": 0.0,
             }
 
-        # Count unique rows
-        unique_rows = lf.unique().select(pl.len()).collect().item()
+        # Count unique rows - use streaming engine for large datasets
+        use_streaming = total_rows > self.STREAMING_THRESHOLD
+        engine = "streaming" if use_streaming else "cpu"
+        unique_rows = lf.unique().select(pl.len()).collect(engine=engine).item()
         duplicate_count = total_rows - unique_rows
 
         return {
@@ -82,6 +86,8 @@ class MemoryEstimator(TableAnalyzer):
     """Estimates memory usage of the table."""
 
     name = "memory"
+    # Threshold for enabling streaming mode (1M rows)
+    STREAMING_THRESHOLD: int = 1_000_000
 
     # Approximate bytes per element for each type
     _TYPE_SIZES: dict[type[pl.DataType], int] = {
@@ -108,23 +114,44 @@ class MemoryEstimator(TableAnalyzer):
         config: ProfilerConfig,
     ) -> dict[str, Any]:
         schema = lf.collect_schema()
-        row_count = lf.select(pl.len()).collect().item()
 
-        estimated_bytes = 0
+        # Categorize columns by type
+        fixed_size_bytes = 0
+        string_cols: list[str] = []
+        default_cols_count = 0
+
         for col_name, dtype in schema.items():
             dtype_type = type(dtype)
             if dtype_type in self._TYPE_SIZES:
-                estimated_bytes += row_count * self._TYPE_SIZES[dtype_type]
+                fixed_size_bytes += self._TYPE_SIZES[dtype_type]
             elif dtype_type in {pl.String, pl.Utf8}:
-                # Estimate average string length
-                avg_len = lf.select(
-                    pl.col(col_name).str.len_bytes().mean()
-                ).collect().item()
-                avg_len = avg_len or 10  # Default assumption
-                estimated_bytes += row_count * int(avg_len)
+                string_cols.append(col_name)
             else:
-                # Default estimate
-                estimated_bytes += row_count * 8
+                default_cols_count += 1
+
+        # Build single query for row count and all string column average lengths
+        exprs: list[pl.Expr] = [pl.len().alias("_row_count")]
+        for col in string_cols:
+            exprs.append(pl.col(col).str.len_bytes().mean().alias(f"_avg_len_{col}"))
+
+        # Single collect() call - use streaming for large datasets
+        result = lf.select(exprs).collect(engine="streaming")
+        row_count = result["_row_count"][0]
+
+        if row_count == 0:
+            return {"estimated_memory_bytes": 0}
+
+        # Calculate total: fixed-size columns
+        estimated_bytes = row_count * fixed_size_bytes
+
+        # Add string columns (use collected average lengths)
+        for col in string_cols:
+            avg_len = result[f"_avg_len_{col}"][0]
+            avg_len = avg_len if avg_len is not None else 10  # Default assumption
+            estimated_bytes += row_count * int(avg_len)
+
+        # Add default-size columns
+        estimated_bytes += row_count * 8 * default_cols_count
 
         return {"estimated_memory_bytes": estimated_bytes}
 
@@ -133,6 +160,8 @@ class CorrelationAnalyzer(TableAnalyzer):
     """Analyzes correlations between numeric columns."""
 
     name = "correlation"
+    # Threshold for enabling streaming mode (1M rows)
+    STREAMING_THRESHOLD: int = 1_000_000
 
     def __init__(self, threshold: float = 0.7):
         self.threshold = threshold
@@ -160,8 +189,11 @@ class CorrelationAnalyzer(TableAnalyzer):
 
         correlations: list[tuple[str, str, float]] = []
 
-        # Compute pairwise correlations
-        df = lf.select(numeric_cols).collect()
+        # Compute pairwise correlations - use streaming engine for large datasets
+        row_count = lf.select(pl.len()).collect(engine="streaming").item()
+        use_streaming = row_count > self.STREAMING_THRESHOLD
+        engine = "streaming" if use_streaming else "cpu"
+        df = lf.select(numeric_cols).collect(engine=engine)
 
         for i, col1 in enumerate(numeric_cols):
             for col2 in numeric_cols[i + 1:]:
@@ -270,8 +302,8 @@ class DataProfiler(Profiler):
         schema = lf.collect_schema()
         columns = list(schema.names())
 
-        # Get row count
-        row_count = lf.select(pl.len()).collect().item()
+        # Get row count - use streaming for large datasets
+        row_count = lf.select(pl.len()).collect(engine="streaming").item()
 
         # Profile columns
         if self.parallel and len(columns) > 1:

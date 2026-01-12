@@ -8,7 +8,31 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
+try:
+    import xxhash
+
+    _HAS_XXHASH = True
+except ImportError:
+    _HAS_XXHASH = False
+
 from truthound.schema import Schema, learn
+
+
+def _fast_hash(content: str) -> str:
+    """Compute a fast hash of content string.
+
+    Uses xxhash (xxh64) if available for ~10x faster hashing,
+    falls back to SHA256 if xxhash is not installed.
+
+    Args:
+        content: String content to hash.
+
+    Returns:
+        16-character hexadecimal hash digest.
+    """
+    if _HAS_XXHASH:
+        return xxhash.xxh64(content.encode()).hexdigest()[:16]
+    return hashlib.sha256(content.encode()).hexdigest()[:16]
 
 
 # Default cache directory
@@ -60,21 +84,29 @@ def get_data_fingerprint(data: Any) -> str:
         if path.exists():
             stat = path.stat()
             content = f"{path.absolute()}:{stat.st_mtime}:{stat.st_size}"
-            return hashlib.sha256(content.encode()).hexdigest()[:16]
-        return hashlib.sha256(data.encode()).hexdigest()[:16]
+            return _fast_hash(content)
+        return _fast_hash(data)
     elif isinstance(data, dict):
-        # For dict, use keys and approximate size
-        content = f"dict:{sorted(data.keys())}:{sum(len(v) for v in data.values() if hasattr(v, '__len__'))}"
-        return hashlib.sha256(content.encode()).hexdigest()[:16]
+        # For dict, use keys (already deterministic order in Python 3.7+) and approximate size
+        keys_str = ":".join(data.keys())
+        size = sum(len(v) for v in data.values() if hasattr(v, "__len__"))
+        content = f"dict:{keys_str}:{size}"
+        return _fast_hash(content)
     else:
-        # For DataFrames, use column names and row count
+        # For DataFrames, use shape and column names (already ordered)
         try:
-            cols = list(data.columns) if hasattr(data, "columns") else []
-            rows = len(data) if hasattr(data, "__len__") else 0
-            content = f"{type(data).__name__}:{sorted(cols)}:{rows}"
-            return hashlib.sha256(content.encode()).hexdigest()[:16]
+            if hasattr(data, "columns"):
+                # Polars/Pandas DataFrames preserve column order
+                cols_str = ":".join(data.columns)
+                rows = len(data) if hasattr(data, "__len__") else 0
+                content = f"{data.shape}:{cols_str}"
+                return _fast_hash(content)
+            else:
+                rows = len(data) if hasattr(data, "__len__") else 0
+                content = f"{type(data).__name__}:{rows}"
+                return _fast_hash(content)
         except Exception:
-            return hashlib.sha256(str(type(data)).encode()).hexdigest()[:16]
+            return _fast_hash(str(type(data)))
 
 
 def get_source_key(data: Any) -> str:
@@ -92,7 +124,8 @@ def get_source_key(data: Any) -> str:
             return str(path.absolute())
         return data
     elif isinstance(data, dict):
-        return f"dict:{sorted(data.keys())}"
+        # Python 3.7+ dicts maintain insertion order
+        return f"dict:{':'.join(data.keys())}"
     else:
         return f"{type(data).__name__}"
 

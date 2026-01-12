@@ -197,11 +197,8 @@ def learn(
         >>> schema.save("schema.yaml")
     """
     lf = to_lazyframe(data)
-    df = lf.collect()
-
-    row_count = len(df)
-    polars_schema = df.schema
-    columns: dict[str, ColumnSchema] = {}
+    polars_schema = lf.collect_schema()
+    col_names = list(polars_schema.keys())
 
     numeric_types = {
         pl.Int8,
@@ -216,15 +213,57 @@ def learn(
         pl.Float64,
     }
 
-    for col_name in df.columns:
-        col_data = df.get_column(col_name)
+    # Classify columns by type
+    numeric_cols = [c for c in col_names if polars_schema[c] in numeric_types]
+    string_cols = [c for c in col_names if polars_schema[c] in (pl.String, pl.Utf8)]
+
+    # Build all statistics in a single select (single pass over data)
+    stat_exprs: list[pl.Expr] = [
+        pl.len().alias("_row_count"),
+    ]
+
+    # Basic stats for all columns
+    for c in col_names:
+        stat_exprs.extend([
+            pl.col(c).null_count().alias(f"{c}__nulls"),
+            pl.col(c).n_unique().alias(f"{c}__unique"),
+        ])
+
+    if infer_constraints:
+        # Numeric column stats
+        for c in numeric_cols:
+            stat_exprs.extend([
+                pl.col(c).min().alias(f"{c}__min"),
+                pl.col(c).max().alias(f"{c}__max"),
+                pl.col(c).mean().alias(f"{c}__mean"),
+                pl.col(c).std().alias(f"{c}__std"),
+                pl.col(c).quantile(0.25).alias(f"{c}__q25"),
+                pl.col(c).quantile(0.50).alias(f"{c}__q50"),
+                pl.col(c).quantile(0.75).alias(f"{c}__q75"),
+            ])
+
+        # String column length stats
+        for c in string_cols:
+            stat_exprs.extend([
+                pl.col(c).str.len_chars().min().alias(f"{c}__min_len"),
+                pl.col(c).str.len_chars().max().alias(f"{c}__max_len"),
+            ])
+
+    # Execute single pass to collect all statistics
+    # Use streaming for large datasets (>1M rows)
+    stats_row = lf.select(stat_exprs).collect(engine="streaming").row(0, named=True)
+    row_count = stats_row["_row_count"]
+
+    # Build column schemas from collected statistics
+    columns: dict[str, ColumnSchema] = {}
+
+    for col_name in col_names:
         dtype = polars_schema[col_name]
         dtype_str = str(dtype)
 
-        # Basic stats
-        null_count = col_data.null_count()
+        null_count = stats_row[f"{col_name}__nulls"]
+        unique_count = stats_row[f"{col_name}__unique"]
         null_ratio = null_count / row_count if row_count > 0 else 0.0
-        unique_count = col_data.n_unique()
         unique_ratio = unique_count / row_count if row_count > 0 else 0.0
 
         col_schema = ColumnSchema(
@@ -237,19 +276,26 @@ def learn(
         )
 
         if infer_constraints:
-            non_null = col_data.drop_nulls()
-
             # Numeric columns: min, max, mean, std, quantiles
-            if dtype in numeric_types and len(non_null) > 0:
-                col_schema.min_value = float(non_null.min())  # type: ignore
-                col_schema.max_value = float(non_null.max())  # type: ignore
-                col_schema.mean = float(non_null.mean())  # type: ignore
-                col_schema.std = float(non_null.std()) if len(non_null) > 1 else 0.0  # type: ignore
+            if col_name in numeric_cols:
+                min_val = stats_row.get(f"{col_name}__min")
+                max_val = stats_row.get(f"{col_name}__max")
+                mean_val = stats_row.get(f"{col_name}__mean")
+                std_val = stats_row.get(f"{col_name}__std")
+
+                if min_val is not None:
+                    col_schema.min_value = float(min_val)
+                if max_val is not None:
+                    col_schema.max_value = float(max_val)
+                if mean_val is not None:
+                    col_schema.mean = float(mean_val)
+                if std_val is not None:
+                    col_schema.std = float(std_val)
 
                 # Quantiles
-                q25 = non_null.quantile(0.25)
-                q50 = non_null.quantile(0.50)
-                q75 = non_null.quantile(0.75)
+                q25 = stats_row.get(f"{col_name}__q25")
+                q50 = stats_row.get(f"{col_name}__q50")
+                q75 = stats_row.get(f"{col_name}__q75")
                 if q25 is not None and q50 is not None and q75 is not None:
                     col_schema.quantiles = {
                         "25%": float(q25),
@@ -257,19 +303,39 @@ def learn(
                         "75%": float(q75),
                     }
 
-            # Low cardinality columns: allowed values
-            if unique_count <= categorical_threshold and unique_count > 0:
-                values = non_null.unique().sort().to_list()
-                # Only store if not too many and values are simple types
-                if all(isinstance(v, (str, int, float, bool)) for v in values):
-                    col_schema.allowed_values = values
-
             # String columns: length constraints
-            if dtype in (pl.String, pl.Utf8) and len(non_null) > 0:
-                lengths = non_null.str.len_chars()
-                col_schema.min_length = int(lengths.min())  # type: ignore
-                col_schema.max_length = int(lengths.max())  # type: ignore
+            if col_name in string_cols:
+                min_len = stats_row.get(f"{col_name}__min_len")
+                max_len = stats_row.get(f"{col_name}__max_len")
+                if min_len is not None:
+                    col_schema.min_length = int(min_len)
+                if max_len is not None:
+                    col_schema.max_length = int(max_len)
 
         columns[col_name] = col_schema
+
+    # Collect allowed values for low cardinality columns (separate pass - necessary for unique values)
+    if infer_constraints:
+        low_cardinality_cols = [
+            c for c in col_names
+            if stats_row[f"{c}__unique"] <= categorical_threshold
+            and stats_row[f"{c}__unique"] > 0
+        ]
+
+        if low_cardinality_cols:
+            # Collect unique values - each column may have different lengths,
+            # so we use implode() to collect as list then extract
+            # Use streaming for large datasets
+            unique_exprs = [
+                pl.col(c).drop_nulls().unique().sort().implode().alias(c)
+                for c in low_cardinality_cols
+            ]
+            unique_row = lf.select(unique_exprs).collect(engine="streaming").row(0, named=True)
+
+            for c in low_cardinality_cols:
+                values = unique_row[c]
+                # Only store if values are simple types
+                if all(isinstance(v, (str, int, float, bool)) for v in values):
+                    columns[c].allowed_values = values
 
     return Schema(columns=columns, row_count=row_count)

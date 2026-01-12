@@ -1,32 +1,49 @@
 """Built-in validators for data quality checks.
 
-This module provides 275+ validators across 22 categories:
+This module provides 289+ validators across 28 categories with lazy loading
+for improved startup performance.
+
+Categories:
 - schema: Table structure validation (14 validators)
-- completeness: Null and missing value detection (7 validators)
-- uniqueness: Duplicate, primary key, and distinct value checks (13 validators)
+- completeness: Null and missing value detection (12 validators)
+- uniqueness: Duplicate, primary key, and distinct value checks (17 validators)
 - distribution: Range, set, and statistical checks (15 validators)
-- string: Pattern matching and format validation (17 validators)
+- string: Pattern matching and format validation (20 validators)
 - datetime: Date format and range checks (10 validators)
 - aggregate: Statistical aggregate validation (8 validators)
 - cross_table: Multi-table validation (4 validators)
-- query: SQL and expression-based validation (17 validators)
+- query: SQL and expression-based validation (18 validators)
 - multi_column: Multi-column compound checks (18 validators)
-- table: Table metadata validation (13 validators)
-- geospatial: Geographic coordinate validation (11 validators)
-- drift: Data drift detection (11 validators)
-- anomaly: Anomaly and outlier detection (13 validators)
-- referential: Referential integrity validation (11 validators)
-- timeseries: Time series validation (12 validators)
-- business_rule: Business rule validation (6 validators)
-- profiling: Data profiling validation (6 validators)
-- localization: Asian localization validation (8 validators)
-- ml_feature: ML feature validation (4 validators)
+- table: Table metadata validation (17 validators)
+- geospatial: Geographic coordinate validation (12 validators)
+- drift: Data drift detection (14 validators)
+- anomaly: Anomaly and outlier detection (17 validators)
+- referential: Referential integrity validation (16 validators)
+- timeseries: Time series validation (18 validators)
+- business_rule: Business rule validation (8 validators)
+- profiling: Data profiling validation (8 validators)
+- localization: Asian localization validation (9 validators)
+- ml_feature: ML feature validation (9 validators)
 - privacy: GDPR/CCPA/Global privacy compliance (20+ validators)
+
+Usage:
+    # Import specific validators (recommended - lazy loaded)
+    from truthound.validators import NullValidator, DuplicateValidator
+
+    # Use registry for dynamic access (lazy loaded on access)
+    from truthound.validators import registry
+    validator_cls = registry.get("null")
+
+    # List available validators (loads all - avoid if possible)
+    from truthound.validators import list_validators
+    all_validators = list_validators()
 """
 
 from __future__ import annotations
 
-# Base classes
+from typing import TYPE_CHECKING, Any
+
+# Base classes - eagerly loaded as they're fundamental
 from truthound.validators.base import (
     ValidationIssue,
     ValidatorConfig,
@@ -36,375 +53,210 @@ from truthound.validators.base import (
     NumericValidatorMixin,
     StringValidatorMixin,
     DatetimeValidatorMixin,
+    SampledEarlyTerminationMixin,
+    EarlyTerminationResult,
     NUMERIC_TYPES,
     STRING_TYPES,
     DATETIME_TYPES,
+    # Expression-based validation architecture
+    ValidationExpressionSpec,
+    ExpressionValidatorProtocol,
+    ExpressionValidatorMixin,
+    ExpressionBatchExecutor,
+    # Query plan optimization utilities
+    QUERY_OPTIMIZATIONS,
+    optimized_collect,
 )
 
-# Registry
+# Registry - singleton, lazy loading inside
 from truthound.validators.registry import registry, register_validator
 
-# Schema validators
-from truthound.validators.schema import (
-    ColumnExistsValidator,
-    ColumnNotExistsValidator,
-    ColumnCountValidator,
-    RowCountValidator,
-    ColumnTypeValidator,
-    ColumnOrderValidator,
-    TableSchemaValidator,
-    ColumnPairValidator,
-    MultiColumnUniqueValidator,
-    ReferentialIntegrityValidator,
-    MultiColumnSumValidator,
-    MultiColumnCalculationValidator,
-    ColumnPairInSetValidator,
-    ColumnPairNotInSetValidator,
+# Lazy loading infrastructure
+from truthound.validators._lazy import (
+    VALIDATOR_IMPORT_MAP,
+    validator_getattr,
+    get_validator_import_metrics,
+    preload_validators,
+    preload_category,
 )
 
-# Completeness validators
-from truthound.validators.completeness import (
-    NullValidator,
-    NotNullValidator,
-    CompletenessRatioValidator,
-    EmptyStringValidator,
-    WhitespaceOnlyValidator,
-    ConditionalNullValidator,
-    DefaultValueValidator,
-)
+if TYPE_CHECKING:
+    # Type hints for IDE support - not actually imported at runtime
+    from truthound.validators.schema import (
+        ColumnExistsValidator,
+        ColumnNotExistsValidator,
+        ColumnCountValidator,
+        RowCountValidator,
+        ColumnTypeValidator,
+        ColumnOrderValidator,
+        TableSchemaValidator,
+        ColumnPairValidator,
+        MultiColumnUniqueValidator,
+        ReferentialIntegrityValidator,
+        MultiColumnSumValidator,
+        MultiColumnCalculationValidator,
+        ColumnPairInSetValidator,
+        ColumnPairNotInSetValidator,
+    )
+    from truthound.validators.completeness import (
+        NullValidator,
+        NotNullValidator,
+        CompletenessRatioValidator,
+        EmptyStringValidator,
+        WhitespaceOnlyValidator,
+        ConditionalNullValidator,
+        DefaultValueValidator,
+    )
+    from truthound.validators.uniqueness import (
+        UniqueValidator,
+        UniqueRatioValidator,
+        DistinctCountValidator,
+        DuplicateValidator,
+        DuplicateWithinGroupValidator,
+        PrimaryKeyValidator,
+        CompoundKeyValidator,
+        DistinctValuesInSetValidator,
+        DistinctValuesEqualSetValidator,
+        DistinctValuesContainSetValidator,
+        DistinctCountBetweenValidator,
+        UniqueWithinRecordValidator,
+        AllColumnsUniqueWithinRecordValidator,
+    )
+    from truthound.validators.distribution import (
+        BetweenValidator,
+        RangeValidator,
+        PositiveValidator,
+        NonNegativeValidator,
+        InSetValidator,
+        NotInSetValidator,
+        IncreasingValidator,
+        DecreasingValidator,
+        OutlierValidator,
+        ZScoreOutlierValidator,
+        QuantileValidator,
+        DistributionValidator,
+        KLDivergenceValidator,
+        ChiSquareValidator,
+        MostCommonValueValidator,
+    )
+    from truthound.validators.string import (
+        RegexValidator,
+        RegexListValidator,
+        NotMatchRegexValidator,
+        NotMatchRegexListValidator,
+        LengthValidator,
+        EmailValidator,
+        UrlValidator,
+        PhoneValidator,
+        UuidValidator,
+        IpAddressValidator,
+        FormatValidator,
+        JsonParseableValidator,
+        JsonSchemaValidator,
+        AlphanumericValidator,
+        ConsistentCasingValidator,
+        LikePatternValidator,
+        NotLikePatternValidator,
+    )
+    from truthound.validators.datetime import (
+        DateFormatValidator,
+        DateBetweenValidator,
+        FutureDateValidator,
+        PastDateValidator,
+        DateOrderValidator,
+        TimezoneValidator,
+        RecentDataValidator,
+        DatePartCoverageValidator,
+        GroupedRecentDataValidator,
+        DateutilParseableValidator,
+    )
+    from truthound.validators.aggregate import (
+        MeanBetweenValidator,
+        MedianBetweenValidator,
+        StdBetweenValidator,
+        VarianceBetweenValidator,
+        MinBetweenValidator,
+        MaxBetweenValidator,
+        SumBetweenValidator,
+        TypeValidator,
+    )
 
-# Uniqueness validators
-from truthound.validators.uniqueness import (
-    UniqueValidator,
-    UniqueRatioValidator,
-    DistinctCountValidator,
-    DuplicateValidator,
-    DuplicateWithinGroupValidator,
-    PrimaryKeyValidator,
-    CompoundKeyValidator,
-    DistinctValuesInSetValidator,
-    DistinctValuesEqualSetValidator,
-    DistinctValuesContainSetValidator,
-    DistinctCountBetweenValidator,
-    UniqueWithinRecordValidator,
-    AllColumnsUniqueWithinRecordValidator,
-)
 
-# Distribution validators
-from truthound.validators.distribution import (
-    BetweenValidator,
-    RangeValidator,
-    PositiveValidator,
-    NonNegativeValidator,
-    InSetValidator,
-    NotInSetValidator,
-    IncreasingValidator,
-    DecreasingValidator,
-    OutlierValidator,
-    ZScoreOutlierValidator,
-    QuantileValidator,
-    DistributionValidator,
-    KLDivergenceValidator,
-    ChiSquareValidator,
-    MostCommonValueValidator,
-)
+def __getattr__(name: str) -> Any:
+    """Lazy load validators on demand.
 
-# String validators
-from truthound.validators.string import (
-    RegexValidator,
-    RegexListValidator,
-    NotMatchRegexValidator,
-    NotMatchRegexListValidator,
-    LengthValidator,
-    EmailValidator,
-    UrlValidator,
-    PhoneValidator,
-    UuidValidator,
-    IpAddressValidator,
-    FormatValidator,
-    JsonParseableValidator,
-    JsonSchemaValidator,
-    AlphanumericValidator,
-    ConsistentCasingValidator,
-    LikePatternValidator,
-    NotLikePatternValidator,
-)
+    This function is called when an attribute is not found in the module.
+    It uses the lazy loading infrastructure to import validators only when needed.
+    """
+    # Check if it's a validator in the import map
+    if name in VALIDATOR_IMPORT_MAP:
+        return validator_getattr(name)
 
-# Datetime validators
-from truthound.validators.datetime import (
-    DateFormatValidator,
-    DateBetweenValidator,
-    FutureDateValidator,
-    PastDateValidator,
-    DateOrderValidator,
-    TimezoneValidator,
-    RecentDataValidator,
-    DatePartCoverageValidator,
-    GroupedRecentDataValidator,
-    DateutilParseableValidator,
-)
+    # Special case for BUILTIN_VALIDATORS - load lazily
+    if name == "BUILTIN_VALIDATORS":
+        return _get_builtin_validators()
 
-# Aggregate validators
-from truthound.validators.aggregate import (
-    MeanBetweenValidator,
-    MedianBetweenValidator,
-    StdBetweenValidator,
-    VarianceBetweenValidator,
-    MinBetweenValidator,
-    MaxBetweenValidator,
-    SumBetweenValidator,
-    TypeValidator,
-)
+    raise AttributeError(f"module 'truthound.validators' has no attribute '{name}'")
 
-# Cross-table validators
-from truthound.validators.cross_table import (
-    CrossTableRowCountValidator,
-    CrossTableRowCountFactorValidator,
-    CrossTableAggregateValidator,
-    CrossTableDistinctCountValidator,
-)
 
-# Query validators
-from truthound.validators.query import (
-    QueryValidator,
-    ExpressionValidator,
-    QueryReturnsSingleValueValidator,
-    QueryReturnsNoRowsValidator,
-    QueryReturnsRowsValidator,
-    QueryResultMatchesValidator,
-    QueryRowCountValidator,
-    QueryRowCountRatioValidator,
-    QueryRowCountCompareValidator,
-    QueryColumnValuesValidator,
-    QueryColumnUniqueValidator,
-    QueryColumnNotNullValidator,
-    QueryAggregateValidator,
-    QueryGroupAggregateValidator,
-    QueryAggregateCompareValidator,
-    CustomExpressionValidator,
-    ConditionalExpressionValidator,
-    MultiConditionValidator,
-    RowLevelValidator,
-)
+def _get_builtin_validators() -> dict[str, type[Validator]]:
+    """Get the BUILTIN_VALIDATORS dict with lazy loading."""
+    # Only load the 7 core validators
+    return {
+        "null": registry.get("NullValidator"),
+        "duplicate": registry.get("DuplicateValidator"),
+        "type": registry.get("TypeValidator"),
+        "range": registry.get("RangeValidator"),
+        "outlier": registry.get("OutlierValidator"),
+        "format": registry.get("FormatValidator"),
+        "unique": registry.get("UniqueValidator"),
+    }
 
-# Multi-column validators
-from truthound.validators.multi_column import (
-    MultiColumnValidator,
-    ColumnArithmeticValidator,
-    ColumnSumValidator,
-    ColumnProductValidator,
-    ColumnDifferenceValidator,
-    ColumnRatioValidator,
-    ColumnPercentageValidator,
-    ColumnComparisonValidator,
-    ColumnChainComparisonValidator,
-    ColumnMaxValidator,
-    ColumnMinValidator,
-    ColumnMeanValidator,
-    ColumnConsistencyValidator,
-    ColumnMutualExclusivityValidator,
-    ColumnCoexistenceValidator,
-    ColumnDependencyValidator,
-    ColumnImplicationValidator,
-    ColumnCorrelationValidator,
-    ColumnCovarianceValidator,
-    MultiColumnVarianceValidator,
-)
 
-# Table metadata validators
-from truthound.validators.table import (
-    TableValidator,
-    TableRowCountRangeValidator,
-    TableRowCountExactValidator,
-    TableRowCountCompareValidator,
-    TableNotEmptyValidator,
-    TableColumnCountValidator,
-    TableRequiredColumnsValidator,
-    TableForbiddenColumnsValidator,
-    TableFreshnessValidator,
-    TableDataRecencyValidator,
-    TableUpdateFrequencyValidator,
-    TableSchemaMatchValidator,
-    TableSchemaCompareValidator,
-    TableColumnTypesValidator,
-    TableMemorySizeValidator,
-    TableRowToColumnRatioValidator,
-    TableDimensionsValidator,
-)
+def get_validator(name: str) -> type[Validator]:
+    """Get a validator class by name.
 
-# Geospatial validators
-from truthound.validators.geospatial import (
-    GeoValidator,
-    LatitudeValidator,
-    LongitudeValidator,
-    CoordinateValidator,
-    CoordinateNotNullIslandValidator,
-    GeoDistanceValidator,
-    GeoDistanceFromPointValidator,
-    GeoBoundingBoxValidator,
-    GeoCountryValidator,
-)
+    This function uses lazy loading - the validator is only imported
+    when first requested.
 
-# Drift validators
-from truthound.validators.drift import (
-    DriftValidator,
-    ColumnDriftValidator,
-    KSTestValidator,
-    ChiSquareDriftValidator,
-    WassersteinDriftValidator,
-    PSIValidator,
-    CSIValidator,
-    MeanDriftValidator,
-    VarianceDriftValidator,
-    QuantileDriftValidator,
-    RangeDriftValidator,
-    FeatureDriftValidator,
-    JSDivergenceValidator,
-)
+    Args:
+        name: Name of the validator.
 
-# Anomaly validators
-from truthound.validators.anomaly import (
-    AnomalyValidator,
-    ColumnAnomalyValidator,
-    IQRAnomalyValidator,
-    MADAnomalyValidator,
-    GrubbsTestValidator,
-    TukeyFencesValidator,
-    PercentileAnomalyValidator,
-    MahalanobisValidator,
-    EllipticEnvelopeValidator,
-    PCAAnomalyValidator,
-    ZScoreMultivariateValidator,
-    IsolationForestValidator,
-    LOFValidator,
-    OneClassSVMValidator,
-    DBSCANAnomalyValidator,
-)
+    Returns:
+        Validator class.
 
-# Referential integrity validators
-from truthound.validators.referential import (
-    ForeignKeyRelation,
-    TableNode,
-    ReferentialValidator,
-    MultiTableValidator,
-    ForeignKeyValidator,
-    CompositeForeignKeyValidator,
-    SelfReferentialFKValidator,
-    CascadeAction,
-    CascadeRule,
-    CascadeIntegrityValidator,
-    CascadeDepthValidator,
-    OrphanRecordValidator,
-    MultiTableOrphanValidator,
-    DanglingReferenceValidator,
-    CircularReferenceValidator,
-    HierarchyCircularValidator,
-    HierarchyDepthValidator,
-)
+    Raises:
+        ValueError: If the validator name is not found.
+    """
+    return registry.get(name)
 
-# Time series validators
-from truthound.validators.timeseries import (
-    TimeFrequency,
-    TimeSeriesStats,
-    TimeSeriesValidator,
-    ValueTimeSeriesValidator,
-    TimeSeriesGapValidator,
-    TimeSeriesIntervalValidator,
-    TimeSeriesDuplicateValidator,
-    MonotonicityType,
-    TimeSeriesMonotonicValidator,
-    TimeSeriesOrderValidator,
-    SeasonalPeriod,
-    SeasonalityValidator,
-    SeasonalDecompositionValidator,
-    TrendDirection,
-    TrendValidator,
-    TrendBreakValidator,
-    TimeSeriesCompletenessValidator,
-    TimeSeriesValueCompletenessValidator,
-    TimeSeriesDateRangeValidator,
-)
 
-# Business rule validators
-from truthound.validators.business_rule import (
-    BusinessRuleValidator,
-    ChecksumValidator,
-    LuhnValidator,
-    ISBNValidator,
-    CreditCardValidator,
-    IBANValidator,
-    VATValidator,
-    SWIFTValidator,
-)
+def list_validators(category: str | None = None) -> dict[str, type[Validator]]:
+    """List all validators, optionally filtered by category.
 
-# Data profiling validators
-from truthound.validators.profiling import (
-    ProfileMetrics,
-    ProfilingValidator,
-    CardinalityValidator,
-    UniquenessRatioValidator,
-    EntropyValidator,
-    InformationGainValidator,
-    ValueFrequencyValidator,
-    DistributionShapeValidator,
-)
+    Note: Without a category filter, this loads ALL validators which
+    defeats lazy loading. Use get_validator() for individual validators
+    when possible.
 
-# Localization validators
-from truthound.validators.localization import (
-    LocalizationValidator,
-    KoreanBusinessNumberValidator,
-    KoreanRRNValidator,
-    KoreanPhoneValidator,
-    KoreanBankAccountValidator,
-    JapanesePostalCodeValidator,
-    JapaneseMyNumberValidator,
-    ChineseIDValidator,
-    ChineseUSCCValidator,
-)
+    Args:
+        category: Optional category name to filter by.
 
-# ML feature validators
-from truthound.validators.ml_feature import (
-    MLFeatureValidator,
-    FeatureStats,
-    CorrelationResult,
-    LeakageResult,
-    ScaleType,
-    FeatureNullImpactValidator,
-    FeatureScaleValidator,
-    FeatureCorrelationMatrixValidator,
-    TargetLeakageValidator,
-)
+    Returns:
+        Dictionary of validator name to validator class.
+    """
+    if category:
+        return registry.get_by_category(category)
+    return registry.list_all()
 
-# Privacy compliance validators
-from truthound.validators.privacy import (
-    # Enums
-    PrivacyRegulation,
-    PIICategory,
-    ConsentStatus,
-    LegalBasis,
-    # Data classes
-    PIIFieldDefinition,
-    PrivacyFinding,
-    # Base validators
-    PrivacyValidator,
-    DataRetentionValidator,
-    ConsentValidator,
-    # GDPR validators
-    GDPRComplianceValidator,
-    GDPRSpecialCategoryValidator,
-    GDPRDataMinimizationValidator,
-    GDPRRightToErasureValidator,
-    # CCPA validators
-    CCPAComplianceValidator,
-    CCPASensitiveInfoValidator,
-    CCPADoNotSellValidator,
-    CCPAConsumerRightsValidator,
-    # Global validators
-    GlobalPrivacyValidator,
-    LGPDComplianceValidator,
-    PIPEDAComplianceValidator,
-    APPIComplianceValidator,
-)
+
+def list_categories() -> list[str]:
+    """List all validator categories.
+
+    Returns:
+        List of category names.
+    """
+    return registry.list_categories()
+
 
 __all__ = [
     # Base
@@ -416,9 +268,19 @@ __all__ = [
     "NumericValidatorMixin",
     "StringValidatorMixin",
     "DatetimeValidatorMixin",
+    "SampledEarlyTerminationMixin",
+    "EarlyTerminationResult",
     "NUMERIC_TYPES",
     "STRING_TYPES",
     "DATETIME_TYPES",
+    # Expression-based validation architecture
+    "ValidationExpressionSpec",
+    "ExpressionValidatorProtocol",
+    "ExpressionValidatorMixin",
+    "ExpressionBatchExecutor",
+    # Query plan optimization utilities
+    "QUERY_OPTIMIZATIONS",
+    "optimized_collect",
     # Registry
     "registry",
     "register_validator",
@@ -426,6 +288,10 @@ __all__ = [
     "list_validators",
     "list_categories",
     "BUILTIN_VALIDATORS",
+    # Lazy loading utilities
+    "get_validator_import_metrics",
+    "preload_validators",
+    "preload_category",
     # Schema
     "ColumnExistsValidator",
     "ColumnNotExistsValidator",
@@ -720,55 +586,3 @@ __all__ = [
     "PIPEDAComplianceValidator",
     "APPIComplianceValidator",
 ]
-
-
-# Backward compatibility: BUILTIN_VALIDATORS dict
-# This provides the same interface as before for api.py
-BUILTIN_VALIDATORS: dict[str, type[Validator]] = {
-    # Original 7 validators (backward compatibility)
-    "null": NullValidator,
-    "duplicate": DuplicateValidator,
-    "type": TypeValidator,
-    "range": RangeValidator,
-    "outlier": OutlierValidator,
-    "format": FormatValidator,
-    "unique": UniqueValidator,
-}
-
-
-def get_validator(name: str) -> type[Validator]:
-    """Get a validator class by name.
-
-    Args:
-        name: Name of the validator.
-
-    Returns:
-        Validator class.
-
-    Raises:
-        ValueError: If the validator name is not found.
-    """
-    return registry.get(name)
-
-
-def list_validators(category: str | None = None) -> dict[str, type[Validator]]:
-    """List all validators, optionally filtered by category.
-
-    Args:
-        category: Optional category name to filter by.
-
-    Returns:
-        Dictionary of validator name to validator class.
-    """
-    if category:
-        return registry.get_by_category(category)
-    return registry.list_all()
-
-
-def list_categories() -> list[str]:
-    """List all validator categories.
-
-    Returns:
-        List of category names.
-    """
-    return registry.list_categories()
