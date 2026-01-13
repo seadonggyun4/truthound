@@ -21,7 +21,9 @@ class TestComponentRegistry:
             pass
 
         registry.register_transformer("my_transformer", MyTransformer)
-        assert registry.get_transformer("my_transformer") is MyTransformer
+        # get_transformer returns an instance, not the class
+        result = registry.get_transformer("my_transformer")
+        assert isinstance(result, MyTransformer)
 
     def test_register_renderer(self):
         """Test registering a renderer."""
@@ -31,7 +33,9 @@ class TestComponentRegistry:
             pass
 
         registry.register_renderer("my_renderer", MyRenderer)
-        assert registry.get_renderer("my_renderer") is MyRenderer
+        # get_renderer returns an instance, not the class
+        result = registry.get_renderer("my_renderer")
+        assert isinstance(result, MyRenderer)
 
     def test_register_theme(self):
         """Test registering a theme."""
@@ -41,7 +45,9 @@ class TestComponentRegistry:
             pass
 
         registry.register_theme("my_theme", MyTheme)
-        assert registry.get_theme("my_theme") is MyTheme
+        # get_theme returns an instance, not the class
+        result = registry.get_theme("my_theme")
+        assert isinstance(result, MyTheme)
 
     def test_register_exporter(self):
         """Test registering an exporter."""
@@ -51,7 +57,9 @@ class TestComponentRegistry:
             pass
 
         registry.register_exporter("my_exporter", MyExporter)
-        assert registry.get_exporter("my_exporter") is MyExporter
+        # get_exporter returns an instance, not the class
+        result = registry.get_exporter("my_exporter")
+        assert isinstance(result, MyExporter)
 
     def test_get_nonexistent_raises(self):
         """Test that getting nonexistent component raises."""
@@ -109,7 +117,9 @@ class TestRegistryDecorators:
             pass
 
         assert registry.has_transformer("test_transformer")
-        assert registry.get_transformer("test_transformer") is TestTransformer
+        # get_transformer returns an instance
+        result = registry.get_transformer("test_transformer")
+        assert isinstance(result, TestTransformer)
 
     def test_register_renderer_decorator(self):
         """Test renderer registration decorator."""

@@ -53,28 +53,31 @@ class TestReportPipeline:
         pipeline = ReportPipeline()
         transformer = MockTransformer()
         result = pipeline.transform(transformer)
-        assert result is pipeline  # Fluent API
-        assert len(pipeline._transformers) == 1
+        # Fluent API returns a new pipeline (immutable)
+        assert result is not pipeline
+        assert len(result._transformers) == 1
 
     def test_set_renderer(self):
         """Test setting a renderer."""
         pipeline = ReportPipeline()
         renderer = MockRenderer()
         result = pipeline.render_with(renderer)
-        assert result is pipeline
-        assert pipeline._renderer is renderer
+        # Fluent API returns a new pipeline (immutable)
+        assert result is not pipeline
+        assert result._renderer_name == "__instance__"
 
     def test_set_exporter(self):
         """Test setting an exporter."""
         pipeline = ReportPipeline()
-        exporter = MockExporter()
-        result = pipeline.export_as(exporter)
-        assert result is pipeline
+        result = pipeline.export_as("pdf")
+        # Fluent API returns a new pipeline (immutable)
+        assert result is not pipeline
+        assert result._exporter_name == "pdf"
 
     def test_generate_basic(self):
         """Test basic pipeline generation."""
         pipeline = ReportPipeline()
-        pipeline.render_with(MockRenderer())
+        pipeline = pipeline.render_with(MockRenderer())
 
         ctx = ReportContext(data=ReportData())
         result = pipeline.generate(ctx)
@@ -86,8 +89,8 @@ class TestReportPipeline:
     def test_generate_with_transformer(self):
         """Test pipeline with transformer."""
         pipeline = ReportPipeline()
-        pipeline.transform(MockTransformer())
-        pipeline.render_with(MockRenderer())
+        pipeline = pipeline.transform(MockTransformer())
+        pipeline = pipeline.render_with(MockRenderer())
 
         ctx = ReportContext(data=ReportData())
         result = pipeline.generate(ctx)
@@ -98,24 +101,25 @@ class TestReportPipeline:
     def test_generate_with_multiple_transformers(self):
         """Test pipeline with multiple transformers."""
         pipeline = ReportPipeline()
-        pipeline.transform(MockTransformer("_1"))
-        pipeline.transform(MockTransformer("_2"))
-        pipeline.render_with(MockRenderer())
+        pipeline = pipeline.transform(MockTransformer("_1"))
+        pipeline = pipeline.transform(MockTransformer("_2"))
+        pipeline = pipeline.render_with(MockRenderer())
 
         ctx = ReportContext(data=ReportData())
         result = pipeline.generate(ctx)
 
         assert result.success
 
-    def test_generate_without_renderer_fails(self):
-        """Test that generation without renderer fails."""
+    def test_generate_without_renderer_uses_fallback(self):
+        """Test that generation without renderer uses simple fallback."""
         pipeline = ReportPipeline()
         ctx = ReportContext(data=ReportData())
 
         result = pipeline.generate(ctx)
 
-        assert not result.success
-        assert result.error is not None
+        # Pipeline uses simple fallback renderer when no renderer is registered
+        assert result.success
+        assert "<!DOCTYPE html>" in result.content
 
 
 class TestPipelineBuilder:
@@ -126,39 +130,41 @@ class TestPipelineBuilder:
         builder = PipelineBuilder()
         assert isinstance(builder, PipelineBuilder)
 
-    def test_builder_with_locale(self):
-        """Test builder with locale."""
-        builder = PipelineBuilder().with_locale("ko")
-        pipeline = builder.build()
-        assert pipeline._default_locale == "ko"
-
-    def test_builder_with_theme(self):
+    def test_builder_set_theme(self):
         """Test builder with theme."""
-        builder = PipelineBuilder().with_theme("dark")
+        builder = PipelineBuilder()
+        builder.set_theme("dark")
         pipeline = builder.build()
-        assert pipeline._default_theme == "dark"
+        assert pipeline._theme_name == "dark"
+
+    def test_builder_set_exporter(self):
+        """Test builder with exporter."""
+        builder = PipelineBuilder()
+        builder.set_exporter("pdf")
+        pipeline = builder.build()
+        assert pipeline._exporter_name == "pdf"
 
     def test_builder_fluent_chain(self):
         """Test builder fluent API."""
         pipeline = (
             PipelineBuilder()
-            .with_locale("ja")
-            .with_theme("corporate")
-            .with_transformer(MockTransformer())
-            .with_renderer(MockRenderer())
+            .set_theme("dark")
+            .set_renderer("jinja")
+            .set_exporter("html")
+            .add_transformer(MockTransformer())
             .build()
         )
 
-        assert pipeline._default_locale == "ja"
-        assert pipeline._default_theme == "corporate"
+        assert pipeline._theme_name == "dark"
+        assert pipeline._renderer_name == "jinja"
         assert len(pipeline._transformers) == 1
-        assert pipeline._renderer is not None
 
     def test_builder_with_options(self):
         """Test builder with options."""
-        builder = PipelineBuilder().with_option("debug", True)
+        builder = PipelineBuilder()
+        builder.set_option("debug", True)
         pipeline = builder.build()
-        assert pipeline._default_options.get("debug") is True
+        assert pipeline._options.get("debug") is True
 
 
 class TestPipelineResult:
@@ -168,9 +174,10 @@ class TestPipelineResult:
         """Test successful result."""
         ctx = ReportContext(data=ReportData())
         result = PipelineResult(
-            success=True,
             content="<html></html>",
+            format="html",
             context=ctx,
+            success=True,
         )
         assert result.success
         assert result.content == "<html></html>"
@@ -180,23 +187,23 @@ class TestPipelineResult:
         """Test failure result."""
         ctx = ReportContext(data=ReportData())
         result = PipelineResult(
-            success=False,
             content="",
+            format="html",
             context=ctx,
+            success=False,
             error="Renderer not configured",
         )
         assert not result.success
         assert result.error == "Renderer not configured"
 
-    def test_result_with_exported_bytes(self):
-        """Test result with exported bytes."""
+    def test_result_is_binary(self):
+        """Test result with binary content."""
         ctx = ReportContext(data=ReportData())
         result = PipelineResult(
-            success=True,
-            content="<html></html>",
+            content=b"PDF content",
+            format="pdf",
             context=ctx,
-            exported_bytes=b"PDF content",
-            export_format="pdf",
+            success=True,
         )
-        assert result.exported_bytes == b"PDF content"
-        assert result.export_format == "pdf"
+        assert result.is_binary
+        assert result.format == "pdf"
