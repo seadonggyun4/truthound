@@ -288,12 +288,12 @@ class ConstraintMiner(RuleLearner):
                 # Get value distribution
                 value_counts = (
                     df.group_by([col_x, col_y])
-                    .agg(pl.count().alias("count"))
+                    .agg(pl.len().alias("count"))
                 )
 
                 x_totals = (
                     df.group_by(col_x)
-                    .agg(pl.count().alias("total"))
+                    .agg(pl.len().alias("total"))
                 )
 
                 # Find strong implications
