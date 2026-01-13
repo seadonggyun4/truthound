@@ -1,14 +1,31 @@
 """Data masking utilities for anonymizing sensitive data."""
 
+import logging
+import warnings
+from typing import Literal
+
 import polars as pl
 
 from truthound.scanners import scan_pii
+
+logger = logging.getLogger(__name__)
+
+# Type alias for masking strategies
+MaskingStrategy = Literal["redact", "hash", "fake"]
+
+
+class MaskingWarning(UserWarning):
+    """Warning raised for masking-related issues."""
+
+    pass
 
 
 def mask_data(
     lf: pl.LazyFrame,
     columns: list[str] | None = None,
-    strategy: str = "redact",
+    strategy: MaskingStrategy = "redact",
+    *,
+    strict: bool = False,
 ) -> pl.DataFrame:
     """Mask sensitive data in a LazyFrame.
 
@@ -16,12 +33,26 @@ def mask_data(
         lf: Polars LazyFrame to mask.
         columns: Optional list of columns to mask. If None, auto-detects PII.
         strategy: Masking strategy - "redact", "hash", or "fake".
+        strict: If True, raise ValueError for non-existent columns.
+                If False (default), emit a warning and skip.
 
     Returns:
         Polars DataFrame with masked values.
 
     Raises:
-        ValueError: If an invalid strategy is provided.
+        ValueError: If an invalid strategy is provided, or if strict=True
+                    and a column is not found.
+
+    Warnings:
+        MaskingWarning: When a specified column does not exist in the data
+                        (only if strict=False).
+
+    Example:
+        >>> import polars as pl
+        >>> from truthound import mask
+        >>> df = pl.DataFrame({"email": ["test@example.com"], "name": ["John"]})
+        >>> masked = mask(df, columns=["email", "nonexistent"])
+        # Warning: Column 'nonexistent' not found in data. Skipping.
     """
     if strategy not in ("redact", "hash", "fake"):
         raise ValueError(f"Invalid strategy: {strategy}. Use 'redact', 'hash', or 'fake'.")
@@ -37,11 +68,35 @@ def mask_data(
     if not columns:
         return df
 
-    # Apply masking to each column
-    for col in columns:
-        if col not in df.columns:
-            continue
+    # Validate columns and collect warnings
+    available_columns = set(df.columns)
+    missing_columns: list[str] = []
+    valid_columns: list[str] = []
 
+    for col in columns:
+        if col not in available_columns:
+            missing_columns.append(col)
+        else:
+            valid_columns.append(col)
+
+    # Handle missing columns
+    if missing_columns:
+        if strict:
+            raise ValueError(
+                f"Column(s) not found in data: {missing_columns}. "
+                f"Available columns: {sorted(available_columns)}"
+            )
+        else:
+            for col in missing_columns:
+                warning_msg = (
+                    f"Column '{col}' not found in data. Skipping. "
+                    f"Available columns: {sorted(available_columns)}"
+                )
+                warnings.warn(warning_msg, MaskingWarning, stacklevel=2)
+                logger.warning(warning_msg)
+
+    # Apply masking only to valid columns
+    for col in valid_columns:
         if strategy == "redact":
             df = _apply_redact(df, col)
         elif strategy == "hash":

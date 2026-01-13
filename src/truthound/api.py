@@ -386,6 +386,8 @@ def mask(
     source: "BaseDataSource | None" = None,
     columns: list[str] | None = None,
     strategy: str = "redact",
+    *,
+    strict: bool = False,
 ) -> pl.DataFrame:
     """Mask sensitive data in the input.
 
@@ -396,9 +398,18 @@ def mask(
         columns: Optional list of columns to mask.
                 If None, auto-detects PII columns.
         strategy: Masking strategy - "redact", "hash", or "fake".
+        strict: If True, raise ValueError for non-existent columns.
+                If False (default), emit a warning and skip missing columns.
 
     Returns:
         Polars DataFrame with masked values.
+
+    Raises:
+        ValueError: If strict=True and a specified column doesn't exist.
+
+    Warnings:
+        MaskingWarning: When a specified column does not exist in the data
+                        (only if strict=False).
 
     Example:
         >>> import truthound as th
@@ -409,6 +420,9 @@ def mask(
 
         >>> # Use hash strategy
         >>> masked_df = th.mask(df, strategy="hash")
+
+        >>> # Strict mode - fail if columns don't exist
+        >>> masked_df = th.mask(df, columns=["email"], strict=True)
 
         >>> # Using DataSource for SQL database
         >>> from truthound.datasources import get_sql_datasource
@@ -429,7 +443,7 @@ def mask(
             raise ValueError("Either 'data' or 'source' must be provided")
         lf = to_lazyframe(data)
 
-    return mask_data(lf, columns=columns, strategy=strategy)
+    return mask_data(lf, columns=columns, strategy=strategy, strict=strict)
 
 
 def profile(

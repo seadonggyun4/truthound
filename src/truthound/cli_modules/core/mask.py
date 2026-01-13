@@ -33,6 +33,13 @@ def mask_cmd(
         str,
         typer.Option("--strategy", "-s", help="Masking strategy (redact, hash, fake)"),
     ] = "redact",
+    strict: Annotated[
+        bool,
+        typer.Option(
+            "--strict",
+            help="Fail if specified columns don't exist (default: warn and skip)",
+        ),
+    ] = False,
 ) -> None:
     """Mask sensitive data in a file.
 
@@ -48,8 +55,11 @@ def mask_cmd(
         truthound mask data.csv -o masked.csv
         truthound mask data.csv -o masked.csv --columns email,phone
         truthound mask data.csv -o masked.csv --strategy hash
+        truthound mask data.csv -o masked.csv --columns email --strict
     """
+    import warnings
     from truthound.api import mask
+    from truthound.maskers import MaskingWarning
 
     # Validate file exists
     require_file(file)
@@ -58,7 +68,16 @@ def mask_cmd(
     column_list = parse_list_callback(columns) if columns else None
 
     try:
-        masked_df = mask(str(file), columns=column_list, strategy=strategy)
+        # Capture warnings to display them
+        with warnings.catch_warnings(record=True) as caught_warnings:
+            warnings.simplefilter("always", MaskingWarning)
+            masked_df = mask(str(file), columns=column_list, strategy=strategy, strict=strict)
+
+            # Display any warnings
+            for w in caught_warnings:
+                if issubclass(w.category, MaskingWarning):
+                    typer.echo(f"Warning: {w.message}", err=True)
+
     except Exception as e:
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(1)
