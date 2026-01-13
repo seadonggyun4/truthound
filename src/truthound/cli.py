@@ -512,10 +512,19 @@ def checkpoint_run_cmd(
                 typer.echo(result_json)
         else:
             typer.echo(result.summary())
+            # Also save to file if --output specified (even with console format)
+            if output:
+                result_json = json.dumps(result.to_dict(), indent=2, default=str)
+                output.write_text(result_json)
+                typer.echo(f"Results also written to {output}")
 
         # Exit code based on status
-        if strict and result.status.value in ("failure", "error"):
-            raise typer.Exit(1)
+        # --strict: exit 1 if any issues are found (regardless of severity)
+        if strict:
+            stats = result.validation_result.statistics
+            total_issues = getattr(stats, "total_issues", 0) if stats else 0
+            if total_issues > 0 or result.status.value in ("failure", "error"):
+                raise typer.Exit(1)
 
     except typer.Exit:
         raise

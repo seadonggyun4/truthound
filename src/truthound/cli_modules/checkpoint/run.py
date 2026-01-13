@@ -149,8 +149,12 @@ def run_cmd(
             typer.echo(result.summary())
 
         # Exit code based on status
-        if strict and result.status.value in ("failure", "error"):
-            raise typer.Exit(1)
+        # --strict: exit 1 if any issues are found (regardless of severity)
+        if strict:
+            stats = result.validation_result.statistics
+            total_issues = getattr(stats, "total_issues", 0) if stats else 0
+            if total_issues > 0 or result.status.value in ("failure", "error"):
+                raise typer.Exit(1)
 
     except typer.Exit:
         raise
