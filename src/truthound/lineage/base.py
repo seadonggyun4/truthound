@@ -729,9 +729,49 @@ class LineageGraph:
 
     @classmethod
     def load(cls, path: str | Path, config: LineageConfig | None = None) -> "LineageGraph":
-        """Load graph from file."""
-        with open(path) as f:
-            data = json.load(f)
+        """Load graph from file.
+
+        Args:
+            path: Path to the lineage JSON file
+            config: Optional lineage configuration
+
+        Returns:
+            Loaded LineageGraph
+
+        Raises:
+            FileNotFoundError: If the file does not exist
+            LineageError: If the file is empty or contains invalid JSON
+        """
+        path = Path(path)
+
+        if not path.exists():
+            raise FileNotFoundError(f"Lineage file not found: {path}")
+
+        # Check for empty file
+        if path.stat().st_size == 0:
+            raise LineageError(
+                f"Lineage file is empty: {path}. "
+                "Create a lineage graph first using LineageGraph.save() or "
+                "the lineage tracking API."
+            )
+
+        try:
+            with open(path) as f:
+                content = f.read().strip()
+                if not content:
+                    raise LineageError(
+                        f"Lineage file is empty: {path}. "
+                        "Create a lineage graph first using LineageGraph.save() or "
+                        "the lineage tracking API."
+                    )
+                data = json.loads(content)
+        except json.JSONDecodeError as e:
+            raise LineageError(
+                f"Invalid JSON in lineage file: {path}. "
+                f"Error: {e}. "
+                "Ensure the file contains valid lineage data in JSON format."
+            ) from e
+
         return cls.from_dict(data, config)
 
     def clear(self) -> None:
