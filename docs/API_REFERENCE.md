@@ -192,11 +192,10 @@ Masks sensitive data.
 def mask(
     data: pl.DataFrame = None,
     source: BaseDataSource | None = None,
-    *,
-    strategy: str = "redact",
     columns: list[str] | None = None,
-    strategies: dict[str, str] | None = None,
-    pii_types: list[str] | None = None,
+    strategy: str = "redact",
+    *,
+    strict: bool = False,
 ) -> pl.DataFrame:
     """
     Mask sensitive data.
@@ -205,14 +204,41 @@ def mask(
         data: Input DataFrame
         source: DataSource instance for SQL databases, Spark, etc.
                 If provided, data argument is ignored.
-        strategy: Default masking strategy ("redact", "hash", "fake")
-        columns: Columns to mask (None = auto-detect)
-        strategies: Per-column strategy mapping
-        pii_types: PII types to mask
+        columns: Columns to mask (None = auto-detect PII)
+        strategy: Masking strategy ("redact", "hash", "fake")
+        strict: If True, raise ValueError for non-existent columns.
+                If False (default), emit warning and skip missing columns.
 
     Returns:
         DataFrame with masked values
+
+    Raises:
+        ValueError: If strict=True and a specified column doesn't exist.
+
+    Warnings:
+        MaskingWarning: When a column does not exist (only if strict=False).
     """
+```
+
+**Examples**:
+```python
+import truthound as th
+
+# Basic masking (auto-detect PII)
+masked_df = th.mask("data.csv")
+
+# Mask specific columns
+masked_df = th.mask(df, columns=["email", "phone"])
+
+# Use hash strategy
+masked_df = th.mask(df, strategy="hash")
+
+# Strict mode - fail if columns don't exist
+masked_df = th.mask(df, columns=["email"], strict=True)
+
+# Non-strict mode (default) - warn and skip missing columns
+masked_df = th.mask(df, columns=["email", "nonexistent"])
+# Warning: Column 'nonexistent' not found in data. Skipping.
 ```
 
 **Example with DataSource**:
@@ -735,6 +761,27 @@ Options:
   --columns TEXT          Comma-separated column names
   --format TEXT           Output format
   -o, --output PATH       Output file path
+```
+
+### truthound mask
+
+```bash
+truthound mask DATA [OPTIONS]
+
+Arguments:
+  DATA                    Path to data file
+
+Options:
+  --columns TEXT          Comma-separated column names to mask
+  --strategy, -s TEXT     Masking strategy (redact, hash, fake) [default: redact]
+  --strict                Fail if specified columns don't exist (default: warn and skip)
+  -o, --output PATH       Output file path [required]
+
+Examples:
+  truthound mask data.csv -o masked.csv
+  truthound mask data.csv -o masked.csv --columns email,phone
+  truthound mask data.csv -o masked.csv --strategy hash
+  truthound mask data.csv -o masked.csv --columns email --strict
 ```
 
 ### truthound auto-profile

@@ -212,6 +212,14 @@ upstream = graph.get_upstream("analytics")  # Returns list of LineageNode
 downstream = graph.get_downstream("raw_data")
 print(f"Upstream: {[n.id for n in upstream]}")
 print(f"Downstream: {[n.id for n in downstream]}")
+
+# Save and load graphs
+graph.save("lineage.json")
+loaded_graph = LineageGraph.load("lineage.json")
+
+# Error handling for load()
+# - Raises FileNotFoundError if file doesn't exist
+# - Raises LineageError if file is empty or contains invalid JSON
 ```
 
 #### Available NodeTypes

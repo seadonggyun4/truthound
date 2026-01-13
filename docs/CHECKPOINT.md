@@ -994,7 +994,11 @@ actions = [
 truthound checkpoint run my_check --strict
 ```
 
-Exit code 1 on failures ensures CI pipeline fails appropriately.
+In strict mode (`--strict`), exit code 1 is returned if:
+- Any validation issues are found (regardless of severity)
+- The checkpoint status is "failure" or "error"
+
+This ensures CI pipeline fails appropriately on any data quality issues.
 
 ### 4. Leverage Async for Large Datasets
 

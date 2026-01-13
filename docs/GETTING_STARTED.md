@@ -408,6 +408,12 @@ masked_df = th.mask(df, strategy="fake")     # Realistic fake data
 
 # Mask specific columns only
 masked_df = th.mask(df, columns=["email", "phone", "ssn"])
+
+# Strict mode - fail if column doesn't exist
+masked_df = th.mask(df, columns=["email"], strict=True)
+
+# Default behavior - warn and skip missing columns
+masked_df = th.mask(df, columns=["email", "nonexistent"])  # Warning: Column 'nonexistent' not found
 ```
 
 ### Masking Strategies
