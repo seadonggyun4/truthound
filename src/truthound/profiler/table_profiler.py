@@ -31,6 +31,40 @@ from truthound.profiler.column_profiler import ColumnProfiler
 
 
 # =============================================================================
+# Helper Functions
+# =============================================================================
+
+
+def _parse_percentage(value: str | float | None) -> float:
+    """Parse percentage string to float ratio.
+
+    Handles formats like "10.0%", "10%", 0.1, etc.
+
+    Args:
+        value: Percentage string or float
+
+    Returns:
+        Float ratio (0.0 to 1.0+)
+    """
+    if value is None:
+        return 0.0
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        value = value.strip()
+        if value.endswith("%"):
+            try:
+                return float(value[:-1]) / 100.0
+            except ValueError:
+                return 0.0
+        try:
+            return float(value)
+        except ValueError:
+            return 0.0
+    return 0.0
+
+
+# =============================================================================
 # Table Analyzers (Strategy Pattern)
 # =============================================================================
 
@@ -514,6 +548,44 @@ def load_profile(path: str | Path) -> TableProfile:
     # Reconstruct column profiles
     columns = []
     for col_data in data.get("columns", []):
+        # Handle field name aliases for backward compatibility and CLI output format
+        # CLI profile output uses 'dtype' but ColumnProfile expects 'physical_type'
+        if "dtype" in col_data and "physical_type" not in col_data:
+            col_data["physical_type"] = col_data.pop("dtype")
+
+        # Handle simplified CLI format with percentage strings
+        if "null_pct" in col_data and "null_ratio" not in col_data:
+            null_pct = col_data.pop("null_pct")
+            col_data["null_ratio"] = _parse_percentage(null_pct)
+
+        if "unique_pct" in col_data and "unique_ratio" not in col_data:
+            unique_pct = col_data.pop("unique_pct")
+            col_data["unique_ratio"] = _parse_percentage(unique_pct)
+
+        # Handle min/max as strings (CLI format)
+        if "min" in col_data:
+            min_val = col_data.pop("min")
+            if min_val != "-" and min_val is not None:
+                try:
+                    # Store as distribution min if numeric
+                    float(min_val)
+                except (ValueError, TypeError):
+                    pass
+
+        if "max" in col_data:
+            max_val = col_data.pop("max")
+            if max_val != "-" and max_val is not None:
+                try:
+                    float(max_val)
+                except (ValueError, TypeError):
+                    pass
+
+        # Ensure required fields have defaults
+        if "physical_type" not in col_data:
+            col_data["physical_type"] = "Unknown"
+        if "row_count" not in col_data:
+            col_data["row_count"] = data.get("row_count", 0)
+
         # Reconstruct nested objects
         if "distribution" in col_data:
             col_data["distribution"] = DistributionStats(**col_data["distribution"])
