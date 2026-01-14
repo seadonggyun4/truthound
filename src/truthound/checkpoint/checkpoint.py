@@ -17,6 +17,7 @@ from uuid import uuid4
 
 if TYPE_CHECKING:
     from truthound.checkpoint.actions.base import BaseAction, ActionResult
+    from truthound.checkpoint.routing.base import ActionRouter
     from truthound.checkpoint.triggers.base import BaseTrigger
     from truthound.datasources.base import BaseDataSource
     from truthound.stores.results import ValidationResult
@@ -209,6 +210,7 @@ class Checkpoint:
         validators: list[str | "Validator"] | None = None,
         actions: list["BaseAction[Any]"] | None = None,
         triggers: list["BaseTrigger[Any]"] | None = None,
+        router: "ActionRouter | None" = None,
         **kwargs: Any,
     ) -> None:
         """Initialize a checkpoint.
@@ -218,8 +220,12 @@ class Checkpoint:
             config: Full configuration object.
             data_source: Data source path or DataSource instance.
             validators: List of validators to run.
-            actions: Actions to execute after validation.
+            actions: Actions to execute after validation (bypasses router).
             triggers: Triggers for automated execution.
+            router: Optional ActionRouter for rule-based action routing.
+                When provided, actions are selected based on routing rules
+                instead of the static actions list (unless use_router=False
+                in run()).
             **kwargs: Additional config options.
         """
         # Build config
@@ -247,6 +253,7 @@ class Checkpoint:
 
         self._actions = actions or []
         self._triggers = triggers or []
+        self._router = router
 
         # Attach triggers to this checkpoint
         for trigger in self._triggers:
@@ -271,6 +278,28 @@ class Checkpoint:
     def triggers(self) -> list["BaseTrigger[Any]"]:
         """Get configured triggers."""
         return self._triggers
+
+    @property
+    def router(self) -> "ActionRouter | None":
+        """Get the action router."""
+        return self._router
+
+    @router.setter
+    def router(self, value: "ActionRouter | None") -> None:
+        """Set the action router."""
+        self._router = value
+
+    def set_router(self, router: "ActionRouter") -> "Checkpoint":
+        """Set the action router.
+
+        Args:
+            router: ActionRouter instance for rule-based routing.
+
+        Returns:
+            Self for chaining.
+        """
+        self._router = router
+        return self
 
     def add_action(self, action: "BaseAction[Any]") -> "Checkpoint":
         """Add an action to the checkpoint.
@@ -330,12 +359,16 @@ class Checkpoint:
         self,
         run_id: str | None = None,
         context: dict[str, Any] | None = None,
+        use_router: bool = True,
     ) -> CheckpointResult:
         """Run the checkpoint validation pipeline.
 
         Args:
             run_id: Optional custom run ID.
             context: Additional context for the run.
+            use_router: If True and a router is configured, use rule-based
+                routing to select actions. If False, use the static actions
+                list. Default is True.
 
         Returns:
             CheckpointResult with validation and action results.
@@ -426,7 +459,7 @@ class Checkpoint:
             )
 
             # Still run actions (they might want to notify about errors)
-            self._execute_actions(checkpoint_result)
+            self._execute_actions(checkpoint_result, use_router=use_router)
 
             return checkpoint_result
 
@@ -443,19 +476,49 @@ class Checkpoint:
         )
 
         # Execute actions
-        self._execute_actions(checkpoint_result)
+        self._execute_actions(checkpoint_result, use_router=use_router)
 
         # Update duration after actions
         checkpoint_result.duration_ms = (time.time() - start_time) * 1000
 
         return checkpoint_result
 
-    def _execute_actions(self, checkpoint_result: CheckpointResult) -> None:
-        """Execute all configured actions.
+    def _execute_actions(
+        self,
+        checkpoint_result: CheckpointResult,
+        use_router: bool = True,
+    ) -> None:
+        """Execute configured actions, optionally using rule-based routing.
 
         Args:
             checkpoint_result: The result to pass to actions.
+            use_router: If True and a router is configured, use rule-based
+                routing. Otherwise, execute all static actions.
         """
+        # Use router if available and enabled
+        if use_router and self._router is not None:
+            routing_result = self._router.route(
+                checkpoint_result, execute_actions=True
+            )
+            # Copy action results from routing
+            for action_result in routing_result.action_results:
+                checkpoint_result.action_results.append(action_result)
+                # Check for action failures
+                if not action_result.success:
+                    for action in routing_result.executed_actions:
+                        if (
+                            action.name == action_result.action_name
+                            and action.config.fail_checkpoint_on_error
+                        ):
+                            checkpoint_result.status = CheckpointStatus.ERROR
+                            if not checkpoint_result.error:
+                                checkpoint_result.error = (
+                                    f"Action failed: {action.name}"
+                                )
+                            break
+            return
+
+        # Fallback to static actions list
         for action in self._actions:
             try:
                 result = action.execute(checkpoint_result)
@@ -509,7 +572,7 @@ class Checkpoint:
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize checkpoint configuration to dictionary."""
-        return {
+        result = {
             "name": self._config.name,
             "data_source": str(self._config.data_source),
             "validators": self._config.validators,
@@ -523,5 +586,15 @@ class Checkpoint:
             "triggers": [t.trigger_type for t in self._triggers],
         }
 
+        # Add router info if configured
+        if self._router is not None:
+            result["router"] = {
+                "mode": self._router.mode.value,
+                "routes": [r.name for r in self._router.routes],
+            }
+
+        return result
+
     def __repr__(self) -> str:
-        return f"Checkpoint(name={self.name!r}, actions={len(self._actions)}, triggers={len(self._triggers)})"
+        router_info = f", router={len(self._router)}" if self._router else ""
+        return f"Checkpoint(name={self.name!r}, actions={len(self._actions)}, triggers={len(self._triggers)}{router_info})"

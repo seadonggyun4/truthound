@@ -93,6 +93,60 @@ from truthound.checkpoint.async_base import (
     with_semaphore,
 )
 
+# Throttling exports
+from truthound.checkpoint.throttling import (
+    NotificationThrottler,
+    ThrottlerBuilder,
+    ThrottlingMiddleware,
+    ThrottledAction,
+    ThrottlingConfig,
+    ThrottlingKey,
+    RateLimit,
+    RateLimitScope,
+    ThrottleResult,
+    ThrottleStatus,
+    TimeUnit,
+    create_throttler,
+    configure_global_throttling,
+)
+
+# Escalation exports
+from truthound.checkpoint.escalation import (
+    # Protocols
+    EscalationLevel,
+    EscalationPolicy,
+    EscalationPolicyConfig,
+    EscalationRecord,
+    EscalationResult,
+    EscalationStats,
+    EscalationTarget,
+    EscalationTrigger,
+    TargetType,
+    # States
+    EscalationState,
+    EscalationStateMachine,
+    EscalationStateManager,
+    EscalationEvent,
+    # Scheduler
+    SchedulerConfig,
+    SchedulerType,
+    ScheduledJob,
+    create_scheduler,
+    # Stores
+    InMemoryEscalationStore,
+    SQLiteEscalationStore,
+    create_store,
+    # Engine
+    EscalationEngine,
+    EscalationEngineConfig,
+    EscalationPolicyManager,
+    # Integration
+    EscalationRule,
+    EscalationRuleConfig,
+    EscalationAction,
+    create_escalation_route,
+)
+
 __all__ = [
     # Core (Sync)
     "Checkpoint",
@@ -133,4 +187,46 @@ __all__ = [
     "with_retry",
     "with_timeout",
     "with_semaphore",
+    # Throttling
+    "NotificationThrottler",
+    "ThrottlerBuilder",
+    "ThrottlingMiddleware",
+    "ThrottledAction",
+    "ThrottlingConfig",
+    "ThrottlingKey",
+    "RateLimit",
+    "RateLimitScope",
+    "ThrottleResult",
+    "ThrottleStatus",
+    "TimeUnit",
+    "create_throttler",
+    "configure_global_throttling",
+    # Escalation
+    "EscalationLevel",
+    "EscalationPolicy",
+    "EscalationPolicyConfig",
+    "EscalationRecord",
+    "EscalationResult",
+    "EscalationStats",
+    "EscalationTarget",
+    "EscalationTrigger",
+    "TargetType",
+    "EscalationState",
+    "EscalationStateMachine",
+    "EscalationStateManager",
+    "EscalationEvent",
+    "SchedulerConfig",
+    "SchedulerType",
+    "ScheduledJob",
+    "create_scheduler",
+    "InMemoryEscalationStore",
+    "SQLiteEscalationStore",
+    "create_store",
+    "EscalationEngine",
+    "EscalationEngineConfig",
+    "EscalationPolicyManager",
+    "EscalationRule",
+    "EscalationRuleConfig",
+    "EscalationAction",
+    "create_escalation_route",
 ]
