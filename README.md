@@ -47,16 +47,19 @@ Truthound is a data quality validation framework built on Polars, a Rust-based D
 
 ### Core Features
 
-| Feature | Status | Description |
-|---------|--------|-------------|
-| Zero Configuration | Implemented | Automatic schema inference with fingerprint-based caching |
-| Polars LazyFrame | Implemented | Native Polars operations for all core validations |
-| DAG Parallel Execution | Implemented | Dependency-aware validator orchestration |
-| Custom Validator SDK | Implemented | Decorators, fluent builder, testing utilities |
-| Privacy Compliance | Implemented | GDPR, CCPA, LGPD, PIPEDA, APPI support |
-| ReDoS Protection | Implemented | Regex safety analysis, ML-based prediction, safe execution |
-| Plugin Architecture | Implemented | Security sandbox, code signing, version constraints, hot reload |
-| Multi-Backend Support | Implemented | Polars, Pandas, SQL databases, cloud data warehouses |
+| Feature | Description |
+|---------|-------------|
+| **Zero Configuration** | Automatic schema inference with fingerprint-based caching (xxhash) |
+| **289 Validators** | 28 categories including schema, completeness, uniqueness, distribution, drift, anomaly |
+| **Polars LazyFrame** | Native Polars operations, expression-based batch execution, single collect() optimization |
+| **DAG Parallel Execution** | Dependency-aware orchestration with 3 execution strategies (Sequential, Parallel, Adaptive) |
+| **Custom Validator SDK** | `@custom_validator` decorator, `ValidatorBuilder` fluent API, testing utilities, 7 templates |
+| **i18n Error Messages** | 7 languages (EN, KO, JA, ZH, DE, FR, ES) with message catalogs |
+| **Privacy Compliance** | GDPR, CCPA, LGPD, PIPEDA, APPI support with PII detection and masking |
+| **ReDoS Protection** | Regex safety analysis, ML-based prediction (sklearn), CVE database, RE2 engine support |
+| **Distributed Timeout** | Deadline propagation, cascading timeout, graceful degradation |
+| **Enterprise Sampling** | Block, multi-stage, column-aware, progressive sampling for 100M+ rows |
+| **Performance Profiling** | Validator-level timing, memory, throughput metrics with Prometheus export |
 
 ---
 
@@ -193,123 +196,96 @@ Note: Kafka and Kinesis use protocol-based adapters with `aiokafka` and `aioboto
 
 ## Enterprise Features
 
-### Custom Validator SDK
+### Auto-Profiling
 
-```python
-from truthound.validators.sdk import custom_validator, ValidatorBuilder
+| Feature | Description |
+|---------|-------------|
+| **Statistical Profiling** | Column-level statistics, distribution analysis, missing value detection |
+| **Pattern Detection** | Email, phone, credit card, custom regex patterns |
+| **Rule Generation** | Auto-generate validation rules from profile with `Suite.execute()` |
+| **Distributed Processing** | Spark, Dask, Ray, Local backends |
+| **Incremental Scheduling** | Cron, interval, data change triggers |
+| **Schema Evolution** | Change detection, compatibility analysis (FULL, BACKWARD, FORWARD, NONE) |
+| **Unified Resilience** | Circuit breaker, retry, bulkhead, rate limiter with fluent builder |
 
-@custom_validator(name="check_positive", category="numeric")
-def check_positive(df, column: str, strict: bool = True):
-    values = df[column]
-    return (values > 0).all() if strict else (values >= 0).all()
+### Data Docs (HTML Reports)
 
-validator = (
-    ValidatorBuilder("revenue_check")
-    .with_category("business")
-    .with_column("revenue")
-    .with_condition(lambda df: df["revenue"] > 0)
-    .build()
-)
-```
-
-### ReDoS Protection
-
-```python
-from truthound.validators.security.redos import RegexComplexityAnalyzer, SafeRegexExecutor
-
-analyzer = RegexComplexityAnalyzer()
-result = analyzer.analyze(r"(a+)+$")
-print(f"Safe: {result.is_safe}, Score: {result.complexity_score}")
-
-executor = SafeRegexExecutor(timeout=1.0)
-match = executor.match(pattern, text)
-```
+| Feature | Description |
+|---------|-------------|
+| **6 Built-in Themes** | Default, Light, Dark, Minimal, Modern, Professional |
+| **4 Chart Libraries** | ApexCharts, Chart.js, Plotly.js, SVG (zero-dependency) |
+| **15 Languages** | EN, KO, JA, ZH, DE, FR, ES, PT, IT, RU, AR, TH, VI, ID, TR |
+| **White-labeling** | Enterprise themes with custom branding, logo, colors |
+| **PDF Export** | Chunked rendering, parallel processing for large reports |
+| **Report Versioning** | 4 strategies with diff and rollback support |
 
 ### Plugin Architecture
 
-```python
-from truthound.plugins import create_enterprise_manager, SecurityPolicyPresets
+| Feature | Description |
+|---------|-------------|
+| **Security Sandbox** | NoOp, Process, Container isolation engines |
+| **Plugin Signing** | HMAC, RSA, Ed25519 algorithms with trust store |
+| **6 Security Presets** | DEVELOPMENT, TESTING, STANDARD, ENTERPRISE, STRICT, AIRGAPPED |
+| **Version Constraints** | Semver-based (^, ~, >=, <, ranges) |
+| **Dependency Management** | Graph-based resolution, cycle detection, topological sort |
+| **Hot Reload** | File watching, graceful reload with rollback |
+| **Documentation** | AST-based extraction, Markdown/HTML/JSON renderers |
+| **CLI Extension** | Entry point based plugin system (`truthound.cli` group) |
 
-manager = create_enterprise_manager(
-    security_preset=SecurityPolicyPresets.ENTERPRISE,
-)
-await manager.load("my-plugin", verify_signature=True)
-result = await manager.execute_in_sandbox("my-plugin", my_function, arg1, arg2)
-```
+### Checkpoint & CI/CD
 
-### CLI Extension System
+| Feature | Description |
+|---------|-------------|
+| **Saga Pattern** | 8 compensation strategies (Backward, Forward, Semantic, Pivot, etc.) |
+| **12 CI Platforms** | GitHub Actions, GitLab CI, Jenkins, CircleCI, Azure DevOps, etc. |
+| **9 Notification Providers** | Slack, Email, PagerDuty, GitHub, Webhook, Teams, OpsGenie, Discord, Telegram |
+| **GitHub OIDC** | 30+ claims parsing, AWS/GCP/Azure/Vault credential exchange |
+| **4 Distributed Backends** | Local, Celery, Ray, Kubernetes |
+| **Circuit Breaker** | 3 states (CLOSED, OPEN, HALF_OPEN), failure detection strategies |
+| **Idempotency** | Request fingerprinting, duplicate detection, TTL expiration |
 
-External packages can extend the truthound CLI via entry points:
+### Advanced Notifications
 
-```toml
-# pyproject.toml
-[project.entry-points."truthound.cli"]
-serve = "my_package.cli:register_commands"
-```
+| Feature | Description |
+|---------|-------------|
+| **Rule-based Routing** | Python expression + Jinja2 engine, 11 built-in rules, combinators (AllOf, AnyOf, NotRule) |
+| **Deduplication** | InMemory/Redis Streams backends, 4 window strategies (Sliding, Tumbling, Session, Adaptive) |
+| **Rate Limiting** | Token Bucket, Fixed/Sliding Window, 5 throttler types with builder pattern |
+| **Escalation Policies** | Multi-level escalation, state machine, 3 storage backends (InMemory, Redis, SQLite) |
 
-```python
-# my_package/cli.py
-import typer
+### ML & Lineage
 
-def register_commands(app: typer.Typer) -> None:
-    @app.command(name="serve")
-    def serve(port: int = 8765) -> None:
-        """Start my service."""
-        typer.echo(f"Starting on port {port}")
-```
-
-After installation, the command is available:
-
-```bash
-pip install my-package
-truthound serve --port 9000
-```
-
-### Enterprise Infrastructure
-
-| Component | Features |
-|-----------|----------|
-| Logging | JSON format, correlation IDs, ELK/Loki/Fluentd integration |
-| Metrics | Prometheus counters, gauges, histograms |
-| Config | Environment profiles, Vault/AWS Secrets integration |
-| Audit | Operation tracking, Elasticsearch/S3/Kafka storage |
-| Encryption | AES-256-GCM, Cloud KMS integration |
+| Feature | Description |
+|---------|-------------|
+| **6 Anomaly Algorithms** | Isolation Forest, LOF, One-Class SVM, DBSCAN, Statistical, Autoencoders |
+| **4 Drift Algorithms** | KS Test, Chi-Square, PSI, Jensen-Shannon Divergence |
+| **ML Model Monitoring** | Performance metrics, quality metrics, drift detection, alerting |
+| **Lineage Graph** | DAG-based dependency tracking, column-level lineage, impact analysis |
+| **4 Visualization Renderers** | D3.js, Cytoscape.js, Graphviz, Mermaid |
+| **OpenLineage Integration** | Industry-standard lineage events, run lifecycle management |
 
 ### Storage Features
 
 | Feature | Description |
 |---------|-------------|
-| Cloud Storage | S3, GCS, Azure Blob backends |
-| Versioning | 4 strategies (Incremental, Semantic, Timestamp, GitLike) |
-| Retention | TTL policies, automatic cleanup |
-| Tiering | Hot/Warm/Cold/Archive with automatic migration |
-| Caching | LRU, LFU, TTL with multiple cache modes |
-| Replication | Sync/Async/Semi-Sync cross-region replication |
-| Backpressure | Memory, queue depth, latency-based strategies |
+| **Cloud Storage** | S3, GCS, Azure Blob backends with connection pooling |
+| **Versioning** | 4 strategies (Incremental, Semantic, Timestamp, GitLike) |
+| **Retention** | 6 policies (Time, Count, Size, Status, Tag, Composite) |
+| **Tiering** | Hot/Warm/Cold/Archive with 5 migration policies |
+| **Caching** | LRU, LFU, TTL backends with 4 cache modes |
+| **Replication** | Sync/Async/Semi-Sync cross-region with conflict resolution |
+| **Backpressure** | 6 strategies with circuit breaker and monitoring |
+| **Batch Optimization** | Memory-aware buffer, async batch writer |
 
----
+### Enterprise Infrastructure
 
-## Documentation
-
-| Phase | Description |
-|-------|-------------|
-| Phase 1-3 | Core Validators |
-| Phase 4 | Storage and Reporters |
-| Phase 5 | Multi-DataSource Support |
-| Phase 6 | Checkpoint and CI/CD |
-| Phase 7 | Auto-Profiling |
-| Phase 8 | Data Docs |
-| Phase 9 | Plugin Architecture |
-| Phase 10 | ML, Lineage, Realtime |
-
-### Phase 11-14: Enterprise Features
-
-| Phase | Name | Status | Repository |
-|-------|------|--------|------------|
-| Phase 11 | Workflow Integration | Complete | [truthound-orchestration](https://github.com/seadonggyun4/truthound-orchestration) |
-| Phase 12 | Web UI and REST API | Complete | [truthound-dashboard](https://github.com/seadonggyun4/truthound-dashboard) |
-| Phase 13 | Business Glossary and Data Catalog | Complete | [truthound-dashboard](https://github.com/seadonggyun4/truthound-dashboard) |
-| Phase 14 | Advanced Notifications | Planned | truthound |
+| Component | Features |
+|-----------|----------|
+| **Logging** | JSON format, correlation IDs, ELK/Loki/Fluentd integration, async logging |
+| **Metrics** | Prometheus counters, gauges, histograms, HTTP endpoint, push gateway |
+| **Config** | Environment profiles (dev/staging/prod), Vault/AWS Secrets integration, hot reload |
+| **Audit** | Full operation trail, Elasticsearch/S3/Kafka storage, compliance reporting (SOC2/GDPR/HIPAA) |
+| **Encryption** | AES-256-GCM, ChaCha20-Poly1305, field-level encryption, Cloud KMS (AWS/GCP/Azure/Vault) |
 
 ---
 
