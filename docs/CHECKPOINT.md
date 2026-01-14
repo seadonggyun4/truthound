@@ -15,9 +15,10 @@ Truthound's Checkpoint system provides a comprehensive framework for orchestrati
 9. [CI Reporters](#ci-reporters)
 10. [CheckpointRunner](#checkpointrunner)
 11. [Registry](#registry)
-12. [Best Practices](#best-practices)
-13. [API Reference](#api-reference)
-14. [Enterprise Assessment](#enterprise-assessment)
+12. [Advanced Notifications](#advanced-notifications)
+13. [Best Practices](#best-practices)
+14. [API Reference](#api-reference)
+15. [Enterprise Assessment](#enterprise-assessment)
 
 ---
 
@@ -953,6 +954,136 @@ if "my_check" in registry:
 
 ---
 
+## Advanced Notifications
+
+Truthound provides enterprise-grade notification management including routing, deduplication, throttling, and escalation.
+
+### Rule-based Routing
+
+Route notifications to different actions based on conditions:
+
+```python
+from truthound.checkpoint.routing import ActionRouter, SeverityRule, Route
+from truthound.checkpoint.actions import SlackNotification, PagerDutyAction
+
+router = ActionRouter()
+
+# Critical alerts go to PagerDuty
+router.add_route(Route(
+    name="critical",
+    rule=SeverityRule(min_severity="critical"),
+    actions=[PagerDutyAction(service_key="...")],
+    priority=1,
+))
+
+# High severity goes to Slack
+router.add_route(Route(
+    name="high",
+    rule=SeverityRule(min_severity="high"),
+    actions=[SlackNotification(webhook_url="...")],
+    priority=2,
+))
+
+# Use with checkpoint
+checkpoint = Checkpoint(
+    name="daily_validation",
+    data_source="data.csv",
+    router=router,
+)
+```
+
+**Available Rules**: SeverityRule, IssueCountRule, StatusRule, TagRule, PassRateRule, TimeWindowRule, DataAssetRule, MetadataRule, ErrorRule, AlwaysRule, NeverRule
+
+**Combinators**: `AllOf`, `AnyOf`, `NotRule` for complex conditions.
+
+### Notification Deduplication
+
+Prevent duplicate notifications within a time window:
+
+```python
+from truthound.checkpoint.deduplication import (
+    NotificationDeduplicator,
+    InMemoryDeduplicationStore,
+    TimeWindow,
+)
+
+deduplicator = NotificationDeduplicator(
+    store=InMemoryDeduplicationStore(),
+    default_window=TimeWindow(seconds=300),  # 5 minutes
+)
+
+fingerprint = deduplicator.generate_fingerprint(
+    checkpoint_name="daily_check",
+    action_type="slack",
+    severity="high",
+)
+
+if not deduplicator.is_duplicate(fingerprint):
+    await action.execute(result)
+    deduplicator.mark_sent(fingerprint)
+```
+
+**Window Strategies**: Sliding, Tumbling, Session, Adaptive
+
+**Storage Backends**: InMemory, Redis Streams
+
+### Rate Limiting / Throttling
+
+Control notification frequency:
+
+```python
+from truthound.checkpoint.throttling import ThrottlerBuilder, ThrottlingMiddleware
+
+throttler = (
+    ThrottlerBuilder()
+    .with_per_minute_limit(10)
+    .with_per_hour_limit(100)
+    .with_per_day_limit(500)
+    .build()
+)
+
+middleware = ThrottlingMiddleware(throttler=throttler)
+throttled_action = middleware.wrap(slack_action)
+```
+
+**Algorithms**: Token Bucket, Fixed Window, Sliding Window, Composite
+
+### Escalation Policies
+
+Multi-level alert escalation:
+
+```python
+from truthound.checkpoint.escalation import (
+    EscalationPolicy,
+    EscalationLevel,
+    EscalationEngine,
+)
+
+policy = EscalationPolicy(
+    name="critical_alerts",
+    levels=[
+        EscalationLevel(level=1, delay_minutes=0, targets=["team-lead"]),
+        EscalationLevel(level=2, delay_minutes=15, targets=["manager"]),
+        EscalationLevel(level=3, delay_minutes=30, targets=["director"]),
+    ],
+)
+
+engine = EscalationEngine(policy=policy)
+await engine.trigger("incident-123", context={"severity": "critical"})
+
+# Later: acknowledge or resolve
+await engine.acknowledge("incident-123", acknowledged_by="john@company.com")
+await engine.resolve("incident-123", resolved_by="jane@company.com")
+```
+
+**States**: PENDING → TRIGGERED → ACKNOWLEDGED → ESCALATED → RESOLVED
+
+**Storage Backends**: InMemory, Redis, SQLite
+
+For detailed documentation, see [Phase 14: Advanced Notifications](../.claude/docs/phase-14-notifications.md).
+
+---
+
 ## Best Practices
 
 ### 1. Use Configuration Files
@@ -1129,6 +1260,10 @@ env.workflow_name   # str
 | Idempotency | ✅ | Duplicate prevention |
 | 12 CI Platforms | ✅ | Industry-leading coverage |
 | JUnit XML Output | ✅ | For Jenkins/CI |
+| Rule-based Routing | ✅ | 11 rules, combinators, Python/Jinja2 engine |
+| Notification Deduplication | ✅ | InMemory/Redis, 4 window strategies |
+| Rate Limiting | ✅ | Token Bucket, 5 throttler types |
+| Escalation Policies | ✅ | State machine, 3 storage backends |
 
 ### Code Metrics
 
@@ -1155,6 +1290,10 @@ env.workflow_name   # str
 | Idempotency | ❌ | ✅ |
 | CI Platforms | 3-4 | 12 |
 | JUnit Output | Plugin | ✅ Built-in |
+| Rule-based Routing | ❌ | ✅ 11 rules |
+| Deduplication | ❌ | ✅ InMemory/Redis |
+| Rate Limiting | ❌ | ✅ Token Bucket |
+| Escalation Policies | ❌ | ✅ APScheduler |
 
 ---
 
