@@ -2843,7 +2843,7 @@ wheels = [
 
 [[package]]
 name = "truthound"
-version = "1.0.13"
+version = "1.0.15"
 source = { editable = "." }
 dependencies = [
     { name = "polars" },
