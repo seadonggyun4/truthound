@@ -195,15 +195,6 @@ nav:
     - Configuration: dashboard/configuration.md
     - Advanced Features: dashboard/advanced-features.md
     - Internationalization: dashboard/internationalization.md
-  - Reference:
-    - reference/index.md
-    - Validators Catalog: reference/validators-catalog.md
-    - Error Codes: reference/error-codes.md
-    - Changelog: reference/changelog.md
-  - Contributing:
-    - contributing/index.md
-    - Development: contributing/development.md
-    - Guidelines: contributing/guidelines.md
 
 # Extra Configuration
 extra:
