@@ -136,4 +136,4 @@ Truthound is open source under the Apache License 2.0.
 ## Support
 
 - [GitHub Issues](https://github.com/seadonggyun4/Truthound/issues)
-- [Documentation](https://truthound.io/)
+- [Documentation](https://truthound.netlify.app/)
