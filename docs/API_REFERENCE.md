@@ -552,7 +552,6 @@ reporter.save(result, "report.html")
 |----------|--------|---------|
 | `json` | JSON | `indent`, `include_details` |
 | `console` | Terminal | `show_summary`, `max_issues` |
-| `markdown` | Markdown | `include_toc` |
 | `html` | HTML | `title`, `theme`, `chart_library` |
 | `junit` | JUnit XML | (CI/CD integration) |
 
@@ -727,8 +726,8 @@ Options:
   --columns TEXT          Comma-separated column names
   --min-severity TEXT     Minimum severity (low, medium, high, critical)
   --strict               Exit with code 1 on failures
-  --format TEXT           Output format (console, json, markdown)
-  -o, --output PATH       Output file path
+  --format TEXT           Output format (console, json, html)
+  -o, --output PATH       Output file path (required for html format)
 ```
 
 ### truthound compare
