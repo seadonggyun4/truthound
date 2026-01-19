@@ -62,6 +62,7 @@ def check(
     data: Any = None,
     source: "BaseDataSource | None" = None,
     validators: list[str | Validator] | None = None,
+    validator_config: dict[str, dict[str, Any]] | None = None,
     min_severity: str | Severity | None = None,
     schema: str | Path | Schema | None = None,
     auto_schema: bool = False,
@@ -94,6 +95,9 @@ def check(
                 This enables validation on SQL databases, Spark, etc.
         validators: Optional list of validator names or Validator instances.
                    If None, all built-in validators are used.
+        validator_config: Optional configuration dict for validators.
+                         Maps validator name to configuration dict.
+                         Example: {"regex": {"patterns": {"email": r"^[\\w.+-]+@..."}}}
         min_severity: Minimum severity level to include in results.
                      Can be "low", "medium", "high", or "critical".
         schema: Optional schema for validation. Can be:
@@ -249,14 +253,20 @@ def check(
 
         validator_instances.append(SchemaValidator(schema_obj))
 
+    # Normalize validator_config to empty dict if None
+    validator_config = validator_config or {}
+
     if validators is None:
-        # Use all built-in validators
-        validator_instances.extend([cls() for cls in BUILTIN_VALIDATORS.values()])
+        # Use all built-in validators with their configs
+        for name, cls in BUILTIN_VALIDATORS.items():
+            config = validator_config.get(name, {})
+            validator_instances.append(cls(**config) if config else cls())
     else:
         for v in validators:
             if isinstance(v, str):
                 validator_cls = get_validator(v)
-                validator_instances.append(validator_cls())
+                config = validator_config.get(v, {})
+                validator_instances.append(validator_cls(**config) if config else validator_cls())
             elif isinstance(v, Validator):
                 validator_instances.append(v)
             else:

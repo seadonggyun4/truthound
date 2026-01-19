@@ -46,6 +46,9 @@ class CheckpointConfig:
         name: Unique name for this checkpoint.
         data_source: Data source path, DataSource instance, or connection string.
         validators: List of validator names or Validator instances.
+        validator_config: Configuration options for validators.
+            Maps validator name to configuration dict. Example:
+            {"regex": {"patterns": {"email": r"^[\\w.+-]+@[\\w-]+\\.[\\w.-]+$"}}}
         min_severity: Minimum severity level to include.
         schema: Schema file path or Schema instance.
         auto_schema: Automatically learn and validate against schema.
@@ -61,6 +64,7 @@ class CheckpointConfig:
     name: str = "default_checkpoint"
     data_source: str | Any = ""
     validators: list[str | "Validator"] | None = None
+    validator_config: dict[str, dict[str, Any]] = field(default_factory=dict)
     min_severity: str | None = None
     schema: str | Path | Any = None
     auto_schema: bool = False
@@ -407,6 +411,7 @@ class Checkpoint:
                 report = check(
                     source=data_source,
                     validators=self._config.validators,
+                    validator_config=self._config.validator_config,
                     min_severity=self._config.min_severity,
                     schema=self._config.schema,
                     auto_schema=self._config.auto_schema,
@@ -415,6 +420,7 @@ class Checkpoint:
                 report = check(
                     data=data_source,
                     validators=self._config.validators,
+                    validator_config=self._config.validator_config,
                     min_severity=self._config.min_severity,
                     schema=self._config.schema,
                     auto_schema=self._config.auto_schema,
@@ -545,16 +551,88 @@ class Checkpoint:
     def validate(self) -> list[str]:
         """Validate the checkpoint configuration.
 
+        Performs comprehensive validation including:
+        - Required fields (name, data_source)
+        - Validator names existence
+        - validator_config structure
+        - min_severity values
+        - Data source file existence (for file paths)
+        - Schema file existence (for file paths)
+        - Action configurations
+        - Trigger configurations
+
         Returns:
             List of validation error messages (empty if valid).
         """
         errors = []
 
+        # Required fields
         if not self._config.name:
             errors.append("Checkpoint name is required")
 
         if not self._config.data_source:
             errors.append("Data source is required")
+
+        # Validate data source exists (for file paths)
+        if self._config.data_source:
+            source = self._config.data_source
+            if isinstance(source, (str, Path)):
+                source_path = Path(source)
+                # Only validate if it looks like a file path (has extension like .csv, .parquet)
+                # Skip connection strings (postgresql://, mysql://, etc.)
+                source_str = str(source)
+                is_connection_string = "://" in source_str
+                has_file_extension = source_path.suffix in (
+                    ".csv", ".parquet", ".json", ".jsonl", ".xlsx", ".xls",
+                    ".tsv", ".feather", ".arrow", ".avro", ".orc",
+                )
+                if has_file_extension and not is_connection_string:
+                    if not source_path.exists():
+                        errors.append(f"Data source file not found: {source}")
+
+        # Validate validators exist
+        if self._config.validators:
+            from truthound.validators import get_validator
+
+            for v in self._config.validators:
+                if isinstance(v, str):
+                    try:
+                        get_validator(v)
+                    except (KeyError, ValueError) as e:
+                        errors.append(f"Unknown validator: '{v}'")
+
+        # Validate validator_config structure
+        if self._config.validator_config:
+            for validator_name, config in self._config.validator_config.items():
+                if not isinstance(config, dict):
+                    errors.append(
+                        f"validator_config['{validator_name}'] must be a dict, "
+                        f"got {type(config).__name__}"
+                    )
+                # Check if the validator exists
+                if self._config.validators:
+                    if validator_name not in self._config.validators:
+                        errors.append(
+                            f"validator_config references '{validator_name}' "
+                            f"but it's not in validators list"
+                        )
+
+        # Validate min_severity
+        valid_severities = {"low", "medium", "high", "critical"}
+        if self._config.min_severity:
+            if self._config.min_severity.lower() not in valid_severities:
+                errors.append(
+                    f"Invalid min_severity: '{self._config.min_severity}'. "
+                    f"Must be one of: {', '.join(sorted(valid_severities))}"
+                )
+
+        # Validate schema file exists (for file paths)
+        if self._config.schema:
+            schema = self._config.schema
+            if isinstance(schema, (str, Path)):
+                schema_path = Path(schema)
+                if schema_path.suffix in (".yaml", ".yml", ".json") and not schema_path.exists():
+                    errors.append(f"Schema file not found: {schema}")
 
         # Validate actions
         for action in self._actions:

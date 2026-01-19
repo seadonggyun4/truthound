@@ -22,6 +22,25 @@ SAMPLE_CONFIG = {
             "name": "daily_data_validation",
             "data_source": "data/production.csv",
             "validators": ["null", "duplicate", "range", "regex"],
+            "validator_config": {
+                "regex": {
+                    "patterns": {
+                        # Email validation pattern
+                        "email": r"^[\w.+-]+@[\w-]+\.[\w.-]+$",
+                        # Product code pattern (e.g., PROD-001, SKU_12345)
+                        "product_code": r"^[A-Z]{2,4}[-_][0-9]{3,6}$",
+                        # Phone number pattern (optional country code)
+                        "phone": r"^(\+\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}$",
+                    }
+                },
+                "range": {
+                    # Column-specific range constraints
+                    "columns": {
+                        "age": {"min_value": 0, "max_value": 150},
+                        "price": {"min_value": 0},
+                    }
+                },
+            },
             "min_severity": "medium",
             "auto_schema": True,
             "tags": {
@@ -58,6 +77,14 @@ SAMPLE_CONFIG = {
             "name": "hourly_metrics_check",
             "data_source": "data/metrics.parquet",
             "validators": ["null", "range"],
+            "validator_config": {
+                "range": {
+                    "columns": {
+                        "value": {"min_value": 0, "max_value": 100},
+                        "count": {"min_value": 0},
+                    }
+                },
+            },
             "actions": [
                 {
                     "type": "webhook",
