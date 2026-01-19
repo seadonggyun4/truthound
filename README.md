@@ -12,6 +12,8 @@
   <em>Sniffs out bad data</em>
 </p>
 
+> **Note**: This framework is under active development. We are continuously improving core features and expanding ecosystem integrations. Related projects [truthound-orchestration](https://github.com/seadonggyun4/truthound-orchestration) and [truthound-dashboard](https://github.com/seadonggyun4/truthound-dashboard) are also in development.
+
 ---
 
 ## Abstract
@@ -60,6 +62,7 @@ Truthound is a data quality validation framework built on Polars, a Rust-based D
 | **Distributed Timeout** | Deadline propagation, cascading timeout, graceful degradation |
 | **Enterprise Sampling** | Block, multi-stage, column-aware, progressive sampling for 100M+ rows |
 | **Performance Profiling** | Validator-level timing, memory, throughput metrics with Prometheus export |
+| **File Format Support** | CSV, JSON, Parquet, NDJSON, JSONL |
 
 ---
 
@@ -114,6 +117,27 @@ truthound new validator my_validator        # Create validator
 truthound new reporter json_export          # Create reporter
 truthound new plugin my_plugin              # Create plugin
 ```
+
+### Data Sources
+
+| Interface | Supported Sources |
+|-----------|-------------------|
+| **CLI** | File formats only: CSV, JSON, Parquet, NDJSON, JSONL |
+| **Python API** | All sources: Files, DataFrames, SQL databases, Spark, Cloud DW |
+
+```python
+# Python API - SQL databases, Spark, Cloud DW
+from truthound.datasources import BigQueryDataSource
+
+source = BigQueryDataSource(
+    table="users",
+    project="my-project",
+    dataset="analytics",
+)
+report = th.check(source=source)
+```
+
+> **Note**: Spark, BigQuery, Snowflake, Redshift, Databricks, and other database sources require the Python API with the `source=` parameter. The CLI only supports file-based inputs.
 
 ---
 
