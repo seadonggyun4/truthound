@@ -49,7 +49,6 @@ class OutputFormat(Enum):
 
     CONSOLE = "console"
     JSON = "json"
-    YAML = "yaml"
     HTML = "html"
     TABLE = "table"
 
