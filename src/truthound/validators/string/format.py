@@ -460,6 +460,12 @@ class FormatValidator(Validator, StringValidatorMixin):
             "date",
             r"^\d{4}-\d{2}-\d{2}$",
         ),
+        "code": (
+            "code",
+            # Common code patterns: alphanumeric with optional separators
+            # e.g., ABC-123, PROD001, SKU_12345, A1B2C3
+            r"^[A-Za-z0-9][A-Za-z0-9\-_\.]*[A-Za-z0-9]$",
+        ),
     }
 
     COLUMN_PATTERNS: ClassVar[dict[str, list[str]]] = {
@@ -469,6 +475,7 @@ class FormatValidator(Validator, StringValidatorMixin):
         "uuid": ["uuid", "guid"],
         "ip": ["ip", "ip_address", "ipaddress"],
         "date": ["date", "dob", "birth"],
+        "code": ["product_code", "item_code", "sku", "part_number", "model_number", "serial_number", "barcode", "upc", "ean"],
     }
 
     def _detect_format(self, col_name: str) -> str | None:

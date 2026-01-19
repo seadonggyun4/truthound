@@ -505,13 +505,36 @@ String validators verify the format, structure, and content of text data using p
 
 ### 5.1 RegexValidator
 
-Validates strings against a regular expression pattern.
+Validates strings against a regular expression pattern. This validator is included in `BUILTIN_VALIDATORS` and can be used with `th.check()`.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `column` | `str` | Target column |
-| `pattern` | `str` | Regular expression pattern |
+| `pattern` | `str` | Regular expression pattern (required) |
+| `columns` | `list[str] \| None` | Target columns (None = all string columns) |
+| `match_full` | `bool` | Match entire string (default: True) |
+| `case_insensitive` | `bool` | Ignore case (default: False) |
 | `mostly` | `float \| None` | Acceptable match ratio |
+
+**Usage:**
+
+```python
+import truthound as th
+from truthound.validators import RegexValidator
+
+# With th.check() - apply pattern to all string columns
+validator = RegexValidator(pattern=r"^[A-Z]{3}-\d{4}$")
+report = th.check("data.csv", validators=[validator])
+
+# Apply to specific columns
+validator = RegexValidator(
+    pattern=r"^[A-Z]{3}-\d{4}$",
+    columns=["product_code", "item_id"]
+)
+report = th.check("data.csv", validators=[validator])
+
+# Use by name with regex key
+report = th.check("data.csv", validators=["null", "duplicate", "regex"])
+```
 
 ### 5.2 RegexListValidator
 
@@ -576,12 +599,47 @@ Validates IPv4 and IPv6 address formats.
 
 ### 5.11 FormatValidator
 
-Validates common format types.
+Auto-detects and validates common format types based on column names. This validator is included in the default `th.check()` validation and automatically detects patterns for columns with recognizable names.
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `column` | `str` | Target column |
-| `format_type` | `str` | Format name (email, url, phone, etc.) |
+**Auto-detected formats based on column name patterns:**
+
+| Format | Column Name Patterns |
+|--------|---------------------|
+| `email` | email, e-mail, mail |
+| `phone` | phone, tel, mobile, cell, fax |
+| `url` | url, link, website, href |
+| `uuid` | uuid, guid |
+| `ip` | ip, ip_address, ipaddress |
+| `date` | date, dob, birth |
+| `code` | product_code, item_code, sku, part_number, model_number, serial_number, barcode, upc, ean |
+
+**Usage:**
+
+```python
+import truthound as th
+
+# Auto-detection: columns named "email", "product_code", etc. are validated
+report = th.check("data.csv")  # Uses FormatValidator by default
+
+# Explicit format validation
+from truthound.validators import FormatValidator
+validator = FormatValidator()
+issues = validator.validate(lf)
+```
+
+**Note:** For custom pattern validation on columns with non-standard names, use `RegexValidator` explicitly or define patterns in a schema:
+
+```python
+# Option 1: Use RegexValidator explicitly
+from truthound.validators import RegexValidator
+validator = RegexValidator(pattern=r"^[A-Z]{3}-\d{4}$")
+report = th.check("data.csv", validators=[validator])
+
+# Option 2: Use schema with pattern constraints
+schema = th.learn("data.csv")
+schema["my_column"].pattern = r"^[A-Z]{3}-\d{4}$"
+report = th.check("data.csv", schema=schema)
+```
 
 ### 5.12 JsonParseableValidator
 
