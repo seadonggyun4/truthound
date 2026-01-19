@@ -144,6 +144,10 @@ class PatternRuleGenerator(RuleGenerator):
             if pattern.match_ratio < threshold:
                 continue
 
+            # Skip patterns with empty or missing regex
+            if not pattern.regex:
+                continue
+
             # Skip if already covered by semantic type
             pattern_to_type = {
                 "email": DataType.EMAIL,
