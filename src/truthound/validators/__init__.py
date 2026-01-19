@@ -200,8 +200,13 @@ def __getattr__(name: str) -> Any:
 
 
 def _get_builtin_validators() -> dict[str, type[Validator]]:
-    """Get the BUILTIN_VALIDATORS dict with lazy loading."""
-    # Load the 8 core validators
+    """Get the BUILTIN_VALIDATORS dict with lazy loading.
+
+    Note: RegexValidator is not included because it requires a mandatory
+    'pattern' parameter and cannot be instantiated without configuration.
+    Users should explicitly specify RegexValidator with a pattern when needed.
+    """
+    # Load the 7 core validators that can be instantiated without config
     return {
         "null": registry.get("NullValidator"),
         "duplicate": registry.get("DuplicateValidator"),
@@ -210,7 +215,6 @@ def _get_builtin_validators() -> dict[str, type[Validator]]:
         "outlier": registry.get("OutlierValidator"),
         "format": registry.get("FormatValidator"),
         "unique": registry.get("UniqueValidator"),
-        "regex": registry.get("RegexValidator"),
     }
 
 
