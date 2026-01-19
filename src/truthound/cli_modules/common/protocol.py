@@ -51,7 +51,6 @@ class OutputFormat(Enum):
     JSON = "json"
     YAML = "yaml"
     HTML = "html"
-    MARKDOWN = "markdown"
     TABLE = "table"
 
 

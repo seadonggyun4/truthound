@@ -55,7 +55,7 @@ def run_cmd(
     ] = None,
     format: Annotated[
         str,
-        typer.Option("--format", "-f", help="Output format (console, json, markdown, html)"),
+        typer.Option("--format", "-f", help="Output format (console, json, html)"),
     ] = "console",
     save_baseline: Annotated[
         bool,
@@ -87,7 +87,6 @@ def run_cmd(
         RunnerConfig,
         ConsoleReporter,
         JSONReporter,
-        MarkdownReporter,
         HTMLReporter,
         RegressionDetector,
     )
@@ -173,7 +172,6 @@ def run_cmd(
         reporters = {
             "console": ConsoleReporter(use_colors=True),
             "json": JSONReporter(pretty=True),
-            "markdown": MarkdownReporter(),
             "html": HTMLReporter(),
         }
 
@@ -266,7 +264,7 @@ def compare_cmd(
     ] = 10.0,
     format: Annotated[
         str,
-        typer.Option("--format", "-f", help="Output format (console, json, markdown)"),
+        typer.Option("--format", "-f", help="Output format (console, json)"),
     ] = "console",
 ) -> None:
     """Compare two benchmark results for regressions.

@@ -157,7 +157,7 @@ FormatOpt = Annotated[
     typer.Option(
         "--format",
         "-f",
-        help="Output format (console, json, yaml, html, markdown)",
+        help="Output format (console, json, yaml, html)",
     ),
 ]
 
