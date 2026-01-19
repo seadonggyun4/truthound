@@ -470,39 +470,69 @@ with tempfile.TemporaryDirectory() as tmpdir:
 
 ```bash
 # Anomaly detection
-truthound ml anomaly data.csv --detector zscore --threshold 3.0
-truthound ml anomaly data.csv --detector isolation-forest --contamination 0.1
+truthound ml anomaly data.csv --method zscore
+truthound ml anomaly data.csv --method isolation_forest --contamination 0.1
+truthound ml anomaly data.csv --method iqr --columns "amount,price"
+truthound ml anomaly data.csv --method mad --output anomalies.json --format json
 
 # Drift detection
-truthound ml drift baseline.csv current.csv --method ks --threshold 0.05
-truthound ml drift train.parquet prod.parquet --method psi
+truthound ml drift baseline.csv current.csv --method distribution --threshold 0.1
+truthound ml drift train.parquet prod.parquet --method feature --threshold 0.2
+truthound ml drift old.csv new.csv --method multivariate --output drift_report.json
 
 # Rule learning
-truthound ml learn-rules data.csv --output rules.yaml
+truthound ml learn-rules data.csv --output rules.json
+truthound ml learn-rules data.csv --strictness strict --min-confidence 0.95
 ```
 
 ### Lineage Commands
 
 ```bash
 # Show lineage graph
-truthound lineage show pipeline.yaml
+truthound lineage show lineage.json
+truthound lineage show lineage.json --node my_table --direction upstream
+truthound lineage show lineage.json --format dot > lineage.dot
 
 # Impact analysis
-truthound lineage impact source_table --direction downstream
-truthound lineage impact target_table --direction upstream
+truthound lineage impact lineage.json raw_data
+truthound lineage impact lineage.json my_table --max-depth 3 --output impact.json
+
+# Visualize lineage
+truthound lineage visualize lineage.json -o graph.html
+truthound lineage visualize lineage.json -o graph.html --renderer cytoscape --theme dark
+truthound lineage visualize lineage.json -o graph.svg --renderer graphviz
+truthound lineage visualize lineage.json -o graph.md --renderer mermaid
 ```
+
+!!! note "지원 렌더러"
+    - `d3`: Interactive D3.js (HTML)
+    - `cytoscape`: Cytoscape.js (HTML)
+    - `graphviz`: Static Graphviz (SVG/PNG)
+    - `mermaid`: Mermaid diagram (Markdown)
 
 ### Realtime Commands
 
 ```bash
 # Start streaming validation
-truthound realtime validate --source kafka --topic my-topic
-truthound realtime validate --source kinesis --stream my-stream
+truthound realtime validate mock --max-batches 10
+truthound realtime validate mock --validators null,range --batch-size 500
+truthound realtime validate kafka:my_topic --max-batches 100
+truthound realtime validate kinesis:my_stream --batch-size 1000
+
+# Monitor streaming metrics
+truthound realtime monitor mock --interval 5 --duration 60
+truthound realtime monitor kafka:my_topic --interval 10
 
 # Manage checkpoints
 truthound realtime checkpoint list --dir ./checkpoints
-truthound realtime checkpoint restore <checkpoint-id>
+truthound realtime checkpoint show <checkpoint-id>
+truthound realtime checkpoint delete <checkpoint-id> --force
 ```
+
+!!! note "Streaming Source 형식"
+    - `mock`: 테스트용 모의 데이터 소스
+    - `kafka:topic_name`: Kafka 토픽 (aiokafka 필요)
+    - `kinesis:stream_name`: Kinesis 스트림 (aiobotocore 필요)
 
 ---
 

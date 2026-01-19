@@ -194,3 +194,155 @@ def monitor_cmd(
 
     except KeyboardInterrupt:
         typer.echo("\nMonitoring stopped.")
+
+
+# =============================================================================
+# Checkpoint subcommand group
+# =============================================================================
+
+checkpoint_app = typer.Typer(
+    name="checkpoint",
+    help="Manage streaming validation checkpoints",
+)
+app.add_typer(checkpoint_app, name="checkpoint")
+
+
+@checkpoint_app.command(name="list")
+@error_boundary
+def checkpoint_list_cmd(
+    checkpoint_dir: Annotated[
+        Path,
+        typer.Option("--dir", "-d", help="Checkpoint directory"),
+    ] = Path("./checkpoints"),
+    format: Annotated[
+        str,
+        typer.Option("--format", "-f", help="Output format (console, json)"),
+    ] = "console",
+) -> None:
+    """List available streaming validation checkpoints.
+
+    Examples:
+        truthound realtime checkpoint list
+        truthound realtime checkpoint list --dir ./my_checkpoints
+        truthound realtime checkpoint list --format json
+    """
+    from truthound.realtime.incremental import CheckpointManager
+
+    if not checkpoint_dir.exists():
+        typer.echo(f"Checkpoint directory not found: {checkpoint_dir}")
+        typer.echo("No checkpoints available.")
+        return
+
+    manager = CheckpointManager(checkpoint_dir=checkpoint_dir)
+    checkpoints = manager.list_checkpoints()
+
+    if not checkpoints:
+        typer.echo("No checkpoints found.")
+        return
+
+    if format == "json":
+        output = [cp.to_dict() for cp in checkpoints]
+        typer.echo(json.dumps(output, indent=2, default=str))
+    else:
+        typer.echo(f"\nCheckpoints in {checkpoint_dir}")
+        typer.echo("=" * 60)
+        typer.echo(
+            f"{'ID':<12} {'Created':<20} {'Batches':>8} {'Records':>10} {'Issues':>8}"
+        )
+        typer.echo("-" * 60)
+        for cp in checkpoints:
+            created = cp.created_at.strftime("%Y-%m-%d %H:%M:%S")
+            typer.echo(
+                f"{cp.checkpoint_id:<12} {created:<20} {cp.batch_count:>8} "
+                f"{cp.total_records:>10} {cp.total_issues:>8}"
+            )
+        typer.echo(f"\nTotal: {len(checkpoints)} checkpoint(s)")
+
+
+@checkpoint_app.command(name="show")
+@error_boundary
+def checkpoint_show_cmd(
+    checkpoint_id: Annotated[
+        str,
+        typer.Argument(help="Checkpoint ID to show"),
+    ],
+    checkpoint_dir: Annotated[
+        Path,
+        typer.Option("--dir", "-d", help="Checkpoint directory"),
+    ] = Path("./checkpoints"),
+) -> None:
+    """Show details of a specific checkpoint.
+
+    Examples:
+        truthound realtime checkpoint show abc12345
+        truthound realtime checkpoint show abc12345 --dir ./my_checkpoints
+    """
+    from truthound.realtime.incremental import CheckpointManager
+
+    if not checkpoint_dir.exists():
+        typer.echo(f"Error: Checkpoint directory not found: {checkpoint_dir}", err=True)
+        raise typer.Exit(1)
+
+    manager = CheckpointManager(checkpoint_dir=checkpoint_dir)
+    checkpoint = manager.get_checkpoint(checkpoint_id)
+
+    if not checkpoint:
+        typer.echo(f"Error: Checkpoint '{checkpoint_id}' not found", err=True)
+        raise typer.Exit(1)
+
+    typer.echo(f"\nCheckpoint: {checkpoint.checkpoint_id}")
+    typer.echo("=" * 40)
+    typer.echo(f"Created: {checkpoint.created_at}")
+    typer.echo(f"Batches processed: {checkpoint.batch_count}")
+    typer.echo(f"Total records: {checkpoint.total_records}")
+    typer.echo(f"Total issues: {checkpoint.total_issues}")
+
+    if checkpoint.position:
+        typer.echo("\nStream Position:")
+        for key, value in checkpoint.position.items():
+            typer.echo(f"  {key}: {value}")
+
+    if checkpoint.state_snapshot:
+        typer.echo(f"\nState snapshot keys: {list(checkpoint.state_snapshot.keys())}")
+
+
+@checkpoint_app.command(name="delete")
+@error_boundary
+def checkpoint_delete_cmd(
+    checkpoint_id: Annotated[
+        str,
+        typer.Argument(help="Checkpoint ID to delete"),
+    ],
+    checkpoint_dir: Annotated[
+        Path,
+        typer.Option("--dir", "-d", help="Checkpoint directory"),
+    ] = Path("./checkpoints"),
+    force: Annotated[
+        bool,
+        typer.Option("--force", "-f", help="Skip confirmation"),
+    ] = False,
+) -> None:
+    """Delete a checkpoint.
+
+    Examples:
+        truthound realtime checkpoint delete abc12345
+        truthound realtime checkpoint delete abc12345 --force
+    """
+    if not checkpoint_dir.exists():
+        typer.echo(f"Error: Checkpoint directory not found: {checkpoint_dir}", err=True)
+        raise typer.Exit(1)
+
+    checkpoint_file = checkpoint_dir / f"checkpoint_{checkpoint_id}.json"
+
+    if not checkpoint_file.exists():
+        typer.echo(f"Error: Checkpoint '{checkpoint_id}' not found", err=True)
+        raise typer.Exit(1)
+
+    if not force:
+        confirm = typer.confirm(f"Delete checkpoint '{checkpoint_id}'?")
+        if not confirm:
+            typer.echo("Cancelled.")
+            return
+
+    checkpoint_file.unlink()
+    typer.echo(f"Checkpoint '{checkpoint_id}' deleted.")

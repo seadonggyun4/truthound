@@ -155,6 +155,9 @@ Create an HTML report for stakeholders:
         --output report.html
     ```
 
+    !!! note "HTML 포맷은 jinja2가 필요합니다"
+        `pip install truthound[reports]` 또는 `pip install jinja2`
+
 === "Python"
 
     ```python

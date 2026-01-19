@@ -57,9 +57,21 @@ def profile_cmd(
     if format == "json":
         result = profile_report.to_json()
         if output:
-            output.write_text(result)
+            output.write_text(result, encoding="utf-8")
             typer.echo(f"Profile written to {output}")
         else:
             typer.echo(result)
     else:
-        profile_report.print()
+        # Console format
+        if output:
+            # Write console-formatted output to file
+            import io
+            from contextlib import redirect_stdout
+
+            buffer = io.StringIO()
+            with redirect_stdout(buffer):
+                profile_report.print()
+            output.write_text(buffer.getvalue(), encoding="utf-8")
+            typer.echo(f"Profile written to {output}")
+        else:
+            profile_report.print()

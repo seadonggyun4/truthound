@@ -72,7 +72,7 @@ truthound check <file> [OPTIONS]
 | `--schema` | None | Schema file for validation |
 | `--auto-schema` | `false` | Auto-learn and cache schema |
 | `-f, --format` | `console` | Output format (console, json, html) |
-| `-o, --output` | None | Output file path |
+| `-o, --output` | None | Output file path (required for html format) |
 | `--strict` | `false` | Exit with code 1 if issues found |
 
 **Examples:**
@@ -92,6 +92,9 @@ truthound check data.csv --strict
 
 # JSON output
 truthound check data.csv --format json -o report.json
+
+# HTML report (requires jinja2)
+truthound check data.csv --format html -o report.html
 ```
 
 ---
@@ -108,14 +111,15 @@ truthound scan <file> [OPTIONS]
 
 | Option | Default | Description |
 |--------|---------|-------------|
-| `-f, --format` | `console` | Output format (console, json) |
-| `-o, --output` | None | Output file path |
+| `-f, --format` | `console` | Output format (console, json, html) |
+| `-o, --output` | None | Output file path (required for html format) |
 
 **Examples:**
 
 ```bash
 truthound scan customers.csv
 truthound scan data.parquet --format json -o pii_report.json
+truthound scan data.csv --format html -o pii_report.html
 ```
 
 ---
@@ -384,6 +388,25 @@ Detect anomalies using ML methods.
 truthound ml anomaly <file> [OPTIONS]
 ```
 
+**Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-m, --method` | `zscore` | Detection method (zscore, iqr, mad, isolation_forest) |
+| `-c, --contamination` | `0.1` | Expected proportion of outliers (0.0 to 0.5) |
+| `--columns` | All | Comma-separated columns to analyze |
+| `-o, --output` | None | Output file path for results |
+| `-f, --format` | `console` | Output format (console, json) |
+
+**Examples:**
+
+```bash
+truthound ml anomaly data.csv
+truthound ml anomaly data.csv --method isolation_forest --contamination 0.05
+truthound ml anomaly data.csv --method iqr --columns "amount,price"
+truthound ml anomaly data.csv --format json -o anomalies.json
+```
+
 ---
 
 ### `truthound ml drift`
@@ -394,6 +417,23 @@ Detect data drift between datasets.
 truthound ml drift <baseline> <current> [OPTIONS]
 ```
 
+**Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-m, --method` | `feature` | Detection method (distribution, feature, multivariate) |
+| `-t, --threshold` | `0.1` | Drift detection threshold |
+| `--columns` | All | Comma-separated columns to analyze |
+| `-o, --output` | None | Output file path |
+
+**Examples:**
+
+```bash
+truthound ml drift baseline.csv current.csv
+truthound ml drift ref.parquet new.parquet --method multivariate
+truthound ml drift old.csv new.csv --threshold 0.2 --output drift_report.json
+```
+
 ---
 
 ### `truthound ml learn-rules`
@@ -402,6 +442,235 @@ Learn validation rules from data.
 
 ```bash
 truthound ml learn-rules <file> [OPTIONS]
+```
+
+**Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-o, --output` | `learned_rules.json` | Output file for learned rules |
+| `-s, --strictness` | `medium` | Rule strictness (loose, medium, strict) |
+| `--min-confidence` | `0.9` | Minimum rule confidence |
+| `--max-rules` | `100` | Maximum number of rules to generate |
+
+**Examples:**
+
+```bash
+truthound ml learn-rules data.csv
+truthound ml learn-rules data.csv --strictness strict --min-confidence 0.95
+truthound ml learn-rules data.parquet --output my_rules.json
+```
+
+---
+
+## Lineage Commands
+
+### `truthound lineage show`
+
+Display lineage information from a lineage JSON file.
+
+```bash
+truthound lineage show <lineage_file> [OPTIONS]
+```
+
+**Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-n, --node` | None | Show lineage for specific node |
+| `-d, --direction` | `both` | Direction (upstream, downstream, both) |
+| `-f, --format` | `console` | Output format (console, json, dot) |
+
+**Examples:**
+
+```bash
+truthound lineage show lineage.json
+truthound lineage show lineage.json --node my_table --direction upstream
+truthound lineage show lineage.json --format dot > lineage.dot
+```
+
+---
+
+### `truthound lineage impact`
+
+Analyze impact of changes to a data asset.
+
+```bash
+truthound lineage impact <lineage_file> <node> [OPTIONS]
+```
+
+**Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `--max-depth` | `-1` | Maximum depth for impact analysis (-1=unlimited) |
+| `-o, --output` | None | Output file for results |
+
+**Examples:**
+
+```bash
+truthound lineage impact lineage.json raw_data
+truthound lineage impact lineage.json my_table --max-depth 3 --output impact.json
+```
+
+---
+
+### `truthound lineage visualize`
+
+Generate visual representation of lineage graph.
+
+```bash
+truthound lineage visualize <lineage_file> -o <output> [OPTIONS]
+```
+
+**Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-o, --output` | Required | Output file path |
+| `-r, --renderer` | `d3` | Renderer (d3, cytoscape, graphviz, mermaid) |
+| `-t, --theme` | `light` | Theme (light, dark) |
+| `-f, --focus` | None | Focus on specific node |
+
+**Examples:**
+
+```bash
+truthound lineage visualize lineage.json -o graph.html
+truthound lineage visualize lineage.json -o graph.html --renderer cytoscape --theme dark
+truthound lineage visualize lineage.json -o graph.svg --renderer graphviz
+```
+
+---
+
+## Realtime Commands
+
+### `truthound realtime validate`
+
+Validate streaming data in real-time.
+
+```bash
+truthound realtime validate <source> [OPTIONS]
+```
+
+**Source Formats:**
+
+| Format | Description |
+|--------|-------------|
+| `mock` | Mock data source for testing |
+| `kafka:topic_name` | Kafka topic (requires aiokafka) |
+| `kinesis:stream_name` | Kinesis stream (requires aiobotocore) |
+
+**Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-v, --validators` | All | Comma-separated validators |
+| `-b, --batch-size` | `1000` | Batch size |
+| `--max-batches` | `10` | Maximum batches to process (0=unlimited) |
+| `-o, --output` | None | Output file for results |
+
+**Examples:**
+
+```bash
+truthound realtime validate mock --max-batches 5
+truthound realtime validate mock --validators null,range --batch-size 500
+truthound realtime validate kafka:my_topic --max-batches 100
+```
+
+---
+
+### `truthound realtime monitor`
+
+Monitor streaming validation metrics.
+
+```bash
+truthound realtime monitor <source> [OPTIONS]
+```
+
+**Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-i, --interval` | `5` | Monitoring interval in seconds |
+| `-d, --duration` | `60` | Total monitoring duration (0=indefinite) |
+
+**Examples:**
+
+```bash
+truthound realtime monitor mock --interval 5 --duration 60
+truthound realtime monitor kafka:my_topic --interval 10
+```
+
+---
+
+### `truthound realtime checkpoint list`
+
+List available streaming validation checkpoints.
+
+```bash
+truthound realtime checkpoint list [OPTIONS]
+```
+
+**Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-d, --dir` | `./checkpoints` | Checkpoint directory |
+| `-f, --format` | `console` | Output format (console, json) |
+
+**Examples:**
+
+```bash
+truthound realtime checkpoint list
+truthound realtime checkpoint list --dir ./my_checkpoints
+truthound realtime checkpoint list --format json
+```
+
+---
+
+### `truthound realtime checkpoint show`
+
+Show details of a specific checkpoint.
+
+```bash
+truthound realtime checkpoint show <checkpoint_id> [OPTIONS]
+```
+
+**Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-d, --dir` | `./checkpoints` | Checkpoint directory |
+
+**Examples:**
+
+```bash
+truthound realtime checkpoint show abc12345
+truthound realtime checkpoint show abc12345 --dir ./my_checkpoints
+```
+
+---
+
+### `truthound realtime checkpoint delete`
+
+Delete a checkpoint.
+
+```bash
+truthound realtime checkpoint delete <checkpoint_id> [OPTIONS]
+```
+
+**Options:**
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `-d, --dir` | `./checkpoints` | Checkpoint directory |
+| `-f, --force` | `false` | Skip confirmation |
+
+**Examples:**
+
+```bash
+truthound realtime checkpoint delete abc12345
+truthound realtime checkpoint delete abc12345 --force
 ```
 
 ---
