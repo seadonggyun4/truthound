@@ -14,6 +14,93 @@ if TYPE_CHECKING:
     from truthound.schema import Schema
 
 
+# Type aliases for normalization - maps equivalent type names to canonical form
+_TYPE_ALIASES: dict[str, str] = {
+    # String types
+    "utf8": "String",
+    "Utf8": "String",
+    "string": "String",
+    "str": "String",
+    # Integer types
+    "int8": "Int8",
+    "int16": "Int16",
+    "int32": "Int32",
+    "int64": "Int64",
+    "i8": "Int8",
+    "i16": "Int16",
+    "i32": "Int32",
+    "i64": "Int64",
+    # Unsigned integer types
+    "uint8": "UInt8",
+    "uint16": "UInt16",
+    "uint32": "UInt32",
+    "uint64": "UInt64",
+    "u8": "UInt8",
+    "u16": "UInt16",
+    "u32": "UInt32",
+    "u64": "UInt64",
+    # Float types
+    "float32": "Float32",
+    "float64": "Float64",
+    "f32": "Float32",
+    "f64": "Float64",
+    "float": "Float64",
+    "double": "Float64",
+    # Boolean
+    "bool": "Boolean",
+    "boolean": "Boolean",
+    # Date/Time types
+    "date": "Date",
+    "datetime": "Datetime",
+    "time": "Time",
+    "duration": "Duration",
+    # Other types
+    "null": "Null",
+    "object": "Object",
+    "categorical": "Categorical",
+    "binary": "Binary",
+    "list": "List",
+    "struct": "Struct",
+}
+
+
+def _normalize_dtype(dtype_str: str) -> str:
+    """Normalize dtype string for comparison.
+
+    Handles case differences and aliases between Polars versions.
+
+    Args:
+        dtype_str: Type string to normalize (e.g., "Int64", "int64", "Utf8", "String")
+
+    Returns:
+        Normalized type string for consistent comparison.
+    """
+    # Remove any whitespace
+    dtype_str = dtype_str.strip()
+
+    # Check for exact alias match first
+    if dtype_str in _TYPE_ALIASES:
+        return _TYPE_ALIASES[dtype_str]
+
+    # Check case-insensitive match
+    dtype_lower = dtype_str.lower()
+    if dtype_lower in _TYPE_ALIASES:
+        return _TYPE_ALIASES[dtype_lower]
+
+    # For complex types like Datetime(time_unit='us', time_zone=None),
+    # extract just the base type name
+    if "(" in dtype_str:
+        base_type = dtype_str.split("(")[0].strip()
+        if base_type in _TYPE_ALIASES:
+            return _TYPE_ALIASES[base_type]
+        if base_type.lower() in _TYPE_ALIASES:
+            return _TYPE_ALIASES[base_type.lower()]
+        return base_type
+
+    # Return as-is if no normalization needed
+    return dtype_str
+
+
 class SchemaValidator(Validator):
     """Validates data against a predefined schema."""
 
@@ -78,16 +165,20 @@ class SchemaValidator(Validator):
             col_schema = self.schema[col_name]
             col_data = df.get_column(col_name)
 
-            # Type check
+            # Type check - normalize both types for comparison
             actual_dtype = str(data_schema[col_name])
-            if actual_dtype != col_schema.dtype:
+            expected_dtype = col_schema.dtype
+            actual_normalized = _normalize_dtype(actual_dtype)
+            expected_normalized = _normalize_dtype(expected_dtype)
+
+            if actual_normalized != expected_normalized:
                 issues.append(
                     ValidationIssue(
                         column=col_name,
                         issue_type="type_mismatch",
                         count=row_count,
                         severity=Severity.HIGH,
-                        details=f"Expected {col_schema.dtype}, got {actual_dtype}",
+                        details=f"Expected {expected_dtype}, got {actual_dtype}",
                     )
                 )
 
