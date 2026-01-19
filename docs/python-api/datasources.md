@@ -17,6 +17,65 @@ Truthound supports multiple data backends through the DataSource abstraction:
 | **NoSQL** | MongoDB, Elasticsearch (async) |
 | **Streaming** | Apache Kafka, Kinesis (async) |
 
+## Installation & Dependencies
+
+Each data source requires specific Python packages. Core file formats (CSV, JSON, Parquet, NDJSON, JSONL) and SQLite are built-in with no additional dependencies.
+
+| Category | Data Source | Required Package | Install Command |
+|----------|-------------|------------------|-----------------|
+| **DataFrame** | Polars | (built-in) | - |
+| | Pandas | `pandas` | `pip install truthound[pandas]` |
+| | Spark | `pyspark` | `pip install truthound[spark]` |
+| **Core SQL** | SQLite | (built-in) | - |
+| | PostgreSQL | `psycopg2` | `pip install truthound[postgresql]` |
+| | MySQL | `mysql-connector-python` | `pip install truthound[mysql]` |
+| **Cloud DW** | BigQuery | `google-cloud-bigquery` | `pip install truthound[bigquery]` |
+| | Snowflake | `snowflake-connector-python` | `pip install truthound[snowflake]` |
+| | Redshift | `redshift-connector` | `pip install truthound[redshift]` |
+| | Databricks | `databricks-sql-connector` | `pip install truthound[databricks]` |
+| **Enterprise** | Oracle | `oracledb` | `pip install truthound[oracle]` |
+| | SQL Server | `pyodbc` | `pip install truthound[sqlserver]` |
+| **NoSQL** | MongoDB | `pymongo` | `pip install truthound[mongodb]` |
+| | Elasticsearch | `elasticsearch` | `pip install truthound[elasticsearch]` |
+| **Streaming** | Kafka | `confluent-kafka` | `pip install truthound[kafka]` |
+| | Kinesis | `aiobotocore` | `pip install truthound[kinesis]` |
+| **File** | CSV, JSON, Parquet, NDJSON, JSONL | (built-in) | - |
+
+### Install Multiple Dependencies
+
+```bash
+# Install all enterprise data sources
+pip install truthound[enterprise]
+
+# Install specific combinations
+pip install truthound[postgresql,bigquery,spark]
+
+# Install all optional dependencies
+pip install truthound[all]
+```
+
+### Source Code Locations
+
+| Category | Data Source | Source File |
+|----------|-------------|-------------|
+| DataFrame | Polars | `datasources/polars_source.py` |
+| | Pandas | `datasources/pandas_source.py` |
+| | Spark | `datasources/spark_source.py` |
+| Core SQL | SQLite | `datasources/sql/sqlite.py` |
+| | PostgreSQL | `datasources/sql/postgresql.py` |
+| | MySQL | `datasources/sql/mysql.py` |
+| Cloud DW | BigQuery | `datasources/sql/bigquery.py` |
+| | Snowflake | `datasources/sql/snowflake.py` |
+| | Redshift | `datasources/sql/redshift.py` |
+| | Databricks | `datasources/sql/databricks.py` |
+| Enterprise | Oracle | `datasources/sql/oracle.py` |
+| | SQL Server | `datasources/sql/sqlserver.py` |
+| NoSQL | MongoDB | `datasources/nosql/mongodb.py` |
+| | Elasticsearch | `datasources/nosql/elasticsearch.py` |
+| Streaming | Kafka | `datasources/streaming/kafka.py` |
+| | Kinesis | `datasources/streaming/kinesis.py` |
+| File | adapters | `datasources/adapters.py` |
+
 ## BaseDataSource
 
 All data sources inherit from `BaseDataSource`.
