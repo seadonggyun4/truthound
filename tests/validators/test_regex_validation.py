@@ -64,6 +64,32 @@ class TestRegexValidatorConstruction:
         validator = RegexValidator(pattern=r"^[A-Z]{3}-\d{4}$")
         assert validator.pattern == r"^[A-Z]{3}-\d{4}$"
 
+    def test_missing_pattern_raises_clear_error(self):
+        """Should raise RegexValidationError with clear message when pattern is missing.
+
+        This is important for YAML configuration where users might specify:
+            validators:
+              - name: regex   # Missing pattern!
+        """
+        with pytest.raises(RegexValidationError) as exc_info:
+            RegexValidator()  # No pattern argument
+
+        error_msg = str(exc_info.value)
+        # Error should explain what's wrong and how to fix it
+        assert "pattern" in error_msg.lower()
+        assert "required" in error_msg.lower()
+        # Should include usage examples
+        assert "RegexValidator" in error_msg or "YAML" in error_msg
+
+    def test_none_pattern_raises_clear_error(self):
+        """Should raise RegexValidationError when pattern is explicitly None."""
+        with pytest.raises(RegexValidationError) as exc_info:
+            RegexValidator(pattern=None)
+
+        error_msg = str(exc_info.value)
+        assert "pattern" in error_msg.lower()
+        assert "required" in error_msg.lower()
+
     def test_invalid_pattern_construction(self):
         """Should fail at construction with invalid pattern."""
         with pytest.raises(RegexValidationError):

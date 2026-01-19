@@ -74,7 +74,7 @@ class RegexValidator(
 
     def __init__(
         self,
-        pattern: str,
+        pattern: str | None = None,
         match_full: bool = True,
         dotall: bool = True,
         case_insensitive: bool = False,
@@ -83,16 +83,33 @@ class RegexValidator(
         """Initialize with pattern validation.
 
         Args:
-            pattern: Regex pattern string (validated at construction)
+            pattern: Regex pattern string (required, validated at construction)
             match_full: If True, pattern must match entire string (adds ^ and $ anchors)
             dotall: If True, . matches newlines (note: Polars uses (?s) flag)
             case_insensitive: If True, ignore case (note: Polars uses (?i) flag)
             **kwargs: Additional validator config
 
         Raises:
-            RegexValidationError: If pattern is invalid
+            RegexValidationError: If pattern is missing or invalid
+
+        Example YAML configuration::
+
+            validators:
+              - name: regex
+                pattern: "^[A-Z]{3}-\\d{4}$"
         """
         super().__init__(**kwargs)
+
+        # Validate required pattern parameter
+        if pattern is None:
+            raise RegexValidationError(
+                pattern="",
+                error=(
+                    "The 'pattern' parameter is required for RegexValidator. "
+                    "Example: RegexValidator(pattern=r'^[A-Z]+$') or in YAML: "
+                    "validators: [{name: regex, pattern: '^[A-Z]+$'}]"
+                ),
+            )
 
         # Build flags for Python regex validation
         flags = 0
