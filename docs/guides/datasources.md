@@ -11,6 +11,12 @@ Truthound supports multiple data backends through a unified abstraction layer:
 
 This architecture enables validators to work seamlessly across Polars, Pandas, SQL databases, and Spark.
 
+> **Important: Python API Only**
+>
+> DataSource integration is available **only through the Python API**. The CLI (`truthound check`, `truthound scan`, etc.) only supports file-based inputs (CSV, JSON, Parquet, NDJSON, JSONL).
+>
+> For SQL databases, Spark, or Cloud Data Warehouses, you must use the Python API with the `source=` parameter as shown below.
+
 ## Quick Start with DataSource
 
 All core API functions (`check`, `scan`, `mask`, `profile`) support the `source` parameter for DataSource integration:
@@ -47,7 +53,7 @@ Truthound supports a comprehensive range of data backends:
 | Core SQL | SQLite, PostgreSQL, MySQL |
 | Cloud DW | BigQuery, Snowflake, Redshift, Databricks |
 | Enterprise | Oracle, SQL Server |
-| File | CSV, Parquet, JSON, NDJSON |
+| File | CSV, JSON, Parquet, NDJSON, JSONL |
 
 ### Polars (Primary)
 
@@ -390,7 +396,7 @@ engine = source.get_execution_engine()
 
 ### File-Based Sources
 
-Direct loading from CSV, JSON, Parquet, and NDJSON files.
+Direct loading from CSV, JSON, Parquet, NDJSON, and JSONL files.
 
 ```python
 from truthound.datasources import FileDataSource
@@ -406,6 +412,9 @@ source = FileDataSource("data.json")
 
 # NDJSON (newline-delimited JSON)
 source = FileDataSource("data.ndjson")
+
+# JSONL (JSON Lines - same as NDJSON)
+source = FileDataSource("data.jsonl")
 ```
 
 ## Factory Functions

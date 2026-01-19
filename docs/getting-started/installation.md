@@ -8,19 +8,32 @@ Install Truthound using pip:
 pip install truthound
 ```
 
-This installs the core package with all essential features.
+This installs the core package with all essential features including:
+
+- Polars for high-performance data processing
+- PyYAML for configuration files
+- Rich for beautiful console output
+- Typer for the CLI interface
 
 ## Optional Dependencies
 
 Truthound provides optional extras for specific use cases:
 
-### Reports (HTML/PDF)
+### Reports (HTML)
 
 ```bash
 pip install truthound[reports]
 ```
 
 Enables HTML report generation with Jinja2.
+
+### PDF Export
+
+```bash
+pip install truthound[pdf]
+```
+
+Enables PDF export with WeasyPrint.
 
 ### Drift Detection
 
@@ -50,16 +63,71 @@ pip install truthound[gcs]
 # Azure Blob Storage
 pip install truthound[azure]
 
-# All cloud providers
+# All cloud providers + database
 pip install truthound[stores]
 ```
+
+### Database
+
+```bash
+pip install truthound[database]
+```
+
+Enables SQLAlchemy-based database storage for validation results.
 
 ### Streaming
 
 ```bash
+# Kafka
 pip install truthound[kafka]
+# or equivalently:
 pip install truthound[streaming]
+
+# All async datasources (Kafka, MongoDB, Elasticsearch)
+pip install truthound[async-datasources]
 ```
+
+Enables Kafka streaming support with aiokafka.
+
+!!! note "Kinesis Support"
+    Kinesis adapter uses aiobotocore which is included in the core package via boto3.
+
+### NoSQL Databases
+
+```bash
+# MongoDB
+pip install truthound[mongodb]
+
+# Elasticsearch
+pip install truthound[elasticsearch]
+
+# All NoSQL
+pip install truthound[nosql]
+```
+
+### Performance Optimization
+
+```bash
+pip install truthound[perf]
+```
+
+Includes xxhash for faster cache fingerprint generation (~10x faster).
+
+### Dashboard (Web UI)
+
+For the web-based dashboard and API server, install the separate `truthound-dashboard` package:
+
+```bash
+pip install truthound-dashboard
+```
+
+Then start the server:
+
+```bash
+truthound serve
+```
+
+See the [truthound-dashboard repository](https://github.com/seadonggyun4/truthound-dashboard) for more details.
 
 ### Full Installation
 
@@ -85,9 +153,9 @@ Verify your installation:
 truthound --version
 ```
 
-Expected output:
+Expected output (version may vary):
 ```
-truthound version 1.0.0
+truthound 1.1.1
 ```
 
 ## Troubleshooting

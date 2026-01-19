@@ -1,0 +1,179 @@
+# truthound plugin disable
+
+Disable (deactivate) an active plugin.
+
+## Synopsis
+
+```bash
+truthound plugin disable <NAME>
+```
+
+## Arguments
+
+| Argument | Required | Description |
+|----------|----------|-------------|
+| `NAME` | Yes | Plugin name to disable |
+
+## Description
+
+The `plugin disable` command deactivates an active plugin:
+
+1. **Deactivates** the plugin
+2. **Keeps** it loaded but inactive
+3. **Preserves** configuration for re-enabling
+
+## State Transitions
+
+```
+active → inactive
+```
+
+## Examples
+
+### Disable Plugin
+
+```bash
+truthound plugin disable my-validator
+```
+
+Output:
+```
+Disabling plugin: my-validator...
+Plugin 'my-validator' disabled successfully.
+```
+
+### Verify After Disable
+
+```bash
+# Disable the plugin
+truthound plugin disable my-validator
+
+# Verify state changed
+truthound plugin list
+```
+
+Output:
+```
+┏━━━━━━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━┓
+┃ Name            ┃ Version ┃ Type      ┃ State    ┃
+┡━━━━━━━━━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━┩
+│ my-validator    │ 0.1.0   │ validator │ inactive │
+└─────────────────┴─────────┴───────────┴──────────┘
+```
+
+### Disable and Re-enable
+
+```bash
+# Disable temporarily
+truthound plugin disable my-validator
+
+# Re-enable when needed
+truthound plugin enable my-validator
+```
+
+## Use Cases
+
+### 1. Temporary Deactivation
+
+```bash
+# Disable for testing without the plugin
+truthound plugin disable my-validator
+
+# Run validation without the plugin
+truthound check data.csv
+
+# Re-enable when done
+truthound plugin enable my-validator
+```
+
+### 2. Troubleshooting
+
+```bash
+# Disable suspected problematic plugin
+truthound plugin disable buggy-plugin
+
+# Check if issue persists
+truthound check data.csv
+
+# If issue resolved, plugin was the cause
+```
+
+### 3. Selective Validation
+
+```bash
+# Disable plugins not needed for this run
+truthound plugin disable extra-validator
+
+# Run validation with fewer plugins
+truthound check data.csv
+
+# Re-enable after
+truthound plugin enable extra-validator
+```
+
+### 4. A/B Testing
+
+```bash
+# Test with plugin
+truthound check data.csv --output with-plugin.json
+
+# Disable plugin
+truthound plugin disable my-validator
+
+# Test without plugin
+truthound check data.csv --output without-plugin.json
+
+# Compare results
+```
+
+## Error Handling
+
+### Plugin Not Active
+
+```bash
+truthound plugin disable my-validator
+```
+
+Output:
+```
+Error: Plugin 'my-validator' is not active.
+```
+
+### Plugin Not Found
+
+```bash
+truthound plugin disable unknown-plugin
+```
+
+Output:
+```
+Error: Plugin 'unknown-plugin' not found.
+```
+
+## Difference from Unload
+
+| Action | disable | unload |
+|--------|---------|--------|
+| State after | inactive | discovered |
+| Loaded in memory | Yes | No |
+| Quick re-enable | Yes | No (requires load) |
+| Use case | Temporary | Cleanup |
+
+## Exit Codes
+
+| Code | Condition |
+|------|-----------|
+| 0 | Success |
+| 1 | Plugin not found or not active |
+| 2 | Disable error |
+
+## Related Commands
+
+- [`plugin enable`](enable.md) - Enable a plugin
+- [`plugin unload`](unload.md) - Unload a plugin
+- [`plugin list`](list.md) - List all plugins
+
+## See Also
+
+- [Plugin Commands Overview](index.md)
+- [Plugin System](../../concepts/plugins.md)

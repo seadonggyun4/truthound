@@ -144,21 +144,108 @@ nav:
     - Installation: getting-started/installation.md
     - Quick Start: getting-started/quickstart.md
     - First Validation: getting-started/first-validation.md
-  - User Guide:
-    - user-guide/index.md
-    - CLI Reference: user-guide/cli-reference.md
-    - Validators: user-guide/validators.md
-    - Profiling: user-guide/profiling.md
-    - CI/CD Integration: user-guide/ci-cd.md
-    - Configuration: user-guide/configuration.md
-  - API Reference:
-    - api-reference/index.md
-    # Auto-generated from docstrings
+  - CLI Reference:
+    - cli/index.md
+    - Core Commands:
+      - cli/core/index.md
+      - learn: cli/core/learn.md
+      - check: cli/core/check.md
+      - scan: cli/core/scan.md
+      - mask: cli/core/mask.md
+      - profile: cli/core/profile.md
+      - compare: cli/core/compare.md
+    - Profiler Commands:
+      - cli/profiler/index.md
+      - auto-profile: cli/profiler/auto-profile.md
+      - generate-suite: cli/profiler/generate-suite.md
+      - quick-suite: cli/profiler/quick-suite.md
+      - list-formats: cli/profiler/list-formats.md
+      - list-presets: cli/profiler/list-presets.md
+      - list-categories: cli/profiler/list-categories.md
+    - Checkpoint Commands:
+      - cli/checkpoint/index.md
+      - run: cli/checkpoint/run.md
+      - list: cli/checkpoint/list.md
+      - validate: cli/checkpoint/validate.md
+      - init: cli/checkpoint/init.md
+    - ML Commands:
+      - cli/ml/index.md
+      - anomaly: cli/ml/anomaly.md
+      - drift: cli/ml/drift.md
+      - learn-rules: cli/ml/learn-rules.md
+    - Lineage Commands:
+      - cli/lineage/index.md
+      - show: cli/lineage/show.md
+      - impact: cli/lineage/impact.md
+      - visualize: cli/lineage/visualize.md
+    - Docs Commands:
+      - cli/docs/index.md
+      - generate: cli/docs/generate.md
+      - themes: cli/docs/themes.md
+    - Dashboard: cli/dashboard.md
+    - Realtime Commands:
+      - cli/realtime/index.md
+      - validate: cli/realtime/validate.md
+      - monitor: cli/realtime/monitor.md
+      - Checkpoint:
+        - cli/realtime/checkpoint/index.md
+        - list: cli/realtime/checkpoint/list.md
+        - show: cli/realtime/checkpoint/show.md
+        - delete: cli/realtime/checkpoint/delete.md
+    - Benchmark Commands:
+      - cli/benchmark/index.md
+      - run: cli/benchmark/run.md
+      - list: cli/benchmark/list.md
+      - compare: cli/benchmark/compare.md
+    - Scaffolding Commands:
+      - cli/scaffolding/index.md
+      - new validator: cli/scaffolding/new-validator.md
+      - new reporter: cli/scaffolding/new-reporter.md
+      - new plugin: cli/scaffolding/new-plugin.md
+      - new list: cli/scaffolding/new-list.md
+      - new templates: cli/scaffolding/new-templates.md
+    - Plugin Commands:
+      - cli/plugin/index.md
+      - plugin list: cli/plugin/list.md
+      - plugin info: cli/plugin/info.md
+      - plugin load: cli/plugin/load.md
+      - plugin unload: cli/plugin/unload.md
+      - plugin enable: cli/plugin/enable.md
+      - plugin disable: cli/plugin/disable.md
+      - plugin create: cli/plugin/create.md
+  - Guides:
+    - guides/index.md
+    - Validators: guides/validators.md
+    - Data Sources: guides/datasources.md
+    - CI/CD Integration: guides/ci-cd.md
+    - Configuration: guides/configuration.md
+    - Performance: guides/performance.md
+    - Data Profiling: guides/profiler.md
+    - Data Docs: guides/datadocs.md
+    - Reporters: guides/reporters.md
+    - Storage Backends: guides/stores.md
+  - Concepts:
+    - concepts/index.md
+    - Architecture: concepts/architecture.md
+    - Advanced Features: concepts/advanced.md
+    - Plugin System: concepts/plugins.md
+    - Statistical Methods: concepts/statistical-methods.md
+    - DataSources Architecture: concepts/datasources-architecture.md
+    - Test Coverage: concepts/test-coverage.md
+  - Python API:
+    - python-api/index.md
+    - Core Functions: python-api/core-functions.md
+    - Schema: python-api/schema.md
+    - Validators: python-api/validators.md
+    - Data Sources: python-api/datasources.md
+    - Reporters: python-api/reporters.md
+    - Advanced Features: python-api/advanced.md
   - Tutorials:
     - tutorials/index.md
-    - Custom Validator: tutorials/custom-validator.md
     - Data Profiling: tutorials/data-profiling.md
+    - Custom Validator: tutorials/custom-validator.md
     - Enterprise Setup: tutorials/enterprise-setup.md
+    - Examples: tutorials/examples.md
   - Orchestration:
     - orchestration/index.md
     - Getting Started: orchestration/getting-started.md
