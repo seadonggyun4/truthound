@@ -505,11 +505,13 @@ String validators verify the format, structure, and content of text data using p
 
 ### 5.1 RegexValidator
 
-Validates strings against a regular expression pattern. This validator is included in `BUILTIN_VALIDATORS` and can be used with `th.check()`.
+Validates strings against a regular expression pattern.
+
+> **Note:** `RegexValidator` requires a mandatory `pattern` parameter and is **not included** in `BUILTIN_VALIDATORS`. It must be used explicitly with the pattern specified.
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `pattern` | `str` | Regular expression pattern (required) |
+| `pattern` | `str` | Regular expression pattern (**required**) |
 | `columns` | `list[str] \| None` | Target columns (None = all string columns) |
 | `match_full` | `bool` | Match entire string (default: True) |
 | `case_insensitive` | `bool` | Ignore case (default: False) |
@@ -521,19 +523,23 @@ Validates strings against a regular expression pattern. This validator is includ
 import truthound as th
 from truthound.validators import RegexValidator
 
-# With th.check() - apply pattern to all string columns
+# Option 1: Pass validator instance directly
 validator = RegexValidator(pattern=r"^[A-Z]{3}-\d{4}$")
 report = th.check("data.csv", validators=[validator])
 
-# Apply to specific columns
+# Option 2: Apply to specific columns
 validator = RegexValidator(
     pattern=r"^[A-Z]{3}-\d{4}$",
     columns=["product_code", "item_id"]
 )
 report = th.check("data.csv", validators=[validator])
 
-# Use by name with regex key
-report = th.check("data.csv", validators=["null", "duplicate", "regex"])
+# Option 3: Use by name with validator_config
+report = th.check(
+    "data.csv",
+    validators=["regex"],
+    validator_config={"regex": {"pattern": r"^[A-Z]{3}-\d{4}$"}}
+)
 ```
 
 ### 5.2 RegexListValidator
