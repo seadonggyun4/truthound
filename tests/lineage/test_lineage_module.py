@@ -12,6 +12,7 @@ from truthound.lineage import (
 from truthound.lineage.base import (
     LineageNode,
     LineageEdge,
+    LineageError,
     NodeType,
     EdgeType,
     OperationType,
@@ -102,6 +103,51 @@ class TestLineageNode:
 
         assert "col1" in node.schema
 
+    def test_from_dict_missing_node_type(self):
+        """Test from_dict with missing node_type gives helpful error."""
+        data = {"id": "test", "name": "Test"}
+
+        with pytest.raises(LineageError) as exc_info:
+            LineageNode.from_dict(data)
+
+        error_msg = str(exc_info.value)
+        assert "missing required field(s): node_type" in error_msg
+        assert "Valid node_type values:" in error_msg
+        assert "source" in error_msg
+        assert "Example:" in error_msg
+
+    def test_from_dict_missing_multiple_fields(self):
+        """Test from_dict with multiple missing fields gives helpful error."""
+        data = {"name": "Test"}
+
+        with pytest.raises(LineageError) as exc_info:
+            LineageNode.from_dict(data)
+
+        error_msg = str(exc_info.value)
+        assert "id" in error_msg
+        assert "node_type" in error_msg
+
+    def test_from_dict_invalid_node_type(self):
+        """Test from_dict with invalid node_type gives helpful error."""
+        data = {"id": "test", "name": "Test", "node_type": "invalid_type"}
+
+        with pytest.raises(LineageError) as exc_info:
+            LineageNode.from_dict(data)
+
+        error_msg = str(exc_info.value)
+        assert "Invalid node_type 'invalid_type'" in error_msg
+        assert "Valid values:" in error_msg
+
+    def test_from_dict_valid(self):
+        """Test from_dict with valid data works correctly."""
+        data = {"id": "test", "name": "Test", "node_type": "source"}
+
+        node = LineageNode.from_dict(data)
+
+        assert node.id == "test"
+        assert node.name == "Test"
+        assert node.node_type == NodeType.SOURCE
+
 
 # =============================================================================
 # Test LineageEdge
@@ -122,6 +168,51 @@ class TestLineageEdge:
         assert edge.source == "source"
         assert edge.target == "target"
         assert edge.edge_type == EdgeType.TRANSFORMED_TO
+
+    def test_from_dict_missing_edge_type(self):
+        """Test from_dict with missing edge_type gives helpful error."""
+        data = {"source": "a", "target": "b"}
+
+        with pytest.raises(LineageError) as exc_info:
+            LineageEdge.from_dict(data)
+
+        error_msg = str(exc_info.value)
+        assert "missing required field(s): edge_type" in error_msg
+        assert "Valid edge_type values:" in error_msg
+        assert "derived_from" in error_msg
+        assert "Example:" in error_msg
+
+    def test_from_dict_missing_multiple_fields(self):
+        """Test from_dict with multiple missing fields gives helpful error."""
+        data = {"source": "a"}
+
+        with pytest.raises(LineageError) as exc_info:
+            LineageEdge.from_dict(data)
+
+        error_msg = str(exc_info.value)
+        assert "target" in error_msg
+        assert "edge_type" in error_msg
+
+    def test_from_dict_invalid_edge_type(self):
+        """Test from_dict with invalid edge_type gives helpful error."""
+        data = {"source": "a", "target": "b", "edge_type": "invalid_type"}
+
+        with pytest.raises(LineageError) as exc_info:
+            LineageEdge.from_dict(data)
+
+        error_msg = str(exc_info.value)
+        assert "Invalid edge_type 'invalid_type'" in error_msg
+        assert "Valid values:" in error_msg
+
+    def test_from_dict_valid(self):
+        """Test from_dict with valid data works correctly."""
+        data = {"source": "a", "target": "b", "edge_type": "derived_from"}
+
+        edge = LineageEdge.from_dict(data)
+
+        assert edge.source == "a"
+        assert edge.target == "b"
+        assert edge.edge_type == EdgeType.DERIVED_FROM
 
 
 # =============================================================================

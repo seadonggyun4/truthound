@@ -246,10 +246,43 @@ class LineageNode:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "LineageNode":
+        """Deserialize a LineageNode from a dictionary.
+
+        Args:
+            data: Dictionary containing node data
+
+        Returns:
+            LineageNode instance
+
+        Raises:
+            LineageError: If required fields are missing or invalid
+        """
+        # Validate required fields with helpful error messages
+        required_fields = ["id", "name", "node_type"]
+        missing = [f for f in required_fields if f not in data]
+        if missing:
+            node_id = data.get("id", data.get("name", "<unknown>"))
+            valid_types = ", ".join(t.value for t in NodeType)
+            raise LineageError(
+                f"Invalid lineage node '{node_id}': missing required field(s): {', '.join(missing)}. "
+                f"Each node must have 'id', 'name', and 'node_type' fields. "
+                f"Valid node_type values: {valid_types}. "
+                f"Example: {{'id': 'my_table', 'name': 'My Table', 'node_type': 'table'}}"
+            )
+
+        # Validate node_type value
+        node_type_value = data["node_type"]
+        valid_types = [t.value for t in NodeType]
+        if node_type_value not in valid_types:
+            raise LineageError(
+                f"Invalid node_type '{node_type_value}' for node '{data['id']}'. "
+                f"Valid values: {', '.join(valid_types)}"
+            )
+
         return cls(
             id=data["id"],
             name=data["name"],
-            node_type=NodeType(data["node_type"]),
+            node_type=NodeType(node_type_value),
             location=data.get("location", ""),
             schema=data.get("schema", {}),
             metadata=LineageMetadata.from_dict(data.get("metadata", {})),
@@ -316,10 +349,44 @@ class LineageEdge:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "LineageEdge":
+        """Deserialize a LineageEdge from a dictionary.
+
+        Args:
+            data: Dictionary containing edge data
+
+        Returns:
+            LineageEdge instance
+
+        Raises:
+            LineageError: If required fields are missing or invalid
+        """
+        # Validate required fields with helpful error messages
+        required_fields = ["source", "target", "edge_type"]
+        missing = [f for f in required_fields if f not in data]
+        if missing:
+            source = data.get("source", "<unknown>")
+            target = data.get("target", "<unknown>")
+            valid_types = ", ".join(t.value for t in EdgeType)
+            raise LineageError(
+                f"Invalid lineage edge '{source}' -> '{target}': missing required field(s): {', '.join(missing)}. "
+                f"Each edge must have 'source', 'target', and 'edge_type' fields. "
+                f"Valid edge_type values: {valid_types}. "
+                f"Example: {{'source': 'raw_data', 'target': 'processed', 'edge_type': 'derived_from'}}"
+            )
+
+        # Validate edge_type value
+        edge_type_value = data["edge_type"]
+        valid_types = [t.value for t in EdgeType]
+        if edge_type_value not in valid_types:
+            raise LineageError(
+                f"Invalid edge_type '{edge_type_value}' for edge '{data['source']}' -> '{data['target']}'. "
+                f"Valid values: {', '.join(valid_types)}"
+            )
+
         return cls(
             source=data["source"],
             target=data["target"],
-            edge_type=EdgeType(data["edge_type"]),
+            edge_type=EdgeType(edge_type_value),
             operation=OperationType(data.get("operation", "transform")),
             metadata=LineageMetadata.from_dict(data.get("metadata", {})),
             created_at=datetime.fromisoformat(data["created_at"]) if data.get("created_at") else datetime.now(),
