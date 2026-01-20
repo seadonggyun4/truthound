@@ -12,8 +12,17 @@ truthound benchmark compare <baseline> <current> [OPTIONS]
 
 | Argument | Required | Description |
 |----------|----------|-------------|
-| `baseline` | Yes | Path to baseline benchmark results (JSON) |
-| `current` | Yes | Path to current benchmark results (JSON) |
+| `baseline` | Yes | Path to baseline benchmark results (JSON format required) |
+| `current` | Yes | Path to current benchmark results (JSON format required) |
+
+!!! note "JSON Format Auto-detected"
+    Both input files must be in JSON format. When using `benchmark run` with `-o`,
+    the format is automatically detected from the file extension (`.json` → JSON format).
+
+    ```bash
+    # JSON format auto-detected from .json extension
+    truthound benchmark run --suite ci -o results.json
+    ```
 
 ## Options
 

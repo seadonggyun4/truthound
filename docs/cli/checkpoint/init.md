@@ -24,9 +24,9 @@ This command has no required arguments.
 The `checkpoint init` command generates a sample configuration file:
 
 1. **Creates** a well-documented configuration template
-2. **Includes** common validator examples
-3. **Shows** notification configuration patterns
-4. **Provides** storage configuration examples
+2. **Includes** common validator examples with configurations
+3. **Shows** action configuration patterns (store, docs, slack)
+4. **Provides** trigger configuration examples (schedule, cron)
 
 ## Examples
 
@@ -38,12 +38,10 @@ truthound checkpoint init
 
 Output:
 ```
-Created: truthound.yaml
+Sample checkpoint config created: truthound.yaml
 
-Next steps:
-  1. Edit truthound.yaml to configure your checkpoints
-  2. Validate: truthound checkpoint validate truthound.yaml
-  3. Run: truthound checkpoint run <checkpoint_name>
+Edit the file to configure your checkpoints, then run:
+  truthound checkpoint run <checkpoint_name> --config truthound.yaml
 ```
 
 ### Custom Output Path
@@ -63,194 +61,235 @@ truthound checkpoint init --format json -o truthound.json
 ### YAML Output (default)
 
 ```yaml
-# Truthound Checkpoint Configuration
-# Documentation: https://truthound.io/docs/cli/checkpoint/
-
-name: my_data_quality_pipeline
-version: "1.0"
-
-# Define your checkpoints
 checkpoints:
-  # Example: Daily data validation
-  daily_validation:
-    description: "Daily data quality check"
+- name: daily_data_validation
+  data_source: data/production.csv
+  validators:
+  - 'null'
+  - duplicate
+  - range
+  - regex
+  validator_config:
+    regex:
+      patterns:
+        email: ^[\w.+-]+@[\w-]+\.[\w.-]+$
+        product_code: ^[A-Z]{2,4}[-_][0-9]{3,6}$
+        phone: ^(\+\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}$
+    range:
+      columns:
+        age:
+          min_value: 0
+          max_value: 150
+        price:
+          min_value: 0
+  min_severity: medium
+  auto_schema: true
+  tags:
+    environment: production
+    team: data-platform
+  actions:
+  - type: store_result
+    store_path: ./truthound_results
+    partition_by: date
+  - type: update_docs
+    site_path: ./truthound_docs
+    include_history: true
+  - type: slack
+    webhook_url: https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+    notify_on: failure
+    channel: '#data-quality'
+  triggers:
+  - type: schedule
+    interval_hours: 24
+    run_on_weekdays:
+    - 0
+    - 1
+    - 2
+    - 3
+    - 4
 
-    # Data assets to validate
-    data_assets:
-      - name: customers
-        path: data/customers.csv
-        # format: csv  # auto-detected from extension
-
-      - name: orders
-        path: data/orders.csv
-
-    # Validation rules
-    validators:
-      # Check for null values in critical columns
-      - type: not_null
-        columns: [id, email]
-        severity: critical
-
-      # Ensure ID uniqueness
-      - type: unique
-        columns: [id]
-        severity: critical
-
-      # Validate age range
-      - type: range
-        column: age
-        min_value: 0
-        max_value: 150
-        severity: high
-
-      # Validate email format
-      - type: pattern
-        column: email
-        pattern: email
-        severity: medium
-
-      # Check allowed status values
-      - type: allowed_values
-        column: status
-        values: [active, inactive, pending]
-        severity: medium
-
-    # Notification settings (optional)
-    notifications:
-      # Slack notifications
-      slack:
-        webhook_url: ${SLACK_WEBHOOK_URL}  # Use environment variable
-        on_failure: true
-        on_success: false
-
-      # Generic webhook
-      # webhook:
-      #   url: https://api.example.com/webhook
-      #   on_failure: true
-
-    # Result storage (optional)
-    store:
-      path: .truthound/results
-      retention_days: 30
-
-  # Example: Weekly drift detection
-  # weekly_drift_check:
-  #   description: "Weekly drift detection"
-  #   data_assets:
-  #     - name: baseline
-  #       path: baseline/data.csv
-  #     - name: current
-  #       path: data/current.csv
-  #   compare:
-  #     baseline: baseline
-  #     current: current
-  #     method: psi
-  #     threshold: 0.1
-
-# Global settings (optional)
-# settings:
-#   default_severity: medium
-#   fail_on_warning: false
-#   parallel_execution: true
+- name: hourly_metrics_check
+  data_source: data/metrics.parquet
+  validators:
+  - 'null'
+  - range
+  validator_config:
+    range:
+      columns:
+        value:
+          min_value: 0
+          max_value: 100
+        count:
+          min_value: 0
+  actions:
+  - type: webhook
+    url: https://api.example.com/data-quality/events
+    auth_type: bearer
+    auth_credentials:
+      token: ${API_TOKEN}
+  triggers:
+  - type: cron
+    expression: 0 * * * *
 ```
 
 ### JSON Output
 
 ```json
 {
-  "name": "my_data_quality_pipeline",
-  "version": "1.0",
-  "checkpoints": {
-    "daily_validation": {
-      "description": "Daily data quality check",
-      "data_assets": [
-        {
-          "name": "customers",
-          "path": "data/customers.csv"
+  "checkpoints": [
+    {
+      "name": "daily_data_validation",
+      "data_source": "data/production.csv",
+      "validators": ["null", "duplicate", "range", "regex"],
+      "validator_config": {
+        "regex": {
+          "patterns": {
+            "email": "^[\\w.+-]+@[\\w-]+\\.[\\w.-]+$",
+            "product_code": "^[A-Z]{2,4}[-_][0-9]{3,6}$",
+            "phone": "^(\\+\\d{1,3}[-.\\s]?)?\\(?\\d{3}\\)?[-.\\s]?\\d{3}[-.\\s]?\\d{4}$"
+          }
         },
-        {
-          "name": "orders",
-          "path": "data/orders.csv"
-        }
-      ],
-      "validators": [
-        {
-          "type": "not_null",
-          "columns": ["id", "email"],
-          "severity": "critical"
-        },
-        {
-          "type": "unique",
-          "columns": ["id"],
-          "severity": "critical"
-        },
-        {
-          "type": "range",
-          "column": "age",
-          "min_value": 0,
-          "max_value": 150,
-          "severity": "high"
-        }
-      ],
-      "notifications": {
-        "slack": {
-          "webhook_url": "${SLACK_WEBHOOK_URL}",
-          "on_failure": true,
-          "on_success": false
+        "range": {
+          "columns": {
+            "age": {"min_value": 0, "max_value": 150},
+            "price": {"min_value": 0}
+          }
         }
       },
-      "store": {
-        "path": ".truthound/results",
-        "retention_days": 30
-      }
+      "min_severity": "medium",
+      "auto_schema": true,
+      "tags": {
+        "environment": "production",
+        "team": "data-platform"
+      },
+      "actions": [
+        {
+          "type": "store_result",
+          "store_path": "./truthound_results",
+          "partition_by": "date"
+        },
+        {
+          "type": "update_docs",
+          "site_path": "./truthound_docs",
+          "include_history": true
+        },
+        {
+          "type": "slack",
+          "webhook_url": "https://hooks.slack.com/services/YOUR/WEBHOOK/URL",
+          "notify_on": "failure",
+          "channel": "#data-quality"
+        }
+      ],
+      "triggers": [
+        {
+          "type": "schedule",
+          "interval_hours": 24,
+          "run_on_weekdays": [0, 1, 2, 3, 4]
+        }
+      ]
+    },
+    {
+      "name": "hourly_metrics_check",
+      "data_source": "data/metrics.parquet",
+      "validators": ["null", "range"],
+      "validator_config": {
+        "range": {
+          "columns": {
+            "value": {"min_value": 0, "max_value": 100},
+            "count": {"min_value": 0}
+          }
+        }
+      },
+      "actions": [
+        {
+          "type": "webhook",
+          "url": "https://api.example.com/data-quality/events",
+          "auth_type": "bearer",
+          "auth_credentials": {"token": "${API_TOKEN}"}
+        }
+      ],
+      "triggers": [
+        {
+          "type": "cron",
+          "expression": "0 * * * *"
+        }
+      ]
     }
-  }
+  ]
 }
 ```
 
 ## Configuration Sections
 
-### Data Assets
+### Checkpoint Definition
 
 ```yaml
-data_assets:
-  - name: unique_name        # Required: identifier
-    path: path/to/file.csv   # Required: file path
-    format: csv              # Optional: csv, json, parquet, ndjson
+checkpoints:
+- name: my_checkpoint           # Required: unique identifier
+  data_source: path/to/file.csv # Required: data file path
+  validators:                   # Required: list of validators
+  - 'null'
+  - duplicate
 ```
 
 ### Validators
 
 ```yaml
 validators:
-  - type: validator_type     # Required: validator type
-    columns: [col1, col2]    # Required for multi-column validators
-    column: col1             # Required for single-column validators
-    severity: high           # Optional: low, medium, high, critical
+- 'null'        # Check for null values
+- duplicate     # Check for duplicates
+- range         # Check numeric ranges
+- regex         # Check pattern matching
 ```
 
-### Notifications
+### Validator Configuration
 
 ```yaml
-notifications:
-  slack:
-    webhook_url: ${SLACK_WEBHOOK_URL}
-    on_failure: true
-    on_success: false
-
-  webhook:
-    url: https://example.com/hook
-    headers:
-      Authorization: Bearer ${TOKEN}
+validator_config:
+  range:
+    columns:
+      age:
+        min_value: 0
+        max_value: 150
+  regex:
+    patterns:
+      email: ^[\w.+-]+@[\w-]+\.[\w.-]+$
 ```
 
-### Storage
+### Actions
 
 ```yaml
-store:
-  path: .truthound/results
-  retention_days: 30
-  format: json
+actions:
+- type: store_result          # Store validation results
+  store_path: ./results
+  partition_by: date
+
+- type: update_docs           # Generate HTML documentation
+  site_path: ./docs
+  include_history: true
+
+- type: slack                 # Slack notification
+  webhook_url: ${SLACK_WEBHOOK_URL}
+  notify_on: failure
+  channel: '#data-quality'
+
+- type: webhook               # Generic webhook
+  url: https://api.example.com/webhook
+  auth_type: bearer
+  auth_credentials:
+    token: ${API_TOKEN}
+```
+
+### Triggers
+
+```yaml
+triggers:
+- type: schedule              # Time-interval based
+  interval_hours: 24
+  run_on_weekdays: [0, 1, 2, 3, 4]
+
+- type: cron                  # Cron expression
+  expression: "0 * * * *"     # Every hour
 ```
 
 ## Use Cases
@@ -268,9 +307,11 @@ truthound checkpoint init
 ```bash
 # Initialize, validate, and run
 truthound checkpoint init
-# Edit truthound.yaml...
-truthound checkpoint validate truthound.yaml
-truthound checkpoint run daily_validation
+
+# Edit truthound.yaml to configure your data source...
+
+# Run a checkpoint
+truthound checkpoint run daily_data_validation --config truthound.yaml
 ```
 
 ### 3. CI/CD Template

@@ -44,28 +44,24 @@ The `checkpoint run` command executes a named checkpoint:
 ### Basic Execution
 
 ```bash
-truthound checkpoint run daily_validation --config truthound.yaml
+truthound checkpoint run daily_data_validation --config truthound.yaml
 ```
 
 Output:
 ```
-Checkpoint: daily_validation
-============================
-Running validators on 2 data assets...
+Checkpoint: daily_data_validation
+=================================
+Running validators on data/production.csv...
 
-Asset: customers.csv
-  ✓ not_null (id, email)
-  ✓ unique (id)
+Validators:
+  ✓ null
+  ✓ duplicate
   ✗ range (age): 5 values outside [0, 150]
-
-Asset: orders.csv
-  ✓ not_null (order_id, customer_id)
-  ✓ foreign_key (customer_id)
+  ✓ regex (email)
 
 Summary:
-  Total Assets: 2
-  Total Validators: 5
-  Passed: 4
+  Total Validators: 4
+  Passed: 3
   Failed: 1
   Status: FAILED
 ```
@@ -75,7 +71,7 @@ Summary:
 Exit with code 1 if any issues are found:
 
 ```bash
-truthound checkpoint run daily_validation -c truthound.yaml --strict
+truthound checkpoint run daily_data_validation -c truthound.yaml --strict
 ```
 
 ### Override Data Source
@@ -83,7 +79,7 @@ truthound checkpoint run daily_validation -c truthound.yaml --strict
 Run checkpoint with different data:
 
 ```bash
-truthound checkpoint run daily_validation -c truthound.yaml --data /path/to/new/data.csv
+truthound checkpoint run daily_data_validation -c truthound.yaml --data /path/to/new/data.csv
 ```
 
 ### Override Validators
@@ -91,50 +87,50 @@ truthound checkpoint run daily_validation -c truthound.yaml --data /path/to/new/
 Run only specific validators:
 
 ```bash
-truthound checkpoint run daily_validation -c truthound.yaml --validators null,unique,range
+truthound checkpoint run daily_data_validation -c truthound.yaml --validators null,duplicate,range
 ```
 
 ### JSON Output
 
 ```bash
-truthound checkpoint run daily_validation -c truthound.yaml --format json -o results.json
+truthound checkpoint run daily_data_validation -c truthound.yaml --format json -o results.json
 ```
 
 Output file (`results.json`):
 ```json
 {
-  "checkpoint": "daily_validation",
+  "checkpoint": "daily_data_validation",
   "timestamp": "2024-01-15T10:30:00Z",
   "status": "failed",
-  "assets": [
+  "data_source": "data/production.csv",
+  "rows": 10000,
+  "results": [
     {
-      "name": "customers.csv",
-      "path": "data/customers.csv",
-      "rows": 10000,
-      "results": [
+      "validator": "null",
+      "passed": true
+    },
+    {
+      "validator": "duplicate",
+      "passed": true
+    },
+    {
+      "validator": "range",
+      "passed": false,
+      "issues": [
         {
-          "validator": "not_null",
-          "columns": ["id", "email"],
-          "passed": true
-        },
-        {
-          "validator": "range",
-          "column": "age",
-          "passed": false,
-          "issues": [
-            {
-              "severity": "high",
-              "message": "5 values outside range [0, 150]"
-            }
-          ]
+          "severity": "high",
+          "message": "5 values outside range [0, 150]"
         }
       ]
+    },
+    {
+      "validator": "regex",
+      "passed": true
     }
   ],
   "summary": {
-    "total_assets": 2,
-    "total_validators": 5,
-    "passed": 4,
+    "total_validators": 4,
+    "passed": 3,
     "failed": 1
   }
 }
@@ -145,13 +141,13 @@ Output file (`results.json`):
 Save results to a directory:
 
 ```bash
-truthound checkpoint run daily_validation -c truthound.yaml --store .truthound/results
+truthound checkpoint run daily_data_validation -c truthound.yaml --store .truthound/results
 ```
 
 Results are stored as:
 ```
 .truthound/results/
-└── daily_validation/
+└── daily_data_validation/
     └── 2024-01-15T10-30-00/
         ├── report.json
         └── summary.txt
@@ -162,18 +158,22 @@ Results are stored as:
 Send results to Slack:
 
 ```bash
-truthound checkpoint run daily_validation -c truthound.yaml --slack $SLACK_WEBHOOK_URL
+truthound checkpoint run daily_data_validation -c truthound.yaml --slack $SLACK_WEBHOOK_URL
 ```
 
 Or configure in YAML:
 ```yaml
 checkpoints:
-  daily_validation:
-    notifications:
-      slack:
-        webhook_url: ${SLACK_WEBHOOK_URL}
-        on_failure: true
-        on_success: false
+- name: daily_data_validation
+  data_source: data/production.csv
+  validators:
+  - 'null'
+  - duplicate
+  actions:
+  - type: slack
+    webhook_url: ${SLACK_WEBHOOK_URL}
+    notify_on: failure
+    channel: '#data-quality'
 ```
 
 ### Webhook Notification
@@ -181,7 +181,7 @@ checkpoints:
 Send results to a webhook:
 
 ```bash
-truthound checkpoint run daily_validation -c truthound.yaml --webhook https://api.example.com/webhook
+truthound checkpoint run daily_data_validation -c truthound.yaml --webhook https://api.example.com/webhook
 ```
 
 ### GitHub Actions Summary
@@ -189,22 +189,24 @@ truthound checkpoint run daily_validation -c truthound.yaml --webhook https://ap
 Write summary to GitHub Actions:
 
 ```bash
-truthound checkpoint run daily_validation -c truthound.yaml --github-summary
+truthound checkpoint run daily_data_validation -c truthound.yaml --github-summary
 ```
 
 This creates a summary visible in the GitHub Actions job:
 
 ```markdown
-## Data Quality Report: daily_validation
+## Data Quality Report: daily_data_validation
 
-| Asset | Validators | Passed | Failed |
-|-------|------------|--------|--------|
-| customers.csv | 3 | 2 | 1 |
-| orders.csv | 2 | 2 | 0 |
+| Validator | Status |
+|-----------|--------|
+| null | Passed |
+| duplicate | Passed |
+| range | Failed |
+| regex | Passed |
 
 ### Issues Found
 
-- **customers.csv**: range (age) - 5 values outside range [0, 150]
+- **range**: 5 values outside range [0, 150]
 ```
 
 ## Configuration File
@@ -213,75 +215,79 @@ This creates a summary visible in the GitHub Actions job:
 
 ```yaml
 checkpoints:
-  my_checkpoint:
-    data_assets:
-      - name: data
-        path: data.csv
-    validators:
-      - type: not_null
-        columns: [id]
+- name: my_checkpoint
+  data_source: data.csv
+  validators:
+  - 'null'
 ```
 
 ### Full Configuration
 
 ```yaml
 checkpoints:
-  daily_validation:
-    description: "Daily data quality validation"
-    schedule: "0 6 * * *"  # Cron expression (informational)
+- name: daily_data_validation
+  data_source: data/production.csv
+  validators:
+  - 'null'
+  - duplicate
+  - range
+  - regex
+  validator_config:
+    regex:
+      patterns:
+        email: ^[\w.+-]+@[\w-]+\.[\w.-]+$
+        product_code: ^[A-Z]{2,4}[-_][0-9]{3,6}$
+        phone: ^(\+\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}$
+    range:
+      columns:
+        age:
+          min_value: 0
+          max_value: 150
+        price:
+          min_value: 0
+  min_severity: medium
+  auto_schema: true
+  tags:
+    environment: production
+    team: data-platform
+  actions:
+  - type: store_result
+    store_path: ./truthound_results
+    partition_by: date
+  - type: update_docs
+    site_path: ./truthound_docs
+    include_history: true
+  - type: slack
+    webhook_url: https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+    notify_on: failure
+    channel: '#data-quality'
+  triggers:
+  - type: schedule
+    interval_hours: 24
+    run_on_weekdays: [0, 1, 2, 3, 4]
 
-    data_assets:
-      - name: customers
-        path: data/customers.csv
-        format: csv
-      - name: orders
-        path: data/orders.parquet
-        format: parquet
-
-    validators:
-      - type: not_null
-        columns: [id, email]
-        severity: critical
-
-      - type: unique
-        columns: [id]
-        severity: critical
-
-      - type: range
-        column: age
-        min_value: 0
-        max_value: 150
-        severity: high
-
-      - type: pattern
-        column: email
-        pattern: email
-        severity: medium
-
-      - type: allowed_values
-        column: status
-        values: [active, inactive, pending]
-
-    notifications:
-      slack:
-        webhook_url: ${SLACK_WEBHOOK_URL}
-        channel: "#data-quality"
-        on_failure: true
-        on_success: false
-        mention_on_failure: "@here"
-
-      webhook:
-        url: https://api.example.com/webhook
-        method: POST
-        headers:
-          Content-Type: application/json
-          Authorization: Bearer ${API_TOKEN}
-        on_failure: true
-
-    store:
-      path: .truthound/results
-      retention_days: 30
-      format: json
+- name: hourly_metrics_check
+  data_source: data/metrics.parquet
+  validators:
+  - 'null'
+  - range
+  validator_config:
+    range:
+      columns:
+        value:
+          min_value: 0
+          max_value: 100
+        count:
+          min_value: 0
+  actions:
+  - type: webhook
+    url: https://api.example.com/data-quality/events
+    auth_type: bearer
+    auth_credentials:
+      token: ${API_TOKEN}
+  triggers:
+  - type: cron
+    expression: 0 * * * *
 ```
 
 ## Exit Codes
@@ -309,7 +315,7 @@ checkpoints:
 # GitHub Actions
 - name: Run Data Quality Check
   run: |
-    truthound checkpoint run daily_validation \
+    truthound checkpoint run daily_data_validation \
       --config truthound.yaml \
       --strict \
       --github-summary
@@ -321,21 +327,21 @@ checkpoints:
 
 ```bash
 # Cron job
-0 6 * * * truthound checkpoint run daily_validation -c /app/truthound.yaml --store /var/log/truthound
+0 6 * * * truthound checkpoint run daily_data_validation -c /app/truthound.yaml --store /var/log/truthound
 ```
 
 ### 3. Pre-Deployment Check
 
 ```bash
 # Before deployment
-truthound checkpoint run pre_deploy -c truthound.yaml --strict || exit 1
+truthound checkpoint run daily_data_validation -c truthound.yaml --strict || exit 1
 ```
 
 ### 4. Multiple Checkpoints
 
 ```bash
 # Run multiple checkpoints
-for checkpoint in daily_validation weekly_drift monthly_audit; do
+for checkpoint in daily_data_validation hourly_metrics_check; do
   truthound checkpoint run $checkpoint -c truthound.yaml --strict
 done
 ```

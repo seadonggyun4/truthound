@@ -320,29 +320,52 @@ Create a checkpoint configuration file to define validation pipelines:
 ```yaml
 # truthound.yaml
 checkpoints:
-  - name: daily_validation
-    data_source: data/production.csv
-    validators:
-      - "null"
-      - "duplicate"
-      - "range"
-    min_severity: medium
-    fail_on_critical: true
-    fail_on_high: false
-    timeout_seconds: 3600
-    tags:
-      environment: production
-    actions:
-      - type: store_result
-        store_path: ./validation_results
-      - type: slack
-        webhook_url: ${SLACK_WEBHOOK}
+- name: daily_data_validation
+  data_source: data/production.csv
+  validators:
+  - 'null'
+  - duplicate
+  - range
+  - regex
+  validator_config:
+    regex:
+      patterns:
+        email: ^[\w.+-]+@[\w-]+\.[\w.-]+$
+        product_code: ^[A-Z]{2,4}[-_][0-9]{3,6}$
+        phone: ^(\+\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}$
+    range:
+      columns:
+        age:
+          min_value: 0
+          max_value: 150
+        price:
+          min_value: 0
+  min_severity: medium
+  auto_schema: true
+  tags:
+    environment: production
+    team: data-platform
+  actions:
+  - type: store_result
+    store_path: ./truthound_results
+    partition_by: date
+  - type: update_docs
+    site_path: ./truthound_docs
+    include_history: true
+  - type: slack
+    webhook_url: https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+    notify_on: failure
+    channel: '#data-quality'
+  triggers:
+  - type: schedule
+    interval_hours: 24
+    run_on_weekdays: [0, 1, 2, 3, 4]
 ```
 
 Run with:
 
 ```bash
-truthound checkpoint run daily_validation --config truthound.yaml
+truthound checkpoint run daily_data_validation --config truthound.yaml
 ```
 
 Or run ad-hoc without a config file:

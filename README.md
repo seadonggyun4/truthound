@@ -12,7 +12,7 @@
   <em>Sniffs out bad data</em>
 </p>
 
-> **Note**: This framework is under active development. We are continuously improving core features and expanding ecosystem integrations. Related projects [truthound-orchestration](https://github.com/seadonggyun4/truthound-orchestration) and [truthound-dashboard](https://github.com/seadonggyun4/truthound-dashboard) are also in development.
+> **Alpha Release**: This framework is currently in alpha stage. APIs may change without notice. We are continuously improving core features and expanding ecosystem integrations.
 
 ---
 
@@ -29,11 +29,11 @@ Truthound is a data quality validation framework built on Polars, a Rust-based D
 
 **Documentation**: [https://truthound.netlify.app](https://truthound.netlify.app/)
 
-**Related Projects**
-| Project | Description |
-|---------|-------------|
-| [truthound-orchestration](https://github.com/seadonggyun4/truthound-orchestration) | Workflow integration for Airflow, Dagster, Prefect, and dbt |
-| [truthound-dashboard](https://github.com/seadonggyun4/truthound-dashboard) | Web-based data quality monitoring dashboard |
+**Related Projects** (Alpha)
+| Project | Description | Status |
+|---------|-------------|--------|
+| [truthound-orchestration](https://github.com/seadonggyun4/truthound-orchestration) | Workflow integration for Airflow, Dagster, Prefect, and dbt | Alpha |
+| [truthound-dashboard](https://github.com/seadonggyun4/truthound-dashboard) | Web-based data quality monitoring dashboard | Alpha |
 
 ---
 

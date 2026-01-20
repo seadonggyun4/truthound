@@ -12,8 +12,8 @@ truthound ml drift <baseline> <current> [OPTIONS]
 
 | Argument | Required | Description |
 |----------|----------|-------------|
-| `baseline` | Yes | Path to the baseline (reference) data file |
-| `current` | Yes | Path to the current data file to compare |
+| `baseline` | Yes | Path to the baseline (reference) data file (CSV, JSON, Parquet, NDJSON, JSONL) |
+| `current` | Yes | Path to the current data file to compare (CSV, JSON, Parquet, NDJSON, JSONL) |
 
 ## Options
 

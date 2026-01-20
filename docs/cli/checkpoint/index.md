@@ -59,56 +59,70 @@ Checkpoint configuration can be YAML or JSON:
 
 ```yaml
 # truthound.yaml
-name: data_quality_pipeline
-version: "1.0"
-
 checkpoints:
-  daily_validation:
-    description: "Daily data quality check"
-    data_assets:
-      - name: customers
-        path: data/customers.csv
-      - name: orders
-        path: data/orders.csv
+- name: daily_data_validation
+  data_source: data/production.csv
+  validators:
+  - 'null'
+  - duplicate
+  - range
+  - regex
+  validator_config:
+    regex:
+      patterns:
+        email: ^[\w.+-]+@[\w-]+\.[\w.-]+$
+        product_code: ^[A-Z]{2,4}[-_][0-9]{3,6}$
+        phone: ^(\+\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}$
+    range:
+      columns:
+        age:
+          min_value: 0
+          max_value: 150
+        price:
+          min_value: 0
+  min_severity: medium
+  auto_schema: true
+  tags:
+    environment: production
+    team: data-platform
+  actions:
+  - type: store_result
+    store_path: ./truthound_results
+    partition_by: date
+  - type: update_docs
+    site_path: ./truthound_docs
+    include_history: true
+  - type: slack
+    webhook_url: https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+    notify_on: failure
+    channel: '#data-quality'
+  triggers:
+  - type: schedule
+    interval_hours: 24
+    run_on_weekdays: [0, 1, 2, 3, 4]
 
-    validators:
-      - type: not_null
-        columns: [id, email]
-        severity: critical
-      - type: unique
-        columns: [id]
-      - type: range
-        column: age
-        min_value: 0
-        max_value: 150
-
-    notifications:
-      slack:
-        webhook_url: ${SLACK_WEBHOOK_URL}
-        on_failure: true
-        on_success: false
-
-      webhook:
-        url: https://api.example.com/webhook
-        on_failure: true
-
-    store:
-      path: .truthound/results
-      retention_days: 30
-
-  weekly_drift_check:
-    description: "Weekly drift detection"
-    data_assets:
-      - name: baseline
-        path: baseline/data.csv
-      - name: current
-        path: data/current.csv
-
-    compare:
-      baseline: baseline
-      current: current
-      method: psi
-      threshold: 0.1
+- name: hourly_metrics_check
+  data_source: data/metrics.parquet
+  validators:
+  - 'null'
+  - range
+  validator_config:
+    range:
+      columns:
+        value:
+          min_value: 0
+          max_value: 100
+        count:
+          min_value: 0
+  actions:
+  - type: webhook
+    url: https://api.example.com/data-quality/events
+    auth_type: bearer
+    auth_credentials:
+      token: ${API_TOKEN}
+  triggers:
+  - type: cron
+    expression: 0 * * * *
 ```
 
 ## Environment Variables
@@ -116,13 +130,16 @@ checkpoints:
 Use environment variables for sensitive data:
 
 ```yaml
-notifications:
-  slack:
-    webhook_url: ${SLACK_WEBHOOK_URL}
-  webhook:
-    url: ${WEBHOOK_URL}
-    headers:
-      Authorization: Bearer ${API_TOKEN}
+actions:
+- type: slack
+  webhook_url: ${SLACK_WEBHOOK_URL}
+  notify_on: failure
+
+- type: webhook
+  url: ${WEBHOOK_URL}
+  auth_type: bearer
+  auth_credentials:
+    token: ${API_TOKEN}
 ```
 
 ## CI/CD Integration
@@ -158,7 +175,7 @@ jobs:
 
       - name: Run Checkpoint
         run: |
-          truthound checkpoint run daily_validation \
+          truthound checkpoint run daily_data_validation \
             --config truthound.yaml \
             --strict \
             --github-summary
@@ -174,7 +191,7 @@ data-quality:
   script:
     - pip install truthound
     - truthound checkpoint validate truthound.yaml --strict
-    - truthound checkpoint run daily_validation --config truthound.yaml --strict
+    - truthound checkpoint run daily_data_validation --config truthound.yaml --strict
   artifacts:
     when: on_failure
     paths:
@@ -191,7 +208,7 @@ pipeline {
             steps {
                 sh 'pip install truthound'
                 sh 'truthound checkpoint validate truthound.yaml --strict'
-                sh 'truthound checkpoint run daily_validation --config truthound.yaml --strict'
+                sh 'truthound checkpoint run daily_data_validation --config truthound.yaml --strict'
             }
         }
     }

@@ -35,6 +35,26 @@ pip install truthound[pdf]
 
 Enables PDF export with WeasyPrint.
 
+!!! warning "System Libraries Required"
+    WeasyPrint requires system libraries (Pango, Cairo, etc.) that pip cannot install.
+    You must install them **before** running `pip install truthound[pdf]`:
+
+    ```bash
+    # macOS
+    brew install pango cairo gdk-pixbuf libffi
+
+    # Ubuntu/Debian
+    sudo apt-get install libpango-1.0-0 libpangocairo-1.0-0 \
+      libgdk-pixbuf2.0-0 libffi-dev shared-mime-info
+
+    # Fedora/RHEL
+    sudo dnf install pango gdk-pixbuf2 libffi-devel
+    ```
+
+    Without these, you'll get: `Error: cannot load library 'libpango-1.0-0'`
+
+    See [Data Docs Guide](/guides/datadocs/#pdf-export-system-dependencies) for full instructions including Docker and Windows.
+
 ### Drift Detection
 
 ```bash

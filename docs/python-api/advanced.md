@@ -586,7 +586,6 @@ builder = datadocs.HTMLReportBuilder(
         max_issues=100,
     ),
     theme=datadocs.ReportTheme.DARK,
-    chart_library=datadocs.ChartLibrary.PLOTLY,
 )
 
 html = builder.build(report)

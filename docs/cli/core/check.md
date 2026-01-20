@@ -113,9 +113,15 @@ truthound check data.csv
 # JSON output
 truthound check data.csv --format json -o report.json
 
-# HTML report
+# HTML report (requires pip install truthound[reports])
 truthound check data.csv --format html -o report.html
 ```
+
+!!! warning "HTML Report Dependency"
+    HTML reports require Jinja2. Install with:
+    ```bash
+    pip install truthound[reports]
+    ```
 
 ## Available Validators
 

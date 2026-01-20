@@ -18,9 +18,10 @@ truthound ml anomaly <file> [OPTIONS]
 
 | Option | Short | Default | Description |
 |--------|-------|---------|-------------|
-| `--method` | `-m` | `isolation_forest` | Detection method (zscore, iqr, mad, isolation_forest) |
+| `--method` | `-m` | `zscore` | Detection method (zscore, iqr, mad, isolation_forest) |
 | `--contamination` | `-c` | `0.1` | Expected anomaly ratio (0.0-0.5) |
 | `--columns` | | All numeric | Columns to analyze (comma-separated) |
+| `--sample` | `-s` | All rows | Sample size for large datasets |
 | `--output` | `-o` | None | Output file path |
 | `--format` | `-f` | `console` | Output format (console, json) |
 
@@ -255,16 +256,21 @@ truthound ml anomaly sensor_readings.csv --columns temperature,pressure --method
 
 ## Performance
 
-For large datasets:
+For large datasets, use the `--sample` option to process a random subset:
 
 ```bash
+# Sample 100,000 rows for faster processing
+truthound ml anomaly large_data.parquet --method isolation_forest --sample 100000
+
 # Isolation Forest may be slow for very large files
 # Consider using statistical methods for speed
 truthound ml anomaly large_data.parquet --method iqr
 
-# Or use sampling (future feature)
-# truthound ml anomaly large_data.parquet --method isolation_forest --sample 100000
+# Combine sampling with any method
+truthound ml anomaly large_data.parquet --method mad --sample 50000
 ```
+
+Sampling uses a fixed seed (42) for reproducibility.
 
 ## Exit Codes
 

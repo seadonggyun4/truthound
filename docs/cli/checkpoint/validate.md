@@ -42,10 +42,9 @@ Output (valid):
 Configuration Valid
 ===================
 File: truthound.yaml
-Checkpoints: 3
-  - daily_validation (2 assets, 5 validators)
-  - weekly_drift_check (2 assets, 1 validator)
-  - monthly_audit (4 assets, 12 validators)
+Checkpoints: 2
+  - daily_data_validation (data/production.csv, 4 validators)
+  - hourly_metrics_check (data/metrics.parquet, 2 validators)
 
 Status: ✓ Valid
 ```
@@ -57,11 +56,10 @@ Configuration Invalid
 File: truthound.yaml
 
 Errors:
-  - Line 15: Unknown validator type 'not_nul' (did you mean 'not_null'?)
-  - Line 23: Missing required field 'columns' for validator 'unique'
-  - Line 31: Invalid severity 'super_high' (allowed: low, medium, high, critical)
+  - Line 5: Unknown validator type 'nul' (did you mean 'null'?)
+  - Line 10: Invalid min_severity 'super_high' (allowed: low, medium, high, critical)
 
-Status: ✗ Invalid (3 errors)
+Status: ✗ Invalid (2 errors)
 ```
 
 ### Strict Validation
@@ -79,14 +77,16 @@ Configuration Invalid
 File: truthound.yaml
 
 Errors:
-  - data/customers.csv: File not found
-  - data/orders.csv: File not found
+  - data/production.csv: File not found
+  - data/metrics.parquet: File not found
 
 Warnings:
   - Slack webhook URL uses environment variable ${SLACK_WEBHOOK_URL}
     (will be resolved at runtime)
+  - Webhook auth uses environment variable ${API_TOKEN}
+    (will be resolved at runtime)
 
-Status: ✗ Invalid (2 errors, 1 warning)
+Status: ✗ Invalid (2 errors, 2 warnings)
 ```
 
 ### JSON Configuration
@@ -103,29 +103,37 @@ truthound checkpoint validate truthound.json
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `checkpoints` | Yes | At least one checkpoint |
-| `data_assets` | Yes | At least one data asset per checkpoint |
-| `path` | Yes | Path for each data asset |
-| `validators` | No | Validators list (optional) |
+| `checkpoints` | Yes | At least one checkpoint (list) |
+| `name` | Yes | Unique checkpoint identifier |
+| `data_source` | Yes | Path to data file |
+| `validators` | No | List of validators (optional) |
 
-### Validator Schema
+### Checkpoint Schema
 
 ```yaml
-validators:
-  - type: not_null          # Required: validator type
-    columns: [id, email]    # Required for column-based validators
-    severity: high          # Optional: low, medium, high, critical
-    message: "Custom msg"   # Optional: custom error message
+checkpoints:
+- name: my_checkpoint       # Required: unique identifier
+  data_source: data.csv     # Required: data file path
+  validators:               # List of validator names
+  - 'null'
+  - duplicate
+  validator_config:         # Optional: validator configurations
+    range:
+      columns:
+        age:
+          min_value: 0
+          max_value: 150
+  min_severity: medium      # Optional: minimum severity level
 ```
 
 ### Valid Validator Types
 
 | Category | Types |
 |----------|-------|
-| Completeness | `not_null`, `completeness_ratio` |
-| Uniqueness | `unique`, `no_duplicates` |
+| Completeness | `null`, `not_null`, `completeness_ratio` |
+| Uniqueness | `duplicate`, `unique`, `no_duplicates` |
 | Range | `range`, `min`, `max`, `between` |
-| Format | `pattern`, `email`, `phone`, `url` |
+| Format | `regex`, `pattern`, `email`, `phone`, `url` |
 | Consistency | `allowed_values`, `foreign_key` |
 | Schema | `dtype`, `schema` |
 
@@ -184,7 +192,7 @@ repos:
   run: truthound checkpoint validate truthound.yaml --strict
 
 - name: Run Checkpoint
-  run: truthound checkpoint run daily_validation --strict
+  run: truthound checkpoint run daily_data_validation --strict
 ```
 
 ### 3. Development Workflow
@@ -195,7 +203,7 @@ vim truthound.yaml
 
 # Validate before running
 truthound checkpoint validate truthound.yaml --strict && \
-  truthound checkpoint run daily_validation
+  truthound checkpoint run daily_data_validation
 ```
 
 ## Exit Codes

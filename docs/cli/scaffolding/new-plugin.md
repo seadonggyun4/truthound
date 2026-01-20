@@ -23,6 +23,7 @@ truthound new plugin <name> [OPTIONS]
 | `--author` | `-a` | None | Author name |
 | `--description` | `-d` | None | Plugin description |
 | `--tests/--no-tests` | | `--tests` | Generate test code |
+| `--install/--no-install` | `-i` | `--no-install` | Auto-install plugin after generation |
 | `--min-version` | | `0.1.0` | Minimum Truthound version |
 | `--python` | | `3.10` | Minimum Python version |
 
@@ -34,6 +35,7 @@ The `new plugin` command generates a complete plugin package:
 2. **Generates** component scaffolds based on type
 3. **Sets up** tests and documentation
 4. **Configures** entry points for auto-discovery
+5. **Installs** plugin in editable mode (with `--install` flag)
 
 ## Plugin Types
 
@@ -47,6 +49,38 @@ The `new plugin` command generates a complete plugin package:
 | `full` | All components | Everything |
 
 ## Examples
+
+### Quick Start (Recommended)
+
+Create and install a plugin in one command:
+
+```bash
+# Create and immediately install
+truthound new plugin my_validators --install
+
+# Short form
+truthound new plugin my_validators -i
+```
+
+Output:
+```
+Creating plugin 'my_validators'...
+
+Successfully generated 6 files:
+  ./truthound-plugin-my_validators/pyproject.toml
+  ./truthound-plugin-my_validators/README.md
+  ./truthound-plugin-my_validators/my_validators/__init__.py
+  ./truthound-plugin-my_validators/my_validators/plugin.py
+  ./truthound-plugin-my_validators/tests/__init__.py
+  ./truthound-plugin-my_validators/tests/test_plugin.py
+
+Installing plugin from ./truthound-plugin-my_validators...
+✓ Plugin installed successfully!
+
+Next steps:
+  1. Edit ./truthound-plugin-my_validators/my_validators/plugin.py to implement your plugin
+  2. truthound plugin list
+```
 
 ### Validator Plugin
 
@@ -201,7 +235,8 @@ class MyCustomAction(Action):
 truthound new plugin enterprise \
   --type full \
   --author "Company Inc." \
-  --description "Enterprise validation suite"
+  --description "Enterprise validation suite" \
+  --install
 ```
 
 Generated structure:
@@ -340,17 +375,42 @@ truthound new plugin notifications \
 
 ## Installing the Plugin
 
-After creating the plugin:
+### Option 1: Auto-install (Recommended)
+
+Use the `--install` flag to automatically install after generation:
 
 ```bash
-# Development install
-cd my_plugin
-pip install -e .
+truthound new plugin my_plugin --install
+```
 
-# Build and publish
+This runs `pip install -e .` automatically after creating the plugin files.
+
+### Option 2: Manual Install
+
+If you didn't use `--install`, install manually:
+
+```bash
+cd truthound-plugin-my_plugin
+pip install -e .
+```
+
+### Verify Installation
+
+```bash
+truthound plugins list
+```
+
+### Build and Publish
+
+```bash
+cd truthound-plugin-my_plugin
 pip install build
 python -m build
 pip install dist/*.whl
+
+# Publish to PyPI
+pip install twine
+twine upload dist/*
 ```
 
 ## Exit Codes

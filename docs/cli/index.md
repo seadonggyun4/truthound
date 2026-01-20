@@ -68,7 +68,7 @@ After installation, the `truthound` command is available globally.
 
 | Command | Arguments | Options |
 |---------|-----------|---------|
-| `docs generate` | PROFILE_FILE (required) | `--output, -o`, `--title, -t` ("Data Profile Report"), `--subtitle, -s`, `--theme` (light/dark/professional/minimal/modern), `--charts, -c` (apexcharts/chartjs/plotly/svg), `--format, -f` (html/pdf) |
+| `docs generate` | PROFILE_FILE (required) | `--output, -o`, `--title, -t` ("Data Profile Report"), `--subtitle, -s`, `--theme` (light/dark/professional/minimal/modern), `--format, -f` (html/pdf) |
 | `docs themes` | - | - |
 
 ### Dashboard Command Summary

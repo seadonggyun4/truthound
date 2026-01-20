@@ -100,7 +100,7 @@ print(result.summary())
 truthound checkpoint init -o truthound.yaml
 
 # Run a checkpoint from config
-truthound checkpoint run daily_validation --config truthound.yaml
+truthound checkpoint run daily_data_validation --config truthound.yaml
 
 # Run ad-hoc checkpoint
 truthound checkpoint run quick_check --data data.csv --validators null,duplicate
@@ -145,37 +145,46 @@ checkpoint = Checkpoint(config=config)
 ```yaml
 # truthound.yaml
 checkpoints:
-  - name: daily_data_validation
-    data_source: data/production.csv
-    validators:
-      - "null"
-      - duplicate
-      - range
-      - regex
-    min_severity: medium
-    auto_schema: true
-    tags:
-      environment: production
-      team: data-platform
-
-    actions:
-      - type: store_result
-        store_path: ./truthound_results
-        partition_by: date
-
-      - type: update_docs
-        site_path: ./truthound_docs
-        include_history: true
-
-      - type: slack
-        webhook_url: ${SLACK_WEBHOOK_URL}
-        notify_on: failure
-        channel: "#data-quality"
-
-    triggers:
-      - type: schedule
-        interval_hours: 24
-        run_on_weekdays: [0, 1, 2, 3, 4]  # Mon-Fri
+- name: daily_data_validation
+  data_source: data/production.csv
+  validators:
+  - 'null'
+  - duplicate
+  - range
+  - regex
+  validator_config:
+    regex:
+      patterns:
+        email: ^[\w.+-]+@[\w-]+\.[\w.-]+$
+        product_code: ^[A-Z]{2,4}[-_][0-9]{3,6}$
+        phone: ^(\+\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}$
+    range:
+      columns:
+        age:
+          min_value: 0
+          max_value: 150
+        price:
+          min_value: 0
+  min_severity: medium
+  auto_schema: true
+  tags:
+    environment: production
+    team: data-platform
+  actions:
+  - type: store_result
+    store_path: ./truthound_results
+    partition_by: date
+  - type: update_docs
+    site_path: ./truthound_docs
+    include_history: true
+  - type: slack
+    webhook_url: https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+    notify_on: failure
+    channel: '#data-quality'
+  triggers:
+  - type: schedule
+    interval_hours: 24
+    run_on_weekdays: [0, 1, 2, 3, 4]  # Mon-Fri
 ```
 
 ---
@@ -575,7 +584,7 @@ jobs:
 
       - name: Run Validation
         run: |
-          truthound checkpoint run production_check \
+          truthound checkpoint run daily_data_validation \
             --config truthound.yaml \
             --github-summary \
             --strict
@@ -644,7 +653,7 @@ pipeline {
         stage('Data Quality') {
             steps {
                 sh '''
-                    truthound checkpoint run production_check \
+                    truthound checkpoint run daily_data_validation \
                         --config truthound.yaml \
                         --format json \
                         --output truthound-result.json
@@ -683,7 +692,7 @@ jobs:
       - run:
           name: Run Validation
           command: |
-            truthound checkpoint run daily_check \
+            truthound checkpoint run daily_data_validation \
               --config truthound.yaml \
               --format json
       - store_test_results:
@@ -756,16 +765,16 @@ from truthound.checkpoint.ci import (
 
 # Generate GitHub Actions workflow
 workflow = generate_github_workflow(
-    checkpoint_name="daily_check",
+    checkpoint_name="daily_data_validation",
     schedule="0 0 * * *",
     notify_slack=True,
     python_version="3.11",
 )
 
 # Generate all configs
-write_ci_config("github", checkpoint_name="daily_check")
-write_ci_config("gitlab", checkpoint_name="daily_check")
-write_ci_config("jenkins", checkpoint_name="daily_check")
+write_ci_config("github", checkpoint_name="daily_data_validation")
+write_ci_config("gitlab", checkpoint_name="daily_data_validation")
+write_ci_config("jenkins", checkpoint_name="daily_data_validation")
 ```
 
 ---
@@ -868,14 +877,14 @@ from truthound.checkpoint import Checkpoint, CheckpointRunner
 from truthound.checkpoint.triggers import ScheduleTrigger, CronTrigger
 
 # Create checkpoints with triggers
-hourly_check = Checkpoint(
-    name="hourly_check",
+hourly_metrics_check = Checkpoint(
+    name="hourly_metrics_check",
     data_source="data.csv",
     validators=["null", "duplicate"],
 ).add_trigger(ScheduleTrigger(interval_hours=1))
 
-daily_check = Checkpoint(
-    name="daily_check",
+daily_data_validation = Checkpoint(
+    name="daily_data_validation",
     data_source="data.parquet",
     validators=["range", "distribution"],
 ).add_trigger(CronTrigger(expression="0 0 * * *"))
@@ -888,14 +897,14 @@ runner = CheckpointRunner(
 )
 
 # Add checkpoints
-runner.add_checkpoint(hourly_check)
-runner.add_checkpoint(daily_check)
+runner.add_checkpoint(hourly_metrics_check)
+runner.add_checkpoint(daily_data_validation)
 
 # Start background execution
 runner.start()
 
 # Run specific checkpoint once
-result = runner.run_once("hourly_check")
+result = runner.run_once("hourly_metrics_check")
 
 # Run all checkpoints
 results = runner.run_all()
@@ -986,7 +995,7 @@ router.add_route(Route(
 
 # Use with checkpoint
 checkpoint = Checkpoint(
-    name="daily_validation",
+    name="daily_data_validation",
     data_source="data.csv",
     router=router,
 )
@@ -1013,7 +1022,7 @@ deduplicator = NotificationDeduplicator(
 )
 
 fingerprint = deduplicator.generate_fingerprint(
-    checkpoint_name="daily_check",
+    checkpoint_name="daily_data_validation",
     action_type="slack",
     severity="high",
 )
@@ -1079,8 +1088,6 @@ await engine.resolve("incident-123", resolved_by="jane@company.com")
 **States**: PENDING → TRIGGERED → ACKNOWLEDGED → ESCALATED → RESOLVED
 
 **Storage Backends**: InMemory, Redis, SQLite
-
-For detailed documentation, see [Phase 14: Advanced Notifications](../.claude/docs/phase-14-notifications.md).
 
 ---
 

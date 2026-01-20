@@ -39,9 +39,6 @@ truthound docs generate profile.json -o report.html
 
 # With custom title and theme
 truthound docs generate profile.json -o report.html --title "Q4 Data Report" --theme dark
-
-# With different chart engine
-truthound docs generate profile.json -o report.html --charts chartjs
 ```
 
 ### Generate PDF Report
@@ -51,11 +48,21 @@ truthound docs generate profile.json -o report.html --charts chartjs
 truthound docs generate profile.json -o report.pdf --format pdf
 ```
 
-!!! note "PDF Dependency"
-    PDF export requires weasyprint:
+!!! warning "PDF System Dependencies"
+    PDF export requires WeasyPrint **and** system libraries (Pango, Cairo, etc.).
+
     ```bash
+    # macOS
+    brew install pango cairo gdk-pixbuf libffi
+
+    # Ubuntu/Debian
+    sudo apt-get install libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0 libffi-dev
+
+    # Then install Python package
     pip install truthound[pdf]
     ```
+
+    See [Data Docs Guide](../../guides/datadocs.md#pdf-export-system-dependencies) for details.
 
 ### List Themes
 
@@ -65,14 +72,14 @@ truthound docs themes
 
 ## Report Features
 
-### Chart Engines
+### Chart Rendering
 
-| Engine | Description | Best For |
-|--------|-------------|----------|
-| `apexcharts` | Modern interactive charts | Web viewing |
-| `chartjs` | Lightweight charts | Simple reports |
-| `plotly` | Advanced interactive | Data exploration |
-| `svg` | Zero-dependency | Offline/email |
+Chart library selection is automatic:
+
+| Output Format | Chart Renderer | Description |
+|---------------|----------------|-------------|
+| **HTML** | ApexCharts | Modern interactive charts with tooltips and animations |
+| **PDF** | SVG | Zero-dependency, optimized for PDF rendering |
 
 ### Theme Options
 

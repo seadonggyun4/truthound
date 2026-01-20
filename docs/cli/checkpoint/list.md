@@ -42,14 +42,12 @@ Available Checkpoints
 =====================
 Config: truthound.yaml
 
-Name                    Assets    Validators    Notifications
-────────────────────────────────────────────────────────────────
-daily_validation        2         5             slack, webhook
-weekly_drift_check      2         1             slack
-monthly_audit           4         12            email, pagerduty
-schema_validation       1         3             -
+Name                      Data Source             Validators    Actions
+─────────────────────────────────────────────────────────────────────────────
+daily_data_validation     data/production.csv     4             store, docs, slack
+hourly_metrics_check      data/metrics.parquet    2             webhook
 
-Total: 4 checkpoints
+Total: 2 checkpoints
 ```
 
 ### Custom Configuration File
@@ -70,24 +68,22 @@ Output:
   "config_file": "truthound.yaml",
   "checkpoints": [
     {
-      "name": "daily_validation",
-      "description": "Daily data quality check",
-      "data_assets": [
-        {"name": "customers", "path": "data/customers.csv"},
-        {"name": "orders", "path": "data/orders.csv"}
-      ],
-      "validator_count": 5,
-      "notifications": ["slack", "webhook"]
+      "name": "daily_data_validation",
+      "data_source": "data/production.csv",
+      "validators": ["null", "duplicate", "range", "regex"],
+      "validator_count": 4,
+      "actions": ["store_result", "update_docs", "slack"],
+      "tags": {
+        "environment": "production",
+        "team": "data-platform"
+      }
     },
     {
-      "name": "weekly_drift_check",
-      "description": "Weekly drift detection",
-      "data_assets": [
-        {"name": "baseline", "path": "baseline/data.csv"},
-        {"name": "current", "path": "data/current.csv"}
-      ],
-      "validator_count": 1,
-      "notifications": ["slack"]
+      "name": "hourly_metrics_check",
+      "data_source": "data/metrics.parquet",
+      "validators": ["null", "range"],
+      "validator_count": 2,
+      "actions": ["webhook"]
     }
   ],
   "total": 2
@@ -99,7 +95,7 @@ Output:
 The console output shows a summary. For detailed checkpoint information, use JSON format and pipe to `jq`:
 
 ```bash
-truthound checkpoint list --format json | jq '.checkpoints[] | select(.name == "daily_validation")'
+truthound checkpoint list --format json | jq '.checkpoints[] | select(.name == "daily_data_validation")'
 ```
 
 ## Use Cases

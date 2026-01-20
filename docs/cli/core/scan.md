@@ -102,6 +102,7 @@ Output file:
 ### HTML Report
 
 ```bash
+# Requires: pip install truthound[reports]
 truthound scan customers.csv --format html -o pii_report.html
 ```
 
@@ -111,6 +112,12 @@ Generates an interactive HTML report with:
 - Column-by-column breakdown
 - Confidence indicators
 - Remediation recommendations
+
+!!! warning "HTML Report Dependency"
+    HTML reports require Jinja2. Install with:
+    ```bash
+    pip install truthound[reports]
+    ```
 
 ## Detected PII Types
 

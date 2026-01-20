@@ -84,6 +84,23 @@ truthound lineage visualize lineage.json -o graph.svg --renderer graphviz
 
 **Output**: SVG, PNG, or PDF (based on extension)
 
+!!! warning "Graphviz System Dependency"
+    The `graphviz` renderer requires the Graphviz system package:
+
+    ```bash
+    # macOS
+    brew install graphviz
+
+    # Ubuntu/Debian
+    sudo apt-get install graphviz
+
+    # Fedora/RHEL
+    sudo dnf install graphviz
+
+    # Windows (via Chocolatey)
+    choco install graphviz
+    ```
+
 ### Mermaid (`mermaid`)
 
 Markdown-embeddable diagrams.

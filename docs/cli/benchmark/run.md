@@ -19,12 +19,12 @@ truthound benchmark run [BENCHMARK] [OPTIONS]
 | Option | Short | Default | Description |
 |--------|-------|---------|-------------|
 | `--suite` | `-s` | None | Benchmark suite (quick, ci, full, profiling, validation) |
-| `--size` | | `medium` | Data size preset (tiny, small, medium, large, xlarge) |
+| `--size` | | `small` | Data size preset (tiny, small, medium, large, xlarge) |
 | `--rows` | `-r` | None | Number of rows (overrides --size) |
-| `--iterations` | `-i` | `5` | Number of iterations |
-| `--warmup` | `-w` | `2` | Warmup iterations |
+| `--iterations` | `-i` | `3` | Number of iterations |
+| `--warmup` | `-w` | `1` | Warmup iterations |
 | `--output` | `-o` | None | Output file path |
-| `--format` | `-f` | `console` | Output format (console, json, html) |
+| `--format` | `-f` | Auto | Output format (json, html). Auto-detected from `-o` file extension |
 | `--save-baseline` | | `false` | Save results as baseline |
 | `--compare-baseline` | | `false` | Compare with existing baseline |
 | `--verbose` | `-v` | `false` | Verbose logging |
@@ -41,13 +41,13 @@ The `benchmark run` command executes performance benchmarks:
 
 ## Benchmark Suites
 
-| Suite | Description | Benchmarks Included |
-|-------|-------------|---------------------|
-| `quick` | Fast verification | Core operations only |
-| `ci` | CI/CD optimized | Balanced coverage |
-| `full` | Complete suite | All benchmarks |
-| `profiling` | Profiling focused | Profile, auto-profile |
-| `validation` | Validation focused | Check, scan, validators |
+| Suite | Estimated Time | Description | Benchmarks Included |
+|-------|---------------|-------------|---------------------|
+| `quick` | ~5 seconds | Fast verification | profile, check, learn (1K rows) |
+| `ci` | ~15 seconds | CI/CD optimized | profile, check, learn, compare, scan (10K rows) |
+| `full` | ~30 seconds | Core benchmarks | profile, check, learn, compare, scan, throughput (10K rows) |
+| `profiling` | ~10 seconds | Profiling focused | All profiling category benchmarks |
+| `validation` | ~10 seconds | Validation focused | All validation category benchmarks |
 
 ## Data Size Presets
 
@@ -64,47 +64,37 @@ The `benchmark run` command executes performance benchmarks:
 ### Run Specific Benchmark
 
 ```bash
-truthound benchmark run profile --size medium
+truthound benchmark run profile --size small
 ```
 
 Output:
 ```
-Benchmark: profile
-==================
-Size: medium (100,000 rows)
-Iterations: 5
-Warmup: 2
+======================================================================
+  BENCHMARK SUITE: single:profile
+======================================================================
 
-Warmup 1/2... done (0.45s)
-Warmup 2/2... done (0.42s)
+Environment: Python 3.13.7 on Darwin
+Polars: 1.37.1, Truthound: 1.1.1
 
-Iteration 1/5: 0.38s
-Iteration 2/5: 0.37s
-Iteration 3/5: 0.39s
-Iteration 4/5: 0.36s
-Iteration 5/5: 0.38s
+Results: 1/1 passed (100%)
+Total Duration: 142.58ms
 
-Results
-───────────────────────────────────────────────────────────────────
-Mean:       0.376s
-Std Dev:    0.011s
-Min:        0.360s
-Max:        0.390s
-Throughput: 265,957 rows/s
-Memory:     156 MB (peak)
-───────────────────────────────────────────────────────────────────
+  [PROFILING]
+    ✓ profile: 0.72ms (13.84M rows/s)
+
+======================================================================
 ```
 
 ### Run Benchmark Suite
 
 ```bash
-# Quick suite for fast verification
+# Quick suite for fast verification (~5 seconds)
 truthound benchmark run --suite quick
 
-# CI/CD optimized suite
+# CI/CD optimized suite (~15 seconds)
 truthound benchmark run --suite ci
 
-# Full comprehensive suite
+# Full benchmark suite (~30 seconds)
 truthound benchmark run --suite full
 ```
 
@@ -119,18 +109,34 @@ truthound benchmark run check --rows 1000000
 
 ```bash
 # More iterations for accuracy
-truthound benchmark run profile --iterations 10 --warmup 3
+truthound benchmark run profile --iterations 10 --warmup 2
 ```
 
 ### Save Results
 
 ```bash
-# JSON output
-truthound benchmark run --suite ci -o results.json --format json
+# JSON output (auto-detected from .json extension)
+truthound benchmark run --suite ci -o results.json
 
-# HTML report
-truthound benchmark run --suite full -o report.html --format html
+# HTML report (auto-detected from .html extension)
+truthound benchmark run --suite full -o report.html
+
+# Explicit format (overrides auto-detection)
+truthound benchmark run --suite ci -o results.dat --format json
 ```
+
+!!! note "Auto-detected Format"
+    The output format is automatically detected from the file extension:
+
+    - `.json` → JSON format (required for `benchmark compare`)
+    - `.html` / `.htm` → HTML format (requires `pip install truthound[reports]`)
+    - Other extensions → JSON format (default for file output)
+
+!!! warning "HTML Report Dependency"
+    HTML reports require Jinja2. Install with:
+    ```bash
+    pip install truthound[reports]
+    ```
 
 Output file (`results.json`):
 ```json

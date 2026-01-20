@@ -199,15 +199,21 @@ myfeature = "myfeature:MyFeaturePlugin"
 ### CLI로 템플릿 생성
 
 ```bash
-# Validator 플러그인 템플릿
-truthound plugin create my-validator --type validator --author "Your Name"
+# Validator 플러그인 생성 + 자동 설치 (권장)
+truthound new plugin my_validator --type validator --install
 
-# Reporter 플러그인 템플릿
-truthound plugin create my-reporter --type reporter
+# Reporter 플러그인 생성 + 자동 설치
+truthound new plugin my_reporter --type reporter --install
 
-# Hook 플러그인 템플릿
-truthound plugin create my-notifier --type hook
+# Hook 플러그인 생성 + 자동 설치
+truthound new plugin my_notifier --type hook --install
+
+# 설치 없이 생성만 (수동 설치 필요)
+truthound new plugin my_validator --type validator
+cd truthound-plugin-my_validator && pip install -e .
 ```
+
+> **Tip**: `--install` (`-i`) 플래그를 사용하면 플러그인 생성 후 자동으로 `pip install -e .`를 실행하여 바로 사용할 수 있습니다.
 
 ## Hook 시스템
 
@@ -271,37 +277,51 @@ hooks.disable(source="my-plugin")
 
 ## CLI 명령어
 
+### 플러그인 생성
+
+```bash
+# 플러그인 생성 + 자동 설치 (권장)
+truthound new plugin my_validator --type validator --install
+
+# 단축 옵션 사용
+truthound new plugin my_validator -t validator -i
+
+# 모든 옵션과 함께 생성
+truthound new plugin enterprise \
+    --type full \
+    --author "Your Name" \
+    --description "Enterprise validators" \
+    --install \
+    --output ./my-plugins/
+```
+
+### 플러그인 관리
+
 ```bash
 # 플러그인 목록 (상세 정보 포함)
-truthound plugin list --verbose
+truthound plugins list --verbose
 
 # JSON 출력
-truthound plugin list --json
+truthound plugins list --json
 
 # 타입별 필터
-truthound plugin list --type validator
+truthound plugins list --type validator
 
 # 상태별 필터
-truthound plugin list --state active
+truthound plugins list --state active
 
 # 플러그인 정보
-truthound plugin info my-plugin --json
+truthound plugins info my-plugin --json
 
 # 플러그인 로드
-truthound plugin load my-plugin --activate
+truthound plugins load my-plugin --activate
 
 # 플러그인 언로드
-truthound plugin unload my-plugin
+truthound plugins unload my-plugin
 
 # 플러그인 활성화/비활성화
-truthound plugin enable my-plugin
-truthound plugin disable my-plugin
-
-# 새 플러그인 생성
-truthound plugin create my-validator \
-    --type validator \
-    --author "Your Name" \
-    --output ./my-plugins/
+truthound plugins enable my-plugin
+truthound plugins disable my-plugin
 ```
 
 ## 고급 사용법

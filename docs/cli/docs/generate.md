@@ -2,6 +2,10 @@
 
 Generate HTML or PDF reports from profile data.
 
+!!! warning "Dependencies"
+    - HTML reports require Jinja2: `pip install truthound[reports]`
+    - PDF reports require WeasyPrint: `pip install truthound[pdf]`
+
 ## Synopsis
 
 ```bash
@@ -22,7 +26,6 @@ truthound docs generate <profile_file> [OPTIONS]
 | `--title` | `-t` | `Data Profile Report` | Report title |
 | `--subtitle` | `-s` | None | Report subtitle |
 | `--theme` | | `professional` | Theme (light, dark, professional, minimal, modern) |
-| `--charts` | `-c` | `apexcharts` | Chart engine (apexcharts, chartjs, plotly, svg) |
 | `--format` | `-f` | `html` | Output format (html, pdf) |
 
 ## Description
@@ -31,7 +34,7 @@ The `docs generate` command creates human-readable reports from profile data:
 
 1. **Parses** profile JSON data
 2. **Applies** selected theme and styling
-3. **Renders** charts with chosen engine
+3. **Renders** charts using ApexCharts (HTML) or SVG (PDF)
 4. **Outputs** standalone HTML or PDF file
 
 ### Generated Report Features
@@ -57,30 +60,29 @@ Output: `report.html` - Standalone HTML file viewable in any browser.
 truthound docs generate profile.json -o report.html --title "Q4 Data Quality Report" --subtitle "Production Database" --theme dark
 ```
 
-### Different Chart Engine
-
-```bash
-# Lightweight Chart.js
-truthound docs generate profile.json -o report.html --charts chartjs
-
-# Interactive Plotly
-truthound docs generate profile.json -o report.html --charts plotly
-
-# Zero-dependency SVG
-truthound docs generate profile.json -o report.html --charts svg
-```
-
 ### PDF Output
 
 ```bash
 truthound docs generate profile.json -o report.pdf --format pdf
 ```
 
-!!! note "PDF Dependency"
-    PDF export requires weasyprint:
+!!! warning "PDF System Dependencies"
+    PDF export requires WeasyPrint **and** system libraries (Pango, Cairo, etc.).
+
+    `pip install truthound[pdf]` only installs the Python package. You must also install system libraries:
+
     ```bash
+    # macOS
+    brew install pango cairo gdk-pixbuf libffi
+
+    # Ubuntu/Debian
+    sudo apt-get install libpango-1.0-0 libpangocairo-1.0-0 libgdk-pixbuf2.0-0 libffi-dev
+
+    # Then install Python package
     pip install truthound[pdf]
     ```
+
+    See [Data Docs Guide](../../guides/datadocs.md#pdf-export-system-dependencies) for full installation instructions.
 
 ### Complete Example
 
@@ -89,8 +91,7 @@ truthound docs generate profile.json \
   -o quarterly_report.html \
   --title "Q4 2025 Data Quality Report" \
   --subtitle "Customer Analytics Pipeline" \
-  --theme professional \
-  --charts apexcharts
+  --theme professional
 ```
 
 ## Themes
@@ -103,30 +104,12 @@ truthound docs generate profile.json \
 | `minimal` | Minimalist design, monochrome accents | Simple documentation |
 | `modern` | Contemporary design, vibrant gradients | Marketing, demos |
 
-## Chart Engines
+## Chart Rendering
 
-| Engine | Description | Pros | Cons |
-|--------|-------------|------|------|
-| `apexcharts` | Modern interactive charts | Beautiful, feature-rich | Larger file size |
-| `chartjs` | Lightweight charts | Small, fast | Fewer features |
-| `plotly` | Advanced interactive | Zooming, tooltips | Largest file size |
-| `svg` | Pure SVG rendering | Zero dependencies, works offline | Static only |
+- **HTML reports**: Use ApexCharts for modern, interactive charts with tooltips and animations
+- **PDF reports**: Use SVG rendering (no JavaScript dependency) for best compatibility
 
-### Engine Selection Guide
-
-```bash
-# For web viewing (default)
-truthound docs generate profile.json -o report.html --charts apexcharts
-
-# For email/simple sharing
-truthound docs generate profile.json -o report.html --charts svg
-
-# For data exploration
-truthound docs generate profile.json -o report.html --charts plotly
-
-# For lightweight reports
-truthound docs generate profile.json -o report.html --charts chartjs
-```
+Chart library selection is automatic based on output format - no configuration needed.
 
 ## Report Contents
 

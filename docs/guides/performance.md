@@ -177,7 +177,35 @@ The benchmark values in this section are illustrative examples based on the expe
 
 **Users should run their own benchmarks** to establish baseline performance for their specific environment and workloads.
 
-### Running Your Own Benchmarks
+### Running Benchmarks with CLI
+
+Truthound provides a built-in benchmark CLI for measuring performance:
+
+```bash
+# Quick benchmark (~5 seconds)
+truthound benchmark run --suite quick
+
+# CI/CD optimized benchmark (~15 seconds)
+truthound benchmark run --suite ci
+
+# Full benchmark suite (~30 seconds)
+truthound benchmark run --suite full
+
+# Single operation benchmark
+truthound benchmark run profile --size medium --iterations 5
+```
+
+**Benchmark Suites:**
+
+| Suite | Estimated Time | Data Size | Use Case |
+|-------|---------------|-----------|----------|
+| `quick` | ~5 seconds | 1K rows | Development feedback |
+| `ci` | ~15 seconds | 10K rows | CI/CD pipelines |
+| `full` | ~30 seconds | 10K rows | Comprehensive testing |
+
+For detailed CLI options, see the [Benchmark Command Reference](../cli/benchmark/index.md).
+
+### Running Custom Benchmarks
 
 ```python
 import time
