@@ -35,6 +35,18 @@ app = typer.Typer(
 )
 
 
+def register_commands(parent_app: typer.Typer) -> None:
+    """Register scaffolding commands with the parent app.
+
+    Registers the scaffolding app under the 'new' command name
+    for backward compatibility (e.g., 'truthound new validator').
+
+    Args:
+        parent_app: Parent Typer app to register commands to
+    """
+    parent_app.add_typer(app, name="new")
+
+
 def _print_result(result: ScaffoldResult, output_dir: Path) -> None:
     """Print generation result to console.
 
@@ -333,6 +345,46 @@ def new_reporter(
         raise typer.Exit(1)
 
 
+def _install_plugin(plugin_dir: Path) -> bool:
+    """Install a plugin in editable mode.
+
+    Args:
+        plugin_dir: Path to the plugin directory.
+
+    Returns:
+        True if installation succeeded, False otherwise.
+    """
+    import subprocess
+    import sys
+
+    typer.echo(f"\nInstalling plugin from {plugin_dir}...")
+
+    try:
+        # Run pip install -e . in the plugin directory
+        result = subprocess.run(
+            [sys.executable, "-m", "pip", "install", "-e", "."],
+            cwd=plugin_dir,
+            capture_output=True,
+            text=True,
+        )
+
+        if result.returncode == 0:
+            typer.echo("✓ Plugin installed successfully!")
+            return True
+        else:
+            typer.echo("✗ Plugin installation failed:", err=True)
+            if result.stderr:
+                # Show only the last few lines of error
+                error_lines = result.stderr.strip().split("\n")[-5:]
+                for line in error_lines:
+                    typer.echo(f"  {line}", err=True)
+            return False
+
+    except Exception as e:
+        typer.echo(f"✗ Installation error: {e}", err=True)
+        return False
+
+
 @app.command("plugin")
 def new_plugin(
     name: Annotated[str, typer.Argument(help="Plugin name (snake_case)")],
@@ -360,6 +412,14 @@ def new_plugin(
         bool,
         typer.Option("--tests/--no-tests", help="Generate test files"),
     ] = True,
+    install: Annotated[
+        bool,
+        typer.Option(
+            "--install/--no-install",
+            "-i",
+            help="Install plugin in editable mode after generation",
+        ),
+    ] = False,
     min_truthound_version: Annotated[
         str,
         typer.Option("--min-version", help="Minimum Truthound version"),
@@ -383,14 +443,17 @@ def new_plugin(
         # Create a validator plugin
         truthound new plugin my_validators
 
+        # Create and install immediately (recommended)
+        truthound new plugin my_validators --install
+
         # Create a reporter plugin
         truthound new plugin custom_reports --type reporter
 
         # Create a hook plugin
         truthound new plugin my_hooks --type hook
 
-        # Create a full-featured plugin
-        truthound new plugin enterprise --type full --author "Company Inc."
+        # Create a full-featured plugin with auto-install
+        truthound new plugin enterprise --type full --author "Company Inc." --install
     """
     try:
         name = _validate_name(name)
@@ -448,11 +511,26 @@ def new_plugin(
         _print_result(result, plugin_dir)
 
         pkg_name = name.replace("-", "_")
-        typer.echo("\nNext steps:")
-        typer.echo(f"  1. cd {plugin_dir}")
-        typer.echo(f"  2. Edit {pkg_name}/plugin.py to implement your plugin")
-        typer.echo("  3. pip install -e .")
-        typer.echo("  4. truthound plugin list")
+
+        # Auto-install if requested
+        if install:
+            install_success = _install_plugin(plugin_dir)
+            if install_success:
+                typer.echo("\nNext steps:")
+                typer.echo(f"  1. Edit {plugin_dir}/{pkg_name}/plugin.py to implement your plugin")
+                typer.echo("  2. truthound plugin list")
+            else:
+                typer.echo("\nPlugin created but installation failed.")
+                typer.echo("You can install manually:")
+                typer.echo(f"  cd {plugin_dir} && pip install -e .")
+                raise typer.Exit(1)
+        else:
+            typer.echo("\nNext steps:")
+            typer.echo(f"  1. cd {plugin_dir}")
+            typer.echo(f"  2. Edit {pkg_name}/plugin.py to implement your plugin")
+            typer.echo("  3. pip install -e .")
+            typer.echo("  4. truthound plugin list")
+            typer.echo("\nTip: Use --install flag to auto-install the plugin")
     else:
         _print_result(result, plugin_dir)
         raise typer.Exit(1)

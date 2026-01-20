@@ -25,6 +25,7 @@ def _read_file_as_lazy(path: Path):
         ".csv": pl.scan_csv,
         ".json": pl.scan_ndjson,
         ".ndjson": pl.scan_ndjson,
+        ".jsonl": pl.scan_ndjson,
     }
 
     if suffix not in readers:

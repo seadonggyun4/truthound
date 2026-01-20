@@ -30,13 +30,13 @@ def run_cmd(
     suite: Annotated[
         Optional[str],
         typer.Option(
-            "--suite", "-s", help="Predefined suite to run (quick, ci, full, profiling, validation)"
+            "--suite", "-s", help="Predefined suite: quick (~5s), ci (~15s), full (~30s)"
         ),
     ] = None,
     size: Annotated[
         str,
-        typer.Option("--size", help="Data size (tiny, small, medium, large, xlarge)"),
-    ] = "medium",
+        typer.Option("--size", help="Data size: tiny (1K), small (10K), medium (100K), large (1M)"),
+    ] = "small",
     rows: Annotated[
         Optional[int],
         typer.Option("--rows", "-r", help="Custom row count (overrides size)"),
@@ -44,19 +44,19 @@ def run_cmd(
     iterations: Annotated[
         int,
         typer.Option("--iterations", "-i", help="Number of measurement iterations"),
-    ] = 5,
+    ] = 3,
     warmup: Annotated[
         int,
         typer.Option("--warmup", "-w", help="Number of warmup iterations"),
-    ] = 2,
+    ] = 1,
     output: Annotated[
         Optional[Path],
         typer.Option("--output", "-o", help="Output file path"),
     ] = None,
     format: Annotated[
-        str,
-        typer.Option("--format", "-f", help="Output format (console, json, html)"),
-    ] = "console",
+        Optional[str],
+        typer.Option("--format", "-f", help="Output format (json, html). Auto-detected from -o extension if not specified"),
+    ] = None,
     save_baseline: Annotated[
         bool,
         typer.Option("--save-baseline", help="Save results as baseline for regression detection"),
@@ -72,12 +72,16 @@ def run_cmd(
 ) -> None:
     """Run performance benchmarks.
 
+    Estimated times (default settings):
+        --suite quick:  ~5 seconds  (1K rows, 3 benchmarks)
+        --suite ci:     ~15 seconds (10K rows, 5 benchmarks)
+        --suite full:   ~30 seconds (10K rows, 6 benchmarks)
+
     Examples:
-        truthound benchmark run profile --size medium
-        truthound benchmark run --suite quick
-        truthound benchmark run check --rows 1000000
-        truthound benchmark run --suite ci --save-baseline
-        truthound benchmark run --suite ci --compare-baseline
+        truthound benchmark run --suite quick     # Fast feedback
+        truthound benchmark run --suite ci        # CI/CD appropriate
+        truthound benchmark run profile           # Single benchmark
+        truthound benchmark run check --rows 100000 --iterations 5
     """
     from truthound.benchmark import (
         BenchmarkRunner,
@@ -168,6 +172,27 @@ def run_cmd(
                 typer.echo("\nPerformance regressions detected!", err=True)
                 raise typer.Exit(1)
 
+        # Determine output format
+        output_format = format
+        if output and not output_format:
+            # Auto-detect from file extension
+            ext = output.suffix.lower()
+            if ext == ".json":
+                output_format = "json"
+            elif ext in (".html", ".htm"):
+                output_format = "html"
+            else:
+                # Default to JSON for unknown extensions when saving to file
+                output_format = "json"
+        elif not output_format:
+            # No output file, default to console
+            output_format = "console"
+
+        # Validate format
+        if output_format not in ("console", "json", "html"):
+            typer.echo(f"Unknown format: {output_format}. Use json or html.", err=True)
+            raise typer.Exit(1)
+
         # Generate output
         reporters = {
             "console": ConsoleReporter(use_colors=True),
@@ -175,15 +200,13 @@ def run_cmd(
             "html": HTMLReporter(),
         }
 
-        reporter = reporters.get(format, ConsoleReporter())
+        reporter = reporters.get(output_format, JSONReporter(pretty=True))
         report_content = reporter.report_suite(results)
 
         if output:
             output.parent.mkdir(parents=True, exist_ok=True)
             output.write_text(report_content)
-            typer.echo(f"Results saved to: {output}")
-        elif format == "console":
-            typer.echo(report_content)
+            typer.echo(f"Results saved to: {output} (format: {output_format})")
         else:
             typer.echo(report_content)
 

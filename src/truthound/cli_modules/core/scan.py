@@ -64,7 +64,7 @@ def scan_cmd(
             typer.echo("Error: --output is required for HTML format", err=True)
             raise typer.Exit(1)
         try:
-            from truthound.html_report import generate_pii_html_report
+            from truthound.html_reporter import generate_pii_html_report
 
             html = generate_pii_html_report(
                 pii_report, title=f"PII Scan Report: {file.name}"

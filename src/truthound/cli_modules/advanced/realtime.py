@@ -17,6 +17,7 @@ from truthound.cli_modules.common.errors import error_boundary
 app = typer.Typer(
     name="realtime",
     help="Real-time and streaming validation commands",
+    no_args_is_help=True,  # Show help when no subcommand provided
 )
 
 
@@ -203,8 +204,17 @@ def monitor_cmd(
 checkpoint_app = typer.Typer(
     name="checkpoint",
     help="Manage streaming validation checkpoints",
+    no_args_is_help=True,
 )
-app.add_typer(checkpoint_app, name="checkpoint")
+
+
+def _register_checkpoint_subcommands() -> None:
+    """Register checkpoint subcommands after all commands are defined.
+
+    This ensures proper command registration order in Typer.
+    Called at module load time after all command definitions.
+    """
+    app.add_typer(checkpoint_app, name="checkpoint")
 
 
 @checkpoint_app.command(name="list")
@@ -346,3 +356,12 @@ def checkpoint_delete_cmd(
 
     checkpoint_file.unlink()
     typer.echo(f"Checkpoint '{checkpoint_id}' deleted.")
+
+
+# =============================================================================
+# Module initialization - register subcommands after all definitions
+# =============================================================================
+
+# Register checkpoint subcommand group at the end to ensure
+# validate and monitor commands are registered first
+_register_checkpoint_subcommands()

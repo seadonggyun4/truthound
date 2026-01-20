@@ -298,6 +298,7 @@ class BaseCommand:
             ".csv": pl.scan_csv,
             ".json": pl.scan_ndjson,
             ".ndjson": pl.scan_ndjson,
+            ".jsonl": pl.scan_ndjson,
         }
 
         if suffix not in readers:

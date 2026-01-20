@@ -29,8 +29,15 @@ def _read_data(file: Path):
         return pl.read_csv(file)
     elif suffix.endswith(".parquet"):
         return pl.read_parquet(file)
+    elif suffix.endswith(".jsonl") or suffix.endswith(".ndjson"):
+        return pl.read_ndjson(file)
+    elif suffix.endswith(".json"):
+        return pl.read_json(file)
     else:
-        raise ValueError(f"Unsupported file format: {file.suffix}")
+        raise ValueError(
+            f"Unsupported file format: {file.suffix}. "
+            f"Supported formats: .csv, .parquet, .json, .jsonl, .ndjson"
+        )
 
 
 @app.command(name="anomaly")
@@ -53,6 +60,12 @@ def anomaly_cmd(
         Optional[str],
         typer.Option("--columns", help="Comma-separated columns to analyze"),
     ] = None,
+    sample: Annotated[
+        Optional[int],
+        typer.Option(
+            "--sample", "-s", help="Sample size for processing (default: all rows)", min=1
+        ),
+    ] = None,
     output: Annotated[
         Optional[Path],
         typer.Option("--output", "-o", help="Output file path for results"),
@@ -74,6 +87,8 @@ def anomaly_cmd(
         truthound ml anomaly data.csv
         truthound ml anomaly data.csv --method isolation_forest --contamination 0.05
         truthound ml anomaly data.csv --columns "amount,price" --output anomalies.json
+        truthound ml anomaly data.parquet --sample 100000
+        truthound ml anomaly data.jsonl --method zscore
     """
     from truthound.ml import (
         ZScoreAnomalyDetector,
@@ -88,6 +103,12 @@ def anomaly_cmd(
 
     try:
         df = _read_data(file)
+
+        # Apply sampling if specified
+        original_rows = len(df)
+        if sample is not None and sample < original_rows:
+            df = df.sample(n=sample, seed=42)
+            typer.echo(f"Sampled {sample:,} rows from {original_rows:,} total rows")
 
         # Parse columns
         cols = [c.strip() for c in columns.split(",")] if columns else None

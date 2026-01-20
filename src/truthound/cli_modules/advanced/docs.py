@@ -44,10 +44,6 @@ def generate_cmd(
         str,
         typer.Option("--theme", help="Report theme (light, dark, professional, minimal, modern)"),
     ] = "professional",
-    chart_library: Annotated[
-        str,
-        typer.Option("--charts", "-c", help="Chart library (apexcharts, chartjs, plotly, svg)"),
-    ] = "apexcharts",
     format: Annotated[
         str,
         typer.Option("--format", "-f", help="Output format (html, pdf)"),
@@ -60,10 +56,12 @@ def generate_cmd(
     - Shared via email or Slack
     - Viewed offline in any browser
 
+    Charts are rendered using ApexCharts (interactive, feature-rich).
+    PDF output uses SVG for best compatibility.
+
     Examples:
         truthound docs generate profile.json -o report.html
         truthound docs generate profile.json -o report.html --title "Q4 Data Report" --theme dark
-        truthound docs generate profile.json -o report.html --charts chartjs
         truthound docs generate profile.json -o report.pdf --format pdf
     """
     require_file(profile_file, "Profile file")
@@ -85,7 +83,6 @@ def generate_cmd(
         typer.echo(f"Generating {format.upper()} report...")
         typer.echo(f"  Profile: {profile_file}")
         typer.echo(f"  Theme: {theme}")
-        typer.echo(f"  Charts: {chart_library}")
 
         if format == "html":
             html_content = generate_html_report(
@@ -93,7 +90,6 @@ def generate_cmd(
                 title=title,
                 subtitle=subtitle,
                 theme=theme,
-                chart_library=chart_library,
                 output_path=output,
             )
             typer.echo(f"\nReport saved to: {output}")
@@ -107,15 +103,19 @@ def generate_cmd(
                     title=title,
                     subtitle=subtitle,
                     theme=theme,
-                    chart_library="svg",  # SVG works best for PDF
                 )
                 typer.echo(f"\nPDF report saved to: {output_path}")
-            except ImportError:
-                typer.echo(
-                    "Error: PDF export requires weasyprint. "
-                    "Install with: pip install truthound[pdf]",
-                    err=True,
-                )
+            except ImportError as e:
+                # WeasyPrintDependencyError includes detailed installation instructions
+                typer.echo(f"\nError: {e}", err=True)
+                raise typer.Exit(1)
+            except OSError as e:
+                # Catch system library errors that weren't caught in export_to_pdf
+                if "cannot load library" in str(e):
+                    from truthound.datadocs.builder import _get_weasyprint_install_instructions
+                    typer.echo(f"\nError: {e}\n\n{_get_weasyprint_install_instructions()}", err=True)
+                else:
+                    typer.echo(f"\nError: {e}", err=True)
                 raise typer.Exit(1)
 
         else:
