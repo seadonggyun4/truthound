@@ -347,20 +347,26 @@ class BenchmarkConfig:
     """Configuration for benchmark execution.
 
     Controls warmup, iterations, timeouts, and other execution parameters.
+
+    Performance Notes:
+        - Default settings optimized for quick feedback (<30 seconds total)
+        - Use quick() for development (~5 seconds)
+        - Use standard() for regular benchmarking (~15 seconds)
+        - Use thorough() only for release validation (~60 seconds)
     """
 
-    # Iteration control
-    warmup_iterations: int = 2
-    measure_iterations: int = 5
-    cooldown_seconds: float = 0.1
+    # Iteration control - reduced defaults for faster feedback
+    warmup_iterations: int = 1
+    measure_iterations: int = 3
+    cooldown_seconds: float = 0.01  # Reduced from 0.1s
 
     # Timeout and limits
-    timeout_seconds: float = 300.0
+    timeout_seconds: float = 120.0  # Reduced from 300s
     max_memory_mb: float = 0  # 0 = unlimited
 
-    # Data parameters
-    default_size: BenchmarkSize = BenchmarkSize.MEDIUM
-    gc_between_iterations: bool = True
+    # Data parameters - default to SMALL for speed
+    default_size: BenchmarkSize = BenchmarkSize.SMALL
+    gc_between_iterations: bool = False  # Disabled by default for speed
 
     # Output control
     verbose: bool = False
@@ -371,43 +377,45 @@ class BenchmarkConfig:
 
     @classmethod
     def quick(cls) -> "BenchmarkConfig":
-        """Quick benchmark configuration for fast feedback."""
+        """Quick benchmark configuration for fast feedback (~5 seconds)."""
         return cls(
             warmup_iterations=1,
-            measure_iterations=3,
-            cooldown_seconds=0.05,
-            default_size=BenchmarkSize.SMALL,
+            measure_iterations=2,
+            cooldown_seconds=0.0,
+            default_size=BenchmarkSize.TINY,
+            gc_between_iterations=False,
         )
 
     @classmethod
     def standard(cls) -> "BenchmarkConfig":
-        """Standard benchmark configuration."""
+        """Standard benchmark configuration (~15 seconds)."""
         return cls(
-            warmup_iterations=2,
-            measure_iterations=5,
-            cooldown_seconds=0.1,
-            default_size=BenchmarkSize.MEDIUM,
+            warmup_iterations=1,
+            measure_iterations=3,
+            cooldown_seconds=0.01,
+            default_size=BenchmarkSize.SMALL,
+            gc_between_iterations=False,
         )
 
     @classmethod
     def thorough(cls) -> "BenchmarkConfig":
-        """Thorough benchmark configuration for CI/CD."""
+        """Thorough benchmark configuration for CI/CD (~60 seconds)."""
         return cls(
-            warmup_iterations=3,
-            measure_iterations=10,
-            cooldown_seconds=0.2,
-            default_size=BenchmarkSize.LARGE,
+            warmup_iterations=2,
+            measure_iterations=5,
+            cooldown_seconds=0.05,
+            default_size=BenchmarkSize.MEDIUM,
             gc_between_iterations=True,
         )
 
     @classmethod
     def stress(cls) -> "BenchmarkConfig":
-        """Stress test configuration."""
+        """Stress test configuration (several minutes)."""
         return cls(
             warmup_iterations=1,
             measure_iterations=3,
             timeout_seconds=600.0,
-            default_size=BenchmarkSize.XLARGE,
+            default_size=BenchmarkSize.LARGE,
             gc_between_iterations=True,
         )
 

@@ -498,11 +498,184 @@ class MarkdownReporter(BenchmarkReporter):
 # HTML Reporter
 # =============================================================================
 
+# Check for jinja2 availability
+try:
+    from jinja2 import Environment, BaseLoader, select_autoescape
+
+    HAS_JINJA2 = True
+except ImportError:
+    HAS_JINJA2 = False
+
+
+def _require_jinja2() -> None:
+    """Check if jinja2 is available."""
+    if not HAS_JINJA2:
+        raise ImportError(
+            "jinja2 is required for HTML reports. "
+            "Install with: pip install truthound[reports]"
+        )
+
+
+# HTML template for benchmark reports
+_BENCHMARK_HTML_TEMPLATE = """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ title }}</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            line-height: 1.6;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1 { color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; }
+        h2 { color: #34495e; margin-top: 30px; }
+        .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin: 20px 0; }
+        .summary-card { background: #ecf0f1; padding: 20px; border-radius: 8px; text-align: center; }
+        .summary-card .value { font-size: 2em; font-weight: bold; color: #2c3e50; }
+        .summary-card .label { color: #7f8c8d; }
+        .success { color: #27ae60; }
+        .failure { color: #e74c3c; }
+        table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background-color: #3498db; color: white; }
+        tr:hover { background-color: #f5f5f5; }
+        .status-pass { color: #27ae60; font-weight: bold; }
+        .status-fail { color: #e74c3c; font-weight: bold; }
+        .environment { background: #ecf0f1; padding: 15px; border-radius: 8px; margin: 20px 0; }
+        .environment code { background: #bdc3c7; padding: 2px 6px; border-radius: 3px; }
+        .metric-bar { background: #ecf0f1; border-radius: 4px; overflow: hidden; height: 20px; }
+        .metric-fill { background: #3498db; height: 100%; }
+        footer { text-align: center; margin-top: 30px; color: #7f8c8d; }
+        footer a { color: #3498db; text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>{{ title }}</h1>
+        <p>Suite: <strong>{{ suite_name }}</strong></p>
+        <p>Generated: {{ generated_at }}</p>
+
+        <div class="summary-grid">
+            <div class="summary-card">
+                <div class="value">{{ total_benchmarks }}</div>
+                <div class="label">Total Benchmarks</div>
+            </div>
+            <div class="summary-card">
+                <div class="value success">{{ successful_benchmarks }}</div>
+                <div class="label">Successful</div>
+            </div>
+            <div class="summary-card">
+                <div class="value failure">{{ failed_benchmarks }}</div>
+                <div class="label">Failed</div>
+            </div>
+            <div class="summary-card">
+                <div class="value">{{ success_rate }}%</div>
+                <div class="label">Success Rate</div>
+            </div>
+            <div class="summary-card">
+                <div class="value">{{ total_duration }}</div>
+                <div class="label">Total Duration</div>
+            </div>
+        </div>
+
+        <div class="environment">
+            <strong>Environment:</strong>
+            Python <code>{{ env.python_version }}</code> on
+            <code>{{ env.platform_system }} {{ env.platform_release }}</code>
+            ({{ env.cpu_count }} CPUs) |
+            Polars <code>{{ env.polars_version }}</code> |
+            Truthound <code>{{ env.truthound_version }}</code>
+        </div>
+
+        <h2>Results</h2>
+        <table>
+            <thead>
+                <tr>
+                    <th>Benchmark</th>
+                    <th>Category</th>
+                    <th>Status</th>
+                    <th>Duration</th>
+                    <th>Throughput</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for result in results %}
+                <tr>
+                    <td>{{ result.name }}</td>
+                    <td>{{ result.category }}</td>
+                    <td class="{{ result.status_class }}">{{ result.status_text }}</td>
+                    <td>{{ result.duration }}</td>
+                    <td>{{ result.throughput }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+
+        <footer>
+            <p>Generated by <a href="https://github.com/seadonggyun4/Truthound">Truthound</a> Benchmark System</p>
+        </footer>
+    </div>
+</body>
+</html>"""
+
+# Single result template
+_BENCHMARK_RESULT_TEMPLATE = """<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ benchmark_name }} - Benchmark Result</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            line-height: 1.6;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1 { color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; }
+        h2 { color: #34495e; margin-top: 30px; }
+        table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
+        th { background-color: #3498db; color: white; }
+        .status-pass { color: #27ae60; font-weight: bold; }
+        .status-fail { color: #e74c3c; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>{{ benchmark_name }}</h1>
+        <p><strong>Category:</strong> {{ category }}</p>
+        <p><strong>Status:</strong> <span class="{{ status_class }}">{{ status_text }}</span></p>
+
+        <h2>Timing Metrics</h2>
+        <table>
+            <tr><th>Metric</th><th>Value</th></tr>
+            <tr><td>Mean Duration</td><td>{{ mean_duration }}</td></tr>
+            <tr><td>Std Deviation</td><td>{{ std_duration }}</td></tr>
+            <tr><td>Min</td><td>{{ min_duration }}</td></tr>
+            <tr><td>Max</td><td>{{ max_duration }}</td></tr>
+            <tr><td>P95</td><td>{{ p95_duration }}</td></tr>
+            <tr><td>P99</td><td>{{ p99_duration }}</td></tr>
+        </table>
+    </div>
+</body>
+</html>"""
+
 
 class HTMLReporter(BenchmarkReporter):
     """HTML format reporter for interactive reports.
 
-    Generates styled HTML with charts and interactive elements.
+    Generates styled HTML reports using Jinja2 templates.
+    Requires jinja2: pip install truthound[reports]
 
     Example:
         reporter = HTMLReporter()
@@ -514,43 +687,35 @@ class HTMLReporter(BenchmarkReporter):
         title: str = "Truthound Benchmark Report",
         include_charts: bool = True,
     ):
+        _require_jinja2()
         self.title = title
         self.include_charts = include_charts
+        self._env = self._create_environment()
 
-    def _get_css(self) -> str:
-        """Get CSS styles for the report."""
-        return """
-        <style>
-            body {
-                font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-                line-height: 1.6;
-                max-width: 1200px;
-                margin: 0 auto;
-                padding: 20px;
-                background-color: #f5f5f5;
-            }
-            .container { background: white; padding: 30px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-            h1 { color: #2c3e50; border-bottom: 3px solid #3498db; padding-bottom: 10px; }
-            h2 { color: #34495e; margin-top: 30px; }
-            .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 20px; margin: 20px 0; }
-            .summary-card { background: #ecf0f1; padding: 20px; border-radius: 8px; text-align: center; }
-            .summary-card .value { font-size: 2em; font-weight: bold; color: #2c3e50; }
-            .summary-card .label { color: #7f8c8d; }
-            .success { color: #27ae60; }
-            .failure { color: #e74c3c; }
-            table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-            th, td { padding: 12px; text-align: left; border-bottom: 1px solid #ddd; }
-            th { background-color: #3498db; color: white; }
-            tr:hover { background-color: #f5f5f5; }
-            .status-pass { color: #27ae60; font-weight: bold; }
-            .status-fail { color: #e74c3c; font-weight: bold; }
-            .environment { background: #ecf0f1; padding: 15px; border-radius: 8px; margin: 20px 0; }
-            .environment code { background: #bdc3c7; padding: 2px 6px; border-radius: 3px; }
-            .metric-bar { background: #ecf0f1; border-radius: 4px; overflow: hidden; height: 20px; }
-            .metric-fill { background: #3498db; height: 100%; }
-            footer { text-align: center; margin-top: 30px; color: #7f8c8d; }
-        </style>
-        """
+    def _create_environment(self) -> "Environment":
+        """Create Jinja2 environment with custom filters."""
+        _require_jinja2()
+
+        class StringLoader(BaseLoader):
+            def get_source(self, environment, template):
+                templates = {
+                    "suite": _BENCHMARK_HTML_TEMPLATE,
+                    "result": _BENCHMARK_RESULT_TEMPLATE,
+                }
+                if template in templates:
+                    return templates[template], None, lambda: False
+                raise ValueError(f"Unknown template: {template}")
+
+        env = Environment(
+            loader=StringLoader(),
+            autoescape=select_autoescape(["html", "xml"]),
+        )
+
+        # Add custom filters
+        env.filters["format_duration"] = self._format_duration
+        env.filters["format_throughput"] = self._format_throughput
+
+        return env
 
     def _format_duration(self, seconds: float) -> str:
         """Format duration for HTML."""
@@ -576,39 +741,21 @@ class HTMLReporter(BenchmarkReporter):
         output: Path | TextIO | None = None,
     ) -> str:
         """Generate HTML report for a single result."""
-        status_class = "status-pass" if result.success else "status-fail"
-        status_text = "PASS" if result.success else "FAIL"
+        template = self._env.get_template("result")
 
         m = result.metrics
-
-        html = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <title>{result.benchmark_name} - Benchmark Result</title>
-            {self._get_css()}
-        </head>
-        <body>
-            <div class="container">
-                <h1>{result.benchmark_name}</h1>
-                <p><strong>Category:</strong> {result.category.value}</p>
-                <p><strong>Status:</strong> <span class="{status_class}">{status_text}</span></p>
-
-                <h2>Timing Metrics</h2>
-                <table>
-                    <tr><th>Metric</th><th>Value</th></tr>
-                    <tr><td>Mean Duration</td><td>{self._format_duration(m.mean_duration)}</td></tr>
-                    <tr><td>Std Deviation</td><td>{self._format_duration(m.std_duration)}</td></tr>
-                    <tr><td>Min</td><td>{self._format_duration(m.min_duration)}</td></tr>
-                    <tr><td>Max</td><td>{self._format_duration(m.max_duration)}</td></tr>
-                    <tr><td>P95</td><td>{self._format_duration(m.p95_duration)}</td></tr>
-                    <tr><td>P99</td><td>{self._format_duration(m.p99_duration)}</td></tr>
-                </table>
-            </div>
-        </body>
-        </html>
-        """
+        html = template.render(
+            benchmark_name=result.benchmark_name,
+            category=result.category.value,
+            status_class="status-pass" if result.success else "status-fail",
+            status_text="PASS" if result.success else "FAIL",
+            mean_duration=self._format_duration(m.mean_duration),
+            std_duration=self._format_duration(m.std_duration),
+            min_duration=self._format_duration(m.min_duration),
+            max_duration=self._format_duration(m.max_duration),
+            p95_duration=self._format_duration(m.p95_duration),
+            p99_duration=self._format_duration(m.p99_duration),
+        )
 
         self._write_output(html, output)
         return html
@@ -619,100 +766,36 @@ class HTMLReporter(BenchmarkReporter):
         output: Path | TextIO | None = None,
     ) -> str:
         """Generate HTML report for a suite."""
-        env = suite_result.environment
-        success_rate = suite_result.success_rate * 100
+        template = self._env.get_template("suite")
 
-        # Build results table rows
-        rows = []
+        # Prepare results data
+        results_data = []
         for result in suite_result.results:
-            status_class = "status-pass" if result.success else "status-fail"
-            status_text = "✓ PASS" if result.success else "✗ FAIL"
-
             throughput = "-"
             if result.metrics.rows_processed > 0:
                 throughput = self._format_throughput(result.metrics.rows_per_second)
 
-            rows.append(f"""
-                <tr>
-                    <td>{result.benchmark_name}</td>
-                    <td>{result.category.value}</td>
-                    <td class="{status_class}">{status_text}</td>
-                    <td>{self._format_duration(result.metrics.mean_duration)}</td>
-                    <td>{throughput}</td>
-                </tr>
-            """)
+            results_data.append({
+                "name": result.benchmark_name,
+                "category": result.category.value,
+                "status_class": "status-pass" if result.success else "status-fail",
+                "status_text": "✓ PASS" if result.success else "✗ FAIL",
+                "duration": self._format_duration(result.metrics.mean_duration),
+                "throughput": throughput,
+            })
 
-        rows_html = "\n".join(rows)
-
-        html = f"""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <meta charset="UTF-8">
-            <title>{self.title}</title>
-            {self._get_css()}
-        </head>
-        <body>
-            <div class="container">
-                <h1>{self.title}</h1>
-                <p>Suite: <strong>{suite_result.suite_name}</strong></p>
-                <p>Generated: {suite_result.started_at.strftime('%Y-%m-%d %H:%M:%S')}</p>
-
-                <div class="summary-grid">
-                    <div class="summary-card">
-                        <div class="value">{suite_result.total_benchmarks}</div>
-                        <div class="label">Total Benchmarks</div>
-                    </div>
-                    <div class="summary-card">
-                        <div class="value success">{suite_result.successful_benchmarks}</div>
-                        <div class="label">Successful</div>
-                    </div>
-                    <div class="summary-card">
-                        <div class="value failure">{suite_result.failed_benchmarks}</div>
-                        <div class="label">Failed</div>
-                    </div>
-                    <div class="summary-card">
-                        <div class="value">{success_rate:.0f}%</div>
-                        <div class="label">Success Rate</div>
-                    </div>
-                    <div class="summary-card">
-                        <div class="value">{suite_result.total_duration_seconds:.2f}s</div>
-                        <div class="label">Total Duration</div>
-                    </div>
-                </div>
-
-                <div class="environment">
-                    <strong>Environment:</strong>
-                    Python <code>{env.python_version}</code> on
-                    <code>{env.platform_system} {env.platform_release}</code>
-                    ({env.cpu_count} CPUs) |
-                    Polars <code>{env.polars_version}</code> |
-                    Truthound <code>{env.truthound_version}</code>
-                </div>
-
-                <h2>Results</h2>
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Benchmark</th>
-                            <th>Category</th>
-                            <th>Status</th>
-                            <th>Duration</th>
-                            <th>Throughput</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {rows_html}
-                    </tbody>
-                </table>
-
-                <footer>
-                    <p>Generated by Truthound Benchmark System</p>
-                </footer>
-            </div>
-        </body>
-        </html>
-        """
+        html = template.render(
+            title=self.title,
+            suite_name=suite_result.suite_name,
+            generated_at=suite_result.started_at.strftime("%Y-%m-%d %H:%M:%S"),
+            total_benchmarks=suite_result.total_benchmarks,
+            successful_benchmarks=suite_result.successful_benchmarks,
+            failed_benchmarks=suite_result.failed_benchmarks,
+            success_rate=f"{suite_result.success_rate * 100:.0f}",
+            total_duration=f"{suite_result.total_duration_seconds:.2f}s",
+            env=suite_result.environment,
+            results=results_data,
+        )
 
         self._write_output(html, output)
         return html

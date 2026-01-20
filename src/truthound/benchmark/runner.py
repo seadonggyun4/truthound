@@ -308,52 +308,75 @@ class BenchmarkSuite:
         return len(self._benchmarks)
 
     @classmethod
-    def profiling(cls, size: BenchmarkSize = BenchmarkSize.MEDIUM) -> "BenchmarkSuite":
-        """Create a profiling-focused suite."""
-        suite = cls("profiling", "Profiling performance benchmarks")
+    def profiling(cls, size: BenchmarkSize = BenchmarkSize.SMALL) -> "BenchmarkSuite":
+        """Create a profiling-focused suite (~10 seconds)."""
+        suite = cls(
+            "profiling",
+            "Profiling performance benchmarks",
+            benchmark_config=BenchmarkConfig.standard(),
+        )
         suite.add_all_in_category(BenchmarkCategory.PROFILING, row_count=size.row_count)
         return suite
 
     @classmethod
-    def validation(cls, size: BenchmarkSize = BenchmarkSize.MEDIUM) -> "BenchmarkSuite":
-        """Create a validation-focused suite."""
-        suite = cls("validation", "Validation performance benchmarks")
+    def validation(cls, size: BenchmarkSize = BenchmarkSize.SMALL) -> "BenchmarkSuite":
+        """Create a validation-focused suite (~10 seconds)."""
+        suite = cls(
+            "validation",
+            "Validation performance benchmarks",
+            benchmark_config=BenchmarkConfig.standard(),
+        )
         suite.add_all_in_category(BenchmarkCategory.VALIDATION, row_count=size.row_count)
         return suite
 
     @classmethod
-    def full(cls, size: BenchmarkSize = BenchmarkSize.MEDIUM) -> "BenchmarkSuite":
-        """Create a comprehensive suite with all benchmarks."""
-        suite = cls("full", "Full benchmark suite")
-        suite.add_all(row_count=size.row_count)
+    def full(cls, size: BenchmarkSize = BenchmarkSize.SMALL) -> "BenchmarkSuite":
+        """Create a comprehensive suite with core benchmarks (~30 seconds).
+
+        Note:
+            Uses SMALL size by default for reasonable execution time.
+            For thorough testing, use size=BenchmarkSize.MEDIUM.
+        """
+        suite = cls(
+            "full",
+            "Full benchmark suite",
+            benchmark_config=BenchmarkConfig.standard(),
+        )
+        # Core benchmarks only - excludes heavy e2e and memory benchmarks
+        suite.add("profile", row_count=size.row_count)
+        suite.add("check", row_count=size.row_count)
+        suite.add("learn", row_count=size.row_count)
+        suite.add("compare", row_count=size.row_count)
+        suite.add("scan", row_count=size.row_count)
+        suite.add("throughput", row_count=size.row_count)
         return suite
 
     @classmethod
     def quick(cls) -> "BenchmarkSuite":
-        """Create a quick suite for fast feedback."""
+        """Create a quick suite for fast feedback (~5 seconds)."""
         suite = cls(
             "quick",
             "Quick benchmarks for fast feedback",
             benchmark_config=BenchmarkConfig.quick(),
         )
-        suite.add("profile", row_count=BenchmarkSize.SMALL.row_count)
-        suite.add("check", row_count=BenchmarkSize.SMALL.row_count)
-        suite.add("learn", row_count=BenchmarkSize.SMALL.row_count)
+        suite.add("profile", row_count=BenchmarkSize.TINY.row_count)
+        suite.add("check", row_count=BenchmarkSize.TINY.row_count)
+        suite.add("learn", row_count=BenchmarkSize.TINY.row_count)
         return suite
 
     @classmethod
     def ci(cls) -> "BenchmarkSuite":
-        """Create a CI-appropriate suite."""
+        """Create a CI-appropriate suite (~15 seconds)."""
         suite = cls(
             "ci",
             "CI/CD benchmark suite",
             benchmark_config=BenchmarkConfig.standard(),
         )
-        suite.add("profile", row_count=BenchmarkSize.MEDIUM.row_count)
-        suite.add("check", row_count=BenchmarkSize.MEDIUM.row_count)
-        suite.add("learn", row_count=BenchmarkSize.MEDIUM.row_count)
-        suite.add("compare", row_count=BenchmarkSize.SMALL.row_count)
-        suite.add("scan", row_count=BenchmarkSize.SMALL.row_count)
+        suite.add("profile", row_count=BenchmarkSize.SMALL.row_count)
+        suite.add("check", row_count=BenchmarkSize.SMALL.row_count)
+        suite.add("learn", row_count=BenchmarkSize.SMALL.row_count)
+        suite.add("compare", row_count=BenchmarkSize.TINY.row_count)
+        suite.add("scan", row_count=BenchmarkSize.TINY.row_count)
         return suite
 
 
@@ -439,8 +462,9 @@ class BenchmarkRunner:
         started_at = datetime.now()
         results: list[BenchmarkResult] = []
 
-        # Use suite's config if available
-        benchmark_config = suite.benchmark_config or self.benchmark_config
+        # Runner's config takes precedence over suite's config
+        # This allows CLI flags to override suite defaults
+        benchmark_config = self.benchmark_config
 
         if self.config.verbose:
             print(f"\nRunning suite: {suite.name}")

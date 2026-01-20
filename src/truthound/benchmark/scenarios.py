@@ -140,15 +140,21 @@ class ProfileBenchmark(Benchmark):
 class ValidationBenchmark(Benchmark):
     """Benchmark for th.check() operation.
 
-    Measures validation performance including:
-    - All built-in validators
-    - Schema validation
-    - Issue detection and reporting
+    Measures validation performance with a representative set of validators.
+    Uses core validators by default for reasonable benchmark times.
+
+    Note:
+        For full validator suite benchmarking, use validators=None explicitly.
+        Default uses 5 core validators for ~10x faster execution.
     """
 
     name = "check"
     category = BenchmarkCategory.VALIDATION
     description = "Data quality validation performance"
+
+    # Core validators that cover main categories (fast execution)
+    # Note: regex excluded as it requires a pattern parameter
+    CORE_VALIDATORS = ["null", "duplicate", "range", "type", "unique"]
 
     def __init__(
         self,
@@ -165,7 +171,10 @@ class ValidationBenchmark(Benchmark):
 
         row_count = kwargs.get("row_count", config.default_size.row_count)
         self._row_count = row_count
-        self._validators = kwargs.get("validators")
+
+        # Use core validators by default for speed
+        # Pass validators=None explicitly for full suite
+        self._validators = kwargs.get("validators", self.CORE_VALIDATORS)
 
         gen_config = GeneratorConfig(
             row_count=row_count,
@@ -582,8 +591,13 @@ class WideTableBenchmark(Benchmark):
 class ThroughputBenchmark(Benchmark):
     """Benchmark measuring maximum throughput.
 
-    Runs rapid-fire operations to measure sustained throughput
-    capacity of the system.
+    Measures single-operation throughput with lightweight validators
+    to estimate sustained throughput capacity.
+
+    Note:
+        Previous implementation ran 100 operations per iteration which
+        caused extremely long benchmark times. Now measures single operation
+        throughput with minimal validators for realistic performance metrics.
     """
 
     name = "throughput"
@@ -593,30 +607,29 @@ class ThroughputBenchmark(Benchmark):
     def __init__(self):
         super().__init__()
         self._df: pl.DataFrame | None = None
-        self._operation_count: int = 0
+        self._row_count: int = 0
+        # Use lightweight validators for throughput measurement
+        self._validators: list[str] = ["null", "duplicate"]
 
     def setup(self, config: BenchmarkConfig, **kwargs: Any) -> None:
         super().setup(config, **kwargs)
 
         row_count = kwargs.get("row_count", 10_000)
-        self._operation_count = kwargs.get("operation_count", 100)
+        self._row_count = row_count
 
+        # Use Polars native generation for speed
         self._df = pl.DataFrame({
             "id": pl.arange(0, row_count, eager=True),
-            "value": [float(i) for i in range(row_count)],
-            "category": ["A", "B", "C"] * (row_count // 3 + 1),
-        }).head(row_count)
+            "value": pl.arange(0, row_count, eager=True).cast(pl.Float64),
+            "category": pl.Series(["A", "B", "C"] * (row_count // 3 + 1)).head(row_count),
+        })
 
     def run_iteration(self) -> Any:
-        """Run multiple operations."""
-        results = []
-        for _ in range(self._operation_count):
-            report = th.check(self._df)
-            results.append(report)
-        return results
+        """Run single validation with minimal validators."""
+        return th.check(self._df, validators=self._validators)
 
     def validate_result(self, result: Any) -> bool:
-        return result is not None and len(result) == self._operation_count
+        return result is not None and hasattr(result, "issues")
 
     def teardown(self) -> None:
         if self._df is not None:
@@ -626,16 +639,17 @@ class ThroughputBenchmark(Benchmark):
 
     def get_metrics(self) -> BenchmarkMetrics:
         metrics = super().get_metrics()
+        metrics.rows_processed = self._row_count
 
-        # Calculate operations per second
+        # Calculate rows per second as throughput metric
         if metrics.mean_duration > 0:
-            ops_per_sec = self._operation_count / metrics.mean_duration
+            rows_per_sec = self._row_count / metrics.mean_duration
             metrics.add_custom_metric(MetricValue(
-                name="operations_per_second",
-                value=ops_per_sec,
-                unit=MetricUnit.OPERATIONS_PER_SECOND,
+                name="rows_per_second",
+                value=rows_per_sec,
+                unit=MetricUnit.ROWS_PER_SECOND,
                 is_lower_better=False,
-                description="Sustained operations per second",
+                description="Validation throughput (rows/s)",
             ))
 
         return metrics

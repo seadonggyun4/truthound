@@ -189,26 +189,31 @@ class TestBenchmarkConfig:
     """Tests for BenchmarkConfig class."""
 
     def test_default_config(self):
-        """Test default configuration."""
+        """Test default configuration (optimized for quick feedback)."""
         config = BenchmarkConfig()
-
-        assert config.warmup_iterations == 2
-        assert config.measure_iterations == 5
-        assert config.default_size == BenchmarkSize.MEDIUM
-
-    def test_quick_config(self):
-        """Test quick configuration preset."""
-        config = BenchmarkConfig.quick()
 
         assert config.warmup_iterations == 1
         assert config.measure_iterations == 3
         assert config.default_size == BenchmarkSize.SMALL
+        assert config.gc_between_iterations is False
+        assert config.cooldown_seconds == 0.01
+
+    def test_quick_config(self):
+        """Test quick configuration preset (~5 seconds)."""
+        config = BenchmarkConfig.quick()
+
+        assert config.warmup_iterations == 1
+        assert config.measure_iterations == 2
+        assert config.default_size == BenchmarkSize.TINY
+        assert config.cooldown_seconds == 0.0
 
     def test_thorough_config(self):
-        """Test thorough configuration preset."""
+        """Test thorough configuration preset (~60 seconds)."""
         config = BenchmarkConfig.thorough()
 
-        assert config.measure_iterations == 10
+        assert config.measure_iterations == 5
+        assert config.default_size == BenchmarkSize.MEDIUM
+        assert config.gc_between_iterations is True
 
 
 # =============================================================================

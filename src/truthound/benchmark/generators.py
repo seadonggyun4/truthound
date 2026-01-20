@@ -293,20 +293,47 @@ class TabularDataGenerator(DataGenerator):
         n: int,
         null_ratio: float,
     ) -> pl.DataFrame:
-        """Generate data with a default schema."""
-        return pl.DataFrame({
+        """Generate data with a default schema using Polars native operations.
+
+        Optimized to use Polars expressions instead of Python loops for
+        significantly better performance on large datasets.
+        """
+        seed = self._seed or 42
+
+        # Use Polars native random generation (much faster than Python loops)
+        df = pl.DataFrame({
             "id": pl.arange(0, n, eager=True),
-            "int_col": pl.Series([self._rng.randint(0, 1000) for _ in range(n)]),
-            "float_col": pl.Series([self._rng.gauss(100, 25) for _ in range(n)]),
-            "string_col": pl.Series(self._generate_string(n)),
-            "category_col": pl.Series(self._rng.choices(["A", "B", "C", "D"], k=n)),
-            "bool_col": pl.Series(self._rng.choices([True, False], k=n)),
-            "date_col": pl.datetime_range(
-                datetime(2020, 1, 1),
-                datetime(2024, 12, 31),
-                eager=True,
-            ).sample(n, with_replacement=True, seed=self._seed),
-        })
+        }).with_columns([
+            # Integer column: random integers 0-1000
+            (pl.lit(0).cast(pl.Int64) + pl.arange(0, n, eager=False).shuffle(seed=seed) % 1001).alias("int_col"),
+            # Float column: approximate normal distribution using uniform
+            # mean=100, std=25 approximated via uniform [25, 175]
+            (pl.lit(25.0) + pl.arange(0, n, eager=False).shuffle(seed=seed + 1).cast(pl.Float64) % 150).alias("float_col"),
+            # Category column
+            pl.Series("category_col", ["A", "B", "C", "D"] * (n // 4 + 1)).head(n).shuffle(seed=seed + 2),
+            # Boolean column
+            (pl.arange(0, n, eager=False).shuffle(seed=seed + 3) % 2 == 0).alias("bool_col"),
+        ])
+
+        # String column - use fixed-length strings for speed
+        string_vals = [f"str_{i:08d}" for i in range(min(n, 10000))]
+        if n > 10000:
+            # Repeat for larger datasets
+            string_vals = (string_vals * (n // 10000 + 1))[:n]
+        df = df.with_columns(pl.Series("string_col", string_vals).shuffle(seed=seed + 4))
+
+        # Date column using Polars native date generation
+        date_range = pl.datetime_range(
+            datetime(2020, 1, 1),
+            datetime(2024, 12, 31),
+            interval="1d",
+            eager=True,
+        )
+        df = df.with_columns(
+            date_range.sample(n, with_replacement=True, seed=seed + 5).alias("date_col")
+        )
+
+        return df
 
     def _generate_column(self, n: int, spec: ColumnSpec) -> pl.Series:
         """Generate a single column according to spec."""
