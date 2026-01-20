@@ -30,6 +30,11 @@ Truthound is a data quality validation framework built on Polars, a Rust-based D
 **Documentation**: [https://truthound.netlify.app](https://truthound.netlify.app/)
 
 **Related Projects** (Alpha)
+
+> **Note**  
+> These projects are under active development and depend on a Truthound API that is not yet finalized.  
+> As the API contract is subject to change, production use or direct integration into real-world projects is discouraged at this stage.
+> 
 | Project | Description | Status |
 |---------|-------------|--------|
 | [truthound-orchestration](https://github.com/seadonggyun4/truthound-orchestration) | Workflow integration for Airflow, Dagster, Prefect, and dbt | Alpha |
