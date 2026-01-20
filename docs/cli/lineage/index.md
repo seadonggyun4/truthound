@@ -46,7 +46,7 @@ Lineage information is stored in JSON format:
     },
     {
       "id": "analytics_table",
-      "type": "sink",
+      "type": "table",
       "name": "Analytics Table",
       "metadata": {
         "database": "analytics",
@@ -131,11 +131,16 @@ truthound lineage visualize lineage.json -o graph.md --renderer mermaid
 
 | Type | Description | Icon |
 |------|-------------|------|
-| `source` | Data source (files, APIs) | 📥 |
+| `source` | Raw data source | 📥 |
+| `table` | Database table | 🗃️ |
+| `file` | File-based data | 📄 |
+| `stream` | Streaming source | 🌊 |
 | `transformation` | Data transformation | ⚙️ |
-| `sink` | Data destination | 📤 |
+| `validation` | Validation checkpoint | ✅ |
 | `model` | ML model | 🤖 |
-| `report` | Report/Dashboard | 📊 |
+| `report` | Output report | 📊 |
+| `external` | External system | 🔗 |
+| `virtual` | Virtual/computed dataset | 💭 |
 
 ## Use Cases
 
@@ -169,15 +174,24 @@ truthound lineage show lineage.json --node failed_table --direction both
 
 ## Integration with OpenLineage
 
-Truthound supports the OpenLineage standard for interoperability:
+Truthound supports the OpenLineage standard for interoperability via the Python API:
 
-```bash
-# Import from OpenLineage events
-truthound lineage import openlineage_events.json -o lineage.json
+```python
+from truthound.lineage.integrations.openlineage import OpenLineageEmitter
 
-# Export to OpenLineage format
-truthound lineage export lineage.json --format openlineage -o events.json
+# Create emitter
+emitter = OpenLineageEmitter()
+
+# Start a run
+run = emitter.start_run("my-job")
+
+# Emit completion
+emitter.emit_complete(run, outputs=[...])
 ```
+
+!!! note "OpenLineage API"
+    OpenLineage integration is available through the Python API.
+    CLI commands for import/export are planned for future releases.
 
 ## Next Steps
 

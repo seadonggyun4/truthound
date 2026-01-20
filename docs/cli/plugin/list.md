@@ -113,18 +113,16 @@ truthound plugin list --json
 
 Output:
 ```json
-{
-  "plugins": [
-    {
-      "name": "my-validator",
-      "version": "0.1.0",
-      "type": "validator",
-      "state": "active",
-      "description": "Custom data validators",
-      "author": "John Doe"
-    }
-  ]
-}
+[
+  {
+    "name": "my-validator",
+    "version": "0.1.0",
+    "type": "validator",
+    "state": "active",
+    "description": "Custom data validators",
+    "author": "John Doe"
+  }
+]
 ```
 
 ### Combined Filters

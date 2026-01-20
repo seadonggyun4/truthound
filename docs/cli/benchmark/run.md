@@ -70,11 +70,11 @@ truthound benchmark run profile --size small
 Output:
 ```
 ======================================================================
-  BENCHMARK SUITE: single:profile
+  BENCHMARK: single:profile
 ======================================================================
 
-Environment: Python 3.13.7 on Darwin
-Polars: 1.37.1, Truthound: 1.1.1
+Environment: Python 3.13 on Darwin
+Polars: 1.x, Truthound: 1.x
 
 Results: 1/1 passed (100%)
 Total Duration: 142.58ms
@@ -195,7 +195,7 @@ truthound benchmark run --suite ci --save-baseline
 
 Output:
 ```
-Baseline saved to: .truthound/benchmarks/baseline.json
+Baseline saved to: .benchmarks/baseline.json
 ```
 
 ```bash

@@ -16,7 +16,7 @@ This command has no required arguments.
 
 | Option | Short | Default | Description |
 |--------|-------|---------|-------------|
-| `--config` | `-c` | `truthound.yaml` | Checkpoint configuration file |
+| `--config` | `-c` | None | Checkpoint configuration file |
 | `--format` | `-f` | `console` | Output format (console, json) |
 
 ## Description

@@ -19,7 +19,7 @@ truthound ml drift <baseline> <current> [OPTIONS]
 
 | Option | Short | Default | Description |
 |--------|-------|---------|-------------|
-| `--method` | `-m` | `distribution` | Detection method (distribution, feature, multivariate) |
+| `--method` | `-m` | `feature` | Detection method (distribution, feature, multivariate) |
 | `--threshold` | `-t` | `0.1` | Drift threshold (0.0-1.0) |
 | `--columns` | | All | Columns to compare (comma-separated) |
 | `--output` | `-o` | None | Output file path |

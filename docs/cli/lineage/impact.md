@@ -46,35 +46,19 @@ Impact Analysis: raw_data
 
 Change to 'raw_data' affects 5 downstream nodes:
 
-Impact Level 1 (Direct):
-  ⚠️  cleaned_data (transformation)
-      Path: raw_data → cleaned_data
+Impact Analysis for: Raw Data
+Total affected nodes: 5
+Maximum depth: 3
+  critical: 1
+  high: 1
+  medium: 3
 
-Impact Level 2:
-  ⚠️  aggregated_data (transformation)
-      Path: raw_data → cleaned_data → aggregated_data
-
-  ⚠️  data_warehouse (sink)
-      Path: raw_data → cleaned_data → data_warehouse
-
-Impact Level 3:
-  ⚠️  analytics_table (sink)
-      Path: raw_data → cleaned_data → aggregated_data → analytics_table
-
-  ⚠️  dashboard_report (report)
-      Path: raw_data → cleaned_data → aggregated_data → dashboard_report
-
-Summary
-───────────────────────────────────────────────
-Impact Level    Nodes    Critical
-───────────────────────────────────────────────
-Level 1         1        0
-Level 2         2        1
-Level 3         2        2
-───────────────────────────────────────────────
-Total           5        3
-
-Recommendation: HIGH IMPACT - Review all affected nodes before changes.
+Affected nodes:
+  [!!] cleaned_data (depth=1)
+  [!] aggregated_data (depth=2)
+  [!!] data_warehouse (depth=2)
+  [!] analytics_table (depth=3)
+  [!!!] dashboard_model (depth=3)
 ```
 
 ### Limited Depth Analysis
@@ -87,18 +71,16 @@ truthound lineage impact lineage.json raw_data --max-depth 2
 
 Output:
 ```
-Impact Analysis: raw_data (max depth: 2)
-========================================
+Impact Analysis for: Raw Data
+Total affected nodes: 3
+Maximum depth: 2
+  high: 1
+  medium: 2
 
-Impact Level 1 (Direct):
-  ⚠️  cleaned_data (transformation)
-
-Impact Level 2:
-  ⚠️  aggregated_data (transformation)
-  ⚠️  data_warehouse (sink)
-
-Total: 3 nodes within depth 2
-Note: Additional nodes may exist beyond depth 2
+Affected nodes:
+  [!!] cleaned_data (depth=1)
+  [!] aggregated_data (depth=2)
+  [!!] data_warehouse (depth=2)
 ```
 
 ### Save to File
@@ -138,7 +120,7 @@ Output file (`impact_report.json`):
       },
       {
         "id": "data_warehouse",
-        "type": "sink",
+        "type": "table",
         "name": "Data Warehouse",
         "critical": true,
         "path": ["raw_data", "cleaned_data", "data_warehouse"]
@@ -147,7 +129,7 @@ Output file (`impact_report.json`):
     "3": [
       {
         "id": "analytics_table",
-        "type": "sink",
+        "type": "table",
         "name": "Analytics Table",
         "critical": true,
         "path": ["raw_data", "cleaned_data", "aggregated_data", "analytics_table"]
@@ -188,17 +170,29 @@ done
 | 2 | Second-level downstream | Medium |
 | 3+ | Transitive downstream | Lower |
 
-## Critical Node Classification
+## Impact Level Classification
 
-Nodes are marked as critical based on:
+Impact levels are calculated based on node type and distance:
 
-| Type | Critical | Reason |
-|------|----------|--------|
-| `sink` | Yes | End user-facing |
-| `report` | Yes | Business critical |
-| `model` | Yes | ML model dependency |
-| `transformation` | No | Intermediate |
-| `source` | No | Not downstream |
+| Type | Default Level | Reason |
+|------|---------------|--------|
+| `model` | Critical | ML model dependency |
+| `source` | High | Data source |
+| `table` | High | Database table |
+| `external` | High | External system integration |
+| `report` | Medium | Output report |
+| `transformation` | Medium | Intermediate processing |
+| `validation` | Low | Validation checkpoint |
+
+**Impact Level Markers:**
+
+| Marker | Level | Description |
+|--------|-------|-------------|
+| `[!!!]` | Critical | Requires immediate attention |
+| `[!!]` | High | Significant impact |
+| `[!]` | Medium | Moderate impact |
+| `[-]` | Low | Minor impact |
+| `[ ]` | None | No impact |
 
 ## Use Cases
 

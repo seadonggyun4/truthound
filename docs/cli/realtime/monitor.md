@@ -221,8 +221,6 @@ truthound realtime monitor mock --format json
 | Key | Action |
 |-----|--------|
 | `Ctrl+C` | Stop monitoring |
-| `r` | Reset statistics |
-| `p` | Pause/resume display |
 
 ## Exit Codes
 

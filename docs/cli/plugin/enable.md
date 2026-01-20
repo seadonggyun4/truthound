@@ -18,9 +18,10 @@ truthound plugin enable <NAME>
 
 The `plugin enable` command activates a loaded plugin:
 
-1. **Activates** the plugin for use
-2. **Makes** it available for validation
-3. **Changes** state from loaded/inactive to active
+1. **Loads** the plugin automatically if not already loaded
+2. **Activates** the plugin for use
+3. **Makes** it available for validation
+4. **Changes** state from loaded/inactive to active
 
 ## State Transitions
 

@@ -52,7 +52,7 @@ pip install truthound[dashboard]
 ### Basic Dashboard
 
 ```bash
-truthound dashboard
+truthound dashboard --profile profile.json
 ```
 
 Opens dashboard at `http://localhost:8080`.
@@ -80,10 +80,14 @@ truthound dashboard --title "Customer Data Explorer" --profile profile.json
 ### Debug Mode
 
 ```bash
-truthound dashboard --debug
+truthound dashboard --debug --profile profile.json
 ```
 
-Enables verbose logging and auto-reload on code changes.
+Enables debug mode for the dashboard server.
+
+!!! note "Debug Mode"
+    The `--debug` flag is passed to the dashboard server. Actual behavior
+    depends on the underlying Reflex framework implementation.
 
 ### Complete Example
 
@@ -180,21 +184,21 @@ truthound dashboard \
 
 ## Configuration
 
-### Environment Variables
+### Command-Line Configuration
 
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `TRUTHOUND_DASHBOARD_PORT` | Default port | `8080` |
-| `TRUTHOUND_DASHBOARD_HOST` | Default host | `localhost` |
-| `TRUTHOUND_DASHBOARD_DEBUG` | Debug mode | `false` |
-
-### Example with Environment
+All configuration is done via command-line options:
 
 ```bash
-export TRUTHOUND_DASHBOARD_PORT=3000
-export TRUTHOUND_DASHBOARD_HOST=0.0.0.0
-truthound dashboard --profile profile.json
+truthound dashboard \
+  --profile profile.json \
+  --port 3000 \
+  --host 0.0.0.0 \
+  --title "My Dashboard"
 ```
+
+!!! note "Profile Required"
+    The `--profile` option is required for the dashboard to display data.
+    Running without a profile will result in an error.
 
 ## Comparison: Dashboard vs. Static Reports
 

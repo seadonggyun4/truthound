@@ -40,7 +40,7 @@ Available Themes
 Theme           Description
 ──────────────────────────────────────────────────────────────────
 light           Clean, bright style for general use
-dark            Dark mode for reduced eye strain
+dark            Dark mode with vibrant colors, easy on the eyes
 professional    Corporate style with calm colors (default)
 minimal         Minimalist design, monochrome accents
 modern          Contemporary design, vibrant gradients

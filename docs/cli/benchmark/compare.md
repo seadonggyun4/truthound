@@ -156,7 +156,7 @@ Output:
 |--------|-----------|-------------|
 | `OK` | Change < threshold | Within acceptable range |
 | `IMPROVED` | Change < 0 | Performance improved |
-| `REGRESSION` | Change >= threshold | Performance degraded |
+| `REGRESSION` | Change > threshold | Performance degraded |
 
 ## Use Cases
 

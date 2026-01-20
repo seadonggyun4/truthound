@@ -49,9 +49,8 @@ truthound plugin load my-validator
 
 Output:
 ```
-Loading plugin: my-validator...
-Plugin 'my-validator' loaded successfully.
-Plugin 'my-validator' activated.
+Loaded plugin: my-validator v0.1.0
+Plugin is now active.
 ```
 
 ### Load Without Activating
@@ -62,8 +61,7 @@ truthound plugin load my-validator --no-activate
 
 Output:
 ```
-Loading plugin: my-validator...
-Plugin 'my-validator' loaded successfully.
+Loaded plugin: my-validator v0.1.0
 ```
 
 ### Verify After Loading

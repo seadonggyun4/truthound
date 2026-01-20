@@ -51,18 +51,18 @@ Node Graph
 [source] raw_data
     └── [transformation] cleaned_data
         ├── [transformation] aggregated_data
-        │   └── [sink] analytics_table
-        └── [sink] data_warehouse
+        │   └── [table] analytics_table
+        └── [table] data_warehouse
 
 [source] external_api
     └── [transformation] api_processed
-        └── [sink] analytics_table
+        └── [table] analytics_table
 ──────────────────────────────────────────────────────────────────
 
 Summary:
   Sources: 2
   Transformations: 3
-  Sinks: 2
+  Tables: 2
 ```
 
 ### Focus on Specific Node
@@ -78,7 +78,7 @@ Data Lineage: analytics_table
 
 Node Details:
   ID: analytics_table
-  Type: sink
+  Type: table
   Name: Analytics Table
   Metadata:
     database: analytics
@@ -91,7 +91,7 @@ Upstream (2 levels):
   └── api_processed
       └── external_api
 
-Downstream: None (sink node)
+Downstream: None (leaf node)
 ```
 
 ### Upstream Only
@@ -139,10 +139,10 @@ Level 1:
 
 Level 2:
   - aggregated_data (transformation)
-  - data_warehouse (sink)
+  - data_warehouse (table)
 
 Level 3:
-  - analytics_table (sink)
+  - analytics_table (table)
 
 Total Downstream Nodes: 4
 ```
@@ -176,7 +176,7 @@ Output:
     },
     {
       "id": "analytics_table",
-      "type": "sink",
+      "type": "table",
       "name": "Analytics Table",
       "upstream": ["aggregated_data", "api_processed"],
       "downstream": []
@@ -185,7 +185,7 @@ Output:
   "summary": {
     "sources": 2,
     "transformations": 3,
-    "sinks": 2,
+    "tables": 2,
     "models": 0,
     "reports": 1
   }
@@ -213,7 +213,7 @@ digraph lineage {
     aggregated_data [label="Aggregated Data" shape=box style=filled fillcolor="#fff3e0"];
     api_processed [label="API Processed" shape=box style=filled fillcolor="#fff3e0"];
 
-    // Sinks
+    // Tables
     analytics_table [label="Analytics Table" shape=box3d style=filled fillcolor="#e8f5e9"];
     data_warehouse [label="Data Warehouse" shape=box3d style=filled fillcolor="#e8f5e9"];
 

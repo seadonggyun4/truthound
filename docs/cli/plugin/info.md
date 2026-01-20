@@ -78,14 +78,10 @@ Output:
   "author": "John Doe",
   "homepage": "https://github.com/johndoe/my-validator",
   "license": "MIT",
-  "compatibility": {
-    "min_truthound": "1.0.0",
-    "max_truthound": null
-  },
-  "dependencies": {
-    "plugins": [],
-    "python": ["pandas>=2.0"]
-  },
+  "min_truthound_version": "1.0.0",
+  "max_truthound_version": null,
+  "dependencies": [],
+  "python_dependencies": ["pandas>=2.0"],
   "tags": ["validation", "custom"]
 }
 ```

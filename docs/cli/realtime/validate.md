@@ -18,7 +18,7 @@ truthound realtime validate <source> [OPTIONS]
 
 | Option | Short | Default | Description |
 |--------|-------|---------|-------------|
-| `--validators` | `-v` | All | Validators to use (comma-separated) |
+| `--validators` | `-v` | None | Validators to use (comma-separated) |
 | `--batch-size` | `-b` | `1000` | Batch size for processing |
 | `--max-batches` | | `10` | Maximum batches to process (0=unlimited) |
 | `--output` | `-o` | None | Output file for validation results |

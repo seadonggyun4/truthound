@@ -102,7 +102,7 @@ Anomaly Detection Report
 ========================
 File: data.csv
 Rows: 10,000
-Method: isolation_forest
+Method: zscore
 Contamination: 0.1
 
 Anomalies Found: 847 (8.47%)

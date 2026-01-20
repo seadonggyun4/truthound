@@ -24,7 +24,7 @@ truthound docs generate <profile_file> [OPTIONS]
 |--------|-------|---------|-------------|
 | `--output` | `-o` | None | Output file path |
 | `--title` | `-t` | `Data Profile Report` | Report title |
-| `--subtitle` | `-s` | None | Report subtitle |
+| `--subtitle` | `-s` | `""` | Report subtitle |
 | `--theme` | | `professional` | Theme (light, dark, professional, minimal, modern) |
 | `--format` | `-f` | `html` | Output format (html, pdf) |
 

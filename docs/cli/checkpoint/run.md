@@ -18,7 +18,7 @@ truthound checkpoint run <name> [OPTIONS]
 
 | Option | Short | Default | Description |
 |--------|-------|---------|-------------|
-| `--config` | `-c` | `truthound.yaml` | Checkpoint configuration file (YAML/JSON) |
+| `--config` | `-c` | None | Checkpoint configuration file (YAML/JSON) |
 | `--data` | `-d` | None | Override data source path |
 | `--validators` | `-v` | None | Override validators (comma-separated) |
 | `--output` | `-o` | None | Output file path (JSON) |

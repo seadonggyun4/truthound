@@ -160,7 +160,7 @@ graph LR
         api_processed[API Processed]
     end
 
-    subgraph Sinks
+    subgraph Tables
         analytics_table[Analytics Table]
         data_warehouse[Data Warehouse]
     end
@@ -289,10 +289,15 @@ truthound lineage visualize lineage.json -o lineage.md --renderer mermaid
 | Type | Light Theme | Dark Theme |
 |------|-------------|------------|
 | source | Blue (#e3f2fd) | Blue (#1565c0) |
+| table | Green (#e8f5e9) | Green (#2e7d32) |
+| file | Cyan (#e0f7fa) | Cyan (#00838f) |
+| stream | Teal (#e0f2f1) | Teal (#00695c) |
 | transformation | Orange (#fff3e0) | Orange (#ef6c00) |
-| sink | Green (#e8f5e9) | Green (#2e7d32) |
+| validation | Light Green (#f1f8e9) | Light Green (#558b2f) |
 | model | Purple (#f3e5f5) | Purple (#7b1fa2) |
 | report | Yellow (#fffde7) | Yellow (#f9a825) |
+| external | Red (#ffebee) | Red (#c62828) |
+| virtual | Grey (#fafafa) | Grey (#616161) |
 
 ### Edge Styles
 
@@ -327,6 +332,35 @@ truthound lineage visualize large_lineage.json -o focused.html --focus important
 
 - [`lineage show`](show.md) - Display lineage information
 - [`lineage impact`](impact.md) - Analyze change impact
+
+## Python API
+
+For programmatic access, use the renderer classes directly:
+
+```python
+from truthound.lineage import LineageGraph
+from truthound.lineage.visualization import (
+    D3Renderer,
+    CytoscapeRenderer,
+    GraphvizRenderer,
+    MermaidRenderer,
+    RenderConfig,
+)
+
+# Load graph
+graph = LineageGraph.load("lineage.json")
+
+# Create renderer
+renderer = D3Renderer()
+
+# Render with config
+config = RenderConfig(theme="dark", highlight_nodes=["my_node"])
+html = renderer.render(graph, config)
+
+# Save output
+with open("graph.html", "w") as f:
+    f.write(html)
+```
 
 ## See Also
 

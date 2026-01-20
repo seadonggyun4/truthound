@@ -90,17 +90,16 @@ truthound new plugin my_validators --type validator
 
 Generated structure:
 ```
-my_validators/
+truthound-plugin-my_validators/
 ├── pyproject.toml
 ├── README.md
-├── src/
-│   └── my_validators/
+├── my_validators/
+│   ├── __init__.py
+│   └── validators/
 │       ├── __init__.py
-│       └── validators/
-│           ├── __init__.py
-│           └── sample_validator.py
+│       └── sample_validator.py
 └── tests/
-    └── test_validators.py
+    └── test_plugin.py
 ```
 
 Generated `pyproject.toml`:
@@ -114,8 +113,8 @@ dependencies = [
     "truthound>=0.1.0",
 ]
 
-[project.entry-points."truthound.validators"]
-my_validators = "my_validators.validators:register"
+[project.entry-points."truthound.plugins"]
+my_validators = "my_validators:MyValidatorsPlugin"
 
 [build-system]
 requires = ["setuptools>=61.0"]
