@@ -36,10 +36,13 @@ class TestEnums:
         assert ReportTheme.MODERN.value == "modern"
 
     def test_chart_library_values(self):
-        """Test ChartLibrary enum values."""
+        """Test ChartLibrary enum values.
+
+        Chart library selection is now automatic:
+        - ApexCharts for HTML reports (interactive)
+        - SVG for PDF export (no JavaScript dependency)
+        """
         assert ChartLibrary.APEXCHARTS.value == "apexcharts"
-        assert ChartLibrary.CHARTJS.value == "chartjs"
-        assert ChartLibrary.PLOTLY.value == "plotly"
         assert ChartLibrary.SVG.value == "svg"
 
     def test_chart_type_values(self):

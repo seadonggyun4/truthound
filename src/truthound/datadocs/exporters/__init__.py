@@ -15,7 +15,7 @@ from truthound.datadocs.exporters.base import (
     ExportResult,
     ExportOptions,
 )
-from truthound.datadocs.exporters.html import (
+from truthound.datadocs.exporters.html_reporter import (
     HtmlExporter,
 )
 from truthound.datadocs.exporters.pdf import (

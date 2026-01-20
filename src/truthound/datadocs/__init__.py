@@ -92,8 +92,6 @@ from truthound.datadocs.themes import (
 
 from truthound.datadocs.charts import (
     ApexChartsRenderer,
-    ChartJSRenderer,
-    PlotlyJSRenderer,
     SVGChartRenderer,
     get_chart_renderer,
     CDN_URLS,
@@ -222,8 +220,6 @@ __all__ = [
     "get_available_themes",
     # === Chart Renderers ===
     "ApexChartsRenderer",
-    "ChartJSRenderer",
-    "PlotlyJSRenderer",
     "SVGChartRenderer",
     "get_chart_renderer",
     "CDN_URLS",

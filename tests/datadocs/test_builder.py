@@ -14,7 +14,6 @@ from truthound.datadocs.builder import (
 )
 from truthound.datadocs.base import (
     ReportTheme,
-    ChartLibrary,
     ChartType,
     ReportConfig,
 )
@@ -203,7 +202,7 @@ class TestHTMLReportBuilder:
         """Test default initialization."""
         builder = HTMLReportBuilder()
         assert builder.config.theme == ReportTheme.PROFESSIONAL
-        assert builder.config.chart_library == ChartLibrary.APEXCHARTS
+        # Chart library is automatically selected (ApexCharts for HTML)
 
     def test_init_with_theme(self):
         """Test initialization with custom theme."""
@@ -219,11 +218,9 @@ class TestHTMLReportBuilder:
         """Test initialization with full config."""
         config = ReportConfig(
             theme=ReportTheme.MINIMAL,
-            chart_library=ChartLibrary.CHARTJS,
         )
         builder = HTMLReportBuilder(config=config)
         assert builder.config.theme == ReportTheme.MINIMAL
-        assert builder.config.chart_library == ChartLibrary.CHARTJS
 
     def test_build_returns_html(self, sample_profile):
         """Test build returns valid HTML."""
@@ -252,8 +249,10 @@ class TestHTMLReportBuilder:
         assert "apexcharts" in html.lower()
 
     def test_build_with_svg_charts(self, sample_profile):
-        """Test building with SVG charts (no JS)."""
-        builder = HTMLReportBuilder(chart_library=ChartLibrary.SVG)
+        """Test building with SVG charts (no JS) - used internally for PDF export."""
+        # SVG rendering is now automatic for PDF export
+        # Direct SVG usage is internal (_use_svg=True)
+        builder = HTMLReportBuilder(_use_svg=True)
         html = builder.build(sample_profile)
 
         # Should have SVG elements, not ApexCharts
@@ -314,13 +313,15 @@ class TestGenerateHtmlReport:
             html = generate_html_report(sample_profile, theme=theme)
             assert "<!DOCTYPE html>" in html
 
-    def test_different_chart_libraries(self, sample_profile):
-        """Test generating with different chart libraries."""
-        libraries = ["apexcharts", "chartjs", "plotly", "svg"]
-
-        for lib in libraries:
-            html = generate_html_report(sample_profile, chart_library=lib)
-            assert "<!DOCTYPE html>" in html
+    def test_chart_rendering_automatic(self, sample_profile):
+        """Test that chart rendering works automatically (ApexCharts for HTML)."""
+        # Chart library selection is now automatic:
+        # - ApexCharts for HTML (default)
+        # - SVG for PDF export (automatic via export_to_pdf)
+        html = generate_html_report(sample_profile)
+        assert "<!DOCTYPE html>" in html
+        # Should use ApexCharts by default
+        assert "apexcharts" in html.lower()
 
 
 class TestGenerateReportFromFile:

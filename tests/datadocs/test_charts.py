@@ -1,11 +1,14 @@
-"""Tests for chart renderers."""
+"""Tests for chart renderers.
+
+Truthound uses automatic chart rendering:
+- ApexCharts for HTML reports (interactive, feature-rich)
+- SVG for PDF export (no JavaScript dependency)
+"""
 
 import pytest
 
 from truthound.datadocs.charts import (
     ApexChartsRenderer,
-    ChartJSRenderer,
-    PlotlyJSRenderer,
     SVGChartRenderer,
     get_chart_renderer,
     CDN_URLS,
@@ -81,21 +84,17 @@ class TestCDNUrls:
     """Test CDN URL definitions."""
 
     def test_cdn_urls_defined(self):
-        """Test all chart libraries have CDN URLs defined."""
+        """Test chart libraries have CDN URLs defined."""
         assert ChartLibrary.APEXCHARTS in CDN_URLS
-        assert ChartLibrary.CHARTJS in CDN_URLS
-        assert ChartLibrary.PLOTLY in CDN_URLS
         assert ChartLibrary.SVG in CDN_URLS
 
     def test_svg_has_no_dependencies(self):
         """Test SVG library has no CDN dependencies."""
         assert CDN_URLS[ChartLibrary.SVG] == []
 
-    def test_js_libraries_have_urls(self):
-        """Test JS libraries have CDN URLs."""
+    def test_apexcharts_has_urls(self):
+        """Test ApexCharts has CDN URLs."""
         assert len(CDN_URLS[ChartLibrary.APEXCHARTS]) > 0
-        assert len(CDN_URLS[ChartLibrary.CHARTJS]) > 0
-        assert len(CDN_URLS[ChartLibrary.PLOTLY]) > 0
 
 
 class TestApexChartsRenderer:
@@ -174,123 +173,8 @@ class TestApexChartsRenderer:
         assert "Series B" in html
 
 
-class TestChartJSRenderer:
-    """Test Chart.js renderer."""
-
-    def test_get_dependencies(self):
-        """Test getting CDN dependencies."""
-        renderer = ChartJSRenderer()
-        deps = renderer.get_dependencies()
-        assert len(deps) > 0
-        assert "chart.js" in deps[0].lower()
-
-    def test_render_bar_chart(self, sample_bar_spec):
-        """Test rendering a bar chart."""
-        renderer = ChartJSRenderer()
-        html = renderer.render(sample_bar_spec)
-
-        assert "canvas" in html
-        assert "Chart" in html
-        assert "Sales by Month" in html
-
-    def test_render_pie_chart(self, sample_pie_spec):
-        """Test rendering a pie chart."""
-        renderer = ChartJSRenderer()
-        html = renderer.render(sample_pie_spec)
-
-        assert "Market Share" in html
-        assert "canvas" in html
-
-    def test_render_donut_chart(self, sample_donut_spec):
-        """Test rendering a donut chart."""
-        renderer = ChartJSRenderer()
-        html = renderer.render(sample_donut_spec)
-
-        assert "doughnut" in html.lower() or "Category Distribution" in html
-
-    def test_render_horizontal_bar(self, sample_horizontal_bar_spec):
-        """Test rendering horizontal bar chart."""
-        renderer = ChartJSRenderer()
-        html = renderer.render(sample_horizontal_bar_spec)
-
-        assert "indexAxis" in html
-
-    def test_render_with_series(self):
-        """Test rendering with multiple series."""
-        spec = ChartSpec(
-            chart_type=ChartType.LINE,
-            labels=["Q1", "Q2", "Q3"],
-            values=[],
-            series=[
-                {"name": "2023", "data": [10, 20, 30]},
-                {"name": "2024", "data": [15, 25, 35]},
-            ],
-            height=300,
-        )
-        renderer = ChartJSRenderer()
-        html = renderer.render(spec)
-
-        assert "2023" in html
-        assert "2024" in html
-
-
-class TestPlotlyJSRenderer:
-    """Test Plotly.js renderer."""
-
-    def test_get_dependencies(self):
-        """Test getting CDN dependencies."""
-        renderer = PlotlyJSRenderer()
-        deps = renderer.get_dependencies()
-        assert len(deps) > 0
-        assert "plotly" in deps[0].lower()
-
-    def test_render_bar_chart(self, sample_bar_spec):
-        """Test rendering a bar chart."""
-        renderer = PlotlyJSRenderer()
-        html = renderer.render(sample_bar_spec)
-
-        assert "Plotly.newPlot" in html
-        assert "Sales by Month" in html
-
-    def test_render_pie_chart(self, sample_pie_spec):
-        """Test rendering a pie chart."""
-        renderer = PlotlyJSRenderer()
-        html = renderer.render(sample_pie_spec)
-
-        assert "Market Share" in html
-        assert "Plotly" in html
-
-    def test_render_donut_chart(self, sample_donut_spec):
-        """Test rendering a donut chart."""
-        renderer = PlotlyJSRenderer()
-        html = renderer.render(sample_donut_spec)
-
-        # Donut uses hole parameter
-        assert "hole" in html.lower() or "Category Distribution" in html
-
-    def test_render_horizontal_bar(self, sample_horizontal_bar_spec):
-        """Test rendering horizontal bar chart."""
-        renderer = PlotlyJSRenderer()
-        html = renderer.render(sample_horizontal_bar_spec)
-
-        assert "orientation" in html
-
-    def test_render_scatter_chart(self):
-        """Test rendering scatter chart."""
-        spec = ChartSpec(
-            chart_type=ChartType.SCATTER,
-            labels=["A", "B", "C"],
-            values=[10, 20, 30],
-            height=300,
-        )
-        renderer = PlotlyJSRenderer()
-        html = renderer.render(spec)
-
-        assert "scatter" in html.lower()
-
-
 class TestSVGChartRenderer:
-    """Test SVG chart renderer."""
+    """Test SVG chart renderer (used for PDF export)."""
 
     def test_get_dependencies(self):
         """Test SVG has no dependencies."""
@@ -379,16 +263,6 @@ class TestGetChartRenderer:
         renderer = get_chart_renderer(ChartLibrary.APEXCHARTS)
         assert isinstance(renderer, ApexChartsRenderer)
 
-    def test_get_chartjs(self):
-        """Test getting Chart.js renderer."""
-        renderer = get_chart_renderer(ChartLibrary.CHARTJS)
-        assert isinstance(renderer, ChartJSRenderer)
-
-    def test_get_plotly(self):
-        """Test getting Plotly.js renderer."""
-        renderer = get_chart_renderer(ChartLibrary.PLOTLY)
-        assert isinstance(renderer, PlotlyJSRenderer)
-
     def test_get_svg(self):
         """Test getting SVG renderer."""
         renderer = get_chart_renderer(ChartLibrary.SVG)
@@ -398,9 +272,6 @@ class TestGetChartRenderer:
         """Test getting renderer by string name."""
         renderer = get_chart_renderer("apexcharts")
         assert isinstance(renderer, ApexChartsRenderer)
-
-        renderer = get_chart_renderer("chartjs")
-        assert isinstance(renderer, ChartJSRenderer)
 
         renderer = get_chart_renderer("svg")
         assert isinstance(renderer, SVGChartRenderer)
@@ -488,8 +359,8 @@ class TestChartSpecOptions:
 class TestChartTypeMapping:
     """Test chart type mappings work correctly."""
 
-    def test_all_chart_types_render(self):
-        """Test all chart types can be rendered."""
+    def test_all_chart_types_render_apexcharts(self):
+        """Test all chart types can be rendered with ApexCharts."""
         chart_types = [
             ChartType.BAR,
             ChartType.HORIZONTAL_BAR,
@@ -499,6 +370,7 @@ class TestChartTypeMapping:
             ChartType.HISTOGRAM,
         ]
 
+        renderer = ApexChartsRenderer()
         for chart_type in chart_types:
             spec = ChartSpec(
                 chart_type=chart_type,
@@ -506,8 +378,27 @@ class TestChartTypeMapping:
                 values=[10, 20, 30],
                 height=300,
             )
+            html = renderer.render(spec)
+            assert "<" in html  # Basic HTML check
 
-            for renderer_class in [ApexChartsRenderer, ChartJSRenderer, PlotlyJSRenderer, SVGChartRenderer]:
-                renderer = renderer_class()
-                html = renderer.render(spec)
-                assert "<" in html  # Basic HTML check
+    def test_all_chart_types_render_svg(self):
+        """Test all chart types can be rendered with SVG."""
+        chart_types = [
+            ChartType.BAR,
+            ChartType.HORIZONTAL_BAR,
+            ChartType.LINE,
+            ChartType.PIE,
+            ChartType.DONUT,
+            ChartType.HISTOGRAM,
+        ]
+
+        renderer = SVGChartRenderer()
+        for chart_type in chart_types:
+            spec = ChartSpec(
+                chart_type=chart_type,
+                labels=["A", "B", "C"],
+                values=[10, 20, 30],
+                height=300,
+            )
+            html = renderer.render(spec)
+            assert "<svg" in html

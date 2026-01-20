@@ -5,7 +5,7 @@ HTMLReporter system. It converts Report objects to ValidationResult
 objects and generates HTML reports.
 
 Example:
-    >>> from truthound.html_report import generate_html_report
+    >>> from truthound.html_reporter import generate_html_report
     >>> from truthound.report import Report
     >>> report = Report(issues=[], source="data.csv")
     >>> html = generate_html_report(report)
@@ -80,7 +80,7 @@ def generate_html_report(
 
     Example:
         >>> from truthound.api import check
-        >>> from truthound.html_report import generate_html_report
+        >>> from truthound.html_reporter import generate_html_report
         >>> report = check("data.csv")
         >>> html = generate_html_report(report)
         >>> with open("report.html", "w") as f:
@@ -132,7 +132,7 @@ def write_html_report(
 
     Example:
         >>> from truthound.api import check
-        >>> from truthound.html_report import write_html_report
+        >>> from truthound.html_reporter import write_html_report
         >>> report = check("data.csv")
         >>> path = write_html_report(report, "report.html")
         >>> print(f"Report written to {path}")
@@ -464,7 +464,7 @@ def generate_pii_html_report(
 
     Example:
         >>> from truthound.api import scan
-        >>> from truthound.html_report import generate_pii_html_report
+        >>> from truthound.html_reporter import generate_pii_html_report
         >>> pii_report = scan("data.csv")
         >>> html = generate_pii_html_report(pii_report)
         >>> with open("pii_report.html", "w") as f:

@@ -1,4 +1,4 @@
-"""Tests for html_report module.
+"""Tests for html_reporter module.
 
 This module tests the HTML report generation bridge functionality
 that connects the CLI's Report objects with the HTMLReporter system.
@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from truthound.html_report import (
+from truthound.html_reporter import (
     generate_html_report,
     write_html_report,
     generate_html_from_validation_result,

@@ -4,16 +4,13 @@ This module provides chart renderers that use CDN-hosted JavaScript libraries
 for zero-dependency chart generation. No npm/node required.
 
 Supported libraries:
-- ApexCharts: Modern, interactive charts (recommended)
-- Chart.js: Lightweight, widely used
-- Plotly.js: Scientific visualization
-- SVG: Pure SVG fallback (no JS)
+- ApexCharts: Modern, interactive charts (default for HTML reports)
+- SVG: Pure SVG rendering (used for PDF export, no JS dependency)
 """
 
 from __future__ import annotations
 
 import json
-import uuid
 from typing import Any
 
 from truthound.datadocs.base import (
@@ -33,18 +30,12 @@ CDN_URLS = {
     ChartLibrary.APEXCHARTS: [
         "https://cdn.jsdelivr.net/npm/apexcharts@3.45.1/dist/apexcharts.min.js",
     ],
-    ChartLibrary.CHARTJS: [
-        "https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js",
-    ],
-    ChartLibrary.PLOTLY: [
-        "https://cdn.plot.ly/plotly-2.29.0.min.js",
-    ],
     ChartLibrary.SVG: [],  # No dependencies
 }
 
 
 # =============================================================================
-# ApexCharts Renderer (Recommended)
+# ApexCharts Renderer (Default)
 # =============================================================================
 
 
@@ -53,7 +44,13 @@ class ApexChartsRenderer(BaseChartRenderer):
     """Chart renderer using ApexCharts.
 
     ApexCharts provides modern, responsive, and interactive charts
-    with a clean API and beautiful defaults.
+    with a clean API and beautiful defaults. This is the default
+    renderer for HTML reports.
+
+    Supports all chart types:
+    - Bar, Horizontal Bar, Line, Pie, Donut
+    - Histogram, Heatmap, Scatter, Box
+    - Gauge, Radar
     """
 
     library = ChartLibrary.APEXCHARTS
@@ -208,259 +205,7 @@ class ApexChartsRenderer(BaseChartRenderer):
 
 
 # =============================================================================
-# Chart.js Renderer
-# =============================================================================
-
-
-@register_chart_renderer(ChartLibrary.CHARTJS)
-class ChartJSRenderer(BaseChartRenderer):
-    """Chart renderer using Chart.js.
-
-    Chart.js is a lightweight, simple charting library
-    with good documentation and wide adoption.
-    """
-
-    library = ChartLibrary.CHARTJS
-
-    def get_dependencies(self) -> list[str]:
-        return CDN_URLS[ChartLibrary.CHARTJS]
-
-    def render(self, spec: ChartSpec) -> str:
-        chart_id = self._generate_chart_id()
-        config = self._build_config(spec)
-        config_json = json.dumps(config, indent=2, default=str)
-
-        return f'''
-<div class="chart-container">
-    {f'<h4 class="chart-title">{spec.title}</h4>' if spec.title else ''}
-    {f'<p class="chart-subtitle">{spec.subtitle}</p>' if spec.subtitle else ''}
-    <canvas id="{chart_id}" style="max-height: {spec.height}px;"></canvas>
-</div>
-<script>
-(function() {{
-    var ctx = document.getElementById('{chart_id}').getContext('2d');
-    var config = {config_json};
-    new Chart(ctx, config);
-}})();
-</script>
-'''
-
-    def _build_config(self, spec: ChartSpec) -> dict[str, Any]:
-        """Build Chart.js configuration from ChartSpec."""
-        chart_type = self._map_chart_type(spec.chart_type)
-
-        # Default colors
-        colors = spec.colors or [
-            "#3b82f6", "#8b5cf6", "#ec4899", "#06b6d4",
-            "#22c55e", "#f59e0b", "#ef4444", "#6366f1",
-            "#14b8a6", "#f97316"
-        ]
-
-        config: dict[str, Any] = {
-            "type": chart_type,
-            "data": {
-                "labels": spec.labels,
-            },
-            "options": {
-                "responsive": True,
-                "maintainAspectRatio": False,
-                "plugins": {
-                    "legend": {
-                        "display": spec.show_legend,
-                        "position": "bottom",
-                    },
-                },
-            },
-        }
-
-        # Add data
-        if spec.chart_type in (ChartType.PIE, ChartType.DONUT):
-            config["data"]["datasets"] = [{
-                "data": spec.values,
-                "backgroundColor": colors[:len(spec.values)],
-            }]
-        elif spec.series:
-            config["data"]["datasets"] = [
-                {
-                    "label": s.get("name", f"Series {i}"),
-                    "data": s.get("data", []),
-                    "backgroundColor": colors[i % len(colors)],
-                    "borderColor": colors[i % len(colors)],
-                }
-                for i, s in enumerate(spec.series)
-            ]
-        else:
-            config["data"]["datasets"] = [{
-                "label": "Value",
-                "data": spec.values,
-                "backgroundColor": colors[0],
-                "borderColor": colors[0],
-            }]
-
-        # Chart-specific options
-        if spec.chart_type == ChartType.HORIZONTAL_BAR:
-            config["options"]["indexAxis"] = "y"
-        elif spec.chart_type == ChartType.DONUT:
-            config["options"]["cutout"] = "50%"
-
-        return config
-
-    def _map_chart_type(self, chart_type: ChartType) -> str:
-        """Map ChartType to Chart.js type string."""
-        mapping = {
-            ChartType.BAR: "bar",
-            ChartType.HORIZONTAL_BAR: "bar",
-            ChartType.LINE: "line",
-            ChartType.PIE: "pie",
-            ChartType.DONUT: "doughnut",
-            ChartType.HISTOGRAM: "bar",
-            ChartType.SCATTER: "scatter",
-            ChartType.RADAR: "radar",
-        }
-        return mapping.get(chart_type, "bar")
-
-
-# =============================================================================
-# Plotly.js Renderer
-# =============================================================================
-
-
-@register_chart_renderer(ChartLibrary.PLOTLY)
-class PlotlyJSRenderer(BaseChartRenderer):
-    """Chart renderer using Plotly.js.
-
-    Plotly.js provides scientific-grade, interactive visualizations
-    with extensive customization options.
-    """
-
-    library = ChartLibrary.PLOTLY
-
-    def get_dependencies(self) -> list[str]:
-        return CDN_URLS[ChartLibrary.PLOTLY]
-
-    def render(self, spec: ChartSpec) -> str:
-        chart_id = self._generate_chart_id()
-        data, layout = self._build_figure(spec)
-        data_json = json.dumps(data, indent=2, default=str)
-        layout_json = json.dumps(layout, indent=2, default=str)
-
-        return f'''
-<div class="chart-container">
-    {f'<h4 class="chart-title">{spec.title}</h4>' if spec.title else ''}
-    {f'<p class="chart-subtitle">{spec.subtitle}</p>' if spec.subtitle else ''}
-    <div id="{chart_id}" style="height: {spec.height}px; width: 100%;"></div>
-</div>
-<script>
-(function() {{
-    var data = {data_json};
-    var layout = {layout_json};
-    var config = {{responsive: true, displayModeBar: true}};
-    Plotly.newPlot('{chart_id}', data, layout, config);
-}})();
-</script>
-'''
-
-    def _build_figure(self, spec: ChartSpec) -> tuple[list[dict], dict]:
-        """Build Plotly figure data and layout."""
-        colors = spec.colors or [
-            "#3b82f6", "#8b5cf6", "#ec4899", "#06b6d4",
-            "#22c55e", "#f59e0b", "#ef4444", "#6366f1",
-        ]
-
-        data = []
-        layout: dict[str, Any] = {
-            "showlegend": spec.show_legend,
-            "legend": {"orientation": "h", "y": -0.15},
-            "margin": {"t": 30, "r": 30, "b": 50, "l": 50},
-            "paper_bgcolor": "transparent",
-            "plot_bgcolor": "transparent",
-        }
-
-        if spec.chart_type in (ChartType.PIE, ChartType.DONUT):
-            trace: dict[str, Any] = {
-                "type": "pie",
-                "labels": spec.labels,
-                "values": spec.values,
-                "marker": {"colors": colors[:len(spec.values)]},
-            }
-            if spec.chart_type == ChartType.DONUT:
-                trace["hole"] = 0.4
-            data.append(trace)
-
-        elif spec.chart_type == ChartType.HEATMAP:
-            data.append({
-                "type": "heatmap",
-                "z": spec.series[0].get("data") if spec.series else [spec.values],
-                "colorscale": "Blues",
-            })
-
-        elif spec.chart_type == ChartType.BOX:
-            for i, s in enumerate(spec.series or [{"data": spec.values}]):
-                data.append({
-                    "type": "box",
-                    "y": s.get("data", []),
-                    "name": s.get("name", f"Series {i}"),
-                    "marker": {"color": colors[i % len(colors)]},
-                })
-
-        elif spec.chart_type == ChartType.SCATTER:
-            for i, s in enumerate(spec.series or [{"data": spec.values}]):
-                data.append({
-                    "type": "scatter",
-                    "mode": "markers",
-                    "x": list(range(len(s.get("data", [])))),
-                    "y": s.get("data", []),
-                    "name": s.get("name", f"Series {i}"),
-                    "marker": {"color": colors[i % len(colors)]},
-                })
-
-        else:
-            # Bar, Line, Area, Histogram
-            trace_type = self._map_chart_type(spec.chart_type)
-
-            if spec.series:
-                for i, s in enumerate(spec.series):
-                    trace = {
-                        "type": trace_type,
-                        "x": spec.labels,
-                        "y": s.get("data", []),
-                        "name": s.get("name", f"Series {i}"),
-                        "marker": {"color": colors[i % len(colors)]},
-                    }
-                    if spec.chart_type == ChartType.HORIZONTAL_BAR:
-                        trace["orientation"] = "h"
-                        trace["x"], trace["y"] = trace["y"], trace["x"]
-                    data.append(trace)
-            else:
-                trace = {
-                    "type": trace_type,
-                    "x": spec.labels,
-                    "y": spec.values,
-                    "marker": {"color": colors[0]},
-                }
-                if spec.chart_type == ChartType.HORIZONTAL_BAR:
-                    trace["orientation"] = "h"
-                    trace["x"], trace["y"] = trace["y"], trace["x"]
-                data.append(trace)
-
-        return data, layout
-
-    def _map_chart_type(self, chart_type: ChartType) -> str:
-        """Map ChartType to Plotly type string."""
-        mapping = {
-            ChartType.BAR: "bar",
-            ChartType.HORIZONTAL_BAR: "bar",
-            ChartType.LINE: "scatter",
-            ChartType.HISTOGRAM: "bar",
-            ChartType.SCATTER: "scatter",
-            ChartType.HEATMAP: "heatmap",
-            ChartType.BOX: "box",
-        }
-        return mapping.get(chart_type, "bar")
-
-
-# =============================================================================
-# SVG Fallback Renderer (No JS)
+# SVG Renderer (For PDF Export)
 # =============================================================================
 
 
@@ -468,8 +213,12 @@ class PlotlyJSRenderer(BaseChartRenderer):
 class SVGChartRenderer(BaseChartRenderer):
     """Pure SVG chart renderer with no JavaScript dependencies.
 
-    Provides basic chart rendering when JavaScript is not available
-    or for environments that require static output.
+    Used for PDF export where JavaScript cannot be executed.
+    Provides basic chart rendering for static output.
+
+    Supports:
+    - Bar, Horizontal Bar, Line
+    - Pie, Donut
     """
 
     library = ChartLibrary.SVG
@@ -498,7 +247,7 @@ class SVGChartRenderer(BaseChartRenderer):
         elif spec.chart_type == ChartType.LINE:
             svg_content = self._render_line(spec, width, height, colors)
         else:
-            # Fallback to bar chart
+            # Fallback to bar chart for unsupported types
             svg_content = self._render_bar(spec, width, height, colors)
 
         return f'''
@@ -750,10 +499,14 @@ def get_chart_renderer(library: ChartLibrary | str = ChartLibrary.APEXCHARTS) ->
     """Get a chart renderer instance.
 
     Args:
-        library: Chart library to use
+        library: Chart library to use (apexcharts or svg)
 
     Returns:
         Chart renderer instance
+
+    Note:
+        ApexCharts is used by default for HTML reports.
+        SVG is used automatically for PDF export.
     """
     from truthound.datadocs.base import renderer_registry
 

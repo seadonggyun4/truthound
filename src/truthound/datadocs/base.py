@@ -29,12 +29,14 @@ class ReportTheme(str, Enum):
 
 
 class ChartLibrary(str, Enum):
-    """Supported chart libraries (CDN-based)."""
+    """Supported chart libraries (CDN-based).
 
-    CHARTJS = "chartjs"         # Chart.js - lightweight, popular
-    APEXCHARTS = "apexcharts"   # ApexCharts - modern, interactive
-    PLOTLY = "plotly"           # Plotly.js - scientific, feature-rich
-    SVG = "svg"                 # Pure SVG - no JS dependency
+    ApexCharts is the default for HTML reports (interactive, feature-rich).
+    SVG is used for PDF export (no JavaScript dependency).
+    """
+
+    APEXCHARTS = "apexcharts"   # ApexCharts - modern, interactive (default)
+    SVG = "svg"                 # Pure SVG - for PDF export
 
 
 class SectionType(str, Enum):

@@ -299,31 +299,37 @@ class ProfileDataConverter:
 
 
 class HTMLReportBuilder:
-    """Builder for generating static HTML reports from profile data."""
+    """Builder for generating static HTML reports from profile data.
+
+    Uses ApexCharts for interactive charts in HTML reports.
+    For PDF export, use export_to_pdf() which automatically uses SVG rendering.
+    """
 
     def __init__(
         self,
         theme: ReportTheme | str = ReportTheme.PROFESSIONAL,
-        chart_library: ChartLibrary | str = ChartLibrary.APEXCHARTS,
         config: ReportConfig | None = None,
+        *,
+        _use_svg: bool = False,
     ) -> None:
         """Initialize the report builder.
 
         Args:
             theme: Report theme to use
-            chart_library: Chart library for visualizations
             config: Optional full configuration
+            _use_svg: Internal flag for PDF export (uses SVG renderer)
         """
         if config:
             self.config = config
         else:
             self.config = ReportConfig(
                 theme=ReportTheme(theme) if isinstance(theme, str) else theme,
-                chart_library=ChartLibrary(chart_library) if isinstance(chart_library, str) else chart_library,
             )
 
         self._theme_config = self.config.custom_theme or get_theme(self.config.theme)
-        self._chart_renderer = get_chart_renderer(self.config.chart_library)
+        # Use SVG for PDF, ApexCharts for HTML
+        chart_lib = ChartLibrary.SVG if _use_svg else ChartLibrary.APEXCHARTS
+        self._chart_renderer = get_chart_renderer(chart_lib)
 
     def build(
         self,
@@ -638,23 +644,23 @@ def generate_html_report(
     title: str = "Data Profile Report",
     subtitle: str = "",
     theme: ReportTheme | str = ReportTheme.PROFESSIONAL,
-    chart_library: ChartLibrary | str = ChartLibrary.APEXCHARTS,
     output_path: str | Path | None = None,
 ) -> str:
     """Generate an HTML report from profile data.
+
+    Uses ApexCharts for interactive chart rendering.
 
     Args:
         profile: TableProfile dict or object
         title: Report title
         subtitle: Report subtitle
         theme: Report theme
-        chart_library: Chart library for visualizations
         output_path: Optional path to save the report
 
     Returns:
         HTML content as string
     """
-    builder = HTMLReportBuilder(theme=theme, chart_library=chart_library)
+    builder = HTMLReportBuilder(theme=theme)
     html_content = builder.build(profile, title=title, subtitle=subtitle)
 
     if output_path:
@@ -727,35 +733,120 @@ def export_report(
         raise ValueError(f"Unsupported export format: {format}")
 
 
+def _get_weasyprint_install_instructions() -> str:
+    """Get OS-specific installation instructions for WeasyPrint dependencies."""
+    import platform
+
+    system = platform.system().lower()
+
+    instructions = [
+        "PDF export requires WeasyPrint and system dependencies.",
+        "",
+        "Step 1: Install system dependencies",
+    ]
+
+    if system == "darwin":  # macOS
+        instructions.extend([
+            "  macOS (Homebrew):",
+            "    brew install pango cairo gdk-pixbuf libffi",
+            "",
+        ])
+    elif system == "linux":
+        instructions.extend([
+            "  Ubuntu/Debian:",
+            "    sudo apt-get install libpango-1.0-0 libpangocairo-1.0-0 \\",
+            "      libgdk-pixbuf2.0-0 libffi-dev shared-mime-info",
+            "",
+            "  Fedora/RHEL:",
+            "    sudo dnf install pango gdk-pixbuf2 libffi-devel",
+            "",
+            "  Alpine:",
+            "    apk add pango gdk-pixbuf libffi-dev",
+            "",
+        ])
+    elif system == "windows":
+        instructions.extend([
+            "  Windows:",
+            "    Install GTK3 runtime from:",
+            "    https://github.com/nickvidal/weasyprint/releases/download/v62.3/weasyprint-62.3-gtk3-bundled.zip",
+            "    Or use: pip install weasyprint[gtk3]",
+            "",
+        ])
+    else:
+        instructions.extend([
+            "  See WeasyPrint documentation for your OS:",
+            "  https://doc.courtbouillon.org/weasyprint/stable/first_steps.html#installation",
+            "",
+        ])
+
+    instructions.extend([
+        "Step 2: Install Python package",
+        "  pip install truthound[pdf]",
+        "",
+        "For detailed instructions, see:",
+        "  https://doc.courtbouillon.org/weasyprint/stable/first_steps.html#installation",
+    ])
+
+    return "\n".join(instructions)
+
+
+class WeasyPrintDependencyError(ImportError):
+    """Raised when WeasyPrint or its system dependencies are missing."""
+
+    def __init__(self, original_error: Exception | None = None):
+        self.original_error = original_error
+        message = _get_weasyprint_install_instructions()
+        if original_error:
+            message = f"{original_error}\n\n{message}"
+        super().__init__(message)
+
+
 def export_to_pdf(
     profile: dict[str, Any] | Any,
     output_path: str | Path,
-    **kwargs: Any,
+    title: str = "Data Profile Report",
+    subtitle: str = "",
+    theme: ReportTheme | str = ReportTheme.PROFESSIONAL,
 ) -> Path:
     """Export report to PDF.
 
-    Requires: pip install weasyprint
+    Uses SVG rendering for charts (compatible with PDF generation).
+
+    Requires:
+        - System dependencies: pango, cairo, gdk-pixbuf (see error message for OS-specific commands)
+        - Python package: pip install truthound[pdf]
 
     Args:
         profile: TableProfile dict or object
         output_path: Output PDF file path
-        **kwargs: Additional arguments
+        title: Report title
+        subtitle: Report subtitle
+        theme: Report theme
 
     Returns:
         Path to PDF file
+
+    Raises:
+        WeasyPrintDependencyError: If WeasyPrint or system dependencies are missing
     """
     try:
         from weasyprint import HTML
-    except ImportError:
-        raise ImportError(
-            "PDF export requires weasyprint. "
-            "Install with: pip install weasyprint"
-        )
+    except ImportError as e:
+        raise WeasyPrintDependencyError(original_error=e)
 
     output_path = Path(output_path)
-    html_content = generate_html_report(profile, **kwargs)
 
-    # Convert to PDF
-    HTML(string=html_content).write_pdf(output_path)
+    # Use SVG renderer for PDF (no JavaScript)
+    builder = HTMLReportBuilder(theme=theme, _use_svg=True)
+    html_content = builder.build(profile, title=title, subtitle=subtitle)
+
+    # Convert to PDF - catch system library errors
+    try:
+        HTML(string=html_content).write_pdf(output_path)
+    except OSError as e:
+        # Catch errors like "cannot load library 'libpango-1.0-0'"
+        if "cannot load library" in str(e) or "libpango" in str(e) or "cairo" in str(e):
+            raise WeasyPrintDependencyError(original_error=e)
+        raise
 
     return output_path
