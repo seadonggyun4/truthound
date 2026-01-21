@@ -779,7 +779,14 @@ def generate_suite(
         strictness = Strictness(strictness)
 
     if isinstance(min_confidence, str):
-        min_confidence = RuleConfidence(min_confidence)
+        try:
+            min_confidence = RuleConfidence(min_confidence)
+        except ValueError:
+            valid_values = [e.value for e in RuleConfidence]
+            raise ValueError(
+                f"Invalid min_confidence '{min_confidence}'. "
+                f"Valid values: {valid_values}"
+            ) from None
 
     generator = ValidationSuiteGenerator()
     return generator.generate_from_profile(
