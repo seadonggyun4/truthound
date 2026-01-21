@@ -54,8 +54,16 @@ def mask_data(
         >>> masked = mask(df, columns=["email", "nonexistent"])
         # Warning: Column 'nonexistent' not found in data. Skipping.
     """
-    if strategy not in ("redact", "hash", "fake"):
-        raise ValueError(f"Invalid strategy: {strategy}. Use 'redact', 'hash', or 'fake'.")
+    valid_strategies = ("redact", "hash", "fake")
+    if strategy not in valid_strategies:
+        raise ValueError(
+            f"Unknown masking strategy: '{strategy}'\n\n"
+            f"Available strategies:\n"
+            f"  • redact  - Replace values with '***' (default)\n"
+            f"  • hash    - Replace values with deterministic hash\n"
+            f"  • fake    - Replace values with realistic fake data\n\n"
+            f"Example: truthound mask data.csv --strategy hash"
+        )
 
     # Use streaming for large datasets (>1M rows)
     df = lf.collect(engine="streaming")
