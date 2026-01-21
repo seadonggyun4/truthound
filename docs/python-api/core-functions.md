@@ -336,13 +336,16 @@ def compare(
 
 ### Methods
 
-| Method | Description | Best For |
-|--------|-------------|----------|
-| `auto` | Automatic selection based on dtype | General use |
-| `ks` | Kolmogorov-Smirnov test | Continuous numeric |
-| `psi` | Population Stability Index | ML monitoring |
-| `chi2` | Chi-squared test | Categorical |
-| `js` | Jensen-Shannon divergence | Any distribution |
+| Method | Description | Column Type | Best For |
+|--------|-------------|-------------|----------|
+| `auto` | Automatic selection based on dtype | Any | General use (recommended) |
+| `ks` | Kolmogorov-Smirnov test | **Numeric only** | Continuous numeric |
+| `psi` | Population Stability Index | **Numeric only** | ML monitoring |
+| `chi2` | Chi-squared test | Categorical | Categorical |
+| `js` | Jensen-Shannon divergence | Any | Any distribution |
+
+> **Important:** `ks` and `psi` methods only work with numeric columns. If your data contains
+> non-numeric columns, either use `columns` to specify numeric columns only, or use `method="auto"`.
 
 ### Returns
 
@@ -362,8 +365,8 @@ if drift.has_high_drift:
         if col_drift.result.drifted:
             print(f"  {col_drift.column}: {col_drift.result.method} = {col_drift.result.statistic:.4f}")
 
-# Specific method
-drift = th.compare("train.csv", "prod.csv", method="psi")
+# Specific method (psi requires numeric columns)
+drift = th.compare("train.csv", "prod.csv", method="psi", columns=["age", "income", "score"])
 
 # With custom threshold
 drift = th.compare("old.csv", "new.csv", threshold=0.1)

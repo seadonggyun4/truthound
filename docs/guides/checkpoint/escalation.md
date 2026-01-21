@@ -1,8 +1,8 @@
 # Escalation Policies
 
-다단계 알림 에스컬레이션 정책 시스템입니다. APScheduler 기반 스케줄링과 상태 머신으로 알림의 수명 주기를 관리합니다.
+A multi-level notification escalation policy system. Manages notification lifecycle with APScheduler-based scheduling and a state machine.
 
-## 개요
+## Overview
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -27,72 +27,72 @@
 └─────────────────────────────────────────────────────────────┘
 ```
 
-## 핵심 타입
+## Core Types
 
 ### TargetType
 
-에스컬레이션 대상 타입입니다.
+Escalation target types.
 
 ```python
 from truthound.checkpoint.escalation import TargetType
 
 class TargetType(str, Enum):
-    USER = "user"         # 개별 사용자
-    TEAM = "team"         # 팀
-    CHANNEL = "channel"   # 채널 (Slack 등)
-    SCHEDULE = "schedule" # On-call 스케줄
+    USER = "user"         # Individual user
+    TEAM = "team"         # Team
+    CHANNEL = "channel"   # Channel (Slack, etc.)
+    SCHEDULE = "schedule" # On-call schedule
     WEBHOOK = "webhook"   # Webhook URL
-    EMAIL = "email"       # 이메일
-    PHONE = "phone"       # 전화
-    CUSTOM = "custom"     # 커스텀
+    EMAIL = "email"       # Email
+    PHONE = "phone"       # Phone
+    CUSTOM = "custom"     # Custom
 ```
 
 ### EscalationTrigger
 
-에스컬레이션 트리거 조건입니다.
+Escalation trigger conditions.
 
 ```python
 from truthound.checkpoint.escalation import EscalationTrigger
 
 class EscalationTrigger(str, Enum):
-    UNACKNOWLEDGED = "unacknowledged"    # 미확인
-    UNRESOLVED = "unresolved"            # 미해결
-    SEVERITY_UPGRADE = "severity_upgrade" # Severity 상향
-    REPEATED_FAILURE = "repeated_failure" # 반복 실패
-    THRESHOLD_BREACH = "threshold_breach" # 임계값 초과
-    MANUAL = "manual"                     # 수동
-    SCHEDULED = "scheduled"               # 스케줄
-    CUSTOM = "custom"                     # 커스텀
+    UNACKNOWLEDGED = "unacknowledged"    # Not acknowledged
+    UNRESOLVED = "unresolved"            # Not resolved
+    SEVERITY_UPGRADE = "severity_upgrade" # Severity upgrade
+    REPEATED_FAILURE = "repeated_failure" # Repeated failure
+    THRESHOLD_BREACH = "threshold_breach" # Threshold exceeded
+    MANUAL = "manual"                     # Manual
+    SCHEDULED = "scheduled"               # Scheduled
+    CUSTOM = "custom"                     # Custom
 ```
 
 ### EscalationState
 
-에스컬레이션 상태입니다.
+Escalation states.
 
 ```python
 from truthound.checkpoint.escalation import EscalationState
 
 class EscalationState(str, Enum):
-    PENDING = "pending"         # 초기 상태, 시작 대기
-    ACTIVE = "active"           # 현재 레벨 알림 중
-    ESCALATING = "escalating"   # 다음 레벨로 에스컬레이션 중
-    ACKNOWLEDGED = "acknowledged"  # 응답자가 확인함
-    RESOLVED = "resolved"       # 문제 해결됨
-    CANCELLED = "cancelled"     # 수동 취소됨
-    TIMED_OUT = "timed_out"     # 최대 에스컬레이션 도달 또는 타임아웃
-    FAILED = "failed"           # 에스컬레이션 중 시스템 에러
+    PENDING = "pending"         # Initial state, waiting to start
+    ACTIVE = "active"           # Currently notifying at level
+    ESCALATING = "escalating"   # Escalating to next level
+    ACKNOWLEDGED = "acknowledged"  # Responder acknowledged
+    RESOLVED = "resolved"       # Issue resolved
+    CANCELLED = "cancelled"     # Manually cancelled
+    TIMED_OUT = "timed_out"     # Max escalation reached or timed out
+    FAILED = "failed"           # System error during escalation
 ```
 
 ---
 
 ## EscalationTarget
 
-알림 대상 정의입니다.
+Notification target definition.
 
 ```python
 from truthound.checkpoint.escalation import EscalationTarget, TargetType
 
-# 생성자
+# Constructor
 target = EscalationTarget(
     type=TargetType.USER,
     identifier="user-123",
@@ -101,7 +101,7 @@ target = EscalationTarget(
     metadata={"slack_id": "U12345"},
 )
 
-# 팩토리 메서드
+# Factory methods
 user_target = EscalationTarget.user("user-123", "Team Lead")
 team_target = EscalationTarget.team("team-abc", "Platform Team")
 channel_target = EscalationTarget.channel("#alerts", "Alert Channel")
@@ -114,27 +114,27 @@ email_target = EscalationTarget.email("team@company.com", "Team Email")
 
 ## EscalationLevel
 
-에스컬레이션 레벨 정의입니다.
+Escalation level definition.
 
 ```python
 from truthound.checkpoint.escalation import EscalationLevel, EscalationTarget
 
 level1 = EscalationLevel(
-    level=1,                      # 레벨 번호 (1 = 첫 번째)
-    delay_minutes=0,              # 지연 시간 (0 = 즉시)
-    targets=[                     # 알림 대상
+    level=1,                      # Level number (1 = first)
+    delay_minutes=0,              # Delay time (0 = immediate)
+    targets=[                     # Notification targets
         EscalationTarget.user("lead-123", "Team Lead"),
     ],
-    repeat_count=2,               # 반복 횟수 (0 = 1회만)
-    repeat_interval_minutes=5,    # 반복 간격 (분)
-    require_ack=True,             # 확인 필수 여부
-    auto_resolve_minutes=0,       # 자동 해결 시간 (0 = 없음)
-    conditions={},                # 추가 조건
+    repeat_count=2,               # Repeat count (0 = once only)
+    repeat_interval_minutes=5,    # Repeat interval (minutes)
+    require_ack=True,             # Require acknowledgement
+    auto_resolve_minutes=0,       # Auto resolve time (0 = none)
+    conditions={},                # Additional conditions
 )
 
 level2 = EscalationLevel(
     level=2,
-    delay_minutes=15,             # 15분 후 에스컬레이션
+    delay_minutes=15,             # Escalate after 15 minutes
     targets=[
         EscalationTarget.user("manager-456", "Manager"),
         EscalationTarget.team("team-platform", "Platform Team"),
@@ -143,7 +143,7 @@ level2 = EscalationLevel(
 
 level3 = EscalationLevel(
     level=3,
-    delay_minutes=30,             # 30분 후 에스컬레이션
+    delay_minutes=30,             # Escalate after 30 minutes
     targets=[
         EscalationTarget.user("director-789", "Director"),
         EscalationTarget.schedule("oncall-exec", "Executive On-call"),
@@ -155,7 +155,7 @@ level3 = EscalationLevel(
 
 ## EscalationPolicy
 
-에스컬레이션 정책 전체 정의입니다.
+Complete escalation policy definition.
 
 ```python
 from truthound.checkpoint.escalation import (
@@ -190,29 +190,29 @@ policy = EscalationPolicy(
         EscalationTrigger.UNACKNOWLEDGED,
         EscalationTrigger.REPEATED_FAILURE,
     ],
-    severity_filter=["critical", "high"],  # critical, high만 적용
-    max_escalations=5,                      # 최대 에스컬레이션 횟수
-    cooldown_minutes=60,                    # 동일 인시던트 쿨다운
-    business_hours_only=False,              # 24시간 적용
+    severity_filter=["critical", "high"],  # Apply only to critical, high
+    max_escalations=5,                      # Maximum escalation count
+    cooldown_minutes=60,                    # Cooldown for same incident
+    business_hours_only=False,              # Apply 24/7
     timezone="Asia/Seoul",
 )
 
-# 속성
-policy.max_level                 # 최대 레벨 번호
-policy.get_level(1)              # 레벨 1 가져오기
-policy.get_next_level(1)         # 다음 레벨 (레벨 2) 가져오기
+# Properties
+policy.max_level                 # Maximum level number
+policy.get_level(1)              # Get level 1
+policy.get_next_level(1)         # Get next level (level 2)
 ```
 
-### Business Hours 설정
+### Business Hours Configuration
 
 ```python
 policy = EscalationPolicy(
     name="business_hours_alerts",
     levels=[...],
     business_hours_only=True,
-    business_hours_start=9,      # 오전 9시
-    business_hours_end=18,       # 오후 6시
-    business_days=[0, 1, 2, 3, 4],  # 월-금 (0=월요일)
+    business_hours_start=9,      # 9 AM
+    business_hours_end=18,       # 6 PM
+    business_days=[0, 1, 2, 3, 4],  # Mon-Fri (0=Monday)
     timezone="Asia/Seoul",
 )
 ```
@@ -221,7 +221,7 @@ policy = EscalationPolicy(
 
 ## EscalationEngine
 
-에스컬레이션 엔진입니다. 전체 수명 주기를 관리합니다.
+The escalation engine. Manages the entire lifecycle.
 
 ```python
 from truthound.checkpoint.escalation import (
@@ -230,7 +230,7 @@ from truthound.checkpoint.escalation import (
     EscalationPolicy,
 )
 
-# 설정
+# Configuration
 config = EscalationEngineConfig(
     store_type="memory",           # memory, redis, sqlite
     store_config={},
@@ -238,15 +238,15 @@ config = EscalationEngineConfig(
     metrics_enabled=True,
 )
 
-# 엔진 생성
+# Create engine
 engine = EscalationEngine(config)
 
-# 정책 등록
+# Register policy
 engine.register_policy(policy)
 
-# 알림 핸들러 설정
+# Set notification handler
 async def notification_handler(record, level, targets):
-    """실제 알림을 발송하는 핸들러."""
+    """Handler that sends actual notifications."""
     for target in targets:
         if target.type == TargetType.USER:
             await send_slack_dm(target.identifier, record)
@@ -256,10 +256,10 @@ async def notification_handler(record, level, targets):
 
 engine.set_notification_handler(notification_handler)
 
-# 엔진 시작
+# Start engine
 await engine.start()
 
-# 에스컬레이션 트리거
+# Trigger escalation
 result = await engine.trigger(
     incident_id="incident-123",
     context={
@@ -274,36 +274,36 @@ if result.success:
     print(f"Escalation started: {result.record.id}")
     print(f"Current level: {result.record.current_level}")
 
-# 확인 (Acknowledge)
+# Acknowledge
 result = await engine.acknowledge(
     record_id=result.record.id,
     acknowledged_by="user-123",
 )
 
-# 해결 (Resolve)
+# Resolve
 result = await engine.resolve(
     record_id=result.record.id,
     resolved_by="user-123",
 )
 
-# 취소 (Cancel)
+# Cancel
 result = await engine.cancel(
     record_id=result.record.id,
     cancelled_by="user-123",
     reason="False alarm",
 )
 
-# 수동 에스컬레이션
+# Manual escalation
 result = await engine.escalate(
     record_id=result.record.id,
-    force=True,  # 상태 무시하고 강제
+    force=True,  # Force regardless of state
 )
 
-# 조회
+# Query
 record = engine.get_record(record_id)
 active_records = engine.get_active_escalations(policy_name="critical_alerts")
 
-# 엔진 중지
+# Stop engine
 await engine.stop()
 ```
 
@@ -311,43 +311,43 @@ await engine.stop()
 
 ## EscalationRecord
 
-에스컬레이션 레코드입니다. 진행 상태를 추적합니다.
+An escalation record. Tracks progress state.
 
 ```python
 @dataclass
 class EscalationRecord:
-    id: str                          # 레코드 ID
-    incident_id: str                 # 외부 인시던트 ID
-    policy_name: str                 # 정책 이름
-    current_level: int = 1           # 현재 레벨
-    state: str = "pending"           # 현재 상태
-    created_at: datetime             # 생성 시간
-    updated_at: datetime             # 갱신 시간
-    acknowledged_at: datetime | None # 확인 시간
-    acknowledged_by: str | None      # 확인자
-    resolved_at: datetime | None     # 해결 시간
-    resolved_by: str | None          # 해결자
-    next_escalation_at: datetime | None  # 다음 에스컬레이션 시간
-    escalation_count: int = 0        # 에스컬레이션 횟수
-    notification_count: int = 0      # 알림 발송 횟수
-    history: list[dict]              # 이벤트 히스토리
-    context: dict                    # 트리거 컨텍스트
-    metadata: dict                   # 메타데이터
+    id: str                          # Record ID
+    incident_id: str                 # External incident ID
+    policy_name: str                 # Policy name
+    current_level: int = 1           # Current level
+    state: str = "pending"           # Current state
+    created_at: datetime             # Creation time
+    updated_at: datetime             # Update time
+    acknowledged_at: datetime | None # Acknowledgement time
+    acknowledged_by: str | None      # Acknowledger
+    resolved_at: datetime | None     # Resolution time
+    resolved_by: str | None          # Resolver
+    next_escalation_at: datetime | None  # Next escalation time
+    escalation_count: int = 0        # Escalation count
+    notification_count: int = 0      # Notification count
+    history: list[dict]              # Event history
+    context: dict                    # Trigger context
+    metadata: dict                   # Metadata
 
-# 속성
-record.is_active         # 활성 여부
-record.is_acknowledged   # 확인 여부
-record.is_resolved       # 해결 여부
-record.duration          # 지속 시간 (timedelta)
+# Properties
+record.is_active         # Is active
+record.is_acknowledged   # Is acknowledged
+record.is_resolved       # Is resolved
+record.duration          # Duration (timedelta)
 ```
 
 ---
 
-## Storage Backend (3가지)
+## Storage Backends (3 Types)
 
 ### InMemoryEscalationStore
 
-단일 프로세스용 인메모리 스토어입니다.
+In-memory store for single-process use.
 
 ```python
 from truthound.checkpoint.escalation import InMemoryEscalationStore
@@ -357,7 +357,7 @@ store = InMemoryEscalationStore()
 
 ### RedisEscalationStore
 
-분산 환경용 Redis 스토어입니다.
+Redis store for distributed environments.
 
 ```python
 from truthound.checkpoint.escalation import RedisEscalationStore
@@ -370,7 +370,7 @@ store = RedisEscalationStore(
 
 ### SQLiteEscalationStore
 
-영구 저장용 SQLite 스토어입니다.
+SQLite store for persistent storage.
 
 ```python
 from truthound.checkpoint.escalation import SQLiteEscalationStore
@@ -380,12 +380,12 @@ store = SQLiteEscalationStore(
 )
 ```
 
-### create_store 팩토리
+### create_store Factory
 
 ```python
 from truthound.checkpoint.escalation import create_store
 
-# 타입별 생성
+# Create by type
 store = create_store("memory")
 store = create_store("redis", redis_url="redis://localhost:6379")
 store = create_store("sqlite", db_path="./escalations.db")
@@ -395,7 +395,7 @@ store = create_store("sqlite", db_path="./escalations.db")
 
 ## Scheduler
 
-### 스케줄러 타입
+### Scheduler Types
 
 ```python
 from truthound.checkpoint.escalation import (
@@ -405,13 +405,13 @@ from truthound.checkpoint.escalation import (
     SchedulerConfig,
 )
 
-# InMemory 스케줄러 (테스트용)
+# InMemory scheduler (for testing)
 scheduler = InMemoryScheduler(...)
 
-# Asyncio 스케줄러
+# Asyncio scheduler
 scheduler = AsyncioScheduler(...)
 
-# 팩토리로 생성
+# Create via factory
 config = SchedulerConfig(
     scheduler_type="asyncio",
     max_concurrent_jobs=100,
@@ -421,9 +421,9 @@ scheduler = create_scheduler(config, callback)
 
 ---
 
-## Routing 통합
+## Routing Integration
 
-라우팅 시스템과 연동합니다.
+Integrates with the routing system.
 
 ```python
 from truthound.checkpoint.escalation import (
@@ -434,7 +434,7 @@ from truthound.checkpoint.escalation import (
 )
 from truthound.checkpoint.routing import ActionRouter
 
-# EscalationRule: 조건부 에스컬레이션
+# EscalationRule: Conditional escalation
 config = EscalationRuleConfig(
     policy_name="critical_alerts",
     severity_filter=["critical", "high"],
@@ -442,30 +442,30 @@ config = EscalationRuleConfig(
 )
 rule = EscalationRule(config=config)
 
-# EscalationAction: 에스컬레이션 트리거 액션
+# EscalationAction: Escalation trigger action
 action = EscalationAction(
     engine=engine,
     policy_name="critical_alerts",
 )
 
-# Route 생성 헬퍼
+# Route creation helper
 route = create_escalation_route(
     engine=engine,
     policy_name="critical_alerts",
     rule=SeverityRule(min_severity="high"),
 )
 
-# 라우터에 추가
+# Add to router
 router.add_route(route)
 ```
 
-### 기존 액션과 통합
+### Integration with Existing Actions
 
 ```python
 from truthound.checkpoint.escalation import setup_escalation_with_existing_actions
 from truthound.checkpoint.actions import SlackNotification
 
-# 기존 액션을 에스컬레이션에 연결
+# Connect existing actions to escalation
 slack_action = SlackNotification(webhook_url="...")
 
 setup_escalation_with_existing_actions(
@@ -483,7 +483,7 @@ setup_escalation_with_existing_actions(
 
 ## EscalationPolicyManager
 
-여러 정책을 관리하는 고수준 매니저입니다.
+A high-level manager for managing multiple policies.
 
 ```python
 from truthound.checkpoint.escalation import (
@@ -491,7 +491,7 @@ from truthound.checkpoint.escalation import (
     EscalationPolicyConfig,
 )
 
-# Config로 생성
+# Create from config
 config = EscalationPolicyConfig(
     default_policy="default",
     global_enabled=True,
@@ -503,32 +503,32 @@ config = EscalationPolicyConfig(
 
 manager = EscalationPolicyManager(config)
 
-# 정책 추가
+# Add policies
 manager.add_policy(critical_policy)
 manager.add_policy(warning_policy)
 
-# 정책 조회
+# Query policies
 policy = manager.get_policy("critical_alerts")
 names = manager.list_policies()
 
-# 시작
+# Start
 await manager.start()
 
-# 트리거
+# Trigger
 result = await manager.trigger(
     incident_id="incident-123",
     context={"severity": "critical"},
     policy_name="critical_alerts",
 )
 
-# 통계
+# Statistics
 stats = manager.get_stats()
 
-# 중지
+# Stop
 await manager.stop()
 ```
 
-### 딕셔너리에서 생성
+### Create from Dictionary
 
 ```python
 config = {
@@ -550,7 +550,7 @@ manager = EscalationPolicyManager.from_dict(config)
 
 ---
 
-## 통계 조회
+## Statistics Retrieval
 
 ```python
 stats = engine.get_stats()
@@ -569,7 +569,7 @@ print(f"Notifications sent: {stats.notifications_sent}")
 
 ---
 
-## 전체 예시
+## Complete Example
 
 ```python
 import asyncio
@@ -584,16 +584,16 @@ from truthound.checkpoint.escalation import (
 )
 from truthound.checkpoint.actions import SlackNotification
 
-# 알림 핸들러
+# Notification handler
 async def notification_handler(record, level, targets):
     slack = SlackNotification(webhook_url="${SLACK_WEBHOOK}")
     for target in targets:
         message = f"[Level {level.level}] Escalation for {record.incident_id}"
-        # 실제 알림 발송 로직
+        # Actual notification logic
         print(f"Notifying {target.name}: {message}")
     return True
 
-# 에스컬레이션 정책
+# Escalation policy
 policy = EscalationPolicy(
     name="production_critical",
     description="Production critical alerts",
@@ -630,7 +630,7 @@ policy = EscalationPolicy(
     cooldown_minutes=60,
 )
 
-# 엔진 설정 및 시작
+# Engine configuration and startup
 config = EscalationEngineConfig(
     store_type="memory",
     metrics_enabled=True,
@@ -644,7 +644,7 @@ engine.set_notification_handler(notification_handler)
 async def main():
     await engine.start()
 
-    # Checkpoint 실행 후 에스컬레이션 트리거
+    # Trigger escalation after checkpoint execution
     checkpoint = Checkpoint(
         name="production_validation",
         data_source="data.csv",
@@ -673,7 +673,7 @@ asyncio.run(main())
 
 ---
 
-## YAML 설정
+## YAML Configuration
 
 ```yaml
 escalation:
@@ -725,7 +725,7 @@ escalation:
 
 ---
 
-## 상태 전이 다이어그램
+## State Transition Diagram
 
 ```
                     ┌─────────────────────────┐
@@ -750,6 +750,6 @@ escalation:
     └────────────┘                  │ (next level)   │
                                     └────────────────┘
 
-        어디서든 cancel() 호출 시 → CANCELLED
-        어디서든 error 발생 시 → FAILED
+        cancel() from any state → CANCELLED
+        error from any state → FAILED
 ```

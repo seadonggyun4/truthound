@@ -1,8 +1,8 @@
 # Dashboard (Stage 2)
 
-Truthound Data Docs는 Reflex 기반의 인터랙티브 대시보드를 제공합니다.
+Truthound Data Docs provides a Reflex-based interactive dashboard.
 
-## 설치
+## Installation
 
 ```bash
 pip install truthound[dashboard]
@@ -13,13 +13,13 @@ pip install truthound[dashboard]
 ### CLI
 
 ```bash
-# 프로파일과 함께 실행
+# Run with profile
 truthound dashboard --profile profile.json
 
-# 커스텀 포트
+# Custom port
 truthound dashboard --profile profile.json --port 3000
 
-# 외부 접근 허용
+# Allow external access
 truthound dashboard --profile profile.json --host 0.0.0.0
 ```
 
@@ -39,32 +39,32 @@ launch_dashboard(
 
 ## DashboardConfig
 
-대시보드 설정을 위한 데이터 클래스입니다.
+A data class for dashboard configuration.
 
 ```python
 from truthound.datadocs.dashboard import DashboardConfig
 
 config = DashboardConfig(
-    # 서버 설정
+    # Server settings
     host="localhost",
     port=8080,
     debug=False,
 
-    # 테마
-    theme="light",            # "light" 또는 "dark"
+    # Theme
+    theme="light",            # "light" or "dark"
     primary_color="blue",
 
-    # 기능 토글
+    # Feature toggles
     show_raw_data=True,
     show_correlations=True,
     show_patterns=True,
     enable_export=True,
 
-    # 데이터
-    profile_path="profile.json",     # 프로파일 파일 경로
-    profile_data=None,               # 또는 프로파일 딕셔너리
+    # Data
+    profile_path="profile.json",     # Profile file path
+    profile_data=None,               # Or profile dictionary
 
-    # 브랜딩
+    # Branding
     title="Truthound Dashboard",
     logo_url=None,
 )
@@ -72,12 +72,12 @@ config = DashboardConfig(
 
 ## DashboardApp
 
-대시보드 애플리케이션 클래스입니다.
+The dashboard application class.
 
 ```python
 from truthound.datadocs.dashboard import DashboardApp, DashboardConfig
 
-# 설정으로 생성
+# Create with configuration
 config = DashboardConfig(
     profile_path="profile.json",
     title="My Dashboard",
@@ -85,52 +85,52 @@ config = DashboardConfig(
 )
 app = DashboardApp(config)
 
-# 프로파일 로드
+# Load profile
 app.load_profile(profile_path="profile.json")
-# 또는
+# Or
 app.load_profile(profile_data=profile_dict)
 
-# 서버 실행
+# Run server
 app.run(host="localhost", port=8080, debug=False)
 ```
 
-## 대시보드 구성
+## Dashboard Structure
 
-### 페이지
+### Pages
 
-대시보드는 3개의 메인 페이지로 구성됩니다:
+The dashboard consists of 3 main pages:
 
-#### 1. Overview (개요)
+#### 1. Overview
 
-- **메트릭 그리드**: Rows, Columns, Memory, Quality Score
-- **경고 목록**: 데이터 품질 이슈
+- **Metrics Grid**: Rows, Columns, Memory, Quality Score
+- **Alert List**: Data quality issues
 
-#### 2. Columns (컬럼)
+#### 2. Columns
 
-- **검색**: 컬럼 이름으로 검색
-- **컬럼 카드 그리드**: 각 컬럼별 상세 정보
-  - 데이터 타입 배지
-  - Null/Unique/Distinct 비율
+- **Search**: Search by column name
+- **Column Card Grid**: Detailed information for each column
+  - Data type badge
+  - Null/Unique/Distinct ratios
 
-#### 3. Quality (품질)
+#### 3. Quality
 
-- **전체 품질 점수**: 대형 디스플레이
-- **품질 분석 설명**
+- **Overall Quality Score**: Large display
+- **Quality Analysis Description**
 
-### UI 기능
+### UI Features
 
-- **사이드바**: 페이지 네비게이션
-- **테마 토글**: 라이트/다크 모드 전환
-- **반응형**: 모바일/태블릿 대응
+- **Sidebar**: Page navigation
+- **Theme Toggle**: Light/dark mode switching
+- **Responsive**: Mobile/tablet support
 
 ## State Management
 
-대시보드는 Reflex의 상태 관리를 사용합니다.
+The dashboard uses Reflex's state management.
 
 ```python
-# 내부 State 클래스 (참고용)
+# Internal State class (for reference)
 class State(rx.State):
-    # 프로파일 데이터
+    # Profile data
     profile_data: dict = {}
     row_count: int = 0
     column_count: int = 0
@@ -140,7 +140,7 @@ class State(rx.State):
     correlations: list = []
     alerts: list = []
 
-    # UI 상태
+    # UI state
     sidebar_open: bool = True
     active_tab: str = "overview"
     selected_column: str = ""
@@ -148,7 +148,7 @@ class State(rx.State):
     theme: str = "light"
     is_loading: bool = True
 
-    # 액션
+    # Actions
     def load_profile(self, data: dict) -> None: ...
     def toggle_sidebar(self) -> None: ...
     def set_tab(self, tab: str) -> None: ...
@@ -156,7 +156,7 @@ class State(rx.State):
     def set_search(self, query: str) -> None: ...
     def toggle_theme(self) -> None: ...
 
-    # 계산된 속성
+    # Computed properties
     @rx.var
     def filtered_columns(self) -> list: ...
     @rx.var
@@ -171,8 +171,8 @@ class State(rx.State):
 from truthound.datadocs.dashboard import launch_dashboard
 
 launch_dashboard(
-    profile_path="profile.json",  # 또는 None
-    profile_data=None,            # 또는 프로파일 딕셔너리
+    profile_path="profile.json",  # Or None
+    profile_data=None,            # Or profile dictionary
     port=8080,
     host="localhost",
     title="Truthound Dashboard",
@@ -185,10 +185,10 @@ launch_dashboard(
 ```python
 from truthound.datadocs.dashboard import create_app, DashboardConfig
 
-# 기본 설정으로 생성
+# Create with default settings
 app = create_app(profile_path="profile.json")
 
-# 커스텀 설정으로 생성
+# Create with custom settings
 config = DashboardConfig(
     profile_path="profile.json",
     title="Custom Dashboard",
@@ -196,11 +196,11 @@ config = DashboardConfig(
 )
 app = create_app(config=config)
 
-# 서버 실행
+# Run server
 app.run()
 ```
 
-## CLI 옵션
+## CLI Options
 
 ```bash
 truthound dashboard [OPTIONS]
@@ -208,21 +208,21 @@ truthound dashboard [OPTIONS]
 
 | Option | Short | Default | Description |
 |--------|-------|---------|-------------|
-| `--profile` | `-p` | None | 프로파일 JSON 파일 경로 |
-| `--port` | | 8080 | 서버 포트 |
-| `--host` | | "localhost" | 서버 호스트 |
-| `--title` | `-t` | "Truthound Dashboard" | 대시보드 제목 |
-| `--debug` | | False | 디버그 모드 |
+| `--profile` | `-p` | None | Profile JSON file path |
+| `--port` | | 8080 | Server port |
+| `--host` | | "localhost" | Server host |
+| `--title` | `-t` | "Truthound Dashboard" | Dashboard title |
+| `--debug` | | False | Debug mode |
 
-## 요구 사항
+## Requirements
 
-대시보드 기능은 Reflex 패키지가 필요합니다:
+Dashboard functionality requires the Reflex package:
 
 ```bash
 pip install truthound[dashboard]
 ```
 
-Reflex가 설치되지 않은 경우:
+If Reflex is not installed:
 
 ```python
 from truthound.datadocs.dashboard import launch_dashboard
@@ -238,26 +238,26 @@ from truthound.datadocs.dashboard import launch_dashboard
 ```python
 @dataclass
 class DashboardConfig:
-    # 서버 설정
+    # Server settings
     host: str = "localhost"
     port: int = 8080
     debug: bool = False
 
-    # 테마
+    # Theme
     theme: str = "light"
     primary_color: str = "blue"
 
-    # 기능 토글
+    # Feature toggles
     show_raw_data: bool = True
     show_correlations: bool = True
     show_patterns: bool = True
     enable_export: bool = True
 
-    # 데이터
+    # Data
     profile_path: str | None = None
     profile_data: dict[str, Any] | None = None
 
-    # 브랜딩
+    # Branding
     title: str = "Truthound Dashboard"
     logo_url: str | None = None
 ```
@@ -267,7 +267,7 @@ class DashboardConfig:
 ```python
 class DashboardApp:
     def __init__(self, config: DashboardConfig | None = None) -> None:
-        """대시보드 애플리케이션 초기화."""
+        """Initialize dashboard application."""
         ...
 
     def load_profile(
@@ -275,7 +275,7 @@ class DashboardApp:
         profile_path: str | Path | None = None,
         profile_data: dict | None = None,
     ) -> None:
-        """프로파일 데이터 로드."""
+        """Load profile data."""
         ...
 
     def run(
@@ -284,7 +284,7 @@ class DashboardApp:
         port: int | None = None,
         debug: bool | None = None,
     ) -> None:
-        """대시보드 서버 실행."""
+        """Run dashboard server."""
         ...
 ```
 
@@ -299,7 +299,7 @@ def launch_dashboard(
     title: str = "Truthound Dashboard",
     debug: bool = False,
 ) -> None:
-    """인터랙티브 대시보드 실행."""
+    """Launch interactive dashboard."""
     ...
 ```
 
@@ -311,12 +311,12 @@ def create_app(
     profile_data: dict | None = None,
     config: DashboardConfig | None = None,
 ) -> DashboardApp:
-    """대시보드 애플리케이션 인스턴스 생성."""
+    """Create dashboard application instance."""
     ...
 ```
 
 ## See Also
 
-- [HTML Reports](html-reports.md) - 정적 HTML 리포트
-- [Themes](themes.md) - 테마 커스터마이징
-- [truthound-dashboard](https://github.com/seadonggyun4/truthound-dashboard) - 별도 대시보드 저장소
+- [HTML Reports](html-reports.md) - Static HTML reports
+- [Themes](themes.md) - Theme customization
+- [truthound-dashboard](https://github.com/seadonggyun4/truthound-dashboard) - Separate dashboard repository

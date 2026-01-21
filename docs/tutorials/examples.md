@@ -187,24 +187,32 @@ print(f"Drifted columns: {drifted_cols}")
 ```python
 import truthound as th
 
-# Kolmogorov-Smirnov test (continuous numeric)
+# Auto-select based on data type (default, recommended)
+drift = th.compare(baseline, current, method="auto")
+
+# Kolmogorov-Smirnov test (numeric columns only)
 drift = th.compare(baseline, current, method="ks")
 
-# Chi-square test (categorical)
-drift = th.compare(baseline, current, method="chi2")
-
-# Population Stability Index (model monitoring)
+# Population Stability Index (numeric columns only)
 drift = th.compare(baseline, current, method="psi")
 
-# Jensen-Shannon divergence
-drift = th.compare(baseline, current, method="js")
+# Chi-square test (categorical columns)
+drift = th.compare(baseline, current, method="chi2")
 
-# Auto-select based on data type (default)
-drift = th.compare(baseline, current, method="auto")
+# Jensen-Shannon divergence (works with any column type)
+drift = th.compare(baseline, current, method="js")
 
 # Custom threshold
 drift = th.compare(baseline, current, threshold=0.2)
 ```
+
+> **Note:** `ks` and `psi` methods only work with numeric columns. Use `columns` parameter
+> to specify numeric columns, or use `method="auto"` for automatic method selection.
+>
+> ```python
+> # Compare only numeric columns with PSI
+> drift = th.compare(baseline, current, method="psi", columns=["age", "salary"])
+> ```
 
 ### Large Dataset Optimization
 

@@ -1,22 +1,22 @@
 # Truthound Reporters
 
-Truthound 리포터 시스템은 검증 결과를 다양한 형식으로 출력합니다.
+The Truthound reporter system outputs validation results in various formats.
 
-## 문서 구조
+## Document Structure
 
-| 문서 | 설명 |
-|------|------|
-| [Console Reporter](console.md) | 터미널 출력 (Rich 기반) |
-| [JSON & YAML](json-yaml.md) | JSON, YAML, NDJSON 형식 |
-| [HTML & Markdown](html-markdown.md) | HTML, Markdown, Table 형식 |
-| [CI/CD Reporters](ci-reporters.md) | GitHub Actions, GitLab CI, Jenkins 등 |
-| [Reporter SDK](custom-sdk.md) | 커스텀 리포터 개발 SDK |
+| Document | Description |
+|----------|-------------|
+| [Console Reporter](console.md) | Terminal output (Rich-based) |
+| [JSON & YAML](json-yaml.md) | JSON, YAML, NDJSON formats |
+| [HTML & Markdown](html-markdown.md) | HTML, Markdown, Table formats |
+| [CI/CD Reporters](ci-reporters.md) | GitHub Actions, GitLab CI, Jenkins, etc. |
+| [Reporter SDK](custom-sdk.md) | Custom reporter development SDK |
 
 ---
 
-## 개요
+## Overview
 
-### 아키텍처
+### Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -38,79 +38,79 @@ Truthound 리포터 시스템은 검증 결과를 다양한 형식으로 출력�
                        └─────────────┘
 ```
 
-### 주요 기능
+### Key Features
 
-- **다양한 형식**: JSON, Console, Markdown, HTML, YAML, CSV, JUnit XML
-- **통합 인터페이스**: 모든 리포터에서 동일한 API
-- **커스터마이징**: 제목, 테마, 템플릿 설정
-- **확장성**: 런타임에 커스텀 리포터 등록
+- **Multiple Formats**: JSON, Console, Markdown, HTML, YAML, CSV, JUnit XML
+- **Unified Interface**: Same API across all reporters
+- **Customization**: Title, theme, template configuration
+- **Extensibility**: Register custom reporters at runtime
 
 ---
 
 ## Quick Start
 
-### 기본 사용법
+### Basic Usage
 
 ```python
 from truthound.reporters import get_reporter
 import truthound as th
 
-# 검증 실행
+# Run validation
 result = th.check("data.csv")
 
-# 리포터 생성
+# Create reporter
 reporter = get_reporter("json")
 
-# 문자열로 렌더링
+# Render as string
 json_output = reporter.render(result)
 
-# 파일로 쓰기
+# Write to file
 reporter.write(result, "report.json")
 ```
 
-### 사용 가능한 형식
+### Available Formats
 
-| 형식 | 의존성 | 사용 사례 |
-|------|--------|----------|
-| `json` | (내장) | API 통합, 프로그래밍 접근 |
-| `console` | rich | 터미널 출력, 디버깅 |
-| `markdown` | (내장) | 문서화, GitHub/GitLab |
-| `html` | jinja2 | 웹 대시보드, 이메일 리포트 |
+| Format | Dependencies | Use Case |
+|--------|--------------|----------|
+| `json` | (built-in) | API integration, programmatic access |
+| `console` | rich | Terminal output, debugging |
+| `markdown` | (built-in) | Documentation, GitHub/GitLab |
+| `html` | jinja2 | Web dashboards, email reports |
 
-### 형식 확인
+### Format Availability Check
 
 ```python
 from truthound.reporters.factory import list_available_formats, is_format_available
 
-# 사용 가능한 모든 형식 나열
+# List all available formats
 print(list_available_formats())
 # ['console', 'json', 'markdown', 'html']
 
-# 특정 형식 확인
+# Check specific format
 if is_format_available("html"):
     reporter = get_reporter("html")
 ```
 
 ---
 
-## 리포터 비교
+## Reporter Comparison
 
-### 출력 형식 비교
+### Output Format Comparison
 
-| 리포터 | 출력 형식 | 파일 확장자 | 주요 용도 |
-|--------|-----------|-------------|-----------|
-| ConsoleReporter | 텍스트 (Rich) | - | 터미널 출력 |
-| JSONReporter | JSON | `.json` | API, 자동화 |
-| YAMLReporter | YAML | `.yaml` | 설정, 가독성 |
-| MarkdownReporter | Markdown | `.md` | 문서화 |
-| HTMLReporter | HTML | `.html` | 웹 리포트 |
-| TableReporter | ASCII/Markdown | `.txt` | 간단한 테이블 |
-| JUnitXMLReporter | XML | `.xml` | CI/CD 통합 |
+| Reporter | Output Format | File Extension | Primary Use |
+|----------|---------------|----------------|-------------|
+| ConsoleReporter | Text (Rich) | - | Terminal output |
+| JSONReporter | JSON | `.json` | API, automation |
+| YAMLReporter | YAML | `.yaml` | Configuration, readability |
+| MarkdownReporter | Markdown | `.md` | Documentation |
+| HTMLReporter | HTML | `.html` | Web reports |
+| TableReporter | ASCII/Markdown | `.txt` | Simple tables |
+| JUnitXMLReporter | XML | `.xml` | CI/CD integration |
 
-### CI/CD 플랫폼 비교
+### CI/CD Platform Comparison
 
-| 플랫폼 | 리포터 | 주요 기능 |
-|--------|--------|----------|
+| Platform | Reporter | Key Features |
+|----------|----------|--------------|
 | GitHub Actions | `GitHubActionsReporter` | Annotations, Step Summaries |
 | GitLab CI | `GitLabCIReporter` | Code Quality JSON, JUnit XML |
 | Jenkins | `JenkinsReporter` | JUnit XML, warnings-ng JSON |
@@ -118,48 +118,48 @@ if is_format_available("html"):
 | CircleCI | `CircleCIReporter` | Test Metadata, Artifacts |
 | Bitbucket Pipelines | `BitbucketPipelinesReporter` | Reports, Annotations |
 
-### SDK 템플릿 비교
+### SDK Template Comparison
 
-| 템플릿 | 용도 | 특징 |
-|--------|------|------|
-| CSVReporter | 데이터 내보내기 | 스프레드시트 호환 |
-| YAMLReporter | 설정 파일 | 사람이 읽기 쉬움 |
-| JUnitXMLReporter | CI/CD | 테스트 프레임워크 호환 |
-| NDJSONReporter | 로그 수집 | ELK, Splunk 통합 |
-| TableReporter | 터미널 | 4가지 스타일 지원 |
+| Template | Use Case | Features |
+|----------|----------|----------|
+| CSVReporter | Data export | Spreadsheet compatible |
+| YAMLReporter | Configuration files | Human readable |
+| JUnitXMLReporter | CI/CD | Test framework compatible |
+| NDJSONReporter | Log collection | ELK, Splunk integration |
+| TableReporter | Terminal | 4 style options |
 
 ---
 
-## 공통 인터페이스
+## Common Interface
 
-모든 리포터는 동일한 인터페이스를 구현합니다:
+All reporters implement the same interface:
 
 ```python
 class BaseReporter(Generic[ConfigT, InputT], ABC):
-    name: str                   # 리포터 이름
-    file_extension: str         # 기본 파일 확장자
-    content_type: str           # MIME 타입
+    name: str                   # Reporter name
+    file_extension: str         # Default file extension
+    content_type: str           # MIME type
 
     def render(self, data: InputT) -> str:
-        """결과를 문자열로 렌더링."""
+        """Render result as string."""
         ...
 
     def write(self, data: InputT, path: str | Path | None = None) -> Path:
-        """결과를 파일로 쓰기. 작성된 경로 반환."""
+        """Write result to file. Returns written path."""
         ...
 
     def report(self, data: InputT, path: str | Path | None = None) -> str:
-        """렌더링하고 선택적으로 파일로 쓰기. 렌더링된 문자열 반환."""
+        """Render and optionally write to file. Returns rendered string."""
         ...
 ```
 
-> **참고**: `ConsoleReporter`는 터미널 직접 출력을 위한 `print(data)` 메서드가 추가로 있습니다.
+> **Note**: `ConsoleReporter` has an additional `print(data)` method for direct terminal output.
 
 ---
 
-## 커스텀 리포터 등록
+## Custom Reporter Registration
 
-### 데코레이터 사용
+### Using Decorator
 
 ```python
 from truthound.reporters import register_reporter
@@ -174,7 +174,7 @@ class MyCustomReporter(ValidationReporter[ReporterConfig]):
         return f"Custom: {data.status.value}"
 ```
 
-### SDK 데코레이터 사용
+### Using SDK Decorator
 
 ```python
 from truthound.reporters.sdk import create_reporter
@@ -184,11 +184,11 @@ def render_simple(result, config):
     return f"Status: {result.status.value}"
 ```
 
-자세한 내용은 [Reporter SDK](custom-sdk.md) 문서를 참조하세요.
+For details, see the [Reporter SDK](custom-sdk.md) documentation.
 
 ---
 
-## 통합 예시
+## Integration Examples
 
 ### GitHub Actions
 
@@ -221,7 +221,7 @@ jobs:
           "
 ```
 
-### FastAPI 엔드포인트
+### FastAPI Endpoint
 
 ```python
 from fastapi import FastAPI
@@ -242,7 +242,7 @@ async def validate_data(file_path: str, format: str = "json"):
     return JSONResponse(content=json.loads(content))
 ```
 
-### Airflow 태스크
+### Airflow Task
 
 ```python
 from airflow.decorators import task
@@ -254,11 +254,11 @@ def validate_and_report(data_path: str, report_path: str):
 
     result = th.check(data_path)
 
-    # HTML 리포트 생성
+    # Generate HTML report
     reporter = get_reporter("html", title="Daily Data Quality")
     reporter.write(result, report_path)
 
-    # 검증 실패 시 태스크 실패
+    # Fail task on validation failure
     if not result.success:
         raise ValueError(f"Data quality check failed for {data_path}")
 
@@ -267,23 +267,23 @@ def validate_and_report(data_path: str, report_path: str):
 
 ---
 
-## 요약
+## Summary
 
-Truthound 리포터는 유연한 출력 포맷팅을 제공합니다:
+Truthound reporters provide flexible output formatting:
 
-- **4개 내장 형식**: JSON, Console, Markdown, HTML
-- **6개 CI/CD 리포터**: GitHub Actions, GitLab CI, Jenkins, Azure DevOps, CircleCI, Bitbucket
-- **5개 SDK 템플릿**: CSV, YAML, JUnit XML, NDJSON, Table
-- **6개 SDK Mixin**: Formatting, Aggregation, Filtering, Serialization, Templating, Streaming
-- **스키마 검증**: JSON, XML, CSV 스키마 및 검증 유틸리티
-- **테스트 유틸리티**: Mock 데이터, Assertion, 벤치마킹
-- **통합 인터페이스**: 모든 리포터에서 동일한 API
-- **확장성**: `@register_reporter`로 커스텀 리포터 등록
+- **4 built-in formats**: JSON, Console, Markdown, HTML
+- **6 CI/CD reporters**: GitHub Actions, GitLab CI, Jenkins, Azure DevOps, CircleCI, Bitbucket
+- **5 SDK templates**: CSV, YAML, JUnit XML, NDJSON, Table
+- **6 SDK Mixins**: Formatting, Aggregation, Filtering, Serialization, Templating, Streaming
+- **Schema validation**: JSON, XML, CSV schemas and validation utilities
+- **Testing utilities**: Mock data, assertions, benchmarking
+- **Unified interface**: Same API across all reporters
+- **Extensibility**: Register custom reporters with `@register_reporter`
 
-자세한 내용은 각 문서를 참조하세요:
+For details, see each document:
 
-- [Console Reporter](console.md) - 터미널 출력
-- [JSON & YAML](json-yaml.md) - 구조화된 데이터 형식
-- [HTML & Markdown](html-markdown.md) - 문서 및 웹 리포트
-- [CI/CD Reporters](ci-reporters.md) - CI/CD 플랫폼 통합
-- [Reporter SDK](custom-sdk.md) - 커스텀 리포터 개발
+- [Console Reporter](console.md) - Terminal output
+- [JSON & YAML](json-yaml.md) - Structured data formats
+- [HTML & Markdown](html-markdown.md) - Document and web reports
+- [CI/CD Reporters](ci-reporters.md) - CI/CD platform integration
+- [Reporter SDK](custom-sdk.md) - Custom reporter development

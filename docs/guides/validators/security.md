@@ -1,10 +1,10 @@
-# 보안 가이드
+# Security Guide
 
-Truthound는 검증기 실행 시 발생할 수 있는 보안 위협을 방지하기 위한 포괄적인 보안 기능을 제공합니다.
+Truthound provides comprehensive security features to prevent security threats during validator execution.
 
-## 개요
+## Overview
 
-보안 모듈 아키텍처:
+Security Module Architecture:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -14,7 +14,7 @@ Truthound는 검증기 실행 시 발생할 수 있는 보안 위협을 방지�
         ┌───────────────────────┴───────────────────────┐
         ▼                                               ▼
 ┌───────────────────────────────┐   ┌───────────────────────────────────────┐
-│      SQL Injection 방지        │   │          ReDoS 보호                    │
+│      SQL Injection Prevention  │   │          ReDoS Protection              │
 ├───────────────────────────────┤   ├───────────────────────────────────────┤
 │ • Query Validator             │   │ • Static Analyzer                     │
 │ • Parameterized Query         │   │ • ML Pattern Analyzer                 │
@@ -28,17 +28,17 @@ Truthound는 검증기 실행 시 발생할 수 있는 보안 위협을 방지�
 
 ---
 
-## 1. SQL 인젝션 방지
+## 1. SQL Injection Prevention
 
-SQL 데이터소스 검증 시 인젝션 공격을 방지합니다.
+Prevents injection attacks during SQL datasource validation.
 
 ### SecurityLevel
 
-| 레벨 | 설명 |
-|------|------|
-| `STRICT` | 최대 보안, 최소 허용 연산 |
-| `STANDARD` | 균형 잡힌 보안 (기본값) |
-| `PERMISSIVE` | 신뢰 환경용 완화된 보안 |
+| Level | Description |
+|-------|-------------|
+| `STRICT` | Maximum security, minimal allowed operations |
+| `STANDARD` | Balanced security (default) |
+| `PERMISSIVE` | Relaxed security for trusted environments |
 
 ### SecurityPolicy
 
@@ -49,32 +49,32 @@ from truthound.validators.security import (
     SQLQueryValidator,
 )
 
-# 프리셋 정책
+# Preset policies
 strict_policy = SecurityPolicy.strict()
 standard_policy = SecurityPolicy.standard()
 permissive_policy = SecurityPolicy.permissive()
 
-# 커스텀 정책
+# Custom policy
 policy = SecurityPolicy(
     level=SecurityLevel.STANDARD,
-    max_query_length=10000,           # 최대 쿼리 길이
-    max_identifier_length=128,        # 최대 식별자 길이
+    max_query_length=10000,           # Maximum query length
+    max_identifier_length=128,        # Maximum identifier length
 
-    # 구조적 권한
-    allow_joins=True,                 # JOIN 허용
-    allow_subqueries=True,            # 서브쿼리 허용
-    allow_aggregations=True,          # 집계 함수 허용
-    allow_window_functions=True,      # 윈도우 함수 허용
-    allow_cte=True,                   # WITH 절 허용
-    allow_union=False,                # UNION 차단 (인젝션 벡터)
+    # Structural permissions
+    allow_joins=True,                 # Allow JOIN
+    allow_subqueries=True,            # Allow subqueries
+    allow_aggregations=True,          # Allow aggregate functions
+    allow_window_functions=True,      # Allow window functions
+    allow_cte=True,                   # Allow WITH clause
+    allow_union=False,                # Block UNION (injection vector)
 
-    # 허용 문장 타입
+    # Allowed statement types
     allowed_statements={"SELECT", "WITH"},
 
-    # 차단 패턴 (정규식)
+    # Blocked patterns (regex)
     blocked_patterns=[r"xp_cmdshell", r"sp_executesql"],
 
-    # 차단 함수
+    # Blocked functions
     blocked_functions=[
         "SLEEP",
         "BENCHMARK",
@@ -83,11 +83,11 @@ policy = SecurityPolicy(
         "INTO DUMPFILE",
     ],
 
-    # 화이트리스트 (빈 경우 모두 허용)
+    # Whitelist (empty allows all)
     allowed_tables={"orders", "customers"},
     allowed_columns={"id", "name", "amount"},
 
-    # 위반 콜백
+    # Violation callback
     on_violation=lambda name, matched: print(f"Violation: {name}"),
 )
 ```
@@ -102,10 +102,10 @@ from truthound.validators.security import (
     QueryValidationError,
 )
 
-# 검증기 생성
+# Create validator
 validator = SQLQueryValidator(policy=policy)
 
-# 쿼리 검증
+# Validate query
 try:
     validator.validate("SELECT * FROM orders WHERE amount > 100")
     print("Query is safe")
@@ -114,34 +114,34 @@ except SQLInjectionError as e:
 except QueryValidationError as e:
     print(f"Validation failed: {e}")
 
-# 편의 함수
+# Convenience function
 validate_sql_query(
     "SELECT id, amount FROM orders",
     allowed_tables=["orders", "customers"],
 )
 ```
 
-### 위험 패턴 감지
+### Dangerous Pattern Detection
 
-내장된 위험 패턴 레지스트리:
+Built-in dangerous pattern registry:
 
-| 카테고리 | 패턴 | 심각도 |
-|----------|------|--------|
+| Category | Pattern | Severity |
+|----------|---------|----------|
 | DDL | `CREATE`, `ALTER`, `DROP`, `TRUNCATE` | HIGH |
 | DCL | `GRANT`, `REVOKE`, `DENY` | HIGH |
-| DML 수정 | `INSERT`, `UPDATE`, `DELETE` | HIGH |
-| 실행 | `EXEC`, `EXECUTE`, `CALL` | HIGH |
-| 파일 | `LOAD_FILE`, `INTO OUTFILE` | HIGH |
-| 스택 쿼리 | `; SELECT`, `; DROP` | HIGH |
-| UNION 인젝션 | `UNION SELECT` | MEDIUM |
-| 시간 기반 | `SLEEP`, `WAITFOR DELAY`, `BENCHMARK` | HIGH |
-| 에러 기반 | `EXTRACTVALUE`, `UPDATEXML` | MEDIUM |
-| 불리언 기반 | `OR 1=1`, `AND '1'='1'` | HIGH |
-| 주석 | `--`, `/* */` | LOW-MEDIUM |
+| DML Modification | `INSERT`, `UPDATE`, `DELETE` | HIGH |
+| Execution | `EXEC`, `EXECUTE`, `CALL` | HIGH |
+| File | `LOAD_FILE`, `INTO OUTFILE` | HIGH |
+| Stacked Query | `; SELECT`, `; DROP` | HIGH |
+| UNION Injection | `UNION SELECT` | MEDIUM |
+| Time-Based | `SLEEP`, `WAITFOR DELAY`, `BENCHMARK` | HIGH |
+| Error-Based | `EXTRACTVALUE`, `UPDATEXML` | MEDIUM |
+| Boolean-Based | `OR 1=1`, `AND '1'='1'` | HIGH |
+| Comment | `--`, `/* */` | LOW-MEDIUM |
 
 ### SecureSQLBuilder
 
-플루언트 인터페이스로 안전한 쿼리 빌드:
+Fluent interface for building secure queries:
 
 ```python
 from truthound.validators.security import (
@@ -154,7 +154,7 @@ builder = SecureSQLBuilder(
     policy=SecurityPolicy.standard(),
 )
 
-# 쿼리 빌드
+# Build query
 query = (
     builder
     .select("orders", ["id", "amount", "status"])
@@ -173,7 +173,7 @@ query = (
     })
 )
 
-# Polars SQL 컨텍스트로 실행
+# Execute with Polars SQL context
 import polars as pl
 ctx = pl.SQLContext()
 ctx.register("orders", orders_lf)
@@ -192,19 +192,19 @@ query = ParameterizedQuery(
     parameters={"min_amount": 100, "status": "pending"},
 )
 
-# 렌더링 (값 이스케이프)
+# Render (escape values)
 rendered = query.render()
 # SELECT * FROM orders WHERE amount > 100 AND status = 'pending'
 ```
 
-지원 타입과 이스케이프:
+Supported types and escaping:
 
-| 타입 | 이스케이프 |
-|------|------------|
+| Type | Escaping |
+|------|----------|
 | `None` | `NULL` |
 | `bool` | `TRUE`/`FALSE` |
-| `int`, `float` | 그대로 |
-| `str` | 작은따옴표, `'` → `''` |
+| `int`, `float` | As-is |
+| `str` | Single quotes, `'` → `''` |
 | `list`, `tuple` | `(val1, val2, ...)` |
 
 ### SchemaWhitelist
@@ -215,17 +215,17 @@ from truthound.validators.security import (
     WhitelistValidator,
 )
 
-# 스키마 화이트리스트 정의
+# Define schema whitelist
 whitelist = SchemaWhitelist()
 whitelist.add_table("orders", ["id", "customer_id", "amount", "status"])
 whitelist.add_table("customers", ["id", "name", "email"])
 
-# 테이블/컬럼 검증
+# Validate table/column
 whitelist.validate_table("orders")  # OK
 whitelist.validate_column("orders", "amount")  # OK
 whitelist.validate_column("orders", "password")  # QueryValidationError
 
-# 쿼리 검증
+# Validate query
 validator = WhitelistValidator(whitelist)
 validator.validate_query("SELECT id, amount FROM orders")  # OK
 validator.validate_query("SELECT password FROM users")  # Error
@@ -233,7 +233,7 @@ validator.validate_query("SELECT password FROM users")  # Error
 
 ### SecureQueryMixin
 
-검증기에서 안전한 쿼리 실행:
+Secure query execution in validators:
 
 ```python
 from truthound.validators.security import SecureQueryMixin
@@ -245,7 +245,7 @@ class MyValidator(Validator, SecureQueryMixin):
         self.set_security_policy(SecurityPolicy.strict())
 
     def validate(self, lf):
-        # 안전한 쿼리 빌드
+        # Build secure query
         query = self.build_secure_query(
             table="data",
             columns=["id", "value"],
@@ -254,25 +254,25 @@ class MyValidator(Validator, SecureQueryMixin):
             allowed_tables=["data"],
         )
 
-        # 안전한 쿼리 실행
+        # Execute secure query
         result = self.execute_secure_query(lf, query, table_name="data")
         return self.process_result(result)
 ```
 
 ### QueryAuditLogger
 
-쿼리 실행 감사 로깅:
+Query execution audit logging:
 
 ```python
 from truthound.validators.security import QueryAuditLogger
 
 logger = QueryAuditLogger(
     max_entries=10000,
-    log_full_queries=False,  # 값 마스킹
+    log_full_queries=False,  # Mask values
     python_logger=logging.getLogger("sql_audit"),
 )
 
-# 쿼리 로깅
+# Log query
 logger.log_query(
     query="SELECT * FROM users WHERE email = 'test@example.com'",
     success=True,
@@ -280,12 +280,12 @@ logger.log_query(
     context={"source": "api"},
 )
 
-# 감사 조회
+# Query audit
 recent = logger.get_recent(100)
 failures = logger.get_failures(50)
 by_hash = logger.get_by_hash("abc123...")
 
-# 통계
+# Statistics
 stats = logger.get_stats()
 # {
 #   "total_queries": 1000,
@@ -295,25 +295,25 @@ stats = logger.get_stats()
 #   "unique_queries": 120,
 # }
 
-# 파일 내보내기
+# Export to file
 logger.export_to_file("audit.log")
 ```
 
 ---
 
-## 2. ReDoS 보호
+## 2. ReDoS Protection
 
-정규식 서비스 거부(ReDoS) 공격을 방지합니다.
+Prevents Regular Expression Denial of Service (ReDoS) attacks.
 
 ### ReDoSRisk
 
-| 레벨 | 설명 |
-|------|------|
-| `NONE` | 알려진 취약점 없음 |
-| `LOW` | 미미한 우려, 대부분 안전 |
-| `MEDIUM` | 일부 위험 패턴, 주의 필요 |
-| `HIGH` | 위험 패턴 감지, 사용 자제 |
-| `CRITICAL` | 알려진 ReDoS 패턴, 거부 |
+| Level | Description |
+|-------|-------------|
+| `NONE` | No known vulnerabilities |
+| `LOW` | Minimal concern, mostly safe |
+| `MEDIUM` | Some risky patterns, caution needed |
+| `HIGH` | Dangerous patterns detected, avoid use |
+| `CRITICAL` | Known ReDoS pattern, reject |
 
 ### SafeRegexConfig
 
@@ -324,27 +324,27 @@ from truthound.validators.security import (
     check_regex_safety,
 )
 
-# 프리셋
-strict_config = SafeRegexConfig.strict()    # 신뢰할 수 없는 패턴용
-lenient_config = SafeRegexConfig.lenient()  # 신뢰 패턴용
+# Presets
+strict_config = SafeRegexConfig.strict()    # For untrusted patterns
+lenient_config = SafeRegexConfig.lenient()  # For trusted patterns
 
-# 커스텀 설정
+# Custom configuration
 config = SafeRegexConfig(
-    max_pattern_length=1000,      # 최대 패턴 길이
-    max_groups=20,                # 최대 캡처 그룹
-    max_quantifier_range=100,     # 최대 {n,m} 범위
-    max_alternations=50,          # 최대 대안 분기
-    max_nested_depth=10,          # 최대 중첩 깊이
-    allow_backreferences=False,   # 역참조 허용
-    allow_lookaround=True,        # lookahead/lookbehind 허용
-    timeout_seconds=1.0,          # 매칭 제한 시간
-    max_input_length=100_000,     # 최대 입력 길이
+    max_pattern_length=1000,      # Maximum pattern length
+    max_groups=20,                # Maximum capture groups
+    max_quantifier_range=100,     # Maximum {n,m} range
+    max_alternations=50,          # Maximum alternation branches
+    max_nested_depth=10,          # Maximum nesting depth
+    allow_backreferences=False,   # Allow backreferences
+    allow_lookaround=True,        # Allow lookahead/lookbehind
+    timeout_seconds=1.0,          # Matching timeout
+    max_input_length=100_000,     # Maximum input length
 )
 ```
 
 ### RegexComplexityAnalyzer
 
-정적 분석으로 위험 패턴 감지:
+Static analysis to detect dangerous patterns:
 
 ```python
 from truthound.validators.security import (
@@ -356,27 +356,27 @@ analyzer = RegexComplexityAnalyzer(config)
 result = analyzer.analyze(r"(a+)+b")
 
 print(result.risk_level)          # ReDoSRisk.CRITICAL
-print(result.complexity_score)    # 높은 점수
+print(result.complexity_score)    # High score
 print(result.dangerous_constructs)  # ["nested_quantifiers"]
 print(result.is_safe)             # False
-print(result.recommendation)      # 안전한 대안 제안
+print(result.recommendation)      # Safe alternative suggestion
 
-# 편의 함수
+# Convenience function
 result = analyze_regex_complexity(r"(a+)+b")
 ```
 
-### 감지되는 위험 패턴
+### Detected Dangerous Patterns
 
-| 패턴 | 이름 | 위험 | 설명 |
-|------|------|------|------|
-| `(a+)+` | nested_quantifiers | CRITICAL | 지수적 백트래킹 |
-| `(a+){2,}` | nested_quantifiers_bounded | CRITICAL | 제한 중첩 양화사 |
-| `((a)+)+` | deeply_nested_quantifiers | CRITICAL | 깊은 중첩 |
-| `(a\|b)+` | alternation_with_quantifier | HIGH | 양화사 대안 |
-| `\1+` | quantified_backreference | HIGH | 양화사 역참조 |
-| `.*.*` | adjacent_quantifiers | MEDIUM | 인접 양화사 |
-| `(a\|b\|c\|...)+` | long_alternation_chain | MEDIUM | 긴 대안 체인 |
-| `.+.` | greedy_dot_conflict | MEDIUM | 탐욕적 충돌 |
+| Pattern | Name | Risk | Description |
+|---------|------|------|-------------|
+| `(a+)+` | nested_quantifiers | CRITICAL | Exponential backtracking |
+| `(a+){2,}` | nested_quantifiers_bounded | CRITICAL | Bounded nested quantifiers |
+| `((a)+)+` | deeply_nested_quantifiers | CRITICAL | Deeply nested |
+| `(a\|b)+` | alternation_with_quantifier | HIGH | Alternation with quantifier |
+| `\1+` | quantified_backreference | HIGH | Quantified backreference |
+| `.*.*` | adjacent_quantifiers | MEDIUM | Adjacent quantifiers |
+| `(a\|b\|c\|...)+` | long_alternation_chain | MEDIUM | Long alternation chain |
+| `.+.` | greedy_dot_conflict | MEDIUM | Greedy conflict |
 
 ### RegexSafetyChecker
 
@@ -388,18 +388,18 @@ from truthound.validators.security import (
 
 checker = RegexSafetyChecker(config)
 
-# 안전성 검사
+# Safety check
 is_safe, result = checker.check(r"^[a-z]+$")
 if not is_safe:
     print(f"Unsafe: {result.dangerous_constructs}")
 
-# 편의 함수
+# Convenience function
 is_safe, result = check_regex_safety(r"(a+)+b")
 ```
 
 ### SafeRegexExecutor
 
-타임아웃과 함께 안전한 정규식 실행:
+Safe regex execution with timeout:
 
 ```python
 from truthound.validators.security import (
@@ -409,22 +409,22 @@ from truthound.validators.security import (
     safe_search,
 )
 
-# 안전한 정규식 생성
+# Create safe regex
 executor = create_safe_regex(r"^[a-z]+$", config)
 
-# 안전한 매칭 (타임아웃 적용)
+# Safe matching (with timeout)
 match = executor.match("hello")
 match = executor.search("test string")
 matches = executor.findall("hello world")
 
-# 편의 함수
+# Convenience functions
 match = safe_match(r"^[a-z]+$", "hello")
 match = safe_search(r"[0-9]+", "test123")
 ```
 
-### ML 기반 위험 예측
+### ML-Based Risk Prediction
 
-머신러닝을 사용한 ReDoS 위험 예측:
+ReDoS risk prediction using machine learning:
 
 ```python
 from truthound.validators.security import (
@@ -433,21 +433,21 @@ from truthound.validators.security import (
     FeatureExtractor,
 )
 
-# ML 분석기
+# ML analyzer
 analyzer = MLPatternAnalyzer()
 result = analyzer.analyze(r"(a+)+b")
 
 print(result.risk_probability)  # 0.95
 print(result.confidence)        # 0.87
-print(result.features)          # 추출된 피처
+print(result.features)          # Extracted features
 
-# 편의 함수
+# Convenience function
 risk_level = predict_redos_risk(r"(a+)+b")
 ```
 
 ### PatternOptimizer
 
-위험한 패턴을 안전하게 최적화:
+Safely optimize dangerous patterns:
 
 ```python
 from truthound.validators.security import (
@@ -461,16 +461,16 @@ result = optimizer.optimize(r"(a+)+b")
 
 print(result.original_pattern)    # (a+)+b
 print(result.optimized_pattern)   # a+b
-print(result.rules_applied)       # 적용된 규칙
-print(result.is_equivalent)       # 동등성 여부
+print(result.rules_applied)       # Applied rules
+print(result.is_equivalent)       # Equivalence status
 
-# 편의 함수
+# Convenience function
 optimized = optimize_pattern(r"(a+)+b")
 ```
 
-### CVE 데이터베이스
+### CVE Database
 
-알려진 취약 패턴 데이터베이스:
+Known vulnerable pattern database:
 
 ```python
 from truthound.validators.security import (
@@ -481,20 +481,20 @@ from truthound.validators.security import (
 
 db = CVEDatabase()
 
-# CVE 검사
+# CVE check
 result = db.check(r"(a+)+b")
 if result.is_vulnerable:
     print(f"CVE: {result.cve_id}")
     print(f"Severity: {result.severity}")
     print(f"Description: {result.description}")
 
-# 편의 함수
+# Convenience function
 result = check_cve_vulnerability(r"pattern")
 ```
 
-### CPU 모니터링
+### CPU Monitoring
 
-실행 중 리소스 모니터링:
+Runtime resource monitoring:
 
 ```python
 from truthound.validators.security import (
@@ -511,7 +511,7 @@ limits = ResourceLimits(
 
 monitor = CPUMonitor(limits)
 
-# 모니터링 실행
+# Execute with monitoring
 result = execute_with_monitoring(
     lambda: re.match(pattern, input_text),
     monitor=monitor,
@@ -523,9 +523,9 @@ print(f"CPU: {result.cpu_percent}%")
 print(f"Memory: {result.memory_mb}MB")
 ```
 
-### 패턴 프로파일링
+### Pattern Profiling
 
-정규식 성능 프로파일링:
+Regex performance profiling:
 
 ```python
 from truthound.validators.security import (
@@ -548,13 +548,13 @@ print(result.std_time_ms)
 print(result.complexity_class)  # O(n), O(n^2), O(2^n)
 print(result.backtrack_count)
 
-# 편의 함수
+# Convenience function
 result = profile_pattern(r"pattern")
 ```
 
-### RE2 엔진
+### RE2 Engine
 
-선형 시간 보장 엔진 (google-re2 필요):
+Linear-time guaranteed engine (requires google-re2):
 
 ```python
 from truthound.validators.security import (
@@ -565,34 +565,34 @@ from truthound.validators.security import (
     check_re2_compatibility,
 )
 
-# RE2 사용 가능 확인
+# Check RE2 availability
 if is_re2_available():
-    # 호환성 검사
+    # Compatibility check
     compatible, reason = check_re2_compatibility(r"pattern")
     if not compatible:
         print(f"Not compatible: {reason}")
 
-    # RE2 엔진 사용
+    # Use RE2 engine
     engine = RE2Engine()
     match = engine.match(r"^[a-z]+$", "hello")
 
-    # 편의 함수
+    # Convenience functions
     match = safe_match_re2(r"^[a-z]+$", "hello")
     match = safe_search_re2(r"[0-9]+", "test123")
 ```
 
-RE2 지원하지 않는 기능:
-- 역참조 (`\1`, `\2`, ...)
+Features not supported by RE2:
+- Backreferences (`\1`, `\2`, ...)
 - Lookahead (`(?=...)`, `(?!...)`)
 - Lookbehind (`(?<=...)`, `(?<!...)`)
-- 조건부 패턴
-- 원자 그룹
+- Conditional patterns
+- Atomic groups
 
 ---
 
-## 3. 통합 사용
+## 3. Integrated Usage
 
-### 검증기에서 보안 적용
+### Applying Security in Validators
 
 ```python
 from truthound.validators.base import Validator
@@ -608,7 +608,7 @@ class SecurePatternValidator(Validator, SecureQueryMixin):
         super().__init__()
         self.set_security_policy(SecurityPolicy.strict())
 
-        # 패턴 안전성 검사
+        # Pattern safety check
         checker = RegexSafetyChecker(SafeRegexConfig.strict())
         is_safe, result = checker.check(pattern)
         if not is_safe:
@@ -619,18 +619,18 @@ class SecurePatternValidator(Validator, SecureQueryMixin):
         self.pattern = pattern
 
     def validate(self, lf):
-        # 안전한 쿼리 및 패턴 사용
+        # Use secure queries and patterns
         ...
 ```
 
-### 엔터프라이즈 SDK와 통합
+### Integration with Enterprise SDK
 
 ```python
 from truthound.validators.sdk.enterprise import EnterpriseSDKManager
 
 manager = EnterpriseSDKManager()
 
-# 보안 기능 포함 실행
+# Execute with security features included
 result = await manager.execute_validator(
     validator_class=SecurePatternValidator,
     data=my_dataframe,
@@ -639,8 +639,8 @@ result = await manager.execute_validator(
 
 ---
 
-## 다음 단계
+## Next Steps
 
-- [엔터프라이즈 SDK](enterprise-sdk.md) - 샌드박스, 서명, 라이선스
-- [커스텀 검증기](custom-validators.md) - SDK 기본 사용법
-- [내장 검증기](built-in.md) - 289개 내장 검증기 참조
+- [Enterprise SDK](enterprise-sdk.md) - Sandbox, signing, license
+- [Custom Validators](custom-validators.md) - SDK basic usage
+- [Built-in Validators](built-in.md) - 289 built-in validators reference

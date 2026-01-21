@@ -95,20 +95,27 @@ print(result.summary())
 
 ### CLI Usage
 
+!!! warning "checkpoint vs realtime checkpoint"
+    `truthound checkpoint` is a command for **CI/CD pipelines** (YAML configuration file based).
+
+    For **streaming validation** checkpoint management, use the `truthound realtime checkpoint` command (`--dir` option based).
+
+    For more details, see [Advanced Features - Checkpoint System Comparison](../concepts/advanced.md#checkpoint-system-comparison).
+
 ```bash
 # Initialize a sample configuration
 truthound checkpoint init -o truthound.yaml
 
-# Run a checkpoint from config
+# Run a checkpoint from config (requires --config option)
 truthound checkpoint run daily_data_validation --config truthound.yaml
 
 # Run ad-hoc checkpoint
 truthound checkpoint run quick_check --data data.csv --validators null,duplicate
 
-# List checkpoints
+# List checkpoints defined in config file
 truthound checkpoint list --config truthound.yaml
 
-# Validate configuration
+# Validate configuration file
 truthound checkpoint validate truthound.yaml
 ```
 

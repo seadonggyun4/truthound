@@ -1,7 +1,7 @@
 # MkDocs Configuration for Truthound Documentation
 # https://www.mkdocs.org/
 
-site_name: Truthound Documentation
+site_name: Truthound
 site_description: Zero-Configuration Data Quality Framework Powered by Polars
 site_author: SEO DONG GYUN
 site_url: https://github.com/seadonggyun4/truthound

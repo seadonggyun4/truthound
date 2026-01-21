@@ -1,8 +1,8 @@
-# Checkpoint 기본 사용법
+# Checkpoint Basics
 
-Checkpoint는 데이터 소스, Validators, Actions를 하나의 실행 단위로 묶어 자동화된 데이터 품질 검증 파이프라인을 구성합니다.
+A Checkpoint bundles data sources, validators, and actions into a single execution unit to construct an automated data quality validation pipeline.
 
-## Checkpoint 생성
+## Creating a Checkpoint
 
 ### Python API
 
@@ -10,14 +10,14 @@ Checkpoint는 데이터 소스, Validators, Actions를 하나의 실행 단위�
 from truthound.checkpoint import Checkpoint, CheckpointConfig
 from truthound.checkpoint.actions import StoreValidationResult, SlackNotification
 
-# 기본 생성
+# Basic creation
 checkpoint = Checkpoint(
     name="daily_user_validation",
     data_source="users.csv",
     validators=["null", "duplicate", "range"],
 )
 
-# Config 객체 사용
+# Using Config object
 config = CheckpointConfig(
     name="production_validation",
     data_source="s3://bucket/data.parquet",
@@ -37,7 +37,7 @@ config = CheckpointConfig(
 checkpoint = Checkpoint(config=config)
 ```
 
-### YAML 설정
+### YAML Configuration
 
 ```yaml
 # truthound.yaml
@@ -70,106 +70,106 @@ checkpoints:
         notify_on: failure
 ```
 
-## CheckpointConfig 속성
+## CheckpointConfig Properties
 
-| 속성 | 타입 | 기본값 | 설명 |
-|------|------|--------|------|
-| `name` | `str` | `"default_checkpoint"` | 체크포인트 고유 이름 |
-| `data_source` | `str \| Any` | `""` | 데이터 소스 경로 또는 객체 |
-| `validators` | `list[str \| Validator]` | `None` | 실행할 validator 목록 |
-| `validator_config` | `dict` | `{}` | validator별 설정 |
-| `min_severity` | `str` | `None` | 최소 severity 필터 (`critical`, `high`, `medium`, `low`) |
-| `schema` | `str` | `None` | 스키마 파일 경로 |
-| `auto_schema` | `bool` | `False` | 스키마 자동 추론 여부 |
-| `run_name_template` | `str` | `"%Y%m%d_%H%M%S"` | run_id 생성 템플릿 |
-| `fail_on_critical` | `bool` | `True` | critical 이슈 시 실패 처리 |
-| `fail_on_high` | `bool` | `False` | high 이슈 시 실패 처리 |
-| `timeout_seconds` | `int` | `3600` | 실행 타임아웃 (초) |
-| `sample_size` | `int` | `None` | 샘플링 크기 (None = 전체) |
-| `tags` | `dict[str, str]` | `{}` | 태그 (라우팅, 필터링용) |
-| `metadata` | `dict[str, Any]` | `{}` | 메타데이터 |
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `name` | `str` | `"default_checkpoint"` | Unique checkpoint name |
+| `data_source` | `str \| Any` | `""` | Data source path or object |
+| `validators` | `list[str \| Validator]` | `None` | List of validators to execute |
+| `validator_config` | `dict` | `{}` | Per-validator configuration |
+| `min_severity` | `str` | `None` | Minimum severity filter (`critical`, `high`, `medium`, `low`) |
+| `schema` | `str` | `None` | Schema file path |
+| `auto_schema` | `bool` | `False` | Enable automatic schema inference |
+| `run_name_template` | `str` | `"%Y%m%d_%H%M%S"` | run_id generation template |
+| `fail_on_critical` | `bool` | `True` | Treat as failure on critical issues |
+| `fail_on_high` | `bool` | `False` | Treat as failure on high issues |
+| `timeout_seconds` | `int` | `3600` | Execution timeout (seconds) |
+| `sample_size` | `int` | `None` | Sampling size (None = all rows) |
+| `tags` | `dict[str, str]` | `{}` | Tags (for routing, filtering) |
+| `metadata` | `dict[str, Any]` | `{}` | Metadata |
 
-## Checkpoint 실행
+## Checkpoint Execution
 
-### 동기 실행
+### Synchronous Execution
 
 ```python
-# 단일 실행
+# Single execution
 result = checkpoint.run()
 
-# 결과 확인
+# Check result
 print(result.status)           # CheckpointStatus.SUCCESS/FAILURE/ERROR/WARNING
-print(result.run_id)           # 고유 실행 ID
-print(result.duration_ms)      # 실행 시간 (ms)
-print(result.summary())        # 요약 문자열
+print(result.run_id)           # Unique execution ID
+print(result.duration_ms)      # Execution time (ms)
+print(result.summary())        # Summary string
 
-# 검증 결과 접근
+# Access validation results
 validation = result.validation_result
 print(validation.statistics.total_issues)
 print(validation.statistics.pass_rate)
 
-# 액션 결과 확인
+# Check action results
 for action_result in result.action_results:
     print(f"{action_result.action_name}: {action_result.status}")
 ```
 
-### CLI 실행
+### CLI Execution
 
 ```bash
-# YAML 설정 파일에서 체크포인트 실행
+# Execute checkpoint from YAML configuration file
 truthound checkpoint run daily_data_validation --config truthound.yaml
 
-# Ad-hoc 실행
+# Ad-hoc execution
 truthound checkpoint run quick_check \
     --data data.csv \
     --validators null,duplicate
 
-# 엄격 모드 (이슈 발견 시 exit code 1)
+# Strict mode (exit code 1 on issues found)
 truthound checkpoint run my_check --config truthound.yaml --strict
 
-# JSON 출력
+# JSON output
 truthound checkpoint run my_check --format json --output result.json
 
-# GitHub Actions 요약 포함
+# Include GitHub Actions summary
 truthound checkpoint run my_check --github-summary
 ```
 
 ## CheckpointStatus
 
-실행 결과의 상태입니다.
+The status of an execution result.
 
 ```python
 from truthound.checkpoint import CheckpointStatus
 
 class CheckpointStatus(str, Enum):
-    SUCCESS = "success"    # 모든 검증 통과
-    FAILURE = "failure"    # Critical/High 이슈 발견 (fail_on_* 설정에 따름)
-    ERROR = "error"        # 실행 중 오류 발생
-    WARNING = "warning"    # 이슈 발견되었으나 허용 범위
-    RUNNING = "running"    # 실행 중
-    PENDING = "pending"    # 대기 중
+    SUCCESS = "success"    # All validations passed
+    FAILURE = "failure"    # Critical/High issues found (based on fail_on_* settings)
+    ERROR = "error"        # Error occurred during execution
+    WARNING = "warning"    # Issues found but within acceptable range
+    RUNNING = "running"    # Currently executing
+    PENDING = "pending"    # Waiting to execute
 ```
 
-### 상태 결정 로직
+### Status Determination Logic
 
 ```python
-# CheckpointResult 상태는 다음 로직으로 결정됨
+# CheckpointResult status is determined by the following logic
 def determine_status(validation_result, config):
     stats = validation_result.statistics
 
-    # 실행 오류가 있으면 ERROR
+    # ERROR if execution error occurred
     if validation_result.error:
         return CheckpointStatus.ERROR
 
-    # Critical 이슈 + fail_on_critical=True면 FAILURE
+    # FAILURE if critical issues + fail_on_critical=True
     if config.fail_on_critical and stats.critical_issues > 0:
         return CheckpointStatus.FAILURE
 
-    # High 이슈 + fail_on_high=True면 FAILURE
+    # FAILURE if high issues + fail_on_high=True
     if config.fail_on_high and stats.high_issues > 0:
         return CheckpointStatus.FAILURE
 
-    # 이슈가 있으면 WARNING
+    # WARNING if issues exist
     if stats.total_issues > 0:
         return CheckpointStatus.WARNING
 
@@ -178,39 +178,39 @@ def determine_status(validation_result, config):
 
 ## CheckpointResult
 
-실행 결과를 담는 데이터클래스입니다.
+A dataclass containing execution results.
 
 ```python
 @dataclass
 class CheckpointResult:
-    run_id: str                              # 고유 실행 ID
-    checkpoint_name: str                     # 체크포인트 이름
-    run_time: datetime                       # 실행 시작 시간
-    status: CheckpointStatus                 # 결과 상태
-    validation_result: ValidationResult      # 검증 결과 객체
-    action_results: list[ActionResult]       # 액션 실행 결과 리스트
-    data_asset: str                          # 검증된 데이터 자산 이름
-    duration_ms: float                       # 총 소요 시간 (밀리초)
-    error: str | None                        # 에러 메시지 (에러 시)
-    metadata: dict[str, Any]                 # 사용자 메타데이터
+    run_id: str                              # Unique execution ID
+    checkpoint_name: str                     # Checkpoint name
+    run_time: datetime                       # Execution start time
+    status: CheckpointStatus                 # Result status
+    validation_result: ValidationResult      # Validation result object
+    action_results: list[ActionResult]       # List of action execution results
+    data_asset: str                          # Validated data asset name
+    duration_ms: float                       # Total duration (milliseconds)
+    error: str | None                        # Error message (on error)
+    metadata: dict[str, Any]                 # User metadata
 ```
 
-### 결과 직렬화
+### Result Serialization
 
 ```python
-# Dictionary로 변환
+# Convert to dictionary
 data = result.to_dict()
 
-# JSON 저장
+# Save as JSON
 import json
 with open("result.json", "w") as f:
     json.dump(data, f, indent=2, default=str)
 
-# Dictionary에서 복원
+# Restore from dictionary
 restored = CheckpointResult.from_dict(data)
 ```
 
-## Actions 추가
+## Adding Actions
 
 ```python
 from truthound.checkpoint.actions import (
@@ -224,19 +224,19 @@ checkpoint = Checkpoint(
     data_source="data.csv",
     validators=["null"],
     actions=[
-        # 항상 결과 저장
+        # Always store results
         StoreValidationResult(
             store_path="./results",
             partition_by="date",
             notify_on="always",
         ),
-        # 실패 시 Slack 알림
+        # Slack notification on failure
         SlackNotification(
             webhook_url="https://hooks.slack.com/services/...",
             channel="#data-quality",
             notify_on="failure",
         ),
-        # 웹훅 호출
+        # Webhook call
         WebhookAction(
             url="https://api.example.com/webhook",
             method="POST",
@@ -246,14 +246,14 @@ checkpoint = Checkpoint(
 )
 ```
 
-## Triggers 추가
+## Adding Triggers
 
-자동 실행을 위한 트리거를 설정합니다.
+Configure triggers for automatic execution.
 
 ```python
 from truthound.checkpoint.triggers import ScheduleTrigger, CronTrigger
 
-# 1시간마다 실행
+# Execute every hour
 checkpoint = Checkpoint(
     name="hourly_check",
     data_source="data.csv",
@@ -261,13 +261,13 @@ checkpoint = Checkpoint(
 )
 checkpoint.add_trigger(ScheduleTrigger(interval_hours=1))
 
-# Cron 표현식 사용
-checkpoint.add_trigger(CronTrigger(expression="0 9 * * 1"))  # 매주 월요일 9시
+# Use cron expression
+checkpoint.add_trigger(CronTrigger(expression="0 9 * * 1"))  # Every Monday at 9 AM
 ```
 
 ## CheckpointRunner
 
-여러 체크포인트를 자동 실행합니다.
+Automatically executes multiple checkpoints.
 
 ```python
 from truthound.checkpoint import CheckpointRunner
@@ -278,30 +278,30 @@ runner = CheckpointRunner(
     error_callback=lambda e: print(f"Error: {e}"),
 )
 
-# 체크포인트 추가
+# Add checkpoints
 runner.add_checkpoint(checkpoint1)
 runner.add_checkpoint(checkpoint2)
 
-# 백그라운드 실행 시작 (트리거 기반)
+# Start background execution (trigger-based)
 runner.start()
 
-# 특정 체크포인트 1회 실행
+# Execute specific checkpoint once
 result = runner.run_once("checkpoint1")
 
-# 모든 체크포인트 실행
+# Execute all checkpoints
 results = runner.run_all()
 
-# 결과 이터레이션
+# Iterate results
 for result in runner.iter_results(timeout=1.0):
     print(result.summary())
 
-# 종료
+# Shutdown
 runner.stop()
 ```
 
 ## Registry
 
-체크포인트를 전역 레지스트리에 등록하여 이름으로 접근합니다.
+Register checkpoints to a global registry for access by name.
 
 ```python
 from truthound.checkpoint import (
@@ -312,22 +312,22 @@ from truthound.checkpoint import (
     load_checkpoints,
 )
 
-# 전역 레지스트리 사용
+# Use global registry
 register_checkpoint(checkpoint)
 
-# 이름으로 조회
+# Lookup by name
 cp = get_checkpoint("my_check")
 result = cp.run()
 
-# 목록 조회
+# List checkpoints
 names = list_checkpoints()  # ['my_check', ...]
 
-# YAML에서 로드
+# Load from YAML
 checkpoints = load_checkpoints("truthound.yaml")
 for cp in checkpoints:
     register_checkpoint(cp)
 
-# 커스텀 레지스트리
+# Custom registry
 registry = CheckpointRegistry()
 registry.register(checkpoint)
 
@@ -335,9 +335,9 @@ if "my_check" in registry:
     cp = registry.get("my_check")
 ```
 
-## 다음 단계
+## Next Steps
 
-- [Actions 상세](./actions/index.md) - 14개 액션 타입 설명
-- [Triggers 상세](./triggers.md) - 4개 트리거 타입
-- [Routing](./routing.md) - Rule-based 액션 라우팅
-- [Async Execution](./async.md) - 비동기 실행
+- [Actions Detail](./actions/index.md) - 14 action types explained
+- [Triggers Detail](./triggers.md) - 4 trigger types
+- [Routing](./routing.md) - Rule-based action routing
+- [Async Execution](./async.md) - Asynchronous execution

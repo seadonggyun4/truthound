@@ -1,19 +1,19 @@
 # Report Versioning
 
-Truthound Data Docs는 리포트 버전 관리를 위한 4가지 전략을 제공합니다.
+Truthound Data Docs provides 4 strategies for report version management.
 
-## 버저닝 전략
+## Versioning Strategies
 
-| Strategy | 형식 | 설명 |
-|----------|------|------|
-| `Incremental` | `1, 2, 3, ...` | 단순 증가 번호 |
-| `Semantic` | `1.0.0, 1.1.0, 2.0.0` | 시맨틱 버저닝 (major.minor.patch) |
-| `Timestamp` | `20250115_103045` | 타임스탬프 기반 |
-| `GitLike` | `abc123de` | 콘텐츠 해시 기반 (8자 hex) |
+| Strategy | Format | Description |
+|----------|--------|-------------|
+| `Incremental` | `1, 2, 3, ...` | Simple incrementing number |
+| `Semantic` | `1.0.0, 1.1.0, 2.0.0` | Semantic versioning (major.minor.patch) |
+| `Timestamp` | `20250115_103045` | Timestamp-based |
+| `GitLike` | `abc123de` | Content hash-based (8-character hex) |
 
-## 기본 사용법
+## Basic Usage
 
-### 버전 스토리지 생성
+### Creating Version Storage
 
 ```python
 from truthound.datadocs.versioning import (
@@ -21,21 +21,21 @@ from truthound.datadocs.versioning import (
     InMemoryVersionStorage,
 )
 
-# 파일 기반 스토리지
+# File-based storage
 storage = FileVersionStorage(base_dir="./report_versions")
 
-# 메모리 기반 스토리지 (테스트용)
+# Memory-based storage (for testing)
 storage = InMemoryVersionStorage()
 ```
 
-### 리포트 버전 저장
+### Saving Report Versions
 
 ```python
 from truthound.datadocs.versioning import FileVersionStorage
 
 storage = FileVersionStorage(base_dir="./report_versions")
 
-# 새 버전 저장
+# Save new version
 version = storage.save(
     report_id="customer_report",
     content=html_content,
@@ -49,46 +49,46 @@ print(f"Saved version: {version.info.version}")
 # Saved version: 1
 ```
 
-### 버전 조회
+### Retrieving Versions
 
 ```python
-# 특정 버전 조회
+# Retrieve specific version
 report = storage.load("customer_report", version=2)
 print(report.content)
 
-# 최신 버전 조회
-latest = storage.load("customer_report")  # version=None이면 최신
+# Retrieve latest version
+latest = storage.load("customer_report")  # version=None returns latest
 
-# 최신 버전 번호만 조회
+# Get latest version number only
 latest_version = storage.get_latest_version("customer_report")
 # 3
 ```
 
-### 버전 목록
+### Listing Versions
 
 ```python
-# 모든 버전 목록
+# List all versions
 versions = storage.list_versions("customer_report")
 for v in versions:
     print(f"v{v.version} - {v.created_at} - {v.message}")
 
-# 페이지네이션
+# Pagination
 versions = storage.list_versions("customer_report", limit=10, offset=0)
 
-# 버전 개수
+# Version count
 count = storage.count_versions("customer_report")
 ```
 
-### 버전 삭제
+### Deleting Versions
 
 ```python
-# 특정 버전 삭제
+# Delete specific version
 success = storage.delete_version("customer_report", version=1)
 ```
 
 ## VersionInfo
 
-버전 메타데이터를 담는 데이터 클래스입니다.
+A data class containing version metadata.
 
 ```python
 from truthound.datadocs.versioning import VersionInfo
@@ -106,16 +106,16 @@ info = VersionInfo(
     metadata={"title": "Customer Data"},
 )
 
-# dict로 변환
+# Convert to dict
 data = info.to_dict()
 
-# dict에서 생성
+# Create from dict
 info = VersionInfo.from_dict(data)
 ```
 
 ## ReportVersion
 
-버전 정보와 콘텐츠를 함께 담는 클래스입니다.
+A class containing version information and content together.
 
 ```python
 from truthound.datadocs.versioning import ReportVersion
@@ -126,12 +126,12 @@ report = ReportVersion(
     format="html",
 )
 
-# 속성 접근
+# Property access
 print(report.version)   # info.version
-print(report.checksum)  # SHA256 해시
+print(report.checksum)  # SHA256 hash
 ```
 
-## 버저닝 전략
+## Versioning Strategies
 
 ### IncrementalStrategy
 
@@ -150,21 +150,21 @@ from truthound.datadocs.versioning.version import SemanticStrategy
 
 strategy = SemanticStrategy()
 
-# major 버전 증가
+# Major version bump
 next_ver = strategy.next_version(
     current_version=100,  # 1.0.0
     metadata={"bump": "major"},
 )
 # 200 (2.0.0)
 
-# minor 버전 증가
+# Minor version bump
 next_ver = strategy.next_version(
     current_version=100,
     metadata={"bump": "minor"},
 )
 # 110 (1.1.0)
 
-# patch 버전 증가 (기본값)
+# Patch version bump (default)
 next_ver = strategy.next_version(
     current_version=100,
     metadata={"bump": "patch"},
@@ -179,9 +179,9 @@ from truthound.datadocs.versioning.version import TimestampStrategy
 
 strategy = TimestampStrategy()
 next_ver = strategy.next_version(current_version=None, metadata=None)
-# Unix timestamp (예: 1705312245)
+# Unix timestamp (e.g., 1705312245)
 
-# ISO 날짜로 포맷팅됨
+# Formatted as ISO date
 ```
 
 ### GitLikeStrategy
@@ -194,10 +194,10 @@ next_ver = strategy.next_version(
     current_version=None,
     metadata={"content": html_content},
 )
-# 콘텐츠 해시 기반 8자 hex (예: "abc123de")
+# Content hash-based 8-character hex (e.g., "abc123de")
 ```
 
-## 버전 비교 (Diff)
+## Version Comparison (Diff)
 
 ### DiffResult
 
@@ -213,7 +213,7 @@ result = DiffResult(
     unified_diff="...",
 )
 
-# 변경 여부 확인
+# Check for changes
 if result.has_changes():
     print(f"Added: {result.added_count}")
     print(f"Removed: {result.removed_count}")
@@ -234,11 +234,11 @@ change = Change(
 )
 ```
 
-### Diff 전략
+### Diff Strategies
 
 #### TextDiffStrategy
 
-텍스트 기반 unified diff를 생성합니다.
+Generates text-based unified diff.
 
 ```python
 from truthound.datadocs.versioning.diff import TextDiffStrategy
@@ -252,7 +252,7 @@ result = strategy.diff(old_content, new_content)
 
 #### StructuralDiffStrategy
 
-JSON/구조화된 데이터 비교를 수행합니다.
+Performs JSON/structured data comparison.
 
 ```python
 from truthound.datadocs.versioning.diff import StructuralDiffStrategy
@@ -266,7 +266,7 @@ result = strategy.diff(old_content, new_content)
 
 #### SemanticDiffStrategy
 
-의미 있는 변경 사항을 추출합니다.
+Extracts meaningful changes.
 
 ```python
 from truthound.datadocs.versioning.diff import SemanticDiffStrategy
@@ -277,44 +277,44 @@ result = strategy.diff(old_content, new_content)
 
 ### ReportDiffer
 
-고수준 diff API를 제공합니다.
+Provides a high-level diff API.
 
 ```python
 from truthound.datadocs.versioning.diff import ReportDiffer, diff_versions
 
 differ = ReportDiffer()
 
-# 두 버전 비교
+# Compare two versions
 result = differ.compare(old_version, new_version)
 
-# 특정 전략으로 비교
+# Compare with specific strategy
 result = differ.compare_with_strategy(
     old_version,
     new_version,
     strategy="text",  # "text", "structural", "semantic"
 )
 
-# diff 결과 포맷팅
+# Format diff result
 formatted = differ.format_diff(result, format="unified")
 # format: "unified", "summary", "json"
 
-# 간편 함수
+# Convenience function
 result = diff_versions(old_version, new_version, strategy="text")
 ```
 
-## 스토리지 백엔드
+## Storage Backends
 
 ### FileVersionStorage
 
-파일 시스템 기반 스토리지입니다.
+File system-based storage.
 
 ```
 base_dir/
 ├── customer_report/
-│   ├── versions.json    # 메타데이터
-│   ├── v1.html          # 버전 1 콘텐츠
-│   ├── v2.html          # 버전 2 콘텐츠
-│   └── v3.html          # 버전 3 콘텐츠
+│   ├── versions.json    # Metadata
+│   ├── v1.html          # Version 1 content
+│   ├── v2.html          # Version 2 content
+│   └── v3.html          # Version 3 content
 └── sales_report/
     ├── versions.json
     └── v1.html
@@ -327,7 +327,7 @@ storage = FileVersionStorage(
     base_dir="./report_versions",
 )
 
-# 모든 VersionStorage 메서드 지원
+# Supports all VersionStorage methods
 storage.save(...)
 storage.load(...)
 storage.list_versions(...)
@@ -335,14 +335,14 @@ storage.list_versions(...)
 
 ### InMemoryVersionStorage
 
-메모리 기반 스토리지로, 테스트 및 개발용입니다.
+Memory-based storage for testing and development.
 
 ```python
 from truthound.datadocs.versioning import InMemoryVersionStorage
 
 storage = InMemoryVersionStorage()
 
-# 프로그램 종료 시 데이터 손실
+# Data is lost when program terminates
 ```
 
 ## API Reference
@@ -361,7 +361,7 @@ class VersionStorage(ABC):
         created_by: str | None = None,
         metadata: dict[str, Any] | None = None,
     ) -> ReportVersion:
-        """새 버전 저장."""
+        """Save new version."""
         ...
 
     @abstractmethod
@@ -370,7 +370,7 @@ class VersionStorage(ABC):
         report_id: str,
         version: int | None = None,
     ) -> ReportVersion | None:
-        """버전 로드 (None이면 최신)."""
+        """Load version (None returns latest)."""
         ...
 
     @abstractmethod
@@ -380,22 +380,22 @@ class VersionStorage(ABC):
         limit: int | None = None,
         offset: int = 0,
     ) -> list[VersionInfo]:
-        """버전 목록 조회."""
+        """List versions."""
         ...
 
     @abstractmethod
     def get_latest_version(self, report_id: str) -> int | None:
-        """최신 버전 번호 조회."""
+        """Get latest version number."""
         ...
 
     @abstractmethod
     def delete_version(self, report_id: str, version: int) -> bool:
-        """버전 삭제."""
+        """Delete version."""
         ...
 
     @abstractmethod
     def count_versions(self, report_id: str) -> int:
-        """버전 개수 조회."""
+        """Get version count."""
         ...
 ```
 
@@ -431,7 +431,7 @@ class ReportVersion:
     @property
     def version(self) -> int: ...
     @property
-    def checksum(self) -> str: ...  # SHA256 해시
+    def checksum(self) -> str: ...  # SHA256 hash
 ```
 
 ### ChangeType
@@ -446,5 +446,5 @@ class ChangeType(Enum):
 
 ## See Also
 
-- [HTML Reports](html-reports.md) - HTML 리포트 생성
-- [PDF Export](pdf-export.md) - PDF 내보내기
+- [HTML Reports](html-reports.md) - HTML report generation
+- [PDF Export](pdf-export.md) - PDF export

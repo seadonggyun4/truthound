@@ -1,11 +1,11 @@
 # CI Platform Integration
 
-12개 CI/CD 플랫폼을 자동 감지하고 환경 정보를 추출합니다.
+Auto-detects 12 CI/CD platforms and extracts environment information.
 
-## 지원 플랫폼
+## Supported Platforms
 
-| 플랫폼 | 감지 변수 | CIPlatform 값 |
-|--------|----------|---------------|
+| Platform | Detection Variable | CIPlatform Value |
+|----------|-------------------|------------------|
 | GitHub Actions | `GITHUB_ACTIONS=true` | `github_actions` |
 | GitLab CI | `GITLAB_CI=true` | `gitlab_ci` |
 | Jenkins | `JENKINS_URL` or `BUILD_ID` | `jenkins` |
@@ -21,9 +21,9 @@
 
 ---
 
-## 기본 사용법
+## Basic Usage
 
-### 플랫폼 감지
+### Platform Detection
 
 ```python
 from truthound.checkpoint.ci import (
@@ -33,20 +33,20 @@ from truthound.checkpoint.ci import (
     CIPlatform,
 )
 
-# 현재 플랫폼 감지
+# Detect current platform
 platform = detect_ci_platform()
 print(f"Platform: {platform}")  # CIPlatform.GITHUB_ACTIONS
 
-# CI 환경 여부
+# Check if running in CI
 if is_ci_environment():
     print("Running in CI")
 
-# 로컬 환경 확인
+# Check if running locally
 if platform == CIPlatform.LOCAL:
     print("Running locally")
 ```
 
-### 환경 정보 가져오기
+### Getting Environment Information
 
 ```python
 env = get_ci_environment()
@@ -85,15 +85,15 @@ class CIPlatform(str, Enum):
     DRONE = "drone"
     AWS_CODEBUILD = "aws_codebuild"
     GOOGLE_CLOUD_BUILD = "google_cloud_build"
-    LOCAL = "local"      # 로컬 환경
-    UNKNOWN = "unknown"  # CI이지만 미지원 플랫폼
+    LOCAL = "local"      # Local environment
+    UNKNOWN = "unknown"  # CI but unsupported platform
 ```
 
 ---
 
 ## CIEnvironment
 
-CI 환경 정보 데이터클래스입니다.
+Dataclass containing CI environment information.
 
 ```python
 @dataclass
@@ -115,21 +115,21 @@ class CIEnvironment:
     environment_vars: dict[str, str] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
-        """딕셔너리로 변환."""
+        """Convert to dictionary."""
         ...
 ```
 
 ---
 
-## 플랫폼별 환경 변수
+## Platform-Specific Environment Variables
 
 ### GitHub Actions
 
-| 속성 | 환경 변수 |
-|------|----------|
+| Property | Environment Variable |
+|----------|---------------------|
 | `branch` | `GITHUB_HEAD_REF` or `GITHUB_REF_NAME` |
 | `commit_sha` | `GITHUB_SHA` |
-| `pr_number` | `GITHUB_REF`에서 파싱 |
+| `pr_number` | Parsed from `GITHUB_REF` |
 | `pr_target_branch` | `GITHUB_BASE_REF` |
 | `repository` | `GITHUB_REPOSITORY` |
 | `run_id` | `GITHUB_RUN_ID` |
@@ -140,8 +140,8 @@ class CIEnvironment:
 
 ### GitLab CI
 
-| 속성 | 환경 변수 |
-|------|----------|
+| Property | Environment Variable |
+|----------|---------------------|
 | `branch` | `CI_COMMIT_REF_NAME` |
 | `commit_sha` | `CI_COMMIT_SHA` |
 | `commit_message` | `CI_COMMIT_MESSAGE` |
@@ -156,8 +156,8 @@ class CIEnvironment:
 
 ### Jenkins
 
-| 속성 | 환경 변수 |
-|------|----------|
+| Property | Environment Variable |
+|----------|---------------------|
 | `branch` | `BRANCH_NAME` or `GIT_BRANCH` |
 | `commit_sha` | `GIT_COMMIT` |
 | `pr_number` | `CHANGE_ID` |
@@ -169,8 +169,8 @@ class CIEnvironment:
 
 ### CircleCI
 
-| 속성 | 환경 변수 |
-|------|----------|
+| Property | Environment Variable |
+|----------|---------------------|
 | `branch` | `CIRCLE_BRANCH` |
 | `commit_sha` | `CIRCLE_SHA1` |
 | `pr_number` | `CIRCLE_PR_NUMBER` |
@@ -183,8 +183,8 @@ class CIEnvironment:
 
 ### Travis CI
 
-| 속성 | 환경 변수 |
-|------|----------|
+| Property | Environment Variable |
+|----------|---------------------|
 | `branch` | `TRAVIS_BRANCH` |
 | `commit_sha` | `TRAVIS_COMMIT` |
 | `commit_message` | `TRAVIS_COMMIT_MESSAGE` |
@@ -195,8 +195,8 @@ class CIEnvironment:
 
 ### Azure DevOps
 
-| 속성 | 환경 변수 |
-|------|----------|
+| Property | Environment Variable |
+|----------|---------------------|
 | `branch` | `BUILD_SOURCEBRANCHNAME` |
 | `commit_sha` | `BUILD_SOURCEVERSION` |
 | `commit_message` | `BUILD_SOURCEVERSIONMESSAGE` |
@@ -211,8 +211,8 @@ class CIEnvironment:
 
 ### Bitbucket Pipelines
 
-| 속성 | 환경 변수 |
-|------|----------|
+| Property | Environment Variable |
+|----------|---------------------|
 | `branch` | `BITBUCKET_BRANCH` |
 | `commit_sha` | `BITBUCKET_COMMIT` |
 | `pr_number` | `BITBUCKET_PR_ID` |
@@ -222,8 +222,8 @@ class CIEnvironment:
 
 ### Buildkite
 
-| 속성 | 환경 변수 |
-|------|----------|
+| Property | Environment Variable |
+|----------|---------------------|
 | `branch` | `BUILDKITE_BRANCH` |
 | `commit_sha` | `BUILDKITE_COMMIT` |
 | `commit_message` | `BUILDKITE_MESSAGE` |
@@ -238,9 +238,9 @@ class CIEnvironment:
 
 ---
 
-## Checkpoint와 통합
+## Checkpoint Integration
 
-### CI 정보 메타데이터 추가
+### Adding CI Information to Metadata
 
 ```python
 from truthound.checkpoint import Checkpoint
@@ -261,7 +261,7 @@ checkpoint = Checkpoint(
 )
 ```
 
-### PR 빌드에서만 실행
+### Run Only on PR Builds
 
 ```python
 from truthound.checkpoint.ci import get_ci_environment
@@ -269,18 +269,18 @@ from truthound.checkpoint.ci import get_ci_environment
 env = get_ci_environment()
 
 if env.is_pr:
-    # PR 빌드에서만 실행
+    # Run only on PR builds
     result = checkpoint.run()
 
     if result.status.value == "failure":
-        # PR에 코멘트 남기기
+        # Post comment on PR
         post_pr_comment(
             pr_number=env.pr_number,
             message=f"Validation failed: {result.summary()}",
         )
 ```
 
-### 브랜치별 알림 조건
+### Branch-Specific Notification Conditions
 
 ```python
 from truthound.checkpoint.routing import ActionRouter, Route, TagRule
@@ -289,7 +289,7 @@ env = get_ci_environment()
 
 router = ActionRouter()
 
-# main 브랜치는 Slack + PagerDuty
+# Main branch: Slack + PagerDuty
 if env.branch in ("main", "master"):
     router.add_route(Route(
         name="prod_alerts",
@@ -297,7 +297,7 @@ if env.branch in ("main", "master"):
         actions=[slack_action, pagerduty_action],
     ))
 else:
-    # 다른 브랜치는 Slack만
+    # Other branches: Slack only
     router.add_route(Route(
         name="dev_alerts",
         rule=StatusRule(statuses=["failure"]),
@@ -307,7 +307,7 @@ else:
 
 ---
 
-## GitHub Actions 예시
+## GitHub Actions Example
 
 ```yaml
 # .github/workflows/data-quality.yml
@@ -319,7 +319,7 @@ on:
   pull_request:
     branches: [main]
   schedule:
-    - cron: '0 0 * * *'  # 매일 자정
+    - cron: '0 0 * * *'  # Daily at midnight
 
 jobs:
   validate:
@@ -352,9 +352,9 @@ jobs:
           path: truthound_results/
 ```
 
-### GitHub Summary 출력
+### GitHub Summary Output
 
-`--github-summary` 플래그를 사용하면 GitHub Actions Job Summary에 결과가 표시됩니다.
+Using the `--github-summary` flag displays results in the GitHub Actions Job Summary.
 
 ```bash
 truthound checkpoint run my_check --github-summary
@@ -362,7 +362,7 @@ truthound checkpoint run my_check --github-summary
 
 ---
 
-## GitLab CI 예시
+## GitLab CI Example
 
 ```yaml
 # .gitlab-ci.yml
@@ -388,7 +388,7 @@ data-quality:
 
 ---
 
-## Jenkins 예시
+## Jenkins Example
 
 ```groovy
 // Jenkinsfile
@@ -419,25 +419,25 @@ pipeline {
 
 ---
 
-## CLI 옵션
+## CLI Options
 
 ```bash
-# 엄격 모드 (이슈 발견 시 exit code 1)
+# Strict mode (exit code 1 when issues found)
 truthound checkpoint run my_check --strict
 
 # GitHub Actions Summary
 truthound checkpoint run my_check --github-summary
 
-# JUnit 보고서 (Jenkins, GitLab CI)
+# JUnit report (Jenkins, GitLab CI)
 truthound checkpoint run my_check --format junit --output junit.xml
 
-# JSON 출력
+# JSON output
 truthound checkpoint run my_check --format json --output result.json
 ```
 
 ---
 
-## 프로그래밍 방식 Exit Code 처리
+## Programmatic Exit Code Handling
 
 ```python
 import sys
@@ -452,7 +452,7 @@ checkpoint = Checkpoint(
 
 result = checkpoint.run()
 
-# CI에서 실패 시 exit code 1
+# Exit code 1 on failure in CI
 if is_ci_environment():
     if result.status.value in ("failure", "error"):
         print(f"Validation failed: {result.summary()}")
@@ -461,24 +461,24 @@ if is_ci_environment():
 
 ---
 
-## 플랫폼별 특수 기능
+## Platform-Specific Features
 
 ### GitHub Actions
 
-- `--github-summary`: Job Summary에 마크다운 결과 출력
-- `GITHUB_OUTPUT`에 출력 변수 설정 가능
+- `--github-summary`: Outputs markdown results to Job Summary
+- Can set output variables to `GITHUB_OUTPUT`
 
 ### GitLab CI
 
-- JUnit 보고서로 Merge Request에 테스트 결과 표시
-- Artifacts로 결과 보관
+- Display test results in Merge Request via JUnit report
+- Store results as artifacts
 
 ### Jenkins
 
-- JUnit 플러그인으로 테스트 결과 시각화
-- Pipeline 단계별 상태 표시
+- Visualize test results with JUnit plugin
+- Display status per pipeline stage
 
 ### Azure DevOps
 
-- Test Results 탭에 JUnit 결과 표시
-- Pipeline 요약에 상태 표시
+- Display JUnit results in Test Results tab
+- Show status in pipeline summary

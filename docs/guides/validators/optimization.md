@@ -1,25 +1,25 @@
-# 검증기 최적화
+# Validator Optimization
 
-Truthound의 최적화 모듈은 대규모 데이터셋에서 검증기 실행 성능을 극대화하기 위한 도구들을 제공합니다.
+Truthound's optimization module provides tools to maximize validator execution performance on large-scale datasets.
 
-## 개요
+## Overview
 
-최적화 모듈은 다음 영역을 다룹니다:
+The optimization module covers the following areas:
 
-| 영역 | 모듈 | 주요 기능 |
-|-----|------|---------|
-| **DAG 실행** | `orchestrator` | 의존성 기반 실행 순서, 병렬 실행 |
-| **그래프 알고리즘** | `graph` | 사이클 감지, 위상 정렬, DFS |
-| **공분산 계산** | `covariance` | 증분 공분산, Woodbury 업데이트 |
-| **지리 연산** | `geo` | 벡터화된 Haversine, 공간 인덱싱 |
-| **집계 최적화** | `aggregation` | 지연 집계, 스트리밍 조인 |
-| **프로파일링** | `profiling` | 실행 시간, 메모리, 처리량 측정 |
+| Area | Module | Key Features |
+|------|--------|--------------|
+| **DAG Execution** | `orchestrator` | Dependency-based execution order, parallel execution |
+| **Graph Algorithms** | `graph` | Cycle detection, topological sort, DFS |
+| **Covariance Computation** | `covariance` | Incremental covariance, Woodbury updates |
+| **Geographic Operations** | `geo` | Vectorized Haversine, spatial indexing |
+| **Aggregation Optimization** | `aggregation` | Lazy aggregation, streaming joins |
+| **Profiling** | `profiling` | Execution time, memory, throughput measurement |
 
-## DAG 기반 실행 오케스트레이션
+## DAG-Based Execution Orchestration
 
-`ValidatorDAG`는 검증기 간의 의존성을 관리하고 최적의 실행 순서를 결정합니다.
+`ValidatorDAG` manages dependencies between validators and determines optimal execution order.
 
-### 기본 사용법
+### Basic Usage
 
 ```python
 from truthound.validators.optimization import (
@@ -28,61 +28,61 @@ from truthound.validators.optimization import (
     ParallelExecutionStrategy,
 )
 
-# DAG 생성
+# Create DAG
 dag = ValidatorDAG()
 
-# 검증기 추가
+# Add validators
 dag.add_validators([
     NullValidator(),
     DuplicateValidator(),
     RangeValidator(),
 ])
 
-# 실행 계획 생성
+# Build execution plan
 plan = dag.build_execution_plan()
 
-# 병렬 전략으로 실행
+# Execute with parallel strategy
 strategy = ParallelExecutionStrategy(max_workers=4)
 results = plan.execute(lf, strategy)
 ```
 
-### 실행 위상 (ValidatorPhase)
+### Execution Phases (ValidatorPhase)
 
-검증기는 자동으로 실행 위상에 할당됩니다:
+Validators are automatically assigned to execution phases:
 
-| 위상 | 설명 | 우선순위 |
-|-----|------|---------|
-| `SCHEMA` | 스키마 검증 (컬럼 존재, 타입) | 1 |
-| `COMPLETENESS` | Null 검사, 누락 값 | 2 |
-| `UNIQUENESS` | 중복 감지, 키 검증 | 3 |
-| `FORMAT` | 패턴 매칭, 형식 검증 | 4 |
-| `RANGE` | 값 범위, 분포 검사 | 5 |
-| `STATISTICAL` | 통계, 이상치 | 6 |
-| `CROSS_TABLE` | 다중 테이블 검증 | 7 |
-| `CUSTOM` | 사용자 정의 | 8 |
+| Phase | Description | Priority |
+|-------|-------------|----------|
+| `SCHEMA` | Schema validation (column existence, types) | 1 |
+| `COMPLETENESS` | Null checks, missing values | 2 |
+| `UNIQUENESS` | Duplicate detection, key validation | 3 |
+| `FORMAT` | Pattern matching, format validation | 4 |
+| `RANGE` | Value range, distribution checks | 5 |
+| `STATISTICAL` | Statistics, outliers | 6 |
+| `CROSS_TABLE` | Multi-table validation | 7 |
+| `CUSTOM` | User-defined | 8 |
 
 ### ValidatorNode
 
-검증기를 DAG에 추가할 때 메타데이터를 지정할 수 있습니다:
+Metadata can be specified when adding validators to the DAG:
 
 ```python
 from truthound.validators.optimization import ValidatorNode, ValidatorPhase
 
 node = dag.add_validator(
     validator=MyValidator(),
-    dependencies={"null_validator"},  # 명시적 의존성
-    provides={"completeness"},         # 제공하는 기능
-    phase=ValidatorPhase.STATISTICAL,  # 실행 위상
-    priority=50,                       # 위상 내 우선순위 (낮을수록 먼저)
-    estimated_cost=2.5,                # 예상 비용 (적응형 스케줄링용)
+    dependencies={"null_validator"},  # Explicit dependencies
+    provides={"completeness"},         # Provided capabilities
+    phase=ValidatorPhase.STATISTICAL,  # Execution phase
+    priority=50,                       # Priority within phase (lower = earlier)
+    estimated_cost=2.5,                # Estimated cost (for adaptive scheduling)
 )
 ```
 
-### 실행 전략
+### Execution Strategies
 
 #### SequentialExecutionStrategy
 
-검증기를 순차적으로 실행합니다:
+Executes validators sequentially:
 
 ```python
 from truthound.validators.optimization import SequentialExecutionStrategy
@@ -93,7 +93,7 @@ result = plan.execute(lf, strategy)
 
 #### ParallelExecutionStrategy
 
-`ThreadPoolExecutor`를 사용하여 병렬 실행:
+Parallel execution using `ThreadPoolExecutor`:
 
 ```python
 from truthound.validators.optimization import ParallelExecutionStrategy
@@ -102,21 +102,21 @@ strategy = ParallelExecutionStrategy(max_workers=8)
 result = plan.execute(lf, strategy)
 ```
 
-**매개변수:**
+**Parameters:**
 
-| 매개변수 | 타입 | 기본값 | 설명 |
-|---------|------|--------|------|
-| `max_workers` | `int \| None` | `None` | 최대 워커 수. None이면 `min(32, cpu_count + 4)` |
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `max_workers` | `int \| None` | `None` | Maximum workers. If None, uses `min(32, cpu_count + 4)` |
 
 #### AdaptiveExecutionStrategy
 
-레벨의 검증기 수에 따라 순차/병렬 전략을 동적으로 선택:
+Dynamically selects sequential/parallel strategy based on the number of validators per level:
 
 ```python
 from truthound.validators.optimization import AdaptiveExecutionStrategy
 
 strategy = AdaptiveExecutionStrategy(
-    parallel_threshold=3,  # 3개 이상일 때 병렬 실행
+    parallel_threshold=3,  # Use parallel when 3 or more validators
     max_workers=4,
 )
 result = plan.execute(lf, strategy)
@@ -124,19 +124,19 @@ result = plan.execute(lf, strategy)
 
 ### ExecutionResult
 
-실행 결과는 다양한 메트릭을 제공합니다:
+Execution results provide various metrics:
 
 ```python
 result = plan.execute(lf, strategy)
 
-# 기본 메트릭
-print(f"총 소요 시간: {result.total_duration_ms}ms")
-print(f"총 검증기: {result.total_validators}")
-print(f"성공: {result.success_count}")
-print(f"실패: {result.failure_count}")
-print(f"전체 이슈: {len(result.all_issues)}")
+# Basic metrics
+print(f"Total duration: {result.total_duration_ms}ms")
+print(f"Total validators: {result.total_validators}")
+print(f"Success: {result.success_count}")
+print(f"Failure: {result.failure_count}")
+print(f"Total issues: {len(result.all_issues)}")
 
-# 상세 메트릭
+# Detailed metrics
 metrics = result.get_metrics()
 # {
 #     "total_duration_ms": 150.5,
@@ -146,11 +146,11 @@ metrics = result.get_metrics()
 #     "failure_count": 2,
 #     "levels": 4,
 #     "strategy": "parallel",
-#     "parallelism_factor": 2.5,  # 순차 시간 / 실제 시간
+#     "parallelism_factor": 2.5,  # Sequential time / actual time
 # }
 ```
 
-### 편의 함수
+### Convenience Functions
 
 ```python
 from truthound.validators.optimization import (
@@ -158,13 +158,13 @@ from truthound.validators.optimization import (
     execute_validators,
 )
 
-# 실행 계획 생성
+# Create execution plan
 plan = create_execution_plan(
     validators=[v1, v2, v3],
-    dependencies={"v2": {"v1"}},  # v2는 v1에 의존
+    dependencies={"v2": {"v1"}},  # v2 depends on v1
 )
 
-# 한 번에 실행
+# Execute at once
 result = execute_validators(
     validators=[v1, v2, v3],
     lf=df.lazy(),
@@ -172,13 +172,13 @@ result = execute_validators(
 )
 ```
 
-## 그래프 순회 알고리즘
+## Graph Traversal Algorithms
 
-계층 구조 및 관계 데이터 검증을 위한 최적화된 그래프 알고리즘입니다.
+Optimized graph algorithms for hierarchy and relationship data validation.
 
 ### IterativeDFS
 
-재귀 제한을 피하기 위한 반복적 깊이 우선 탐색:
+Iterative depth-first search to avoid recursion limits:
 
 ```python
 from truthound.validators.optimization import IterativeDFS
@@ -192,20 +192,20 @@ adjacency = {
 
 dfs = IterativeDFS(adjacency)
 
-# 전위 순회
+# Preorder traversal
 for node in dfs.traverse(start="A", order="preorder"):
     print(node)  # A, B, D, C
 
-# 경로 찾기
+# Find path
 path = dfs.find_path("A", "D")  # ["A", "B", "D"]
 
-# 깊이 계산
+# Compute depths
 depths = dfs.compute_depths(roots=["A"])  # {"A": 0, "B": 1, "C": 1, "D": 2}
 ```
 
 ### TarjanSCC
 
-Tarjan의 강연결 요소(SCC) 알고리즘으로 O(V+E) 시간에 사이클 감지:
+Tarjan's Strongly Connected Components algorithm for O(V+E) cycle detection:
 
 ```python
 from truthound.validators.optimization import TarjanSCC, CycleInfo
@@ -213,33 +213,33 @@ from truthound.validators.optimization import TarjanSCC, CycleInfo
 adjacency = {
     "A": ["B"],
     "B": ["C"],
-    "C": ["A", "D"],  # A-B-C 사이클
-    "D": ["D"],       # 자기 루프
+    "C": ["A", "D"],  # A-B-C cycle
+    "D": ["D"],       # Self-loop
 }
 
 tarjan = TarjanSCC(adjacency)
 
-# 모든 SCC 찾기
+# Find all SCCs
 sccs = tarjan.find_sccs()
-# [["A", "C", "B"], ["D"]]  # 크기 > 1인 SCC는 사이클
+# [["A", "C", "B"], ["D"]]  # SCCs with size > 1 are cycles
 
-# 사이클 정보 가져오기
+# Get cycle info
 cycles = tarjan.find_cycles()
 for cycle in cycles:
-    print(f"사이클: {cycle.nodes}")
-    print(f"길이: {cycle.length}")
-    print(f"자기 루프: {cycle.is_self_loop}")
+    print(f"Cycle: {cycle.nodes}")
+    print(f"Length: {cycle.length}")
+    print(f"Self-loop: {cycle.is_self_loop}")
 ```
 
 ### TopologicalSort
 
-Kahn의 알고리즘을 사용한 위상 정렬:
+Topological sort using Kahn's algorithm:
 
 ```python
 from truthound.validators.optimization import TopologicalSort
 
 dependencies = {
-    "task_a": ["task_b", "task_c"],  # a 다음에 b, c
+    "task_a": ["task_b", "task_c"],  # a before b, c
     "task_b": ["task_d"],
     "task_c": ["task_d"],
     "task_d": [],
@@ -247,115 +247,115 @@ dependencies = {
 
 sorter = TopologicalSort(dependencies)
 
-# 정렬 수행
+# Perform sort
 try:
     order = sorter.sort()  # ["task_a", "task_b", "task_c", "task_d"]
 except ValueError:
-    print("사이클이 존재합니다")
+    print("Cycle exists")
 
-# 사이클 확인
+# Check for cycles
 if sorter.has_cycles():
-    print("사이클 감지")
+    print("Cycle detected")
 ```
 
 ### GraphTraversalMixin
 
-검증기에서 그래프 연산을 위한 믹스인:
+Mixin for graph operations in validators:
 
 ```python
 from truthound.validators.optimization import GraphTraversalMixin
 
 class HierarchyValidator(BaseValidator, GraphTraversalMixin):
     def validate(self, df):
-        # 인접 리스트 생성
+        # Build adjacency list
         adj = self.build_adjacency_list(
             df,
             id_column="id",
             parent_column="parent_id",
-            cache_key="my_hierarchy",  # 캐싱 키
+            cache_key="my_hierarchy",  # Caching key
         )
 
-        # 모든 사이클 찾기
+        # Find all cycles
         cycles = self.find_all_cycles(adj)
 
-        # 계층 사이클 찾기 (부모-자식 관계)
+        # Find hierarchy cycles (parent-child relationships)
         child_to_parent = self.build_child_to_parent(df, "id", "parent_id")
         hierarchy_cycles = self.find_hierarchy_cycles(
             child_to_parent,
             max_depth=1000,
         )
 
-        # 노드 깊이 계산
+        # Compute node depths
         depths = self.compute_node_depths(adj, roots=["root"])
 
-        # 위상 정렬
+        # Topological sort
         sorted_nodes = self.topological_sort(adj)
 
-        # 캐시 정리
+        # Clear cache
         self.clear_adjacency_cache()
 ```
 
-## 공분산 계산 최적화
+## Covariance Computation Optimization
 
-대규모 데이터셋에서 마할라노비스 거리 등 다변량 메서드를 위한 효율적인 공분산 계산입니다.
+Efficient covariance computation for multivariate methods like Mahalanobis distance on large datasets.
 
 ### IncrementalCovariance
 
-Welford의 온라인 알고리즘을 사용한 증분 공분산:
+Incremental covariance using Welford's online algorithm:
 
 ```python
 from truthound.validators.optimization import IncrementalCovariance
 
-# 10개 특성에 대한 증분 공분산
+# Incremental covariance for 10 features
 cov = IncrementalCovariance(n_features=10)
 
-# 스트리밍 데이터 업데이트
+# Update with streaming data
 for batch in data_stream:
-    cov.update_batch(batch)  # 배치 업데이트
+    cov.update_batch(batch)  # Batch update
 
-# 단일 샘플 업데이트
+# Single sample update
 cov.update(sample)
 
-# 결과 가져오기
+# Get results
 result = cov.get_result(regularization=1e-6)
-print(result.mean)       # 평균 벡터
-print(result.covariance) # 공분산 행렬
-print(result.n_samples)  # 샘플 수
+print(result.mean)       # Mean vector
+print(result.covariance) # Covariance matrix
+print(result.n_samples)  # Sample count
 ```
 
 ### WoodburyCovariance
 
-효율적인 rank-k 업데이트를 위한 Woodbury 행렬 항등식:
+Woodbury matrix identity for efficient rank-k updates:
 
 ```python
 from truthound.validators.optimization import WoodburyCovariance
 
-# 데이터에서 생성
+# Create from data
 cov = WoodburyCovariance.from_data(
     training_data,
     regularization=1e-6,
 )
 
-# 효율적인 샘플 추가/제거
+# Efficient sample add/remove
 cov.add_sample(new_sample)
 cov.remove_sample(old_sample)
 
-# 마할라노비스 거리 계산
+# Compute Mahalanobis distance
 distance = cov.mahalanobis(query_point)
 distances = cov.mahalanobis_batch(query_points)
 ```
 
 ### RobustCovarianceEstimator
 
-이상치에 강건한 MCD(Minimum Covariance Determinant) 추정:
+MCD (Minimum Covariance Determinant) estimation robust to outliers:
 
 ```python
 from truthound.validators.optimization import RobustCovarianceEstimator
 
 estimator = RobustCovarianceEstimator(
-    contamination=0.1,    # 예상 이상치 비율
-    n_subsamples=10,      # 서브샘플 수
-    subsample_size=500,   # 각 서브샘플 크기
+    contamination=0.1,    # Expected outlier ratio
+    n_subsamples=10,      # Number of subsamples
+    subsample_size=500,   # Each subsample size
     random_state=42,
 )
 
@@ -365,37 +365,37 @@ result = estimator.fit(large_data)
 
 ### BatchCovarianceMixin
 
-검증기에서 배치 공분산 계산을 위한 믹스인:
+Mixin for batch covariance computation in validators:
 
 ```python
 from truthound.validators.optimization import BatchCovarianceMixin
 
 class MahalanobisValidator(BaseValidator, BatchCovarianceMixin):
     def validate(self, data):
-        # 자동으로 최적의 방법 선택
+        # Automatically select optimal method
         result = self.compute_covariance_auto(
             data,
             use_robust=True,
         )
 
-        # 마할라노비스 거리 계산
+        # Compute Mahalanobis distances
         distances = self.compute_mahalanobis_distances(data, result)
 
-        # Woodbury 공분산 생성 (효율적 업데이트용)
+        # Create Woodbury covariance (for efficient updates)
         woodbury = self.create_woodbury_covariance(data)
 ```
 
-**설정 속성:**
+**Configuration Attributes:**
 
-| 속성 | 기본값 | 설명 |
-|-----|--------|------|
-| `_batch_size` | 10000 | 증분 처리 배치 크기 |
-| `_robust_threshold` | 5000 | 이 값 이상이면 서브샘플링된 강건 추정 |
-| `_regularization` | 1e-6 | 정칙화 파라미터 |
+| Attribute | Default | Description |
+|-----------|---------|-------------|
+| `_batch_size` | 10000 | Batch size for incremental processing |
+| `_robust_threshold` | 5000 | Use subsampled robust estimation above this |
+| `_regularization` | 1e-6 | Regularization parameter |
 
-## 지리 연산 최적화
+## Geographic Operations Optimization
 
-벡터화된 지리 공간 계산으로 거리 및 폴리곤 검증 성능을 향상시킵니다.
+Vectorized geospatial computations for improved distance and polygon validation performance.
 
 ### VectorizedGeoMixin
 
@@ -411,7 +411,7 @@ class GeoValidator(BaseValidator, VectorizedGeoMixin):
         lats = coords[:, 0]
         lons = coords[:, 1]
 
-        # 벡터화된 Haversine 거리
+        # Vectorized Haversine distance
         distances = self.haversine_vectorized(
             lat1=lats,
             lon1=lons,
@@ -420,40 +420,40 @@ class GeoValidator(BaseValidator, VectorizedGeoMixin):
             unit=DistanceUnit.KILOMETERS,
         )
 
-        # 쌍별 거리 행렬
+        # Pairwise distance matrix
         dist_matrix = self.pairwise_distances(
             lats1, lons1, lats2, lons2,
             unit=DistanceUnit.METERS,
         )
 
-        # 청크 처리로 메모리 효율적 계산
+        # Memory-efficient chunked computation
         for start, end, chunk in self.pairwise_distances_chunked(
             lats1, lons1, lats2, lons2,
             chunk_size=50000,
         ):
             process_chunk(chunk)
 
-        # 최근접 점 찾기
+        # Find nearest point
         idx, dist = self.nearest_point(
             query_lat, query_lon, lats, lons,
         )
 
-        # k-최근접 이웃
+        # k-nearest neighbors
         indices, distances = self.k_nearest_points(
             query_lat, query_lon, lats, lons, k=5,
         )
 
-        # 반경 내 점 찾기
+        # Find points within radius
         indices, distances = self.points_within_radius(
             center_lat, center_lon, lats, lons,
             radius=100,
             unit=DistanceUnit.KILOMETERS,
         )
 
-        # 방위각 계산
+        # Bearing calculation
         bearings = self.bearing_vectorized(lat1, lon1, lat2, lon2)
 
-        # 목적지 점 계산
+        # Destination point calculation
         dest_lat, dest_lon = self.destination_point(
             lat, lon,
             bearing=45,
@@ -461,28 +461,28 @@ class GeoValidator(BaseValidator, VectorizedGeoMixin):
             unit=DistanceUnit.KILOMETERS,
         )
 
-        # 바운딩 박스 생성
+        # Create bounding box
         bbox = self.create_bounding_box(
             center_lat, center_lon,
             radius=50,
             unit=DistanceUnit.KILOMETERS,
         )
 
-        # 바운딩 박스로 필터링
+        # Filter by bounding box
         mask, filtered_lats, filtered_lons = self.filter_by_bounding_box(
             lats, lons, bbox,
         )
 
-        # 좌표 유효성 검사
+        # Coordinate validation
         valid_mask = self.validate_coordinates(lats, lons)
 ```
 
 ### DistanceUnit
 
-지원하는 거리 단위:
+Supported distance units:
 
-| 단위 | 지구 반경 |
-|-----|----------|
+| Unit | Earth Radius |
+|------|--------------|
 | `METERS` | 6,371,000 m |
 | `KILOMETERS` | 6,371 km |
 | `MILES` | 3,958.8 mi |
@@ -490,14 +490,14 @@ class GeoValidator(BaseValidator, VectorizedGeoMixin):
 
 ### SpatialIndexMixin
 
-BallTree를 사용한 효율적인 공간 쿼리:
+Efficient spatial queries using BallTree:
 
 ```python
 from truthound.validators.optimization import SpatialIndexMixin
 
 class IndexedGeoValidator(BaseValidator, SpatialIndexMixin):
     def setup(self, reference_coords):
-        # 공간 인덱스 구축
+        # Build spatial index
         self.build_spatial_index(
             lats=reference_coords[:, 0],
             lons=reference_coords[:, 1],
@@ -505,27 +505,27 @@ class IndexedGeoValidator(BaseValidator, SpatialIndexMixin):
         )
 
     def validate(self, query_coords):
-        # 반경 내 쿼리
+        # Query within radius
         results = self.query_radius(
             query_lats=query_coords[:, 0],
             query_lons=query_coords[:, 1],
             radius_km=10,
         )
 
-        # k-최근접 이웃 쿼리
+        # k-nearest neighbor query
         distances_km, indices = self.query_nearest(
             query_lats=query_coords[:, 0],
             query_lons=query_coords[:, 1],
             k=5,
         )
 
-        # 인덱스 정리
+        # Clear index
         self.clear_spatial_index()
 ```
 
-## 집계 최적화
+## Aggregation Optimization
 
-Polars의 지연 평가를 활용하여 메모리 효율적인 집계 연산을 수행합니다.
+Leverage Polars' lazy evaluation for memory-efficient aggregation operations.
 
 ### LazyAggregationMixin
 
@@ -535,7 +535,7 @@ import polars as pl
 
 class CrossTableValidator(BaseValidator, LazyAggregationMixin):
     def validate(self, orders, order_items):
-        # 지연 집계
+        # Lazy aggregation
         result = self.aggregate_lazy(
             lf=order_items.lazy(),
             group_by=["order_id"],
@@ -543,10 +543,10 @@ class CrossTableValidator(BaseValidator, LazyAggregationMixin):
                 pl.col("quantity").sum().alias("total_qty"),
                 pl.col("price").sum().alias("total_price"),
             ],
-            cache_key="order_totals",  # 캐싱
+            cache_key="order_totals",  # Caching
         )
 
-        # 조인과 집계를 한 번에
+        # Join and aggregate in one operation
         result = self.aggregate_with_join(
             left=orders.lazy(),
             right=order_items.lazy(),
@@ -556,7 +556,7 @@ class CrossTableValidator(BaseValidator, LazyAggregationMixin):
             how="left",
         )
 
-        # 대용량 테이블을 위한 스트리밍 조인
+        # Streaming join for large tables
         result = self.streaming_aggregate_join(
             left=orders.lazy(),
             right=order_items.lazy(),
@@ -565,7 +565,7 @@ class CrossTableValidator(BaseValidator, LazyAggregationMixin):
             slice_size=100000,
         )
 
-        # 집계 값 비교
+        # Compare aggregate values
         mismatches = self.compare_aggregates(
             source=orders,
             aggregated=result,
@@ -575,7 +575,7 @@ class CrossTableValidator(BaseValidator, LazyAggregationMixin):
             tolerance=0.01,
         )
 
-        # 증분 집계
+        # Incremental aggregation
         updated = self.incremental_aggregate(
             existing=previous_result,
             new_data=new_items.lazy(),
@@ -584,7 +584,7 @@ class CrossTableValidator(BaseValidator, LazyAggregationMixin):
             count_column="item_count",
         )
 
-        # 윈도우 집계
+        # Window aggregation
         with_windows = self.window_aggregate(
             lf=order_items.lazy(),
             partition_by=["order_id"],
@@ -594,15 +594,15 @@ class CrossTableValidator(BaseValidator, LazyAggregationMixin):
             ],
         )
 
-        # 세미 조인 필터
+        # Semi-join filter
         filtered = self.semi_join_filter(
             main=orders.lazy(),
             filter_by=active_orders.lazy(),
             on="order_id",
-            anti=False,  # True면 anti-join
+            anti=False,  # True for anti-join
         )
 
-        # 다중 테이블 집계
+        # Multi-table aggregation
         result = self.multi_table_aggregate(
             tables={
                 "orders": orders.lazy(),
@@ -620,13 +620,13 @@ class CrossTableValidator(BaseValidator, LazyAggregationMixin):
             final_group_by="category",
         )
 
-        # 캐시 정리
+        # Clear cache
         self.clear_aggregation_cache()
 ```
 
 ### AggregationExpressionBuilder
 
-플루언트 인터페이스로 집계 표현식 생성:
+Fluent interface for building aggregation expressions:
 
 ```python
 from truthound.validators.optimization import AggregationExpressionBuilder
@@ -648,17 +648,17 @@ exprs = (
     .build()
 )
 
-# 사용
+# Usage
 result = lf.group_by("category").agg(exprs)
 ```
 
-## 검증기 프로파일링
+## Validator Profiling
 
-검증기 실행 성능을 측정하고 분석합니다.
+Measure and analyze validator execution performance.
 
 ### ProfilerConfig
 
-프로파일러 설정:
+Profiler configuration:
 
 ```python
 from truthound.validators.optimization import (
@@ -666,19 +666,19 @@ from truthound.validators.optimization import (
     ProfilerMode,
 )
 
-# 기본 설정 (타이밍만)
+# Basic configuration (timing only)
 config = ProfilerConfig.basic()
 
-# 표준 설정 (타이밍 + 메모리)
-config = ProfilerConfig()  # 기본값
+# Standard configuration (timing + memory)
+config = ProfilerConfig()  # Default
 
-# 상세 설정 (스냅샷 포함)
+# Detailed configuration (with snapshots)
 config = ProfilerConfig.detailed()
 
-# 진단 설정 (최대 상세)
+# Diagnostic configuration (maximum detail)
 config = ProfilerConfig.diagnostic()
 
-# 사용자 정의 설정
+# Custom configuration
 config = ProfilerConfig(
     mode=ProfilerMode.STANDARD,
     track_memory=True,
@@ -699,34 +699,34 @@ from truthound.validators.optimization import (
     ProfilerConfig,
 )
 
-# 프로파일러 생성
+# Create profiler
 profiler = ValidatorProfiler(config=ProfilerConfig.detailed())
 
-# 세션 시작
+# Start session
 profiler.start_session("validation_run_1", attributes={"env": "prod"})
 
-# 검증기 프로파일링
+# Profile validators
 for validator in validators:
     with profiler.profile(validator, rows_processed=100000) as ctx:
         issues = validator.validate(lf)
         ctx.set_issue_count(len(issues))
         ctx.add_attribute("columns", ["a", "b", "c"])
 
-# 세션 종료
+# End session
 session = profiler.end_session()
 
-# 결과 분석
+# Analyze results
 print(session.summary())
 print(session.to_json())
 
-# 가장 느린 검증기
+# Slowest validators
 slowest = profiler.get_slowest_validators(n=10)
 # [("SlowValidator", 150.5), ("AnotherValidator", 100.2), ...]
 
-# 메모리 집약적 검증기
+# Memory-intensive validators
 memory_heavy = profiler.get_memory_intensive_validators(n=10)
 
-# 전체 요약
+# Overall summary
 summary = profiler.summary()
 # {
 #     "total_validators": 15,
@@ -739,7 +739,7 @@ summary = profiler.summary()
 # }
 ```
 
-### 편의 함수
+### Convenience Functions
 
 ```python
 from truthound.validators.optimization import (
@@ -748,62 +748,62 @@ from truthound.validators.optimization import (
     get_default_profiler,
 )
 
-# 컨텍스트 매니저
+# Context manager
 with profile_validator(my_validator, rows_processed=10000) as ctx:
     issues = my_validator.validate(lf)
     ctx.set_issue_count(len(issues))
 
 print(ctx.metrics.timing.mean_ms)
 
-# 데코레이터
+# Decorator
 class MyValidator(Validator):
     @profiled(track_issues=True)
     def validate(self, lf):
         return [issue1, issue2]
 
-# 전역 프로파일러
+# Global profiler
 profiler = get_default_profiler()
 ```
 
 ### ValidatorMetrics
 
-수집되는 메트릭:
+Collected metrics:
 
 ```python
 metrics = profiler.get_metrics("MyValidator")
 
-# 타이밍 메트릭
-print(metrics.timing.mean_ms)    # 평균 실행 시간
-print(metrics.timing.median_ms)  # 중앙값
-print(metrics.timing.p95_ms)     # 95 백분위수
-print(metrics.timing.p99_ms)     # 99 백분위수
-print(metrics.timing.std_ms)     # 표준 편차
+# Timing metrics
+print(metrics.timing.mean_ms)    # Mean execution time
+print(metrics.timing.median_ms)  # Median
+print(metrics.timing.p95_ms)     # 95th percentile
+print(metrics.timing.p99_ms)     # 99th percentile
+print(metrics.timing.std_ms)     # Standard deviation
 
-# 메모리 메트릭
-print(metrics.memory.mean_peak_mb)       # 평균 피크 메모리
-print(metrics.memory.max_peak_mb)        # 최대 피크 메모리
-print(metrics.memory.total_gc_collections)  # GC 수집 횟수
+# Memory metrics
+print(metrics.memory.mean_peak_mb)       # Mean peak memory
+print(metrics.memory.max_peak_mb)        # Maximum peak memory
+print(metrics.memory.total_gc_collections)  # GC collection count
 
-# 처리량 메트릭
-print(metrics.throughput.mean_rows_per_sec)  # 초당 처리 행 수
-print(metrics.throughput.total_rows)         # 총 처리 행 수
+# Throughput metrics
+print(metrics.throughput.mean_rows_per_sec)  # Rows per second
+print(metrics.throughput.total_rows)         # Total rows processed
 
-# 이슈 메트릭
-print(metrics.total_issues)  # 총 발견된 이슈
-print(metrics.mean_issues)   # 평균 이슈 수
-print(metrics.error_counts)  # 오류 횟수
+# Issue metrics
+print(metrics.total_issues)  # Total issues found
+print(metrics.mean_issues)   # Mean issues
+print(metrics.error_counts)  # Error counts
 ```
 
 ### ProfilingReport
 
-보고서 생성:
+Report generation:
 
 ```python
 from truthound.validators.optimization import ProfilingReport
 
 report = ProfilingReport(profiler)
 
-# 텍스트 요약
+# Text summary
 print(report.text_summary())
 # ============================================================
 # VALIDATOR PROFILING REPORT
@@ -820,12 +820,12 @@ print(report.text_summary())
 #  2. AnotherValidator: 100.20ms
 # ...
 
-# HTML 보고서
+# HTML report
 html = report.html_report()
 with open("profile_report.html", "w") as f:
     f.write(html)
 
-# Prometheus 형식 내보내기
+# Prometheus format export
 prometheus_metrics = profiler.to_prometheus()
 # # HELP validator_execution_duration_ms Validator execution duration
 # # TYPE validator_execution_duration_ms gauge
@@ -833,20 +833,20 @@ prometheus_metrics = profiler.to_prometheus()
 # ...
 ```
 
-## 통합 예제
+## Integration Example
 
-모든 최적화 기능을 함께 사용하는 예제:
+Example using all optimization features together:
 
 ```python
 import polars as pl
 from truthound.validators.optimization import (
-    # DAG 오케스트레이션
+    # DAG orchestration
     ValidatorDAG,
     ParallelExecutionStrategy,
-    # 프로파일링
+    # Profiling
     ValidatorProfiler,
     ProfilerConfig,
-    # 믹스인
+    # Mixins
     GraphTraversalMixin,
     BatchCovarianceMixin,
     VectorizedGeoMixin,
@@ -855,18 +855,18 @@ from truthound.validators.optimization import (
 from truthound.validators import NullValidator, RangeValidator
 
 
-# 커스텀 검증기 정의
+# Define custom validator
 class OptimizedHierarchyValidator(
     BaseValidator,
     GraphTraversalMixin,
     BatchCovarianceMixin,
 ):
     def validate(self, df):
-        # 그래프 사이클 감지
+        # Graph cycle detection
         adj = self.build_adjacency_list(df, "id", "parent_id")
         cycles = self.find_all_cycles(adj)
 
-        # 이상치 감지를 위한 공분산
+        # Covariance for outlier detection
         numeric_data = df.select(pl.col(pl.Float64)).to_numpy()
         cov_result = self.compute_covariance_auto(numeric_data, use_robust=True)
         distances = self.compute_mahalanobis_distances(numeric_data, cov_result)
@@ -874,11 +874,11 @@ class OptimizedHierarchyValidator(
         return []
 
 
-# 프로파일러 설정
+# Configure profiler
 profiler = ValidatorProfiler(config=ProfilerConfig.detailed())
 profiler.start_session("optimized_validation")
 
-# DAG 구성
+# Build DAG
 dag = ValidatorDAG()
 dag.add_validators([
     NullValidator(),
@@ -886,11 +886,11 @@ dag.add_validators([
     OptimizedHierarchyValidator(),
 ])
 
-# 실행 계획 생성 및 실행
+# Create and execute plan
 plan = dag.build_execution_plan()
 print(plan.get_summary())
 
-# 병렬 실행
+# Parallel execution
 strategy = ParallelExecutionStrategy(max_workers=4)
 
 df = pl.DataFrame({"id": [1, 2, 3], "parent_id": [None, 1, 2], "value": [10, 20, 30]})
@@ -899,82 +899,82 @@ with profiler.profile(plan, rows_processed=len(df)) as ctx:
     result = plan.execute(df.lazy(), strategy)
     ctx.set_issue_count(len(result.all_issues))
 
-# 세션 종료 및 보고서
+# End session and report
 session = profiler.end_session()
 print(session.to_json())
 ```
 
-## API 레퍼런스
+## API Reference
 
-### orchestrator 모듈
+### orchestrator Module
 
-| 클래스/함수 | 설명 |
-|-----------|------|
-| `ValidatorDAG` | 검증기 의존성 DAG |
-| `ValidatorNode` | 검증기 노드 래퍼 |
-| `ValidatorPhase` | 실행 위상 열거형 |
-| `ExecutionPlan` | 실행 계획 |
-| `ExecutionLevel` | 병렬 실행 가능한 검증기 그룹 |
-| `ExecutionResult` | 실행 결과 |
-| `ExecutionStrategy` | 실행 전략 추상 클래스 |
-| `SequentialExecutionStrategy` | 순차 실행 전략 |
-| `ParallelExecutionStrategy` | 병렬 실행 전략 |
-| `AdaptiveExecutionStrategy` | 적응형 실행 전략 |
-| `create_execution_plan()` | 실행 계획 생성 편의 함수 |
-| `execute_validators()` | 검증기 실행 편의 함수 |
+| Class/Function | Description |
+|----------------|-------------|
+| `ValidatorDAG` | Validator dependency DAG |
+| `ValidatorNode` | Validator node wrapper |
+| `ValidatorPhase` | Execution phase enum |
+| `ExecutionPlan` | Execution plan |
+| `ExecutionLevel` | Group of validators that can run in parallel |
+| `ExecutionResult` | Execution result |
+| `ExecutionStrategy` | Execution strategy abstract class |
+| `SequentialExecutionStrategy` | Sequential execution strategy |
+| `ParallelExecutionStrategy` | Parallel execution strategy |
+| `AdaptiveExecutionStrategy` | Adaptive execution strategy |
+| `create_execution_plan()` | Convenience function for creating execution plan |
+| `execute_validators()` | Convenience function for executing validators |
 
-### graph 모듈
+### graph Module
 
-| 클래스/함수 | 설명 |
-|-----------|------|
-| `IterativeDFS` | 반복적 깊이 우선 탐색 |
-| `TarjanSCC` | Tarjan SCC 알고리즘 |
-| `TopologicalSort` | 위상 정렬 |
-| `GraphTraversalMixin` | 그래프 순회 믹스인 |
-| `CycleInfo` | 사이클 정보 데이터클래스 |
-| `NodeState` | 노드 상태 열거형 |
+| Class/Function | Description |
+|----------------|-------------|
+| `IterativeDFS` | Iterative depth-first search |
+| `TarjanSCC` | Tarjan SCC algorithm |
+| `TopologicalSort` | Topological sort |
+| `GraphTraversalMixin` | Graph traversal mixin |
+| `CycleInfo` | Cycle info dataclass |
+| `NodeState` | Node state enum |
 
-### covariance 모듈
+### covariance Module
 
-| 클래스/함수 | 설명 |
-|-----------|------|
-| `IncrementalCovariance` | Welford의 증분 공분산 |
-| `WoodburyCovariance` | Woodbury 업데이트 공분산 |
-| `RobustCovarianceEstimator` | MCD 기반 강건 추정 |
-| `BatchCovarianceMixin` | 배치 공분산 믹스인 |
-| `CovarianceResult` | 공분산 결과 데이터클래스 |
+| Class/Function | Description |
+|----------------|-------------|
+| `IncrementalCovariance` | Welford's incremental covariance |
+| `WoodburyCovariance` | Woodbury update covariance |
+| `RobustCovarianceEstimator` | MCD-based robust estimation |
+| `BatchCovarianceMixin` | Batch covariance mixin |
+| `CovarianceResult` | Covariance result dataclass |
 
-### geo 모듈
+### geo Module
 
-| 클래스/함수 | 설명 |
-|-----------|------|
-| `VectorizedGeoMixin` | 벡터화된 지리 연산 믹스인 |
-| `SpatialIndexMixin` | 공간 인덱싱 믹스인 |
-| `DistanceUnit` | 거리 단위 열거형 |
-| `BoundingBox` | 바운딩 박스 데이터클래스 |
+| Class/Function | Description |
+|----------------|-------------|
+| `VectorizedGeoMixin` | Vectorized geographic operations mixin |
+| `SpatialIndexMixin` | Spatial indexing mixin |
+| `DistanceUnit` | Distance unit enum |
+| `BoundingBox` | Bounding box dataclass |
 
-### aggregation 모듈
+### aggregation Module
 
-| 클래스/함수 | 설명 |
-|-----------|------|
-| `LazyAggregationMixin` | 지연 집계 믹스인 |
-| `AggregationExpressionBuilder` | 집계 표현식 빌더 |
-| `AggregationResult` | 집계 결과 데이터클래스 |
-| `JoinStrategy` | 조인 전략 설정 |
+| Class/Function | Description |
+|----------------|-------------|
+| `LazyAggregationMixin` | Lazy aggregation mixin |
+| `AggregationExpressionBuilder` | Aggregation expression builder |
+| `AggregationResult` | Aggregation result dataclass |
+| `JoinStrategy` | Join strategy configuration |
 
-### profiling 모듈
+### profiling Module
 
-| 클래스/함수 | 설명 |
-|-----------|------|
-| `ValidatorProfiler` | 메인 프로파일러 클래스 |
-| `ProfilerConfig` | 프로파일러 설정 |
-| `ProfilerMode` | 프로파일러 모드 열거형 |
-| `ValidatorMetrics` | 검증기 메트릭 |
-| `TimingMetrics` | 타이밍 메트릭 |
-| `MemoryMetrics` | 메모리 메트릭 |
-| `ThroughputMetrics` | 처리량 메트릭 |
-| `ProfilingSession` | 프로파일링 세션 |
-| `ExecutionSnapshot` | 실행 스냅샷 |
-| `ProfilingReport` | 보고서 생성기 |
-| `profile_validator()` | 프로파일링 컨텍스트 매니저 |
-| `profiled()` | 프로파일링 데코레이터 |
+| Class/Function | Description |
+|----------------|-------------|
+| `ValidatorProfiler` | Main profiler class |
+| `ProfilerConfig` | Profiler configuration |
+| `ProfilerMode` | Profiler mode enum |
+| `ValidatorMetrics` | Validator metrics |
+| `TimingMetrics` | Timing metrics |
+| `MemoryMetrics` | Memory metrics |
+| `ThroughputMetrics` | Throughput metrics |
+| `ProfilingSession` | Profiling session |
+| `ExecutionSnapshot` | Execution snapshot |
+| `ProfilingReport` | Report generator |
+| `profile_validator()` | Profiling context manager |
+| `profiled()` | Profiling decorator |

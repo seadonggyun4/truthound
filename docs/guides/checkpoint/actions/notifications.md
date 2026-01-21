@@ -1,87 +1,87 @@
 # Notification Actions
 
-알림 발송을 위한 액션입니다. Slack, Email, Teams, Discord, Telegram을 지원합니다.
+Actions for sending notifications. Supports Slack, Email, Teams, Discord, and Telegram.
 
 ## SlackNotification
 
-Slack Incoming Webhook을 통해 알림을 발송합니다.
+Sends notifications via Slack Incoming Webhook.
 
-### 설정 (SlackConfig)
+### Configuration (SlackConfig)
 
-| 속성 | 타입 | 기본값 | 설명 |
-|------|------|--------|------|
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
 | `webhook_url` | `str` | `""` | Slack Incoming Webhook URL |
-| `channel` | `str \| None` | `None` | 채널 오버라이드 |
-| `username` | `str` | `"Truthound"` | 봇 표시 이름 |
-| `icon_emoji` | `str` | `":mag:"` | 봇 아이콘 이모지 |
-| `include_details` | `bool` | `True` | 상세 통계 포함 |
-| `mention_on_failure` | `list[str]` | `[]` | 실패 시 멘션할 사용자 ID |
-| `custom_message` | `str \| None` | `None` | 커스텀 메시지 템플릿 |
-| `notify_on` | `str` | `"failure"` | 실행 조건 |
+| `channel` | `str \| None` | `None` | Channel override |
+| `username` | `str` | `"Truthound"` | Bot display name |
+| `icon_emoji` | `str` | `":mag:"` | Bot icon emoji |
+| `include_details` | `bool` | `True` | Include detailed statistics |
+| `mention_on_failure` | `list[str]` | `[]` | User IDs to mention on failure |
+| `custom_message` | `str \| None` | `None` | Custom message template |
+| `notify_on` | `str` | `"failure"` | Execution condition |
 
-### 사용 예시
+### Usage Examples
 
 ```python
 from truthound.checkpoint.actions import SlackNotification
 
-# 기본 사용
+# Basic usage
 action = SlackNotification(
     webhook_url="https://hooks.slack.com/services/T00/B00/XXX",
     notify_on="failure",
 )
 
-# 채널 및 멘션 설정
+# Channel and mention configuration
 action = SlackNotification(
     webhook_url="https://hooks.slack.com/services/T00/B00/XXX",
     channel="#data-quality",
-    mention_on_failure=["U12345678", "@here"],  # 사용자 ID 또는 @here/@channel
+    mention_on_failure=["U12345678", "@here"],  # User ID or @here/@channel
     include_details=True,
     notify_on="failure_or_error",
 )
 
-# 커스텀 메시지
+# Custom message
 action = SlackNotification(
     webhook_url="...",
     custom_message="Checkpoint '{checkpoint}' {status}: {total_issues} issues found",
 )
 ```
 
-### 메시지 형식
+### Message Format
 
-Block Kit 형식의 메시지가 발송됩니다:
+Messages are sent in Block Kit format:
 
-- 상태 이모지 (`:white_check_mark:`, `:x:`, `:warning:`)
-- 체크포인트 이름 및 상태
-- 데이터 자산, 실행 ID, 이슈 수, 통과율
-- Severity별 이슈 카운트
-- 실행 시간
+- Status emoji (`:white_check_mark:`, `:x:`, `:warning:`)
+- Checkpoint name and status
+- Data asset, run ID, issue count, pass rate
+- Issue count by severity
+- Execution time
 
 ---
 
 ## EmailNotification
 
-이메일 알림을 발송합니다. SMTP, SendGrid, AWS SES를 지원합니다.
+Sends email notifications. Supports SMTP, SendGrid, and AWS SES.
 
-### 설정 (EmailConfig)
+### Configuration (EmailConfig)
 
-| 속성 | 타입 | 기본값 | 설명 |
-|------|------|--------|------|
-| `smtp_host` | `str` | `"localhost"` | SMTP 서버 호스트 |
-| `smtp_port` | `int` | `587` | SMTP 서버 포트 |
-| `smtp_user` | `str \| None` | `None` | SMTP 인증 사용자 |
-| `smtp_password` | `str \| None` | `None` | SMTP 인증 비밀번호 |
-| `use_tls` | `bool` | `True` | TLS 사용 |
-| `use_ssl` | `bool` | `False` | SSL 사용 |
-| `from_address` | `str` | `""` | 발신자 주소 |
-| `to_addresses` | `list[str]` | `[]` | 수신자 주소 목록 |
-| `cc_addresses` | `list[str]` | `[]` | 참조 주소 목록 |
-| `subject_template` | `str` | `"[Truthound] {status} - {checkpoint}"` | 제목 템플릿 |
-| `include_html` | `bool` | `True` | HTML 본문 포함 |
-| `provider` | `str` | `"smtp"` | 제공자: `smtp`, `sendgrid`, `ses` |
-| `api_key` | `str \| None` | `None` | API 키 (SendGrid 등) |
-| `notify_on` | `str` | `"failure"` | 실행 조건 |
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `smtp_host` | `str` | `"localhost"` | SMTP server host |
+| `smtp_port` | `int` | `587` | SMTP server port |
+| `smtp_user` | `str \| None` | `None` | SMTP authentication user |
+| `smtp_password` | `str \| None` | `None` | SMTP authentication password |
+| `use_tls` | `bool` | `True` | Use TLS |
+| `use_ssl` | `bool` | `False` | Use SSL |
+| `from_address` | `str` | `""` | Sender address |
+| `to_addresses` | `list[str]` | `[]` | Recipient addresses |
+| `cc_addresses` | `list[str]` | `[]` | CC addresses |
+| `subject_template` | `str` | `"[Truthound] {status} - {checkpoint}"` | Subject template |
+| `include_html` | `bool` | `True` | Include HTML body |
+| `provider` | `str` | `"smtp"` | Provider: `smtp`, `sendgrid`, `ses` |
+| `api_key` | `str \| None` | `None` | API key (for SendGrid, etc.) |
+| `notify_on` | `str` | `"failure"` | Execution condition |
 
-### SMTP 사용
+### SMTP Usage
 
 ```python
 from truthound.checkpoint.actions import EmailNotification
@@ -90,7 +90,7 @@ action = EmailNotification(
     smtp_host="smtp.gmail.com",
     smtp_port=587,
     smtp_user="alerts@example.com",
-    smtp_password="${SMTP_PASSWORD}",  # 환경 변수 참조
+    smtp_password="${SMTP_PASSWORD}",  # Environment variable reference
     use_tls=True,
     from_address="alerts@example.com",
     to_addresses=["team@example.com", "lead@example.com"],
@@ -99,7 +99,7 @@ action = EmailNotification(
 )
 ```
 
-### SendGrid 사용
+### SendGrid Usage
 
 ```python
 action = EmailNotification(
@@ -111,52 +111,52 @@ action = EmailNotification(
 )
 ```
 
-요구 사항: 없음 (표준 라이브러리 사용)
+Requirements: None (uses standard library)
 
-### AWS SES 사용
+### AWS SES Usage
 
 ```python
 action = EmailNotification(
     provider="ses",
-    from_address="alerts@example.com",  # SES에서 검증된 이메일
+    from_address="alerts@example.com",  # Email verified in SES
     to_addresses=["team@example.com"],
     notify_on="failure",
 )
 
-# AWS 자격 증명은 환경 변수 또는 IAM 역할 사용
+# AWS credentials via environment variables or IAM role
 ```
 
-요구 사항: `pip install boto3`
+Requirements: `pip install boto3`
 
 ---
 
 ## TeamsNotification
 
-Microsoft Teams Incoming Webhook을 통해 Adaptive Card 형식의 알림을 발송합니다.
+Sends Adaptive Card format notifications via Microsoft Teams Incoming Webhook.
 
-### 설정
+### Configuration
 
-| 속성 | 타입 | 기본값 | 설명 |
-|------|------|--------|------|
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
 | `webhook_url` | `str` | `""` | Teams Webhook URL |
-| `channel` | `str \| None` | `None` | 채널 이름 (표시용) |
-| `include_details` | `bool` | `True` | 상세 정보 포함 |
-| `theme` | `MessageTheme` | `AUTO` | 메시지 테마 |
-| `card_builder` | `AdaptiveCardBuilder \| None` | `None` | 커스텀 카드 빌더 |
-| `notify_on` | `str` | `"failure"` | 실행 조건 |
+| `channel` | `str \| None` | `None` | Channel name (for display) |
+| `include_details` | `bool` | `True` | Include detailed information |
+| `theme` | `MessageTheme` | `AUTO` | Message theme |
+| `card_builder` | `AdaptiveCardBuilder \| None` | `None` | Custom card builder |
+| `notify_on` | `str` | `"failure"` | Execution condition |
 
-### 사용 예시
+### Usage Examples
 
 ```python
 from truthound.checkpoint.actions import TeamsNotification
 
-# 기본 사용
+# Basic usage
 action = TeamsNotification(
     webhook_url="https://outlook.office.com/webhook/...",
     notify_on="failure",
 )
 
-# 테마 및 상세 설정
+# Theme and detail configuration
 from truthound.checkpoint.actions.teams_notify import MessageTheme
 
 action = TeamsNotification(
@@ -168,7 +168,7 @@ action = TeamsNotification(
 )
 ```
 
-### Adaptive Card 커스터마이징
+### Adaptive Card Customization
 
 ```python
 from truthound.checkpoint.actions.teams_notify import AdaptiveCardBuilder
@@ -189,44 +189,44 @@ action = TeamsNotification(
 
 ## DiscordNotification
 
-Discord Webhook을 통해 Embed 형식의 알림을 발송합니다.
+Sends Embed format notifications via Discord Webhook.
 
-### 설정
+### Configuration
 
-| 속성 | 타입 | 기본값 | 설명 |
-|------|------|--------|------|
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
 | `webhook_url` | `str` | `""` | Discord Webhook URL |
-| `username` | `str` | `"Truthound Bot"` | 봇 표시 이름 |
-| `avatar_url` | `str \| None` | `None` | 봇 아바타 URL |
-| `embed_color` | `int` | 자동 | Embed 색상 (hex 정수) |
-| `embed_title` | `str \| None` | `None` | Embed 제목 |
-| `embed_description` | `str \| None` | `None` | Embed 설명 |
-| `embed_fields` | `list[dict]` | `[]` | 커스텀 필드 |
-| `include_mentions` | `list[str]` | `[]` | 멘션 목록 (`@here`, 역할 ID 등) |
-| `notify_on` | `str` | `"failure"` | 실행 조건 |
+| `username` | `str` | `"Truthound Bot"` | Bot display name |
+| `avatar_url` | `str \| None` | `None` | Bot avatar URL |
+| `embed_color` | `int` | Auto | Embed color (hex integer) |
+| `embed_title` | `str \| None` | `None` | Embed title |
+| `embed_description` | `str \| None` | `None` | Embed description |
+| `embed_fields` | `list[dict]` | `[]` | Custom fields |
+| `include_mentions` | `list[str]` | `[]` | Mention list (`@here`, role IDs, etc.) |
+| `notify_on` | `str` | `"failure"` | Execution condition |
 
-### 사용 예시
+### Usage Examples
 
 ```python
 from truthound.checkpoint.actions import DiscordNotification
 
-# 기본 사용
+# Basic usage
 action = DiscordNotification(
     webhook_url="https://discord.com/api/webhooks/...",
     notify_on="failure",
 )
 
-# 커스텀 설정
+# Custom configuration
 action = DiscordNotification(
     webhook_url="...",
     username="Data Quality Bot",
     avatar_url="https://example.com/logo.png",
-    embed_color=0xFF0000,  # 빨강
+    embed_color=0xFF0000,  # Red
     include_mentions=["@here"],
     notify_on="failure_or_error",
 )
 
-# 커스텀 Embed
+# Custom Embed
 action = DiscordNotification(
     webhook_url="...",
     embed_title="Data Quality Alert",
@@ -242,32 +242,32 @@ action = DiscordNotification(
 
 ## TelegramNotification
 
-Telegram Bot API를 통해 알림을 발송합니다.
+Sends notifications via Telegram Bot API.
 
-### 설정
+### Configuration
 
-| 속성 | 타입 | 기본값 | 설명 |
-|------|------|--------|------|
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
 | `bot_token` | `str` | `""` | Telegram Bot Token |
-| `chat_id` | `str` | `""` | 채널/그룹 ID |
-| `parse_mode` | `str` | `"Markdown"` | 파싱 모드: `Markdown`, `HTML` |
-| `message_template` | `str \| None` | `None` | 커스텀 메시지 템플릿 |
-| `disable_notification` | `bool` | `False` | 무음 알림 |
-| `notify_on` | `str` | `"failure"` | 실행 조건 |
+| `chat_id` | `str` | `""` | Channel/Group ID |
+| `parse_mode` | `str` | `"Markdown"` | Parse mode: `Markdown`, `HTML` |
+| `message_template` | `str \| None` | `None` | Custom message template |
+| `disable_notification` | `bool` | `False` | Silent notification |
+| `notify_on` | `str` | `"failure"` | Execution condition |
 
-### 사용 예시
+### Usage Examples
 
 ```python
 from truthound.checkpoint.actions import TelegramNotification
 
-# 기본 사용
+# Basic usage
 action = TelegramNotification(
     bot_token="${TELEGRAM_BOT_TOKEN}",
-    chat_id="-1001234567890",  # 채널/그룹 ID
+    chat_id="-1001234567890",  # Channel/Group ID
     notify_on="failure",
 )
 
-# 커스텀 메시지
+# Custom message
 action = TelegramNotification(
     bot_token="...",
     chat_id="...",
@@ -284,7 +284,7 @@ Issues: {issue_count}
 )
 ```
 
-### 사진 첨부
+### Photo Attachment
 
 ```python
 from truthound.checkpoint.actions.telegram_notify import TelegramNotificationWithPhoto
@@ -299,11 +299,11 @@ action = TelegramNotificationWithPhoto(
 
 ---
 
-## YAML 설정 예시
+## YAML Configuration Examples
 
 ```yaml
 actions:
-  # Slack 알림
+  # Slack notification
   - type: slack
     webhook_url: ${SLACK_WEBHOOK_URL}
     channel: "#data-quality"
@@ -311,7 +311,7 @@ actions:
       - "U12345678"
     notify_on: failure
 
-  # 이메일 알림
+  # Email notification
   - type: email
     smtp_host: smtp.gmail.com
     smtp_port: 587
@@ -324,20 +324,20 @@ actions:
       - lead@example.com
     notify_on: failure
 
-  # Teams 알림
+  # Teams notification
   - type: teams
     webhook_url: ${TEAMS_WEBHOOK_URL}
     include_details: true
     notify_on: failure_or_error
 
-  # Discord 알림
+  # Discord notification
   - type: discord
     webhook_url: ${DISCORD_WEBHOOK_URL}
     include_mentions:
       - "@here"
     notify_on: failure
 
-  # Telegram 알림
+  # Telegram notification
   - type: telegram
     bot_token: ${TELEGRAM_BOT_TOKEN}
     chat_id: "-1001234567890"

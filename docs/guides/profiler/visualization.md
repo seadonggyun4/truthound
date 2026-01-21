@@ -1,65 +1,65 @@
 # Visualization & HTML Reports
 
-이 문서는 프로파일 결과를 시각화하고 HTML 리포트를 생성하는 시스템을 설명합니다.
+This document describes the system for visualizing profile results and generating HTML reports.
 
-## 개요
+## Overview
 
-`src/truthound/profiler/visualization.py`에 구현된 시각화 시스템은 순수 SVG 기반 차트 렌더링과 HTML 리포트 생성을 제공합니다.
+The visualization system implemented in `src/truthound/profiler/visualization.py` provides pure SVG-based chart rendering and HTML report generation.
 
 ## ChartType
 
 ```python
 class ChartType(Enum):
-    """차트 유형"""
+    """Chart types"""
 
-    BAR = "bar"                     # 막대 차트
-    HORIZONTAL_BAR = "horizontal_bar"  # 수평 막대 차트
-    PIE = "pie"                     # 파이 차트
-    DONUT = "donut"                 # 도넛 차트
-    LINE = "line"                   # 라인 차트
-    AREA = "area"                   # 영역 차트
-    SCATTER = "scatter"             # 산점도
-    HISTOGRAM = "histogram"         # 히스토그램
-    HEATMAP = "heatmap"             # 히트맵
-    TABLE = "table"                 # 테이블
-    GAUGE = "gauge"                 # 게이지 차트
-    SPARKLINE = "sparkline"         # 스파크라인
-    TREEMAP = "treemap"             # 트리맵
-    SANKEY = "sankey"               # 산키 다이어그램
+    BAR = "bar"                     # Bar chart
+    HORIZONTAL_BAR = "horizontal_bar"  # Horizontal bar chart
+    PIE = "pie"                     # Pie chart
+    DONUT = "donut"                 # Donut chart
+    LINE = "line"                   # Line chart
+    AREA = "area"                   # Area chart
+    SCATTER = "scatter"             # Scatter plot
+    HISTOGRAM = "histogram"         # Histogram
+    HEATMAP = "heatmap"             # Heatmap
+    TABLE = "table"                 # Table
+    GAUGE = "gauge"                 # Gauge chart
+    SPARKLINE = "sparkline"         # Sparkline
+    TREEMAP = "treemap"             # Treemap
+    SANKEY = "sankey"               # Sankey diagram
 ```
 
 ## ReportTheme
 
 ```python
 class ReportTheme(Enum):
-    """리포트 테마"""
+    """Report themes"""
 
-    LIGHT = "light"               # 밝은 테마
-    DARK = "dark"                 # 어두운 테마
-    PROFESSIONAL = "professional" # 전문가용 테마
-    MINIMAL = "minimal"           # 미니멀 테마
-    COLORFUL = "colorful"         # 다채로운 테마
+    LIGHT = "light"               # Light theme
+    DARK = "dark"                 # Dark theme
+    PROFESSIONAL = "professional" # Professional theme
+    MINIMAL = "minimal"           # Minimal theme
+    COLORFUL = "colorful"         # Colorful theme
 ```
 
 ## SectionType
 
 ```python
 class SectionType(Enum):
-    """리포트 섹션 유형"""
+    """Report section types"""
 
-    OVERVIEW = "overview"               # 개요 섹션
-    COLUMN_DETAILS = "column_details"   # 컬럼 상세
-    DATA_QUALITY = "data_quality"       # 데이터 품질
-    STATISTICS = "statistics"           # 통계 정보
-    PATTERNS = "patterns"               # 패턴 정보
-    ALERTS = "alerts"                   # 알림
-    RECOMMENDATIONS = "recommendations" # 권장사항
-    CUSTOM = "custom"                   # 커스텀 섹션
+    OVERVIEW = "overview"               # Overview section
+    COLUMN_DETAILS = "column_details"   # Column details
+    DATA_QUALITY = "data_quality"       # Data quality
+    STATISTICS = "statistics"           # Statistics information
+    PATTERNS = "patterns"               # Pattern information
+    ALERTS = "alerts"                   # Alerts
+    RECOMMENDATIONS = "recommendations" # Recommendations
+    CUSTOM = "custom"                   # Custom section
 ```
 
 ## SVGChartRenderer
 
-외부 의존성 없이 순수 SVG로 차트를 렌더링합니다. ChartData와 ChartConfig를 사용하여 통합된 인터페이스를 제공합니다.
+Renders charts as pure SVG without external dependencies. Uses ChartData and ChartConfig for a unified interface.
 
 ```python
 from truthound.profiler.visualization import (
@@ -68,7 +68,7 @@ from truthound.profiler.visualization import (
 
 renderer = SVGChartRenderer()
 
-# 막대 차트
+# Bar chart
 bar_data = ChartData(
     labels=["A", "B", "C", "D", "E"],
     values=[10, 25, 15, 30, 20],
@@ -77,7 +77,7 @@ bar_data = ChartData(
 bar_config = ChartConfig(chart_type=ChartType.BAR, width=400, height=300)
 bar_svg = renderer.render(bar_data, bar_config)
 
-# 파이 차트
+# Pie chart
 pie_data = ChartData(
     labels=["Cat A", "Cat B", "Cat C", "Cat D", "Cat E"],
     values=[30, 25, 20, 15, 10],
@@ -85,7 +85,7 @@ pie_data = ChartData(
 pie_config = ChartConfig(chart_type=ChartType.PIE, width=300, height=300)
 pie_svg = renderer.render(pie_data, pie_config)
 
-# 히스토그램
+# Histogram
 hist_data = ChartData(
     labels=["0-10", "10-20", "20-30", "30-40"],
     values=[5, 12, 8, 3],
@@ -94,9 +94,9 @@ hist_data = ChartData(
 hist_config = ChartConfig(chart_type=ChartType.HISTOGRAM, width=400, height=300)
 hist_svg = renderer.render(hist_data, hist_config)
 
-# 게이지 차트
+# Gauge chart
 gauge_data = ChartData(
-    values=[85],  # 현재 값
+    values=[85],  # Current value
     title="Completeness",
     metadata={"min": 0, "max": 100},
 )
@@ -106,14 +106,14 @@ gauge_svg = renderer.render(gauge_data, gauge_config)
 
 ## HTMLReportGenerator
 
-전체 HTML 리포트를 생성합니다. ProfileData 객체나 dict를 입력으로 받습니다.
+Generates complete HTML reports. Accepts ProfileData objects or dicts as input.
 
 ```python
 from truthound.profiler.visualization import (
     HTMLReportGenerator, ReportConfig, ReportTheme, ProfileData
 )
 
-# 설정
+# Configuration
 config = ReportConfig(
     title="Data Profile Report",
     subtitle="Generated by Truthound",
@@ -130,14 +130,14 @@ config = ReportConfig(
     ],
 )
 
-# 리포트 생성
+# Generate report
 generator = HTMLReportGenerator()
 html = generator.generate(profile_data, config)
 
-# 파일로 저장
+# Save to file
 generator.save(profile_data, "report.html", config)
 
-# dict에서 생성
+# Generate from dict
 html = generator.generate_from_dict(profile_dict, config)
 ```
 
@@ -146,16 +146,16 @@ html = generator.generate_from_dict(profile_dict, config)
 ```python
 @dataclass
 class ReportConfig:
-    """리포트 설정"""
+    """Report configuration"""
 
     title: str = "Data Profile Report"
     subtitle: str = ""
     theme: ReportTheme = ReportTheme.LIGHT
-    logo_path: str | None = None        # 로고 파일 경로
-    logo_base64: str | None = None      # base64 인코딩된 로고
-    include_toc: bool = True            # 목차 포함
-    include_timestamp: bool = True      # 타임스탬프 포함
-    include_summary: bool = True        # 요약 포함
+    logo_path: str | None = None        # Logo file path
+    logo_base64: str | None = None      # Base64 encoded logo
+    include_toc: bool = True            # Include table of contents
+    include_timestamp: bool = True      # Include timestamp
+    include_summary: bool = True        # Include summary
     sections: list[SectionType] = field(default_factory=lambda: [
         SectionType.OVERVIEW,
         SectionType.DATA_QUALITY,
@@ -163,15 +163,15 @@ class ReportConfig:
         SectionType.PATTERNS,
         SectionType.RECOMMENDATIONS,
     ])
-    custom_css: str | None = None       # 커스텀 CSS
-    custom_js: str | None = None        # 커스텀 JavaScript
-    embed_resources: bool = True        # 리소스 임베딩
-    language: str = "en"                # 언어 코드
+    custom_css: str | None = None       # Custom CSS
+    custom_js: str | None = None        # Custom JavaScript
+    embed_resources: bool = True        # Embed resources
+    language: str = "en"                # Language code
 ```
 
-## 섹션 렌더러
+## Section Renderers
 
-각 섹션은 별도의 렌더러(SectionRenderer 프로토콜 구현)로 생성됩니다. 렌더러는 SectionContent, ChartRenderer, ThemeConfig를 입력으로 받습니다.
+Each section is generated by a separate renderer (implementing the SectionRenderer protocol). Renderers receive SectionContent, ChartRenderer, and ThemeConfig as input.
 
 ### OverviewSectionRenderer
 
@@ -197,10 +197,10 @@ html = renderer.render(content, chart_renderer, theme)
 from truthound.profiler.visualization import DataQualitySectionRenderer
 
 renderer = DataQualitySectionRenderer()
-# 포함 내용:
-# - 품질 게이지 차트
-# - 알림/경고 표시
-# - 컬럼별 품질 테이블
+# Included content:
+# - Quality gauge chart
+# - Alert/warning display
+# - Per-column quality table
 ```
 
 ### ColumnDetailsSectionRenderer
@@ -209,10 +209,10 @@ renderer = DataQualitySectionRenderer()
 from truthound.profiler.visualization import ColumnDetailsSectionRenderer
 
 renderer = ColumnDetailsSectionRenderer()
-# 각 컬럼별:
-# - 값 분포 차트 (BAR 또는 HISTOGRAM)
-# - 컬럼 통계 테이블
-# - 접기/펼치기 지원 (collapsible=True)
+# For each column:
+# - Value distribution chart (BAR or HISTOGRAM)
+# - Column statistics table
+# - Collapsible support (collapsible=True)
 ```
 
 ### PatternsSectionRenderer
@@ -221,9 +221,9 @@ renderer = ColumnDetailsSectionRenderer()
 from truthound.profiler.visualization import PatternsSectionRenderer
 
 renderer = PatternsSectionRenderer()
-# 포함 내용:
-# - 패턴 유형 파이 차트
-# - 패턴 상세 테이블
+# Included content:
+# - Pattern type pie chart
+# - Pattern detail table
 ```
 
 ### RecommendationsSectionRenderer
@@ -232,34 +232,34 @@ renderer = PatternsSectionRenderer()
 from truthound.profiler.visualization import RecommendationsSectionRenderer
 
 renderer = RecommendationsSectionRenderer()
-# 포함 내용:
-# - 권장사항 목록 (text_blocks)
-# - 추가 정보 테이블
+# Included content:
+# - Recommendations list (text_blocks)
+# - Additional information table
 ```
 
 ## ReportExporter
 
-다양한 형식으로 내보내기를 지원합니다. HTML과 JSON 형식을 기본 지원합니다.
+Supports export to various formats. HTML and JSON formats are supported by default.
 
 ```python
 from truthound.profiler.visualization import ReportExporter, ProfileData
 
 exporter = ReportExporter()
 
-# HTML 내보내기
+# HTML export
 html_str = exporter.to_html(profile_data, config)
 
-# JSON 내보내기
+# JSON export
 json_str = exporter.to_json(profile_data)
 
-# 파일로 내보내기
+# Export to file
 exporter.to_file(profile_data, "report.html", format="html")
 exporter.to_file(profile_data, "profile.json", format="json")
 ```
 
-## 테마 커스터마이징
+## Theme Customization
 
-ThemeConfig로 커스텀 테마를 생성하거나 ThemeRegistry에 등록할 수 있습니다.
+Custom themes can be created with ThemeConfig or registered in ThemeRegistry.
 
 ```python
 from truthound.profiler.visualization import ThemeConfig, theme_registry, HTMLReportGenerator
@@ -279,81 +279,81 @@ custom_theme = ThemeConfig(
     border_radius="8px",
 )
 
-# 레지스트리에 등록
+# Register in registry
 theme_registry.register("my_theme", custom_theme)
 
-# 테마를 직접 전달
+# Pass theme directly
 generator = HTMLReportGenerator(theme=custom_theme)
 ```
 
-## 차트 렌더링 방식
+## Chart Rendering Methods
 
-| 출력 형식 | 차트 엔진 | 특징 |
-|-----------|-----------|------|
-| HTML | ApexCharts | 인터랙티브, JS 필요 |
-| PDF | SVG (순수) | JS 의존성 없음, 정적 |
-| Markdown | 텍스트 | 아스키 아트 차트 |
+| Output Format | Chart Engine | Characteristics |
+|---------------|--------------|-----------------|
+| HTML | ApexCharts | Interactive, requires JS |
+| PDF | SVG (pure) | No JS dependency, static |
+| Markdown | Text | ASCII art charts |
 
 ```python
-# HTML용 인터랙티브 차트
+# Interactive charts for HTML
 html_generator = HTMLReportGenerator(config)
-html = html_generator.generate(profile)  # ApexCharts 사용
+html = html_generator.generate(profile)  # Uses ApexCharts
 
-# PDF용 정적 SVG 차트
+# Static SVG charts for PDF
 pdf_exporter = ReportExporter()
-pdf_exporter.export(profile, "report.pdf")  # 순수 SVG 사용
+pdf_exporter.export(profile, "report.pdf")  # Uses pure SVG
 ```
 
-## 빠른 리포트 생성
+## Quick Report Generation
 
 ```python
 from truthound.profiler.visualization import generate_report
 
-# 간편 함수
+# Convenience function
 html = generate_report(profile)
 with open("report.html", "w") as f:
     f.write(html)
 
-# 테마 지정
+# Specify theme
 html = generate_report(profile, theme=ReportTheme.DARK)
 ```
 
-## 비교 리포트
+## Comparison Reports
 
-여러 프로파일을 비교하는 리포트를 생성합니다.
+Generate reports comparing multiple profiles.
 
 ```python
 from truthound.profiler.visualization import compare_profiles
 
-# 여러 프로파일 비교
+# Compare multiple profiles
 html = compare_profiles(
     profiles=[profile1, profile2, profile3],
     labels=["Before", "After", "Latest"],
     config=ReportConfig(title="Profile Comparison Report"),
 )
 
-# 포함 내용:
-# - 프로파일 개요 비교 테이블 (테이블명, 행수, 컬럼수)
-# - 품질 점수 비교 막대 차트
+# Included content:
+# - Profile overview comparison table (table name, row count, column count)
+# - Quality score comparison bar chart
 ```
 
-## CLI 사용법
+## CLI Usage
 
 ```bash
-# HTML 리포트 생성
+# Generate HTML report
 th profile data.csv --output report.html --format html
 
-# 테마 지정
+# Specify theme
 th profile data.csv --output report.html --theme dark
 
-# PDF 리포트 생성
+# Generate PDF report
 th profile data.csv --output report.pdf --format pdf
 
-# 비교 리포트
+# Comparison report
 th compare-profiles profile1.json profile2.json --output comparison.html
 ```
 
-## 다음 단계
+## Next Steps
 
-- [국제화](i18n.md) - 다국어 리포트 생성
-- [분산 처리](distributed.md) - 대규모 리포트 병렬 생성
+- [Internationalization](i18n.md) - Generate multilingual reports
+- [Distributed Processing](distributed.md) - Parallel report generation at scale

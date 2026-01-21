@@ -1,38 +1,38 @@
 # Webhook Actions
 
-HTTP 웹훅을 통해 외부 시스템과 통합하는 액션입니다.
+Actions for integration with external systems via HTTP webhooks.
 
 ## WebhookAction
 
-모든 HTTP 엔드포인트에 요청을 보낼 수 있는 범용 웹훅 액션입니다.
+A general-purpose webhook action that can send requests to any HTTP endpoint.
 
-### 설정 (WebhookConfig)
+### Configuration (WebhookConfig)
 
-| 속성 | 타입 | 기본값 | 설명 |
-|------|------|--------|------|
-| `url` | `str` | `""` | 웹훅 URL (필수) |
-| `method` | `str` | `"POST"` | HTTP 메서드: `GET`, `POST`, `PUT`, `PATCH`, `DELETE` |
-| `headers` | `dict[str, str]` | `{}` | 추가 HTTP 헤더 |
-| `auth_type` | `str` | `"none"` | 인증 타입: `none`, `basic`, `bearer`, `api_key` |
-| `auth_credentials` | `dict[str, str]` | `{}` | 인증 자격 증명 |
-| `payload_template` | `dict \| None` | `None` | 커스텀 페이로드 템플릿 |
-| `include_full_result` | `bool` | `True` | 전체 결과 포함 여부 |
-| `ssl_verify` | `bool` | `True` | SSL 인증서 검증 |
-| `success_codes` | `list[int]` | `[200, 201, 202, 204]` | 성공으로 간주할 HTTP 상태 코드 |
-| `notify_on` | `str` | `"always"` | 실행 조건 |
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `url` | `str` | `""` | Webhook URL (required) |
+| `method` | `str` | `"POST"` | HTTP method: `GET`, `POST`, `PUT`, `PATCH`, `DELETE` |
+| `headers` | `dict[str, str]` | `{}` | Additional HTTP headers |
+| `auth_type` | `str` | `"none"` | Authentication type: `none`, `basic`, `bearer`, `api_key` |
+| `auth_credentials` | `dict[str, str]` | `{}` | Authentication credentials |
+| `payload_template` | `dict \| None` | `None` | Custom payload template |
+| `include_full_result` | `bool` | `True` | Include full result in payload |
+| `ssl_verify` | `bool` | `True` | SSL certificate verification |
+| `success_codes` | `list[int]` | `[200, 201, 202, 204]` | HTTP status codes considered successful |
+| `notify_on` | `str` | `"always"` | Execution condition |
 
-### 기본 사용법
+### Basic Usage
 
 ```python
 from truthound.checkpoint.actions import WebhookAction
 
-# 기본 POST 요청
+# Basic POST request
 action = WebhookAction(
     url="https://api.example.com/data-quality/events",
     notify_on="failure",
 )
 
-# PUT 요청
+# PUT request
 action = WebhookAction(
     url="https://api.example.com/status",
     method="PUT",
@@ -40,21 +40,21 @@ action = WebhookAction(
 )
 ```
 
-### 인증 설정
+### Authentication Configuration
 
-#### Bearer Token 인증
+#### Bearer Token Authentication
 
 ```python
 action = WebhookAction(
     url="https://api.example.com/webhook",
     auth_type="bearer",
     auth_credentials={
-        "token": "${API_TOKEN}",  # 환경 변수 참조
+        "token": "${API_TOKEN}",  # Environment variable reference
     },
 )
 ```
 
-#### Basic 인증
+#### Basic Authentication
 
 ```python
 action = WebhookAction(
@@ -67,20 +67,20 @@ action = WebhookAction(
 )
 ```
 
-#### API Key 인증
+#### API Key Authentication
 
 ```python
 action = WebhookAction(
     url="https://api.example.com/webhook",
     auth_type="api_key",
     auth_credentials={
-        "header": "X-API-Key",  # 헤더 이름 (기본: "X-API-Key")
+        "header": "X-API-Key",  # Header name (default: "X-API-Key")
         "key": "${API_KEY}",
     },
 )
 ```
 
-### 커스텀 헤더
+### Custom Headers
 
 ```python
 action = WebhookAction(
@@ -93,9 +93,9 @@ action = WebhookAction(
 )
 ```
 
-### 커스텀 페이로드
+### Custom Payload
 
-`payload_template`을 사용하여 페이로드를 커스터마이징할 수 있습니다. 플레이스홀더를 지원합니다.
+Use `payload_template` to customize the payload. Placeholders are supported.
 
 ```python
 action = WebhookAction(
@@ -117,30 +117,30 @@ action = WebhookAction(
 )
 ```
 
-#### 지원 플레이스홀더
+#### Supported Placeholders
 
-| 플레이스홀더 | 설명 |
-|--------------|------|
-| `${checkpoint}` | 체크포인트 이름 |
-| `${run_id}` | 실행 ID |
-| `${status}` | 결과 상태 |
-| `${run_time}` | 실행 시간 (ISO 8601) |
-| `${data_asset}` | 데이터 자산 이름 |
-| `${total_issues}` | 총 이슈 수 |
-| `${critical_issues}` | Critical 이슈 수 |
-| `${high_issues}` | High 이슈 수 |
-| `${medium_issues}` | Medium 이슈 수 |
-| `${low_issues}` | Low 이슈 수 |
-| `${pass_rate}` | 통과율 |
+| Placeholder | Description |
+|-------------|-------------|
+| `${checkpoint}` | Checkpoint name |
+| `${run_id}` | Execution ID |
+| `${status}` | Result status |
+| `${run_time}` | Execution time (ISO 8601) |
+| `${data_asset}` | Data asset name |
+| `${total_issues}` | Total issue count |
+| `${critical_issues}` | Critical issue count |
+| `${high_issues}` | High issue count |
+| `${medium_issues}` | Medium issue count |
+| `${low_issues}` | Low issue count |
+| `${pass_rate}` | Pass rate |
 
-### 기본 페이로드
+### Default Payload
 
-`payload_template`이 없을 때의 기본 페이로드:
+Default payload when `payload_template` is not specified:
 
 ```json
 {
   "event": "validation_completed",
-  "checkpoint": "daily_validation",
+  "checkpoint": "daily_data_validation",
   "run_id": "20240115_120000",
   "status": "failure",
   "run_time": "2024-01-15T12:00:00",
@@ -153,38 +153,38 @@ action = WebhookAction(
     "low_issues": 50,
     "pass_rate": 0.85
   },
-  "full_result": { ... }  // include_full_result=True 시
+  "full_result": { ... }  // When include_full_result=True
 }
 ```
 
-### SSL 검증 비활성화
+### Disable SSL Verification
 
-내부 네트워크의 자체 서명 인증서를 사용하는 경우:
+For self-signed certificates on internal networks:
 
 ```python
 action = WebhookAction(
     url="https://internal.example.com/webhook",
-    ssl_verify=False,  # 주의: 보안상 권장하지 않음
+    ssl_verify=False,  # Warning: Not recommended for security reasons
 )
 ```
 
-### 성공 코드 커스터마이징
+### Custom Success Codes
 
 ```python
 action = WebhookAction(
     url="https://api.example.com/webhook",
-    success_codes=[200, 201, 202, 204, 302],  # 302 리다이렉트도 성공으로 처리
+    success_codes=[200, 201, 202, 204, 302],  # Treat 302 redirect as success
 )
 ```
 
-### 재시도 설정
+### Retry Configuration
 
 ```python
 action = WebhookAction(
     url="https://api.example.com/webhook",
-    timeout_seconds=30,    # 요청 타임아웃
-    retry_count=3,         # 실패 시 최대 3회 재시도
-    retry_delay_seconds=2, # 재시도 간격 2초
+    timeout_seconds=30,    # Request timeout
+    retry_count=3,         # Maximum 3 retries on failure
+    retry_delay_seconds=2, # 2-second interval between retries
 )
 ```
 
@@ -192,21 +192,21 @@ action = WebhookAction(
 
 ## GitHubAction
 
-GitHub Actions와 통합하는 액션입니다. Job Summary, Annotations, Outputs을 설정합니다.
+Action for integration with GitHub Actions. Configures Job Summary, Annotations, and Outputs.
 
-### 설정
+### Configuration
 
-| 속성 | 타입 | 기본값 | 설명 |
-|------|------|--------|------|
-| `token` | `str` | `""` | GitHub Token (없으면 환경 변수 사용) |
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `token` | `str` | `""` | GitHub Token (uses environment variable if not provided) |
 | `repo` | `str` | `""` | Repository (owner/repo) |
-| `check_name` | `str` | `"Truthound"` | Check Run 이름 |
-| `step_summary` | `bool` | `True` | Job Summary 작성 |
-| `set_output` | `bool` | `True` | Workflow 출력 설정 |
-| `annotations` | `bool` | `True` | 오류/경고 Annotation 출력 |
-| `notify_on` | `str` | `"always"` | 실행 조건 |
+| `check_name` | `str` | `"Truthound"` | Check Run name |
+| `step_summary` | `bool` | `True` | Write Job Summary |
+| `set_output` | `bool` | `True` | Set workflow outputs |
+| `annotations` | `bool` | `True` | Output error/warning annotations |
+| `notify_on` | `str` | `"always"` | Execution condition |
 
-### 사용 예시
+### Usage Example
 
 ```python
 from truthound.checkpoint.actions import GitHubAction
@@ -220,7 +220,7 @@ action = GitHubAction(
 )
 ```
 
-### GitHub Actions Workflow에서 사용
+### Usage in GitHub Actions Workflow
 
 ```yaml
 - name: Run Data Quality Check
@@ -236,17 +236,17 @@ action = GitHubAction(
 
 ---
 
-## YAML 설정 예시
+## YAML Configuration Example
 
 ```yaml
 actions:
-  # 기본 웹훅
+  # Basic webhook
   - type: webhook
     url: https://api.example.com/data-quality/events
     method: POST
     notify_on: failure
 
-  # 인증 설정
+  # Authentication configuration
   - type: webhook
     url: https://api.example.com/webhook
     method: POST
@@ -257,7 +257,7 @@ actions:
       X-Custom-Header: custom-value
     notify_on: always
 
-  # 커스텀 페이로드
+  # Custom payload
   - type: webhook
     url: https://api.example.com/webhook
     payload_template:
@@ -268,7 +268,7 @@ actions:
     include_full_result: false
     notify_on: failure_or_error
 
-  # GitHub Actions 통합
+  # GitHub Actions integration
   - type: github
     step_summary: true
     set_output: true

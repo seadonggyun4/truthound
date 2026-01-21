@@ -334,11 +334,12 @@ truthound lineage visualize large_lineage.json -o focused.html --focus important
 
 ## Python API
 
-For programmatic access, use the renderer classes directly:
+For programmatic access, use the `get_renderer` factory function or renderer classes directly:
 
 ```python
 from truthound.lineage import LineageGraph
 from truthound.lineage.visualization import (
+    get_renderer,  # Factory function
     D3Renderer,
     CytoscapeRenderer,
     GraphvizRenderer,
@@ -349,17 +350,36 @@ from truthound.lineage.visualization import (
 # Load graph
 graph = LineageGraph.load("lineage.json")
 
-# Create renderer
-renderer = D3Renderer()
+# Option 1: Use factory function (recommended)
+renderer = get_renderer("d3", theme="dark")
+html = renderer.render(graph)
 
-# Render with config
-config = RenderConfig(theme="dark", highlight_nodes=["my_node"])
+# Option 2: Create renderer directly
+renderer = D3Renderer()
+config = RenderConfig(highlight_nodes=["my_node"])
 html = renderer.render(graph, config)
+
+# Render subgraph focused on a specific node
+html = renderer.render_subgraph(
+    graph,
+    root_node_id="my_table",
+    direction="both",  # "upstream" or "downstream"
+    max_depth=3,
+)
 
 # Save output
 with open("graph.html", "w") as f:
     f.write(html)
 ```
+
+### Available Renderers
+
+| Renderer Type | Class | Output Format |
+|---------------|-------|---------------|
+| `"d3"` | `D3Renderer` | HTML (interactive) |
+| `"cytoscape"` | `CytoscapeRenderer` | HTML (interactive) |
+| `"graphviz"` | `GraphvizRenderer` | SVG/PNG/PDF (static) |
+| `"mermaid"` | `MermaidRenderer` | Markdown (text) |
 
 ## See Also
 

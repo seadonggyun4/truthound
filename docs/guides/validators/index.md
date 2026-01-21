@@ -6,20 +6,20 @@ This document provides a reference for validators implemented in Truthound. Each
 
 ---
 
-## 문서 구조 (Document Structure)
+## Document Structure
 
-이 디렉토리의 문서들은 Truthound 검증기 시스템의 모든 측면을 다룹니다:
+The documents in this directory cover all aspects of the Truthound validator system:
 
-| 문서 | 설명 |
-|-----|------|
-| **[index.md](index.md)** (이 문서) | 개요, 모든 264개 검증기 빠른 참조 |
-| **[categories.md](categories.md)** | 28개 카테고리 상세 설명 |
-| **[built-in.md](built-in.md)** | 289개 내장 검증기 전체 참조 |
-| **[custom-validators.md](custom-validators.md)** | SDK로 커스텀 검증기 개발하기 |
-| **[enterprise-sdk.md](enterprise-sdk.md)** | 엔터프라이즈 SDK (샌드박스, 서명, 라이선싱) |
-| **[security.md](security.md)** | ReDoS 보호, SQL 인젝션 방지 |
-| **[i18n.md](i18n.md)** | 15개 언어 국제화 지원 |
-| **[optimization.md](optimization.md)** | DAG 실행, 성능 최적화, 프로파일링 |
+| Document | Description |
+|----------|-------------|
+| **[index.md](index.md)** (this document) | Overview, quick reference for all 264 validators |
+| **[categories.md](categories.md)** | Detailed descriptions of 28 categories |
+| **[built-in.md](built-in.md)** | Complete reference for 289 built-in validators |
+| **[custom-validators.md](custom-validators.md)** | Developing custom validators with SDK |
+| **[enterprise-sdk.md](enterprise-sdk.md)** | Enterprise SDK (sandbox, signing, licensing) |
+| **[security.md](security.md)** | ReDoS protection, SQL injection prevention |
+| **[i18n.md](i18n.md)** | Internationalization support for 15 languages |
+| **[optimization.md](optimization.md)** | DAG execution, performance optimization, profiling |
 
 ---
 

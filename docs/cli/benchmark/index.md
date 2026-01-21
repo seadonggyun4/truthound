@@ -5,6 +5,22 @@ Performance testing commands for measuring and comparing Truthound operations.
 !!! note "HTML Report Dependency"
     HTML benchmark reports require Jinja2. Install with: `pip install truthound[reports]`
 
+## Quick Start
+
+```bash
+# Run quick benchmark suite
+truthound benchmark run --suite quick
+
+# Run single 'profile' benchmark
+truthound benchmark run profile
+
+# List available benchmarks
+truthound benchmark list
+
+# Compare results
+truthound benchmark compare baseline.json current.json
+```
+
 ## Overview
 
 | Command | Description | Primary Use Case |
@@ -12,6 +28,10 @@ Performance testing commands for measuring and comparing Truthound operations.
 | [`run`](run.md) | Run performance benchmarks | Performance testing |
 | [`list`](list.md) | List available benchmarks | Discovery |
 | [`compare`](compare.md) | Compare benchmark results | Regression detection |
+
+!!! tip "Common Mistake"
+    `profile`, `check`, `scan` are **benchmark names**, not subcommands.
+    Use `benchmark run profile`, not `benchmark profile`.
 
 ## What are Benchmarks?
 

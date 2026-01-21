@@ -1,12 +1,12 @@
 # PDF Export
 
-Truthound Data Docs는 WeasyPrint를 사용하여 HTML 리포트를 PDF로 내보낼 수 있습니다.
+Truthound Data Docs supports exporting HTML reports to PDF using WeasyPrint.
 
-## 설치
+## Installation
 
-PDF 내보내기는 **시스템 라이브러리**와 **Python 패키지** 모두 필요합니다.
+PDF export requires both **system libraries** and **Python packages**.
 
-### 1. 시스템 라이브러리 설치
+### 1. System Library Installation
 
 #### macOS (Homebrew)
 
@@ -35,17 +35,17 @@ apk add pango gdk-pixbuf libffi-dev
 
 #### Windows
 
-GTK3 런타임이 필요합니다:
+GTK3 runtime is required:
 
-1. [GTK3 for Windows](https://github.com/nickvidal/weasyprint/releases) 다운로드
-2. 압축 해제 후 PATH에 추가
+1. Download [GTK3 for Windows](https://github.com/nickvidal/weasyprint/releases)
+2. Extract and add to PATH
 
-또는 bundled 버전:
+Alternatively, use the bundled version:
 ```bash
 pip install weasyprint[gtk3]
 ```
 
-### 2. Python 패키지 설치
+### 2. Python Package Installation
 
 ```bash
 pip install truthound[pdf]
@@ -54,7 +54,7 @@ pip install truthound[pdf]
 ### Docker
 
 ```dockerfile
-# Debian/Ubuntu 기반
+# Debian/Ubuntu based
 FROM python:3.11-slim
 RUN apt-get update && apt-get install -y \
     libpango-1.0-0 \
@@ -67,13 +67,13 @@ RUN pip install truthound[pdf]
 ```
 
 ```dockerfile
-# Alpine 기반
+# Alpine based
 FROM python:3.11-alpine
 RUN apk add --no-cache pango gdk-pixbuf libffi-dev
 RUN pip install truthound[pdf]
 ```
 
-## 기본 사용법
+## Basic Usage
 
 ### CLI
 
@@ -96,15 +96,15 @@ path = export_to_pdf(
 print(f"PDF saved to: {path}")
 ```
 
-### export_report 함수
+### export_report Function
 
 ```python
 from truthound.datadocs import export_report
 
-# HTML 내보내기
+# HTML export
 export_report(profile_dict, "report.html", format="html")
 
-# PDF 내보내기
+# PDF export
 export_report(profile_dict, "report.pdf", format="pdf")
 ```
 
@@ -112,23 +112,23 @@ export_report(profile_dict, "report.pdf", format="pdf")
 
 ### PdfExporter
 
-기본 PDF 익스포터입니다.
+The default PDF exporter.
 
 ```python
 from truthound.datadocs.exporters.pdf import PdfExporter, PdfOptions
 
 options = PdfOptions(
-    page_size="A4",           # 페이지 크기
-    orientation="portrait",   # portrait 또는 landscape
+    page_size="A4",           # Page size
+    orientation="portrait",   # portrait or landscape
     margin_top="1in",
     margin_right="0.75in",
     margin_bottom="1in",
     margin_left="0.75in",
-    dpi=150,                  # 래스터화 해상도
-    image_quality=85,         # JPEG 품질 (1-100)
-    font_embedding=True,      # 폰트 임베딩
-    optimize=True,            # 파일 크기 최적화
-    linearize=False,          # 웹 뷰잉 최적화
+    dpi=150,                  # Rasterization resolution
+    image_quality=85,         # JPEG quality (1-100)
+    font_embedding=True,      # Font embedding
+    optimize=True,            # File size optimization
+    linearize=False,          # Web viewing optimization
 )
 
 exporter = PdfExporter(options=options)
@@ -138,15 +138,15 @@ pdf_bytes = result.content
 
 ### OptimizedPdfExporter
 
-대용량 리포트를 위한 최적화된 익스포터입니다.
+An optimized exporter for large reports.
 
 ```python
 from truthound.datadocs.exporters.pdf import OptimizedPdfExporter, PdfOptions
 
 exporter = OptimizedPdfExporter(
-    chunk_size=1000,       # 청크당 아이템 수
-    parallel=True,         # 병렬 처리 활성화
-    max_workers=None,      # 워커 스레드 수 (None=자동)
+    chunk_size=1000,       # Items per chunk
+    parallel=True,         # Enable parallel processing
+    max_workers=None,      # Number of worker threads (None=auto)
     options=PdfOptions(
         page_size="A4",
         optimize=True,
@@ -156,38 +156,38 @@ exporter = OptimizedPdfExporter(
 result = exporter.export(html_content, report_context)
 ```
 
-**특징:**
-- 청크 렌더링: 대용량 데이터셋을 분할 처리
-- 병렬 처리: 청크별 병렬 PDF 생성
-- 메모리 효율: 스트리밍 방식 처리
-- PDF 병합: pypdf/PyPDF2를 사용한 청크 병합
+**Features:**
+- Chunk rendering: Processes large datasets in segments
+- Parallel processing: Parallel PDF generation per chunk
+- Memory efficiency: Streaming-based processing
+- PDF merging: Chunk merging using pypdf/PyPDF2
 
-## SVG 차트 렌더링
+## SVG Chart Rendering
 
-PDF 내보내기 시 차트는 자동으로 SVG로 렌더링됩니다.
+Charts are automatically rendered as SVG during PDF export.
 
 ```python
 from truthound.datadocs import HTMLReportBuilder
 
-# PDF용 빌더 (내부적으로 _use_svg=True)
+# Builder for PDF (internally uses _use_svg=True)
 builder = HTMLReportBuilder(theme="professional", _use_svg=True)
 html = builder.build(profile_dict)
 
-# export_to_pdf는 자동으로 SVG 사용
+# export_to_pdf automatically uses SVG
 from truthound.datadocs import export_to_pdf
-export_to_pdf(profile_dict, "report.pdf")  # SVG 차트 사용
+export_to_pdf(profile_dict, "report.pdf")  # Uses SVG charts
 ```
 
-**SVG 지원 차트:**
+**SVG Supported Charts:**
 - Bar, Horizontal Bar, Line
 - Pie, Donut
 
-**미지원 차트 (Bar로 대체):**
+**Unsupported Charts (substituted with Bar):**
 - Heatmap, Scatter, Box, Gauge, Radar
 
 ## Print CSS
 
-PDF 출력에 최적화된 CSS가 자동으로 적용됩니다.
+CSS optimized for PDF output is automatically applied.
 
 ```css
 @page {
@@ -223,11 +223,11 @@ PDF 출력에 최적화된 CSS가 자동으로 적용됩니다.
 }
 ```
 
-## 에러 처리
+## Error Handling
 
 ### WeasyPrintDependencyError
 
-시스템 라이브러리가 설치되지 않은 경우 발생합니다.
+Raised when system libraries are not installed.
 
 ```python
 from truthound.datadocs import export_to_pdf
@@ -237,22 +237,22 @@ try:
     export_to_pdf(profile_dict, "report.pdf")
 except WeasyPrintDependencyError as e:
     print("PDF export requires system dependencies.")
-    print(e)  # 설치 가이드 출력
+    print(e)  # Outputs installation guide
 ```
 
-**일반적인 에러:**
+**Common Errors:**
 
 ```
 cannot load library 'libpango-1.0-0'
 ```
 
-→ 시스템 라이브러리가 설치되지 않음. 위의 설치 가이드 참조.
+→ System libraries not installed. Refer to the installation guide above.
 
 ```
 ModuleNotFoundError: No module named 'weasyprint'
 ```
 
-→ Python 패키지 미설치. `pip install truthound[pdf]` 실행.
+→ Python package not installed. Run `pip install truthound[pdf]`.
 
 ## API Reference
 
@@ -261,13 +261,13 @@ ModuleNotFoundError: No module named 'weasyprint'
 ```python
 @dataclass
 class PdfOptions(ExportOptions):
-    dpi: int = 150                    # 래스터화 해상도
-    image_quality: int = 85           # JPEG 품질 (1-100)
-    font_embedding: bool = True       # 폰트 임베딩
-    optimize: bool = True             # 파일 크기 최적화
-    linearize: bool = False           # 웹 뷰잉용 선형화
-    chunk_size: int = 1000            # 청크 크기
-    parallel: bool = True             # 병렬 처리
+    dpi: int = 150                    # Rasterization resolution
+    image_quality: int = 85           # JPEG quality (1-100)
+    font_embedding: bool = True       # Font embedding
+    optimize: bool = True             # File size optimization
+    linearize: bool = False           # Linearization for web viewing
+    chunk_size: int = 1000            # Chunk size
+    parallel: bool = True             # Parallel processing
 ```
 
 ### ExportOptions (Base)
@@ -275,15 +275,15 @@ class PdfOptions(ExportOptions):
 ```python
 @dataclass
 class ExportOptions:
-    page_size: str = "A4"             # 페이지 크기
+    page_size: str = "A4"             # Page size
     orientation: str = "portrait"     # portrait/landscape
     margin_top: str = "1in"
     margin_right: str = "0.75in"
     margin_bottom: str = "1in"
     margin_left: str = "0.75in"
-    compress: bool = True             # 압축 활성화
-    include_metadata: bool = True     # 메타데이터 포함
-    minify: bool = False              # HTML 최소화
+    compress: bool = True             # Enable compression
+    include_metadata: bool = True     # Include metadata
+    minify: bool = False              # HTML minification
 ```
 
 ### ExportResult
@@ -291,12 +291,12 @@ class ExportOptions:
 ```python
 @dataclass
 class ExportResult:
-    content: bytes | str              # 내보낸 콘텐츠
-    format: str                       # 포맷 (pdf, html 등)
-    size_bytes: int                   # 바이트 크기
-    metadata: dict[str, Any]          # 메타데이터
-    success: bool = True              # 성공 여부
-    error: str | None = None          # 에러 메시지
+    content: bytes | str              # Exported content
+    format: str                       # Format (pdf, html, etc.)
+    size_bytes: int                   # Size in bytes
+    metadata: dict[str, Any]          # Metadata
+    success: bool = True              # Success status
+    error: str | None = None          # Error message
 ```
 
 ### export_to_pdf
@@ -310,25 +310,25 @@ def export_to_pdf(
     theme: ReportTheme | str = ReportTheme.PROFESSIONAL,
 ) -> Path:
     """
-    프로파일을 PDF로 내보냅니다.
+    Export profile to PDF.
 
     Args:
-        profile: TableProfile dict 또는 객체
-        output_path: 출력 PDF 파일 경로
-        title: 리포트 제목
-        subtitle: 부제목
-        theme: 테마
+        profile: TableProfile dict or object
+        output_path: Output PDF file path
+        title: Report title
+        subtitle: Subtitle
+        theme: Theme
 
     Returns:
-        PDF 파일 경로
+        PDF file path
 
     Raises:
-        WeasyPrintDependencyError: 의존성 미설치 시
+        WeasyPrintDependencyError: When dependencies are not installed
     """
 ```
 
 ## See Also
 
-- [HTML Reports](html-reports.md) - HTML 리포트 생성
-- [Charts](charts.md) - 차트 렌더링
-- [Themes](themes.md) - 테마 커스터마이징
+- [HTML Reports](html-reports.md) - HTML report generation
+- [Charts](charts.md) - Chart rendering
+- [Themes](themes.md) - Theme customization

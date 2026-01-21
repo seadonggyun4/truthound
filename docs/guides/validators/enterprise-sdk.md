@@ -1,10 +1,10 @@
-# 엔터프라이즈 SDK
+# Enterprise SDK
 
-엔터프라이즈 SDK는 프로덕션 환경에서 커스텀 검증기를 안전하게 실행하기 위한 고급 기능을 제공합니다.
+The Enterprise SDK provides advanced features for safely executing custom validators in production environments.
 
-## 개요
+## Overview
 
-엔터프라이즈 SDK 아키텍처:
+Enterprise SDK Architecture:
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -22,17 +22,17 @@
 
 ---
 
-## 1. 샌드박스 실행
+## 1. Sandbox Execution
 
-신뢰할 수 없는 검증기를 격리된 환경에서 실행합니다.
+Execute untrusted validators in isolated environments.
 
 ### SandboxBackend
 
-| 백엔드 | 격리 수준 | 설명 |
-|--------|-----------|------|
-| `IN_PROCESS` | 낮음 | 프로세스 내 실행, import 제한만 적용 |
-| `SUBPROCESS` | 중간 | 별도 프로세스, OS 리소스 제한 |
-| `DOCKER` | 높음 | Docker 컨테이너, 완전한 격리 |
+| Backend | Isolation Level | Description |
+|---------|-----------------|-------------|
+| `IN_PROCESS` | Low | In-process execution, import restrictions only |
+| `SUBPROCESS` | Medium | Separate process, OS resource limits |
+| `DOCKER` | High | Docker container, complete isolation |
 
 ### SandboxConfig
 
@@ -43,7 +43,7 @@ from truthound.validators.sdk.enterprise import (
     create_sandbox,
 )
 
-# 커스텀 설정
+# Custom configuration
 config = SandboxConfig(
     backend=SandboxBackend.SUBPROCESS,
     timeout_seconds=60.0,
@@ -62,13 +62,13 @@ config = SandboxConfig(
     working_dir="/workspace",
 )
 
-# 프리셋 설정
-strict_config = SandboxConfig.strict()    # Docker, 256MB, 30초
-standard_config = SandboxConfig.standard() # Subprocess, 512MB, 60초
-permissive_config = SandboxConfig.permissive() # In-process, 2GB, 120초
+# Preset configurations
+strict_config = SandboxConfig.strict()    # Docker, 256MB, 30 seconds
+standard_config = SandboxConfig.standard() # Subprocess, 512MB, 60 seconds
+permissive_config = SandboxConfig.permissive() # In-process, 2GB, 120 seconds
 ```
 
-### 사용 예시
+### Usage Example
 
 ```python
 from truthound.validators.sdk.enterprise import (
@@ -102,32 +102,32 @@ else:
 @dataclass
 class SandboxResult:
     success: bool
-    result: Any = None              # 검증 결과 (성공 시)
-    error: str | None = None        # 에러 메시지 (실패 시)
+    result: Any = None              # Validation result (on success)
+    error: str | None = None        # Error message (on failure)
     execution_time_seconds: float = 0.0
     memory_used_mb: float = 0.0
     cpu_time_seconds: float = 0.0
-    sandbox_id: str = ""            # 고유 실행 ID
+    sandbox_id: str = ""            # Unique execution ID
     started_at: datetime = ...
     finished_at: datetime | None = None
 
     def to_dict(self) -> dict[str, Any]: ...
 ```
 
-### 예외 클래스
+### Exception Classes
 
-| 예외 | 설명 |
-|------|------|
-| `SandboxError` | 샌드박스 기본 예외 |
-| `SandboxTimeoutError` | 실행 시간 초과 |
-| `SandboxResourceError` | 리소스 제한 초과 |
-| `SandboxSecurityError` | 보안 위반 감지 |
+| Exception | Description |
+|-----------|-------------|
+| `SandboxError` | Base sandbox exception |
+| `SandboxTimeoutError` | Execution timeout |
+| `SandboxResourceError` | Resource limit exceeded |
+| `SandboxSecurityError` | Security violation detected |
 
 ---
 
-## 2. 리소스 제한
+## 2. Resource Limits
 
-검증기 실행 시 CPU, 메모리, 시간 제한을 적용합니다.
+Apply CPU, memory, and time limits during validator execution.
 
 ### ResourceLimits
 
@@ -137,25 +137,25 @@ from truthound.validators.sdk.enterprise import (
     CombinedResourceLimiter,
 )
 
-# 커스텀 설정
+# Custom configuration
 limits = ResourceLimits(
-    max_memory_mb=512,           # 최대 메모리 (MB)
-    max_cpu_seconds=60.0,        # 최대 CPU 시간 (초)
-    max_wall_time_seconds=120.0, # 최대 실제 시간 (초)
-    max_file_descriptors=256,    # 최대 파일 디스크립터
-    max_processes=4,             # 최대 자식 프로세스
-    soft_memory_threshold=0.8,   # 경고 임계값 (0.0-1.0)
-    check_interval_seconds=0.5,  # 모니터링 주기
-    graceful_degradation=True,   # 우아한 저하 허용
+    max_memory_mb=512,           # Maximum memory (MB)
+    max_cpu_seconds=60.0,        # Maximum CPU time (seconds)
+    max_wall_time_seconds=120.0, # Maximum wall time (seconds)
+    max_file_descriptors=256,    # Maximum file descriptors
+    max_processes=4,             # Maximum child processes
+    soft_memory_threshold=0.8,   # Warning threshold (0.0-1.0)
+    check_interval_seconds=0.5,  # Monitoring interval
+    graceful_degradation=True,   # Allow graceful degradation
 )
 
-# 프리셋
-strict_limits = ResourceLimits.strict()     # 256MB, 30초
-standard_limits = ResourceLimits.standard() # 512MB, 60초
-generous_limits = ResourceLimits.generous() # 4GB, 300초
+# Presets
+strict_limits = ResourceLimits.strict()     # 256MB, 30 seconds
+standard_limits = ResourceLimits.standard() # 512MB, 60 seconds
+generous_limits = ResourceLimits.generous() # 4GB, 300 seconds
 ```
 
-### 리소스 모니터링
+### Resource Monitoring
 
 ```python
 from truthound.validators.sdk.enterprise import (
@@ -172,22 +172,22 @@ monitor = ResourceMonitor(
 
 monitor.start()
 try:
-    # 검증 실행
+    # Execute validation
     result = validator.validate(data)
 finally:
     monitor.stop()
 
-# 사용량 확인
+# Check usage
 usage = monitor.get_usage()
 print(f"Memory: {usage.memory_mb:.1f}MB ({usage.memory_percent:.1f}%)")
 print(f"CPU: {usage.cpu_seconds:.2f}s ({usage.cpu_percent:.1f}%)")
 
-# 피크 사용량
+# Peak usage
 peak = monitor.get_peak_usage()
 print(f"Peak memory: {peak.memory_mb:.1f}MB")
 ```
 
-### 컨텍스트 매니저
+### Context Manager
 
 ```python
 from truthound.validators.sdk.enterprise import (
@@ -196,13 +196,13 @@ from truthound.validators.sdk.enterprise import (
     CPULimiter,
 )
 
-# 통합 리미터
+# Combined limiter
 limiter = CombinedResourceLimiter(limits)
 with limiter.enforce() as monitor:
     result = validator.validate(data)
     print(f"Used: {monitor.get_usage().memory_mb:.1f}MB")
 
-# 개별 리미터
+# Individual limiters
 with MemoryLimiter(max_memory_mb=256).enforce() as monitor:
     result = validator.validate(data)
 
@@ -210,7 +210,7 @@ with CPULimiter(max_cpu_seconds=30).enforce() as monitor:
     result = validator.validate(data)
 ```
 
-### 데코레이터
+### Decorator
 
 ```python
 from truthound.validators.sdk.enterprise.resources import with_resource_limits
@@ -242,20 +242,20 @@ class ResourceUsage:
 
 ---
 
-## 3. 코드 서명
+## 3. Code Signing
 
-검증기의 무결성을 보장하기 위한 암호화 서명 시스템입니다.
+Cryptographic signing system to ensure validator integrity.
 
 ### SignatureAlgorithm
 
-| 알고리즘 | 설명 | 용도 |
-|----------|------|------|
-| `SHA256` | SHA256 해시 | 개발/테스트 |
-| `SHA512` | SHA512 해시 | 개발/테스트 |
-| `HMAC_SHA256` | HMAC-SHA256 | 프로덕션 |
-| `HMAC_SHA512` | HMAC-SHA512 | 프로덕션 |
-| `RSA_SHA256` | RSA + SHA256 | 엔터프라이즈 (cryptography 필요) |
-| `ED25519` | Ed25519 | 엔터프라이즈 (cryptography 필요) |
+| Algorithm | Description | Use Case |
+|-----------|-------------|----------|
+| `SHA256` | SHA256 hash | Development/testing |
+| `SHA512` | SHA512 hash | Development/testing |
+| `HMAC_SHA256` | HMAC-SHA256 | Production |
+| `HMAC_SHA512` | HMAC-SHA512 | Production |
+| `RSA_SHA256` | RSA + SHA256 | Enterprise (requires cryptography) |
+| `ED25519` | Ed25519 | Enterprise (requires cryptography) |
 
 ### SignatureConfig
 
@@ -266,26 +266,26 @@ from truthound.validators.sdk.enterprise import (
     SignatureManager,
 )
 
-# 개발용 (약한 보안)
+# Development (weak security)
 dev_config = SignatureConfig.development()
 
-# 프로덕션용
+# Production
 prod_config = SignatureConfig.production(secret_key="your-secret-key")
 
-# 커스텀 설정
+# Custom configuration
 config = SignatureConfig(
     algorithm=SignatureAlgorithm.HMAC_SHA256,
     secret_key="your-secret-key",
-    private_key_path=Path("/path/to/private.pem"),  # RSA용
-    public_key_path=Path("/path/to/public.pem"),    # RSA용
-    validity_days=365,                               # 서명 유효 기간
-    require_timestamp=True,                          # 타임스탬프 필수
-    trusted_signers=("admin@company.com",),         # 신뢰 서명자
-    revocation_list_url="https://...",              # 폐기 목록 URL
+    private_key_path=Path("/path/to/private.pem"),  # For RSA
+    public_key_path=Path("/path/to/public.pem"),    # For RSA
+    validity_days=365,                               # Signature validity period
+    require_timestamp=True,                          # Timestamp required
+    trusted_signers=("admin@company.com",),         # Trusted signers
+    revocation_list_url="https://...",              # Revocation list URL
 )
 ```
 
-### 서명 및 검증
+### Signing and Verification
 
 ```python
 from truthound.validators.sdk.enterprise import (
@@ -295,22 +295,22 @@ from truthound.validators.sdk.enterprise import (
     verify_validator,
 )
 
-# 매니저 사용
+# Using manager
 config = SignatureConfig.production(secret_key="secret")
 manager = SignatureManager(config)
 
-# 서명 생성
+# Create signature
 signature = manager.sign_validator(
     MyValidator,
     signer_id="admin@company.com",
     metadata={"team": "data-quality"},
 )
 
-# 서명 저장/로드
+# Save/load signature
 manager.save_signature(signature, Path("my_validator.sig"))
 loaded_sig = manager.load_signature(Path("my_validator.sig"))
 
-# 서명 검증
+# Verify signature
 try:
     is_valid = manager.verify_validator(
         MyValidator,
@@ -325,7 +325,7 @@ except SignatureTamperError:
 except SignatureVerificationError as e:
     print(f"Verification failed: {e.reason}")
 
-# 간편 함수
+# Convenience functions
 signature = sign_validator(
     MyValidator,
     secret_key="secret",
@@ -347,8 +347,8 @@ is_valid = verify_validator(
 class ValidatorSignature:
     validator_name: str
     validator_version: str
-    code_hash: str                    # 소스 코드 해시
-    signature: str                    # Base64 인코딩된 서명
+    code_hash: str                    # Source code hash
+    signature: str                    # Base64-encoded signature
     algorithm: SignatureAlgorithm
     signer_id: str = ""
     signed_at: datetime = ...
@@ -366,9 +366,9 @@ class ValidatorSignature:
 
 ---
 
-## 4. 버전 호환성
+## 4. Version Compatibility
 
-검증기와 Truthound 버전 간의 호환성을 검사합니다.
+Check compatibility between validators and Truthound versions.
 
 ### SemanticVersion
 
@@ -379,24 +379,24 @@ from truthound.validators.sdk.enterprise import (
     VersionSpec,
 )
 
-# 버전 파싱
+# Parse version
 version = SemanticVersion.parse("2.1.0")
 version_pre = SemanticVersion.parse("2.0.0-alpha.1+build.123")
 
-# 버전 비교
+# Compare versions
 v1 = SemanticVersion.parse("1.0.0")
 v2 = SemanticVersion.parse("2.0.0")
 print(v1 < v2)  # True
 
-# 버전 범프
+# Version bumping
 version = SemanticVersion(1, 2, 3)
 print(version.bump_major())  # 2.0.0
 print(version.bump_minor())  # 1.3.0
 print(version.bump_patch())  # 1.2.4
 
-# 호환성 확인
+# Compatibility check
 compatibility = v1.is_compatible_with(v2)
-# VersionCompatibility.INCOMPATIBLE (메이저 버전 다름)
+# VersionCompatibility.INCOMPATIBLE (different major version)
 ```
 
 ### VersionConstraint
@@ -404,48 +404,48 @@ compatibility = v1.is_compatible_with(v2)
 ```python
 from truthound.validators.sdk.enterprise import VersionConstraint
 
-# 제약 조건 파싱
+# Parse constraints
 constraint = VersionConstraint.parse(">=1.0.0")
 constraint = VersionConstraint.parse("<2.0.0")
 constraint = VersionConstraint.parse("~1.2.0")  # >=1.2.0, <1.3.0
 constraint = VersionConstraint.parse("^1.2.0")  # >=1.2.0, <2.0.0
 
-# 매칭 확인
+# Check matching
 version = SemanticVersion.parse("1.5.0")
 print(constraint.matches(version))  # True
 ```
 
-#### 지원 연산자
+#### Supported Operators
 
-| 연산자 | 예시 | 의미 |
-|--------|------|------|
-| `=` | `=1.0.0` | 정확히 1.0.0 |
-| `!=` | `!=1.0.0` | 1.0.0 제외 |
-| `>` | `>1.0.0` | 1.0.0 초과 |
-| `>=` | `>=1.0.0` | 1.0.0 이상 |
-| `<` | `<2.0.0` | 2.0.0 미만 |
-| `<=` | `<=2.0.0` | 2.0.0 이하 |
-| `~` | `~1.2.0` | >=1.2.0, <1.3.0 (패치 변경 허용) |
-| `^` | `^1.2.0` | >=1.2.0, <2.0.0 (마이너 변경 허용) |
+| Operator | Example | Meaning |
+|----------|---------|---------|
+| `=` | `=1.0.0` | Exactly 1.0.0 |
+| `!=` | `!=1.0.0` | Excludes 1.0.0 |
+| `>` | `>1.0.0` | Greater than 1.0.0 |
+| `>=` | `>=1.0.0` | 1.0.0 or greater |
+| `<` | `<2.0.0` | Less than 2.0.0 |
+| `<=` | `<=2.0.0` | 2.0.0 or less |
+| `~` | `~1.2.0` | >=1.2.0, <1.3.0 (patch changes allowed) |
+| `^` | `^1.2.0` | >=1.2.0, <2.0.0 (minor changes allowed) |
 
 ### VersionSpec
 
-복합 버전 조건을 지원합니다.
+Supports compound version conditions.
 
 ```python
 from truthound.validators.sdk.enterprise import VersionSpec
 
-# AND 조합 (쉼표)
+# AND combination (comma)
 spec = VersionSpec.parse(">=1.0.0,<2.0.0")
 
-# OR 조합 (||)
+# OR combination (||)
 spec = VersionSpec.parse(">=1.0.0,<2.0.0 || >=3.0.0")
 
-# 매칭 확인
+# Check matching
 version = SemanticVersion.parse("1.5.0")
 print(spec.matches(version))  # True
 
-# 와일드카드 (모든 버전 허용)
+# Wildcard (allows all versions)
 spec = VersionSpec.parse("*")
 ```
 
@@ -459,10 +459,10 @@ from truthound.validators.sdk.enterprise import (
 
 checker = VersionChecker(
     truthound_version="1.0.0",
-    python_version=None,  # 자동 감지
+    python_version=None,  # Auto-detect
 )
 
-# 단일 검증기 호환성 확인
+# Single validator compatibility check
 try:
     compatibility = checker.check_compatibility(
         MyValidator,
@@ -471,7 +471,7 @@ try:
 except VersionConflictError as e:
     print(f"Incompatible: {e.required} required, {e.actual} installed")
 
-# 여러 검증기 확인
+# Check multiple validators
 results = checker.check_all(
     [Validator1, Validator2, Validator3],
     raise_on_first=False,
@@ -480,23 +480,23 @@ for name, compat in results.items():
     print(f"{name}: {compat.name}")
 ```
 
-### 검증기 버전 정보
+### Declaring Validator Version Information
 
-검증기 클래스에 버전 정보를 선언합니다:
+Declare version information in validator classes:
 
 ```python
 class MyValidator(Validator):
     name = "my_validator"
     version = "1.2.0"
 
-    # Truthound 버전 요구사항
+    # Truthound version requirements
     min_truthound_version = "1.0.0"
     max_truthound_version = "2.0.0"
 
-    # Python 버전 요구사항
+    # Python version requirements
     python_version = ">=3.11"
 
-    # 의존성 (패키지명: 버전 스펙)
+    # Dependencies (package name: version spec)
     dependencies = {
         "polars": ">=0.20.0",
         "numpy": ">=1.24.0,<2.0.0",
@@ -505,28 +505,28 @@ class MyValidator(Validator):
 
 ---
 
-## 5. 라이선스 관리
+## 5. License Management
 
-검증기의 라이선스를 추적하고 검증합니다.
+Track and verify validator licenses.
 
 ### LicenseType
 
 ```python
 from truthound.validators.sdk.enterprise import LicenseType
 
-# 오픈 소스 라이선스
+# Open source licenses
 LicenseType.MIT
 LicenseType.APACHE_2
 LicenseType.BSD_3
 LicenseType.GPL_3
 LicenseType.LGPL_3
 
-# 상용 라이선스
+# Commercial licenses
 LicenseType.COMMERCIAL
 LicenseType.ENTERPRISE
 LicenseType.TRIAL
 
-# 특수 라이선스
+# Special licenses
 LicenseType.PROPRIETARY
 LicenseType.CUSTOM
 ```
@@ -536,27 +536,27 @@ LicenseType.CUSTOM
 ```python
 from truthound.validators.sdk.enterprise import LicenseInfo, LicenseType
 
-# 프리셋 라이선스
+# Preset licenses
 mit_license = LicenseInfo.mit("my_validator")
 apache_license = LicenseInfo.apache2("my_validator")
 trial_license = LicenseInfo.trial("my_validator", days=30)
 
-# 커스텀 라이선스
+# Custom license
 license_info = LicenseInfo(
     license_type=LicenseType.COMMERCIAL,
     license_key="...",
     licensee="Company Inc.",
     issued_at=datetime.now(timezone.utc),
     expires_at=datetime.now(timezone.utc) + timedelta(days=365),
-    max_users=10,           # 0 = 무제한
-    max_rows=1_000_000,     # 0 = 무제한
-    features=("advanced", "ml"),  # 허용 기능
-    restrictions=("no_export",),  # 제한 사항
+    max_users=10,           # 0 = unlimited
+    max_rows=1_000_000,     # 0 = unlimited
+    features=("advanced", "ml"),  # Allowed features
+    restrictions=("no_export",),  # Restrictions
     validator_name="my_validator",
     validator_version="1.0.0",
 )
 
-# 라이선스 확인
+# License checks
 print(license_info.is_expired())      # False
 print(license_info.is_open_source())  # False
 print(license_info.is_commercial())   # True
@@ -566,7 +566,7 @@ print(license_info.has_feature("advanced"))  # True
 
 ### LicenseValidator
 
-라이선스 정책을 검증합니다.
+Validates license policies.
 
 ```python
 from truthound.validators.sdk.enterprise import (
@@ -575,10 +575,10 @@ from truthound.validators.sdk.enterprise import (
 )
 
 validator = LicenseValidator(
-    allow_expired=False,        # 만료 라이선스 허용
-    allow_trial=True,           # 평가판 허용
-    require_commercial=False,   # 상용 필수
-    required_features=["ml"],   # 필수 기능
+    allow_expired=False,        # Allow expired licenses
+    allow_trial=True,           # Allow trial licenses
+    require_commercial=False,   # Require commercial license
+    required_features=["ml"],   # Required features
 )
 
 try:
@@ -603,13 +603,13 @@ manager = LicenseManager(
     validator=LicenseValidator(),
 )
 
-# 라이선스 조회
+# Retrieve license
 license_info = manager.get_license(MyValidator)
 
-# 라이선스 검증
+# Validate license
 is_valid = manager.validate_license(MyValidator)
 
-# 사용량 추적
+# Track usage
 manager.track_usage(
     MyValidator,
     rows_processed=10000,
@@ -617,48 +617,48 @@ manager.track_usage(
     session_id="session-123",
 )
 
-# 사용량 리포트
+# Usage report
 report = manager.get_usage_report(
     start_date=datetime(2024, 1, 1),
     end_date=datetime(2024, 12, 31),
 )
 ```
 
-### 검증기에 라이선스 선언
+### Declaring Licenses in Validators
 
 ```python
 class MyCommercialValidator(Validator):
     name = "my_commercial_validator"
-    license_type = "COMMERCIAL"  # 또는 LicenseType.COMMERCIAL
-    license_key = "..."  # 라이선스 키 (선택)
+    license_type = "COMMERCIAL"  # Or LicenseType.COMMERCIAL
+    license_key = "..."  # License key (optional)
 ```
 
 ---
 
-## 6. 퍼징 테스트
+## 6. Fuzz Testing
 
-검증기의 안정성을 테스트하기 위한 퍼징 프레임워크입니다.
+Fuzzing framework for testing validator stability.
 
 ### FuzzStrategy
 
-| 전략 | 설명 |
-|------|------|
-| `RANDOM` | 순수 무작위 데이터 |
-| `BOUNDARY` | 경계값 테스트 |
-| `MUTATION` | 유효 데이터 변형 |
-| `DICTIONARY` | 알려진 문제 값 사전 |
-| `STRUCTURE_AWARE` | 스키마 인식 퍼징 |
+| Strategy | Description |
+|----------|-------------|
+| `RANDOM` | Pure random data |
+| `BOUNDARY` | Boundary value testing |
+| `MUTATION` | Mutate valid data |
+| `DICTIONARY` | Known problematic values dictionary |
+| `STRUCTURE_AWARE` | Schema-aware fuzzing |
 
 ### FuzzConfig
 
 ```python
 from truthound.validators.sdk.enterprise import FuzzConfig, FuzzStrategy
 
-# 커스텀 설정
+# Custom configuration
 config = FuzzConfig(
     strategy=FuzzStrategy.RANDOM,
     iterations=100,
-    seed=42,                    # 재현성을 위한 시드
+    seed=42,                    # Seed for reproducibility
     max_rows=1000,
     max_columns=20,
     timeout_seconds=10.0,
@@ -668,9 +668,9 @@ config = FuzzConfig(
     mutation_rate=0.1,
 )
 
-# 프리셋
-quick_config = FuzzConfig.quick()       # 10회, 5초
-thorough_config = FuzzConfig.thorough() # 1000회, 30초
+# Presets
+quick_config = FuzzConfig.quick()       # 10 iterations, 5 seconds
+thorough_config = FuzzConfig.thorough() # 1000 iterations, 30 seconds
 ```
 
 ### FuzzRunner
@@ -678,7 +678,7 @@ thorough_config = FuzzConfig.thorough() # 1000회, 30초
 ```python
 from truthound.validators.sdk.enterprise import FuzzRunner, run_fuzz_tests
 
-# 기본 퍼징
+# Basic fuzzing
 report = run_fuzz_tests(
     MyValidator,
     iterations=100,
@@ -689,7 +689,7 @@ print(f"Passed: {report.passed}/{report.total_iterations}")
 print(f"Success rate: {report.success_rate:.1%}")
 print(f"Duration: {report.total_duration_seconds:.2f}s")
 
-# 실패 사례 확인
+# Check failures
 for error in report.errors:
     print(f"Iteration {error.iteration}:")
     print(f"  Seed: {error.seed_used}")
@@ -697,7 +697,7 @@ for error in report.errors:
     print(f"  Error: {error.error}")
 ```
 
-### 속성 기반 테스트
+### Property-Based Testing
 
 ```python
 from truthound.validators.sdk.enterprise import FuzzRunner
@@ -709,13 +709,13 @@ for prop_name, report in reports.items():
     print(f"{prop_name}: {report.success_rate:.1%}")
 ```
 
-테스트되는 속성:
+Tested properties:
 
-| 속성 | 설명 |
-|------|------|
-| `no_crash` | 어떤 입력에도 크래시 없음 |
-| `returns_list` | 항상 리스트 반환 |
-| `issues_have_fields` | 이슈에 필수 필드 존재 |
+| Property | Description |
+|----------|-------------|
+| `no_crash` | No crash on any input |
+| `returns_list` | Always returns a list |
+| `issues_have_fields` | Issues have required fields |
 
 ### PropertyBasedTester
 
@@ -724,42 +724,42 @@ from truthound.validators.sdk.enterprise import PropertyBasedTester
 
 tester = PropertyBasedTester(MyValidator)
 
-# 개별 속성 테스트
+# Individual property tests
 print(tester.test_no_crash(data))
 print(tester.test_returns_list(data))
 print(tester.test_issues_have_fields(data))
 
-# 모든 속성 테스트
+# All property tests
 results = tester.run_all(data)
 ```
 
-### 엣지 케이스 값
+### Edge Case Values
 
-퍼저가 생성하는 엣지 케이스 값:
+Edge case values generated by the fuzzer:
 
-**숫자:**
+**Numeric:**
 - `0`, `-0`, `1`, `-1`
 - `float("inf")`, `float("-inf")`, `float("nan")`
 - `2**31 - 1`, `-(2**31)`, `2**63 - 1`, `-(2**63)`
 - `1e-300`, `1e300`, `-1e-300`, `-1e300`
 
-**문자열:**
-- `""` (빈 문자열)
-- `" "`, `"\t"`, `"\n"`, `"\r\n"` (공백)
+**String:**
+- `""` (empty string)
+- `" "`, `"\t"`, `"\n"`, `"\r\n"` (whitespace)
 - `"null"`, `"NULL"`, `"None"`, `"undefined"`, `"NaN"`, `"inf"`
-- XSS/SQL 인젝션 페이로드
-- 경로 순회 패턴
-- 널 바이트, 긴 문자열
+- XSS/SQL injection payloads
+- Path traversal patterns
+- Null bytes, long strings
 
-**유니코드:**
+**Unicode:**
 - `"Hello 世界"`, `"مرحبا"`, `"שלום"`, `"🎉🚀💻"`
-- 제로 폭 공백, BOM
+- Zero-width spaces, BOM
 
 ---
 
 ## 7. EnterpriseSDKManager
 
-모든 엔터프라이즈 기능을 통합하는 매니저 클래스입니다.
+Manager class integrating all enterprise features.
 
 ### EnterpriseConfig
 
@@ -769,46 +769,46 @@ from truthound.validators.sdk.enterprise import (
     EnterpriseConfig,
 )
 
-# 프리셋 설정
-dev_config = EnterpriseConfig.development()  # 최소 보안
-prod_config = EnterpriseConfig.production(license_key="...")  # 표준 보안
-secure_config = EnterpriseConfig.secure(license_key="...")  # 최대 보안
+# Preset configurations
+dev_config = EnterpriseConfig.development()  # Minimal security
+prod_config = EnterpriseConfig.production(license_key="...")  # Standard security
+secure_config = EnterpriseConfig.secure(license_key="...")  # Maximum security
 
-# 커스텀 설정
+# Custom configuration
 config = EnterpriseConfig(
-    # 샌드박스
+    # Sandbox
     sandbox_enabled=True,
     sandbox_backend=SandboxBackend.SUBPROCESS,
     sandbox_timeout_seconds=60.0,
 
-    # 리소스 제한
+    # Resource limits
     resource_limits=ResourceLimits.standard(),
 
-    # 서명
+    # Signing
     signing_enabled=True,
     signing_config=SignatureConfig.production("secret"),
 
-    # 버전 검사
+    # Version checking
     version_check_enabled=True,
     truthound_version="1.0.0",
 
-    # 라이선스
+    # License
     license_check_enabled=True,
     license_secret_key="license-key",
     license_dir=Path("/licenses"),
 )
 ```
 
-### 통합 실행
+### Integrated Execution
 
 ```python
 async with EnterpriseSDKManager(config) as manager:
-    # 모든 보호 기능이 적용된 실행
+    # Execute with all protection features applied
     result = await manager.execute_validator(
         validator_class=MyValidator,
         data=my_dataframe,
         config={"columns": ("col1",)},
-        signature=signature,  # 선택
+        signature=signature,  # Optional
     )
 
     if result.success:
@@ -818,13 +818,13 @@ async with EnterpriseSDKManager(config) as manager:
     else:
         print(f"Failed: {result.error}")
 
-    # 검사 결과 확인
+    # Check results
     print(f"Version compatible: {result.version_compatible}")
     print(f"Signature valid: {result.signature_valid}")
     print(f"License valid: {result.license_valid}")
 ```
 
-### 동기 실행
+### Synchronous Execution
 
 ```python
 manager = EnterpriseSDKManager(config)
@@ -834,25 +834,25 @@ result = manager.execute_validator_sync(
 )
 ```
 
-### 개별 기능 사용
+### Using Individual Features
 
 ```python
 manager = EnterpriseSDKManager(config)
 
-# 서명
+# Signing
 signature = manager.sign_validator(MyValidator, signer_id="admin")
 is_valid = manager.verify_validator(MyValidator, signature)
 
-# 버전 호환성
+# Version compatibility
 compatibility = manager.check_compatibility(MyValidator)
 
-# 라이선스
+# License
 license_info = manager.get_license(MyValidator)
 
-# 문서 생성
+# Documentation generation
 docs = manager.generate_docs(MyValidator, format=DocFormat.MARKDOWN)
 
-# 퍼징
+# Fuzzing
 report = manager.fuzz_validator(MyValidator, FuzzConfig.quick())
 ```
 
@@ -862,7 +862,7 @@ report = manager.fuzz_validator(MyValidator, FuzzConfig.quick())
 @dataclass
 class ExecutionResult:
     success: bool
-    validation_result: Any = None     # 검증 결과
+    validation_result: Any = None     # Validation result
     error: str | None = None
     sandbox_result: SandboxResult | None = None
     resource_usage: ResourceUsage | None = None
@@ -876,8 +876,8 @@ class ExecutionResult:
 
 ---
 
-## 다음 단계
+## Next Steps
 
-- [보안 가이드](security.md) - ReDoS 보호, SQL 인젝션 방지
-- [커스텀 검증기](custom-validators.md) - SDK 기본 사용법
-- [내장 검증기](built-in.md) - 289개 내장 검증기 참조
+- [Security Guide](security.md) - ReDoS protection, SQL injection prevention
+- [Custom Validators](custom-validators.md) - SDK basic usage
+- [Built-in Validators](built-in.md) - 289 built-in validators reference

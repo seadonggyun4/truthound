@@ -1,75 +1,75 @@
 # Phase 9: Plugin Architecture
 
-Truthound의 플러그인 아키텍처는 확장성과 유지보수성을 위해 설계되었습니다. 외부 패키지를 통해 validators, reporters, datasources 등을 확장할 수 있습니다.
+Truthound's plugin architecture is designed for extensibility and maintainability. External packages can extend validators, reporters, datasources, and more.
 
-## 목차
+## Table of Contents
 
-- [개요](#개요)
-- [빠른 시작](#빠른-시작)
-- [플러그인 타입](#플러그인-타입)
-- [플러그인 생성](#플러그인-생성)
-- [Hook 시스템](#hook-시스템)
-- [CLI 명령어](#cli-명령어)
-- [고급 사용법](#고급-사용법)
+- [Overview](#overview)
+- [Quick Start](#quick-start)
+- [Plugin Types](#plugin-types)
+- [Creating Plugins](#creating-plugins)
+- [Hook System](#hook-system)
+- [CLI Commands](#cli-commands)
+- [Advanced Usage](#advanced-usage)
 
-## 개요
+## Overview
 
-플러그인 아키텍처의 주요 구성 요소:
+Key components of the plugin architecture:
 
-- **PluginManager**: 플러그인 생명주기 관리 (발견, 로드, 활성화, 언로드)
-- **PluginRegistry**: 플러그인 등록 및 조회
-- **HookManager**: 이벤트 기반 확장 시스템
-- **PluginDiscovery**: 플러그인 자동 발견 (Entry points, 디렉토리 스캔)
+- **PluginManager**: Plugin lifecycle management (discovery, load, activate, unload)
+- **PluginRegistry**: Plugin registration and lookup
+- **HookManager**: Event-based extension system
+- **PluginDiscovery**: Automatic plugin discovery (Entry points, directory scanning)
 
-## 빠른 시작
+## Quick Start
 
-### 플러그인 사용
+### Using Plugins
 
 ```python
 from truthound.plugins import PluginManager, get_plugin_manager
 
-# 글로벌 매니저 사용
+# Use global manager
 manager = get_plugin_manager()
 
-# 플러그인 발견
+# Discover plugins
 manager.discover_plugins()
 
-# 특정 플러그인 로드
+# Load specific plugin
 manager.load_plugin("my-validator-plugin")
 
-# 모든 플러그인 로드
+# Load all plugins
 manager.load_all()
 
-# 활성 플러그인 확인
+# Check active plugins
 for plugin in manager.get_active_plugins():
     print(f"{plugin.name} v{plugin.version}")
 ```
 
-### CLI로 플러그인 관리
+### Managing Plugins via CLI
 
 ```bash
-# 발견된 플러그인 목록
+# List discovered plugins
 truthound plugin list
 
-# 플러그인 상세 정보
+# Plugin details
 truthound plugin info my-plugin
 
-# 플러그인 로드
+# Load plugin
 truthound plugin load my-plugin
 
-# 플러그인 활성화/비활성화
+# Enable/disable plugin
 truthound plugin enable my-plugin
 truthound plugin disable my-plugin
 
-# 새 플러그인 템플릿 생성
+# Create new plugin template
 truthound plugin create my-new-plugin --type validator
 ```
 
-## 플러그인 타입
+## Plugin Types
 
 ### 1. ValidatorPlugin
 
-커스텀 검증 규칙을 추가합니다.
+Adds custom validation rules.
 
 ```python
 from truthound.plugins import ValidatorPlugin, PluginInfo, PluginType
@@ -83,7 +83,7 @@ class MyValidator(Validator):
 
     def validate(self, lf: pl.LazyFrame) -> list[ValidationIssue]:
         issues = []
-        # 검증 로직 구현
+        # Implement validation logic
         return issues
 
 class MyValidatorPlugin(ValidatorPlugin):
@@ -102,7 +102,7 @@ class MyValidatorPlugin(ValidatorPlugin):
 
 ### 2. ReporterPlugin
 
-새로운 출력 형식을 추가합니다.
+Adds new output formats.
 
 ```python
 from truthound.plugins import ReporterPlugin
@@ -114,7 +114,7 @@ class XMLReporter(ValidationReporter[ReporterConfig]):
     file_extension = ".xml"
 
     def render(self, data: ValidationResult) -> str:
-        # XML 렌더링 로직
+        # XML rendering logic
         return "<report>...</report>"
 
 class XMLReporterPlugin(ReporterPlugin):
@@ -127,7 +127,7 @@ class XMLReporterPlugin(ReporterPlugin):
 
 ### 3. HookPlugin
 
-이벤트에 반응하는 훅을 등록합니다.
+Registers hooks that respond to events.
 
 ```python
 from truthound.plugins import HookPlugin, HookType
@@ -153,7 +153,7 @@ class NotifierPlugin(HookPlugin):
 
 ### 4. DataSourcePlugin
 
-새로운 데이터 소스 타입을 추가합니다.
+Adds new data source types.
 
 ```python
 from truthound.plugins import DataSourcePlugin
@@ -161,7 +161,7 @@ from truthound.datasources.base import BaseDataSource
 
 class MongoDataSource(BaseDataSource):
     source_type = "mongodb"
-    # 구현...
+    # Implementation...
 
 class MongoPlugin(DataSourcePlugin):
     def _get_plugin_name(self) -> str:
@@ -171,9 +171,9 @@ class MongoPlugin(DataSourcePlugin):
         return {"mongodb": MongoDataSource}
 ```
 
-## 플러그인 생성
+## Creating Plugins
 
-### 디렉토리 구조
+### Directory Structure
 
 ```
 truthound-plugin-myfeature/
@@ -184,7 +184,7 @@ truthound-plugin-myfeature/
 └── README.md
 ```
 
-### pyproject.toml 설정
+### pyproject.toml Configuration
 
 ```toml
 [project]
@@ -196,47 +196,47 @@ dependencies = ["truthound>=0.1.0"]
 myfeature = "myfeature:MyFeaturePlugin"
 ```
 
-### CLI로 템플릿 생성
+### Creating Templates via CLI
 
 ```bash
-# Validator 플러그인 생성 + 자동 설치 (권장)
+# Create validator plugin + auto install (recommended)
 truthound new plugin my_validator --type validator --install
 
-# Reporter 플러그인 생성 + 자동 설치
+# Create reporter plugin + auto install
 truthound new plugin my_reporter --type reporter --install
 
-# Hook 플러그인 생성 + 자동 설치
+# Create hook plugin + auto install
 truthound new plugin my_notifier --type hook --install
 
-# 설치 없이 생성만 (수동 설치 필요)
+# Create without install (manual installation required)
 truthound new plugin my_validator --type validator
 cd truthound-plugin-my_validator && pip install -e .
 ```
 
-> **Tip**: `--install` (`-i`) 플래그를 사용하면 플러그인 생성 후 자동으로 `pip install -e .`를 실행하여 바로 사용할 수 있습니다.
+> **Tip**: Using the `--install` (`-i`) flag automatically runs `pip install -e .` after plugin creation, making it immediately available for use.
 
-## Hook 시스템
+## Hook System
 
-### 사용 가능한 Hook 타입
+### Available Hook Types
 
-| Hook | 설명 | Handler 시그니처 |
-|------|------|-----------------|
-| `before_validation` | 검증 시작 전 | `(datasource, validators, **kwargs)` |
-| `after_validation` | 검증 완료 후 | `(datasource, result, issues, **kwargs)` |
-| `on_issue_found` | 이슈 발견 시 | `(issue, validator, **kwargs)` |
-| `before_profile` | 프로파일링 시작 전 | `(datasource, config, **kwargs)` |
-| `after_profile` | 프로파일링 완료 후 | `(datasource, profile, **kwargs)` |
-| `on_report_generate` | 리포트 생성 시 | `(report, format, **kwargs)` |
-| `on_error` | 에러 발생 시 | `(error, context, **kwargs)` |
-| `on_plugin_load` | 플러그인 로드 시 | `(plugin, manager)` |
-| `on_plugin_unload` | 플러그인 언로드 시 | `(plugin, manager)` |
+| Hook | Description | Handler Signature |
+|------|-------------|-------------------|
+| `before_validation` | Before validation starts | `(datasource, validators, **kwargs)` |
+| `after_validation` | After validation completes | `(datasource, result, issues, **kwargs)` |
+| `on_issue_found` | When issue is found | `(issue, validator, **kwargs)` |
+| `before_profile` | Before profiling starts | `(datasource, config, **kwargs)` |
+| `after_profile` | After profiling completes | `(datasource, profile, **kwargs)` |
+| `on_report_generate` | When report is generated | `(report, format, **kwargs)` |
+| `on_error` | When error occurs | `(error, context, **kwargs)` |
+| `on_plugin_load` | When plugin is loaded | `(plugin, manager)` |
+| `on_plugin_unload` | When plugin is unloaded | `(plugin, manager)` |
 
-### 데코레이터 사용
+### Using Decorators
 
 ```python
 from truthound.plugins import before_validation, after_validation, on_error
 
-@before_validation(priority=50)  # 낮은 우선순위가 먼저 실행
+@before_validation(priority=50)  # Lower priority executes first
 def log_start(datasource, validators, **kwargs):
     print(f"Validating {datasource} with {len(validators)} validators")
 
@@ -249,14 +249,14 @@ def handle_error(error, context, **kwargs):
     print(f"Error: {error}")
 ```
 
-### HookManager 직접 사용
+### Using HookManager Directly
 
 ```python
 from truthound.plugins import HookManager, HookType
 
 hooks = HookManager()
 
-# 훅 등록
+# Register hook
 hooks.register(
     HookType.BEFORE_VALIDATION,
     my_handler,
@@ -264,29 +264,29 @@ hooks.register(
     source="my-plugin"
 )
 
-# 훅 트리거
+# Trigger hook
 results = hooks.trigger(
     HookType.BEFORE_VALIDATION,
     datasource=source,
     validators=["null", "range"]
 )
 
-# 특정 소스의 훅 비활성화
+# Disable hooks from specific source
 hooks.disable(source="my-plugin")
 ```
 
-## CLI 명령어
+## CLI Commands
 
-### 플러그인 생성
+### Plugin Creation
 
 ```bash
-# 플러그인 생성 + 자동 설치 (권장)
+# Create plugin + auto install (recommended)
 truthound new plugin my_validator --type validator --install
 
-# 단축 옵션 사용
+# Using short options
 truthound new plugin my_validator -t validator -i
 
-# 모든 옵션과 함께 생성
+# Create with all options
 truthound new plugin enterprise \
     --type full \
     --author "Your Name" \
@@ -295,48 +295,48 @@ truthound new plugin enterprise \
     --output ./my-plugins/
 ```
 
-### 플러그인 관리
+### Plugin Management
 
 ```bash
-# 플러그인 목록 (상세 정보 포함)
+# List plugins (with details)
 truthound plugins list --verbose
 
-# JSON 출력
+# JSON output
 truthound plugins list --json
 
-# 타입별 필터
+# Filter by type
 truthound plugins list --type validator
 
-# 상태별 필터
+# Filter by state
 truthound plugins list --state active
 
-# 플러그인 정보
+# Plugin info
 truthound plugins info my-plugin --json
 
-# 플러그인 로드
+# Load plugin
 truthound plugins load my-plugin --activate
 
-# 플러그인 언로드
+# Unload plugin
 truthound plugins unload my-plugin
 
-# 플러그인 활성화/비활성화
+# Enable/disable plugin
 truthound plugins enable my-plugin
 truthound plugins disable my-plugin
 ```
 
-## 고급 사용법
+## Advanced Usage
 
-### 플러그인 설정
+### Plugin Configuration
 
 ```python
 from truthound.plugins import PluginManager, PluginConfig
 
 manager = PluginManager()
 
-# 플러그인별 설정
+# Per-plugin configuration
 config = PluginConfig(
     enabled=True,
-    priority=50,  # 로드 순서 (낮을수록 먼저)
+    priority=50,  # Load order (lower = earlier)
     settings={
         "api_key": "...",
         "timeout": 30,
@@ -348,7 +348,7 @@ manager.set_plugin_config("my-plugin", config)
 manager.load_plugin("my-plugin")
 ```
 
-### 의존성 관리
+### Dependency Management
 
 ```python
 from truthound.plugins import Plugin, PluginInfo, PluginType
@@ -360,12 +360,12 @@ class DependentPlugin(Plugin):
             name="dependent-plugin",
             version="1.0.0",
             plugin_type=PluginType.CUSTOM,
-            dependencies=("base-plugin",),  # 다른 플러그인 의존
-            python_dependencies=("requests", "jinja2"),  # Python 패키지 의존
+            dependencies=("base-plugin",),  # Depends on other plugin
+            python_dependencies=("requests", "jinja2"),  # Python package dependencies
         )
 ```
 
-### 버전 호환성
+### Version Compatibility
 
 ```python
 PluginInfo(
@@ -377,7 +377,7 @@ PluginInfo(
 )
 ```
 
-### Context Manager 사용
+### Context Manager Usage
 
 ```python
 from truthound.plugins import PluginManager
@@ -385,11 +385,11 @@ from truthound.plugins import PluginManager
 with PluginManager() as manager:
     manager.discover_plugins()
     manager.load_all()
-    # 작업 수행...
-# 자동으로 모든 플러그인 언로드
+    # Perform operations...
+# All plugins automatically unloaded
 ```
 
-### 디렉토리에서 플러그인 로드
+### Loading Plugins from Directory
 
 ```python
 from truthound.plugins import PluginManager
@@ -400,78 +400,78 @@ manager.add_plugin_directory(Path("./my-plugins"))
 manager.discover_plugins()
 ```
 
-## 예제 플러그인
+## Example Plugins
 
-Truthound에는 참고용 예제 플러그인이 포함되어 있습니다:
+Truthound includes reference example plugins:
 
 ```python
 from truthound.plugins.examples import (
-    CustomValidatorPlugin,  # 커스텀 비즈니스 규칙 validator
-    SlackNotifierPlugin,    # Slack 알림 hook
-    XMLReporterPlugin,      # XML 리포터
+    CustomValidatorPlugin,  # Custom business rule validator
+    SlackNotifierPlugin,    # Slack notification hook
+    XMLReporterPlugin,      # XML reporter
 )
 ```
 
-자세한 구현은 `truthound/plugins/examples/` 디렉토리를 참조하세요.
+See the `truthound/plugins/examples/` directory for detailed implementations.
 
-## API 참조
+## API Reference
 
 ### Core Classes
 
-- `Plugin[ConfigT]`: 플러그인 기본 클래스
-- `PluginConfig`: 플러그인 설정
-- `PluginInfo`: 플러그인 메타데이터
-- `PluginType`: 플러그인 타입 열거형
-- `PluginState`: 플러그인 상태 열거형
+- `Plugin[ConfigT]`: Plugin base class
+- `PluginConfig`: Plugin configuration
+- `PluginInfo`: Plugin metadata
+- `PluginType`: Plugin type enum
+- `PluginState`: Plugin state enum
 
 ### Specialized Base Classes
 
-- `ValidatorPlugin`: Validator 플러그인 기본 클래스
-- `ReporterPlugin`: Reporter 플러그인 기본 클래스
-- `DataSourcePlugin`: DataSource 플러그인 기본 클래스
-- `HookPlugin`: Hook 플러그인 기본 클래스
+- `ValidatorPlugin`: Validator plugin base class
+- `ReporterPlugin`: Reporter plugin base class
+- `DataSourcePlugin`: DataSource plugin base class
+- `HookPlugin`: Hook plugin base class
 
 ### Management
 
-- `PluginManager`: 플러그인 생명주기 관리
-- `PluginRegistry`: 플러그인 등록/조회
-- `PluginDiscovery`: 플러그인 발견
-- `HookManager`: 훅 등록/실행
+- `PluginManager`: Plugin lifecycle management
+- `PluginRegistry`: Plugin registration/lookup
+- `PluginDiscovery`: Plugin discovery
+- `HookManager`: Hook registration/execution
 
 ### Exceptions
 
-- `PluginError`: 기본 플러그인 에러
-- `PluginLoadError`: 로드 실패
-- `PluginNotFoundError`: 플러그인 미발견
-- `PluginDependencyError`: 의존성 미충족
-- `PluginCompatibilityError`: 버전 비호환
+- `PluginError`: Base plugin error
+- `PluginLoadError`: Load failure
+- `PluginNotFoundError`: Plugin not found
+- `PluginDependencyError`: Dependency not satisfied
+- `PluginCompatibilityError`: Version incompatibility
 
 ## Enterprise Features
 
-엔터프라이즈 환경을 위한 고급 플러그인 기능이 포함되어 있습니다:
+Advanced plugin features are included for enterprise environments:
 
 ### Enterprise Plugin Manager
 
 ```python
 from truthound.plugins import create_enterprise_manager
 
-# 보안 수준과 함께 엔터프라이즈 매니저 생성
+# Create enterprise manager with security level
 manager = create_enterprise_manager(
     security_level="enterprise",  # "development", "standard", "enterprise", "strict"
-    require_signature=True,       # 플러그인 서명 요구
-    enable_hot_reload=True,       # 핫 리로드 활성화
+    require_signature=True,       # Require plugin signature
+    enable_hot_reload=True,       # Enable hot reload
 )
 
-# 플러그인 로드
+# Load plugin
 plugin = await manager.load("my-plugin")
 
-# 샌드박스에서 실행
+# Execute in sandbox
 result = await manager.execute_in_sandbox("my-plugin", my_function, arg1, arg2)
 ```
 
 ### Security Sandbox
 
-플러그인을 격리된 환경에서 실행하여 시스템 보안을 강화합니다:
+Execute plugins in an isolated environment to enhance system security:
 
 ```python
 from truthound.plugins import (
@@ -480,16 +480,16 @@ from truthound.plugins import (
     SecurityPolicyPresets,
 )
 
-# 격리 수준별 샌드박스 생성
+# Create sandbox by isolation level
 sandbox = SandboxFactory().create(IsolationLevel.PROCESS)
 
-# 보안 정책 프리셋 사용
+# Use security policy preset
 policy = SecurityPolicyPresets.ENTERPRISE.to_policy()
 ```
 
 ### Code Signing
 
-플러그인 무결성과 출처를 검증합니다:
+Verify plugin integrity and origin:
 
 ```python
 from pathlib import Path
@@ -501,7 +501,7 @@ from truthound.plugins import (
     create_verification_chain,
 )
 
-# 플러그인 서명
+# Sign plugin
 service = SigningServiceImpl(
     algorithm=SignatureAlgorithm.HMAC_SHA256,
     signer_id="my-org",
@@ -511,18 +511,18 @@ signature = service.sign(
     private_key=b"secret_key",
 )
 
-# 신뢰 저장소 설정
+# Configure trust store
 trust_store = TrustStoreImpl()
 trust_store.set_signer_trust("my-org", TrustLevel.TRUSTED)
 
-# 서명 검증
+# Verify signature
 chain = create_verification_chain(trust_store=trust_store)
 result = chain.verify(plugin_path, signature, context={})
 ```
 
 ### Hot Reload
 
-애플리케이션 재시작 없이 플러그인을 리로드합니다:
+Reload plugins without restarting the application:
 
 ```python
 from truthound.plugins import HotReloadManager, ReloadStrategy, LifecycleManager
@@ -533,36 +533,36 @@ reload_manager = HotReloadManager(
     default_strategy=ReloadStrategy.GRACEFUL,
 )
 
-# 플러그인 감시 시작
+# Start watching plugin
 await reload_manager.watch(
     plugin_id="my-plugin",
     plugin_path=Path("plugins/my-plugin/"),
     auto_reload=True,
 )
 
-# 수동 리로드
+# Manual reload
 result = await reload_manager.reload("my-plugin")
 ```
 
 ### Version Constraints
 
-시맨틱 버전 제약을 지원합니다:
+Supports semantic version constraints:
 
 ```python
 from truthound.plugins import parse_constraint
 
-# 다양한 버전 제약 표현
+# Various version constraint expressions
 constraint = parse_constraint("^1.2.3")  # >=1.2.3 && <2.0.0
 constraint = parse_constraint("~1.2.3")  # >=1.2.3 && <1.3.0
-constraint = parse_constraint(">=1.0.0,<2.0.0")  # 범위 지정
+constraint = parse_constraint(">=1.0.0,<2.0.0")  # Range specification
 
-# 버전 호환성 확인
+# Check version compatibility
 is_compatible = constraint.is_satisfied_by("1.5.0")
 ```
 
 ### Dependency Graph
 
-플러그인 의존성을 자동으로 관리합니다:
+Automatic plugin dependency management:
 
 ```python
 from truthound.plugins import DependencyGraph, DependencyType
@@ -574,12 +574,12 @@ graph.add_node("plugin-b", "1.0.0",
 graph.add_node("plugin-a", "1.0.0",
     dependencies={"plugin-b": DependencyType.REQUIRED})
 
-# 로드 순서 결정
+# Determine load order
 load_order = graph.get_load_order()
 # -> ['plugin-c', 'plugin-b', 'plugin-a']
 
-# 순환 의존성 감지
+# Detect circular dependencies
 cycles = graph.detect_cycles()
 ```
 
-자세한 Enterprise 기능은 `.claude/docs/phase-09-plugins.md`를 참조하세요.
+For detailed Enterprise features, refer to `.claude/docs/phase-09-plugins.md`.

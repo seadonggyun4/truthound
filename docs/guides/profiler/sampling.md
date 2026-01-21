@@ -1,25 +1,25 @@
 # Sampling Strategies
 
-이 문서는 대용량 데이터 처리를 위한 샘플링 전략을 설명합니다.
+This document describes sampling strategies for processing large datasets.
 
-## 개요
+## Overview
 
-`src/truthound/profiler/sampling.py`에 구현된 샘플링 시스템은 8가지 전략을 제공합니다.
+The sampling system implemented in `src/truthound/profiler/sampling.py` provides 8 different strategies.
 
 ## SamplingMethod Enum
 
 ```python
 class SamplingMethod(str, Enum):
-    """샘플링 전략"""
+    """Sampling strategies"""
 
-    NONE = "none"           # 샘플링 없음 (전체 데이터)
-    RANDOM = "random"       # 랜덤 샘플링
-    SYSTEMATIC = "systematic"  # 체계적 샘플링 (매 N번째 행)
-    STRATIFIED = "stratified"  # 층화 샘플링
-    RESERVOIR = "reservoir"    # 저수지 샘플링 (스트리밍)
-    ADAPTIVE = "adaptive"      # 적응적 샘플링 (자동 선택)
-    HEAD = "head"              # 첫 N개 행
-    HASH = "hash"              # 해시 기반 (재현 가능)
+    NONE = "none"           # No sampling (full data)
+    RANDOM = "random"       # Random sampling
+    SYSTEMATIC = "systematic"  # Systematic sampling (every Nth row)
+    STRATIFIED = "stratified"  # Stratified sampling
+    RESERVOIR = "reservoir"    # Reservoir sampling (streaming)
+    ADAPTIVE = "adaptive"      # Adaptive sampling (automatic selection)
+    HEAD = "head"              # First N rows
+    HASH = "hash"              # Hash-based (reproducible)
 ```
 
 ## SamplingConfig
@@ -27,17 +27,17 @@ class SamplingMethod(str, Enum):
 ```python
 @dataclass
 class SamplingConfig:
-    """샘플링 설정"""
+    """Sampling configuration"""
 
     strategy: SamplingMethod = SamplingMethod.ADAPTIVE
-    max_rows: int = 100_000          # 최대 샘플 크기
-    confidence_level: float = 0.95   # 신뢰 수준 (0.0-1.0)
-    random_seed: int | None = None   # 랜덤 시드 (재현성)
+    max_rows: int = 100_000          # Maximum sample size
+    confidence_level: float = 0.95   # Confidence level (0.0-1.0)
+    random_seed: int | None = None   # Random seed (reproducibility)
 
-    # 층화 샘플링 옵션
+    # Stratified sampling options
     stratify_column: str | None = None
 
-    # 해시 샘플링 옵션
+    # Hash sampling options
     hash_column: str | None = None
 ```
 
@@ -46,20 +46,20 @@ class SamplingConfig:
 ```python
 @dataclass
 class SamplingMetrics:
-    """샘플링 결과 메트릭"""
+    """Sampling result metrics"""
 
-    original_row_count: int      # 원본 행 수
-    sampled_row_count: int       # 샘플 행 수
-    sampling_ratio: float        # 샘플링 비율
-    confidence_level: float      # 신뢰 수준
-    margin_of_error: float       # 오차 한계
+    original_row_count: int      # Original row count
+    sampled_row_count: int       # Sampled row count
+    sampling_ratio: float        # Sampling ratio
+    confidence_level: float      # Confidence level
+    margin_of_error: float       # Margin of error
     strategy_used: SamplingMethod
     execution_time_ms: float
 ```
 
-## 전략별 사용법
+## Strategy-Specific Usage
 
-### NONE - 샘플링 없음
+### NONE - No Sampling
 
 ```python
 from truthound.profiler.sampling import Sampler, SamplingConfig, SamplingMethod
@@ -67,10 +67,10 @@ from truthound.profiler.sampling import Sampler, SamplingConfig, SamplingMethod
 config = SamplingConfig(strategy=SamplingMethod.NONE)
 sampler = Sampler(config)
 result = sampler.sample(lf)
-# 전체 데이터 반환
+# Returns full data
 ```
 
-### RANDOM - 랜덤 샘플링
+### RANDOM - Random Sampling
 
 ```python
 config = SamplingConfig(
@@ -85,9 +85,9 @@ print(f"Sampled: {result.metrics.sampled_row_count}")
 print(f"Margin of error: {result.metrics.margin_of_error:.2%}")
 ```
 
-### SYSTEMATIC - 체계적 샘플링
+### SYSTEMATIC - Systematic Sampling
 
-매 N번째 행을 선택합니다.
+Selects every Nth row.
 
 ```python
 config = SamplingConfig(
@@ -96,27 +96,27 @@ config = SamplingConfig(
 )
 sampler = Sampler(config)
 result = sampler.sample(lf)
-# 정렬된 데이터에서 균등 간격 샘플링
+# Evenly spaced sampling from sorted data
 ```
 
-### STRATIFIED - 층화 샘플링
+### STRATIFIED - Stratified Sampling
 
-특정 컬럼의 분포를 유지하면서 샘플링합니다.
+Maintains the distribution of a specific column while sampling.
 
 ```python
 config = SamplingConfig(
     strategy=SamplingMethod.STRATIFIED,
     max_rows=10_000,
-    stratify_column="category",  # 이 컬럼의 분포 유지
+    stratify_column="category",  # Maintain this column's distribution
 )
 sampler = Sampler(config)
 result = sampler.sample(lf)
-# category 컬럼의 비율이 원본과 동일하게 유지됨
+# Category column proportions remain the same as original
 ```
 
-### RESERVOIR - 저수지 샘플링
+### RESERVOIR - Reservoir Sampling
 
-스트리밍 데이터에 적합한 알고리즘입니다.
+An algorithm suitable for streaming data.
 
 ```python
 config = SamplingConfig(
@@ -125,12 +125,12 @@ config = SamplingConfig(
 )
 sampler = Sampler(config)
 result = sampler.sample(lf)
-# O(1) 메모리로 균등 확률 샘플링
+# Equal probability sampling with O(1) memory
 ```
 
-### ADAPTIVE - 적응적 샘플링
+### ADAPTIVE - Adaptive Sampling
 
-데이터 크기에 따라 자동으로 최적 전략을 선택합니다.
+Automatically selects the optimal strategy based on data size.
 
 ```python
 config = SamplingConfig(
@@ -141,15 +141,15 @@ config = SamplingConfig(
 sampler = Sampler(config)
 result = sampler.sample(lf)
 
-# 자동 선택 로직:
-# - 작은 데이터셋: NONE
-# - 중간 데이터셋: RANDOM
-# - 대용량 데이터셋: RESERVOIR 또는 HASH
+# Automatic selection logic:
+# - Small datasets: NONE
+# - Medium datasets: RANDOM
+# - Large datasets: RESERVOIR or HASH
 ```
 
-### HEAD - 첫 N개 행
+### HEAD - First N Rows
 
-가장 빠른 샘플링 방법입니다.
+The fastest sampling method.
 
 ```python
 config = SamplingConfig(
@@ -158,48 +158,48 @@ config = SamplingConfig(
 )
 sampler = Sampler(config)
 result = sampler.sample(lf)
-# 첫 1,000개 행만 반환
+# Returns only the first 1,000 rows
 ```
 
-### HASH - 해시 기반 샘플링
+### HASH - Hash-Based Sampling
 
-재현 가능한 결정적 샘플링입니다.
+Reproducible deterministic sampling.
 
 ```python
 config = SamplingConfig(
     strategy=SamplingMethod.HASH,
     max_rows=10_000,
-    hash_column="id",  # 해시 기준 컬럼
+    hash_column="id",  # Column for hash basis
 )
 sampler = Sampler(config)
 result = sampler.sample(lf)
-# 동일한 ID는 항상 동일한 샘플에 포함됨
+# Same ID always included in the same sample
 ```
 
 ## SamplingMethodRegistry
 
-스레드 안전한 전략 레지스트리입니다.
+Thread-safe strategy registry.
 
 ```python
 from truthound.profiler.sampling import SamplingMethodRegistry
 
-# 전략 조회
+# Retrieve strategy
 strategy_class = SamplingMethodRegistry.get(SamplingMethod.RANDOM)
 
-# 커스텀 전략 등록
+# Register custom strategy
 @SamplingMethodRegistry.register("my_strategy")
 class MyCustomStrategy:
     def sample(self, lf: pl.LazyFrame, config: SamplingConfig) -> SamplingResult:
-        # 커스텀 샘플링 로직
+        # Custom sampling logic
         pass
 ```
 
-## 통계적 샘플 크기 계산
+## Statistical Sample Size Calculation
 
 ```python
 from truthound.profiler.sampling import calculate_sample_size
 
-# 95% 신뢰수준, 5% 오차한계
+# 95% confidence level, 5% margin of error
 sample_size = calculate_sample_size(
     population_size=1_000_000,
     confidence_level=0.95,
@@ -208,43 +208,43 @@ sample_size = calculate_sample_size(
 print(f"Required sample size: {sample_size}")  # ~385
 ```
 
-## 메모리 안전 샘플링
+## Memory-Safe Sampling
 
-Sampler는 내부적으로 `.head(limit).collect()`를 사용하여 OOM을 방지합니다:
+The Sampler internally uses `.head(limit).collect()` to prevent OOM:
 
 ```python
-# 안전한 구현 (내부)
+# Safe implementation (internal)
 def _safe_sample(self, lf: pl.LazyFrame) -> pl.DataFrame:
-    # 전체 collect() 호출 없이 limit 적용
+    # Apply limit without calling full collect()
     return lf.head(self.config.max_rows).collect()
 ```
 
-## CLI 사용법
+## CLI Usage
 
 ```bash
-# 랜덤 샘플링
+# Random sampling
 th profile data.csv --sample-size 10000 --sample-strategy random
 
-# 해시 기반 샘플링
+# Hash-based sampling
 th profile data.csv --sample-size 10000 --sample-strategy hash --hash-column id
 
-# 적응적 샘플링 (기본값)
+# Adaptive sampling (default)
 th profile data.csv --sample-size 50000
 ```
 
-## 전략 선택 가이드
+## Strategy Selection Guide
 
-| 상황 | 권장 전략 |
-|------|-----------|
-| 소규모 데이터 (<100K) | `NONE` |
-| 빠른 미리보기 | `HEAD` |
-| 일반적인 분석 | `RANDOM` 또는 `ADAPTIVE` |
-| 분포 유지 필요 | `STRATIFIED` |
-| 스트리밍 데이터 | `RESERVOIR` |
-| 재현 가능성 필요 | `HASH` |
-| 정렬된 데이터 | `SYSTEMATIC` |
+| Scenario | Recommended Strategy |
+|----------|---------------------|
+| Small data (<100K) | `NONE` |
+| Quick preview | `HEAD` |
+| General analysis | `RANDOM` or `ADAPTIVE` |
+| Preserve distribution | `STRATIFIED` |
+| Streaming data | `RESERVOIR` |
+| Reproducibility needed | `HASH` |
+| Sorted data | `SYSTEMATIC` |
 
-## 다음 단계
+## Next Steps
 
-- [패턴 매칭](patterns.md) - 샘플링된 데이터에서 패턴 감지
-- [분산 처리](distributed.md) - 대용량 데이터 병렬 처리
+- [Pattern Matching](patterns.md) - Detect patterns in sampled data
+- [Distributed Processing](distributed.md) - Parallel processing for large data

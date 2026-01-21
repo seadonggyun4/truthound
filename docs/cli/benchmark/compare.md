@@ -15,13 +15,25 @@ truthound benchmark compare <baseline> <current> [OPTIONS]
 | `baseline` | Yes | Path to baseline benchmark results (JSON format required) |
 | `current` | Yes | Path to current benchmark results (JSON format required) |
 
-!!! note "JSON Format Auto-detected"
-    Both input files must be in JSON format. When using `benchmark run` with `-o`,
-    the format is automatically detected from the file extension (`.json` → JSON format).
+!!! note "JSON Format Required"
+    Both input files must be JSON benchmark results from `benchmark run`.
+    The command will warn you if the file extension is not `.json`.
 
     ```bash
-    # JSON format auto-detected from .json extension
+    # Generate benchmark results (JSON format auto-detected from .json extension)
     truthound benchmark run --suite ci -o results.json
+    ```
+
+!!! warning "Common Mistake"
+    This command compares **benchmark result files**, not data files.
+    If you pass data files (CSV, Parquet, etc.), you'll see a helpful error:
+
+    ```
+    Warning: baseline file 'data.csv' does not have .json extension.
+    This command compares benchmark result JSON files, not data files.
+
+    Did you mean to run a benchmark first?
+      truthound benchmark run --suite ci -o baseline.json
     ```
 
 ## Options

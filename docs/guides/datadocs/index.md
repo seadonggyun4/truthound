@@ -1,76 +1,76 @@
 # Data Docs - HTML Report Generation (Phase 8)
 
-Truthound의 Data Docs 모듈은 데이터 프로파일 결과를 아름답고 인터랙티브한 HTML 리포트로 변환합니다.
+The Truthound Data Docs module transforms data profile results into visually appealing and interactive HTML reports.
 
-## 하위 문서
+## Sub-documents
 
-| 문서 | 설명 |
-|------|------|
-| [HTML Reports](html-reports.md) | 정적 HTML 리포트 생성 |
-| [Themes](themes.md) | 6개 빌트인 테마 + 커스터마이징 |
-| [Charts](charts.md) | ApexCharts, SVG 차트 렌더링 |
-| [Sections](sections.md) | 9개 섹션 타입 구성 |
-| [Versioning](versioning.md) | 리포트 버전 관리 (4개 전략) |
-| [Custom Renderers](custom-renderers.md) | 커스텀 렌더러 개발 |
-| [PDF Export](pdf-export.md) | PDF 내보내기 (WeasyPrint) |
-| [Dashboard](dashboard.md) | Stage 2 인터랙티브 대시보드 |
+| Document | Description |
+|----------|-------------|
+| [HTML Reports](html-reports.md) | Static HTML report generation |
+| [Themes](themes.md) | 6 built-in themes + customization |
+| [Charts](charts.md) | ApexCharts and SVG chart rendering |
+| [Sections](sections.md) | 9 section type configuration |
+| [Versioning](versioning.md) | Report version management (4 strategies) |
+| [Custom Renderers](custom-renderers.md) | Custom renderer development |
+| [PDF Export](pdf-export.md) | PDF export (WeasyPrint) |
+| [Dashboard](dashboard.md) | Stage 2 interactive dashboard |
 
 ---
 
 ## Overview
 
-Data Docs는 두 단계로 구성됩니다:
+Data Docs consists of two stages:
 
-| Stage | 기능 | 의존성 |
-|-------|------|--------|
-| **Stage 1: Static HTML Report** | Self-contained HTML 리포트 생성 | 없음 (CDN 기반) |
-| **Stage 2: Interactive Dashboard** | Reflex 기반 인터랙티브 대시보드 | `truthound[dashboard]` |
+| Stage | Functionality | Dependencies |
+|-------|---------------|--------------|
+| **Stage 1: Static HTML Report** | Self-contained HTML report generation | None (CDN-based) |
+| **Stage 2: Interactive Dashboard** | Reflex-based interactive dashboard | `truthound[dashboard]` |
 
-### 주요 특징
+### Key Features
 
-- **Zero Dependencies**: npm/node 빌드 불필요, CDN에서 JS 로드
-- **Self-Contained**: 단일 HTML 파일로 오프라인에서도 동작
-- **6가지 빌트인 테마**: Default, Light, Dark, Professional, Minimal, Modern + Enterprise 커스터마이징
-- **자동 차트 렌더링**: HTML은 ApexCharts, PDF는 SVG 자동 선택
-- **반응형 디자인**: 모바일/태블릿/데스크톱 대응
-- **인쇄 최적화**: Print-friendly CSS 포함
-- **PDF 내보내기**: weasyprint 사용 (선택적)
-- **다국어 지원**: 15개 언어 (en, ko, ja, zh, de, fr, es, pt, it, ru, ar, th, vi, id, tr)
-- **리포트 버전관리**: 4개 전략 (Incremental, Semantic, Timestamp, GitLike)
+- **Zero Dependencies**: No npm/node build required, JS loaded from CDN
+- **Self-Contained**: Single HTML file works offline
+- **6 Built-in Themes**: Default, Light, Dark, Professional, Minimal, Modern + Enterprise customization
+- **Automatic Chart Rendering**: ApexCharts for HTML, SVG for PDF (auto-selected)
+- **Responsive Design**: Mobile/tablet/desktop support
+- **Print Optimization**: Print-friendly CSS included
+- **PDF Export**: Uses weasyprint (optional)
+- **Multilingual Support**: 15 languages (en, ko, ja, zh, de, fr, es, pt, it, ru, ar, th, vi, id, tr)
+- **Report Versioning**: 4 strategies (Incremental, Semantic, Timestamp, GitLike)
 
 ---
 
 ## Installation
 
 ```bash
-# 기본 설치 (Stage 1: HTML Report - Jinja2 필요)
+# Basic installation (Stage 1: HTML Report - requires Jinja2)
 pip install truthound[reports]
 
-# PDF 내보내기 지원
+# PDF export support
 pip install truthound[pdf]
 
-# 대시보드 지원 (Stage 2)
+# Dashboard support (Stage 2)
 pip install truthound[dashboard]
 
-# 전체 설치
+# Full installation
 pip install truthound[all]
 ```
 
-> **Note**: HTML 리포트 생성에는 Jinja2가 필요합니다. `truthound[reports]` 또는 `truthound[all]`을 설치하세요.
+> **Note**: HTML report generation requires Jinja2. Install `truthound[reports]` or `truthound[all]`.
 
-PDF 내보내기 시스템 의존성은 [PDF Export](pdf-export.md) 문서를 참조하세요.
+For PDF export system dependencies, refer to the [PDF Export](pdf-export.md) documentation.
 
 ---
 
 ## Quick Start
 
-### 1. 프로파일 생성
+### 1. Generate Profile
 
 ```bash
 truthound auto-profile data.csv -o profile.json
 ```
 
-### 2. HTML 리포트 생성
+### 2. Generate HTML Report
 
 ```bash
 truthound docs generate profile.json -o report.html
@@ -89,7 +89,7 @@ html = generate_html_report(
 )
 ```
 
-자세한 내용은 [HTML Reports](html-reports.md) 문서를 참조하세요.
+For detailed information, refer to the [HTML Reports](html-reports.md) documentation.
 
 ---
 
@@ -101,17 +101,17 @@ html = generate_html_report(
 truthound docs generate <profile_file> [OPTIONS]
 
 # Options:
-#   -o, --output TEXT    출력 파일 경로
-#   -t, --title TEXT     리포트 제목
-#   -s, --subtitle TEXT  부제목
-#   --theme TEXT         테마 (light, dark, professional, minimal, modern)
-#   -f, --format TEXT    출력 형식 (html, pdf)
+#   -o, --output TEXT    Output file path
+#   -t, --title TEXT     Report title
+#   -s, --subtitle TEXT  Subtitle
+#   --theme TEXT         Theme (light, dark, professional, minimal, modern)
+#   -f, --format TEXT    Output format (html, pdf)
 ```
 
 ### `truthound docs themes`
 
 ```bash
-truthound docs themes  # 사용 가능한 테마 목록
+truthound docs themes  # List available themes
 ```
 
 ### `truthound dashboard`
@@ -126,49 +126,49 @@ truthound dashboard --profile profile.json --port 8080
 
 ```
 src/truthound/datadocs/
-├── __init__.py          # 모듈 exports
-├── base.py              # 타입, Enums, Protocols
+├── __init__.py          # Module exports
+├── base.py              # Types, Enums, Protocols
 ├── builder.py           # HTMLReportBuilder, ProfileDataConverter
 ├── charts.py            # ApexChartsRenderer, SVGChartRenderer
-├── sections.py          # 9개 섹션 렌더러
-├── styles.py            # CSS 스타일시트
+├── sections.py          # 9 section renderers
+├── styles.py            # CSS stylesheets
 │
-├── engine/              # 파이프라인 엔진
+├── engine/              # Pipeline engine
 │   ├── context.py       # ReportContext, ReportData
 │   ├── pipeline.py      # ReportPipeline
 │   └── registry.py      # ComponentRegistry
 │
-├── themes/              # 테마 시스템
+├── themes/              # Theme system
 │   ├── base.py          # ThemeConfig, ThemeColors
-│   ├── default.py       # 6개 빌트인 테마
+│   ├── default.py       # 6 built-in themes
 │   ├── enterprise.py    # EnterpriseTheme
-│   └── loader.py        # YAML/JSON 로더
+│   └── loader.py        # YAML/JSON loader
 │
-├── renderers/           # 커스텀 렌더러
+├── renderers/           # Custom renderers
 │   ├── base.py          # BaseRenderer
 │   ├── jinja.py         # JinjaRenderer
-│   └── custom.py        # String/File/Callable 렌더러
+│   └── custom.py        # String/File/Callable renderers
 │
-├── exporters/           # 출력 포맷
+├── exporters/           # Output formats
 │   ├── base.py          # BaseExporter
 │   ├── html_reporter.py # HtmlExporter
 │   ├── pdf.py           # PdfExporter, OptimizedPdfExporter
 │   └── markdown.py      # MarkdownExporter
 │
-├── versioning/          # 버전 관리
-│   ├── version.py       # 4개 버전 전략
-│   ├── storage.py       # InMemory, File 스토리지
+├── versioning/          # Version management
+│   ├── version.py       # 4 version strategies
+│   ├── storage.py       # InMemory, File storage
 │   └── diff.py          # ReportDiffer
 │
-├── i18n/                # 다국어 지원
-│   ├── catalog.py       # 15개 언어
-│   ├── plurals.py       # CLDR 복수형
-│   └── formatting.py    # 숫자/날짜 포맷팅
+├── i18n/                # Multilingual support
+│   ├── catalog.py       # 15 languages
+│   ├── plurals.py       # CLDR plural rules
+│   └── formatting.py    # Number/date formatting
 │
-└── dashboard/           # Stage 2: 대시보드
+└── dashboard/           # Stage 2: Dashboard
     ├── app.py           # DashboardApp
     ├── state.py         # Reflex state
-    └── components.py    # UI 컴포넌트
+    └── components.py    # UI components
 ```
 
 ### Class Hierarchy
@@ -241,7 +241,7 @@ data-quality-report:
 
 ### Charts not rendering
 
-CDN에서 JavaScript를 로드할 수 없는 환경에서는 PDF 포맷을 사용하세요:
+In environments where JavaScript cannot be loaded from CDN, use the PDF format:
 
 ```bash
 truthound docs generate profile.json -o report.pdf --format pdf
@@ -249,7 +249,7 @@ truthound docs generate profile.json -o report.pdf --format pdf
 
 ### PDF export fails
 
-시스템 라이브러리가 필요합니다. [PDF Export](pdf-export.md) 문서를 참조하세요.
+System libraries are required. Refer to the [PDF Export](pdf-export.md) documentation.
 
 ### Dashboard import error
 
@@ -261,8 +261,8 @@ pip install truthound[dashboard]
 
 ## See Also
 
-- [HTML Reports](html-reports.md) - 정적 HTML 리포트 생성
-- [Themes](themes.md) - 테마 커스터마이징
-- [Charts](charts.md) - 차트 렌더링
-- [PDF Export](pdf-export.md) - PDF 내보내기
-- [Dashboard](dashboard.md) - 인터랙티브 대시보드
+- [HTML Reports](html-reports.md) - Static HTML report generation
+- [Themes](themes.md) - Theme customization
+- [Charts](charts.md) - Chart rendering
+- [PDF Export](pdf-export.md) - PDF export
+- [Dashboard](dashboard.md) - Interactive dashboard

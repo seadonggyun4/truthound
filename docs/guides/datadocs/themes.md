@@ -1,27 +1,27 @@
 # Themes
 
-Truthound Data Docs는 6개의 빌트인 테마와 완전한 커스터마이징을 지원합니다.
+Truthound Data Docs supports 6 built-in themes and full customization.
 
-## 빌트인 테마
+## Built-in Themes
 
 | Theme | Description | Best For |
 |-------|-------------|----------|
-| `default` | 깔끔하고 전문적인 기본 테마 | 일반적인 사용 |
-| `light` | 밝은 색상과 미묘한 그림자 | 인쇄, 밝은 환경 |
-| `dark` | 다크 모드, 선명한 색상 | 야간 작업, 프레젠테이션 |
-| `minimal` | 미니멀리스트, 콘텐츠 중심 | 간결한 문서 |
-| `modern` | Apple 스타일, 생동감 있는 색상 | 마케팅, 데모 |
-| `professional` | 기업 스타일, 차분한 색상 | 비즈니스 리포트 (기본값) |
+| `default` | Clean and professional default theme | General use |
+| `light` | Light colors with subtle shadows | Printing, bright environments |
+| `dark` | Dark mode with vivid colors | Night work, presentations |
+| `minimal` | Minimalist, content-focused | Concise documentation |
+| `modern` | Apple style, vibrant colors | Marketing, demos |
+| `professional` | Corporate style, calm colors | Business reports (default) |
 
-## 테마 사용법
+## Theme Usage
 
 ### CLI
 
 ```bash
-# 테마 목록 확인
+# List available themes
 truthound docs themes
 
-# 테마 적용
+# Apply theme
 truthound docs generate profile.json -o report.html --theme dark
 ```
 
@@ -35,20 +35,20 @@ from truthound.datadocs import (
     get_available_themes,
 )
 
-# 테마 목록 확인
+# List available themes
 print(get_available_themes())  # ['default', 'light', 'dark', 'minimal', 'modern', 'professional']
 
-# 문자열로 테마 지정
+# Specify theme by string
 builder = HTMLReportBuilder(theme="professional")
 
-# Enum으로 테마 지정
+# Specify theme by enum
 builder = HTMLReportBuilder(theme=ReportTheme.DARK)
 
-# 테마 설정 가져오기
+# Get theme configuration
 theme_config = get_theme("dark")
 ```
 
-## 테마 구조
+## Theme Structure
 
 ### ThemeColors
 
@@ -56,26 +56,26 @@ theme_config = get_theme("dark")
 from truthound.datadocs.themes.base import ThemeColors
 
 colors = ThemeColors(
-    background="#ffffff",       # 배경색
-    surface="#f8f9fa",          # 카드/패널 배경
-    text_primary="#1a1a2e",     # 주요 텍스트
-    text_secondary="#6c757d",   # 보조 텍스트
-    primary="#2563eb",          # 주요 강조색
-    secondary="#7209b7",        # 보조 강조색
-    accent="#f72585",           # 악센트
-    success="#10b981",          # 성공/긍정
-    warning="#f59e0b",          # 경고
-    error="#ef4444",            # 에러
-    info="#3b82f6",             # 정보
-    border="#e5e7eb",           # 테두리
-    shadow="rgba(0, 0, 0, 0.05)",  # 그림자
-    chart_palette=(             # 차트 색상 팔레트
+    background="#ffffff",       # Background color
+    surface="#f8f9fa",          # Card/panel background
+    text_primary="#1a1a2e",     # Primary text
+    text_secondary="#6c757d",   # Secondary text
+    primary="#2563eb",          # Primary accent color
+    secondary="#7209b7",        # Secondary accent color
+    accent="#f72585",           # Accent
+    success="#10b981",          # Success/positive
+    warning="#f59e0b",          # Warning
+    error="#ef4444",            # Error
+    info="#3b82f6",             # Information
+    border="#e5e7eb",           # Border
+    shadow="rgba(0, 0, 0, 0.05)",  # Shadow
+    chart_palette=(             # Chart color palette
         "#2563eb", "#7c3aed", "#db2777",
         "#ea580c", "#65a30d", "#0891b2",
     ),
 )
 
-# CSS 변수로 변환
+# Convert to CSS variables
 css_vars = colors.to_css_vars()
 ```
 
@@ -133,17 +133,17 @@ spacing = ThemeSpacing(
 from truthound.datadocs.themes.base import ThemeAssets
 
 assets = ThemeAssets(
-    logo_url=None,                # 로고 URL
-    logo_base64=None,             # 로고 Base64 (오프라인용)
-    favicon_url=None,             # 파비콘 URL
-    favicon_base64=None,          # 파비콘 Base64
-    custom_fonts=[],              # 커스텀 폰트 URL 목록
-    external_css=[],              # 외부 CSS 파일
-    external_js=[],               # 외부 JS 파일
+    logo_url=None,                # Logo URL
+    logo_base64=None,             # Logo Base64 (for offline)
+    favicon_url=None,             # Favicon URL
+    favicon_base64=None,          # Favicon Base64
+    custom_fonts=[],              # Custom font URL list
+    external_css=[],              # External CSS files
+    external_js=[],               # External JS files
 )
 ```
 
-### ThemeConfig (전체 테마 설정)
+### ThemeConfig (Complete Theme Configuration)
 
 ```python
 from truthound.datadocs.themes.base import (
@@ -171,13 +171,13 @@ theme = ThemeConfig(
     compact_mode=False,
 )
 
-# CSS :root 블록으로 변환
+# Convert to CSS :root block
 css_root = theme.to_css_vars()
 ```
 
-## 커스텀 테마 만들기
+## Creating Custom Themes
 
-### 방법 1: ThemeConfig 직접 생성
+### Method 1: Direct ThemeConfig Creation
 
 ```python
 from truthound.datadocs import (
@@ -191,7 +191,7 @@ from truthound.datadocs.themes.base import (
     ThemeSpacing,
 )
 
-# 커스텀 색상 정의
+# Define custom colors
 custom_colors = ThemeColors(
     background="#fafafa",
     surface="#ffffff",
@@ -201,7 +201,7 @@ custom_colors = ThemeColors(
     accent="#ffe66d",
 )
 
-# 커스텀 테마 생성
+# Create custom theme
 custom_theme = ThemeConfig(
     name="my_brand",
     colors=custom_colors,
@@ -210,21 +210,21 @@ custom_theme = ThemeConfig(
     ),
 )
 
-# 리포트에 적용
+# Apply to report
 config = ReportConfig(custom_theme=custom_theme)
 builder = HTMLReportBuilder(config=config)
 html = builder.build(profile_dict)
 ```
 
-### 방법 2: 기존 테마 확장
+### Method 2: Extending Existing Themes
 
 ```python
 from truthound.datadocs.themes import get_theme
 
-# 기존 테마 가져오기
+# Get existing theme
 base_theme = get_theme("professional")
 
-# 색상만 변경하여 새 테마 생성
+# Create new theme by changing only colors
 from dataclasses import replace
 
 custom_theme = replace(
@@ -240,7 +240,7 @@ custom_theme = replace(
 
 ## Enterprise Theme (White-labeling)
 
-엔터프라이즈 환경을 위한 화이트 라벨링 테마입니다.
+A white-labeling theme for enterprise environments.
 
 ### BrandingConfig
 
@@ -251,7 +251,7 @@ branding = BrandingConfig(
     company_name="Acme Corp",
     tagline="Data Quality Excellence",
     logo_url="https://example.com/logo.png",
-    logo_base64=None,             # 또는 Base64 인코딩된 로고
+    logo_base64=None,             # Or Base64 encoded logo
     logo_height="40px",
     favicon_url="https://example.com/favicon.ico",
     copyright_text="© 2025 Acme Corp. All rights reserved.",
@@ -259,7 +259,7 @@ branding = BrandingConfig(
     support_email="support@acme.com",
 )
 
-# 푸터 텍스트 자동 생성
+# Auto-generate footer text
 footer = branding.get_footer_text()
 ```
 
@@ -271,7 +271,7 @@ from truthound.datadocs.themes.enterprise import (
     EnterpriseThemeConfig,
 )
 
-# 간단한 생성
+# Simple creation
 theme = EnterpriseTheme(
     company_name="Acme Corp",
     primary_color="#e63946",
@@ -281,7 +281,7 @@ theme = EnterpriseTheme(
     custom_css=".custom { color: red; }",
 )
 
-# 설정 파일에서 생성
+# Create from configuration file
 config = EnterpriseThemeConfig(
     branding=BrandingConfig(...),
     colors=ThemeColors(...),
@@ -289,7 +289,7 @@ config = EnterpriseThemeConfig(
 )
 theme = EnterpriseTheme.from_config(config)
 
-# Fluent API로 커스터마이징
+# Customize with fluent API
 theme = (
     EnterpriseTheme(company_name="Acme")
     .with_branding(logo_url="https://...", tagline="Quality First")
@@ -298,20 +298,20 @@ theme = (
 )
 ```
 
-### 사용 예시
+### Usage Example
 
 ```python
 from truthound.datadocs import HTMLReportBuilder, ReportConfig
 from truthound.datadocs.themes.enterprise import EnterpriseTheme
 
-# 엔터프라이즈 테마 생성
+# Create enterprise theme
 theme = EnterpriseTheme(
     company_name="Acme Corp",
     primary_color="#1a5f7a",
     logo_url="https://acme.com/logo.png",
 )
 
-# 리포트에 적용
+# Apply to report
 config = ReportConfig(custom_theme=theme)
 builder = HTMLReportBuilder(config=config)
 html = builder.build(profile_dict)
@@ -319,7 +319,7 @@ html = builder.build(profile_dict)
 
 ## CSS Variables
 
-테마는 CSS 커스텀 속성으로 변환됩니다:
+Themes are converted to CSS custom properties:
 
 ```css
 :root {
@@ -365,30 +365,30 @@ html = builder.build(profile_dict)
 
 ## API Reference
 
-### 테마 관련 함수
+### Theme-related Functions
 
 ```python
 from truthound.datadocs.themes import (
-    get_theme,            # 이름으로 테마 가져오기
-    get_available_themes, # 사용 가능한 테마 목록
-    THEMES,               # 테마 딕셔너리
+    get_theme,            # Get theme by name
+    get_available_themes, # List available themes
+    THEMES,               # Theme dictionary
 )
 
-# 테마 목록
+# List themes
 themes = get_available_themes()  # ['default', 'light', 'dark', ...]
 
-# 테마 가져오기
+# Get theme
 theme = get_theme("professional")
 
-# 커스텀 오버라이드와 함께 가져오기
+# Get with custom overrides
 theme = get_theme("dark", colors=ThemeColors(primary="#ff0000"))
 
-# 전체 테마 딕셔너리
+# Full theme dictionary
 from truthound.datadocs.themes import THEMES
 print(THEMES.keys())
 ```
 
-### 미리 정의된 테마 상수
+### Predefined Theme Constants
 
 ```python
 from truthound.datadocs import (
@@ -399,12 +399,12 @@ from truthound.datadocs import (
     MODERN_THEME,
 )
 
-# 직접 사용
+# Direct usage
 config = ReportConfig(custom_theme=DARK_THEME)
 ```
 
 ## See Also
 
-- [HTML Reports](html-reports.md) - HTML 리포트 생성
-- [Charts](charts.md) - 차트 렌더링
-- [Custom Renderers](custom-renderers.md) - 커스텀 렌더러 개발
+- [HTML Reports](html-reports.md) - HTML report generation
+- [Charts](charts.md) - Chart rendering
+- [Custom Renderers](custom-renderers.md) - Custom renderer development

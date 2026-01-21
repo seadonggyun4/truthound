@@ -1,8 +1,8 @@
 # Console Reporter
 
-Console Reporter는 Rich 라이브러리를 사용하여 터미널에 색상이 있는 아름다운 검증 결과를 출력합니다.
+Console Reporter outputs beautifully colored validation results to the terminal using the Rich library.
 
-## 기본 사용법
+## Basic Usage
 
 ```python
 from truthound.reporters import get_reporter
@@ -11,25 +11,25 @@ reporter = get_reporter("console")
 output = reporter.render(validation_result)
 print(output)
 
-# 또는 직접 출력
+# Or print directly
 reporter.print(validation_result)
 ```
 
-## 설정 옵션
+## Configuration Options
 
-`ConsoleReporterConfig`는 다음 옵션을 제공합니다:
+`ConsoleReporterConfig` provides the following options:
 
-| 옵션 | 타입 | 기본값 | 설명 |
-|------|------|--------|------|
-| `color` | `bool` | `True` | ANSI 색상 출력 활성화 |
-| `width` | `int \| None` | `None` | 출력 너비 (None = 터미널 너비) |
-| `show_header` | `bool` | `True` | 헤더 섹션 표시 |
-| `show_summary` | `bool` | `True` | 요약 통계 표시 |
-| `show_issues_table` | `bool` | `True` | 이슈 테이블 표시 |
-| `compact` | `bool` | `False` | 컴팩트 모드 (간략한 출력) |
-| `severity_colors` | `dict[str, str]` | 기본 색상 맵 | 심각도별 색상 설정 |
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `color` | `bool` | `True` | Enable ANSI color output |
+| `width` | `int \| None` | `None` | Output width (None = terminal width) |
+| `show_header` | `bool` | `True` | Display header section |
+| `show_summary` | `bool` | `True` | Display summary statistics |
+| `show_issues_table` | `bool` | `True` | Display issues table |
+| `compact` | `bool` | `False` | Compact mode (brief output) |
+| `severity_colors` | `dict[str, str]` | Default color map | Colors per severity |
 
-### 기본 심각도 색상
+### Default Severity Colors
 
 ```python
 DEFAULT_SEVERITY_COLORS = {
@@ -41,19 +41,19 @@ DEFAULT_SEVERITY_COLORS = {
 }
 ```
 
-## 사용 예시
+## Usage Examples
 
-### 기본 사용
+### Basic Usage
 
 ```python
 from truthound.reporters import get_reporter
 from truthound.reporters.console_reporter import ConsoleReporterConfig
 
-# 기본 설정
+# Default settings
 reporter = get_reporter("console")
 output = reporter.render(result)
 
-# 커스텀 설정
+# Custom settings
 config = ConsoleReporterConfig(
     color=True,
     width=120,
@@ -63,43 +63,43 @@ config = ConsoleReporterConfig(
 reporter = get_reporter("console", **config.__dict__)
 ```
 
-### 컴팩트 모드
+### Compact Mode
 
 ```python
 reporter = get_reporter("console", compact=True)
 output = reporter.render(result)
 ```
 
-컴팩트 모드는 한 줄 요약만 출력합니다:
+Compact mode outputs a single-line summary:
 ```
 ✓ Validation PASSED: 10/10 validators passed (100.0%) in 0.05s
 ```
 
-또는 실패 시:
+Or on failure:
 ```
 ✗ Validation FAILED: 8/10 validators passed (80.0%) - 2 critical, 0 high, 0 medium, 0 low issues
 ```
 
-### 색상 비활성화
+### Disable Colors
 
-CI 환경이나 파일 출력 시 색상을 비활성화할 수 있습니다:
+Colors can be disabled for CI environments or file output:
 
 ```python
 reporter = get_reporter("console", color=False)
 ```
 
-### 직접 터미널 출력
+### Direct Terminal Output
 
-`print()` 메서드를 사용하면 Rich Console을 통해 직접 터미널에 출력합니다:
+The `print()` method outputs directly to the terminal via Rich Console:
 
 ```python
 reporter = get_reporter("console")
-reporter.print(validation_result)  # 터미널에 직접 출력
+reporter.print(validation_result)  # Direct terminal output
 ```
 
-## 출력 형식
+## Output Format
 
-### 전체 출력 (기본)
+### Full Output (Default)
 
 ```
 ╭─────────────────────────────────────────────────────────────╮
@@ -135,7 +135,7 @@ Issues by Severity:
 └──────────────┴──────────┴───────────┴─────────────────────────┘
 ```
 
-## 클래스 속성
+## Class Attributes
 
 ```python
 class ConsoleReporter:
@@ -144,33 +144,33 @@ class ConsoleReporter:
     content_type = "text/plain"
 ```
 
-## API 레퍼런스
+## API Reference
 
 ### ConsoleReporter
 
 ```python
 class ConsoleReporter(ValidationReporter[ConsoleReporterConfig]):
-    """Rich 기반 콘솔 리포터."""
+    """Rich-based console reporter."""
 
     def render(self, data: ValidationResult) -> str:
-        """검증 결과를 문자열로 렌더링."""
+        """Render validation result as string."""
         ...
 
     def print(self, data: ValidationResult) -> None:
-        """검증 결과를 터미널에 직접 출력."""
+        """Print validation result directly to terminal."""
         ...
 
     def render_compact(self, data: ValidationResult) -> str:
-        """컴팩트 한 줄 요약 렌더링."""
+        """Render compact single-line summary."""
         ...
 ```
 
-## 의존성
+## Dependencies
 
-Console Reporter는 Rich 라이브러리를 사용합니다:
+Console Reporter uses the Rich library:
 
 ```bash
 pip install rich
 ```
 
-Rich는 Truthound의 기본 의존성에 포함되어 있습니다.
+Rich is included in Truthound's default dependencies.

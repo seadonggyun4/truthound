@@ -49,6 +49,11 @@ After installation, the `truthound` command is available globally.
 
 ### Checkpoint Commands Summary
 
+!!! warning "checkpoint vs realtime checkpoint"
+    `truthound checkpoint` is for **CI/CD pipelines** (YAML configuration file based).
+
+    For **streaming validation** state management, use [`truthound realtime checkpoint`](#realtime-commands-summary).
+
 | Command | Arguments | Options |
 |---------|-----------|---------|
 | `checkpoint run` | NAME (required) | `--config, -c` (truthound.yaml), `--data, -d`, `--validators, -v`, `--output, -o`, `--format, -f` (console/json), `--strict`, `--store`, `--slack`, `--webhook`, `--github-summary` |
@@ -78,6 +83,11 @@ After installation, the `truthound` command is available globally.
 | `dashboard` | - | `--profile, -p`, `--port` (8080), `--host` (localhost), `--title, -t` ("Truthound Dashboard"), `--debug` |
 
 ### Realtime Commands Summary
+
+!!! warning "realtime checkpoint vs checkpoint"
+    `truthound realtime checkpoint` is for **streaming validation** state management (`--dir` option based).
+
+    For **CI/CD pipelines**, use [`truthound checkpoint`](#checkpoint-commands-summary).
 
 | Command | Arguments | Options |
 |---------|-----------|---------|

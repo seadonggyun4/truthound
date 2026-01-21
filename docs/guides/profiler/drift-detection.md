@@ -1,21 +1,21 @@
 # Drift Detection
 
-이 문서는 스키마 변화 및 데이터 드리프트 감지 시스템을 설명합니다.
+This document describes the schema change and data drift detection system.
 
-## 개요
+## Overview
 
-`src/truthound/profiler/evolution/detector.py`에 구현된 드리프트 감지 시스템은 시간에 따른 스키마 및 데이터 변화를 추적합니다.
+The drift detection system implemented in `src/truthound/profiler/evolution/detector.py` tracks schema and data changes over time.
 
 ## SchemaChangeType
 
 ```python
 class SchemaChangeType(str, Enum):
-    """스키마 변경 유형"""
+    """Schema change types"""
 
-    COLUMN_ADDED = "column_added"       # 새 컬럼 추가
-    COLUMN_REMOVED = "column_removed"   # 컬럼 삭제
-    COLUMN_RENAMED = "column_renamed"   # 컬럼 이름 변경
-    TYPE_CHANGED = "type_changed"       # 데이터 타입 변경
+    COLUMN_ADDED = "column_added"       # New column added
+    COLUMN_REMOVED = "column_removed"   # Column removed
+    COLUMN_RENAMED = "column_renamed"   # Column renamed
+    TYPE_CHANGED = "type_changed"       # Data type changed
 ```
 
 ## SchemaChange
@@ -23,12 +23,12 @@ class SchemaChangeType(str, Enum):
 ```python
 @dataclass
 class SchemaChange:
-    """스키마 변경 정보"""
+    """Schema change information"""
 
     change_type: SchemaChangeType
     column_name: str
-    old_value: Any = None   # 이전 값 (타입, 이름 등)
-    new_value: Any = None   # 새로운 값
+    old_value: Any = None   # Previous value (type, name, etc.)
+    new_value: Any = None   # New value
     severity: str = "medium"
     description: str = ""
 ```
@@ -39,23 +39,23 @@ class SchemaChange:
 from typing import Protocol
 
 class SchemaChangeDetector(Protocol):
-    """스키마 변경 감지기 프로토콜"""
+    """Schema change detector protocol"""
 
     def detect_changes(
         self,
         old_profile: TableProfile,
         new_profile: TableProfile,
     ) -> list[SchemaChange]:
-        """두 프로파일 간 스키마 변경 감지"""
+        """Detect schema changes between two profiles"""
         ...
 ```
 
-## 타입 호환성 매핑
+## Type Compatibility Mapping
 
-안전한 타입 업그레이드를 정의합니다.
+Defines safe type upgrades.
 
 ```python
-# 호환 가능한 타입 변환 (safe upgrade)
+# Compatible type conversions (safe upgrade)
 TYPE_COMPATIBILITY = {
     "Int8": ["Int16", "Int32", "Int64", "Float32", "Float64"],
     "Int16": ["Int32", "Int64", "Float32", "Float64"],
@@ -66,18 +66,18 @@ TYPE_COMPATIBILITY = {
 }
 
 def is_compatible_change(old_type: str, new_type: str) -> bool:
-    """타입 변경이 호환 가능한지 확인"""
+    """Check if type change is compatible"""
     return new_type in TYPE_COMPATIBILITY.get(old_type, [])
 ```
 
-## 기본 사용법
+## Basic Usage
 
 ```python
 from truthound.profiler.evolution import SchemaEvolutionDetector
 
 detector = SchemaEvolutionDetector()
 
-# 스키마 변경 감지
+# Detect schema changes
 changes = detector.detect_changes(old_profile, new_profile)
 
 for change in changes:
@@ -88,15 +88,15 @@ for change in changes:
         print(f"  {change.old_value} -> {change.new_value}")
 ```
 
-## 컬럼 이름 변경 감지
+## Column Rename Detection
 
-유사한 통계를 가진 컬럼을 분석하여 이름 변경을 추론합니다.
+Infers renames by analyzing columns with similar statistics.
 
 ```python
 from truthound.profiler.evolution import ColumnRenameDetector
 
 detector = ColumnRenameDetector(
-    similarity_threshold=0.9,  # 90% 이상 유사도
+    similarity_threshold=0.9,  # 90% or higher similarity
 )
 
 renames = detector.detect_renames(old_profile, new_profile)
@@ -106,7 +106,7 @@ for rename in renames:
     print(f"Confidence: {rename.confidence:.2%}")
 ```
 
-## 호환성 분석
+## Compatibility Analysis
 
 ```python
 from truthound.profiler.evolution import CompatibilityAnalyzer
@@ -123,17 +123,17 @@ for breaking in report.breaking_changes:
     print(f"  BREAKING: {breaking.description}")
 ```
 
-## 드리프트 심각도
+## Drift Severity Levels
 
-| 심각도 | 설명 | 예시 |
-|--------|------|------|
-| `info` | 정보성 변경 | 새 컬럼 추가 |
-| `low` | 사소한 변경 | 호환 가능한 타입 확장 |
-| `medium` | 주의 필요 | 컬럼 이름 변경 |
-| `high` | 조사 필요 | 타입 변경 (비호환) |
-| `critical` | 즉시 조치 필요 | 필수 컬럼 삭제 |
+| Severity | Description | Example |
+|----------|-------------|---------|
+| `info` | Informational change | New column added |
+| `low` | Minor change | Compatible type expansion |
+| `medium` | Attention required | Column renamed |
+| `high` | Investigation needed | Incompatible type change |
+| `critical` | Immediate action required | Required column removed |
 
-## Breaking Change 알림
+## Breaking Change Alerts
 
 ```python
 from truthound.profiler.evolution import BreakingChangeAlert
@@ -146,28 +146,28 @@ for alert in alerts:
     print(f"Recommendation: {alert.recommendation}")
 ```
 
-## 히스토리 추적
+## History Tracking
 
 ```python
 from truthound.profiler.evolution import SchemaHistory
 
 history = SchemaHistory(storage_dir=".truthound/schema_history")
 
-# 프로파일 저장
+# Save profile
 history.save(profile, version="v1.0")
 history.save(new_profile, version="v1.1")
 
-# 히스토리 조회
+# Retrieve history
 versions = history.list_versions()
 
-# 버전 간 비교
+# Compare versions
 changes = history.compare("v1.0", "v1.1")
 
-# 특정 버전 로드
+# Load specific version
 old_profile = history.load("v1.0")
 ```
 
-## 자동 알림
+## Automatic Alerting
 
 ```python
 from truthound.profiler.evolution import SchemaWatcher
@@ -177,51 +177,51 @@ watcher = SchemaWatcher(
     check_interval_minutes=60,
 )
 
-# 모니터링 시작
+# Start monitoring
 watcher.watch("data.csv", baseline_profile)
 
-# 변경 감지 시 자동 알림 전송
+# Automatic alert sent when changes are detected
 ```
 
-## CLI 사용법
+## CLI Usage
 
 ```bash
-# 두 프로파일 비교
+# Compare two profiles
 th compare profile_v1.json profile_v2.json
 
-# 스키마 변경 감지
+# Detect schema changes
 th schema-diff old_profile.json new_profile.json
 
-# 호환성 분석
+# Compatibility analysis
 th check-compatibility old_profile.json new_profile.json
 
-# Breaking change 확인
+# Check for breaking changes
 th check-breaking old_profile.json new_profile.json
 ```
 
-## 통합 예제
+## Integration Example
 
 ```python
 from truthound.profiler import TableProfiler
 from truthound.profiler.evolution import SchemaEvolutionDetector
 from truthound.profiler.caching import ProfileCache
 
-# 프로파일러 및 캐시 설정
+# Set up profiler and cache
 profiler = TableProfiler()
 cache = ProfileCache()
 detector = SchemaEvolutionDetector()
 
-# 기준 프로파일 (캐시에서 로드 또는 생성)
+# Baseline profile (load from cache or create)
 baseline_key = cache.compute_fingerprint("data_baseline.csv")
 baseline = cache.get_or_compute(
     baseline_key,
     lambda: profiler.profile_file("data_baseline.csv"),
 )
 
-# 현재 프로파일
+# Current profile
 current = profiler.profile_file("data_current.csv")
 
-# 변경 감지
+# Detect changes
 changes = detector.detect_changes(baseline, current)
 
 if changes:
@@ -229,13 +229,13 @@ if changes:
     for change in changes:
         print(f"  - {change.change_type}: {change.column_name}")
 
-    # Breaking change 확인
+    # Check for breaking changes
     breaking = [c for c in changes if c.severity == "critical"]
     if breaking:
         raise ValueError(f"Breaking changes detected: {breaking}")
 ```
 
-## 다음 단계
+## Next Steps
 
-- [품질 스코어링](quality-scoring.md) - 드리프트가 품질에 미치는 영향
-- [시각화](visualization.md) - 드리프트 리포트 생성
+- [Quality Scoring](quality-scoring.md) - Impact of drift on quality
+- [Visualization](visualization.md) - Generate drift reports

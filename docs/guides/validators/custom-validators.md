@@ -1,22 +1,22 @@
-# 커스텀 검증기 개발 가이드
+# Custom Validator Development Guide
 
-이 문서는 Truthound SDK를 사용하여 커스텀 검증기를 개발하는 방법을 설명합니다.
+This document describes how to develop custom validators using the Truthound SDK.
 
-## 개요
+## Overview
 
-Truthound SDK는 세 가지 방식으로 커스텀 검증기를 생성할 수 있습니다:
+The Truthound SDK provides three approaches for creating custom validators:
 
-1. **데코레이터 방식** - 클래스에 메타데이터를 추가하고 레지스트리에 등록
-2. **빌더 패턴** - 서브클래싱 없이 플루언트 API로 검증기 생성
-3. **템플릿 상속** - 미리 정의된 템플릿 클래스를 상속하여 구현
+1. **Decorator Approach** - Add metadata to classes and register them with the registry
+2. **Builder Pattern** - Create validators using a fluent API without subclassing
+3. **Template Inheritance** - Extend predefined template classes
 
 ---
 
-## 1. 데코레이터 방식
+## 1. Decorator Approach
 
 ### @custom_validator
 
-가장 일반적인 커스텀 검증기 생성 방식입니다.
+The most common approach for creating custom validators.
 
 ```python
 from truthound.validators.sdk import custom_validator
@@ -40,13 +40,13 @@ import polars as pl
             "allow_zero": {"type": "boolean", "default": True}
         }
     },
-    auto_register=True,  # 기본값: True
+    auto_register=True,  # Default: True
 )
 class PercentageValidator(Validator, NumericValidatorMixin):
     def validate(self, lf: pl.LazyFrame) -> list[ValidationIssue]:
         issues = []
         for col in self._get_numeric_columns(lf):
-            # 0-100 범위 검사 로직
+            # Range validation logic for 0-100
             count = (
                 lf.filter(
                     (pl.col(col) < 0) | (pl.col(col) > 100)
@@ -68,23 +68,23 @@ class PercentageValidator(Validator, NumericValidatorMixin):
         return issues
 ```
 
-#### 파라미터
+#### Parameters
 
-| 파라미터 | 타입 | 기본값 | 설명 |
-|----------|------|--------|------|
-| `name` | `str` | (필수) | 고유한 검증기 이름 |
-| `category` | `str` | `"custom"` | 검증기 카테고리 |
-| `description` | `str` | `""` | 사람이 읽을 수 있는 설명 |
-| `version` | `str` | `"1.0.0"` | 시맨틱 버전 |
-| `author` | `str` | `""` | 작성자 이름/이메일 |
-| `tags` | `list[str]` | `None` | 필터링/검색용 태그 |
-| `examples` | `list[str]` | `None` | 문서화용 사용 예시 |
-| `config_schema` | `dict` | `None` | 설정 JSON 스키마 |
-| `auto_register` | `bool` | `True` | 자동 레지스트리 등록 여부 |
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `name` | `str` | (required) | Unique validator name |
+| `category` | `str` | `"custom"` | Validator category |
+| `description` | `str` | `""` | Human-readable description |
+| `version` | `str` | `"1.0.0"` | Semantic version |
+| `author` | `str` | `""` | Author name/email |
+| `tags` | `list[str]` | `None` | Tags for filtering/searching |
+| `examples` | `list[str]` | `None` | Usage examples for documentation |
+| `config_schema` | `dict` | `None` | Configuration JSON schema |
+| `auto_register` | `bool` | `True` | Whether to automatically register with the registry |
 
 ### @register_validator
 
-기존에 정의된 검증기 클래스를 레지스트리에 등록합니다.
+Registers an existing validator class with the registry.
 
 ```python
 from truthound.validators.sdk import register_validator
@@ -100,7 +100,7 @@ class MyValidator(Validator):
 
 ### @validator_metadata
 
-기존 검증기에 상세 메타데이터를 추가합니다.
+Adds detailed metadata to an existing validator.
 
 ```python
 from truthound.validators.sdk import validator_metadata, register_validator
@@ -124,7 +124,7 @@ class PhoneValidator(Validator):
 
 ### @deprecated_validator
 
-검증기를 폐기 예정으로 표시합니다.
+Marks a validator as deprecated.
 
 ```python
 from truthound.validators.sdk import deprecated_validator
@@ -139,16 +139,16 @@ class OldEmailValidator(Validator):
     ...
 ```
 
-인스턴스화 시 `DeprecationWarning`이 발생합니다:
+A `DeprecationWarning` is raised upon instantiation:
 ```
 DeprecationWarning: Validator 'email_v1' is deprecated. Use 'email_v2' for RFC 5322 compliance. Use 'email_v2' instead. Will be removed in version 2.0.0.
 ```
 
 ---
 
-## 2. 레지스트리 API
+## 2. Registry API
 
-등록된 검증기를 조회하고 관리하는 함수들입니다.
+Functions for querying and managing registered validators.
 
 ```python
 from truthound.validators.sdk import (
@@ -164,26 +164,26 @@ from truthound.validators.sdk import (
 )
 ```
 
-### 조회 함수
+### Query Functions
 
-| 함수 | 반환 타입 | 설명 |
-|------|-----------|------|
-| `get_registered_validators()` | `dict[str, type]` | 모든 등록된 검증기 |
-| `get_validator_by_name(name)` | `type \| None` | 이름으로 검증기 클래스 조회 |
-| `get_validator_metadata(name)` | `ValidatorMeta \| None` | 검증기 메타데이터 조회 |
-| `get_validators_by_category(category)` | `list[type]` | 카테고리별 검증기 목록 |
-| `get_validators_by_tag(tag)` | `list[type]` | 태그별 검증기 목록 |
-| `list_validator_categories()` | `list[str]` | 모든 카테고리 목록 |
-| `list_validator_tags()` | `list[str]` | 모든 태그 목록 |
+| Function | Return Type | Description |
+|----------|-------------|-------------|
+| `get_registered_validators()` | `dict[str, type]` | All registered validators |
+| `get_validator_by_name(name)` | `type \| None` | Retrieve validator class by name |
+| `get_validator_metadata(name)` | `ValidatorMeta \| None` | Retrieve validator metadata |
+| `get_validators_by_category(category)` | `list[type]` | List of validators by category |
+| `get_validators_by_tag(tag)` | `list[type]` | List of validators by tag |
+| `list_validator_categories()` | `list[str]` | List of all categories |
+| `list_validator_tags()` | `list[str]` | List of all tags |
 
-### 관리 함수
+### Management Functions
 
-| 함수 | 반환 타입 | 설명 |
-|------|-----------|------|
-| `unregister_validator(name)` | `bool` | 검증기 등록 해제 |
-| `clear_registry()` | `None` | 모든 검증기 등록 해제 (테스트용) |
+| Function | Return Type | Description |
+|----------|-------------|-------------|
+| `unregister_validator(name)` | `bool` | Unregister a validator |
+| `clear_registry()` | `None` | Unregister all validators (for testing) |
 
-### ValidatorMeta 데이터클래스
+### ValidatorMeta Dataclass
 
 ```python
 @dataclass(frozen=True)
@@ -205,9 +205,9 @@ class ValidatorMeta:
 
 ---
 
-## 3. 빌더 패턴
+## 3. Builder Pattern
 
-서브클래싱 없이 플루언트 API로 검증기를 생성합니다.
+Create validators using a fluent API without subclassing.
 
 ### ValidatorBuilder
 
@@ -238,32 +238,32 @@ validator = (
     .build()
 )
 
-# 사용
+# Usage
 issues = validator.validate(lf)
 ```
 
-#### 메서드 체인
+#### Method Chain
 
-| 메서드 | 설명 |
-|--------|------|
-| `category(name)` | 카테고리 설정 |
-| `description(text)` | 설명 설정 |
-| `for_columns(dtype_filter)` | 데이터 타입 필터 설정 |
-| `for_numeric_columns()` | 숫자 컬럼만 대상 |
-| `for_string_columns()` | 문자열 컬럼만 대상 |
-| `for_datetime_columns()` | 날짜/시간 컬럼만 대상 |
-| `for_float_columns()` | 실수 컬럼만 대상 |
-| `check_column(fn)` / `check(fn)` | 검사 함수 추가 (col, lf) -> count |
-| `with_issue_type(type)` | 이슈 타입 설정 |
-| `with_severity(severity)` | 심각도 설정 |
-| `with_message(template)` | 메시지 템플릿 설정 ({column}, {count}) |
-| `with_samples(fn)` | 샘플 수집 함수 설정 |
-| `with_config(config)` | ValidatorConfig 설정 |
-| `build()` | Validator 인스턴스 생성 |
+| Method | Description |
+|--------|-------------|
+| `category(name)` | Set category |
+| `description(text)` | Set description |
+| `for_columns(dtype_filter)` | Set data type filter |
+| `for_numeric_columns()` | Target only numeric columns |
+| `for_string_columns()` | Target only string columns |
+| `for_datetime_columns()` | Target only datetime columns |
+| `for_float_columns()` | Target only float columns |
+| `check_column(fn)` / `check(fn)` | Add check function (col, lf) -> count |
+| `with_issue_type(type)` | Set issue type |
+| `with_severity(severity)` | Set severity |
+| `with_message(template)` | Set message template ({column}, {count}) |
+| `with_samples(fn)` | Set sample collection function |
+| `with_config(config)` | Set ValidatorConfig |
+| `build()` | Create Validator instance |
 
 ### ColumnCheckBuilder
 
-개별 컬럼 검사를 정의합니다.
+Defines individual column checks.
 
 ```python
 from truthound.validators.sdk import ColumnCheckBuilder
@@ -282,7 +282,7 @@ check = (
 
 ### AggregateCheckBuilder
 
-집계 수준 검사를 정의합니다.
+Defines aggregate-level checks.
 
 ```python
 from truthound.validators.sdk import AggregateCheckBuilder
@@ -298,11 +298,11 @@ check = (
 )
 ```
 
-### 편의 함수
+### Convenience Functions
 
 #### simple_column_validator
 
-한 줄로 간단한 컬럼 검증기 생성:
+Create a simple column validator in one line:
 
 ```python
 from truthound.validators.sdk import simple_column_validator
@@ -317,13 +317,13 @@ validator = simple_column_validator(
     issue_type="null_value",
     severity=Severity.HIGH,
     category="completeness",
-    dtype_filter=None,  # 모든 타입
+    dtype_filter=None,  # All types
 )
 ```
 
 #### simple_expression_validator
 
-Polars 표현식으로 검증기 생성:
+Create a validator from a Polars expression:
 
 ```python
 from truthound.validators.sdk import simple_expression_validator
@@ -332,23 +332,23 @@ import polars as pl
 
 validator = simple_expression_validator(
     name="positive_values",
-    violation_expr=pl.col("amount") <= 0,  # True = 위반
+    violation_expr=pl.col("amount") <= 0,  # True = violation
     issue_type="non_positive",
     severity=Severity.HIGH,
     category="numeric",
-    columns=["amount", "quantity"],  # 특정 컬럼만
+    columns=["amount", "quantity"],  # Specific columns only
 )
 ```
 
 ---
 
-## 4. 템플릿 클래스
+## 4. Template Classes
 
-일반적인 패턴에 대한 추상 템플릿 클래스를 제공합니다.
+Abstract template classes are provided for common patterns.
 
 ### SimpleColumnValidator
 
-컬럼별 검사의 기본 템플릿:
+Base template for per-column validation:
 
 ```python
 from truthound.validators.sdk import SimpleColumnValidator
@@ -361,14 +361,14 @@ class PositiveValidator(SimpleColumnValidator):
     category = "numeric"
     issue_type = "non_positive_value"
     default_severity = Severity.HIGH
-    dtype_filter = NUMERIC_TYPES  # 숫자 컬럼만
+    dtype_filter = NUMERIC_TYPES  # Numeric columns only
 
     def check_column_values(self, lf: pl.LazyFrame, col: str) -> int:
-        """위반 개수 반환 (필수 구현)"""
+        """Return violation count (required implementation)"""
         return lf.filter(pl.col(col) <= 0).select(pl.len()).collect().item()
 
     def get_violation_samples(self, lf: pl.LazyFrame, col: str) -> list | None:
-        """위반 샘플 반환 (선택적)"""
+        """Return violation samples (optional)"""
         return (
             lf.filter(pl.col(col) <= 0)
             .select(col)
@@ -379,24 +379,24 @@ class PositiveValidator(SimpleColumnValidator):
         )
 
     def get_issue_details(self, col: str, count: int, total: int) -> str:
-        """이슈 상세 메시지 (선택적)"""
+        """Return issue detail message (optional)"""
         pct = (count / total * 100) if total > 0 else 0
         return f"Found {count} non-positive values ({pct:.1f}%)"
 ```
 
-#### 클래스 속성
+#### Class Attributes
 
-| 속성 | 타입 | 기본값 | 설명 |
-|------|------|--------|------|
-| `name` | `str` | `"simple_column"` | 검증기 이름 |
-| `category` | `str` | `"custom"` | 카테고리 |
-| `issue_type` | `str` | `"validation_failed"` | 이슈 타입 |
-| `default_severity` | `Severity` | `MEDIUM` | 기본 심각도 |
-| `dtype_filter` | `set[type] \| None` | `None` | 데이터 타입 필터 |
+| Attribute | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `name` | `str` | `"simple_column"` | Validator name |
+| `category` | `str` | `"custom"` | Category |
+| `issue_type` | `str` | `"validation_failed"` | Issue type |
+| `default_severity` | `Severity` | `MEDIUM` | Default severity |
+| `dtype_filter` | `set[type] \| None` | `None` | Data type filter |
 
 ### SimplePatternValidator
 
-정규식 기반 문자열 검증:
+Regex-based string validation:
 
 ```python
 from truthound.validators.sdk import SimplePatternValidator
@@ -407,29 +407,29 @@ class EmailValidator(SimplePatternValidator):
     category = "string"
     pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
     issue_type = "invalid_email"
-    match_full = True  # 전체 문자열 매칭
+    match_full = True  # Full string matching
     case_sensitive = True
 
 class NoSSNValidator(SimplePatternValidator):
     name = "no_ssn"
     category = "privacy"
     pattern = r"\d{3}-\d{2}-\d{4}"
-    invert_match = True  # 패턴이 있으면 위반
+    invert_match = True  # Pattern presence is a violation
     issue_type = "contains_ssn"
 ```
 
-#### 클래스 속성
+#### Class Attributes
 
-| 속성 | 타입 | 기본값 | 설명 |
-|------|------|--------|------|
-| `pattern` | `str` | `""` (필수) | 정규식 패턴 |
-| `match_full` | `bool` | `True` | 전체 문자열 매칭 여부 |
-| `invert_match` | `bool` | `False` | True면 매칭되는 값이 위반 |
-| `case_sensitive` | `bool` | `True` | 대소문자 구분 |
+| Attribute | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `pattern` | `str` | `""` (required) | Regex pattern |
+| `match_full` | `bool` | `True` | Whether to match the full string |
+| `invert_match` | `bool` | `False` | If True, matching values are violations |
+| `case_sensitive` | `bool` | `True` | Case sensitivity |
 
 ### SimpleRangeValidator
 
-숫자 범위 검증:
+Numeric range validation:
 
 ```python
 from truthound.validators.sdk import SimpleRangeValidator
@@ -444,7 +444,7 @@ class PercentageValidator(SimpleRangeValidator):
 class PositiveOnlyValidator(SimpleRangeValidator):
     name = "positive_only"
     min_value = 0
-    inclusive_min = False  # 0 제외 (> 0)
+    inclusive_min = False  # Exclude 0 (> 0)
     issue_type = "non_positive"
 
 class AgeValidator(SimpleRangeValidator):
@@ -454,18 +454,18 @@ class AgeValidator(SimpleRangeValidator):
     issue_type = "invalid_age"
 ```
 
-#### 클래스 속성
+#### Class Attributes
 
-| 속성 | 타입 | 기본값 | 설명 |
-|------|------|--------|------|
-| `min_value` | `float \| int \| None` | `None` | 최솟값 |
-| `max_value` | `float \| int \| None` | `None` | 최댓값 |
-| `inclusive_min` | `bool` | `True` | 최솟값 포함 여부 |
-| `inclusive_max` | `bool` | `True` | 최댓값 포함 여부 |
+| Attribute | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `min_value` | `float \| int \| None` | `None` | Minimum value |
+| `max_value` | `float \| int \| None` | `None` | Maximum value |
+| `inclusive_min` | `bool` | `True` | Whether to include minimum value |
+| `inclusive_max` | `bool` | `True` | Whether to include maximum value |
 
 ### SimpleComparisonValidator
 
-컬럼 간 비교 검증:
+Cross-column comparison validation:
 
 ```python
 from truthound.validators.sdk import SimpleComparisonValidator
@@ -482,30 +482,30 @@ class AmountMatchesValidator(SimpleComparisonValidator):
     name = "amounts_match"
     left_column = "calculated_total"
     right_column = "reported_total"
-    operator = "eq"  # 같아야 함
+    operator = "eq"  # Must be equal
     issue_type = "amount_mismatch"
 ```
 
-#### 지원 연산자
+#### Supported Operators
 
-| 연산자 | 기호 | 의미 |
-|--------|------|------|
-| `"eq"` | `==` | 같음 |
-| `"ne"` | `!=` | 다름 |
-| `"lt"` | `<` | 미만 |
-| `"le"` | `<=` | 이하 |
-| `"gt"` | `>` | 초과 |
-| `"ge"` | `>=` | 이상 |
+| Operator | Symbol | Meaning |
+|----------|--------|---------|
+| `"eq"` | `==` | Equal |
+| `"ne"` | `!=` | Not equal |
+| `"lt"` | `<` | Less than |
+| `"le"` | `<=` | Less than or equal |
+| `"gt"` | `>` | Greater than |
+| `"ge"` | `>=` | Greater than or equal |
 
 ### CompositeValidator
 
-여러 검증기를 조합:
+Combine multiple validators:
 
 ```python
 from truthound.validators.sdk import CompositeValidator
 from truthound.validators import NullValidator, UniqueValidator, RangeValidator
 
-# 방법 1: 클래스 상속
+# Method 1: Class inheritance
 class CustomerDataValidator(CompositeValidator):
     name = "customer_data"
     category = "business"
@@ -517,7 +517,7 @@ class CustomerDataValidator(CompositeValidator):
             AgeValidator(columns=("age",)),
         ]
 
-# 방법 2: 인라인 생성
+# Method 2: Inline creation
 composite = CompositeValidator(
     validators=[
         NullValidator(columns=("id", "name")),
@@ -526,7 +526,7 @@ composite = CompositeValidator(
     ]
 )
 
-# 방법 3: 빌더 스타일
+# Method 3: Builder style
 composite = CompositeValidator()
 composite.add_validator(NullValidator())
 composite.add_validator(UniqueValidator(columns=("id",)))
@@ -534,25 +534,25 @@ composite.add_validator(UniqueValidator(columns=("id",)))
 
 ---
 
-## 5. 팩토리 함수
+## 5. Factory Functions
 
-클래스를 동적으로 생성하는 팩토리 함수입니다.
+Factory functions for dynamic class creation.
 
 ### create_pattern_validator
 
 ```python
 from truthound.validators.sdk import create_pattern_validator
 
-# 클래스 생성
+# Create class
 EmailValidator = create_pattern_validator(
     name="email",
     pattern=r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$",
     issue_type="invalid_email",
-    invert=False,  # 매칭 안 되면 위반
+    invert=False,  # Non-matching is a violation
     case_sensitive=True,
 )
 
-# 인스턴스 생성 및 사용
+# Create instance and use
 validator = EmailValidator()
 issues = validator.validate(lf)
 ```
@@ -562,27 +562,27 @@ issues = validator.validate(lf)
 ```python
 from truthound.validators.sdk import create_range_validator
 
-# 클래스 생성
+# Create class
 PercentageValidator = create_range_validator(
     name="percentage",
     min_value=0,
     max_value=100,
     issue_type="invalid_percentage",
-    inclusive=True,  # 경계값 포함
+    inclusive=True,  # Include boundary values
 )
 
-# 인스턴스 생성 및 사용
+# Create instance and use
 validator = PercentageValidator()
 issues = validator.validate(lf)
 ```
 
 ---
 
-## 6. 테스트 프레임워크
+## 6. Testing Framework
 
 ### ValidatorTestCase
 
-unittest 기반 테스트 베이스 클래스:
+Base class for unittest-based testing:
 
 ```python
 from truthound.validators.sdk import ValidatorTestCase
@@ -619,56 +619,56 @@ class TestPositiveValidator(ValidatorTestCase):
         self.assert_performance(max_ms=1000, rows=1_000_000)
 ```
 
-#### 테스트 메서드
+#### Test Methods
 
-| 메서드 | 설명 |
-|--------|------|
-| `create_validator(**kwargs)` | 검증기 인스턴스 생성 |
-| `create_df(data)` | 테스트 LazyFrame 생성 |
-| `create_large_df(rows, schema, seed)` | 대용량 테스트 데이터 생성 |
-| `validate(lf, validator)` | 검증 실행 |
-| `validate_safe(lf, validator)` | 에러 핸들링 포함 검증 |
+| Method | Description |
+|--------|-------------|
+| `create_validator(**kwargs)` | Create validator instance |
+| `create_df(data)` | Create test LazyFrame |
+| `create_large_df(rows, schema, seed)` | Create large test data |
+| `validate(lf, validator)` | Execute validation |
+| `validate_safe(lf, validator)` | Validation with error handling |
 
-#### 어설션 메서드
+#### Assertion Methods
 
-| 메서드 | 설명 |
-|--------|------|
-| `assert_no_issues()` | 이슈 없음 확인 |
-| `assert_has_issue(column, issue_type, min_count, exact_count, severity)` | 특정 이슈 존재 확인 |
-| `assert_issue_count(expected)` | 이슈 개수 확인 |
-| `assert_total_violations(expected)` | 총 위반 수 확인 |
-| `assert_no_error()` | 에러 없음 확인 |
-| `assert_error(error_type)` | 특정 에러 발생 확인 |
-| `assert_performance(max_ms, rows)` | 성능 기준 충족 확인 |
+| Method | Description |
+|--------|-------------|
+| `assert_no_issues()` | Verify no issues |
+| `assert_has_issue(column, issue_type, min_count, exact_count, severity)` | Verify specific issue exists |
+| `assert_issue_count(expected)` | Verify issue count |
+| `assert_total_violations(expected)` | Verify total violations |
+| `assert_no_error()` | Verify no errors |
+| `assert_error(error_type)` | Verify specific error occurred |
+| `assert_performance(max_ms, rows)` | Verify performance criteria met |
 
-### 테스트 데이터 생성
+### Test Data Generation
 
 ```python
 from truthound.validators.sdk import create_test_dataframe, create_edge_case_data
 
-# 기본 테스트 데이터
+# Basic test data
 df = create_test_dataframe(rows=1000, include_nulls=True)
 
-# 명시적 데이터
+# Explicit data
 df = create_test_dataframe(data={"col1": [1, 2, 3]})
 
-# 엣지 케이스 모음
+# Edge case collection
 edge_cases = create_edge_case_data()
-# 반환: {
-#   "empty": 빈 DataFrame,
-#   "single_row": 1행 DataFrame,
-#   "all_nulls": 모든 값이 null,
-#   "uniform_values": 모든 값 동일,
-#   "large_values": 매우 큰 숫자,
-#   "small_values": 매우 작은 숫자,
-#   "unicode": 유니코드 문자열,
-#   "empty_strings": 빈 문자열,
-#   "whitespace": 공백 문자,
+# Returns: {
+#   "empty": Empty DataFrame,
+#   "single_row": 1-row DataFrame,
+#   "all_nulls": All values null,
+#   "uniform_values": All values identical,
+#   "large_values": Very large numbers,
+#   "small_values": Very small numbers,
+#   "unicode": Unicode strings,
+#   "empty_strings": Empty strings,
+#   "whitespace": Whitespace characters,
 #   "special_floats": inf, -inf, nan, 0.0, -0.0,
 # }
 ```
 
-### 독립 어설션 함수
+### Standalone Assertion Functions
 
 ```python
 from truthound.validators.sdk import (
@@ -684,12 +684,12 @@ assert_has_issue(issues, column="col1", issue_type="null_value", min_count=5)
 assert_issue_count(issues, expected=3)
 ```
 
-### 성능 벤치마킹
+### Performance Benchmarking
 
 ```python
 from truthound.validators.sdk import benchmark_validator, ValidatorBenchmark
 
-# 단일 검증기 벤치마킹
+# Single validator benchmarking
 result = benchmark_validator(
     validator=PositiveValidator(),
     lf=large_dataframe,
@@ -699,7 +699,7 @@ result = benchmark_validator(
 print(f"Mean: {result.mean_ms:.2f}ms")
 print(f"Throughput: {result.throughput_rows_per_sec:,.0f} rows/sec")
 
-# 여러 검증기 비교
+# Compare multiple validators
 benchmark = ValidatorBenchmark()
 benchmark.add_validator(NullValidator())
 benchmark.add_validator(UniqueValidator())
@@ -731,51 +731,51 @@ class BenchmarkResult:
 
 ---
 
-## 7. CLI 스캐폴딩
+## 7. CLI Scaffolding
 
-`th new validator` 명령어로 검증기 템플릿을 생성할 수 있습니다.
+Generate validator templates using the `th new validator` command.
 
 ```bash
-# 기본 템플릿 (7종 선택)
+# Basic template (7 types available)
 th new validator my_validator
 
-# 특정 템플릿 지정
+# Specify template
 th new validator email_format --template pattern
 
-# 즉시 설치 (editable mode)
+# Immediate installation (editable mode)
 th new validator my_validator --install
 ```
 
-### 사용 가능한 템플릿
+### Available Templates
 
-| 템플릿 | 설명 |
-|--------|------|
-| `basic` | 기본 Validator 서브클래스 |
-| `column` | SimpleColumnValidator 상속 |
-| `pattern` | SimplePatternValidator 상속 |
-| `range` | SimpleRangeValidator 상속 |
-| `comparison` | SimpleComparisonValidator 상속 |
-| `composite` | CompositeValidator 상속 |
-| `ml` | ML 기반 검증기 (이상 탐지) |
+| Template | Description |
+|----------|-------------|
+| `basic` | Basic Validator subclass |
+| `column` | SimpleColumnValidator inheritance |
+| `pattern` | SimplePatternValidator inheritance |
+| `range` | SimpleRangeValidator inheritance |
+| `comparison` | SimpleComparisonValidator inheritance |
+| `composite` | CompositeValidator inheritance |
+| `ml` | ML-based validator (anomaly detection) |
 
-생성되는 파일 구조:
+Generated file structure:
 
 ```
 my_validator/
-├── pyproject.toml         # 패키지 메타데이터
+├── pyproject.toml         # Package metadata
 ├── README.md
 ├── src/
 │   └── my_validator/
 │       ├── __init__.py
-│       └── validator.py   # 검증기 구현
+│       └── validator.py   # Validator implementation
 └── tests/
-    └── test_validator.py  # 테스트 코드
+    └── test_validator.py  # Test code
 ```
 
 ---
 
-## 다음 단계
+## Next Steps
 
-- [엔터프라이즈 SDK](enterprise-sdk.md) - 샌드박스, 코드 서명, 라이선스 관리
-- [보안 가이드](security.md) - ReDoS 보호, SQL 인젝션 방지
-- [내장 검증기](built-in.md) - 289개 내장 검증기 참조
+- [Enterprise SDK](enterprise-sdk.md) - Sandbox, code signing, license management
+- [Security Guide](security.md) - ReDoS protection, SQL injection prevention
+- [Built-in Validators](built-in.md) - 289 built-in validators reference

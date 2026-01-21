@@ -504,13 +504,21 @@ truthound lineage visualize lineage.json -o graph.svg --renderer graphviz
 truthound lineage visualize lineage.json -o graph.md --renderer mermaid
 ```
 
-!!! note "지원 렌더러"
+!!! note "Supported Renderers"
     - `d3`: Interactive D3.js (HTML)
     - `cytoscape`: Cytoscape.js (HTML)
     - `graphviz`: Static Graphviz (SVG/PNG)
     - `mermaid`: Mermaid diagram (Markdown)
 
 ### Realtime Commands
+
+!!! warning "checkpoint vs realtime checkpoint"
+    Truthound has two different checkpoint systems:
+
+    - **`truthound checkpoint`**: For CI/CD pipelines (YAML configuration file based)
+    - **`truthound realtime checkpoint`**: For streaming validation (directory-based state management)
+
+    These two commands serve completely different purposes and have different options.
 
 ```bash
 # Start streaming validation
@@ -523,16 +531,41 @@ truthound realtime validate kinesis:my_stream --batch-size 1000
 truthound realtime monitor mock --interval 5 --duration 60
 truthound realtime monitor kafka:my_topic --interval 10
 
-# Manage checkpoints
+# Manage streaming checkpoints (for fault tolerance in realtime validation)
+# NOTE: This is different from `truthound checkpoint` which is for CI/CD!
 truthound realtime checkpoint list --dir ./checkpoints
-truthound realtime checkpoint show <checkpoint-id>
-truthound realtime checkpoint delete <checkpoint-id> --force
+truthound realtime checkpoint show <checkpoint-id> --dir ./checkpoints
+truthound realtime checkpoint delete <checkpoint-id> --dir ./checkpoints --force
 ```
 
-!!! note "Streaming Source 형식"
-    - `mock`: 테스트용 모의 데이터 소스
-    - `kafka:topic_name`: Kafka 토픽 (aiokafka 필요)
-    - `kinesis:stream_name`: Kinesis 스트림 (aiobotocore 필요)
+!!! note "Streaming Source Formats"
+    - `mock`: Mock data source for testing
+    - `kafka:topic_name`: Kafka topic (requires aiokafka)
+    - `kinesis:stream_name`: Kinesis stream (requires aiobotocore)
+
+### Checkpoint System Comparison
+
+| Command | Purpose | Key Options | Description |
+|---------|---------|-------------|-------------|
+| `truthound checkpoint run` | CI/CD pipeline | `--config` | Run validation based on YAML config file |
+| `truthound checkpoint list` | CI/CD pipeline | `--config` | List checkpoints from config file |
+| `truthound checkpoint validate` | CI/CD pipeline | `<config-file>` | Validate config file |
+| `truthound realtime checkpoint list` | Streaming validation | `--dir` | List streaming state checkpoints |
+| `truthound realtime checkpoint show` | Streaming validation | `--dir` | Show specific checkpoint details |
+| `truthound realtime checkpoint delete` | Streaming validation | `--dir`, `--force` | Delete checkpoint |
+
+**CI/CD Checkpoint Example** (see [docs/guides/ci-cd.md](../guides/ci-cd.md)):
+```bash
+# Run checkpoint with YAML config file
+truthound checkpoint run daily_data_validation --config truthound.yaml
+truthound checkpoint list --config truthound.yaml
+```
+
+**Realtime Checkpoint Example**:
+```bash
+# Manage streaming validation state
+truthound realtime checkpoint list --dir ./streaming_checkpoints
+```
 
 ---
 

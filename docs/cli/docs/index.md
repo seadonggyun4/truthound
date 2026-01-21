@@ -81,6 +81,9 @@ Chart library selection is automatic:
 | **HTML** | ApexCharts | Modern interactive charts with tooltips and animations |
 | **PDF** | SVG | Zero-dependency, optimized for PDF rendering |
 
+!!! tip "Theme-Aware Charts"
+    Charts automatically adapt to the selected theme. Dark mode reports use light-colored text for all chart elements (axis labels, legends, tooltips) for optimal readability.
+
 ### Theme Options
 
 | Theme | Description |

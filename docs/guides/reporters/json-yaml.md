@@ -1,10 +1,10 @@
 # JSON & YAML Reporters
 
-JSON과 YAML 형식으로 검증 결과를 출력하는 리포터입니다.
+Reporters that output validation results in JSON and YAML formats.
 
 ## JSON Reporter
 
-### 기본 사용법
+### Basic Usage
 
 ```python
 from truthound.reporters import get_reporter
@@ -13,21 +13,21 @@ reporter = get_reporter("json")
 json_output = reporter.render(validation_result)
 ```
 
-### 설정 옵션
+### Configuration Options
 
-`JSONReporterConfig`는 다음 옵션을 제공합니다:
+`JSONReporterConfig` provides the following options:
 
-| 옵션 | 타입 | 기본값 | 설명 |
-|------|------|--------|------|
-| `indent` | `int \| None` | `2` | JSON 들여쓰기 (None = 한 줄) |
-| `sort_keys` | `bool` | `False` | 키 정렬 여부 |
-| `ensure_ascii` | `bool` | `False` | ASCII 문자만 사용 |
-| `include_null_values` | `bool` | `True` | null 값 포함 여부 |
-| `date_format` | `str` | `"iso"` | 날짜 형식 ("iso" \| "timestamp") |
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `indent` | `int \| None` | `2` | JSON indentation (None = single line) |
+| `sort_keys` | `bool` | `False` | Sort keys |
+| `ensure_ascii` | `bool` | `False` | Use ASCII characters only |
+| `include_null_values` | `bool` | `True` | Include null values |
+| `date_format` | `str` | `"iso"` | Date format ("iso" \| "timestamp") |
 
-### 사용 예시
+### Usage Examples
 
-#### 기본 JSON 출력
+#### Basic JSON Output
 
 ```python
 from truthound.reporters import get_reporter
@@ -36,7 +36,7 @@ reporter = get_reporter("json", indent=2)
 output = reporter.render(result)
 ```
 
-출력 예시:
+Output example:
 ```json
 {
   "run_id": "abc123-def456",
@@ -65,50 +65,50 @@ output = reporter.render(result)
 }
 ```
 
-#### 컴팩트 JSON (한 줄)
+#### Compact JSON (Single Line)
 
 ```python
 reporter = get_reporter("json", indent=None)
 compact_output = reporter.render(result)
 
-# 또는 메서드 사용
+# Or use method
 reporter = get_reporter("json")
 compact_output = reporter.render_compact(result)
 ```
 
 #### NDJSON (Newline Delimited JSON)
 
-로그 수집 시스템(ELK, Splunk)과의 통합에 유용합니다:
+Useful for integration with log collection systems (ELK, Splunk):
 
 ```python
 reporter = get_reporter("json")
 ndjson_output = reporter.render_lines(result)
 ```
 
-출력:
+Output:
 ```json
 {"type":"metadata","run_id":"abc123","data_asset":"data.csv"}
 {"type":"result","validator":"NullValidator","column":"email","success":false}
 {"type":"result","validator":"RangeValidator","column":"age","success":false}
 ```
 
-### 날짜 형식
+### Date Format
 
 ```python
-# ISO 8601 형식 (기본)
+# ISO 8601 format (default)
 reporter = get_reporter("json", date_format="iso")
-# 출력: "2024-01-15T10:30:45"
+# Output: "2024-01-15T10:30:45"
 
 # Unix timestamp
 reporter = get_reporter("json", date_format="timestamp")
-# 출력: 1705314645
+# Output: 1705314645
 ```
 
 ---
 
 ## YAML Reporter
 
-### 기본 사용법
+### Basic Usage
 
 ```python
 from truthound.reporters import get_reporter
@@ -117,18 +117,18 @@ reporter = get_reporter("yaml")
 yaml_output = reporter.render(validation_result)
 ```
 
-### 설정 옵션
+### Configuration Options
 
-`YAMLReporterConfig`는 다음 옵션을 제공합니다:
+`YAMLReporterConfig` provides the following options:
 
-| 옵션 | 타입 | 기본값 | 설명 |
-|------|------|--------|------|
-| `default_flow_style` | `bool` | `False` | 플로우 스타일 사용 |
-| `indent` | `int` | `2` | 들여쓰기 크기 |
-| `include_passed` | `bool` | `False` | 통과한 validator 포함 |
-| `sort_keys` | `bool` | `False` | 키 정렬 여부 |
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `default_flow_style` | `bool` | `False` | Use flow style |
+| `indent` | `int` | `2` | Indentation size |
+| `include_passed` | `bool` | `False` | Include passed validators |
+| `sort_keys` | `bool` | `False` | Sort keys |
 
-### 사용 예시
+### Usage Examples
 
 ```python
 from truthound.reporters import get_reporter
@@ -137,7 +137,7 @@ reporter = get_reporter("yaml", include_passed=False)
 yaml_output = reporter.render(result)
 ```
 
-출력 예시:
+Output example:
 ```yaml
 validation_result:
   run_id: abc123-def456
@@ -167,9 +167,9 @@ validation_result:
       count: 3
 ```
 
-### 의존성
+### Dependencies
 
-YAML Reporter는 PyYAML 라이브러리가 필요합니다:
+YAML Reporter requires the PyYAML library:
 
 ```bash
 pip install pyyaml
@@ -179,9 +179,9 @@ pip install pyyaml
 
 ## NDJSON Reporter (SDK)
 
-SDK에서 제공하는 전용 NDJSON 리포터입니다.
+A dedicated NDJSON reporter provided by the SDK.
 
-### 기본 사용법
+### Basic Usage
 
 ```python
 from truthound.reporters.sdk import NDJSONReporter
@@ -190,17 +190,17 @@ reporter = NDJSONReporter()
 ndjson_output = reporter.render(validation_result)
 ```
 
-### 설정 옵션
+### Configuration Options
 
-`NDJSONReporterConfig`는 다음 옵션을 제공합니다:
+`NDJSONReporterConfig` provides the following options:
 
-| 옵션 | 타입 | 기본값 | 설명 |
-|------|------|--------|------|
-| `include_passed` | `bool` | `False` | 통과한 validator 포함 |
-| `include_metadata` | `bool` | `True` | 메타데이터 라인 포함 |
-| `compact` | `bool` | `True` | 컴팩트 JSON 사용 |
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `include_passed` | `bool` | `False` | Include passed validators |
+| `include_metadata` | `bool` | `True` | Include metadata line |
+| `compact` | `bool` | `True` | Use compact JSON |
 
-### 출력 형식
+### Output Format
 
 ```json
 {"type":"metadata","run_id":"abc123","data_asset":"data.csv","status":"failure","total_validators":10}
@@ -210,44 +210,44 @@ ndjson_output = reporter.render(validation_result)
 
 ---
 
-## 파일 출력
+## File Output
 
-모든 리포터에서 파일 출력을 지원합니다:
+All reporters support file output:
 
 ```python
-# 방법 1: write() 메서드
+# Method 1: write() method
 reporter = get_reporter("json")
 path = reporter.write(result, "report.json")
 
-# 방법 2: report() 메서드 (렌더링 + 선택적 파일 출력)
+# Method 2: report() method (render + optional file output)
 output = reporter.report(result, path="report.json")
 
-# 바이트로 렌더링
+# Render as bytes
 bytes_output = reporter.render_to_bytes(result)
 ```
 
-## API 레퍼런스
+## API Reference
 
 ### JSONReporter
 
 ```python
 class JSONReporter(ValidationReporter[JSONReporterConfig]):
-    """JSON 형식 리포터."""
+    """JSON format reporter."""
 
     name = "json"
     file_extension = ".json"
     content_type = "application/json"
 
     def render(self, data: ValidationResult) -> str:
-        """검증 결과를 JSON으로 렌더링."""
+        """Render validation result as JSON."""
         ...
 
     def render_compact(self, data: ValidationResult) -> str:
-        """컴팩트 JSON (한 줄) 렌더링."""
+        """Render compact JSON (single line)."""
         ...
 
     def render_lines(self, data: ValidationResult) -> str:
-        """NDJSON 형식 렌더링."""
+        """Render in NDJSON format."""
         ...
 ```
 
@@ -255,14 +255,14 @@ class JSONReporter(ValidationReporter[JSONReporterConfig]):
 
 ```python
 class YAMLReporter(ValidationReporter[YAMLReporterConfig]):
-    """YAML 형식 리포터."""
+    """YAML format reporter."""
 
     name = "yaml"
     file_extension = ".yaml"
     content_type = "application/yaml"
 
     def render(self, data: ValidationResult) -> str:
-        """검증 결과를 YAML로 렌더링."""
+        """Render validation result as YAML."""
         ...
 ```
 
@@ -270,13 +270,13 @@ class YAMLReporter(ValidationReporter[YAMLReporterConfig]):
 
 ```python
 class NDJSONReporter(ValidationReporter[NDJSONReporterConfig]):
-    """NDJSON (Newline Delimited JSON) 리포터."""
+    """NDJSON (Newline Delimited JSON) reporter."""
 
     name = "ndjson"
     file_extension = ".ndjson"
     content_type = "application/x-ndjson"
 
     def render(self, data: ValidationResult) -> str:
-        """검증 결과를 NDJSON으로 렌더링."""
+        """Render validation result as NDJSON."""
         ...
 ```

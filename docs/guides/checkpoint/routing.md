@@ -1,8 +1,8 @@
 # Rule-based Routing
 
-Rule-based Routing은 검증 결과의 조건에 따라 다른 액션을 실행하도록 하는 시스템입니다. Python 표현식과 Jinja2 템플릿 엔진을 지원합니다.
+Rule-based Routing is a system that executes different actions based on the conditions of validation results. It supports both Python expressions and Jinja2 template engine.
 
-## 개요
+## Overview
 
 ```
 CheckpointResult
@@ -24,65 +24,65 @@ CheckpointResult
 [Actions]  [Actions]
 ```
 
-## 핵심 클래스
+## Core Classes
 
 ### RouteContext
 
-라우팅 규칙 평가에 사용되는 컨텍스트 데이터입니다.
+Context data used for evaluating routing rules.
 
 ```python
 @dataclass(frozen=True)
 class RouteContext:
-    """라우팅 컨텍스트 (불변)."""
-    checkpoint_name: str           # 체크포인트 이름
-    run_id: str                    # 실행 ID
-    status: str                    # 결과 상태
-    data_asset: str                # 데이터 자산
-    run_time: datetime             # 실행 시간
-    total_issues: int = 0          # 총 이슈 수
-    critical_issues: int = 0       # Critical 이슈 수
-    high_issues: int = 0           # High 이슈 수
-    medium_issues: int = 0         # Medium 이슈 수
-    low_issues: int = 0            # Low 이슈 수
-    info_issues: int = 0           # Info 이슈 수
-    pass_rate: float = 100.0       # 통과율 (0-100)
+    """Routing context (immutable)."""
+    checkpoint_name: str           # Checkpoint name
+    run_id: str                    # Execution ID
+    status: str                    # Result status
+    data_asset: str                # Data asset
+    run_time: datetime             # Execution time
+    total_issues: int = 0          # Total issue count
+    critical_issues: int = 0       # Critical issue count
+    high_issues: int = 0           # High issue count
+    medium_issues: int = 0         # Medium issue count
+    low_issues: int = 0            # Low issue count
+    info_issues: int = 0           # Info issue count
+    pass_rate: float = 100.0       # Pass rate (0-100)
     tags: dict[str, str] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
-    validation_duration_ms: float = 0.0  # 검증 소요 시간 (ms)
-    error: str | None = None       # 에러 메시지
+    validation_duration_ms: float = 0.0  # Validation duration (ms)
+    error: str | None = None       # Error message
 ```
 
 ### ActionRouter
 
-라우팅을 관리하는 메인 클래스입니다.
+The main class that manages routing.
 
 ```python
 from truthound.checkpoint.routing import ActionRouter, Route
 from truthound.checkpoint.routing.base import RouteMode
 
 class RouteMode(str, Enum):
-    """라우팅 모드."""
-    FIRST_MATCH = "first_match"      # 첫 번째 매칭 라우트만 실행
-    ALL_MATCHES = "all_matches"      # 모든 매칭 라우트 실행
-    PRIORITY_GROUP = "priority_group" # 가장 높은 우선순위 그룹 실행
+    """Routing mode."""
+    FIRST_MATCH = "first_match"      # Execute only the first matching route
+    ALL_MATCHES = "all_matches"      # Execute all matching routes
+    PRIORITY_GROUP = "priority_group" # Execute the highest priority group
 
-# Router 생성
+# Create Router
 router = ActionRouter(mode=RouteMode.ALL_MATCHES)
 
-# Route 추가
+# Add Route
 router.add_route(route)
 ```
 
 ### Route
 
-규칙과 액션의 매핑입니다.
+A mapping between rules and actions.
 
 ```python
 from truthound.checkpoint.routing import Route
 from truthound.checkpoint.routing.base import RoutePriority
 
 class RoutePriority(int, Enum):
-    """라우트 우선순위."""
+    """Route priority."""
     CRITICAL = 100
     HIGH = 80
     NORMAL = 50
@@ -93,64 +93,64 @@ route = Route(
     name="critical_alerts",
     rule=SeverityRule(min_severity="critical"),
     actions=[PagerDutyAction(...)],
-    priority=RoutePriority.CRITICAL,  # 또는 정수값
+    priority=RoutePriority.CRITICAL,  # Or an integer value
 )
 ```
 
 ---
 
-## 내장 규칙 (11개)
+## Built-in Rules (11 Types)
 
 ### AlwaysRule / NeverRule
 
-항상 매칭하거나 절대 매칭하지 않는 규칙입니다.
+Rules that always match or never match.
 
 ```python
 from truthound.checkpoint.routing.rules import AlwaysRule, NeverRule
 
-# 기본 라우트용
-always = AlwaysRule()  # 항상 True
+# For default route
+always = AlwaysRule()  # Always True
 
-# 라우트 비활성화용
-never = NeverRule()  # 항상 False
+# For disabling a route
+never = NeverRule()  # Always False
 ```
 
 ### SeverityRule
 
-이슈의 심각도에 따라 매칭합니다.
+Matches based on issue severity.
 
 ```python
 from truthound.checkpoint.routing.rules import SeverityRule
 
-# Critical 이슈가 있으면 매칭
+# Match if critical issues exist
 rule = SeverityRule(min_severity="critical")
 
-# High 이상 이슈가 5개 이상이면 매칭
+# Match if 5 or more high-level issues exist
 rule = SeverityRule(min_severity="high", min_count=5)
 
-# Medium 이슈만 (범위 지정)
+# Medium issues only (range specification)
 rule = SeverityRule(min_severity="medium", max_severity="medium")
 
-# 정확히 3개의 Critical 이슈
+# Exactly 3 critical issues
 rule = SeverityRule(min_severity="critical", exact_count=3)
 ```
 
-**Severity 순서**: `critical` > `high` > `medium` > `low` > `info`
+**Severity order**: `critical` > `high` > `medium` > `low` > `info`
 
 ### IssueCountRule
 
-이슈 개수에 따라 매칭합니다.
+Matches based on issue count.
 
 ```python
 from truthound.checkpoint.routing.rules import IssueCountRule
 
-# 10개 이상의 이슈
+# 10 or more issues
 rule = IssueCountRule(min_issues=10)
 
-# 5-20개 사이의 이슈
+# Between 5 and 20 issues
 rule = IssueCountRule(min_issues=5, max_issues=20)
 
-# Critical 이슈 3개 이상
+# 3 or more critical issues
 rule = IssueCountRule(min_issues=3, count_type="critical")
 ```
 
@@ -158,26 +158,26 @@ rule = IssueCountRule(min_issues=3, count_type="critical")
 
 ### StatusRule
 
-체크포인트 상태에 따라 매칭합니다.
+Matches based on checkpoint status.
 
 ```python
 from truthound.checkpoint.routing.rules import StatusRule
 
-# 실패 또는 에러
+# Failure or error
 rule = StatusRule(statuses=["failure", "error"])
 
-# 성공이 아닌 모든 상태
+# All statuses except success
 rule = StatusRule(statuses=["success"], negate=True)
 ```
 
 ### TagRule
 
-태그의 존재 또는 값에 따라 매칭합니다.
+Matches based on tag presence or value.
 
 ```python
 from truthound.checkpoint.routing.rules import TagRule
 
-# env=prod 태그
+# env=prod tag
 rule = TagRule(tags={"env": "prod"})
 
 # env=prod AND team=data
@@ -186,55 +186,55 @@ rule = TagRule(tags={"env": "prod", "team": "data"}, match_all=True)
 # env=prod OR team=data
 rule = TagRule(tags={"env": "prod", "team": "data"}, match_all=False)
 
-# 'critical' 태그 존재 여부 (값 무관)
+# Check if 'critical' tag exists (value irrelevant)
 rule = TagRule(tags={"critical": None})
 
-# 태그가 없으면 매칭
+# Match if tag is absent
 rule = TagRule(tags={"env": "prod"}, negate=True)
 ```
 
 ### DataAssetRule
 
-데이터 자산 이름 패턴에 따라 매칭합니다.
+Matches based on data asset name pattern.
 
 ```python
 from truthound.checkpoint.routing.rules import DataAssetRule
 
-# glob 패턴
+# Glob pattern
 rule = DataAssetRule(pattern="sales_*")
 
-# 정규식
+# Regular expression
 rule = DataAssetRule(pattern=r"^prod_.*_v\d+$", is_regex=True)
 
-# 대소문자 무시
+# Case insensitive
 rule = DataAssetRule(pattern="USERS*", case_sensitive=False)
 ```
 
 ### MetadataRule
 
-메타데이터 값에 따라 매칭합니다.
+Matches based on metadata values.
 
 ```python
 from truthound.checkpoint.routing.rules import MetadataRule
 
-# 단순 비교
+# Simple comparison
 rule = MetadataRule(key_path="region", expected_value="us-east-1")
 
-# 중첩 경로
+# Nested path
 rule = MetadataRule(key_path="config.settings.mode", expected_value="production")
 
-# 비교 연산자
+# Comparison operators
 rule = MetadataRule(key_path="priority", expected_value=5, comparator="gt")  # > 5
 rule = MetadataRule(key_path="priority", expected_value=5, comparator="gte")  # >= 5
 rule = MetadataRule(key_path="priority", expected_value=5, comparator="lt")   # < 5
 
-# 포함 여부
+# Contains check
 rule = MetadataRule(key_path="owners", expected_value="data-team", comparator="contains")
 
-# 정규식
+# Regular expression
 rule = MetadataRule(key_path="name", expected_value=r"v\d+", comparator="regex")
 
-# 존재 여부
+# Existence check
 rule = MetadataRule(key_path="special_flag", comparator="exists")
 ```
 
@@ -242,30 +242,30 @@ rule = MetadataRule(key_path="special_flag", comparator="exists")
 
 ### TimeWindowRule
 
-시간대에 따라 매칭합니다. 업무 시간/비업무 시간 구분에 유용합니다.
+Matches based on time period. Useful for distinguishing business hours from non-business hours.
 
 ```python
 from truthound.checkpoint.routing.rules import TimeWindowRule
 
-# 업무 시간 (9시-17시, 평일)
+# Business hours (9 AM - 5 PM, weekdays)
 rule = TimeWindowRule(
     start_time="09:00",
     end_time="17:00",
-    days_of_week=[0, 1, 2, 3, 4],  # 월-금
+    days_of_week=[0, 1, 2, 3, 4],  # Mon-Fri
 )
 
-# 비업무 시간 (자정 넘김)
+# Non-business hours (crossing midnight)
 rule = TimeWindowRule(
     start_time="17:00",
-    end_time="09:00",  # 다음 날 9시까지
+    end_time="09:00",  # Until 9 AM the next day
 )
 
-# 주말
+# Weekends
 rule = TimeWindowRule(
-    days_of_week=[5, 6],  # 토-일
+    days_of_week=[5, 6],  # Sat-Sun
 )
 
-# 타임존 지정
+# Specify timezone
 rule = TimeWindowRule(
     start_time="09:00",
     end_time="17:00",
@@ -275,51 +275,51 @@ rule = TimeWindowRule(
 
 ### PassRateRule
 
-통과율에 따라 매칭합니다.
+Matches based on pass rate.
 
 ```python
 from truthound.checkpoint.routing.rules import PassRateRule
 
-# 통과율 90% 미만
+# Pass rate below 90%
 rule = PassRateRule(max_rate=90.0)
 
-# 통과율 50-80% 사이
+# Pass rate between 50-80%
 rule = PassRateRule(min_rate=50.0, max_rate=80.0)
 
-# 통과율 95% 이상
+# Pass rate 95% or above
 rule = PassRateRule(min_rate=95.0)
 ```
 
 ### ErrorRule
 
-에러 발생 여부 또는 패턴에 따라 매칭합니다.
+Matches based on error occurrence or pattern.
 
 ```python
 from truthound.checkpoint.routing.rules import ErrorRule
 
-# 에러가 있으면
+# If error exists
 rule = ErrorRule()
 
-# 타임아웃 에러
+# Timeout error
 rule = ErrorRule(pattern=r"timeout|timed out")
 
-# 에러가 없으면
+# If no error
 rule = ErrorRule(negate=True)
 ```
 
 ---
 
-## 조합 규칙 (Combinators)
+## Combinators
 
 ### AllOf (AND)
 
-모든 규칙이 매칭되어야 합니다.
+All rules must match.
 
 ```python
 from truthound.checkpoint.routing import AllOf
 from truthound.checkpoint.routing.rules import SeverityRule, TagRule
 
-# Critical 이슈 AND 프로덕션 환경
+# Critical issues AND production environment
 rule = AllOf([
     SeverityRule(min_severity="critical"),
     TagRule(tags={"env": "prod"}),
@@ -328,12 +328,12 @@ rule = AllOf([
 
 ### AnyOf (OR)
 
-하나 이상의 규칙이 매칭되면 됩니다.
+At least one rule must match.
 
 ```python
 from truthound.checkpoint.routing import AnyOf
 
-# Critical 이슈 OR 에러 발생
+# Critical issues OR error occurred
 rule = AnyOf([
     SeverityRule(min_severity="critical"),
     ErrorRule(),
@@ -342,19 +342,19 @@ rule = AnyOf([
 
 ### NotRule (NOT)
 
-규칙의 결과를 반전합니다.
+Inverts the rule result.
 
 ```python
 from truthound.checkpoint.routing import NotRule
 
-# 프로덕션이 아닌 경우
+# Not production environment
 rule = NotRule(TagRule(tags={"env": "prod"}))
 ```
 
-### 복합 조합
+### Complex Combinations
 
 ```python
-# (Critical OR Error) AND Production AND 업무시간
+# (Critical OR Error) AND Production AND Business hours
 complex_rule = AllOf([
     AnyOf([
         SeverityRule(min_severity="critical"),
@@ -367,41 +367,41 @@ complex_rule = AllOf([
 
 ---
 
-## 라우팅 모드
+## Routing Modes
 
 ### FIRST_MATCH
 
-첫 번째 매칭되는 라우트만 실행합니다.
+Executes only the first matching route.
 
 ```python
 router = ActionRouter(mode=RouteMode.FIRST_MATCH)
 
-# 우선순위 순서로 평가됨
+# Evaluated in priority order
 router.add_route(Route(
     name="critical",
     rule=SeverityRule(min_severity="critical"),
     actions=[PagerDutyAction(...)],
-    priority=100,  # 먼저 평가
+    priority=100,  # Evaluated first
 ))
 
 router.add_route(Route(
     name="high",
     rule=SeverityRule(min_severity="high"),
     actions=[SlackNotification(...)],
-    priority=80,  # 다음으로 평가
+    priority=80,  # Evaluated next
 ))
 
-# Critical 이슈가 있으면 PagerDuty만 호출됨
+# If critical issues exist, only PagerDuty is called
 ```
 
 ### ALL_MATCHES
 
-매칭되는 모든 라우트를 실행합니다.
+Executes all matching routes.
 
 ```python
 router = ActionRouter(mode=RouteMode.ALL_MATCHES)
 
-# 모든 매칭 라우트 실행
+# Execute all matching routes
 router.add_route(Route(
     name="always_store",
     rule=AlwaysRule(),
@@ -414,12 +414,12 @@ router.add_route(Route(
     actions=[SlackNotification(...)],
 ))
 
-# 실패 시: StoreValidationResult + SlackNotification 모두 실행
+# On failure: Both StoreValidationResult + SlackNotification are executed
 ```
 
 ### PRIORITY_GROUP
 
-가장 높은 우선순위 그룹의 모든 라우트를 실행합니다.
+Executes all routes in the highest priority group.
 
 ```python
 router = ActionRouter(mode=RouteMode.PRIORITY_GROUP)
@@ -435,7 +435,7 @@ router.add_route(Route(
     name="critical_slack",
     rule=SeverityRule(min_severity="critical"),
     actions=[SlackNotification(...)],
-    priority=100,  # 같은 우선순위
+    priority=100,  # Same priority
 ))
 
 router.add_route(Route(
@@ -445,13 +445,13 @@ router.add_route(Route(
     priority=80,
 ))
 
-# Critical 이슈: priority=100인 두 라우트 모두 실행
-# High 이슈만 있을 때: priority=80인 라우트만 실행
+# Critical issues: Both routes with priority=100 are executed
+# High issues only: Only the route with priority=80 is executed
 ```
 
 ---
 
-## 전체 예시
+## Complete Example
 
 ```python
 from truthound.checkpoint import Checkpoint
@@ -466,10 +466,10 @@ from truthound.checkpoint.actions import (
     StoreValidationResult, SlackNotification, PagerDutyAction, EmailNotification
 )
 
-# Router 생성
+# Create Router
 router = ActionRouter(mode=RouteMode.ALL_MATCHES)
 
-# 1. 항상 결과 저장
+# 1. Always store results
 router.add_route(Route(
     name="always_store",
     rule=AlwaysRule(),
@@ -494,12 +494,12 @@ router.add_route(Route(
     priority=100,
 ))
 
-# 3. 업무 시간 외 Critical → Email만
+# 3. Critical outside business hours → Email only
 router.add_route(Route(
     name="critical_offhours",
     rule=AllOf([
         SeverityRule(min_severity="critical"),
-        TimeWindowRule(start_time="18:00", end_time="09:00"),  # 비업무시간
+        TimeWindowRule(start_time="18:00", end_time="09:00"),  # Non-business hours
     ]),
     actions=[EmailNotification(
         to_addresses=["oncall@example.com"],
@@ -507,7 +507,7 @@ router.add_route(Route(
     priority=90,
 ))
 
-# 4. High 이슈 → Slack
+# 4. High issues → Slack
 router.add_route(Route(
     name="high_alert",
     rule=SeverityRule(min_severity="high"),
@@ -518,7 +518,7 @@ router.add_route(Route(
     priority=80,
 ))
 
-# Checkpoint에 Router 연결
+# Connect Router to Checkpoint
 checkpoint = Checkpoint(
     name="production_check",
     data_source="prod_data.parquet",
@@ -532,7 +532,7 @@ result = checkpoint.run()
 
 ---
 
-## YAML 설정 (RouteConfigParser)
+## YAML Configuration (RouteConfigParser)
 
 ```yaml
 routes:

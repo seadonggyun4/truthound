@@ -1,37 +1,37 @@
 # Rule Generation
 
-이 문서는 프로파일 결과에서 검증 규칙을 자동 생성하는 시스템을 설명합니다.
+This document describes the system for automatically generating validation rules from profile results.
 
-## 개요
+## Overview
 
-`src/truthound/profiler/generators/base.py`에 정의된 규칙 생성 시스템은 프로파일 분석 결과를 기반으로 검증 규칙을 자동으로 생성합니다.
+The rule generation system defined in `src/truthound/profiler/generators/base.py` automatically generates validation rules based on profile analysis results.
 
 ## RuleCategory
 
 ```python
 class RuleCategory(str, Enum):
-    """생성 가능한 규칙 카테고리"""
+    """Generatable rule categories"""
 
-    SCHEMA = "schema"             # 스키마 검증 (컬럼 존재, 타입)
-    COMPLETENESS = "completeness" # 완전성 (null 비율)
-    UNIQUENESS = "uniqueness"     # 고유성 (중복 검사)
-    FORMAT = "format"             # 형식 검증 (정규식)
-    DISTRIBUTION = "distribution" # 분포 검증 (범위, 카디널리티)
-    PATTERN = "pattern"           # 패턴 검증
-    TEMPORAL = "temporal"         # 시간 검증
-    RELATIONSHIP = "relationship" # 관계 검증
-    ANOMALY = "anomaly"           # 이상치 검증
+    SCHEMA = "schema"             # Schema validation (column existence, types)
+    COMPLETENESS = "completeness" # Completeness (null ratio)
+    UNIQUENESS = "uniqueness"     # Uniqueness (duplicate checking)
+    FORMAT = "format"             # Format validation (regex)
+    DISTRIBUTION = "distribution" # Distribution validation (range, cardinality)
+    PATTERN = "pattern"           # Pattern validation
+    TEMPORAL = "temporal"         # Temporal validation
+    RELATIONSHIP = "relationship" # Relationship validation
+    ANOMALY = "anomaly"           # Anomaly validation
 ```
 
-## Strictness 수준
+## Strictness Levels
 
 ```python
 class Strictness(str, Enum):
-    """규칙 생성 엄격도"""
+    """Rule generation strictness"""
 
-    LOOSE = "loose"    # 느슨한 임계값, 적은 규칙
-    MEDIUM = "medium"  # 균형잡힌 기본값
-    STRICT = "strict"  # 엄격한 임계값, 포괄적 규칙
+    LOOSE = "loose"    # Loose thresholds, fewer rules
+    MEDIUM = "medium"  # Balanced default
+    STRICT = "strict"  # Strict thresholds, comprehensive rules
 ```
 
 ## GeneratedRule
@@ -39,19 +39,19 @@ class Strictness(str, Enum):
 ```python
 @dataclass
 class GeneratedRule:
-    """생성된 검증 규칙"""
+    """Generated validation rule"""
 
-    name: str                          # 규칙 이름
-    category: RuleCategory             # 규칙 카테고리
-    column: str | None                 # 대상 컬럼 (None = 테이블 수준)
-    validator_type: str                # Validator 클래스 이름
-    parameters: dict[str, Any]         # Validator 파라미터
-    confidence: RuleConfidence        # 신뢰 수준
-    description: str                   # 규칙 설명
-    severity: str = "high"             # 기본 심각도
+    name: str                          # Rule name
+    category: RuleCategory             # Rule category
+    column: str | None                 # Target column (None = table level)
+    validator_type: str                # Validator class name
+    parameters: dict[str, Any]         # Validator parameters
+    confidence: RuleConfidence         # Confidence level
+    description: str                   # Rule description
+    severity: str = "high"             # Default severity
 
-    # 메타데이터
-    source: str = "profiler"           # 생성 소스
+    # Metadata
+    source: str = "profiler"           # Generation source
     generated_at: datetime = field(default_factory=datetime.now)
 ```
 
@@ -59,22 +59,22 @@ class GeneratedRule:
 
 ```python
 class RuleConfidence(str, Enum):
-    """규칙 신뢰 수준"""
+    """Rule confidence level"""
 
-    LOW = "low"        # 낮은 신뢰도 (검토 필요)
-    MEDIUM = "medium"  # 중간 신뢰도
-    HIGH = "high"      # 높은 신뢰도
+    LOW = "low"        # Low confidence (review needed)
+    MEDIUM = "medium"  # Medium confidence
+    HIGH = "high"      # High confidence
 ```
 
 ## RuleGenerator ABC
 
-모든 규칙 생성기의 기본 클래스입니다.
+Base class for all rule generators.
 
 ```python
 from abc import ABC, abstractmethod
 
 class RuleGenerator(ABC):
-    """규칙 생성기 추상 클래스"""
+    """Rule generator abstract class"""
 
     @abstractmethod
     def generate(
@@ -82,7 +82,7 @@ class RuleGenerator(ABC):
         profile: TableProfile,
         strictness: Strictness = Strictness.MEDIUM,
     ) -> list[GeneratedRule]:
-        """테이블 프로파일에서 규칙 생성"""
+        """Generate rules from table profile"""
         ...
 
     @abstractmethod
@@ -91,15 +91,15 @@ class RuleGenerator(ABC):
         column_profile: ColumnProfile,
         strictness: Strictness = Strictness.MEDIUM,
     ) -> list[GeneratedRule]:
-        """컬럼 프로파일에서 규칙 생성"""
+        """Generate rules from column profile"""
         ...
 ```
 
-## 내장 규칙 생성기
+## Built-in Rule Generators
 
 ### SchemaRuleGenerator
 
-스키마 검증 규칙을 생성합니다.
+Generates schema validation rules.
 
 ```python
 from truthound.profiler.generators import SchemaRuleGenerator
@@ -107,15 +107,15 @@ from truthound.profiler.generators import SchemaRuleGenerator
 generator = SchemaRuleGenerator()
 rules = generator.generate(profile, Strictness.STRICT)
 
-# 생성되는 규칙:
-# - 컬럼 존재 검증
-# - 데이터 타입 검증
-# - Nullable 검증
+# Generated rules:
+# - Column existence validation
+# - Data type validation
+# - Nullable validation
 ```
 
 ### CompletenessRuleGenerator
 
-완전성 검증 규칙을 생성합니다.
+Generates completeness validation rules.
 
 ```python
 from truthound.profiler.generators import CompletenessRuleGenerator
@@ -123,14 +123,14 @@ from truthound.profiler.generators import CompletenessRuleGenerator
 generator = CompletenessRuleGenerator()
 rules = generator.generate(profile)
 
-# 생성되는 규칙:
-# - 최대 null 비율
-# - NotNull 제약 (null이 없는 컬럼)
+# Generated rules:
+# - Maximum null ratio
+# - NotNull constraint (for columns with no nulls)
 ```
 
 ### UniquenessRuleGenerator
 
-고유성 검증 규칙을 생성합니다.
+Generates uniqueness validation rules.
 
 ```python
 from truthound.profiler.generators import UniquenessRuleGenerator
@@ -138,14 +138,14 @@ from truthound.profiler.generators import UniquenessRuleGenerator
 generator = UniquenessRuleGenerator()
 rules = generator.generate(profile)
 
-# 생성되는 규칙:
-# - Unique 제약 (고유 비율 100%)
-# - Primary Key 후보
+# Generated rules:
+# - Unique constraint (100% unique ratio)
+# - Primary Key candidates
 ```
 
 ### PatternRuleGenerator
 
-패턴 검증 규칙을 생성합니다.
+Generates pattern validation rules.
 
 ```python
 from truthound.profiler.generators import PatternRuleGenerator
@@ -153,15 +153,15 @@ from truthound.profiler.generators import PatternRuleGenerator
 generator = PatternRuleGenerator()
 rules = generator.generate(profile)
 
-# 생성되는 규칙:
-# - 이메일 형식 검증
-# - 전화번호 형식 검증
-# - 커스텀 패턴 검증
+# Generated rules:
+# - Email format validation
+# - Phone number format validation
+# - Custom pattern validation
 ```
 
 ### DistributionRuleGenerator
 
-분포 검증 규칙을 생성합니다.
+Generates distribution validation rules.
 
 ```python
 from truthound.profiler.generators import DistributionRuleGenerator
@@ -169,44 +169,44 @@ from truthound.profiler.generators import DistributionRuleGenerator
 generator = DistributionRuleGenerator()
 rules = generator.generate(profile)
 
-# 생성되는 규칙:
-# - 범위 검증 (min/max)
-# - 허용 값 검증 (카테고리)
-# - 카디널리티 검증
+# Generated rules:
+# - Range validation (min/max)
+# - Allowed values validation (categorical)
+# - Cardinality validation
 ```
 
-## 통합 규칙 생성
+## Unified Rule Generation
 
 ```python
 from truthound.profiler import generate_suite, Strictness
 
-# 프로파일에서 규칙 스위트 생성
+# Generate rule suite from profile
 suite = generate_suite(
     profile,
     strictness=Strictness.STRICT,
-    include=["schema", "completeness"],  # 포함할 카테고리
-    exclude=["anomaly"],                  # 제외할 카테고리
+    include=["schema", "completeness"],  # Categories to include
+    exclude=["anomaly"],                  # Categories to exclude
 )
 
-# 규칙 확인
+# Review rules
 for rule in suite.rules:
     print(f"{rule.name}: {rule.validator_type}")
     print(f"  Column: {rule.column}")
     print(f"  Confidence: {rule.confidence}")
 ```
 
-## 프리셋
+## Presets
 
-| 프리셋 | 설명 |
-|--------|------|
-| `default` | 일반적인 사용 (균형잡힌 규칙) |
-| `strict` | 프로덕션 데이터 (엄격한 규칙) |
-| `loose` | 개발/테스트 (느슨한 규칙) |
-| `minimal` | 필수 규칙만 |
-| `comprehensive` | 모든 가능한 규칙 |
-| `ci_cd` | CI/CD 파이프라인 최적화 |
-| `schema_only` | 스키마 검증만 |
-| `format_only` | 형식/패턴 검증만 |
+| Preset | Description |
+|--------|-------------|
+| `default` | General use (balanced rules) |
+| `strict` | Production data (strict rules) |
+| `loose` | Development/testing (loose rules) |
+| `minimal` | Essential rules only |
+| `comprehensive` | All possible rules |
+| `ci_cd` | CI/CD pipeline optimized |
+| `schema_only` | Schema validation only |
+| `format_only` | Format/pattern validation only |
 
 ```python
 from truthound.profiler import generate_suite
@@ -214,9 +214,9 @@ from truthound.profiler import generate_suite
 suite = generate_suite(profile, preset="ci_cd")
 ```
 
-## 규칙 내보내기
+## Rule Export
 
-### YAML 형식
+### YAML Format
 
 ```python
 from truthound.profiler.generators import save_suite
@@ -245,13 +245,13 @@ rules:
     severity: medium
 ```
 
-### JSON 형식
+### JSON Format
 
 ```python
 save_suite(suite, "rules.json", format="json")
 ```
 
-### Python 형식
+### Python Format
 
 ```python
 save_suite(suite, "rules.py", format="python")
@@ -269,13 +269,13 @@ suite = Suite(
 )
 ```
 
-## 커스텀 규칙 생성기
+## Custom Rule Generators
 
 ```python
 from truthound.profiler.generators import RuleGenerator, GeneratedRule
 
 class MyCustomGenerator(RuleGenerator):
-    """커스텀 규칙 생성기"""
+    """Custom rule generator"""
 
     def generate(
         self,
@@ -301,44 +301,44 @@ class MyCustomGenerator(RuleGenerator):
         return rules
 
     def generate_for_column(self, column_profile, strictness):
-        return []  # 테이블 수준에서만 생성
+        return []  # Generate only at table level
 ```
 
-## 규칙 생성기 레지스트리
+## Rule Generator Registry
 
 ```python
 from truthound.profiler.generators import GeneratorRegistry
 
-# 커스텀 생성기 등록
+# Register custom generator
 GeneratorRegistry.register("custom", MyCustomGenerator)
 
-# 등록된 생성기 조회
+# Retrieve registered generator
 generator = GeneratorRegistry.get("schema")
 
-# 모든 생성기로 규칙 생성
+# Generate rules with all generators
 all_rules = GeneratorRegistry.generate_all(profile, Strictness.MEDIUM)
 ```
 
-## CLI 사용법
+## CLI Usage
 
 ```bash
-# 프로파일에서 규칙 생성
+# Generate rules from profile
 th generate-suite profile.json -o rules.yaml
 
-# 한 번에 프로파일링 + 규칙 생성
+# Profile and generate rules at once
 th quick-suite data.csv -o rules.yaml
 
-# 엄격도 지정
+# Specify strictness
 th quick-suite data.csv -o rules.yaml --strictness strict
 
-# 프리셋 사용
+# Use preset
 th quick-suite data.csv -o rules.yaml --preset ci_cd
 
-# 카테고리 필터링
+# Filter categories
 th quick-suite data.csv -o rules.yaml --include schema,completeness
 ```
 
-## 다음 단계
+## Next Steps
 
-- [품질 스코어링](quality-scoring.md) - 생성된 규칙의 품질 평가
-- [임계값 튜닝](threshold-tuning.md) - 자동 임계값 조정
+- [Quality Scoring](quality-scoring.md) - Evaluate quality of generated rules
+- [Threshold Tuning](threshold-tuning.md) - Automatic threshold adjustment

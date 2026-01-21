@@ -1,22 +1,22 @@
 # Reporter SDK
 
-Truthound는 커스텀 리포터 개발을 위한 종합 SDK를 제공합니다.
+Truthound provides a comprehensive SDK for custom reporter development.
 
-## 개요
+## Overview
 
-Reporter SDK는 다음 기능을 제공합니다:
+The Reporter SDK provides the following features:
 
-- **Mixins**: 공통 기능 재사용 (포맷팅, 집계, 필터링 등)
-- **Builder**: 데코레이터 및 빌더 패턴으로 리포터 생성
-- **Templates**: 사전 정의된 리포터 템플릿 (CSV, YAML, JUnit 등)
-- **Schema**: 출력 형식 검증
-- **Testing**: 테스트 유틸리티 및 목 데이터 생성
+- **Mixins**: Reusable common functionality (formatting, aggregation, filtering, etc.)
+- **Builder**: Create reporters with decorators and builder patterns
+- **Templates**: Pre-defined reporter templates (CSV, YAML, JUnit, etc.)
+- **Schema**: Output format validation
+- **Testing**: Testing utilities and mock data generation
 
 ---
 
 ## Quick Start
 
-### 데코레이터로 간단한 리포터 생성
+### Create Simple Reporter with Decorator
 
 ```python
 from truthound.reporters.sdk import create_reporter
@@ -25,13 +25,13 @@ from truthound.reporters.sdk import create_reporter
 def render_my_format(result, config):
     return f"Status: {result.status.value}"
 
-# 사용
+# Usage
 from truthound.reporters import get_reporter
 reporter = get_reporter("my_format")
 output = reporter.render(validation_result)
 ```
 
-### Mixin을 활용한 전체 리포터
+### Full Reporter with Mixins
 
 ```python
 from truthound.reporters.sdk import (
@@ -53,7 +53,7 @@ class MyReporter(FormattingMixin, AggregationMixin, FilteringMixin, ValidationRe
         return MyReporterConfig()
 
     def render(self, data):
-        # Mixin 메서드 사용
+        # Use mixin methods
         issues = self.filter_by_severity(data, min_severity="medium")
         grouped = self.group_by_column(issues)
         return self.format_as_table(grouped)
@@ -63,141 +63,141 @@ class MyReporter(FormattingMixin, AggregationMixin, FilteringMixin, ValidationRe
 
 ## Mixins
 
-SDK는 6개의 Mixin을 제공합니다.
+The SDK provides 6 mixins.
 
 ### FormattingMixin
 
-출력 포맷팅 유틸리티:
+Output formatting utilities:
 
 ```python
 from truthound.reporters.sdk import FormattingMixin
 
 class MyReporter(FormattingMixin, ValidationReporter):
     def render(self, data):
-        # 테이블 포맷팅 (ascii, markdown, grid, simple 스타일)
+        # Table formatting (ascii, markdown, grid, simple styles)
         rows = [{"name": r.column, "message": r.message} for r in data.results]
         table = self.format_as_table(rows, style="markdown")
 
-        # 숫자 포맷팅
+        # Number formatting
         rate = self.format_percentage(data.statistics.pass_rate)
 
-        # 날짜 포맷팅
+        # Date formatting
         date = self.format_datetime(data.run_time)
 
-        # 바이트 크기 포맷팅
+        # Byte size formatting
         size = self.format_bytes(1024000)  # "1000.0 KB"
 
         return f"{table}\nPass Rate: {rate}"
 ```
 
-**주요 메서드:**
+**Key Methods:**
 
-| 메서드 | 설명 |
-|--------|------|
-| `format_as_table(rows, columns, style)` | 데이터를 테이블 형식으로 포맷 (style: ascii/markdown/grid/simple) |
-| `format_percentage(value, precision)` | 백분율 포맷 (예: "85.5%") |
-| `format_number(value, precision)` | 숫자 포맷 (천 단위 구분) |
-| `format_datetime(dt, format)` | 날짜/시간 포맷 |
-| `format_duration(seconds)` | 실행 시간 포맷 (예: "2h 30m 15s") |
-| `format_bytes(size)` | 바이트 크기 포맷 (예: "1.5 MB") |
-| `format_relative_time(dt)` | 상대 시간 포맷 (예: "5 minutes ago") |
-| `truncate(text, max_length, suffix)` | 텍스트 길이 제한 |
-| `indent(text, prefix)` | 텍스트 들여쓰기 |
-| `wrap(text, width)` | 텍스트 줄 바꿈 |
+| Method | Description |
+|--------|-------------|
+| `format_as_table(rows, columns, style)` | Format data as table (style: ascii/markdown/grid/simple) |
+| `format_percentage(value, precision)` | Format percentage (e.g., "85.5%") |
+| `format_number(value, precision)` | Format number (thousands separator) |
+| `format_datetime(dt, format)` | Format date/time |
+| `format_duration(seconds)` | Format execution time (e.g., "2h 30m 15s") |
+| `format_bytes(size)` | Format byte size (e.g., "1.5 MB") |
+| `format_relative_time(dt)` | Format relative time (e.g., "5 minutes ago") |
+| `truncate(text, max_length, suffix)` | Limit text length |
+| `indent(text, prefix)` | Indent text |
+| `wrap(text, width)` | Wrap text lines |
 
 ### AggregationMixin
 
-데이터 집계 유틸리티:
+Data aggregation utilities:
 
 ```python
 from truthound.reporters.sdk import AggregationMixin
 
 class MyReporter(AggregationMixin, ValidationReporter):
     def render(self, data):
-        # 컬럼별 그룹화
+        # Group by column
         by_column = self.group_by_column(data.results)
 
-        # severity별 그룹화
+        # Group by severity
         by_severity = self.group_by_severity(data.results)
 
-        # validator별 그룹화
+        # Group by validator
         by_validator = self.group_by_validator(data.results)
 
-        # 통계 계산
+        # Calculate statistics
         stats = self.get_summary_stats(data)
 
         return self.format_groups(by_severity)
 ```
 
-**주요 메서드:**
+**Key Methods:**
 
-| 메서드 | 설명 |
-|--------|------|
-| `group_by_column(results)` | 컬럼별 결과 그룹화 |
-| `group_by_severity(results)` | severity별 결과 그룹화 |
-| `group_by_validator(results)` | validator별 결과 그룹화 |
-| `group_by(results, key)` | 커스텀 키 함수로 그룹화 |
-| `get_summary_stats(result)` | 통계 계산 (pass_rate, counts 등) |
-| `count_by_severity(results)` | severity별 카운트 |
-| `count_by_column(results)` | 컬럼별 카운트 |
+| Method | Description |
+|--------|-------------|
+| `group_by_column(results)` | Group results by column |
+| `group_by_severity(results)` | Group results by severity |
+| `group_by_validator(results)` | Group results by validator |
+| `group_by(results, key)` | Group by custom key function |
+| `get_summary_stats(result)` | Calculate statistics (pass_rate, counts, etc.) |
+| `count_by_severity(results)` | Count by severity |
+| `count_by_column(results)` | Count by column |
 
 ### FilteringMixin
 
-데이터 필터링 유틸리티:
+Data filtering utilities:
 
 ```python
 from truthound.reporters.sdk import FilteringMixin
 
 class MyReporter(FilteringMixin, ValidationReporter):
     def render(self, data):
-        # severity로 필터링
+        # Filter by severity
         critical = self.filter_by_severity(data.results, min_severity="critical")
 
-        # 실패한 항목만
+        # Failed items only
         failed = self.filter_failed(data.results)
 
-        # 특정 컬럼만
+        # Specific columns only
         email_issues = self.filter_by_column(data.results, include_columns=["email"])
 
-        # 특정 validator만
+        # Specific validators only
         null_issues = self.filter_by_validator(data.results, include_validators=["NullValidator"])
 
-        # severity로 정렬
+        # Sort by severity
         sorted_results = self.sort_by_severity(failed)
 
         return self.format_issues(sorted_results)
 ```
 
-**주요 메서드:**
+**Key Methods:**
 
-| 메서드 | 설명 |
-|--------|------|
-| `filter_by_severity(results, min_severity, max_severity)` | severity 범위로 필터링 |
-| `filter_failed(results)` | 실패한 결과만 필터링 |
-| `filter_passed(results)` | 통과한 결과만 필터링 |
-| `filter_by_column(results, include_columns, exclude_columns)` | 특정 컬럼 결과 필터링 |
-| `filter_by_validator(results, include_validators, exclude_validators)` | 특정 validator 결과 필터링 |
-| `sort_by_severity(results, ascending)` | severity로 정렬 |
-| `sort_by_column(results, ascending)` | 컬럼명으로 정렬 |
-| `limit(results, count, offset)` | 결과 수 제한 |
+| Method | Description |
+|--------|-------------|
+| `filter_by_severity(results, min_severity, max_severity)` | Filter by severity range |
+| `filter_failed(results)` | Filter failed results only |
+| `filter_passed(results)` | Filter passed results only |
+| `filter_by_column(results, include_columns, exclude_columns)` | Filter by specific columns |
+| `filter_by_validator(results, include_validators, exclude_validators)` | Filter by specific validators |
+| `sort_by_severity(results, ascending)` | Sort by severity |
+| `sort_by_column(results, ascending)` | Sort by column name |
+| `limit(results, count, offset)` | Limit result count |
 
 ### SerializationMixin
 
-직렬화 유틸리티:
+Serialization utilities:
 
 ```python
 from truthound.reporters.sdk import SerializationMixin
 
 class MyReporter(SerializationMixin, ValidationReporter):
     def render(self, data):
-        # JSON 문자열로
+        # To JSON string
         as_json = self.to_json(data, indent=2)
 
-        # CSV 문자열로
+        # To CSV string
         rows = [{"name": "col1", "count": 10}]
         as_csv = self.to_csv(rows, columns=["name", "count"])
 
-        # XML 요소 생성
+        # Create XML element
         xml_elem = self.to_xml_element(
             "issue",
             value="message",
@@ -207,17 +207,17 @@ class MyReporter(SerializationMixin, ValidationReporter):
         return as_json
 ```
 
-**주요 메서드:**
+**Key Methods:**
 
-| 메서드 | 설명 |
-|--------|------|
-| `to_json(data, indent, sort_keys)` | JSON 문자열로 직렬화 |
-| `to_csv(rows, columns, delimiter)` | CSV 문자열로 직렬화 |
-| `to_xml_element(tag, value, attributes)` | XML 요소 문자열 생성 |
+| Method | Description |
+|--------|-------------|
+| `to_json(data, indent, sort_keys)` | Serialize to JSON string |
+| `to_csv(rows, columns, delimiter)` | Serialize to CSV string |
+| `to_xml_element(tag, value, attributes)` | Create XML element string |
 
 ### TemplatingMixin
 
-템플릿 렌더링 유틸리티:
+Template rendering utilities:
 
 ```python
 from truthound.reporters.sdk import TemplatingMixin
@@ -235,48 +235,48 @@ class MyReporter(TemplatingMixin, ValidationReporter):
         return self.render_template(self.template_string, data=data)
 ```
 
-**주요 메서드:**
+**Key Methods:**
 
-| 메서드 | 설명 |
-|--------|------|
-| `render_template(template, context)` | Jinja2 템플릿 렌더링 |
-| `render_template_file(path, context)` | 파일 기반 템플릿 렌더링 |
-| `interpolate(template, context)` | 단순 문자열 보간 (Jinja2 불필요) |
+| Method | Description |
+|--------|-------------|
+| `render_template(template, context)` | Render Jinja2 template |
+| `render_template_file(path, context)` | Render file-based template |
+| `interpolate(template, context)` | Simple string interpolation (no Jinja2 required) |
 
 ### StreamingMixin
 
-스트리밍 출력 유틸리티:
+Streaming output utilities:
 
 ```python
 from truthound.reporters.sdk import StreamingMixin
 
 class MyReporter(StreamingMixin, ValidationReporter):
     def render(self, data):
-        # 청크 단위로 생성
+        # Generate in chunks
         for chunk in self.stream_results(data.results, chunk_size=100):
             yield self.format_chunk(chunk)
 
     def render_lines(self, data):
-        # 라인 단위 스트리밍
+        # Line-by-line streaming
         formatter = lambda r: f"{r.validator_name}: {r.message}"
         return self.render_streaming(data.results, formatter)
 ```
 
-**주요 메서드:**
+**Key Methods:**
 
-| 메서드 | 설명 |
-|--------|------|
-| `stream_results(results, chunk_size)` | 청크 단위 이터레이터 |
-| `stream_lines(results, formatter)` | 라인 단위 이터레이터 |
-| `render_streaming(results, formatter)` | 스트리밍 결과를 문자열로 조합 |
+| Method | Description |
+|--------|-------------|
+| `stream_results(results, chunk_size)` | Chunk iterator |
+| `stream_lines(results, formatter)` | Line iterator |
+| `render_streaming(results, formatter)` | Combine streaming results to string |
 
 ---
 
 ## Builder
 
-### @create_reporter 데코레이터
+### @create_reporter Decorator
 
-함수를 리포터로 변환:
+Convert function to reporter:
 
 ```python
 from truthound.reporters.sdk import create_reporter
@@ -287,7 +287,7 @@ from truthound.reporters.sdk import create_reporter
     content_type="text/plain"
 )
 def render_simple(result, config):
-    """간단한 텍스트 리포터."""
+    """Simple text reporter."""
     lines = [
         f"Data Asset: {result.data_asset}",
         f"Status: {result.status.value}",
@@ -295,14 +295,14 @@ def render_simple(result, config):
     ]
     return "\n".join(lines)
 
-# 자동으로 등록됨
+# Automatically registered
 from truthound.reporters import get_reporter
 reporter = get_reporter("simple")
 ```
 
-### @create_validation_reporter 데코레이터
+### @create_validation_reporter Decorator
 
-ValidationReporter 전체 기능 포함:
+Include full ValidationReporter functionality:
 
 ```python
 from truthound.reporters.sdk import create_validation_reporter
@@ -327,12 +327,12 @@ def render_prefixed(result, config):
 
 ### ReporterBuilder
 
-Fluent 빌더 패턴:
+Fluent builder pattern:
 
 ```python
 from truthound.reporters.sdk import ReporterBuilder
 
-# ReporterBuilder는 이름을 생성자에서 받음
+# ReporterBuilder takes name in constructor
 reporter_class = (
     ReporterBuilder("custom")
     .with_extension(".custom")
@@ -343,32 +343,32 @@ reporter_class = (
     .build()
 )
 
-# 인스턴스 생성
+# Create instance
 instance = reporter_class()
 output = instance.render(validation_result)
 ```
 
-**Builder 메서드:**
+**Builder Methods:**
 
-| 메서드 | 설명 |
-|--------|------|
-| `ReporterBuilder(name)` | 리포터 이름으로 빌더 생성 |
-| `with_extension(ext)` | 파일 확장자 설정 |
-| `with_content_type(type)` | MIME 타입 설정 |
-| `with_mixin(mixin_class)` | Mixin 추가 |
-| `with_mixins(*mixins)` | 여러 Mixin 추가 |
-| `with_config_class(cls)` | 설정 클래스 지정 |
-| `with_renderer(func)` | 렌더링 함수 지정 (self, data를 인자로 받음) |
-| `with_post_processor(func)` | 후처리 함수 추가 |
-| `with_attribute(name, value)` | 클래스 속성 추가 |
-| `register_as(name)` | 팩토리 등록 이름 지정 |
-| `build()` | 리포터 클래스 생성 |
+| Method | Description |
+|--------|-------------|
+| `ReporterBuilder(name)` | Create builder with reporter name |
+| `with_extension(ext)` | Set file extension |
+| `with_content_type(type)` | Set MIME type |
+| `with_mixin(mixin_class)` | Add mixin |
+| `with_mixins(*mixins)` | Add multiple mixins |
+| `with_config_class(cls)` | Specify config class |
+| `with_renderer(func)` | Specify render function (takes self, data as arguments) |
+| `with_post_processor(func)` | Add post-processor function |
+| `with_attribute(name, value)` | Add class attribute |
+| `register_as(name)` | Specify factory registration name |
+| `build()` | Create reporter class |
 
 ---
 
 ## Templates
 
-SDK는 사전 정의된 리포터 템플릿을 제공합니다.
+The SDK provides pre-defined reporter templates.
 
 ### CSVReporter
 
@@ -384,15 +384,15 @@ reporter = CSVReporter(
 csv_output = reporter.render(result)
 ```
 
-**CSVReporterConfig 옵션:**
+**CSVReporterConfig Options:**
 
-| 옵션 | 타입 | 기본값 | 설명 |
-|------|------|--------|------|
-| `delimiter` | `str` | `","` | 필드 구분자 |
-| `include_header` | `bool` | `True` | 헤더 행 포함 |
-| `include_passed` | `bool` | `False` | 통과 항목 포함 |
-| `quoting` | `str` | `"minimal"` | 인용 방식 |
-| `columns` | `list[str]` | `None` | 포함할 컬럼 (None=전체) |
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `delimiter` | `str` | `","` | Field delimiter |
+| `include_header` | `bool` | `True` | Include header row |
+| `include_passed` | `bool` | `False` | Include passed items |
+| `quoting` | `str` | `"minimal"` | Quoting style |
+| `columns` | `list[str]` | `None` | Columns to include (None=all) |
 
 ### YAMLReporter
 
@@ -408,18 +408,18 @@ reporter = YAMLReporter(
 yaml_output = reporter.render(result)
 ```
 
-**YAMLReporterConfig 옵션:**
+**YAMLReporterConfig Options:**
 
-| 옵션 | 타입 | 기본값 | 설명 |
-|------|------|--------|------|
-| `default_flow_style` | `bool` | `False` | 플로우 스타일 사용 |
-| `indent` | `int` | `2` | 들여쓰기 크기 |
-| `include_passed` | `bool` | `False` | 통과 항목 포함 |
-| `sort_keys` | `bool` | `False` | 키 정렬 |
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `default_flow_style` | `bool` | `False` | Use flow style |
+| `indent` | `int` | `2` | Indentation size |
+| `include_passed` | `bool` | `False` | Include passed items |
+| `sort_keys` | `bool` | `False` | Sort keys |
 
 ### JUnitXMLReporter
 
-CI/CD 통합용 JUnit XML 형식:
+JUnit XML format for CI/CD integration:
 
 ```python
 from truthound.reporters.sdk import JUnitXMLReporter
@@ -432,18 +432,18 @@ reporter = JUnitXMLReporter(
 xml_output = reporter.render(result)
 ```
 
-**JUnitXMLReporterConfig 옵션:**
+**JUnitXMLReporterConfig Options:**
 
-| 옵션 | 타입 | 기본값 | 설명 |
-|------|------|--------|------|
-| `testsuite_name` | `str` | `"Truthound Validation"` | 테스트 스위트 이름 |
-| `include_stdout` | `bool` | `True` | system-out 포함 |
-| `include_properties` | `bool` | `True` | properties 포함 |
-| `include_passed` | `bool` | `False` | 통과 테스트 포함 |
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `testsuite_name` | `str` | `"Truthound Validation"` | Test suite name |
+| `include_stdout` | `bool` | `True` | Include system-out |
+| `include_properties` | `bool` | `True` | Include properties |
+| `include_passed` | `bool` | `False` | Include passed tests |
 
 ### NDJSONReporter
 
-Newline Delimited JSON (로그 수집 시스템 통합용):
+Newline Delimited JSON (for log collection system integration):
 
 ```python
 from truthound.reporters.sdk import NDJSONReporter
@@ -456,17 +456,17 @@ reporter = NDJSONReporter(
 ndjson_output = reporter.render(result)
 ```
 
-**NDJSONReporterConfig 옵션:**
+**NDJSONReporterConfig Options:**
 
-| 옵션 | 타입 | 기본값 | 설명 |
-|------|------|--------|------|
-| `include_metadata` | `bool` | `True` | 메타데이터 라인 포함 |
-| `include_passed` | `bool` | `False` | 통과 항목 포함 |
-| `compact` | `bool` | `True` | 컴팩트 JSON |
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `include_metadata` | `bool` | `True` | Include metadata line |
+| `include_passed` | `bool` | `False` | Include passed items |
+| `compact` | `bool` | `True` | Compact JSON |
 
 ### TableReporter
 
-텍스트 테이블 출력:
+Text table output:
 
 ```python
 from truthound.reporters.sdk import TableReporter
@@ -479,27 +479,27 @@ reporter = TableReporter(
 table_output = reporter.render(result)
 ```
 
-**TableReporterConfig 옵션:**
+**TableReporterConfig Options:**
 
-| 옵션 | 타입 | 기본값 | 설명 |
-|------|------|--------|------|
-| `style` | `str` | `"ascii"` | 테이블 스타일 |
-| `max_width` | `int` | `120` | 최대 너비 |
-| `include_passed` | `bool` | `False` | 통과 항목 포함 |
-| `show_index` | `bool` | `False` | 인덱스 표시 |
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `style` | `str` | `"ascii"` | Table style |
+| `max_width` | `int` | `120` | Maximum width |
+| `include_passed` | `bool` | `False` | Include passed items |
+| `show_index` | `bool` | `False` | Show index |
 
 ---
 
 ## Schema Validation
 
-출력 형식 검증을 위한 스키마 시스템입니다.
+A schema system for output format validation.
 
-### 기본 사용법
+### Basic Usage
 
 ```python
 from truthound.reporters.sdk import validate_output, JSONSchema
 
-# 스키마 정의
+# Define schema
 schema = JSONSchema(
     required_fields=["status", "data_asset", "issues"],
     field_types={
@@ -510,14 +510,14 @@ schema = JSONSchema(
     }
 )
 
-# 출력 검증
+# Validate output
 result = validate_output(json_output, schema)
 if not result.is_valid:
     for error in result.errors:
         print(f"Error: {error.message}")
 ```
 
-### 스키마 타입
+### Schema Types
 
 #### JSONSchema
 
@@ -532,14 +532,14 @@ schema = JSONSchema(
 )
 ```
 
-**옵션:**
+**Options:**
 
-| 옵션 | 타입 | 설명 |
-|------|------|------|
-| `required_fields` | `list[str]` | 필수 필드 목록 |
-| `field_types` | `dict[str, type]` | 필드별 타입 |
-| `allow_extra_fields` | `bool` | 추가 필드 허용 |
-| `max_depth` | `int` | 최대 중첩 깊이 |
+| Option | Type | Description |
+|--------|------|-------------|
+| `required_fields` | `list[str]` | Required field list |
+| `field_types` | `dict[str, type]` | Field types |
+| `allow_extra_fields` | `bool` | Allow extra fields |
+| `max_depth` | `int` | Maximum nesting depth |
 
 #### XMLSchema
 
@@ -554,14 +554,14 @@ schema = XMLSchema(
 )
 ```
 
-**옵션:**
+**Options:**
 
-| 옵션 | 타입 | 설명 |
-|------|------|------|
-| `root_element` | `str` | 루트 요소 이름 |
-| `required_elements` | `list[str]` | 필수 요소 목록 |
-| `required_attributes` | `dict[str, list[str]]` | 요소별 필수 속성 |
-| `validate_dtd` | `bool` | DTD 검증 여부 |
+| Option | Type | Description |
+|--------|------|-------------|
+| `root_element` | `str` | Root element name |
+| `required_elements` | `list[str]` | Required element list |
+| `required_attributes` | `dict[str, list[str]]` | Required attributes per element |
+| `validate_dtd` | `bool` | Validate DTD |
 
 #### CSVSchema
 
@@ -576,14 +576,14 @@ schema = CSVSchema(
 )
 ```
 
-**옵션:**
+**Options:**
 
-| 옵션 | 타입 | 설명 |
-|------|------|------|
-| `required_columns` | `list[str]` | 필수 컬럼 목록 |
-| `column_types` | `dict[str, type]` | 컬럼별 타입 |
-| `allow_extra_columns` | `bool` | 추가 컬럼 허용 |
-| `min_rows` | `int` | 최소 행 수 |
+| Option | Type | Description |
+|--------|------|-------------|
+| `required_columns` | `list[str]` | Required column list |
+| `column_types` | `dict[str, type]` | Column types |
+| `allow_extra_columns` | `bool` | Allow extra columns |
+| `min_rows` | `int` | Minimum row count |
 
 #### TextSchema
 
@@ -598,16 +598,16 @@ schema = TextSchema(
 )
 ```
 
-**옵션:**
+**Options:**
 
-| 옵션 | 타입 | 설명 |
-|------|------|------|
-| `required_patterns` | `list[str]` | 필수 패턴 (정규식) |
-| `forbidden_patterns` | `list[str]` | 금지 패턴 (정규식) |
-| `max_length` | `int` | 최대 문자 수 |
-| `encoding` | `str` | 인코딩 |
+| Option | Type | Description |
+|--------|------|-------------|
+| `required_patterns` | `list[str]` | Required patterns (regex) |
+| `forbidden_patterns` | `list[str]` | Forbidden patterns (regex) |
+| `max_length` | `int` | Maximum character count |
+| `encoding` | `str` | Encoding |
 
-### 스키마 등록 및 관리
+### Schema Registration and Management
 
 ```python
 from truthound.reporters.sdk import (
@@ -617,28 +617,28 @@ from truthound.reporters.sdk import (
     validate_reporter_output,
 )
 
-# 스키마 등록
+# Register schema
 register_schema("my_format", schema)
 
-# 스키마 조회
+# Get schema
 my_schema = get_schema("my_format")
 
-# 스키마 제거
+# Remove schema
 unregister_schema("my_format")
 
-# 리포터 출력 자동 검증
+# Auto-validate reporter output
 is_valid = validate_reporter_output("json", json_output)
 ```
 
-### 스키마 추론 및 병합
+### Schema Inference and Merging
 
 ```python
 from truthound.reporters.sdk import infer_schema, merge_schemas
 
-# 샘플 데이터에서 스키마 추론
+# Infer schema from sample data
 inferred = infer_schema(sample_output, format="json")
 
-# 여러 스키마 병합
+# Merge multiple schemas
 merged = merge_schemas([schema1, schema2], strategy="union")
 ```
 
@@ -646,19 +646,19 @@ merged = merge_schemas([schema1, schema2], strategy="union")
 
 ## Testing Utilities
 
-리포터 테스트를 위한 유틸리티입니다.
+Utilities for reporter testing.
 
-### Mock 데이터 생성
+### Mock Data Generation
 
 #### create_mock_result
 
 ```python
 from truthound.reporters.sdk import create_mock_result
 
-# 기본 목 결과
+# Default mock result
 result = create_mock_result()
 
-# 커스텀 설정
+# Custom settings
 result = create_mock_result(
     data_asset="test_data.csv",
     status="failure",
@@ -668,19 +668,19 @@ result = create_mock_result(
 )
 ```
 
-**파라미터:**
+**Parameters:**
 
-| 파라미터 | 타입 | 기본값 | 설명 |
-|----------|------|--------|------|
-| `data_asset` | `str` | `"test_data.csv"` | 데이터 에셋 이름 |
-| `status` | `str` | `"failure"` | 검증 상태 |
-| `pass_rate` | `float` | `0.8` | 통과율 |
-| `issue_count` | `int` | `3` | 이슈 개수 |
-| `severity_distribution` | `dict` | `None` | severity별 이슈 수 |
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `data_asset` | `str` | `"test_data.csv"` | Data asset name |
+| `status` | `str` | `"failure"` | Validation status |
+| `pass_rate` | `float` | `0.8` | Pass rate |
+| `issue_count` | `int` | `3` | Issue count |
+| `severity_distribution` | `dict` | `None` | Issues per severity |
 
 #### MockResultBuilder
 
-Fluent 빌더 패턴:
+Fluent builder pattern:
 
 ```python
 from truthound.reporters.sdk import MockResultBuilder
@@ -707,87 +707,87 @@ result = (
 )
 ```
 
-**Builder 메서드:**
+**Builder Methods:**
 
-| 메서드 | 설명 |
-|--------|------|
-| `with_data_asset(name)` | 데이터 에셋 이름 설정 |
-| `with_status(status)` | 검증 상태 설정 |
-| `with_pass_rate(rate)` | 통과율 설정 |
-| `with_run_time(time)` | 실행 시간 설정 |
-| `add_issue(...)` | 이슈 추가 |
-| `add_issues(issues)` | 여러 이슈 추가 |
-| `build()` | MockValidationResult 생성 |
+| Method | Description |
+|--------|-------------|
+| `with_data_asset(name)` | Set data asset name |
+| `with_status(status)` | Set validation status |
+| `with_pass_rate(rate)` | Set pass rate |
+| `with_run_time(time)` | Set run time |
+| `add_issue(...)` | Add issue |
+| `add_issues(issues)` | Add multiple issues |
+| `build()` | Create MockValidationResult |
 
 #### create_mock_results
 
-여러 결과 생성:
+Generate multiple results:
 
 ```python
 from truthound.reporters.sdk import create_mock_results
 
-# 5개의 랜덤 결과 생성
+# Generate 5 random results
 results = create_mock_results(count=5)
 
-# 다양한 상태 분포
+# Various status distributions
 results = create_mock_results(
     count=10,
     status_distribution={"success": 0.7, "failure": 0.3}
 )
 ```
 
-### Assertion 함수
+### Assertion Functions
 
-#### 범용 검증
+#### General Validation
 
 ```python
 from truthound.reporters.sdk import assert_valid_output
 
-# 출력 형식 자동 감지 및 검증
+# Auto-detect and validate output format
 assert_valid_output(output, format="json")
 assert_valid_output(output, format="xml")
 assert_valid_output(output, format="csv")
 ```
 
-#### JSON 검증
+#### JSON Validation
 
 ```python
 from truthound.reporters.sdk import assert_json_valid
 
-# 기본 JSON 검증
+# Basic JSON validation
 assert_json_valid(json_output)
 
-# 스키마와 함께 검증
+# Validate with schema
 assert_json_valid(json_output, schema=my_schema)
 
-# 필수 필드 검증
+# Validate required fields
 assert_json_valid(json_output, required_fields=["status", "issues"])
 ```
 
-#### XML 검증
+#### XML Validation
 
 ```python
 from truthound.reporters.sdk import assert_xml_valid
 
-# 기본 XML 검증
+# Basic XML validation
 assert_xml_valid(xml_output)
 
-# 루트 요소 검증
+# Validate root element
 assert_xml_valid(xml_output, root_element="testsuites")
 
-# XSD 스키마로 검증
+# Validate with XSD schema
 assert_xml_valid(xml_output, xsd_path="schema.xsd")
 ```
 
-#### CSV 검증
+#### CSV Validation
 
 ```python
 from truthound.reporters.sdk import assert_csv_valid
 
-# 기본 CSV 검증
+# Basic CSV validation
 assert_csv_valid(csv_output)
 
-# 컬럼 검증
+# Validate columns
 assert_csv_valid(
     csv_output,
     required_columns=["validator", "column", "severity"],
@@ -795,7 +795,7 @@ assert_csv_valid(
 )
 ```
 
-#### 패턴 매칭
+#### Pattern Matching
 
 ```python
 from truthound.reporters.sdk import assert_contains_patterns
@@ -812,7 +812,7 @@ assert_contains_patterns(
 
 ### ReporterTestCase
 
-테스트 케이스 베이스 클래스:
+Base class for test cases:
 
 ```python
 from truthound.reporters.sdk import ReporterTestCase
@@ -822,7 +822,7 @@ class TestMyReporter(ReporterTestCase):
     reporter_name = "my_format"
 
     def test_basic_render(self):
-        """기본 렌더링 테스트."""
+        """Basic rendering test."""
         reporter = get_reporter(self.reporter_name)
         result = self.create_sample_result()
 
@@ -832,32 +832,32 @@ class TestMyReporter(ReporterTestCase):
         self.assertIn("Status:", output)
 
     def test_empty_issues(self):
-        """이슈 없는 경우 테스트."""
+        """Test with no issues."""
         result = self.create_result_with_no_issues()
         output = self.render(result)
 
         self.assert_output_valid(output)
 
     def test_edge_cases(self):
-        """엣지 케이스 테스트."""
+        """Edge case tests."""
         for edge_case in self.get_edge_cases():
             with self.subTest(edge_case=edge_case.name):
                 output = self.render(edge_case.data)
                 self.assert_output_valid(output)
 ```
 
-**제공 메서드:**
+**Provided Methods:**
 
-| 메서드 | 설명 |
-|--------|------|
-| `create_sample_result()` | 표준 샘플 결과 생성 |
-| `create_result_with_no_issues()` | 이슈 없는 결과 생성 |
-| `create_result_with_many_issues(n)` | n개 이슈 결과 생성 |
-| `get_edge_cases()` | 엣지 케이스 목록 반환 |
-| `render(result)` | 리포터로 렌더링 |
-| `assert_output_valid(output)` | 출력 검증 |
+| Method | Description |
+|--------|-------------|
+| `create_sample_result()` | Create standard sample result |
+| `create_result_with_no_issues()` | Create result with no issues |
+| `create_result_with_many_issues(n)` | Create result with n issues |
+| `get_edge_cases()` | Return edge case list |
+| `render(result)` | Render with reporter |
+| `assert_output_valid(output)` | Validate output |
 
-### 테스트 데이터 생성
+### Test Data Generation
 
 ```python
 from truthound.reporters.sdk import (
@@ -866,28 +866,28 @@ from truthound.reporters.sdk import (
     create_stress_test_data,
 )
 
-# 표준 샘플 데이터
+# Standard sample data
 sample = create_sample_data()
 
-# 엣지 케이스 데이터
+# Edge case data
 edge_cases = create_edge_case_data()
-# 반환: empty_result, single_issue, max_severity, unicode_content, ...
+# Returns: empty_result, single_issue, max_severity, unicode_content, ...
 
-# 스트레스 테스트 데이터
+# Stress test data
 stress = create_stress_test_data(
     issue_count=10000,
     validator_count=100
 )
 ```
 
-### 출력 캡처 및 벤치마크
+### Output Capture and Benchmarking
 
 #### capture_output
 
 ```python
 from truthound.reporters.sdk import capture_output
 
-# stdout/stderr 캡처
+# Capture stdout/stderr
 with capture_output() as captured:
     reporter.print(result)
 
@@ -900,7 +900,7 @@ print(f"Stderr: {captured.stderr}")
 ```python
 from truthound.reporters.sdk import benchmark_reporter, BenchmarkResult
 
-# 리포터 성능 벤치마크
+# Benchmark reporter performance
 result: BenchmarkResult = benchmark_reporter(
     reporter=get_reporter("json"),
     data=create_stress_test_data(issue_count=1000),
@@ -914,22 +914,22 @@ print(f"Max time: {result.max_time:.4f}s")
 print(f"Throughput: {result.throughput:.2f} ops/sec")
 ```
 
-**BenchmarkResult 필드:**
+**BenchmarkResult Fields:**
 
-| 필드 | 타입 | 설명 |
-|------|------|------|
-| `mean_time` | `float` | 평균 실행 시간 (초) |
-| `std_dev` | `float` | 표준 편차 |
-| `min_time` | `float` | 최소 실행 시간 |
-| `max_time` | `float` | 최대 실행 시간 |
-| `throughput` | `float` | 초당 처리량 |
-| `iterations` | `int` | 반복 횟수 |
+| Field | Type | Description |
+|-------|------|-------------|
+| `mean_time` | `float` | Mean execution time (seconds) |
+| `std_dev` | `float` | Standard deviation |
+| `min_time` | `float` | Minimum execution time |
+| `max_time` | `float` | Maximum execution time |
+| `throughput` | `float` | Throughput per second |
+| `iterations` | `int` | Iteration count |
 
 ---
 
-## 커스텀 리포터 등록
+## Custom Reporter Registration
 
-### 데코레이터로 등록
+### Register with Decorator
 
 ```python
 from truthound.reporters import register_reporter
@@ -944,20 +944,20 @@ class MyCustomReporter(ValidationReporter[ReporterConfig]):
         return f"Custom: {data.status.value}"
 ```
 
-### 수동 등록
+### Manual Registration
 
 ```python
 from truthound.reporters.factory import register_reporter
 
 register_reporter("my_custom", MyCustomReporter)
 
-# 사용
+# Usage
 reporter = get_reporter("my_custom")
 ```
 
 ---
 
-## API 레퍼런스
+## API Reference
 
 ### SDK Exports
 

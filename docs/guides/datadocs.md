@@ -1,6 +1,6 @@
 # Data Docs - HTML Report Generation (Phase 8)
 
-Truthound의 Data Docs 모듈은 데이터 프로파일 결과를 아름답고 인터랙티브한 HTML 리포트로 변환합니다. CI/CD 파이프라인에서 아티팩트로 저장하거나, 이메일/Slack으로 공유할 수 있는 self-contained HTML 파일을 생성합니다.
+Truthound's Data Docs module transforms data profile results into beautiful and interactive HTML reports. It generates self-contained HTML files that can be stored as artifacts in CI/CD pipelines or shared via email/Slack.
 
 ## Table of Contents
 
@@ -21,50 +21,50 @@ Truthound의 Data Docs 모듈은 데이터 프로파일 결과를 아름답고 �
 
 ## Overview
 
-Data Docs는 두 단계로 구성됩니다:
+Data Docs consists of two stages:
 
-| Stage | 기능 | 의존성 |
-|-------|------|--------|
-| **Stage 1: Static HTML Report** | Self-contained HTML 리포트 생성 | 없음 (CDN 기반) |
-| **Stage 2: Interactive Dashboard** | Reflex 기반 인터랙티브 대시보드 | `truthound[dashboard]` |
+| Stage | Functionality | Dependencies |
+|-------|---------------|--------------|
+| **Stage 1: Static HTML Report** | Self-contained HTML report generation | None (CDN-based) |
+| **Stage 2: Interactive Dashboard** | Reflex-based interactive dashboard | `truthound[dashboard]` |
 
-### 주요 특징
+### Key Features
 
-- **Zero Dependencies**: npm/node 빌드 불필요, CDN에서 JS 로드
-- **Self-Contained**: 단일 HTML 파일로 오프라인에서도 동작
-- **6가지 빌트인 테마**: Default, Light, Dark, Professional, Minimal, Modern (+ Enterprise)
-- **자동 차트 렌더링**: HTML은 ApexCharts, PDF는 SVG 자동 선택
-- **반응형 디자인**: 모바일/태블릿/데스크톱 대응
-- **인쇄 최적화**: Print-friendly CSS 포함
-- **PDF 내보내기**: weasyprint 사용 (선택적)
-- **다국어 지원**: 영어(en), 한국어(ko)
-- **리포트 버전관리**: 4개 전략 (Incremental, Semantic, Timestamp, GitLike)
+- **Zero Dependencies**: No npm/node build required, JS loaded from CDN
+- **Self-Contained**: Single HTML file works offline
+- **6 Built-in Themes**: Default, Light, Dark, Professional, Minimal, Modern (+ Enterprise)
+- **Automatic Chart Rendering**: ApexCharts for HTML, SVG for PDF (auto-selected)
+- **Responsive Design**: Mobile/tablet/desktop compatible
+- **Print Optimized**: Print-friendly CSS included
+- **PDF Export**: Uses WeasyPrint (optional)
+- **Multilingual Support**: English (en), Korean (ko)
+- **Report Versioning**: 4 strategies (Incremental, Semantic, Timestamp, GitLike)
 
 ---
 
 ## Installation
 
 ```bash
-# 기본 설치 (Stage 1: HTML Report - Jinja2 필요)
+# Basic installation (Stage 1: HTML Report - requires Jinja2)
 pip install truthound[reports]
 
-# PDF 내보내기 지원
+# PDF export support
 pip install truthound[pdf]
 
-# 대시보드 지원 (Stage 2)
+# Dashboard support (Stage 2)
 pip install truthound[dashboard]
 
-# 전체 설치
+# Full installation
 pip install truthound[all]
 ```
 
 !!! warning "HTML Report Dependency"
-    HTML 리포트 생성에는 Jinja2가 필요합니다. 반드시 `truthound[reports]` 또는 `truthound[all]`을 설치하세요.
+    HTML report generation requires Jinja2. Make sure to install `truthound[reports]` or `truthound[all]`.
 
 ### PDF Export System Dependencies
 
-PDF 내보내기는 WeasyPrint를 사용하며, **시스템 라이브러리**가 필요합니다.
-Python 패키지만으로는 동작하지 않으므로 반드시 아래 시스템 의존성을 먼저 설치하세요.
+PDF export uses WeasyPrint and requires **system libraries**.
+Python packages alone are not sufficient, so you must install the system dependencies listed below first.
 
 #### macOS (Homebrew)
 
@@ -97,23 +97,23 @@ pip install truthound[pdf]
 
 #### Windows
 
-Windows에서는 GTK3 런타임이 필요합니다:
+Windows requires the GTK3 runtime:
 
-1. [GTK3 for Windows](https://github.com/nickvidal/weasyprint/releases) 다운로드
-2. 압축 해제 후 PATH에 추가
+1. Download [GTK3 for Windows](https://github.com/nickvidal/weasyprint/releases)
+2. Extract and add to PATH
 3. `pip install truthound[pdf]`
 
-또는 bundled 버전 사용:
+Or use the bundled version:
 ```bash
 pip install weasyprint[gtk3]
 ```
 
 #### Docker
 
-Docker에서 사용할 경우:
+When using Docker:
 
 ```dockerfile
-# Debian/Ubuntu 기반
+# Debian/Ubuntu based
 FROM python:3.11-slim
 RUN apt-get update && apt-get install -y \
     libpango-1.0-0 \
@@ -126,38 +126,38 @@ RUN pip install truthound[pdf]
 ```
 
 ```dockerfile
-# Alpine 기반
+# Alpine based
 FROM python:3.11-alpine
 RUN apk add --no-cache pango gdk-pixbuf libffi-dev
 RUN pip install truthound[pdf]
 ```
 
-> **Note**: `pip install truthound[pdf]`는 Python 패키지(weasyprint)만 설치합니다.
-> 위의 시스템 라이브러리가 없으면 PDF 생성 시 `cannot load library 'libpango-1.0-0'` 에러가 발생합니다.
+> **Note**: `pip install truthound[pdf]` only installs the Python package (weasyprint).
+> Without the system libraries listed above, you will get the `cannot load library 'libpango-1.0-0'` error during PDF generation.
 
-자세한 내용은 [WeasyPrint 설치 가이드](https://doc.courtbouillon.org/weasyprint/stable/first_steps.html#installation)를 참조하세요.
+For detailed information, refer to the [WeasyPrint Installation Guide](https://doc.courtbouillon.org/weasyprint/stable/first_steps.html#installation).
 
 ---
 
 ## Quick Start
 
-### 1. 프로파일 생성
+### 1. Generate Profile
 
-먼저 데이터 프로파일을 생성합니다:
+First, generate a data profile:
 
 ```bash
 truthound auto-profile data.csv -o profile.json
 ```
 
-### 2. HTML 리포트 생성
+### 2. Generate HTML Report
 
 ```bash
 truthound docs generate profile.json -o report.html
 ```
 
-### 3. 브라우저에서 열기
+### 3. Open in Browser
 
-생성된 `report.html` 파일을 브라우저에서 열면 완전한 데이터 품질 리포트를 확인할 수 있습니다.
+Open the generated `report.html` file in a browser to view the complete data quality report.
 
 ---
 
@@ -165,7 +165,7 @@ truthound docs generate profile.json -o report.html
 
 ### `truthound docs generate`
 
-프로파일 JSON 파일에서 HTML 리포트를 생성합니다.
+Generates an HTML report from a profile JSON file.
 
 ```bash
 truthound docs generate <profile_file> [OPTIONS]
@@ -175,31 +175,31 @@ truthound docs generate <profile_file> [OPTIONS]
 
 | Option | Short | Default | Description |
 |--------|-------|---------|-------------|
-| `--output` | `-o` | `<input>.html` | 출력 파일 경로 |
-| `--title` | `-t` | "Data Profile Report" | 리포트 제목 |
-| `--subtitle` | `-s` | "" | 리포트 부제목 |
-| `--theme` | | "professional" | 테마 (light, dark, professional, minimal, modern) |
-| `--format` | `-f` | "html" | 출력 형식 (html, pdf) |
+| `--output` | `-o` | `<input>.html` | Output file path |
+| `--title` | `-t` | "Data Profile Report" | Report title |
+| `--subtitle` | `-s` | "" | Report subtitle |
+| `--theme` | | "professional" | Theme (light, dark, professional, minimal, modern) |
+| `--format` | `-f` | "html" | Output format (html, pdf) |
 
 **Examples:**
 
 ```bash
-# 기본 사용
+# Basic usage
 truthound docs generate profile.json -o report.html
 
-# 커스텀 제목과 다크 테마
+# Custom title and dark theme
 truthound docs generate profile.json -o report.html \
     --title "Q4 Data Quality Report" \
     --subtitle "Customer Dataset" \
     --theme dark
 
-# PDF 내보내기 (requires weasyprint)
+# PDF export (requires weasyprint)
 truthound docs generate profile.json -o report.pdf --format pdf
 ```
 
 ### `truthound docs themes`
 
-사용 가능한 테마 목록을 표시합니다.
+Displays the list of available themes.
 
 ```bash
 truthound docs themes
@@ -219,7 +219,7 @@ Available report themes:
 
 ### `truthound dashboard`
 
-인터랙티브 대시보드를 실행합니다 (Stage 2).
+Runs the interactive dashboard (Stage 2).
 
 ```bash
 truthound dashboard [OPTIONS]
@@ -229,22 +229,22 @@ truthound dashboard [OPTIONS]
 
 | Option | Short | Default | Description |
 |--------|-------|---------|-------------|
-| `--profile` | `-p` | None | 프로파일 JSON 파일 경로 |
-| `--port` | | 8080 | 서버 포트 |
-| `--host` | | "localhost" | 서버 호스트 |
-| `--title` | `-t` | "Truthound Dashboard" | 대시보드 제목 |
-| `--debug` | | False | 디버그 모드 활성화 |
+| `--profile` | `-p` | None | Profile JSON file path |
+| `--port` | | 8080 | Server port |
+| `--host` | | "localhost" | Server host |
+| `--title` | `-t` | "Truthound Dashboard" | Dashboard title |
+| `--debug` | | False | Enable debug mode |
 
 **Examples:**
 
 ```bash
-# 프로파일과 함께 실행
+# Run with profile
 truthound dashboard --profile profile.json
 
-# 커스텀 포트
+# Custom port
 truthound dashboard --profile profile.json --port 3000
 
-# 외부 접근 허용
+# Allow external access
 truthound dashboard --profile profile.json --host 0.0.0.0
 ```
 
@@ -254,7 +254,7 @@ truthound dashboard --profile profile.json --host 0.0.0.0
 
 ### HTMLReportBuilder
 
-세밀한 제어가 필요할 때 `HTMLReportBuilder`를 직접 사용합니다.
+Use `HTMLReportBuilder` directly when fine-grained control is needed.
 
 ```python
 from truthound.datadocs import (
@@ -264,12 +264,12 @@ from truthound.datadocs import (
     ReportConfig,
 )
 
-# 기본 사용
+# Basic usage
 builder = HTMLReportBuilder(theme=ReportTheme.PROFESSIONAL)
 html = builder.build(profile, title="My Data Report")
 builder.save(html, "report.html")
 
-# 커스텀 설정
+# Custom configuration
 config = ReportConfig(
     theme=ReportTheme.DARK,
     include_toc=True,
@@ -282,7 +282,7 @@ html = builder.build(profile)
 
 ### Convenience Functions
 
-간단한 사용을 위한 함수들:
+Functions for simple usage:
 
 ```python
 from truthound.datadocs import (
@@ -292,7 +292,7 @@ from truthound.datadocs import (
     export_to_pdf,
 )
 
-# 프로파일 dict에서 직접 생성
+# Generate directly from profile dict
 html = generate_html_report(
     profile=profile_dict,
     title="Data Quality Report",
@@ -300,7 +300,7 @@ html = generate_html_report(
     output_path="report.html",
 )
 
-# 파일에서 생성
+# Generate from file
 html = generate_report_from_file(
     profile_path="profile.json",
     output_path="report.html",
@@ -308,29 +308,29 @@ html = generate_report_from_file(
     theme="dark",
 )
 
-# 다양한 형식으로 내보내기
+# Export in various formats
 export_report(profile, "report.html", format="html")
 export_report(profile, "report.pdf", format="pdf")
 
-# PDF 직접 내보내기
+# Direct PDF export
 export_to_pdf(profile, "report.pdf", title="PDF Report")
 ```
 
-### 전체 Workflow 예시
+### Complete Workflow Example
 
 ```python
 import truthound as th
 from truthound.datadocs import generate_html_report
 
-# 1. 데이터 로드
+# 1. Load data
 df = th.load("data.csv")
 
-# 2. 프로파일 생성
+# 2. Generate profile
 from truthound.profiler import DataProfiler
 profiler = DataProfiler()
 profile = profiler.profile(df)
 
-# 3. HTML 리포트 생성
+# 3. Generate HTML report
 html = generate_html_report(
     profile=profile.to_dict(),
     title="Customer Data Quality Report",
@@ -350,11 +350,11 @@ print(f"Report generated: {len(html):,} bytes")
 
 | Theme | Description | Best For |
 |-------|-------------|----------|
-| `light` | 밝고 깔끔한 디자인 | 일반적인 사용, 인쇄 |
-| `dark` | 다크 모드, 선명한 색상 | 야간 작업, 프레젠테이션 |
-| `professional` | 기업 스타일, 차분한 색상 | 비즈니스 리포트 (기본값) |
-| `minimal` | 미니멀리스트, 모노톤 | 간결한 문서 |
-| `modern` | 현대적, 그라데이션 | 마케팅, 데모 |
+| `light` | Bright and clean design | General use, printing |
+| `dark` | Dark mode, vibrant colors | Night work, presentations |
+| `professional` | Corporate style, calm colors | Business reports (default) |
+| `minimal` | Minimalist, monotone | Simple documentation |
+| `modern` | Contemporary, gradients | Marketing, demos |
 
 ### Theme Preview
 
@@ -362,17 +362,17 @@ print(f"Report generated: {len(html):,} bytes")
 - Background: Light Gray (#fafbfc)
 - Primary: Blue (#2563eb)
 - Surface: White (#ffffff)
-- 차분하고 전문적인 느낌
+- Calm and professional feel
 
 #### Dark Theme
 - Background: Dark (#0f172a)
 - Primary: Blue (#60a5fa)
 - Surface: Dark Gray (#1e293b)
-- 눈의 피로를 줄이는 다크 모드
+- Dark mode that reduces eye strain
 
 ### Custom Theme
 
-커스텀 테마를 만들 수 있습니다:
+You can create custom themes:
 
 ```python
 from truthound.datadocs import (
@@ -387,7 +387,7 @@ from truthound.datadocs.themes import (
     ThemeAssets,
 )
 
-# 커스텀 색상 정의
+# Define custom colors
 custom_colors = ThemeColors(
     background="#fafafa",
     surface="#ffffff",
@@ -397,18 +397,18 @@ custom_colors = ThemeColors(
     accent="#ffe66d",
 )
 
-# 커스텀 테마 생성 (ThemeConfig from themes module)
+# Create custom theme (ThemeConfig from themes module)
 custom_theme = ThemeConfig(
     name="my_brand",
     display_name="My Brand Theme",
     description="Custom theme for my brand",
     colors=custom_colors,
-    # 추가 옵션 (선택)
+    # Additional options (optional)
     footer_text="Generated by My Company",
     show_toc=True,
 )
 
-# 빌더에 적용
+# Apply to builder
 config = ReportConfig(custom_theme=custom_theme)
 builder = HTMLReportBuilder(config=config)
 ```
@@ -417,14 +417,35 @@ builder = HTMLReportBuilder(config=config)
 
 ## Chart Rendering
 
-Truthound는 출력 형식에 따라 자동으로 최적의 차트 렌더러를 선택합니다:
+Truthound automatically selects the optimal chart renderer based on output format:
 
 | Output Format | Chart Renderer | Description |
 |---------------|----------------|-------------|
-| **HTML** | ApexCharts | 모던, 인터랙티브, 툴팁/애니메이션 지원 |
-| **PDF** | SVG | JavaScript 불필요, PDF 렌더링 최적화 |
+| **HTML** | ApexCharts | Modern, interactive, tooltips/animations supported |
+| **PDF** | SVG | No JavaScript required, optimized for PDF rendering |
 
-### 지원 차트 유형
+### Theme-Aware Chart Colors
+
+Charts automatically adjust colors to match the selected theme. In dark mode, all chart text elements are displayed in bright colors:
+
+| Element | Light Theme | Dark Theme |
+|---------|-------------|------------|
+| Axis Labels | Dark gray | Light gray |
+| Legend Text | Dark gray | White |
+| Tooltip Text | Black | White |
+| Data Labels | Auto contrast | Auto contrast |
+| Chart Title | Dark | Light |
+
+!!! tip "Dark Mode Optimization"
+    In dark themes, charts use CSS variables to automatically adjust text colors.
+    All text elements of ApexCharts (axis labels, legends, tooltips, data labels) are displayed according to the theme.
+
+```bash
+# Generate dark mode report
+truthound docs generate profile.json -o report.html --theme dark
+```
+
+### Supported Chart Types
 
 | Chart Type | HTML (ApexCharts) | PDF (SVG) |
 |------------|-------------------|-----------|
@@ -440,11 +461,11 @@ Truthound는 출력 형식에 따라 자동으로 최적의 차트 렌더러를 
 | Gauge | ✅ | ❌ |
 | Radar | ✅ | ❌ |
 
-> **Note**: PDF 출력에서 지원되지 않는 차트 유형은 Bar 차트로 대체됩니다.
+> **Note**: Chart types not supported in PDF output are replaced with Bar charts.
 
 ### CDN URLs
 
-ApexCharts는 CDN에서 로드됩니다:
+ApexCharts is loaded from CDN:
 
 ```python
 from truthound.datadocs import CDN_URLS, ChartLibrary
@@ -462,86 +483,86 @@ CDN_URLS[ChartLibrary.SVG]
 
 ## Report Sections
 
-생성되는 리포트는 8개의 섹션으로 구성됩니다:
+Generated reports consist of 8 sections:
 
 ### 1. Overview
 
-데이터셋의 핵심 메트릭을 카드 형태로 표시:
+Displays key metrics of the dataset in card format:
 
-- **Row Count**: 전체 행 수
-- **Column Count**: 전체 컬럼 수
-- **Memory**: 추정 메모리 사용량
-- **Duplicates**: 중복 행 수
-- **Missing**: 전체 null 셀 수
-- **Quality Score**: 종합 품질 점수 (0-100)
+- **Row Count**: Total number of rows
+- **Column Count**: Total number of columns
+- **Memory**: Estimated memory usage
+- **Duplicates**: Number of duplicate rows
+- **Missing**: Total null cells
+- **Quality Score**: Overall quality score (0-100)
 
-데이터 타입 분포 차트도 포함됩니다.
+Data type distribution chart is also included.
 
 ### 2. Data Quality
 
-품질 차원별 점수를 원형 게이지로 표시:
+Displays quality dimension scores as circular gauges:
 
-- **Completeness**: 데이터 완전성 (null 비율)
-- **Uniqueness**: 유일성 (unique 비율)
-- **Validity**: 유효성 (형식 일치율)
-- **Consistency**: 일관성
+- **Completeness**: Data completeness (null ratio)
+- **Uniqueness**: Uniqueness (unique ratio)
+- **Validity**: Validity (format match rate)
+- **Consistency**: Consistency
 
-결측치 분포 차트와 경고 목록도 포함됩니다.
+Missing value distribution chart and warning list are also included.
 
 ### 3. Column Details
 
-각 컬럼에 대한 상세 정보:
+Detailed information for each column:
 
-- **Summary Table**: 모든 컬럼의 요약 테이블
-- **Column Cards**: 컬럼별 상세 카드
-  - 데이터 타입 배지
-  - Null/Unique 비율
-  - 기술 통계 (수치형)
-  - 탐지된 패턴
-  - 값 분포 차트
+- **Summary Table**: Summary table of all columns
+- **Column Cards**: Detailed cards per column
+  - Data type badge
+  - Null/Unique ratio
+  - Descriptive statistics (numeric)
+  - Detected patterns
+  - Value distribution chart
 
 ### 4. Detected Patterns
 
-자동으로 탐지된 데이터 패턴:
+Automatically detected data patterns:
 
-- **Pattern Name**: 패턴 유형 (Email, Phone, UUID 등)
-- **Match Ratio**: 일치율
-- **Sample Matches**: 샘플 값
+- **Pattern Name**: Pattern type (Email, Phone, UUID, etc.)
+- **Match Ratio**: Match rate
+- **Sample Matches**: Sample values
 
 ### 5. Value Distribution
 
-값 분포 분석:
+Value distribution analysis:
 
-- 유일성 분포 차트
-- 상위 값 빈도
-- 히스토그램
+- Uniqueness distribution chart
+- Top value frequency
+- Histograms
 
 ### 6. Correlations
 
-컬럼 간 상관관계:
+Correlations between columns:
 
-- 상관 계수 목록
-- 강/중/약 상관관계 시각화
-- 양/음의 상관관계 구분
+- Correlation coefficient list
+- Strong/medium/weak correlation visualization
+- Positive/negative correlation distinction
 
 ### 7. Recommendations
 
-자동 생성된 개선 제안:
+Auto-generated improvement suggestions:
 
-- 추천 Validator 목록
-- 데이터 품질 개선 제안
-- 파이프라인 권장 사항
+- Recommended Validator list
+- Data quality improvement suggestions
+- Pipeline recommendations
 
 ### 8. Alerts
 
-데이터 품질 이슈 경고:
+Data quality issue warnings:
 
 | Severity | Color | Example |
 |----------|-------|---------|
-| Info | Blue | 상수 컬럼 발견 |
-| Warning | Yellow | 50% 이상 결측 |
-| Error | Red | 80% 이상 결측 |
-| Critical | Dark Red | 데이터 무결성 위반 |
+| Info | Blue | Constant column found |
+| Warning | Yellow | Over 50% missing |
+| Error | Red | Over 80% missing |
+| Critical | Dark Red | Data integrity violation |
 
 ---
 
@@ -549,16 +570,16 @@ CDN_URLS[ChartLibrary.SVG]
 
 ### Report Configuration
 
-`ReportConfig`로 리포트를 커스터마이징합니다:
+Customize reports with `ReportConfig`:
 
 ```python
 from truthound.datadocs import ReportConfig, SectionType
 
 config = ReportConfig(
-    # 테마
+    # Theme
     theme=ReportTheme.PROFESSIONAL,
 
-    # 포함할 섹션 (순서대로)
+    # Sections to include (in order)
     sections=[
         SectionType.OVERVIEW,
         SectionType.QUALITY,
@@ -570,20 +591,20 @@ config = ReportConfig(
         SectionType.ALERTS,
     ],
 
-    # 레이아웃 옵션
-    include_toc=True,           # 목차 포함
-    include_header=True,        # 헤더 포함
-    include_footer=True,        # 푸터 포함
-    include_timestamp=True,     # 생성 시간 표시
+    # Layout options
+    include_toc=True,           # Include table of contents
+    include_header=True,        # Include header
+    include_footer=True,        # Include footer
+    include_timestamp=True,     # Show generation time
 
-    # 커스텀 콘텐츠
-    custom_css="",              # 추가 CSS
-    custom_js="",               # 추가 JavaScript
-    logo_url=None,              # 로고 URL
-    logo_base64=None,           # 로고 Base64
+    # Custom content
+    custom_css="",              # Additional CSS
+    custom_js="",               # Additional JavaScript
+    logo_url=None,              # Logo URL
+    logo_base64=None,           # Logo Base64
     footer_text="Generated by Truthound",
 
-    # 로컬라이제이션
+    # Localization
     language="en",
     date_format="%Y-%m-%d %H:%M:%S",
 )
@@ -591,7 +612,7 @@ config = ReportConfig(
 
 ### Custom CSS
 
-추가 CSS를 삽입할 수 있습니다:
+You can inject additional CSS:
 
 ```python
 config = ReportConfig(
@@ -608,7 +629,7 @@ config = ReportConfig(
 
 ### Custom JavaScript
 
-추가 JavaScript를 삽입할 수 있습니다:
+You can inject additional JavaScript:
 
 ```python
 config = ReportConfig(
@@ -622,15 +643,15 @@ config = ReportConfig(
 
 ### Logo
 
-회사 로고를 추가할 수 있습니다:
+You can add a company logo:
 
 ```python
-# URL로 로고 추가
+# Add logo via URL
 config = ReportConfig(
     logo_url="https://example.com/logo.png",
 )
 
-# Base64로 로고 추가 (오프라인 지원)
+# Add logo via Base64 (offline support)
 import base64
 with open("logo.png", "rb") as f:
     logo_b64 = base64.b64encode(f.read()).decode()
@@ -644,7 +665,7 @@ config = ReportConfig(
 
 ## Dashboard (Stage 2)
 
-Stage 2는 Reflex 기반의 인터랙티브 대시보드를 제공합니다.
+Stage 2 provides a Reflex-based interactive dashboard.
 
 ### Installation
 
@@ -654,17 +675,17 @@ pip install truthound[dashboard]
 
 ### Features
 
-- **실시간 데이터 탐색**: 필터링, 정렬, 검색
-- **컬럼 드릴다운**: 상세 분석
-- **라이브 프로파일링**: 실시간 데이터 분석
-- **인터랙티브 차트**: 줌, 팬, 호버
+- **Real-time Data Exploration**: Filtering, sorting, search
+- **Column Drilldown**: Detailed analysis
+- **Live Profiling**: Real-time data analysis
+- **Interactive Charts**: Zoom, pan, hover
 
 ### Usage
 
 ```python
 from truthound.datadocs import launch_dashboard
 
-# 프로파일과 함께 실행
+# Run with profile
 launch_dashboard(
     profile_path="profile.json",
     port=8080,
@@ -690,7 +711,7 @@ name: Data Quality Report
 
 on:
   schedule:
-    - cron: '0 6 * * *'  # 매일 오전 6시
+    - cron: '0 6 * * *'  # Daily at 6 AM
 
 jobs:
   report:
@@ -770,13 +791,13 @@ pipeline {
 
 ### Slack Notification
 
-리포트 생성 후 Slack으로 알림:
+Send notification to Slack after report generation:
 
 ```bash
-# 리포트 생성
+# Generate report
 truthound docs generate profile.json -o report.html
 
-# Slack으로 전송 (curl 사용)
+# Send to Slack (using curl)
 curl -F file=@report.html \
      -F channels=data-quality \
      -F title="Daily Data Quality Report" \
@@ -792,48 +813,48 @@ curl -F file=@report.html \
 
 ```
 src/truthound/datadocs/
-├── __init__.py          # 모듈 exports & lazy imports
-├── base.py              # 기본 타입, Enums, Protocols, Registry
-├── charts.py            # 2가지 차트 렌더러 (ApexCharts, SVG)
-├── sections.py          # 8가지 섹션 렌더러
-├── styles.py            # CSS 스타일시트
+├── __init__.py          # Module exports & lazy imports
+├── base.py              # Base types, Enums, Protocols, Registry
+├── charts.py            # 2 chart renderers (ApexCharts, SVG)
+├── sections.py          # 8 section renderers
+├── styles.py            # CSS stylesheets
 ├── builder.py           # HTMLReportBuilder
 │
-├── engine/              # 파이프라인 엔진
+├── engine/              # Pipeline engine
 │   ├── context.py       # ReportContext, ReportData
 │   ├── pipeline.py      # ReportPipeline, PipelineBuilder
 │   └── registry.py      # ComponentRegistry
 │
-├── themes/              # 테마 시스템
+├── themes/              # Theme system
 │   ├── base.py          # ThemeConfig, ThemeColors, ThemeAssets
-│   ├── default.py       # 6개 빌트인 테마 (Default, Light, Dark, Minimal, Modern, Professional)
-│   ├── enterprise.py    # EnterpriseTheme (화이트라벨링)
-│   └── loader.py        # YAML/JSON 로더
+│   ├── default.py       # 6 built-in themes (Default, Light, Dark, Minimal, Modern, Professional)
+│   ├── enterprise.py    # EnterpriseTheme (white-labeling)
+│   └── loader.py        # YAML/JSON loader
 │
-├── renderers/           # 템플릿 렌더링
+├── renderers/           # Template rendering
 │   ├── jinja.py         # JinjaRenderer
 │   └── custom.py        # StringTemplate, FileTemplate, Callable
 │
-├── exporters/           # 출력 포맷
+├── exporters/           # Output formats
 │   ├── html.py          # HtmlExporter
 │   ├── pdf.py           # OptimizedPdfExporter
 │   ├── markdown.py      # MarkdownExporter
 │   └── json_exporter.py # JsonExporter
 │
-├── versioning/          # 버전 관리
-│   ├── version.py       # 4개 버전 전략
-│   ├── storage.py       # InMemory, File 스토리지
+├── versioning/          # Version management
+│   ├── version.py       # 4 version strategies
+│   ├── storage.py       # InMemory, File storage
 │   └── diff.py          # ReportDiffer
 │
-├── i18n/                # 다국어 지원
-│   ├── catalog.py       # 2개 언어 (en, ko)
-│   ├── plurals.py       # CLDR 복수형 규칙
-│   └── formatting.py    # 숫자/날짜 포맷팅
+├── i18n/                # Multilingual support
+│   ├── catalog.py       # 2 languages (en, ko)
+│   ├── plurals.py       # CLDR plural rules
+│   └── formatting.py    # Number/date formatting
 │
-└── dashboard/           # Stage 2: 대시보드
+└── dashboard/           # Stage 2: Dashboard
     ├── state.py         # Reflex state management
-    ├── components.py    # UI 컴포넌트
-    └── app.py           # Reflex 앱
+    ├── components.py    # UI components
+    └── app.py           # Reflex app
 ```
 
 ### Class Hierarchy
@@ -857,7 +878,7 @@ BaseSectionRenderer (ABC)
 
 ### Registry Pattern
 
-렌더러는 데코레이터로 자동 등록됩니다:
+Renderers are automatically registered via decorators:
 
 ```python
 from truthound.datadocs.base import (
@@ -876,7 +897,7 @@ class OverviewSection(BaseSectionRenderer):
 
 ### Extensibility
 
-커스텀 차트 렌더러 추가:
+Adding a custom chart renderer:
 
 ```python
 from truthound.datadocs import (
@@ -886,13 +907,13 @@ from truthound.datadocs import (
     register_chart_renderer,
 )
 
-# 새로운 차트 라이브러리 등록
+# Register new chart library
 @register_chart_renderer(ChartLibrary.CUSTOM)
 class CustomChartRenderer(BaseChartRenderer):
     library = ChartLibrary.CUSTOM
 
     def render(self, spec: ChartSpec) -> str:
-        # 커스텀 렌더링 로직
+        # Custom rendering logic
         return "<div>Custom Chart</div>"
 
     def get_dependencies(self) -> list[str]:
@@ -905,23 +926,61 @@ class CustomChartRenderer(BaseChartRenderer):
 
 ### Common Issues
 
-#### 1. Charts not rendering
+#### 1. Wrong input file type
 
-CDN에서 JavaScript를 로드할 수 없는 경우:
+The `docs generate` command takes a **profile JSON file** as input. Passing data files (CSV, Parquet, etc.) directly will result in an error:
+
+```
+Error: 'data.csv' appears to be a data file, not a profile JSON.
+
+This command requires a profile JSON file from 'auto-profile'.
+
+To generate a report from your data:
+  1. First, create a profile:
+     truthound auto-profile data.csv -o profile.json
+
+  2. Then, generate the report:
+     truthound docs generate profile.json -o report.html
+```
+
+**Solution:**
 
 ```bash
-# PDF로 내보내면 SVG 차트 사용 (JavaScript 불필요)
+# 1. First, generate a profile
+truthound auto-profile data.csv -o profile.json
+
+# 2. Then, generate the report
+truthound docs generate profile.json -o report.html
+```
+
+!!! tip "Remember the Workflow"
+    Remember the order: Data → Profile → Report!
+
+    ```mermaid
+    graph LR
+        A[data.csv] --> B[auto-profile]
+        B --> C[profile.json]
+        C --> D[docs generate]
+        D --> E[report.html]
+    ```
+
+#### 2. Charts not rendering
+
+If JavaScript cannot be loaded from CDN:
+
+```bash
+# Export to PDF for SVG charts (no JavaScript required)
 truthound docs generate profile.json -o report.pdf --format pdf
 ```
 
-> **Note**: HTML 리포트는 ApexCharts를 사용합니다. SVG 차트는 PDF 내보내기에서 자동으로 사용됩니다.
+> **Note**: HTML reports use ApexCharts. SVG charts are automatically used for PDF export.
 
-#### 2. PDF export fails
+#### 3. PDF export fails
 
-**에러: `cannot load library 'libpango-1.0-0'`**
+**Error: `cannot load library 'libpango-1.0-0'`**
 
-이 에러는 시스템 라이브러리가 설치되지 않았을 때 발생합니다.
-`pip install truthound[pdf]`는 Python 패키지만 설치하며, 시스템 라이브러리는 별도로 설치해야 합니다.
+This error occurs when system libraries are not installed.
+`pip install truthound[pdf]` only installs the Python package; system libraries must be installed separately.
 
 ```bash
 # macOS
@@ -938,36 +997,36 @@ sudo dnf install pango gdk-pixbuf2 libffi-devel
 apk add pango gdk-pixbuf libffi-dev
 ```
 
-시스템 라이브러리 설치 후 다시 시도하세요:
+After installing system libraries, try again:
 
 ```bash
 truthound docs generate profile.json -o report.pdf --format pdf
 ```
 
-**에러: `ModuleNotFoundError: No module named 'weasyprint'`**
+**Error: `ModuleNotFoundError: No module named 'weasyprint'`**
 
-Python 패키지가 설치되지 않은 경우:
+If the Python package is not installed:
 
 ```bash
 pip install truthound[pdf]
 ```
 
-> **Tip**: PDF가 급하지 않다면 HTML 포맷을 먼저 사용할 수 있습니다:
+> **Tip**: If PDF is not urgent, you can use HTML format first:
 > ```bash
 > truthound docs generate profile.json -o report.html
 > ```
 
-#### 3. Dashboard import error
+#### 4. Dashboard import error
 
-대시보드 의존성이 설치되지 않은 경우:
+If dashboard dependencies are not installed:
 
 ```bash
 pip install truthound[dashboard]
 ```
 
-#### 4. Large profile file
+#### 5. Large profile file
 
-프로파일 파일이 너무 큰 경우, 샘플링을 사용하세요:
+If the profile file is too large, use sampling:
 
 ```bash
 truthound auto-profile data.csv -o profile.json --sample-size 100000
@@ -1058,7 +1117,7 @@ class ChartSpec:
     show_labels: bool = True
     show_grid: bool = True
     animation: bool = True
-    options: dict[str, Any] = field(default_factory=dict)  # 추가 옵션
+    options: dict[str, Any] = field(default_factory=dict)  # Additional options
 
 @dataclass
 class AlertSpec:
@@ -1073,6 +1132,6 @@ class AlertSpec:
 
 ## See Also
 
-- [Auto-Profiling (docs/PROFILER.md)](PROFILER.md) - 데이터 프로파일링
-- [Reporters (docs/REPORTERS.md)](REPORTERS.md) - 다른 리포트 형식
-- [Examples (docs/EXAMPLES.md)](EXAMPLES.md) - 사용 예시
+- [Auto-Profiling (docs/PROFILER.md)](PROFILER.md) - Data profiling
+- [Reporters (docs/REPORTERS.md)](REPORTERS.md) - Other report formats
+- [Examples (docs/EXAMPLES.md)](EXAMPLES.md) - Usage examples

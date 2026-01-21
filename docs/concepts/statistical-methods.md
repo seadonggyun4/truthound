@@ -48,13 +48,17 @@ Where F₁ and F₂ are the empirical CDFs of the two samples.
 **Usage**:
 
 ```python
-drift = th.compare(baseline, current, method="ks")
+# KS test requires numeric columns
+drift = th.compare(baseline, current, method="ks", columns=["age", "salary", "score"])
 ```
+
+> **Note:** KS test only works with numeric columns. For mixed data types, use `method="auto"`.
 
 **Characteristics**:
 
 | Aspect | Description |
 |--------|-------------|
+| Column Type | **Numeric only** |
 | Best For | Continuous numeric distributions |
 | Sensitivity | Shape and location differences |
 | Output | D-statistic (0-1), p-value |
@@ -82,8 +86,11 @@ Where Pᵢ and Qᵢ are the proportions in bin i for baseline and current distri
 **Usage**:
 
 ```python
-drift = th.compare(baseline, current, method="psi")
+# PSI requires numeric columns
+drift = th.compare(baseline, current, method="psi", columns=["age", "salary", "score"])
 ```
+
+> **Note:** PSI only works with numeric columns. For mixed data types, use `method="auto"`.
 
 **Interpretation**:
 
@@ -94,6 +101,7 @@ drift = th.compare(baseline, current, method="psi")
 | > 0.25 | Significant shift | Investigation required |
 
 **Characteristics**:
+- **Numeric columns only**
 - Automatic decile binning
 - Smoothing applied to prevent division by zero
 - Industry standard for model monitoring

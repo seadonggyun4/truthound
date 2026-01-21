@@ -1,8 +1,8 @@
 # Sections
 
-Truthound Data Docs 리포트는 9가지 섹션으로 구성됩니다.
+Truthound Data Docs reports consist of 9 section types.
 
-## 섹션 타입
+## Section Types
 
 ```python
 from truthound.datadocs import SectionType
@@ -19,9 +19,9 @@ class SectionType(str, Enum):
     CUSTOM = "custom"
 ```
 
-## 섹션 구성하기
+## Configuring Sections
 
-### 기본 섹션 순서
+### Default Section Order
 
 ```python
 from truthound.datadocs import ReportConfig, SectionType
@@ -40,10 +40,10 @@ config = ReportConfig(
 )
 ```
 
-### 특정 섹션만 포함
+### Including Specific Sections Only
 
 ```python
-# 요약 정보만 포함하는 간단한 리포트
+# Simple report with summary information only
 config = ReportConfig(
     sections=[
         SectionType.OVERVIEW,
@@ -53,111 +53,111 @@ config = ReportConfig(
 )
 ```
 
-## 섹션 상세
+## Section Details
 
-### 1. Overview (개요)
+### 1. Overview
 
-데이터셋의 핵심 메트릭을 카드 형태로 표시합니다.
+Displays key dataset metrics in card format.
 
-**표시 항목:**
-- **Row Count**: 전체 행 수
-- **Column Count**: 전체 컬럼 수
-- **Memory**: 추정 메모리 사용량
-- **Duplicates**: 중복 행 수 (있는 경우)
-- **Missing**: 전체 null 셀 수 (있는 경우)
-- **Quality Score**: 종합 품질 점수 (0-100)
+**Displayed Items:**
+- **Row Count**: Total number of rows
+- **Column Count**: Total number of columns
+- **Memory**: Estimated memory usage
+- **Duplicates**: Number of duplicate rows (if present)
+- **Missing**: Total null cells (if present)
+- **Quality Score**: Overall quality score (0-100)
 
-**차트:**
-- 데이터 타입 분포 (Donut 차트)
+**Charts:**
+- Data type distribution (Donut chart)
 
-### 2. Quality (데이터 품질)
+### 2. Quality (Data Quality)
 
-품질 차원별 점수를 표시합니다.
+Displays scores by quality dimension.
 
-**메트릭:**
-- **Overall**: 종합 품질 점수
-- **Completeness**: 데이터 완전성 (null 비율 기반)
-- **Uniqueness**: 유일성 (unique 비율 기반)
+**Metrics:**
+- **Overall**: Overall quality score
+- **Completeness**: Data completeness (based on null ratio)
+- **Uniqueness**: Uniqueness (based on unique ratio)
 
-**차트:**
-- 컬럼별 결측치 분포 (Horizontal Bar)
+**Charts:**
+- Missing value distribution by column (Horizontal Bar)
 
-**경고:**
-- 고결측 컬럼 경고
-- 상수 컬럼 알림
-- 중복 행 경고
+**Warnings:**
+- High missing value column alerts
+- Constant column notifications
+- Duplicate row warnings
 
-### 3. Columns (컬럼 상세)
+### 3. Columns (Column Details)
 
-각 컬럼에 대한 상세 정보를 제공합니다.
+Provides detailed information for each column.
 
-**테이블:**
+**Table:**
 | Column | Type | Null % | Unique % | Distinct |
 |--------|------|--------|----------|----------|
 | name | string | 0.0% | 95.2% | 952 |
 | age | integer | 2.5% | 8.3% | 83 |
 
-**메타데이터:**
-- 각 컬럼의 상세 프로파일 데이터
+**Metadata:**
+- Detailed profile data for each column
 
-### 4. Patterns (탐지된 패턴)
+### 4. Patterns (Detected Patterns)
 
-자동으로 탐지된 데이터 패턴을 나열합니다.
+Lists automatically detected data patterns.
 
-**표시 항목:**
-- **Column**: 패턴이 탐지된 컬럼
-- **Pattern**: 패턴 유형 (Email, Phone, UUID 등)
-- **Regex**: 매칭 정규식
-- **Match Ratio**: 일치율
-- **Sample Matches**: 샘플 값
+**Displayed Items:**
+- **Column**: Column where pattern was detected
+- **Pattern**: Pattern type (Email, Phone, UUID, etc.)
+- **Regex**: Matching regular expression
+- **Match Ratio**: Match percentage
+- **Sample Matches**: Sample values
 
-> 패턴이 없으면 이 섹션은 숨겨집니다.
+> This section is hidden if no patterns are detected.
 
-### 5. Distribution (값 분포)
+### 5. Distribution (Value Distribution)
 
-값 분포 분석 결과를 표시합니다.
+Displays value distribution analysis results.
 
-**차트:**
-- 컬럼별 유일성 분포 (Horizontal Bar)
+**Charts:**
+- Uniqueness distribution by column (Horizontal Bar)
 
-### 6. Correlations (상관관계)
+### 6. Correlations
 
-컬럼 간 상관관계를 표시합니다.
+Displays correlations between columns.
 
-**표시 형식:**
+**Display Format:**
 ```
-column_a ↔ column_b: 0.85 (강한 양의 상관관계)
-column_c ↔ column_d: -0.72 (강한 음의 상관관계)
+column_a ↔ column_b: 0.85 (strong positive correlation)
+column_c ↔ column_d: -0.72 (strong negative correlation)
 ```
 
-> 상관관계 데이터가 없으면 이 섹션은 숨겨집니다.
+> This section is hidden if no correlation data is available.
 
-### 7. Recommendations (추천)
+### 7. Recommendations
 
-자동 생성된 개선 제안을 나열합니다.
+Lists auto-generated improvement suggestions.
 
-**예시:**
+**Examples:**
 - Add NotNullValidator for column 'email'
 - Add EmailFormatValidator for column 'email'
 - Consider implementing duplicate row detection
 - Review data collection for columns with high missing values
 
-> 추천 사항이 없으면 이 섹션은 숨겨집니다.
+> This section is hidden if there are no recommendations.
 
-### 8. Alerts (경고)
+### 8. Alerts
 
-데이터 품질 이슈 경고를 표시합니다.
+Displays data quality issue alerts.
 
-**심각도 레벨:**
+**Severity Levels:**
 
-| Severity | Color | 설명 |
-|----------|-------|------|
-| Info | Blue | 참고 정보 |
-| Warning | Yellow | 주의 필요 |
-| Error | Red | 문제 발견 |
-| Critical | Dark Red | 심각한 문제 |
+| Severity | Color | Description |
+|----------|-------|-------------|
+| Info | Blue | Informational |
+| Warning | Yellow | Attention needed |
+| Error | Red | Problem found |
+| Critical | Dark Red | Serious issue |
 
-**AlertSpec 구조:**
+**AlertSpec Structure:**
 
 ```python
 from truthound.datadocs import AlertSpec, SeverityLevel
@@ -174,15 +174,15 @@ alert = AlertSpec(
 )
 ```
 
-> 경고가 없으면 이 섹션은 숨겨집니다.
+> This section is hidden if there are no alerts.
 
-### 9. Custom (커스텀)
+### 9. Custom
 
-사용자 정의 콘텐츠를 포함할 수 있습니다.
+Allows inclusion of user-defined content.
 
 ## SectionSpec
 
-섹션 설정을 위한 데이터 클래스입니다.
+A data class for section configuration.
 
 ```python
 from truthound.datadocs import SectionSpec, SectionType, ChartSpec, AlertSpec
@@ -191,35 +191,35 @@ section = SectionSpec(
     section_type=SectionType.OVERVIEW,
     title="Overview",
     subtitle="Dataset summary and key metrics",
-    charts=[ChartSpec(...)],      # 차트 목록
-    tables=[{"headers": [...], "rows": [...]}],  # 테이블 목록
-    metrics={"row_count": 1000},  # 메트릭 딕셔너리
-    alerts=[AlertSpec(...)],      # 경고 목록
-    text_blocks=["recommendation 1", "recommendation 2"],  # 텍스트 목록
-    custom_html="",               # 커스텀 HTML
-    collapsible=False,            # 접을 수 있는지
-    collapsed_default=False,      # 기본 접힘 상태
-    priority=0,                   # 정렬 우선순위
-    visible=True,                 # 표시 여부
-    metadata={},                  # 추가 메타데이터
+    charts=[ChartSpec(...)],      # Chart list
+    tables=[{"headers": [...], "rows": [...]}],  # Table list
+    metrics={"row_count": 1000},  # Metrics dictionary
+    alerts=[AlertSpec(...)],      # Alert list
+    text_blocks=["recommendation 1", "recommendation 2"],  # Text list
+    custom_html="",               # Custom HTML
+    collapsible=False,            # Whether collapsible
+    collapsed_default=False,      # Default collapsed state
+    priority=0,                   # Sort priority
+    visible=True,                 # Visibility
+    metadata={},                  # Additional metadata
 )
 ```
 
-## 섹션 렌더러
+## Section Renderers
 
-### 기본 사용법
+### Basic Usage
 
 ```python
 from truthound.datadocs import get_section_renderer, SectionType
 
-# 섹션 렌더러 가져오기
+# Get section renderer
 renderer = get_section_renderer(SectionType.OVERVIEW)
 
-# 섹션 렌더링
+# Render section
 html = renderer.render(section_spec, chart_renderer, theme_config)
 ```
 
-### 사용 가능한 렌더러
+### Available Renderers
 
 ```python
 from truthound.datadocs import (
@@ -234,14 +234,14 @@ from truthound.datadocs import (
     CustomSection,
 )
 
-# 직접 사용
+# Direct usage
 renderer = OverviewSection()
 html = renderer.render(section_spec, chart_renderer, theme_config)
 ```
 
-## 커스텀 섹션 렌더러
+## Custom Section Renderers
 
-### 새 섹션 렌더러 등록
+### Registering a New Section Renderer
 
 ```python
 from truthound.datadocs import (
@@ -252,7 +252,7 @@ from truthound.datadocs import (
 
 @register_section_renderer("executive_summary")
 class ExecutiveSummarySection(BaseSectionRenderer):
-    """경영진용 요약 섹션."""
+    """Executive summary section."""
 
     section_type = "executive_summary"
 
@@ -283,14 +283,14 @@ class ExecutiveSummarySection(BaseSectionRenderer):
         """
 ```
 
-### 커스텀 섹션 사용
+### Using Custom Sections
 
 ```python
 from truthound.datadocs import ReportConfig, SectionType
 
 config = ReportConfig(
     sections=[
-        "executive_summary",  # 커스텀 섹션 (문자열)
+        "executive_summary",  # Custom section (string)
         SectionType.OVERVIEW,
         SectionType.QUALITY,
         SectionType.COLUMNS,
@@ -330,14 +330,14 @@ class SeverityLevel(str, Enum):
 ```python
 @dataclass
 class AlertSpec:
-    title: str                           # 경고 제목
-    message: str                         # 경고 메시지
-    severity: SeverityLevel = SeverityLevel.INFO  # 심각도
-    column: str | None = None            # 관련 컬럼
-    metric: str | None = None            # 관련 메트릭 이름
-    value: float | None = None           # 현재 값
-    threshold: float | None = None       # 임계값
-    suggestion: str | None = None        # 개선 제안
+    title: str                           # Alert title
+    message: str                         # Alert message
+    severity: SeverityLevel = SeverityLevel.INFO  # Severity
+    column: str | None = None            # Related column
+    metric: str | None = None            # Related metric name
+    value: float | None = None           # Current value
+    threshold: float | None = None       # Threshold value
+    suggestion: str | None = None        # Improvement suggestion
 ```
 
 ### SectionSpec
@@ -345,24 +345,24 @@ class AlertSpec:
 ```python
 @dataclass
 class SectionSpec:
-    section_type: SectionType            # 섹션 유형
-    title: str                           # 섹션 제목
-    subtitle: str = ""                   # 부제목
-    charts: list[ChartSpec]              # 차트 목록
-    tables: list[dict[str, Any]]         # 테이블 목록
-    metrics: dict[str, Any]              # 메트릭 딕셔너리
-    alerts: list[AlertSpec]              # 경고 목록
-    text_blocks: list[str]               # 텍스트 블록 목록
-    custom_html: str = ""                # 커스텀 HTML
-    collapsible: bool = False            # 접을 수 있는지
-    collapsed_default: bool = False      # 기본 접힘 상태
-    priority: int = 0                    # 정렬 우선순위
-    visible: bool = True                 # 표시 여부
-    metadata: dict[str, Any]             # 추가 메타데이터
+    section_type: SectionType            # Section type
+    title: str                           # Section title
+    subtitle: str = ""                   # Subtitle
+    charts: list[ChartSpec]              # Chart list
+    tables: list[dict[str, Any]]         # Table list
+    metrics: dict[str, Any]              # Metrics dictionary
+    alerts: list[AlertSpec]              # Alert list
+    text_blocks: list[str]               # Text block list
+    custom_html: str = ""                # Custom HTML
+    collapsible: bool = False            # Whether collapsible
+    collapsed_default: bool = False      # Default collapsed state
+    priority: int = 0                    # Sort priority
+    visible: bool = True                 # Visibility
+    metadata: dict[str, Any]             # Additional metadata
 ```
 
 ## See Also
 
-- [HTML Reports](html-reports.md) - HTML 리포트 생성
-- [Charts](charts.md) - 차트 렌더링
-- [Custom Renderers](custom-renderers.md) - 커스텀 렌더러 개발
+- [HTML Reports](html-reports.md) - HTML report generation
+- [Charts](charts.md) - Chart rendering
+- [Custom Renderers](custom-renderers.md) - Custom renderer development

@@ -1,12 +1,12 @@
 # Custom Renderers
 
-Truthound Data Docs는 커스텀 렌더러를 통해 확장할 수 있습니다.
+Truthound Data Docs can be extended through custom renderers.
 
-## 템플릿 렌더러
+## Template Renderers
 
 ### CustomRenderer (Base Class)
 
-모든 커스텀 렌더러의 기본 클래스입니다.
+The base class for all custom renderers.
 
 ```python
 from truthound.datadocs.renderers.custom import CustomRenderer
@@ -22,7 +22,7 @@ class MyRenderer(CustomRenderer):
 
 ### StringTemplateRenderer
 
-`{key}` 플레이스홀더를 사용하는 문자열 템플릿 렌더러입니다.
+A string template renderer using `{key}` placeholders.
 
 ```python
 from truthound.datadocs.renderers.custom import StringTemplateRenderer
@@ -38,13 +38,13 @@ renderer = StringTemplateRenderer(
     </html>
     """,
     name="MyStringRenderer",
-    safe_mode=True,  # HTML 이스케이프 활성화
+    safe_mode=True,  # Enable HTML escaping
 )
 ```
 
 ### FileTemplateRenderer
 
-파일에서 템플릿을 로드하는 렌더러입니다.
+A renderer that loads templates from files.
 
 ```python
 from pathlib import Path
@@ -52,20 +52,20 @@ from truthound.datadocs.renderers.custom import FileTemplateRenderer
 
 renderer = FileTemplateRenderer(
     template_path=Path("./templates/report.html.j2"),
-    engine="auto",  # "jinja2", "string", 또는 "auto"
+    engine="auto",  # "jinja2", "string", or "auto"
     name="MyFileRenderer",
     encoding="utf-8",
 )
 ```
 
-**엔진 자동 감지:**
-- `.j2`, `.jinja`, `.jinja2` 확장자 → Jinja2
-- `.html`에 `{{` 또는 `{%` 포함 → Jinja2
-- 그 외 → 문자열 포맷팅
+**Engine Auto-detection:**
+- `.j2`, `.jinja`, `.jinja2` extensions → Jinja2
+- `.html` containing `{{` or `{%` → Jinja2
+- Otherwise → String formatting
 
 ### CallableRenderer
 
-임의의 함수를 렌더러로 사용합니다.
+Uses an arbitrary function as a renderer.
 
 ```python
 from truthound.datadocs.renderers.custom import CallableRenderer
@@ -87,31 +87,31 @@ renderer = CallableRenderer(
 )
 ```
 
-## 템플릿 컨텍스트
+## Template Context
 
-모든 렌더러는 `_build_context()` 메서드를 통해 템플릿 컨텍스트를 생성합니다.
+All renderers generate template context through the `_build_context()` method.
 
-### 기본 컨텍스트 변수
+### Default Context Variables
 
 ```python
 context = {
-    "title": ctx.title,           # 리포트 제목
-    "subtitle": ctx.subtitle,     # 부제목
-    "locale": ctx.locale,         # 로케일
-    "theme": ctx.theme,           # 테마 이름
-    "theme_css": theme.get_css(), # 테마 CSS
-    "metadata": data.metadata,    # 프로파일 메타데이터
-    "sections": data.sections,    # 섹션 데이터
-    "alerts": data.alerts,        # 경고 목록
-    "recommendations": data.recommendations,  # 추천 목록
-    "charts": data.charts,        # 차트 데이터
-    "tables": data.tables,        # 테이블 데이터
-    "raw": data.raw,              # 원본 프로파일 데이터
-    "options": ctx.options,       # 추가 옵션
+    "title": ctx.title,           # Report title
+    "subtitle": ctx.subtitle,     # Subtitle
+    "locale": ctx.locale,         # Locale
+    "theme": ctx.theme,           # Theme name
+    "theme_css": theme.get_css(), # Theme CSS
+    "metadata": data.metadata,    # Profile metadata
+    "sections": data.sections,    # Section data
+    "alerts": data.alerts,        # Alert list
+    "recommendations": data.recommendations,  # Recommendation list
+    "charts": data.charts,        # Chart data
+    "tables": data.tables,        # Table data
+    "raw": data.raw,              # Raw profile data
+    "options": ctx.options,       # Additional options
 }
 ```
 
-### 커스텀 컨텍스트 빌더
+### Custom Context Builder
 
 ```python
 from truthound.datadocs.renderers.custom import CustomRenderer
@@ -129,9 +129,9 @@ renderer = CustomRenderer(
 )
 ```
 
-## Jinja2 템플릿 예시
+## Jinja2 Template Examples
 
-### 기본 리포트 템플릿
+### Basic Report Template
 
 ```jinja2
 {# templates/report.html.j2 #}
@@ -199,20 +199,20 @@ renderer = CustomRenderer(
 </html>
 ```
 
-### 사용법
+### Usage
 
 ```python
 from pathlib import Path
 from truthound.datadocs.renderers.custom import FileTemplateRenderer
 from truthound.datadocs.engine.context import ReportContext, ReportData
 
-# 렌더러 생성
+# Create renderer
 renderer = FileTemplateRenderer(
     template_path=Path("./templates/report.html.j2"),
     engine="jinja2",
 )
 
-# 컨텍스트 생성
+# Create context
 ctx = ReportContext(
     title="My Report",
     subtitle="Q4 Analysis",
@@ -224,13 +224,13 @@ ctx = ReportContext(
     ),
 )
 
-# 렌더링
+# Render
 html = renderer.render(ctx, theme=None)
 ```
 
-## 차트 렌더러 확장
+## Extending Chart Renderers
 
-### 커스텀 차트 렌더러 등록
+### Registering Custom Chart Renderers
 
 ```python
 from truthound.datadocs import (
@@ -240,13 +240,13 @@ from truthound.datadocs import (
     register_chart_renderer,
 )
 
-# NOTE: ChartLibrary enum은 현재 APEXCHARTS, SVG만 지원합니다.
-# 새로운 라이브러리를 추가하려면 먼저 ChartLibrary enum에 추가해야 합니다.
-# 아래는 커스텀 렌더러 등록 예시입니다:
+# NOTE: ChartLibrary enum currently supports only APEXCHARTS and SVG.
+# To add a new library, you must first add it to the ChartLibrary enum.
+# Below is an example of registering a custom renderer:
 
 @register_chart_renderer(ChartLibrary.APEXCHARTS)
 class CustomApexChartsRenderer(BaseChartRenderer):
-    """커스텀 ApexCharts 기반 차트 렌더러."""
+    """Custom ApexCharts-based chart renderer."""
 
     library = ChartLibrary.APEXCHARTS
 
@@ -273,7 +273,7 @@ class CustomApexChartsRenderer(BaseChartRenderer):
         return ["https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"]
 ```
 
-### 사용
+### Usage
 
 ```python
 from truthound.datadocs import get_chart_renderer, ChartLibrary
@@ -282,9 +282,9 @@ renderer = get_chart_renderer(ChartLibrary.APEXCHARTS)
 html = renderer.render(chart_spec)
 ```
 
-## 섹션 렌더러 확장
+## Extending Section Renderers
 
-### 커스텀 섹션 렌더러 등록
+### Registering Custom Section Renderers
 
 ```python
 from truthound.datadocs import (
@@ -294,12 +294,12 @@ from truthound.datadocs import (
     register_section_renderer,
 )
 
-# NOTE: SectionType enum을 사용해야 합니다.
-# 커스텀 섹션을 추가하려면 SectionType.CUSTOM을 사용하세요.
+# NOTE: You must use the SectionType enum.
+# For custom sections, use SectionType.CUSTOM.
 
 @register_section_renderer(SectionType.CUSTOM)
 class KPIDashboardSection(BaseSectionRenderer):
-    """KPI 대시보드 섹션."""
+    """KPI dashboard section."""
 
     section_type = SectionType.CUSTOM
 
@@ -326,37 +326,37 @@ class KPIDashboardSection(BaseSectionRenderer):
         """
 ```
 
-### ReportConfig에서 사용
+### Using in ReportConfig
 
 ```python
 from truthound.datadocs import ReportConfig, SectionType
 
 config = ReportConfig(
     sections=[
-        "kpi_dashboard",       # 커스텀 섹션 (문자열)
+        "kpi_dashboard",       # Custom section (string)
         SectionType.OVERVIEW,
         SectionType.COLUMNS,
     ]
 )
 ```
 
-## 렌더러 레지스트리
+## Renderer Registry
 
-### 등록된 렌더러 조회
+### Querying Registered Renderers
 
 ```python
 from truthound.datadocs import renderer_registry
 
-# 등록된 차트 렌더러 목록
+# List registered chart renderers
 chart_renderers = renderer_registry.list_chart_renderers()
 # ['apexcharts', 'svg', 'echarts']
 
-# 등록된 섹션 렌더러 목록
+# List registered section renderers
 section_renderers = renderer_registry.list_section_renderers()
 # ['overview', 'columns', 'quality', ..., 'kpi_dashboard']
 ```
 
-### 렌더러 가져오기
+### Getting Renderers
 
 ```python
 from truthound.datadocs import (
@@ -364,20 +364,20 @@ from truthound.datadocs import (
     get_section_renderer,
 )
 
-# 이름으로 렌더러 가져오기
+# Get renderer by name
 chart_renderer = get_chart_renderer("apexcharts")
 section_renderer = get_section_renderer("overview")
 ```
 
-### 렌더러 등록 해제
+### Unregistering Renderers
 
 ```python
 from truthound.datadocs import renderer_registry
 
-# 차트 렌더러 등록 해제
+# Unregister chart renderer
 renderer_registry.unregister_chart("echarts")
 
-# 섹션 렌더러 등록 해제
+# Unregister section renderer
 renderer_registry.unregister_section("kpi_dashboard")
 ```
 
@@ -425,7 +425,7 @@ class StringTemplateRenderer(CustomRenderer):
         self,
         template: str,
         name: str | None = None,
-        safe_mode: bool = True,  # HTML 이스케이프
+        safe_mode: bool = True,  # HTML escaping
     ) -> None:
         ...
 ```
@@ -458,7 +458,7 @@ class CallableRenderer(CustomRenderer):
 
 ## See Also
 
-- [HTML Reports](html-reports.md) - HTML 리포트 생성
-- [Charts](charts.md) - 차트 렌더링
-- [Sections](sections.md) - 섹션 구성
-- [Themes](themes.md) - 테마 커스터마이징
+- [HTML Reports](html-reports.md) - HTML report generation
+- [Charts](charts.md) - Chart rendering
+- [Sections](sections.md) - Section configuration
+- [Themes](themes.md) - Theme customization

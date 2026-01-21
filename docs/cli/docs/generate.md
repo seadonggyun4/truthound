@@ -16,7 +16,24 @@ truthound docs generate <profile_file> [OPTIONS]
 
 | Argument | Required | Description |
 |----------|----------|-------------|
-| `profile_file` | Yes | Path to the profile file (JSON) |
+| `profile_file` | Yes | Path to the profile file (JSON from auto-profile) |
+
+!!! warning "Common Mistake"
+    This command requires a **profile JSON file**, not a data file.
+    If you pass a data file (CSV, Parquet, etc.), you'll see a helpful error:
+
+    ```
+    Error: 'data.csv' appears to be a data file, not a profile JSON.
+
+    This command requires a profile JSON file from 'auto-profile'.
+
+    To generate a report from your data:
+      1. First, create a profile:
+         truthound auto-profile data.csv -o profile.json
+
+      2. Then, generate the report:
+         truthound docs generate profile.json -o report.html
+    ```
 
 ## Options
 

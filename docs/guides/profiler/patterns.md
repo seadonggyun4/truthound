@@ -1,44 +1,44 @@
 # Pattern Matching
 
-이 문서는 Polars 네이티브 패턴 매칭 시스템을 설명합니다.
+This document describes the Polars native pattern matching system.
 
-## 개요
+## Overview
 
-`src/truthound/profiler/native_patterns.py`에 구현된 패턴 매칭 시스템은 Polars의 벡터화된 `str.contains()` 연산을 사용하여 고성능으로 패턴을 감지합니다.
+The pattern matching system implemented in `src/truthound/profiler/native_patterns.py` uses Polars' vectorized `str.contains()` operations for high-performance pattern detection.
 
 ## PatternSpec
 
-패턴 정의를 위한 데이터 클래스입니다.
+A dataclass for defining pattern specifications.
 
 ```python
 @dataclass
 class PatternSpec:
-    """패턴 스펙 정의"""
+    """Pattern specification definition"""
 
-    name: str                      # 패턴 이름 (예: "email", "phone")
-    regex: str                     # 정규식 패턴
-    data_type: DataType            # 매칭 시 추론할 데이터 타입
-    priority: int = 0              # 우선순위 (높을수록 먼저 매칭)
-    examples: list[str] = field(default_factory=list)  # 예시 값
-    description: str = ""          # 패턴 설명
-    category: str = "general"      # 패턴 카테고리
+    name: str                      # Pattern name (e.g., "email", "phone")
+    regex: str                     # Regular expression pattern
+    data_type: DataType            # Data type to infer upon matching
+    priority: int = 0              # Priority (higher values match first)
+    examples: list[str] = field(default_factory=list)  # Example values
+    description: str = ""          # Pattern description
+    category: str = "general"      # Pattern category
 ```
 
 ## PatternBuilder
 
-Fluent API를 사용한 패턴 정의입니다.
+Pattern definition using a fluent API.
 
 ```python
 from truthound.profiler.native_patterns import PatternBuilder
 
-# Fluent 스타일로 패턴 생성
+# Create pattern using fluent style
 pattern = (
     PatternBuilder("korean_mobile")
     .regex(r"^01[0-9]-?[0-9]{3,4}-?[0-9]{4}$")
     .data_type(DataType.KOREAN_PHONE)
     .priority(100)
     .examples(["010-1234-5678", "01012345678"])
-    .description("한국 휴대폰 번호")
+    .description("Korean mobile phone number")
     .category("korean")
     .build()
 )
@@ -46,15 +46,15 @@ pattern = (
 
 ## NativePatternMatcher
 
-Polars 네이티브 연산을 사용하는 패턴 매처입니다.
+A pattern matcher using native Polars operations.
 
 ```python
 from truthound.profiler.native_patterns import NativePatternMatcher
 
-# 매처 생성
+# Create matcher
 matcher = NativePatternMatcher()
 
-# 컬럼에서 패턴 매칭
+# Match patterns in column
 results = matcher.match(lf, "email_column")
 
 for result in results:
@@ -63,64 +63,64 @@ for result in results:
     print(f"Data type: {result.data_type}")
 ```
 
-### 내부 구현
+### Internal Implementation
 
 ```python
 class NativePatternMatcher:
-    """Polars 네이티브 패턴 매처"""
+    """Polars native pattern matcher"""
 
     def match(self, lf: pl.LazyFrame, column: str) -> list[PatternMatch]:
         """
-        Polars의 벡터화된 str.contains()를 사용하여
-        고성능 패턴 매칭 수행
+        Perform high-performance pattern matching using
+        Polars' vectorized str.contains()
         """
         col = pl.col(column)
 
         for pattern in self._patterns:
-            # 네이티브 Polars 연산 (map_elements 없음)
+            # Native Polars operation (no map_elements)
             match_expr = col.str.contains(pattern.regex)
             match_count = match_expr.sum()
             # ...
 ```
 
-## 내장 패턴
+## Built-in Patterns
 
-### 일반 패턴
+### General Patterns
 
-| 패턴 이름 | 데이터 타입 | 설명 |
-|-----------|------------|------|
-| `email` | `EMAIL` | 이메일 주소 |
+| Pattern Name | Data Type | Description |
+|--------------|-----------|-------------|
+| `email` | `EMAIL` | Email addresses |
 | `url` | `URL` | URL/URI |
 | `uuid` | `UUID` | UUID (v1-v5) |
 | `ip_address` | `IP_ADDRESS` | IPv4/IPv6 |
-| `phone` | `PHONE` | 국제 전화번호 |
-| `date_iso` | `DATE` | ISO 8601 날짜 |
-| `datetime_iso` | `DATETIME` | ISO 8601 날짜시간 |
-| `json` | `JSON` | JSON 객체/배열 |
-| `currency` | `CURRENCY` | 통화 금액 |
-| `percentage` | `PERCENTAGE` | 백분율 |
+| `phone` | `PHONE` | International phone numbers |
+| `date_iso` | `DATE` | ISO 8601 dates |
+| `datetime_iso` | `DATETIME` | ISO 8601 datetime |
+| `json` | `JSON` | JSON objects/arrays |
+| `currency` | `CURRENCY` | Currency amounts |
+| `percentage` | `PERCENTAGE` | Percentages |
 
-### 한국어 특화 패턴
+### Korean-Specific Patterns
 
-| 패턴 이름 | 데이터 타입 | 설명 |
-|-----------|------------|------|
-| `korean_rrn` | `KOREAN_RRN` | 주민등록번호 |
-| `korean_phone` | `KOREAN_PHONE` | 한국 전화번호 |
-| `korean_mobile` | `KOREAN_PHONE` | 한국 휴대폰 번호 |
-| `korean_business_number` | `KOREAN_BUSINESS_NUMBER` | 사업자등록번호 |
+| Pattern Name | Data Type | Description |
+|--------------|-----------|-------------|
+| `korean_rrn` | `KOREAN_RRN` | Resident registration number |
+| `korean_phone` | `KOREAN_PHONE` | Korean phone numbers |
+| `korean_mobile` | `KOREAN_PHONE` | Korean mobile phone numbers |
+| `korean_business_number` | `KOREAN_BUSINESS_NUMBER` | Business registration number |
 
-## 패턴 레지스트리
+## Pattern Registry
 
 ```python
 from truthound.profiler.native_patterns import PatternRegistry
 
-# 기본 패턴 조회
+# Retrieve default patterns
 email_pattern = PatternRegistry.get("email")
 
-# 카테고리별 패턴 조회
+# Retrieve patterns by category
 korean_patterns = PatternRegistry.get_by_category("korean")
 
-# 커스텀 패턴 등록
+# Register custom patterns
 PatternRegistry.register(
     PatternSpec(
         name="custom_id",
@@ -128,57 +128,57 @@ PatternRegistry.register(
         data_type=DataType.IDENTIFIER,
         priority=50,
         examples=["AB123456"],
-        description="회사 고유 ID 형식",
+        description="Company-specific ID format",
     )
 )
 
-# 패턴 제거
+# Remove pattern
 PatternRegistry.unregister("custom_id")
 ```
 
-## PatternMatch 결과
+## PatternMatch Result
 
 ```python
 @dataclass
 class PatternMatch:
-    """패턴 매칭 결과"""
+    """Pattern matching result"""
 
-    pattern_name: str       # 매칭된 패턴 이름
-    regex: str              # 사용된 정규식
-    data_type: DataType     # 추론된 데이터 타입
-    match_count: int        # 매칭된 행 수
-    total_count: int        # 전체 행 수 (null 제외)
-    match_ratio: float      # 매칭 비율 (0.0-1.0)
-    confidence: float       # 신뢰도
-    sample_matches: list[str]  # 매칭된 값 샘플
+    pattern_name: str       # Matched pattern name
+    regex: str              # Regular expression used
+    data_type: DataType     # Inferred data type
+    match_count: int        # Number of matched rows
+    total_count: int        # Total rows (excluding null)
+    match_ratio: float      # Match ratio (0.0-1.0)
+    confidence: float       # Confidence level
+    sample_matches: list[str]  # Sample matched values
 ```
 
-## 우선순위 기반 매칭
+## Priority-Based Matching
 
-여러 패턴이 매칭될 경우 우선순위에 따라 결과를 반환합니다.
+When multiple patterns match, results are returned based on priority.
 
 ```python
-# 우선순위 예시
+# Priority example
 patterns = [
-    PatternSpec("korean_mobile", ..., priority=100),  # 가장 먼저 체크
-    PatternSpec("phone", ..., priority=50),           # 일반 전화번호
-    PatternSpec("numeric", ..., priority=10),         # 숫자
+    PatternSpec("korean_mobile", ..., priority=100),  # Checked first
+    PatternSpec("phone", ..., priority=50),           # General phone number
+    PatternSpec("numeric", ..., priority=10),         # Numeric
 ]
 
-# 한국 휴대폰 번호가 일반 전화번호보다 먼저 매칭됨
+# Korean mobile numbers match before general phone numbers
 ```
 
-## 성능 최적화
+## Performance Optimization
 
-### 벡터화 연산
+### Vectorized Operations
 
 ```python
-# 내부 구현 - Python 콜백 없음
+# Internal implementation - no Python callbacks
 def _count_matches(self, lf: pl.LazyFrame, column: str, pattern: str) -> int:
     return (
         lf.select(
             pl.col(column)
-            .str.contains(pattern)  # Polars 네이티브
+            .str.contains(pattern)  # Polars native
             .sum()
         )
         .collect()
@@ -186,13 +186,13 @@ def _count_matches(self, lf: pl.LazyFrame, column: str, pattern: str) -> int:
     )
 ```
 
-### 샘플링 결합
+### Combining with Sampling
 
 ```python
 from truthound.profiler.native_patterns import NativePatternMatcher
 from truthound.profiler.sampling import Sampler, SamplingConfig
 
-# 대용량 데이터에서 샘플링 후 패턴 매칭
+# Sample from large data then perform pattern matching
 sampler = Sampler(SamplingConfig(max_rows=10_000))
 sampled_result = sampler.sample(lf)
 
@@ -200,22 +200,22 @@ matcher = NativePatternMatcher()
 patterns = matcher.match(sampled_result.data.lazy(), "email")
 ```
 
-## CLI 사용법
+## CLI Usage
 
 ```bash
-# 패턴 감지 포함 프로파일링
+# Profile with pattern detection
 th profile data.csv --include-patterns
 
-# 패턴 감지 비활성화
+# Disable pattern detection
 th profile data.csv --no-patterns
 
-# 특정 컬럼만 패턴 감지
+# Pattern detection for specific columns only
 th profile data.csv --pattern-columns email,phone
 ```
 
-## 커스텀 패턴 파일
+## Custom Pattern Files
 
-YAML 형식으로 커스텀 패턴을 정의할 수 있습니다.
+Custom patterns can be defined in YAML format.
 
 ```yaml
 # custom_patterns.yaml
@@ -227,7 +227,7 @@ patterns:
     examples:
       - EMP00001
       - EMP12345
-    description: 직원 ID
+    description: Employee ID
 
   - name: product_sku
     regex: "^[A-Z]{3}-\\d{4}-[A-Z]$"
@@ -235,18 +235,18 @@ patterns:
     priority: 70
     examples:
       - ABC-1234-X
-    description: 제품 SKU
+    description: Product SKU
 ```
 
 ```python
 from truthound.profiler.native_patterns import load_patterns_from_yaml
 
-# 커스텀 패턴 로드
+# Load custom patterns
 patterns = load_patterns_from_yaml("custom_patterns.yaml")
 PatternRegistry.register_all(patterns)
 ```
 
-## 다음 단계
+## Next Steps
 
-- [규칙 생성](rule-generation.md) - 감지된 패턴에서 검증 규칙 생성
-- [ML 추론](ml-inference.md) - ML 기반 타입 추론
+- [Rule Generation](rule-generation.md) - Generate validation rules from detected patterns
+- [ML Inference](ml-inference.md) - ML-based type inference

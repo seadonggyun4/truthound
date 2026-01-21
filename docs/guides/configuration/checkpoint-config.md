@@ -8,7 +8,7 @@ Truthound checkpoints orchestrate validation pipelines with actions, routing, an
 from truthound.checkpoint import Checkpoint, CheckpointConfig
 
 config = CheckpointConfig(
-    name="daily_validation",
+    name="daily_data_validation",
     data_source="users_table",
     validators=["not_null", "unique"],
     fail_on_critical=True,
@@ -373,7 +373,7 @@ window = TimeWindow(days=1)
 
 # Generate fingerprint
 fingerprint = NotificationFingerprint.generate(
-    checkpoint_name="daily_validation",
+    checkpoint_name="daily_data_validation",
     action_type="slack",
     severity="critical",
     data_asset="users_table",

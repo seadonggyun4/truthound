@@ -1,12 +1,12 @@
 # Storage Actions
 
-결과 저장 및 문서화를 위한 액션입니다.
+Actions for storing results and generating documentation.
 
 ## StoreValidationResult
 
-검증 결과를 파일 시스템, S3, GCS 등에 저장합니다.
+Stores validation results to file system, S3, GCS, and other storage backends.
 
-### 기본 사용법
+### Basic Usage
 
 ```python
 from truthound.checkpoint.actions import StoreValidationResult
@@ -18,38 +18,38 @@ action = StoreValidationResult(
 )
 ```
 
-### 설정 (StoreResultConfig)
+### Configuration (StoreResultConfig)
 
-| 속성 | 타입 | 기본값 | 설명 |
-|------|------|--------|------|
-| `store_path` | `str \| Path` | `"./truthound_results"` | 저장 경로 (로컬, `s3://`, `gs://`) |
-| `store_type` | `str` | `"file"` | 저장소 타입: `file`, `s3`, `gcs` |
-| `format` | `str` | `"json"` | 포맷: `json`, `yaml` |
-| `partition_by` | `str` | `"date"` | 파티션: `date`, `checkpoint`, `status`, `` |
-| `retention_days` | `int` | `0` | 보관 기간 (0 = 무제한) |
-| `include_validation_details` | `bool` | `True` | 상세 검증 결과 포함 |
-| `compress` | `bool` | `False` | gzip 압축 여부 |
-| `notify_on` | `str` | `"always"` | 실행 조건 |
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `store_path` | `str \| Path` | `"./truthound_results"` | Storage path (local, `s3://`, `gs://`) |
+| `store_type` | `str` | `"file"` | Storage type: `file`, `s3`, `gcs` |
+| `format` | `str` | `"json"` | Format: `json`, `yaml` |
+| `partition_by` | `str` | `"date"` | Partition: `date`, `checkpoint`, `status`, `` |
+| `retention_days` | `int` | `0` | Retention period (0 = unlimited) |
+| `include_validation_details` | `bool` | `True` | Include detailed validation results |
+| `compress` | `bool` | `False` | Enable gzip compression |
+| `notify_on` | `str` | `"always"` | Execution condition |
 
-### 저장 경로 구조
+### Storage Path Structure
 
-`partition_by`에 따른 저장 경로:
+Storage path based on `partition_by`:
 
 ```
 # partition_by="date"
 ./results/2024/01/15/{run_id}.json
 
 # partition_by="checkpoint"
-./results/daily_validation/{run_id}.json
+./results/daily_data_validation/{run_id}.json
 
 # partition_by="status"
 ./results/failure/{run_id}.json
 
-# partition_by="" (없음)
+# partition_by="" (none)
 ./results/{run_id}.json
 ```
 
-### 로컬 파일 시스템
+### Local File System
 
 ```python
 action = StoreValidationResult(
@@ -57,7 +57,7 @@ action = StoreValidationResult(
     store_type="file",
     format="json",
     partition_by="date",
-    compress=True,  # .json.gz로 저장
+    compress=True,  # Saves as .json.gz
 )
 ```
 
@@ -71,11 +71,11 @@ action = StoreValidationResult(
     partition_by="date",
 )
 
-# AWS 자격 증명은 환경 변수 또는 AWS 설정 파일 사용
+# AWS credentials use environment variables or AWS configuration files
 # AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY, AWS_REGION
 ```
 
-요구 사항: `pip install boto3`
+Requirement: `pip install boto3`
 
 ### Google Cloud Storage
 
@@ -87,19 +87,19 @@ action = StoreValidationResult(
     partition_by="checkpoint",
 )
 
-# GCP 자격 증명은 GOOGLE_APPLICATION_CREDENTIALS 환경 변수
+# GCP credentials use GOOGLE_APPLICATION_CREDENTIALS environment variable
 ```
 
-요구 사항: `pip install google-cloud-storage`
+Requirement: `pip install google-cloud-storage`
 
-### 결과 포맷
+### Result Format
 
-저장되는 JSON 구조:
+Stored JSON structure:
 
 ```json
 {
   "run_id": "20240115_120000_abc123",
-  "checkpoint_name": "daily_validation",
+  "checkpoint_name": "daily_data_validation",
   "run_time": "2024-01-15T12:00:00",
   "status": "failure",
   "data_asset": "users.csv",
@@ -115,7 +115,7 @@ action = StoreValidationResult(
       "total_rows": 100000,
       "total_columns": 15
     },
-    "results": [...]  // include_validation_details=True 시
+    "results": [...]  // When include_validation_details=True
   },
   "action_results": [...],
   "metadata": {...}
@@ -126,9 +126,9 @@ action = StoreValidationResult(
 
 ## UpdateDataDocs
 
-HTML 형식의 검증 리포트를 생성합니다.
+Generates HTML format validation reports.
 
-### 기본 사용법
+### Basic Usage
 
 ```python
 from truthound.checkpoint.actions import UpdateDataDocs
@@ -140,49 +140,49 @@ action = UpdateDataDocs(
 )
 ```
 
-### 설정
+### Configuration
 
-| 속성 | 타입 | 기본값 | 설명 |
-|------|------|--------|------|
-| `site_path` | `str \| Path` | `"./truthound_docs"` | 출력 디렉토리 |
-| `format` | `str` | `"html"` | 출력 포맷: `html`, `markdown` |
-| `include_history` | `bool` | `True` | 히스토리 포함 |
-| `max_history_items` | `int` | `100` | 최대 히스토리 개수 |
-| `template` | `str` | `"default"` | 템플릿: `default`, `minimal`, `detailed` |
-| `notify_on` | `str` | `"always"` | 실행 조건 |
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `site_path` | `str \| Path` | `"./truthound_docs"` | Output directory |
+| `format` | `str` | `"html"` | Output format: `html`, `markdown` |
+| `include_history` | `bool` | `True` | Include history |
+| `max_history_items` | `int` | `100` | Maximum history items |
+| `template` | `str` | `"default"` | Template: `default`, `minimal`, `detailed` |
+| `notify_on` | `str` | `"always"` | Execution condition |
 
-### 생성 파일 구조
+### Generated File Structure
 
 ```
 ./docs/
-├── index.html                 # 대시보드
+├── index.html                 # Dashboard
 ├── checkpoints/
-│   └── daily_validation/
-│       ├── index.html         # 체크포인트 개요
+│   └── daily_data_validation/
+│       ├── index.html         # Checkpoint overview
 │       └── runs/
 │           ├── 20240115_120000.html
 │           └── 20240114_120000.html
 ├── history/
-│   └── trend.json            # 트렌드 데이터
+│   └── trend.json            # Trend data
 └── assets/
     ├── style.css
     └── script.js
 ```
 
-### 템플릿 옵션
+### Template Options
 
 ```python
-# 기본 템플릿 - 전체 정보 포함
+# Default template - includes all information
 action = UpdateDataDocs(template="default")
 
-# 최소 템플릿 - 핵심 정보만
+# Minimal template - essential information only
 action = UpdateDataDocs(template="minimal")
 
-# 상세 템플릿 - 모든 이슈 상세 정보
+# Detailed template - all issue details
 action = UpdateDataDocs(template="detailed")
 ```
 
-### YAML 설정
+### YAML Configuration
 
 ```yaml
 actions:
