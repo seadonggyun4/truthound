@@ -98,6 +98,24 @@ class KSTestDetector(DriftDetector):
 
     def detect(self, baseline: pl.Series, current: pl.Series) -> DriftResult:
         """Perform two-sample Kolmogorov-Smirnov test."""
+        # Check if data is numeric
+        numeric_types = {
+            pl.Int8, pl.Int16, pl.Int32, pl.Int64,
+            pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64,
+            pl.Float32, pl.Float64,
+        }
+
+        if baseline.dtype not in numeric_types:
+            raise TypeError(
+                f"KS test requires numeric columns, but '{baseline.name}' is {baseline.dtype}\n\n"
+                f"For non-numeric columns, use one of these methods:\n"
+                f"  • chi2  - Chi-square test for categorical data\n"
+                f"  • js    - Jensen-Shannon divergence (works with any type)\n"
+                f"  • auto  - Automatically selects appropriate method\n\n"
+                f"Example: truthound compare baseline.csv current.csv --method chi2\n"
+                f"     or: truthound compare baseline.csv current.csv --columns numeric_col1,numeric_col2"
+            )
+
         # Clean data
         b = baseline.drop_nulls().cast(pl.Float64).sort().to_list()
         c = current.drop_nulls().cast(pl.Float64).sort().to_list()
@@ -176,6 +194,24 @@ class PSIDetector(DriftDetector):
 
     def detect(self, baseline: pl.Series, current: pl.Series) -> DriftResult:
         """Calculate Population Stability Index."""
+        # Check if data is numeric
+        numeric_types = {
+            pl.Int8, pl.Int16, pl.Int32, pl.Int64,
+            pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64,
+            pl.Float32, pl.Float64,
+        }
+
+        if baseline.dtype not in numeric_types:
+            raise TypeError(
+                f"PSI requires numeric columns, but '{baseline.name}' is {baseline.dtype}\n\n"
+                f"For non-numeric columns, use one of these methods:\n"
+                f"  • chi2  - Chi-square test for categorical data\n"
+                f"  • js    - Jensen-Shannon divergence (works with any type)\n"
+                f"  • auto  - Automatically selects appropriate method\n\n"
+                f"Example: truthound compare baseline.csv current.csv --method chi2\n"
+                f"     or: truthound compare baseline.csv current.csv --columns numeric_col1,numeric_col2"
+            )
+
         b = baseline.drop_nulls().cast(pl.Float64).to_list()
         c = current.drop_nulls().cast(pl.Float64).to_list()
 

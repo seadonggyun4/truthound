@@ -150,7 +150,16 @@ def _get_detectors(method: str, threshold: float | None) -> dict[str, DriftDetec
     elif method == "js":
         return {"default": JensenShannonDetector(threshold=threshold or 0.1)}
     else:
-        raise ValueError(f"Unknown method: {method}. Use 'auto', 'ks', 'psi', 'chi2', or 'js'.")
+        raise ValueError(
+            f"Unknown comparison method: '{method}'\n\n"
+            f"Available methods:\n"
+            f"  • auto  - Automatically select based on column type (recommended)\n"
+            f"  • ks    - Kolmogorov-Smirnov test (numeric columns only)\n"
+            f"  • psi   - Population Stability Index (numeric columns only)\n"
+            f"  • chi2  - Chi-square test (categorical columns)\n"
+            f"  • js    - Jensen-Shannon divergence (any column type)\n\n"
+            f"Example: truthound compare baseline.csv current.csv --method auto"
+        )
 
 
 def _compute_stats(series: pl.Series, dtype: pl.DataType, numeric_types: set) -> dict:
