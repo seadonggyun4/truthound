@@ -1,5 +1,7 @@
 """Input adapters for converting various data formats to Polars LazyFrame."""
 
+import json
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -75,8 +77,7 @@ def _load_file(path: str) -> pl.LazyFrame:
     if suffix == ".csv":
         return pl.scan_csv(path)
     elif suffix == ".json":
-        # JSON doesn't have a scan_ method, read eagerly then convert to lazy
-        return pl.read_json(path).lazy()
+        return _read_json_auto(file_path)
     elif suffix == ".parquet":
         return pl.scan_parquet(path)
     elif suffix == ".ndjson" or suffix == ".jsonl":
@@ -98,3 +99,39 @@ def _is_pandas_dataframe(obj: Any) -> bool:
         True if the object is a pandas DataFrame.
     """
     return type(obj).__name__ == "DataFrame" and type(obj).__module__.startswith("pandas")
+
+
+def _read_json_auto(path: Path) -> pl.LazyFrame:
+    """Read JSON file, auto-detecting format (JSON Array or NDJSON).
+
+    JSON Array format: [{}, {}, {}]
+    NDJSON format: {}\n{}\n{}
+
+    Args:
+        path: Path to the JSON file.
+
+    Returns:
+        Polars LazyFrame.
+    """
+    with open(path, "r", encoding="utf-8") as f:
+        first_char = f.read(1)
+        # Skip whitespace to find first meaningful character
+        while first_char and first_char in " \t\n\r":
+            first_char = f.read(1)
+
+    if first_char == "[":
+        # JSON Array format - convert to NDJSON for lazy loading
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".ndjson", delete=False, encoding="utf-8"
+        ) as tmp:
+            for record in data:
+                tmp.write(json.dumps(record, ensure_ascii=False) + "\n")
+            tmp_path = tmp.name
+
+        return pl.scan_ndjson(tmp_path)
+    else:
+        # NDJSON format - read directly
+        return pl.scan_ndjson(path)
