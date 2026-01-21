@@ -48,8 +48,8 @@ Truthound is a data quality validation framework built on Polars, a Rust-based D
 
 | Metric | Value | Notes |
 |--------|-------|-------|
-| Test Cases | 7,613 | Collected via pytest |
-| Validators | 289 | Validator classes available |
+| Test Cases | 8,259 | Collected via pytest |
+| Validators | 264 | Validator classes available |
 | Validator Categories | 28 | Distinct subdirectories |
 
 ### Core Features
@@ -57,7 +57,7 @@ Truthound is a data quality validation framework built on Polars, a Rust-based D
 | Feature | Description |
 |---------|-------------|
 | **Zero Configuration** | Automatic schema inference with fingerprint-based caching (xxhash) |
-| **289 Validators** | 28 categories including schema, completeness, uniqueness, distribution, drift, anomaly |
+| **264 Validators** | 28 categories including schema, completeness, uniqueness, distribution, drift, anomaly |
 | **Polars LazyFrame** | Native Polars operations, expression-based batch execution, single collect() optimization |
 | **DAG Parallel Execution** | Dependency-aware orchestration with 3 execution strategies (Sequential, Parallel, Adaptive) |
 | **Custom Validator SDK** | `@custom_validator` decorator, `ValidatorBuilder` fluent API, testing utilities, 7 templates |

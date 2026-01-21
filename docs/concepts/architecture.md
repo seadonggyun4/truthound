@@ -376,31 +376,38 @@ Baseline Data           Current Data
 
 ### Validator Categories
 
-Validators are organized into 21 categories based on their validation focus:
+Validators are organized into 28 categories based on their validation focus:
 
 | Category | Count | Focus |
 |----------|-------|-------|
-| Schema | 14 | Column structure, types, relationships |
-| Completeness | 7 | Null detection, required fields |
-| Uniqueness | 13 | Duplicates, primary keys |
+| Schema | 15 | Column structure, types, relationships |
+| Completeness | 12 | Null detection, required fields |
+| Uniqueness | 17 | Duplicates, primary keys |
 | Distribution | 15 | Range, outliers, statistics |
-| String | 18 | Patterns, formats, encoding |
+| String | 19 | Patterns, formats, encoding |
 | Datetime | 10 | Format, range, sequence |
 | Aggregate | 8 | Statistical constraints |
-| Cross-table | 4 | Multi-table relationships |
+| Cross-table | 5 | Multi-table relationships |
 | Multi-column | 21 | Column comparisons |
 | Query | 20 | Expression-based validation |
 | Table | 18 | Metadata, freshness |
-| Geospatial | 9 | Coordinates, boundaries |
-| Drift | 13 | Distribution changes |
-| Anomaly | 15 | Outlier detection |
-| Privacy | 15 | PII detection |
-| Business | 8 | Business rules (Luhn, IBAN) |
+| Geospatial | 13 | Coordinates, boundaries |
+| Drift | 14 | Distribution changes |
+| Anomaly | 18 | Outlier detection |
+| Privacy | 16 | PII detection, GDPR/CCPA |
+| Business Rule | 8 | Business rules (Luhn, IBAN) |
 | Localization | 9 | Regional formats |
 | ML Feature | 5 | Feature quality |
 | Profiling | 7 | Data characteristics |
-| Referential | 13 | Foreign key integrity |
+| Referential | 14 | Foreign key integrity |
 | Time Series | 14 | Temporal patterns |
+| Streaming | 12 | Stream validation |
+| Memory | 8 | Memory-efficient validation |
+| Optimization | 15 | DAG execution, profiling |
+| SDK | 80 | Custom validator development |
+| Security | 3 | ReDoS protection, SQL injection |
+| i18n | 3 | Internationalized error messages |
+| Timeout | - | Distributed timeout handling |
 
 ### Validator Registration
 

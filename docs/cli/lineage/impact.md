@@ -271,9 +271,8 @@ truthound lineage impact lineage.json core_data_source -o docs/impact_analysis.j
 
 | Code | Condition |
 |------|-----------|
-| 0 | Success (no critical impact) |
-| 1 | Critical nodes affected |
-| 2 | Node not found or invalid file |
+| 0 | Success |
+| 1 | Error (node not found, invalid file, or other error) |
 
 ## Related Commands
 

@@ -326,8 +326,7 @@ truthound checkpoint init -o .github/truthound.yaml
 | Code | Condition |
 |------|-----------|
 | 0 | Success |
-| 1 | Output file already exists (use different path) |
-| 2 | Permission denied |
+| 1 | Error (file write error, permission denied, or other error) |
 
 ## Related Commands
 

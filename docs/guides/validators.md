@@ -2,7 +2,7 @@
 
 This document provides a reference for validators implemented in Truthound. Each validator is designed to address specific data quality concerns and follows consistent patterns for configuration and usage.
 
-**Current Implementation: 289 validators across 28 categories (23 validator categories + 5 infrastructure categories).**
+**Current Implementation: 326 validators across 28 categories (23 validator categories + 5 infrastructure categories).**
 
 ---
 

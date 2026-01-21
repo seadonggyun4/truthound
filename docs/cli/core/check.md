@@ -18,7 +18,7 @@ truthound check <file> [OPTIONS]
 
 | Option | Short | Default | Description |
 |--------|-------|---------|-------------|
-| `--validators` | `-v` | All | Comma-separated list of validators to run |
+| `--validators` | `-v` | None | Comma-separated list of validators to run (runs all validators when not specified) |
 | `--min-severity` | `-s` | None | Minimum severity level to report (low, medium, high, critical) |
 | `--schema` | | None | Schema file for validation |
 | `--auto-schema` | | `false` | Auto-learn and cache schema |

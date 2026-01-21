@@ -23,7 +23,7 @@ truthound quick-suite <file> [OPTIONS]
 | `--strictness` | `-s` | `medium` | Rule strictness (loose, medium, strict) |
 | `--include` | `-i` | All | Rule categories to include (comma-separated) |
 | `--exclude` | `-e` | None | Rule categories to exclude (comma-separated) |
-| `--min-confidence` | | `medium` | Minimum confidence level (low, medium, high) |
+| `--min-confidence` | | None | Minimum confidence level (low, medium, high) |
 | `--name` | `-n` | Auto | Suite name |
 | `--preset` | `-p` | None | Use preset configuration |
 | `--sample-size` | | None | Sample size for large datasets |

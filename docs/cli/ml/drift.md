@@ -301,9 +301,10 @@ fi
 
 | Code | Condition |
 |------|-----------|
-| 0 | No drift detected (below threshold) |
-| 1 | Drift detected (above threshold) |
-| 2 | Invalid arguments or file not found |
+| 0 | Success |
+| 1 | Error (invalid arguments, file not found, or other error) |
+
+> **Note**: Drift detection results are reported in the output, but do not affect the exit code. Use `--format json` and parse the `has_drift` field for CI/CD decisions.
 
 ## Related Commands
 

@@ -98,28 +98,17 @@ truthound ml anomaly data.csv
 
 Output:
 ```
-Anomaly Detection Report
-========================
-File: data.csv
-Rows: 10,000
-Method: zscore
-Contamination: 0.1
+Anomaly Detection Results (zscore)
+==================================================
+Total points: 10000
+Anomalies found: 847
+Anomaly ratio: 8.47%
+Threshold used: 3.0000
 
-Anomalies Found: 847 (8.47%)
-
-Column Statistics
-─────────────────────────────────────────────────────────
-Column        Anomalies    % Affected    Top Anomaly Score
-─────────────────────────────────────────────────────────
-age           234          2.34%         0.95
-salary        456          4.56%         0.98
-tenure        312          3.12%         0.89
-─────────────────────────────────────────────────────────
-
-Top 10 Anomalous Rows:
-  Row 4521: score=0.98, salary=999999
-  Row 1234: score=0.95, age=-5
-  Row 7890: score=0.92, tenure=150
+Top anomalies:
+  Index 4521: score=0.9800, confidence=98.00%
+  Index 1234: score=0.9500, confidence=95.00%
+  Index 7890: score=0.9200, confidence=92.00%
   ...
 ```
 
@@ -277,8 +266,7 @@ Sampling uses a fixed seed (42) for reproducibility.
 | Code | Condition |
 |------|-----------|
 | 0 | Success |
-| 1 | Anomalies found (with future --strict flag) |
-| 2 | Invalid arguments or file not found |
+| 1 | Error (invalid arguments, file not found, or other error) |
 
 ## Related Commands
 

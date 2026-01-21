@@ -3,8 +3,8 @@
 
 site_name: Truthound Documentation
 site_description: Zero-Configuration Data Quality Framework Powered by Polars
-site_author: Truthound Team
-site_url: https://truthound.io/
+site_author: SEO DONG GYUN
+site_url: https://github.com/seadonggyun4/truthound
 
 # Repository
 repo_name: seadonggyun4/Truthound
@@ -12,7 +12,7 @@ repo_url: https://github.com/seadonggyun4/Truthound
 edit_uri: edit/main/docs/
 
 # Copyright
-copyright: Copyright &copy; 2025 Truthound
+copyright: Copyright &copy; 2025 SEO DONG GYUN
 
 # Theme Configuration
 theme:

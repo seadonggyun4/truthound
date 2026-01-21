@@ -295,8 +295,7 @@ checkpoints:
 | Code | Condition |
 |------|-----------|
 | 0 | Success (no issues, or issues found without `--strict`) |
-| 1 | Issues found with `--strict` flag |
-| 2 | Configuration error or invalid arguments |
+| 1 | Error (issues found with `--strict` flag, configuration error, or other error) |
 
 ## Environment Variables
 

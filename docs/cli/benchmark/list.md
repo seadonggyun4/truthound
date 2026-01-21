@@ -36,49 +36,22 @@ truthound benchmark list
 
 Output:
 ```
-Available Benchmarks
-====================
+Available Benchmarks:
+============================================================
 
-Profiling
-─────────────────────────────────────────────────────────────────
-profile          Basic data profiling
-auto-profile     Advanced profiling with pattern detection
-quick-suite      Profile and generate rules
+[PROFILING]
+  profile              - Basic data profiling
+  auto-profile         - Advanced profiling with pattern detection
+  quick-suite          - Profile and generate rules
 
-Validation
-─────────────────────────────────────────────────────────────────
-check            Data quality validation
-scan             PII scanning
-mask             Data masking
+[VALIDATION]
+  check                - Data quality validation
+  scan                 - PII scanning
+  mask                 - Data masking
 
-Comparison
-─────────────────────────────────────────────────────────────────
-compare          Dataset drift comparison
-ml-drift         ML-based drift detection
-
-Schema
-─────────────────────────────────────────────────────────────────
-learn            Schema inference
-schema-validate  Schema validation
-
-I/O
-─────────────────────────────────────────────────────────────────
-read-csv         CSV reading performance
-read-parquet     Parquet reading performance
-write-csv        CSV writing performance
-write-parquet    Parquet writing performance
-
-─────────────────────────────────────────────────────────────────
-Total: 13 benchmarks
-
-Suites:
-  quick:      profile, check
-  ci:         profile, check, scan, compare
-  full:       All benchmarks
-  profiling:  profile, auto-profile, quick-suite
-  validation: check, scan, mask
-
-Run with: truthound benchmark run <benchmark> [OPTIONS]
+[COMPARISON]
+  compare              - Dataset drift comparison
+  ml-drift             - ML-based drift detection
 ```
 
 ### JSON Output
@@ -89,98 +62,23 @@ truthound benchmark list --format json
 
 Output:
 ```json
-{
-  "benchmarks": {
-    "profiling": [
-      {
-        "name": "profile",
-        "description": "Basic data profiling",
-        "suites": ["quick", "ci", "full", "profiling"]
-      },
-      {
-        "name": "auto-profile",
-        "description": "Advanced profiling with pattern detection",
-        "suites": ["full", "profiling"]
-      },
-      {
-        "name": "quick-suite",
-        "description": "Profile and generate rules",
-        "suites": ["full", "profiling"]
-      }
-    ],
-    "validation": [
-      {
-        "name": "check",
-        "description": "Data quality validation",
-        "suites": ["quick", "ci", "full", "validation"]
-      },
-      {
-        "name": "scan",
-        "description": "PII scanning",
-        "suites": ["ci", "full", "validation"]
-      },
-      {
-        "name": "mask",
-        "description": "Data masking",
-        "suites": ["full", "validation"]
-      }
-    ],
-    "comparison": [
-      {
-        "name": "compare",
-        "description": "Dataset drift comparison",
-        "suites": ["ci", "full"]
-      },
-      {
-        "name": "ml-drift",
-        "description": "ML-based drift detection",
-        "suites": ["full"]
-      }
-    ],
-    "schema": [
-      {
-        "name": "learn",
-        "description": "Schema inference",
-        "suites": ["full"]
-      },
-      {
-        "name": "schema-validate",
-        "description": "Schema validation",
-        "suites": ["full"]
-      }
-    ],
-    "io": [
-      {
-        "name": "read-csv",
-        "description": "CSV reading performance",
-        "suites": ["full"]
-      },
-      {
-        "name": "read-parquet",
-        "description": "Parquet reading performance",
-        "suites": ["full"]
-      },
-      {
-        "name": "write-csv",
-        "description": "CSV writing performance",
-        "suites": ["full"]
-      },
-      {
-        "name": "write-parquet",
-        "description": "Parquet writing performance",
-        "suites": ["full"]
-      }
-    ]
+[
+  {
+    "name": "profile",
+    "category": "profiling",
+    "description": "Basic data profiling"
   },
-  "suites": {
-    "quick": ["profile", "check"],
-    "ci": ["profile", "check", "scan", "compare"],
-    "full": ["all"],
-    "profiling": ["profile", "auto-profile", "quick-suite"],
-    "validation": ["check", "scan", "mask"]
+  {
+    "name": "check",
+    "category": "validation",
+    "description": "Data quality validation"
   },
-  "total": 13
-}
+  {
+    "name": "compare",
+    "category": "comparison",
+    "description": "Dataset drift comparison"
+  }
+]
 ```
 
 ## Benchmark Categories
@@ -243,18 +141,18 @@ Output:
 truthound benchmark list
 ```
 
-### 2. Filter by Suite
+### 2. Filter by Category
 
 ```bash
-# Find benchmarks in CI suite
-truthound benchmark list --format json | jq '.suites.ci'
+# Find benchmarks in profiling category
+truthound benchmark list --format json | jq '.[] | select(.category == "profiling")'
 ```
 
 ### 3. Script Integration
 
 ```bash
 # Get benchmark names for scripting
-truthound benchmark list --format json | jq -r '.benchmarks | keys[]'
+truthound benchmark list --format json | jq -r '.[].name'
 ```
 
 ## Exit Codes

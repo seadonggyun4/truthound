@@ -132,8 +132,7 @@ truthound plugin info my-validator --json > plugin-info.json
 | Code | Condition |
 |------|-----------|
 | 0 | Success |
-| 1 | Plugin not found |
-| 2 | Error |
+| 1 | Error (plugin not found, instantiation failed) |
 
 ## Related Commands
 

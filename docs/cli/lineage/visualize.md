@@ -325,8 +325,7 @@ truthound lineage visualize large_lineage.json -o focused.html --focus important
 | Code | Condition |
 |------|-----------|
 | 0 | Success |
-| 1 | Renderer error |
-| 2 | Invalid file or arguments |
+| 1 | Error (renderer error, invalid file, or other error) |
 
 ## Related Commands
 

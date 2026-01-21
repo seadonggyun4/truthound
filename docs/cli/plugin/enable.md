@@ -40,8 +40,7 @@ truthound plugin enable my-validator
 
 Output:
 ```
-Enabling plugin: my-validator...
-Plugin 'my-validator' enabled successfully.
+Enabled plugin: my-validator
 ```
 
 ### Enable After Load Without Activate
@@ -63,8 +62,7 @@ truthound plugin enable my-validator
 
 Output:
 ```
-Enabling plugin: my-validator...
-Plugin 'my-validator' enabled successfully.
+Enabled plugin: my-validator
 ```
 
 ### Verify After Enable
@@ -117,28 +115,6 @@ truthound plugin enable validator-c
 
 ## Error Handling
 
-### Plugin Not Loaded
-
-```bash
-truthound plugin enable my-validator
-```
-
-Output:
-```
-Error: Plugin 'my-validator' is not loaded. Use 'plugin load' first.
-```
-
-### Plugin Already Active
-
-```bash
-truthound plugin enable my-validator
-```
-
-Output:
-```
-Plugin 'my-validator' is already active.
-```
-
 ### Plugin Not Found
 
 ```bash
@@ -147,16 +123,17 @@ truthound plugin enable unknown-plugin
 
 Output:
 ```
-Error: Plugin 'unknown-plugin' not found.
+Error enabling plugin: Plugin 'unknown-plugin' not found.
 ```
+
+> **Note**: If the plugin is discovered but not loaded, the `enable` command will automatically load it first before enabling.
 
 ## Exit Codes
 
 | Code | Condition |
 |------|-----------|
 | 0 | Success |
-| 1 | Plugin not found or not loaded |
-| 2 | Enable error |
+| 1 | Error (plugin not found, enable failed) |
 
 ## Related Commands
 

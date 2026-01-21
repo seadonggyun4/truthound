@@ -48,10 +48,10 @@ Higher priority sources override lower priority values.
 Truthound automatically detects the runtime environment:
 
 ```python
-from truthound.infrastructure.config import Environment, get_environment
+from truthound.infrastructure.config import Environment
 
 # Auto-detection from environment variables
-env = get_environment()
+env = Environment.current()
 
 # Available environments
 Environment.DEVELOPMENT  # Local development
@@ -71,10 +71,10 @@ Environment.LOCAL        # Local overrides
 ### Environment Properties
 
 ```python
-env = get_environment()
+env = Environment.current()
 
-env.is_production   # True if PRODUCTION
-env.is_development  # True if DEVELOPMENT or LOCAL
+env.is_production   # True if PRODUCTION or STAGING
+env.is_development  # True if DEVELOPMENT, LOCAL, or TESTING
 ```
 
 ---
@@ -86,15 +86,15 @@ env.is_development  # True if DEVELOPMENT or LOCAL
 Load configuration from YAML, JSON, or TOML files:
 
 ```python
-from truthound.infrastructure.config import ConfigurationManager, FileConfigSource
+from truthound.infrastructure.config import ConfigManager, FileConfigSource
 
-manager = ConfigurationManager()
+manager = ConfigManager()
 
 # Add file source (priority 10-30)
 manager.add_source(FileConfigSource(
     path="config/base.yaml",
     required=True,
-    hot_reload=True,
+    watch=True,  # Enable file watching for hot reload
 ))
 ```
 
@@ -456,27 +456,38 @@ config = SuiteGeneratorConfig(
 ### Configuration Presets
 
 ```python
-from truthound.profiler import SuiteGeneratorConfig
+from truthound.profiler import SuiteGeneratorConfig, ConfigPreset
 
-# Available presets
+# Using string preset names
 config = SuiteGeneratorConfig.from_preset("default")
 config = SuiteGeneratorConfig.from_preset("strict")
 config = SuiteGeneratorConfig.from_preset("loose")
 config = SuiteGeneratorConfig.from_preset("minimal")
 config = SuiteGeneratorConfig.from_preset("comprehensive")
+config = SuiteGeneratorConfig.from_preset("schema_only")
+config = SuiteGeneratorConfig.from_preset("format_only")
 config = SuiteGeneratorConfig.from_preset("ci_cd")
+config = SuiteGeneratorConfig.from_preset("development")
 config = SuiteGeneratorConfig.from_preset("production")
+
+# Using ConfigPreset enum (recommended for type safety)
+config = SuiteGeneratorConfig.from_preset(ConfigPreset.DEFAULT)
+config = SuiteGeneratorConfig.from_preset(ConfigPreset.STRICT)
+config = SuiteGeneratorConfig.from_preset(ConfigPreset.CI_CD)
 ```
 
-| Preset | Strictness | Categories | Use Case |
-|--------|------------|------------|----------|
-| `default` | medium | all | General use |
-| `strict` | strict | all | Production validation |
-| `loose` | loose | all | Exploratory analysis |
-| `minimal` | medium | schema only | Quick schema check |
-| `comprehensive` | strict | all + ML | Deep analysis |
-| `ci_cd` | medium | all | Pipeline integration |
-| `production` | strict | all | Production deployment |
+| Preset | Strictness | Min Confidence | Output Format | Use Case |
+|--------|------------|----------------|---------------|----------|
+| `default` | medium | low | yaml | General use |
+| `strict` | strict | medium | yaml | Production validation |
+| `loose` | loose | low | yaml | Exploratory analysis |
+| `minimal` | loose | high | yaml | Quick schema check (fast mode) |
+| `comprehensive` | strict | low | yaml | Deep analysis (full mode) |
+| `schema_only` | medium | medium | yaml | Schema and completeness only |
+| `format_only` | medium | medium | yaml | Format and pattern only |
+| `ci_cd` | medium | medium | checkpoint | Pipeline integration |
+| `development` | loose | low | python | Local development |
+| `production` | strict | high | yaml | Production deployment |
 
 ### Dashboard Configuration
 
@@ -598,18 +609,46 @@ Combine multiple resilience patterns:
 ```python
 from truthound.common.resilience import ResilienceBuilder
 
-resilient_func = (
-    ResilienceBuilder()
+wrapper = (
+    ResilienceBuilder("my-service")
     .with_circuit_breaker(CircuitBreakerConfig.for_external_api())
     .with_retry(RetryConfig.exponential())
     .with_bulkhead(BulkheadConfig.medium())
-    .with_rate_limiter(RateLimiterConfig.per_second(100))
-    .with_timeout(30.0)
-    .build(my_function)
+    .with_rate_limit(RateLimiterConfig.per_second(100))
+    .build()
 )
 
 # Execute with all resilience patterns
-result = resilient_func(args)
+result = wrapper.execute(my_function, arg1, arg2)
+
+# Or use as decorator
+@wrapper
+def risky_operation():
+    return external_service.call()
+```
+
+**Builder Methods:**
+
+| Method | Description |
+|--------|-------------|
+| `ResilienceBuilder(name)` | Create builder with service name |
+| `.with_circuit_breaker(config)` | Add circuit breaker |
+| `.with_retry(config)` | Add retry policy |
+| `.with_bulkhead(config)` | Add bulkhead |
+| `.with_rate_limit(config)` | Add rate limiter |
+| `.build()` | Build the `ResilientWrapper` |
+
+**Convenience Factory Methods:**
+
+```python
+# Pre-configured for database operations
+wrapper = ResilienceBuilder.for_database("db-ops")
+
+# Pre-configured for external API calls
+wrapper = ResilienceBuilder.for_external_api("api-client")
+
+# Simple defaults (circuit breaker + retry)
+wrapper = ResilienceBuilder.simple("my-service")
 ```
 
 ---
@@ -873,9 +912,9 @@ config = CircuitBreakerConfig.for_external_api()
 ### 4. Validate Configuration Early
 
 ```python
-from truthound.infrastructure.config import ConfigurationManager
+from truthound.infrastructure.config import ConfigManager, FileConfigSource
 
-manager = ConfigurationManager()
+manager = ConfigManager()
 manager.add_source(FileConfigSource("config.yaml"))
 
 # Validate on startup
@@ -887,7 +926,7 @@ if errors:
 ### 5. Use Type-Safe Access
 
 ```python
-config = manager.get_profile()
+config = manager.config  # Access via property
 
 # Type-safe access with defaults
 timeout = config.get_int("validation.timeout", default=300)
@@ -900,8 +939,7 @@ hosts = config.get_list("database.hosts", default=["localhost"])
 ```python
 manager.add_source(FileConfigSource(
     path="config.yaml",
-    hot_reload=True,
-    reload_callback=lambda: print("Config reloaded"),
+    watch=True,  # Enable file watching for hot reload
 ))
 ```
 

@@ -141,48 +141,40 @@ truthound benchmark run --suite ci -o results.dat --format json
 Output file (`results.json`):
 ```json
 {
-  "suite": "ci",
-  "timestamp": "2025-01-15T10:30:00Z",
-  "system": {
-    "cpu": "Intel Core i7-12700K",
-    "memory": "32 GB",
-    "os": "Ubuntu 22.04"
+  "suite_name": "ci",
+  "started_at": "2025-01-15T10:30:00Z",
+  "completed_at": "2025-01-15T10:30:15Z",
+  "environment": {
+    "python_version": "3.13.1",
+    "polars_version": "1.x",
+    "truthound_version": "1.x",
+    "platform": "Darwin",
+    "architecture": "arm64",
+    "cpu_count": 10,
+    "memory_total_gb": 36.0
   },
-  "benchmarks": [
+  "results": [
     {
-      "name": "profile",
-      "size": "medium",
-      "rows": 100000,
-      "iterations": 5,
-      "results": {
-        "mean": 0.376,
-        "std_dev": 0.011,
-        "min": 0.360,
-        "max": 0.390,
-        "throughput": 265957,
-        "memory_peak_mb": 156
-      }
-    },
-    {
-      "name": "check",
-      "size": "medium",
-      "rows": 100000,
-      "iterations": 5,
-      "results": {
-        "mean": 0.524,
-        "std_dev": 0.015,
-        "min": 0.505,
-        "max": 0.548,
-        "throughput": 190839,
-        "memory_peak_mb": 189
-      }
+      "benchmark_name": "profile",
+      "benchmark_category": "profiling",
+      "parameters": {
+        "row_count": 10000,
+        "iterations": 3
+      },
+      "metrics": {
+        "timing": {
+          "mean_seconds": 0.00072,
+          "std_dev_seconds": 0.00011,
+          "min_seconds": 0.00060,
+          "max_seconds": 0.00090
+        },
+        "throughput": {
+          "rows_per_second": 13840000
+        }
+      },
+      "status": "passed"
     }
-  ],
-  "summary": {
-    "total_benchmarks": 2,
-    "total_time": 12.5,
-    "status": "passed"
-  }
+  ]
 }
 ```
 
@@ -288,9 +280,8 @@ truthound benchmark run --suite full \
 
 | Code | Condition |
 |------|-----------|
-| 0 | Success (all benchmarks passed) |
-| 1 | Regression detected (with --compare-baseline) |
-| 2 | Invalid arguments or benchmark error |
+| 0 | Success |
+| 1 | Error (regression detected with --compare-baseline, invalid arguments, or benchmark error) |
 
 ## Related Commands
 

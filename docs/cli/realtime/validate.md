@@ -51,25 +51,23 @@ truthound realtime validate mock
 
 Output:
 ```
-Realtime Validation
-===================
-Source: mock
-Batch Size: 1000
-Max Batches: 10
+Starting streaming validation...
+  Source: mock
+  Batch size: 1000
+  Validators: all
 
-Processing batches...
-  Batch 1/10: 1000 records, 5 issues
-  Batch 2/10: 1000 records, 3 issues
-  ...
-  Batch 10/10: 1000 records, 2 issues
+Batch 1: 1000 records, 5 issues [ISSUES]
+Batch 2: 1000 records, 3 issues [ISSUES]
+...
+Batch 10: 1000 records, 2 issues [ISSUES]
 
 Summary
-───────────────────────────────────────────────────────────────────
-Total Records: 10,000
-Total Issues: 42
-Pass Rate: 99.58%
-Checkpoint: abc12345
-───────────────────────────────────────────────────────────────────
+========================================
+Batches processed: 10
+Total records: 10000
+Total issues: 42
+Pass rate: 99.58%
+========================================
 ```
 
 ### Specify Validators
@@ -146,29 +144,23 @@ truthound realtime validate mock -o results.json
 Output file (`results.json`):
 ```json
 {
-  "source": "mock",
-  "batch_size": 1000,
-  "max_batches": 10,
-  "total_records": 10000,
-  "total_issues": 42,
-  "pass_rate": 0.9958,
-  "checkpoint_id": "abc12345",
   "batches": [
     {
       "batch_number": 1,
       "records": 1000,
-      "issues": 5,
-      "validators": {
-        "null": {"passed": 998, "failed": 2},
-        "range": {"passed": 997, "failed": 3}
-      }
+      "issues": 5
+    },
+    {
+      "batch_number": 2,
+      "records": 1000,
+      "issues": 3
     }
   ],
-  "summary": {
-    "by_validator": {
-      "null": {"total_failed": 20},
-      "range": {"total_failed": 22}
-    }
+  "stats": {
+    "total_batches": 10,
+    "total_records": 10000,
+    "total_issues": 42,
+    "pass_rate": 0.9958
   }
 }
 ```
@@ -279,9 +271,10 @@ truthound realtime validate kafka:orders
 
 | Code | Condition |
 |------|-----------|
-| 0 | Success (all batches validated) |
-| 1 | Validation errors detected |
-| 2 | Invalid arguments or connection error |
+| 0 | Success |
+| 1 | Error (invalid arguments, connection error, or other error) |
+
+> **Note**: Validation issues are reported in the output, but do not affect the exit code. Use `--output` and parse the JSON file for CI/CD decisions.
 
 ## Related Commands
 

@@ -293,8 +293,7 @@ truthound ml learn-rules production_data.csv -o data_contract.json --strictness 
 | Code | Condition |
 |------|-----------|
 | 0 | Success |
-| 1 | No rules could be learned |
-| 2 | Invalid arguments or file not found |
+| 1 | Error (invalid arguments, file not found, or other error) |
 
 ## Related Commands
 

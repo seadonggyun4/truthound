@@ -39,27 +39,23 @@ truthound checkpoint validate truthound.yaml
 
 Output (valid):
 ```
-Configuration Valid
-===================
-File: truthound.yaml
-Checkpoints: 2
-  - daily_data_validation (data/production.csv, 4 validators)
-  - hourly_metrics_check (data/metrics.parquet, 2 validators)
+Validating truthound.yaml...
 
-Status: ✓ Valid
+[OK]   Checkpoint 'daily_data_validation'
+[OK]   Checkpoint 'hourly_metrics_check'
+
+Validation passed: 2 checkpoint(s) are valid.
+(Use --strict to also validate file existence)
 ```
 
 Output (invalid):
 ```
-Configuration Invalid
-=====================
-File: truthound.yaml
+Validating truthound.yaml...
 
-Errors:
-  - Line 5: Unknown validator type 'nul' (did you mean 'null'?)
-  - Line 10: Invalid min_severity 'super_high' (allowed: low, medium, high, critical)
+[FAIL] Checkpoint 'daily_data_validation':
+       - Invalid min_severity 'super_high'. Must be one of: critical, high, low, medium
 
-Status: ✗ Invalid (2 errors)
+Validation failed: 1 error(s) found in 1 checkpoint(s).
 ```
 
 ### Strict Validation
@@ -72,21 +68,14 @@ truthound checkpoint validate truthound.yaml --strict
 
 Output (with missing files):
 ```
-Configuration Invalid
-=====================
-File: truthound.yaml
+Validating truthound.yaml...
 
-Errors:
-  - data/production.csv: File not found
-  - data/metrics.parquet: File not found
+[FAIL] Checkpoint 'daily_data_validation':
+       - Data source file not found: data/production.csv
+[FAIL] Checkpoint 'hourly_metrics_check':
+       - Data source file not found: data/metrics.parquet
 
-Warnings:
-  - Slack webhook URL uses environment variable ${SLACK_WEBHOOK_URL}
-    (will be resolved at runtime)
-  - Webhook auth uses environment variable ${API_TOKEN}
-    (will be resolved at runtime)
-
-Status: ✗ Invalid (2 errors, 2 warnings)
+Validation failed: 2 error(s) found in 2 checkpoint(s).
 ```
 
 ### JSON Configuration
@@ -211,8 +200,7 @@ truthound checkpoint validate truthound.yaml --strict && \
 | Code | Condition |
 |------|-----------|
 | 0 | Configuration is valid |
-| 1 | Validation errors found |
-| 2 | File not found or unreadable |
+| 1 | Error (validation errors found, file not found, unreadable, or other error) |
 
 ## Related Commands
 

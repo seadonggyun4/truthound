@@ -51,19 +51,10 @@ truthound mask data.csv -o masked.csv
 
 Output:
 ```
-Masking Report
-==============
-Input: data.csv
-Output: masked.csv
-Strategy: redact
-
-Columns Masked:
-  - email (Email detected)
-  - phone (Phone Number detected)
-  - ssn (SSN detected)
-
-Rows processed: 1000
+Masked data written to masked.csv
 ```
+
+Note: If columns are not specified, the command auto-detects PII columns. Warnings are displayed if any specified columns don't exist (when `--strict` is not used).
 
 ### Mask Specific Columns
 

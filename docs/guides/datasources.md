@@ -129,13 +129,13 @@ source = PostgreSQLDataSource(
     database="mydb",
     user="postgres",
     password="secret",
-    schema="public",
+    schema_name="public",
 )
 
 # Or using connection string
-source = PostgreSQLDataSource(
-    table="users",
+source = PostgreSQLDataSource.from_connection_string(
     connection_string="postgresql://user:pass@localhost/db",
+    table="users",
 )
 ```
 
@@ -570,19 +570,33 @@ Unified column type representation across backends:
 ```python
 from truthound.datasources import ColumnType
 
-# Available types
+# Numeric types
 ColumnType.INTEGER
 ColumnType.FLOAT
 ColumnType.DECIMAL
+
+# String types
 ColumnType.STRING
+ColumnType.TEXT
+
+# Date/Time types
 ColumnType.DATE
 ColumnType.DATETIME
 ColumnType.TIME
 ColumnType.DURATION
+
+# Boolean
 ColumnType.BOOLEAN
+
+# Binary
 ColumnType.BINARY
+
+# Complex types
 ColumnType.LIST
 ColumnType.STRUCT
+ColumnType.JSON
+
+# Other
 ColumnType.NULL
 ColumnType.UNKNOWN
 ```

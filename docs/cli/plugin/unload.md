@@ -39,8 +39,7 @@ truthound plugin unload my-validator
 
 Output:
 ```
-Unloading plugin: my-validator...
-Plugin 'my-validator' unloaded successfully.
+Unloaded plugin: my-validator
 ```
 
 ### Unload Active Plugin
@@ -52,9 +51,7 @@ truthound plugin unload my-validator
 
 Output:
 ```
-Deactivating plugin: my-validator...
-Unloading plugin: my-validator...
-Plugin 'my-validator' unloaded successfully.
+Unloaded plugin: my-validator
 ```
 
 ### Verify After Unload
@@ -110,18 +107,7 @@ truthound check data.csv
 
 ## Error Handling
 
-### Plugin Not Loaded
-
-```bash
-truthound plugin unload my-validator
-```
-
-Output:
-```
-Error: Plugin 'my-validator' is not loaded.
-```
-
-### Plugin Not Found
+### Plugin Not Found or Error
 
 ```bash
 truthound plugin unload unknown-plugin
@@ -129,7 +115,7 @@ truthound plugin unload unknown-plugin
 
 Output:
 ```
-Error: Plugin 'unknown-plugin' not found.
+Error unloading plugin: Plugin 'unknown-plugin' not found.
 ```
 
 ## Exit Codes
@@ -137,8 +123,7 @@ Error: Plugin 'unknown-plugin' not found.
 | Code | Condition |
 |------|-----------|
 | 0 | Success |
-| 1 | Plugin not found or not loaded |
-| 2 | Unload error |
+| 1 | Error (plugin not found, unload failed) |
 
 ## Related Commands
 

@@ -101,9 +101,10 @@ suite.save("rules.yaml")
 # Advanced configuration
 config = ProfilerConfig(
     sample_size=10000,
-    timeout_seconds=60,
-    enable_pattern_detection=True,
-    strictness="medium",
+    random_seed=42,
+    include_patterns=True,
+    include_correlations=False,
+    include_distributions=True,
 )
 profiler = DataProfiler(config)
 profile = profiler.profile_file("large_data.parquet")
@@ -823,33 +824,24 @@ backend = strategy.select(
 @dataclass
 class ProfilerConfig:
     # Sampling
-    sample_size: int = 50000
-    sampling_strategy: SamplingStrategy = SamplingStrategy.ADAPTIVE
+    sample_size: int | None = None
+    random_seed: int = 42
 
-    # Timeout
-    timeout_seconds: int = 120
-    timeout_per_column: int = 30
+    # Analysis options
+    include_patterns: bool = True
+    include_correlations: bool = False
+    include_distributions: bool = True
+
+    # Performance tuning
+    top_n_values: int = 10
+    pattern_sample_size: int = 1000
+    correlation_threshold: float = 0.7
 
     # Pattern detection
-    enable_pattern_detection: bool = True
-    pattern_sample_size: int = 1000
-    min_pattern_confidence: float = 0.8
+    min_pattern_match_ratio: float = 0.8
 
-    # Caching
-    enable_caching: bool = True
-    cache_dir: str = ".truthound/cache"
-    cache_ttl_hours: int = 24
-
-    # Output
-    strictness: Strictness = Strictness.MEDIUM
-    include_samples: bool = True
-    max_samples: int = 5
-
-    # Advanced
-    enable_correlations: bool = False
-    correlation_threshold: float = 0.7
-    detect_duplicates: bool = True
-    max_cardinality: int = 1000
+    # Parallel processing
+    n_jobs: int = 1
 ```
 
 ### Environment Variables

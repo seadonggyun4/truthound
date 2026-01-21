@@ -173,11 +173,6 @@ Verify your installation:
 truthound --version
 ```
 
-Expected output (version may vary):
-```
-truthound 1.1.1
-```
-
 ## Troubleshooting
 
 ### Common Issues

@@ -240,9 +240,8 @@ fi
 
 | Code | Condition |
 |------|-----------|
-| 0 | No regressions detected |
-| 1 | Regression detected (change >= threshold) |
-| 2 | Invalid arguments or file not found |
+| 0 | Success (no regressions detected) |
+| 1 | Error (regression detected, invalid arguments, or file not found) |
 
 !!! note "CI/CD Integration"
     Exit code 1 on regression makes this command ideal for CI/CD pipelines.

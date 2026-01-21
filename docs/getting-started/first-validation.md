@@ -187,7 +187,7 @@ Create an HTML report for stakeholders:
 
     ```python
     import truthound as th
-    from truthound.html_report import write_html_report, HTMLReportConfig
+    from truthound.html_reporter import write_html_report, HTMLReportConfig
 
     # Run validation
     report = th.check("customers.csv", schema="customer_schema.yaml")
@@ -200,7 +200,7 @@ Create an HTML report for stakeholders:
     write_html_report(report, "report.html", title="Customer Data Quality Report")
 
     # Generate HTML string without writing to file
-    from truthound.html_report import generate_html_report
+    from truthound.html_reporter import generate_html_report
     html_content = generate_html_report(report, title="Customer Data Quality Report")
     ```
 
@@ -284,10 +284,10 @@ checkpoints:
 !!! info "Checkpoint Configuration Options"
     | Field | Description | Default |
     |-------|-------------|---------|
-    | `name` | Unique checkpoint identifier | Required |
-    | `data_source` | File path or connection string | Required |
+    | `name` | Unique checkpoint identifier | `"default_checkpoint"` |
+    | `data_source` | File path or connection string | `""` |
     | `validators` | List of validator names | All validators |
-    | `min_severity` | Minimum severity to include | `low` |
+    | `min_severity` | Minimum severity to include | `None` (all severities) |
     | `fail_on_critical` | Fail if critical issues found | `true` |
     | `fail_on_high` | Fail if high severity issues found | `false` |
     | `timeout_seconds` | Max execution time | `3600` |

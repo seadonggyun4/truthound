@@ -34,19 +34,13 @@ truthound docs themes
 
 Output:
 ```
-Available Themes
-================
+Available report themes:
 
-Theme           Description
-──────────────────────────────────────────────────────────────────
-light           Clean, bright style for general use
-dark            Dark mode with vibrant colors, easy on the eyes
-professional    Corporate style with calm colors (default)
-minimal         Minimalist design, monochrome accents
-modern          Contemporary design, vibrant gradients
-──────────────────────────────────────────────────────────────────
-
-Use with: truthound docs generate profile.json -o report.html --theme <theme>
+  light          - Clean and bright, suitable for most use cases
+  dark           - Dark mode with vibrant colors, easy on the eyes
+  professional   - Corporate style, subdued colors (default)
+  minimal        - Minimalist design with monochrome accents
+  modern         - Contemporary design with vibrant gradients
 ```
 
 ## Available Themes

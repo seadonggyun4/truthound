@@ -61,13 +61,14 @@ truthound new validator my_validator
 
 Generated structure:
 ```
-./
-├── my_validator.py
+./my_validator/
+├── __init__.py
+├── validator.py
 └── tests/
-    └── test_my_validator.py
+    └── test_validator.py
 ```
 
-Generated code (`my_validator.py`):
+Generated code (`my_validator/validator.py`):
 ```python
 from truthound.validators.base import Validator
 from truthound.validators.report import ValidationIssue
@@ -205,11 +206,15 @@ truthound new validator customer_data \
 
 Generated structure:
 ```
-./
-├── customer_data.py
-├── README.md
+./customer_data/
+├── __init__.py
+├── validator.py
+├── docs/
+│   └── README.md
+├── examples/
+│   └── basic_usage.py
 └── tests/
-    └── test_customer_data.py
+    └── test_validator.py
 ```
 
 ### Custom Output Directory
@@ -218,7 +223,7 @@ Generated structure:
 truthound new validator my_check -o ./validators/
 ```
 
-Creates files in `./validators/` directory.
+Creates files in `./validators/my_check/` directory.
 
 ### Comparison Validator
 

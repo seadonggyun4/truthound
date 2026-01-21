@@ -303,9 +303,9 @@ source = PostgreSQLDataSource(
 )
 
 # With connection URL
-source = PostgreSQLDataSource(
+source = PostgreSQLDataSource.from_connection_string(
+    connection_string="postgresql://user:pass@localhost:5432/mydb",
     table="users",
-    connection_url="postgresql://user:pass@localhost:5432/mydb",
 )
 
 # With custom query

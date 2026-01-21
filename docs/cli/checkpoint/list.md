@@ -33,21 +33,20 @@ The `checkpoint list` command displays all checkpoints defined in the configurat
 ### Basic Usage
 
 ```bash
-truthound checkpoint list
+truthound checkpoint list --config truthound.yaml
 ```
 
 Output:
 ```
-Available Checkpoints
-=====================
-Config: truthound.yaml
-
-Name                      Data Source             Validators    Actions
-─────────────────────────────────────────────────────────────────────────────
-daily_data_validation     data/production.csv     4             store, docs, slack
-hourly_metrics_check      data/metrics.parquet    2             webhook
-
-Total: 2 checkpoints
+Checkpoints (2):
+  - daily_data_validation
+      Data: data/production.csv
+      Actions: 3
+      Triggers: 1
+  - hourly_metrics_check
+      Data: data/metrics.parquet
+      Actions: 1
+      Triggers: 1
 ```
 
 ### Custom Configuration File
@@ -59,43 +58,41 @@ truthound checkpoint list --config production.yaml
 ### JSON Output
 
 ```bash
-truthound checkpoint list --format json
+truthound checkpoint list --config truthound.yaml --format json
 ```
 
 Output:
 ```json
-{
-  "config_file": "truthound.yaml",
-  "checkpoints": [
-    {
-      "name": "daily_data_validation",
+[
+  {
+    "name": "daily_data_validation",
+    "config": {
       "data_source": "data/production.csv",
-      "validators": ["null", "duplicate", "range", "regex"],
-      "validator_count": 4,
-      "actions": ["store_result", "update_docs", "slack"],
-      "tags": {
-        "environment": "production",
-        "team": "data-platform"
-      }
+      "validators": ["null", "duplicate", "range", "regex"]
     },
-    {
-      "name": "hourly_metrics_check",
+    "actions": [...],
+    "triggers": [...]
+  },
+  {
+    "name": "hourly_metrics_check",
+    "config": {
       "data_source": "data/metrics.parquet",
-      "validators": ["null", "range"],
-      "validator_count": 2,
-      "actions": ["webhook"]
-    }
-  ],
-  "total": 2
-}
+      "validators": ["null", "range"]
+    },
+    "actions": [...],
+    "triggers": [...]
+  }
+]
 ```
+
+Note: JSON output returns an array of checkpoint objects directly (not wrapped in an outer object).
 
 ### Detailed View
 
 The console output shows a summary. For detailed checkpoint information, use JSON format and pipe to `jq`:
 
 ```bash
-truthound checkpoint list --format json | jq '.checkpoints[] | select(.name == "daily_data_validation")'
+truthound checkpoint list --format json | jq '.[] | select(.name == "daily_data_validation")'
 ```
 
 ## Use Cases
@@ -114,7 +111,7 @@ List checkpoints for automated execution:
 
 ```bash
 # Run all checkpoints
-for checkpoint in $(truthound checkpoint list --format json | jq -r '.checkpoints[].name'); do
+for checkpoint in $(truthound checkpoint list --format json | jq -r '.[].name'); do
   truthound checkpoint run $checkpoint --strict
 done
 ```
@@ -132,7 +129,7 @@ truthound checkpoint list --format json > docs/checkpoints.json
 | Code | Condition |
 |------|-----------|
 | 0 | Success |
-| 2 | Configuration file not found or invalid |
+| 1 | Error (configuration file not found, invalid, or other error) |
 
 ## Related Commands
 

@@ -24,8 +24,8 @@ Truthound maintains comprehensive test coverage to ensure reliability and correc
 
 | Metric | Value |
 |--------|-------|
-| **Total Tests** | 1,004 |
-| **Test Files** | 50+ |
+| **Total Tests** | 8,260+ |
+| **Test Files** | 340+ |
 | **Passing Rate** | 100% |
 | **Coverage Target** | 90%+ |
 
@@ -33,41 +33,26 @@ Truthound maintains comprehensive test coverage to ensure reliability and correc
 
 ## 2. Test Summary
 
-| Test Suite | Test Count | Status |
-|------------|------------|--------|
-| Unit Tests | 39 | Pass |
-| Stress Tests | 53 | Pass |
-| Extreme Stress Tests | 14 | Pass |
-| Validator Tests (Phase 1) | 32 | Pass |
-| Validator Tests (Phase 2) | 27 | Pass |
-| Validator Tests (Phase 3) | 27 | Pass |
-| Drift Validator Tests | 52 | Pass |
-| Anomaly Validator Tests | 31 | Pass |
-| Multi-column Validator Tests | 43 | Pass |
-| Query Validator Tests | 14 | Pass |
-| Table Validator Tests | 21 | Pass |
-| Geospatial Validator Tests | 26 | Pass |
-| Business Rule Validator Tests | 22 | Pass |
-| Localization Validator Tests | 28 | Pass |
-| ML Feature Validator Tests | 23 | Pass |
-| Profiling Validator Tests | 23 | Pass |
-| Referential Validator Tests | 28 | Pass |
-| Time Series Validator Tests | 30 | Pass |
-| Privacy Validator Tests | 46 | Pass |
-| Stores Tests | 43 | Pass |
-| Reporters Tests | 55 | Pass |
-| Data Sources Tests | 40 | Pass |
-| Execution Engines Tests | 66 | Pass |
-| SQL Data Sources Tests | 30 | Pass |
-| Checkpoint Tests | 35 | Pass |
-| Profiler Tests | 28 | Pass |
-| Data Docs Tests | 22 | Pass |
-| Plugin Tests | 18 | Pass |
-| ML Module Tests | 25 | Pass |
-| Lineage Tests | 20 | Pass |
-| Realtime Tests | 15 | Pass |
-| Integration Tests | 138 | Pass |
-| **Total** | **1,004** | **All Pass** |
+| Test Suite | Description | Status |
+|------------|-------------|--------|
+| Unit Tests | Core functionality | Pass |
+| Stress Tests | Edge cases, data types | Pass |
+| Extreme Stress Tests | 10M+ rows, concurrency | Pass |
+| Validator Tests | 28 categories, 400+ validators | Pass |
+| Stores Tests | Filesystem, S3, GCS, Azure, DB | Pass |
+| Reporters Tests | Console, JSON, HTML, Markdown, JUnit | Pass |
+| Data Sources Tests | Polars, Pandas, Spark, SQL | Pass |
+| Checkpoint Tests | CI/CD, notifications, escalation | Pass |
+| Profiler Tests | Auto-profiling, schema evolution | Pass |
+| Data Docs Tests | HTML generation, themes, PDF | Pass |
+| Plugin Tests | Security, lifecycle, hot reload | Pass |
+| ML Module Tests | Anomaly, drift, rule learning | Pass |
+| Lineage Tests | Graph, tracker, impact analysis | Pass |
+| Realtime Tests | Streaming, incremental validation | Pass |
+| Integration Tests | End-to-end workflows | Pass |
+| **Total** | **8,260+ test functions** | **All Pass** |
+
+> **Note**: Test counts are dynamic. Run `grep -r "def test_" tests/ | wc -l` for current count.
 
 ---
 
@@ -158,29 +143,38 @@ tests/
 
 ### 4.1 Coverage by Category
 
-| Category | Validators | Tests | Coverage |
-|----------|------------|-------|----------|
-| Schema | 14 | 45+ | 100% |
-| Completeness | 7 | 25+ | 100% |
-| Uniqueness | 13 | 40+ | 100% |
-| Distribution | 15 | 50+ | 100% |
-| String | 18 | 60+ | 100% |
-| Datetime | 10 | 35+ | 100% |
-| Aggregate | 8 | 30+ | 100% |
-| Cross-table | 4 | 15+ | 100% |
-| Multi-column | 21 | 65+ | 100% |
-| Query | 20 | 60+ | 100% |
-| Table | 18 | 55+ | 100% |
-| Geospatial | 9 | 30+ | 100% |
-| Drift | 13 | 45+ | 100% |
-| Anomaly | 15 | 50+ | 100% |
-| Privacy | 15 | 50+ | 100% |
-| Business | 8 | 30+ | 100% |
-| Localization | 9 | 35+ | 100% |
-| ML Feature | 5 | 20+ | 100% |
-| Profiling | 7 | 25+ | 100% |
-| Referential | 13 | 45+ | 100% |
-| Time Series | 14 | 50+ | 100% |
+| Category | Validators | Coverage |
+|----------|------------|----------|
+| Schema | 15 | 100% |
+| Completeness | 12 | 100% |
+| Uniqueness | 17 | 100% |
+| Distribution | 15 | 100% |
+| String | 19 | 100% |
+| Datetime | 10 | 100% |
+| Aggregate | 8 | 100% |
+| Cross-table | 5 | 100% |
+| Multi-column | 21 | 100% |
+| Query | 20 | 100% |
+| Table | 18 | 100% |
+| Geospatial | 13 | 100% |
+| Drift | 14 | 100% |
+| Anomaly | 18 | 100% |
+| Privacy | 16 | 100% |
+| Business Rule | 8 | 100% |
+| Localization | 9 | 100% |
+| ML Feature | 5 | 100% |
+| Profiling | 7 | 100% |
+| Referential | 14 | 100% |
+| Time Series | 14 | 100% |
+| Streaming | 12 | 100% |
+| Memory | 8 | 100% |
+| Optimization | 15 | 100% |
+| SDK | 80 | 100% |
+| Security | 3 | 100% |
+| i18n | 3 | 100% |
+| Timeout | - | 100% |
+
+> **Note**: Validator counts include base classes and mixins. Run `grep -r "class.*Validator" src/truthound/validators/ | wc -l` for current count.
 
 ### 4.2 Test Structure
 

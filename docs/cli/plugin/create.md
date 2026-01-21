@@ -12,14 +12,14 @@ truthound plugin create <NAME> [OPTIONS]
 
 | Argument | Required | Description |
 |----------|----------|-------------|
-| `NAME` | Yes | Plugin name (snake_case) |
+| `NAME` | Yes | Plugin name (lowercase letters, numbers, hyphens, underscores; must start with lowercase letter) |
 
 ## Options
 
 | Option | Short | Default | Description |
 |--------|-------|---------|-------------|
 | `--output` | `-o` | `.` | Output directory |
-| `--type` | `-t` | `validator` | Plugin type (validator/reporter/hook/custom) |
+| `--type` | `-t` | `validator` | Plugin type (validator, reporter, hook, or any other value for custom) |
 | `--author` | | None | Author name |
 
 ## Description
@@ -95,7 +95,7 @@ version = "0.1.0"
 description = "Custom validator plugin for Truthound"
 requires-python = ">=3.10"
 dependencies = [
-    "truthound>=1.0.0",
+    "truthound>=0.1.0",
 ]
 
 [project.entry-points."truthound.plugins"]
@@ -178,15 +178,15 @@ class AuditHookPlugin(Plugin):
 
     def get_hooks(self):
         return {
-            HookType.PRE_VALIDATION: self.pre_validation,
-            HookType.POST_VALIDATION: self.post_validation,
+            HookType.BEFORE_VALIDATION.value: self.on_validation_start,
+            HookType.AFTER_VALIDATION.value: self.on_validation_complete,
         }
 
-    def pre_validation(self, context):
+    def on_validation_start(self, context):
         """Called before validation starts."""
         print(f"Starting validation on {context.file_path}")
 
-    def post_validation(self, context, report):
+    def on_validation_complete(self, context, report):
         """Called after validation completes."""
         print(f"Validation complete: {len(report.issues)} issues found")
 ```
@@ -261,8 +261,7 @@ truthound plugin create enterprise-suite \
 | Code | Condition |
 |------|-----------|
 | 0 | Success |
-| 1 | Generation error |
-| 2 | Invalid arguments |
+| 1 | Invalid plugin name (must start with lowercase letter, contain only lowercase letters, numbers, hyphens, underscores) |
 
 ## Related Commands
 

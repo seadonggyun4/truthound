@@ -20,7 +20,11 @@ truthound lineage show <lineage_file> [OPTIONS]
 |--------|-------|---------|-------------|
 | `--node` | `-n` | None | Focus on a specific node |
 | `--direction` | `-d` | `both` | Traversal direction (upstream, downstream, both) |
-| `--format` | `-f` | `console` | Output format (console, json, dot) |
+| `--format` | `-f` | `console` | Output format (currently only `console` is implemented) |
+
+!!! warning "Format Option Limitation"
+    The `--format` option is defined but **only console output is currently implemented**.
+    For JSON or DOT export, use `lineage visualize` command instead.
 
 ## Description
 
@@ -28,7 +32,6 @@ The `lineage show` command displays lineage information:
 
 1. **Shows** node relationships and dependencies
 2. **Filters** by specific node and direction
-3. **Exports** in multiple formats for integration
 
 ## Examples
 
@@ -40,29 +43,18 @@ truthound lineage show lineage.json
 
 Output:
 ```
-Data Lineage
-============
-File: lineage.json
+Lineage Graph Summary
+========================================
 Nodes: 8
 Edges: 10
 
-Node Graph
-──────────────────────────────────────────────────────────────────
-[source] raw_data
-    └── [transformation] cleaned_data
-        ├── [transformation] aggregated_data
-        │   └── [table] analytics_table
-        └── [table] data_warehouse
+Root nodes (2):
+  raw_data (source)
+  external_api (source)
 
-[source] external_api
-    └── [transformation] api_processed
-        └── [table] analytics_table
-──────────────────────────────────────────────────────────────────
-
-Summary:
-  Sources: 2
-  Transformations: 3
-  Tables: 2
+Leaf nodes (2):
+  analytics_table (table)
+  data_warehouse (table)
 ```
 
 ### Focus on Specific Node
@@ -73,25 +65,14 @@ truthound lineage show lineage.json --node analytics_table
 
 Output:
 ```
-Data Lineage: analytics_table
-=============================
+Lineage for: analytics_table
+Type: table
 
-Node Details:
-  ID: analytics_table
-  Type: table
-  Name: Analytics Table
-  Metadata:
-    database: analytics
-    table: user_metrics
+Upstream (2 nodes):
+  <- aggregated_data (transformation)
+  <- api_processed (transformation)
 
-Upstream (2 levels):
-  └── aggregated_data
-      └── cleaned_data
-          └── raw_data
-  └── api_processed
-      └── external_api
-
-Downstream: None (leaf node)
+Downstream (0 nodes):
 ```
 
 ### Upstream Only
@@ -104,21 +85,12 @@ truthound lineage show lineage.json --node analytics_table --direction upstream
 
 Output:
 ```
-Upstream Lineage: analytics_table
-=================================
+Lineage for: analytics_table
+Type: table
 
-Level 1:
-  - aggregated_data (transformation)
-  - api_processed (transformation)
-
-Level 2:
-  - cleaned_data (transformation)
-  - external_api (source)
-
-Level 3:
-  - raw_data (source)
-
-Total Upstream Nodes: 5
+Upstream (2 nodes):
+  <- aggregated_data (transformation)
+  <- api_processed (transformation)
 ```
 
 ### Downstream Only
@@ -131,150 +103,29 @@ truthound lineage show lineage.json --node raw_data --direction downstream
 
 Output:
 ```
-Downstream Lineage: raw_data
-============================
+Lineage for: raw_data
+Type: source
 
-Level 1:
-  - cleaned_data (transformation)
-
-Level 2:
-  - aggregated_data (transformation)
-  - data_warehouse (table)
-
-Level 3:
-  - analytics_table (table)
-
-Total Downstream Nodes: 4
+Downstream (1 nodes):
+  -> cleaned_data (transformation)
 ```
 
-### JSON Output
+### Visual Export (Alternative)
+
+For JSON, DOT (Graphviz), or other export formats, use the `lineage visualize` command:
 
 ```bash
-truthound lineage show lineage.json --format json
+# Generate interactive HTML visualization
+truthound lineage visualize lineage.json -o graph.html
+
+# Generate Graphviz DOT file
+truthound lineage visualize lineage.json -o graph.dot --renderer graphviz
+
+# Generate Mermaid diagram
+truthound lineage visualize lineage.json -o graph.md --renderer mermaid
 ```
 
-Output:
-```json
-{
-  "file": "lineage.json",
-  "node_count": 8,
-  "edge_count": 10,
-  "nodes": [
-    {
-      "id": "raw_data",
-      "type": "source",
-      "name": "Raw Data",
-      "upstream": [],
-      "downstream": ["cleaned_data"]
-    },
-    {
-      "id": "cleaned_data",
-      "type": "transformation",
-      "name": "Cleaned Data",
-      "upstream": ["raw_data"],
-      "downstream": ["aggregated_data", "data_warehouse"]
-    },
-    {
-      "id": "analytics_table",
-      "type": "table",
-      "name": "Analytics Table",
-      "upstream": ["aggregated_data", "api_processed"],
-      "downstream": []
-    }
-  ],
-  "summary": {
-    "sources": 2,
-    "transformations": 3,
-    "tables": 2,
-    "models": 0,
-    "reports": 1
-  }
-}
-```
-
-### DOT Output (Graphviz)
-
-```bash
-truthound lineage show lineage.json --format dot > lineage.dot
-```
-
-Output file (`lineage.dot`):
-```dot
-digraph lineage {
-    rankdir=LR;
-    node [shape=box];
-
-    // Sources
-    raw_data [label="Raw Data" shape=cylinder style=filled fillcolor="#e3f2fd"];
-    external_api [label="External API" shape=cylinder style=filled fillcolor="#e3f2fd"];
-
-    // Transformations
-    cleaned_data [label="Cleaned Data" shape=box style=filled fillcolor="#fff3e0"];
-    aggregated_data [label="Aggregated Data" shape=box style=filled fillcolor="#fff3e0"];
-    api_processed [label="API Processed" shape=box style=filled fillcolor="#fff3e0"];
-
-    // Tables
-    analytics_table [label="Analytics Table" shape=box3d style=filled fillcolor="#e8f5e9"];
-    data_warehouse [label="Data Warehouse" shape=box3d style=filled fillcolor="#e8f5e9"];
-
-    // Edges
-    raw_data -> cleaned_data;
-    cleaned_data -> aggregated_data;
-    cleaned_data -> data_warehouse;
-    aggregated_data -> analytics_table;
-    external_api -> api_processed;
-    api_processed -> analytics_table;
-}
-```
-
-Convert to image:
-```bash
-dot -Tpng lineage.dot -o lineage.png
-dot -Tsvg lineage.dot -o lineage.svg
-```
-
-### Focused Node with JSON
-
-```bash
-truthound lineage show lineage.json --node analytics_table --direction upstream --format json
-```
-
-Output:
-```json
-{
-  "focus_node": "analytics_table",
-  "direction": "upstream",
-  "upstream_nodes": [
-    {
-      "id": "aggregated_data",
-      "type": "transformation",
-      "level": 1
-    },
-    {
-      "id": "api_processed",
-      "type": "transformation",
-      "level": 1
-    },
-    {
-      "id": "cleaned_data",
-      "type": "transformation",
-      "level": 2
-    },
-    {
-      "id": "external_api",
-      "type": "source",
-      "level": 2
-    },
-    {
-      "id": "raw_data",
-      "type": "source",
-      "level": 3
-    }
-  ],
-  "total_upstream": 5,
-  "max_depth": 3
-}
-```
+See [`lineage visualize`](visualize.md) for more details.
 
 ## Direction Options
 
@@ -283,14 +134,6 @@ Output:
 | `upstream` | Show only data sources (where data comes from) |
 | `downstream` | Show only data consumers (where data goes) |
 | `both` | Show both upstream and downstream (default) |
-
-## Output Formats
-
-| Format | Description | Use Case |
-|--------|-------------|----------|
-| `console` | Human-readable tree view | Interactive exploration |
-| `json` | Machine-readable JSON | Automation, APIs |
-| `dot` | Graphviz DOT format | Static diagrams |
 
 ## Use Cases
 
@@ -301,25 +144,20 @@ Output:
 truthound lineage show lineage.json --node my_table --direction upstream
 ```
 
-### 2. Dependency Documentation
-
-```bash
-# Generate DOT file for documentation
-truthound lineage show lineage.json --format dot > docs/lineage.dot
-```
-
-### 3. CI/CD Integration
-
-```bash
-# Check lineage as JSON for automated processing
-truthound lineage show lineage.json --format json > lineage_report.json
-```
-
-### 4. Debugging Data Issues
+### 2. Debugging Data Issues
 
 ```bash
 # Trace data flow both ways
 truthound lineage show lineage.json --node problematic_table --direction both
+```
+
+### 3. Dependency Documentation
+
+For documentation export, use `lineage visualize`:
+
+```bash
+# Generate DOT file for documentation
+truthound lineage visualize lineage.json -o docs/lineage.dot --renderer graphviz
 ```
 
 ## Exit Codes
@@ -327,8 +165,7 @@ truthound lineage show lineage.json --node problematic_table --direction both
 | Code | Condition |
 |------|-----------|
 | 0 | Success |
-| 1 | Node not found (with --node) |
-| 2 | Invalid file or arguments |
+| 1 | Error (node not found, invalid file, or other error) |
 
 ## Related Commands
 

@@ -46,7 +46,7 @@ Output:
 ```
 Schema saved to schema.yaml
   Columns: 5
-  Rows analyzed: 1000
+  Rows: 1,000
 ```
 
 ### Custom Output Path

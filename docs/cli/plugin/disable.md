@@ -38,8 +38,7 @@ truthound plugin disable my-validator
 
 Output:
 ```
-Disabling plugin: my-validator...
-Plugin 'my-validator' disabled successfully.
+Disabled plugin: my-validator
 ```
 
 ### Verify After Disable
@@ -128,18 +127,7 @@ truthound check data.csv --output without-plugin.json
 
 ## Error Handling
 
-### Plugin Not Active
-
-```bash
-truthound plugin disable my-validator
-```
-
-Output:
-```
-Error: Plugin 'my-validator' is not active.
-```
-
-### Plugin Not Found
+### Plugin Not Found or Error
 
 ```bash
 truthound plugin disable unknown-plugin
@@ -147,7 +135,7 @@ truthound plugin disable unknown-plugin
 
 Output:
 ```
-Error: Plugin 'unknown-plugin' not found.
+Error disabling plugin: Plugin 'unknown-plugin' not found.
 ```
 
 ## Difference from Unload
@@ -164,8 +152,7 @@ Error: Plugin 'unknown-plugin' not found.
 | Code | Condition |
 |------|-----------|
 | 0 | Success |
-| 1 | Plugin not found or not active |
-| 2 | Disable error |
+| 1 | Error (plugin not found, disable failed) |
 
 ## Related Commands
 

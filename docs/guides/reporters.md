@@ -150,7 +150,11 @@ reporter.write(result, "report.json")
 **Configuration**:
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
-| `indent` | int | `2` | JSON indentation level |
+| `indent` | int | `2` | JSON indentation level (None for compact) |
+| `sort_keys` | bool | `False` | Whether to sort dictionary keys |
+| `ensure_ascii` | bool | `False` | Whether to escape non-ASCII characters |
+| `include_null_values` | bool | `True` | Whether to include null/None values |
+| `date_format` | str | `iso` | Date serialization format ("iso" or "timestamp") |
 | `include_metadata` | bool | `True` | Include run metadata |
 | `timestamp_format` | str | `%Y-%m-%d %H:%M:%S` | Timestamp format |
 
@@ -163,13 +167,15 @@ from truthound.reporters import get_reporter
 
 reporter = get_reporter(
     "console",
-    color=True,           # Enable colors
-    verbose=False,        # Detailed output
-    show_passed=False,    # Show passed validators
+    color=True,              # Enable colors
+    show_header=True,        # Show report header
+    show_summary=True,       # Show summary section
+    show_issues_table=True,  # Show issues table
+    compact=False,           # Compact output format
 )
 
 # Print to console
-reporter.report(result)
+reporter.print(result)
 ```
 
 **Output Example**:
@@ -200,9 +206,12 @@ Issues:
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `color` | bool | `True` | Enable colored output |
-| `verbose` | bool | `False` | Show detailed information |
-| `show_passed` | bool | `False` | Include passed validators |
 | `width` | int | `None` | Console width (auto-detect) |
+| `show_header` | bool | `True` | Show the report header |
+| `show_summary` | bool | `True` | Show the summary section |
+| `show_issues_table` | bool | `True` | Show the issues table |
+| `compact` | bool | `False` | Use compact output format |
+| `severity_colors` | dict | `None` | Custom color mapping for severity levels |
 
 ### 3.3 Markdown Reporter
 
@@ -261,8 +270,10 @@ reporter.write(result, "REPORT.md")
 | Option | Type | Default | Description |
 |--------|------|---------|-------------|
 | `title` | str | `Validation Report` | Report title |
-| `include_toc` | bool | `False` | Include table of contents |
+| `include_toc` | bool | `True` | Include table of contents |
 | `include_badges` | bool | `True` | Include status badges |
+| `heading_level` | int | `1` | Starting heading level (1-6) |
+| `table_style` | str | `github` | Table style ("github" or "simple") |
 
 ### 3.4 HTML Reporter
 
@@ -336,21 +347,21 @@ Template context variables:
 All reporters implement the same interface:
 
 ```python
-class BaseReporter(Generic[C], ABC):
+class BaseReporter(Generic[ConfigT, InputT], ABC):
     name: str                   # Reporter name
     file_extension: str         # Default file extension
     content_type: str           # MIME type
 
-    def render(self, data: ValidationResult) -> str:
+    def render(self, data: InputT) -> str:
         """Render result to string."""
         ...
 
-    def write(self, data: ValidationResult, path: str | Path) -> None:
-        """Write result to file."""
+    def write(self, data: InputT, path: str | Path | None = None) -> Path:
+        """Write result to file. Returns the path where the report was written."""
         ...
 
-    def report(self, data: ValidationResult) -> None:
-        """Print to stdout (for console reporter)."""
+    def report(self, data: InputT, path: str | Path | None = None) -> str:
+        """Generate a report, optionally writing to file. Returns rendered string."""
         ...
 ```
 

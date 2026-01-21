@@ -186,7 +186,7 @@ store = get_store(
     prefix="truthound/",              # Key prefix
     namespace="production",
     compression=True,                 # Gzip compression
-    region_name="us-east-1",          # AWS region
+    region="us-east-1",               # AWS region
 )
 store.initialize()
 
@@ -203,7 +203,7 @@ run_id = store.save(result)
 | `prefix` | str | `""` | Key prefix for all objects |
 | `namespace` | str | `default` | Namespace subdirectory |
 | `compression` | bool | `False` | Enable gzip compression |
-| `region_name` | str | None | AWS region |
+| `region` | str | None | AWS region |
 
 **AWS Credentials**:
 The store uses standard boto3 credential resolution:
