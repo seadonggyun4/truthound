@@ -66,6 +66,8 @@ class ApexChartsRenderer(BaseChartRenderer):
         height_style = f"height: {spec.height}px;"
         width_style = f"width: {spec.width}px;" if spec.width else "width: 100%;"
 
+        # JavaScript to resolve CSS variables at runtime
+        # ApexCharts doesn't natively support CSS variables, so we resolve them manually
         return f'''
 <div class="chart-container">
     {f'<h4 class="chart-title">{spec.title}</h4>' if spec.title else ''}
@@ -74,7 +76,33 @@ class ApexChartsRenderer(BaseChartRenderer):
 </div>
 <script>
 (function() {{
+    // Helper to resolve CSS variables
+    function getCSSVar(varName) {{
+        return getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+    }}
+
+    // Resolve CSS variable references in options
+    function resolveVars(obj) {{
+        if (typeof obj === 'string' && obj.startsWith('var(--')) {{
+            var varName = obj.slice(4, -1);
+            return getCSSVar(varName) || obj;
+        }}
+        if (Array.isArray(obj)) {{
+            return obj.map(resolveVars);
+        }}
+        if (obj && typeof obj === 'object') {{
+            var resolved = {{}};
+            for (var key in obj) {{
+                resolved[key] = resolveVars(obj[key]);
+            }}
+            return resolved;
+        }}
+        return obj;
+    }}
+
     var options = {options_json};
+    options = resolveVars(options);
+
     var chart = new ApexCharts(document.querySelector("#{chart_id}"), options);
     chart.render();
 }})();
@@ -85,13 +113,27 @@ class ApexChartsRenderer(BaseChartRenderer):
         """Build ApexCharts options from ChartSpec."""
         chart_type = self._map_chart_type(spec.chart_type)
 
+        # Use CSS variables for theme-aware text colors
+        # These will be resolved at runtime via JavaScript
         options: dict[str, Any] = {
             "chart": {
                 "type": chart_type,
                 "height": spec.height,
-                "toolbar": {"show": True},
+                "toolbar": {
+                    "show": True,
+                    "tools": {
+                        "download": True,
+                        "selection": True,
+                        "zoom": True,
+                        "zoomin": True,
+                        "zoomout": True,
+                        "pan": True,
+                        "reset": True,
+                    },
+                },
                 "animations": {"enabled": spec.animation},
                 "fontFamily": "inherit",
+                "foreColor": "var(--color-text-primary)",  # Main chart text color
             },
             "grid": {
                 "show": spec.show_grid,
@@ -100,12 +142,41 @@ class ApexChartsRenderer(BaseChartRenderer):
             "legend": {
                 "show": spec.show_legend,
                 "position": "bottom",
+                "labels": {
+                    "colors": "var(--color-text-primary)",  # Legend text color
+                },
             },
             "dataLabels": {
                 "enabled": spec.show_labels,
+                "style": {
+                    "colors": ["var(--color-text-primary)"],  # Data label text color
+                },
             },
             "tooltip": {
-                "theme": "light",
+                "theme": "false",  # Disable built-in theme, use custom CSS
+                "style": {
+                    "fontSize": "12px",
+                },
+            },
+            "xaxis": {
+                "labels": {
+                    "style": {
+                        "colors": "var(--color-text-secondary)",  # X-axis label color
+                    },
+                },
+                "axisBorder": {
+                    "color": "var(--color-border)",
+                },
+                "axisTicks": {
+                    "color": "var(--color-border)",
+                },
+            },
+            "yaxis": {
+                "labels": {
+                    "style": {
+                        "colors": "var(--color-text-secondary)",  # Y-axis label color
+                    },
+                },
             },
             "responsive": [{
                 "breakpoint": 600,

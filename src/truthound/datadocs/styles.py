@@ -470,6 +470,39 @@ COMPONENTS_CSS = """
     fill: var(--color-text-secondary);
 }
 
+/* ApexCharts Base Styles (Theme-aware) */
+.apexcharts-tooltip {
+    background-color: var(--color-surface) !important;
+    border: 1px solid var(--color-border) !important;
+    border-radius: var(--border-radius-md) !important;
+    box-shadow: var(--shadow-md) !important;
+}
+
+.apexcharts-tooltip-title {
+    background-color: var(--color-background) !important;
+    border-bottom: 1px solid var(--color-border) !important;
+    padding: var(--spacing-xs) var(--spacing-sm) !important;
+}
+
+.apexcharts-legend-text {
+    color: var(--color-text-primary) !important;
+}
+
+.apexcharts-menu {
+    background-color: var(--color-surface) !important;
+    border: 1px solid var(--color-border) !important;
+    border-radius: var(--border-radius-md) !important;
+    box-shadow: var(--shadow-md) !important;
+}
+
+.apexcharts-menu-item {
+    color: var(--color-text-primary) !important;
+}
+
+.apexcharts-menu-item:hover {
+    background-color: var(--color-background) !important;
+}
+
 /* Alerts */
 .alerts-container {
     display: flex;
@@ -895,6 +928,122 @@ DARK_MODE_OVERRIDES = """
 .alert-warning { background-color: #422006; }
 .alert-error { background-color: #450a0a; }
 .alert-critical { background-color: #2d0a0a; }
+
+/* Dark Mode ApexCharts Overrides */
+.apexcharts-tooltip {
+    background-color: var(--color-surface) !important;
+    border-color: var(--color-border) !important;
+    color: var(--color-text-primary) !important;
+}
+
+.apexcharts-tooltip-title {
+    background-color: var(--color-background) !important;
+    border-color: var(--color-border) !important;
+    color: var(--color-text-primary) !important;
+}
+
+.apexcharts-tooltip-text,
+.apexcharts-tooltip-text-y-label,
+.apexcharts-tooltip-text-y-value,
+.apexcharts-tooltip-text-goals-label,
+.apexcharts-tooltip-text-goals-value {
+    color: var(--color-text-primary) !important;
+}
+
+.apexcharts-xaxistooltip,
+.apexcharts-yaxistooltip {
+    background-color: var(--color-surface) !important;
+    border-color: var(--color-border) !important;
+    color: var(--color-text-primary) !important;
+}
+
+.apexcharts-xaxistooltip-text,
+.apexcharts-yaxistooltip-text {
+    color: var(--color-text-primary) !important;
+}
+
+/* ApexCharts Menu (Download, etc.) */
+.apexcharts-menu {
+    background-color: var(--color-surface) !important;
+    border-color: var(--color-border) !important;
+}
+
+.apexcharts-menu-item {
+    color: var(--color-text-primary) !important;
+}
+
+.apexcharts-menu-item:hover {
+    background-color: var(--color-background) !important;
+}
+
+/* ApexCharts Legend */
+.apexcharts-legend-text {
+    color: var(--color-text-primary) !important;
+}
+
+/* ApexCharts Toolbar Icons */
+.apexcharts-toolbar svg,
+.apexcharts-reset-icon svg,
+.apexcharts-zoom-icon svg,
+.apexcharts-zoomin-icon svg,
+.apexcharts-zoomout-icon svg,
+.apexcharts-pan-icon svg,
+.apexcharts-menu-icon svg,
+.apexcharts-selection-icon svg {
+    fill: var(--color-text-secondary) !important;
+}
+
+.apexcharts-toolbar svg:hover {
+    fill: var(--color-text-primary) !important;
+}
+
+/* ApexCharts Data Labels */
+.apexcharts-datalabel,
+.apexcharts-datalabel-label,
+.apexcharts-datalabel-value,
+.apexcharts-pie-label,
+.apexcharts-donut-label {
+    fill: var(--color-text-primary) !important;
+}
+
+/* ApexCharts Title and Subtitle */
+.apexcharts-title-text {
+    fill: var(--color-text-primary) !important;
+}
+
+.apexcharts-subtitle-text {
+    fill: var(--color-text-secondary) !important;
+}
+
+/* ApexCharts Axis Labels */
+.apexcharts-xaxis text,
+.apexcharts-yaxis text,
+.apexcharts-xaxis-label,
+.apexcharts-yaxis-label {
+    fill: var(--color-text-secondary) !important;
+}
+
+/* ApexCharts Axis Title */
+.apexcharts-xaxis-title text,
+.apexcharts-yaxis-title text {
+    fill: var(--color-text-secondary) !important;
+}
+
+/* ApexCharts Radial Bar (Gauge) Labels */
+.apexcharts-radialbar-track text,
+.apexcharts-radialbar text {
+    fill: var(--color-text-primary) !important;
+}
+
+/* ApexCharts Heatmap Labels */
+.apexcharts-heatmap-rect text {
+    fill: var(--color-text-primary) !important;
+}
+
+/* ApexCharts Annotations */
+.apexcharts-annotation-label {
+    fill: var(--color-text-primary) !important;
+}
 """
 
 
