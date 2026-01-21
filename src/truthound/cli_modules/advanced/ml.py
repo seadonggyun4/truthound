@@ -229,9 +229,29 @@ def drift_cmd(
         }
 
         if method not in detector_map:
+            # Check if user might be looking for statistical methods
+            statistical_methods = ["psi", "ks", "chi2", "js", "auto"]
+            hint = ""
+            if method.lower() in statistical_methods:
+                hint = (
+                    f"\n\nHint: '{method}' is a statistical method available in "
+                    f"'truthound compare' command.\n"
+                    f"  Example: truthound compare {baseline} {current} --method {method}"
+                )
+
+            available_desc = {
+                "distribution": "Per-column statistical drift detection",
+                "feature": "Feature importance-based drift detection",
+                "multivariate": "Multivariate drift detection (PCA/covariance)",
+            }
+            methods_help = "\n".join(
+                f"  - {k}: {v}" for k, v in available_desc.items()
+            )
+
             typer.echo(
-                f"Error: Unknown method '{method}'. "
-                f"Available: {list(detector_map.keys())}",
+                f"Error: Unknown method '{method}'.\n\n"
+                f"Available methods for 'ml drift':\n{methods_help}"
+                f"{hint}",
                 err=True,
             )
             raise typer.Exit(1)

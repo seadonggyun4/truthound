@@ -15,15 +15,57 @@ import typer
 from truthound.cli_modules.common.errors import error_boundary, require_file
 
 
+def _read_json_auto(path: Path):
+    """Read JSON file, auto-detecting format (JSON Array or NDJSON).
+
+    JSON Array format: [{}, {}, {}]
+    NDJSON format: {}\n{}\n{}
+
+    If JSON Array is detected, converts to NDJSON in a temp file.
+    """
+    import tempfile
+
+    import polars as pl
+
+    with open(path, "r", encoding="utf-8") as f:
+        first_char = f.read(1).strip()
+        # Skip whitespace to find first meaningful character
+        while first_char and first_char in " \t\n\r":
+            first_char = f.read(1)
+
+    if first_char == "[":
+        # JSON Array format - convert to NDJSON
+        import json
+
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+
+        # Write as NDJSON to temp file
+        with tempfile.NamedTemporaryFile(
+            mode="w", suffix=".ndjson", delete=False, encoding="utf-8"
+        ) as tmp:
+            for record in data:
+                tmp.write(json.dumps(record, ensure_ascii=False) + "\n")
+            tmp_path = tmp.name
+
+        return pl.scan_ndjson(tmp_path)
+    else:
+        # NDJSON format - read directly
+        return pl.scan_ndjson(path)
+
+
 def _read_file_as_lazy(path: Path):
     """Read a file as a Polars LazyFrame."""
     import polars as pl
 
     suffix = path.suffix.lower()
+
+    if suffix == ".json":
+        return _read_json_auto(path)
+
     readers = {
         ".parquet": pl.scan_parquet,
         ".csv": pl.scan_csv,
-        ".json": pl.scan_ndjson,
         ".ndjson": pl.scan_ndjson,
         ".jsonl": pl.scan_ndjson,
     }
@@ -31,7 +73,7 @@ def _read_file_as_lazy(path: Path):
     if suffix not in readers:
         raise ValueError(
             f"Unsupported file type: {suffix}. "
-            f"Supported: {list(readers.keys())}"
+            f"Supported: {['.json'] + list(readers.keys())}"
         )
 
     return readers[suffix](path)

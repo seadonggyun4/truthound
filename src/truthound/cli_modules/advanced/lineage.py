@@ -189,7 +189,7 @@ def visualize_cmd(
         truthound lineage visualize lineage.json -o graph.svg --renderer graphviz
     """
     from truthound.lineage import LineageGraph
-    from truthound.lineage.visualization import get_renderer
+    from truthound.lineage.visualization import get_renderer, RenderConfig
 
     require_file(lineage_file, "Lineage file")
 
@@ -199,7 +199,17 @@ def visualize_cmd(
         typer.echo(f"Generating {renderer} visualization...")
 
         renderer_instance = get_renderer(renderer, theme=theme)
-        content = renderer_instance.render(graph, focus_node=focus)
+
+        # Use subgraph rendering if focus node is specified
+        if focus:
+            if not graph.has_node(focus):
+                typer.echo(f"Error: Focus node '{focus}' not found in graph", err=True)
+                raise typer.Exit(1)
+            content = renderer_instance.render_subgraph(
+                graph, focus, direction="both", max_depth=-1
+            )
+        else:
+            content = renderer_instance.render(graph)
 
         output.write_text(content, encoding="utf-8")
         typer.echo(f"Visualization saved to: {output}")

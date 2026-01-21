@@ -13,10 +13,23 @@ import typer
 
 from truthound.cli_modules.common.errors import error_boundary
 
+# Known benchmark names for better error messages
+_KNOWN_BENCHMARKS = {"profile", "check", "scan", "compare", "learn", "throughput"}
+
+
 # Benchmark app for subcommands
 app = typer.Typer(
     name="benchmark",
-    help="Performance benchmarking commands",
+    help="""Performance benchmarking commands.
+
+Subcommands: run, list, compare
+
+Quick start:
+  truthound benchmark run --suite quick      # Run quick benchmark suite
+  truthound benchmark run profile            # Run single 'profile' benchmark
+  truthound benchmark list                   # List available benchmarks
+  truthound benchmark compare a.json b.json  # Compare results
+""",
 )
 
 
@@ -304,6 +317,17 @@ def compare_cmd(
     require_file(baseline, "Baseline file")
     require_file(current, "Current file")
 
+    # Check file extensions and warn if not JSON
+    for file_path, name in [(baseline, "baseline"), (current, "current")]:
+        if file_path.suffix.lower() not in (".json",):
+            typer.echo(
+                f"Warning: {name} file '{file_path}' does not have .json extension.\n"
+                f"This command compares benchmark result JSON files, not data files.\n\n"
+                f"Did you mean to run a benchmark first?\n"
+                f"  truthound benchmark run --suite ci -o {name}.json\n",
+                err=True,
+            )
+
     try:
         baseline_data = json.loads(baseline.read_text())
         current_data = json.loads(current.read_text())
@@ -359,6 +383,18 @@ def compare_cmd(
 
     except typer.Exit:
         raise
+    except json.JSONDecodeError as e:
+        typer.echo(
+            f"Error: Failed to parse JSON - {e}\n\n"
+            f"Both baseline and current must be JSON files from 'benchmark run'.\n"
+            f"Example workflow:\n"
+            f"  1. truthound benchmark run --suite ci -o baseline.json\n"
+            f"  2. (make changes)\n"
+            f"  3. truthound benchmark run --suite ci -o current.json\n"
+            f"  4. truthound benchmark compare baseline.json current.json",
+            err=True,
+        )
+        raise typer.Exit(1)
     except Exception as e:
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(1)

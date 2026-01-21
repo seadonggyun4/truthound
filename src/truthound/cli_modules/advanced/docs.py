@@ -21,6 +21,10 @@ app = typer.Typer(
 )
 
 
+# Known data file extensions that are NOT profile JSON
+_DATA_FILE_EXTENSIONS = {".csv", ".parquet", ".pq", ".xlsx", ".xls", ".feather", ".arrow"}
+
+
 @app.command(name="generate")
 @error_boundary
 def generate_cmd(
@@ -66,6 +70,20 @@ def generate_cmd(
     """
     require_file(profile_file, "Profile file")
 
+    # Check if user passed a data file instead of profile JSON
+    if profile_file.suffix.lower() in _DATA_FILE_EXTENSIONS:
+        typer.echo(
+            f"Error: '{profile_file}' appears to be a data file, not a profile JSON.\n\n"
+            f"This command requires a profile JSON file from 'auto-profile'.\n\n"
+            f"To generate a report from your data:\n"
+            f"  1. First, create a profile:\n"
+            f"     truthound auto-profile {profile_file} -o profile.json\n\n"
+            f"  2. Then, generate the report:\n"
+            f"     truthound docs generate profile.json -o report.html",
+            err=True,
+        )
+        raise typer.Exit(1)
+
     # Default output path
     if not output:
         output = profile_file.with_suffix(f".{format}")
@@ -78,7 +96,22 @@ def generate_cmd(
 
         # Load profile
         with open(profile_file, "r", encoding="utf-8") as f:
-            profile = json.load(f)
+            try:
+                profile = json.load(f)
+            except json.JSONDecodeError as e:
+                # Check if file extension suggests it might be a data file
+                typer.echo(
+                    f"Error: Failed to parse '{profile_file}' as JSON.\n\n"
+                    f"This command requires a profile JSON file from 'auto-profile'.\n"
+                    f"JSON parse error: {e}\n\n"
+                    f"If you want to generate a report from a data file:\n"
+                    f"  1. First, create a profile:\n"
+                    f"     truthound auto-profile <your-data-file> -o profile.json\n\n"
+                    f"  2. Then, generate the report:\n"
+                    f"     truthound docs generate profile.json -o report.html",
+                    err=True,
+                )
+                raise typer.Exit(1)
 
         typer.echo(f"Generating {format.upper()} report...")
         typer.echo(f"  Profile: {profile_file}")
