@@ -97,7 +97,7 @@ BUILTIN_PATTERNS: tuple[PatternDefinition, ...] = (
     ),
     PatternDefinition(
         "phone",
-        r"^\+?[1-9]\d{1,14}$",
+        r"^\+?[1-9]\d{6,14}$",  # E.164: min 7 digits total (country + subscriber)
         DataType.PHONE,
         priority=60,
     ),
@@ -106,6 +106,31 @@ BUILTIN_PATTERNS: tuple[PatternDefinition, ...] = (
         r'^[\[\{].*[\]\}]$',
         DataType.JSON,
         priority=50,
+    ),
+    # Numeric string patterns (lower priority - fallback detection)
+    PatternDefinition(
+        "currency_string",
+        r"^-?\d{1,3}(,\d{3})+(\.\d{2})?$",  # 1,234.56 (requires comma separator)
+        DataType.CURRENCY,
+        priority=45,
+    ),
+    PatternDefinition(
+        "percentage_string",
+        r"^-?\d+(\.\d+)?%$",  # 85.5% or 100%
+        DataType.PERCENTAGE,
+        priority=45,
+    ),
+    PatternDefinition(
+        "float_string",
+        r"^-?\d+\.\d+$",  # 69000.00, -15.3 (decimal numbers)
+        DataType.FLOAT,
+        priority=40,
+    ),
+    PatternDefinition(
+        "integer_string",
+        r"^-?\d{3,}$",  # 123, -456 (min 3 digits to avoid age confusion)
+        DataType.INTEGER,
+        priority=35,
     ),
 )
 

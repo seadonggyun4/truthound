@@ -333,7 +333,7 @@ def _create_builtin_patterns() -> PatternRegistry:
     # Phone (international format)
     registry.register(
         PatternBuilder("phone_international")
-        .regex(r"\+?[1-9]\d{1,14}")
+        .regex(r"\+?[1-9]\d{6,14}")  # E.164: min 7 digits total
         .data_type(DataType.PHONE)
         .priority(PatternPriority.LOW)
         .description("International phone number (E.164)")
@@ -382,6 +382,47 @@ def _create_builtin_patterns() -> PatternRegistry:
         .priority(PatternPriority.LOWEST)
         .description("JSON object or array")
         .examples('{"key": "value"}', '[1, 2, 3]')
+        .build()
+    )
+
+    # Numeric string patterns (lowest priority - fallback detection)
+    registry.register(
+        PatternBuilder("currency_string")
+        .regex(r"-?\d{1,3}(,\d{3})+(\.\d{2})?")
+        .data_type(DataType.CURRENCY)
+        .priority(PatternPriority.LOWEST)
+        .description("Currency format with thousands separator")
+        .examples("1,234.56", "1,000,000.00", "-500,000.00")
+        .build()
+    )
+
+    registry.register(
+        PatternBuilder("percentage_string")
+        .regex(r"-?\d+(\.\d+)?%")
+        .data_type(DataType.PERCENTAGE)
+        .priority(PatternPriority.LOWEST)
+        .description("Percentage format")
+        .examples("85.5%", "100%", "-10%")
+        .build()
+    )
+
+    registry.register(
+        PatternBuilder("float_string")
+        .regex(r"-?\d+\.\d+")
+        .data_type(DataType.FLOAT)
+        .priority(PatternPriority.LOWEST)
+        .description("Decimal number as string")
+        .examples("69000.00", "-15.3", "3.14159")
+        .build()
+    )
+
+    registry.register(
+        PatternBuilder("integer_string")
+        .regex(r"-?\d{3,}")
+        .data_type(DataType.INTEGER)
+        .priority(PatternPriority.LOWEST)
+        .description("Integer as string (3+ digits)")
+        .examples("123", "-456", "1000")
         .build()
     )
 
