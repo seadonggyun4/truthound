@@ -617,6 +617,17 @@ class Checkpoint:
                             f"but it's not in validators list"
                         )
 
+        # Validate regex validator requires pattern parameter
+        if self._config.validators:
+            for v in self._config.validators:
+                if isinstance(v, str) and v.lower() == "regex":
+                    regex_config = (self._config.validator_config or {}).get("regex", {})
+                    if not regex_config.get("pattern"):
+                        errors.append(
+                            "RegexValidator requires 'pattern' parameter. "
+                            "Add to validator_config: regex: {pattern: '^your-pattern$'}"
+                        )
+
         # Validate min_severity
         valid_severities = {"low", "medium", "high", "critical"}
         if self._config.min_severity:

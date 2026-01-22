@@ -218,10 +218,12 @@ class CheckpointRegistry:
             cp_config.pop("actions", None)
             cp_config.pop("triggers", None)
 
+            # Get valid field names from CheckpointConfig dataclass
+            valid_fields = set(CheckpointConfig.__dataclass_fields__.keys())
             checkpoint = Checkpoint(
                 config=CheckpointConfig(**{
                     k: v for k, v in cp_config.items()
-                    if hasattr(CheckpointConfig, k) or k == "name"
+                    if k in valid_fields
                 }),
                 actions=actions,
                 triggers=triggers,
