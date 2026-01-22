@@ -57,6 +57,9 @@ truthound plugins info my-plugin
 # Load plugin
 truthound plugins load my-plugin
 
+# Unload plugin
+truthound plugins unload my-plugin
+
 # Enable/disable plugin
 truthound plugins enable my-plugin
 truthound plugins disable my-plugin
@@ -64,6 +67,26 @@ truthound plugins disable my-plugin
 # Create new plugin template
 truthound plugins create my-new-plugin --type validator
 ```
+
+#### CLI Command Behavior
+
+| Command | Description | Prerequisites |
+|---------|-------------|---------------|
+| `list` | Shows all discovered plugins | None |
+| `info` | Displays plugin metadata | None |
+| `load` | Loads and optionally activates a plugin | Plugin must be discovered |
+| `unload` | Unloads a loaded plugin | Plugin must be loaded |
+| `enable` | Enables a plugin (loads if necessary) | Plugin must be discovered |
+| `disable` | Disables a plugin (loads if necessary) | Plugin must be discovered |
+
+**Important Notes:**
+
+- The `unload` command only works on plugins that are currently loaded. Attempting to unload a plugin that has not been loaded will result in an error:
+  ```
+  Plugin 'my-plugin' is not loaded.
+  ```
+- The `enable` and `disable` commands will automatically load the plugin if it is not already loaded.
+- Each CLI invocation creates a new plugin manager instance, so plugin state is not persisted between commands unless explicitly saved.
 
 ## Plugin Types
 

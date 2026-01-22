@@ -512,6 +512,58 @@ print(f"Email pattern match: {results['email'].match_ratio:.2%}")
 truthound auto-profile large_file.csv --streaming --chunk-size 100000
 ```
 
+### Built-in Patterns
+
+The profiler includes built-in patterns for automatic semantic type inference. Patterns are evaluated in priority order, with higher priority patterns matched first.
+
+#### Semantic Type Patterns
+
+| Pattern | Regex | Inferred Type | Priority | Examples |
+|---------|-------|---------------|----------|----------|
+| `korean_rrn` | `^\d{6}-[1-4]\d{6}$` | KOREAN_RRN | 100 | "900101-1234567" |
+| `korean_phone` | `^01[0-9]-\d{3,4}-\d{4}$` | KOREAN_PHONE | 100 | "010-1234-5678" |
+| `korean_business_number` | `^\d{3}-\d{2}-\d{5}$` | KOREAN_BUSINESS_NUMBER | 100 | "123-45-67890" |
+| `uuid` | `^[0-9a-fA-F]{8}-...$` | UUID | 90 | "550e8400-e29b-41d4-a716-446655440000" |
+| `email` | `^[a-zA-Z0-9._%+-]+@...$` | EMAIL | 80 | "user@example.com" |
+| `url` | `^https?://[^\s/$.?#].[^\s]*$` | URL | 80 | "https://example.com" |
+| `ip_address` | `^(?:(?:25[0-5]|...)\.){3}...$` | IP_ADDRESS | 70 | "192.168.1.1" |
+| `phone` | `^\+?[1-9]\d{6,14}$` | PHONE | 60 | "+14155551234" |
+| `json` | `^[\[\{].*[\]\}]$` | JSON | 50 | `{"key": "value"}` |
+
+#### Numeric String Patterns
+
+For string columns containing numeric data, the following patterns enable semantic type inference:
+
+| Pattern | Regex | Inferred Type | Priority | Examples |
+|---------|-------|---------------|----------|----------|
+| `currency_string` | `^-?\d{1,3}(,\d{3})+(\.\d{2})?$` | CURRENCY | 45 | "1,234.56", "1,000,000.00" |
+| `percentage_string` | `^-?\d+(\.\d+)?%$` | PERCENTAGE | 45 | "85.5%", "100%" |
+| `float_string` | `^-?\d+\.\d+$` | FLOAT | 40 | "69000.00", "-15.3" |
+| `integer_string` | `^-?\d{3,}$` | INTEGER | 35 | "123", "1234" |
+
+**Design Notes:**
+
+- **`currency_string`**: Requires thousands separator (comma) to distinguish from plain numbers
+- **`integer_string`**: Requires minimum 3 digits to avoid false positives with age values (e.g., "29", "42")
+- **`phone`**: Requires minimum 7 digits total per E.164 international standard to prevent matching short numeric strings
+
+#### Custom Pattern Registration
+
+```python
+from truthound.profiler import PatternDefinition, DataType
+
+# Define custom pattern
+custom_pattern = PatternDefinition(
+    name="product_code",
+    regex=r"^[A-Z]{3}-\d{4}$",
+    data_type=DataType.IDENTIFIER,
+    priority=75,
+)
+
+# Add to profiler
+profiler.add_pattern(custom_pattern)
+```
+
 ---
 
 ## Rule Generation
