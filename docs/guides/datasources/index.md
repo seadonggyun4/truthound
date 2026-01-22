@@ -820,10 +820,14 @@ async with source:
 
 **MongoDB Atlas**:
 ```python
+import os
 from truthound.datasources import from_atlas
 
+# Set MONGODB_ATLAS_URI environment variable with your connection string
+# export MONGODB_ATLAS_URI="mongodb+srv://<username>:<password>@<cluster>.mongodb.net"
+
 source = await from_atlas(
-    connection_string="mongodb+srv://user:pass@cluster.mongodb.net",
+    connection_string=os.environ["MONGODB_ATLAS_URI"],
     database="mydb",
     collection="users",
 )
