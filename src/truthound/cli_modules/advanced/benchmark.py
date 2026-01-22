@@ -332,13 +332,6 @@ def compare_cmd(
         baseline_data = json.loads(baseline.read_text())
         current_data = json.loads(current.read_text())
 
-        typer.echo("\nBenchmark Comparison")
-        typer.echo("=" * 60)
-        typer.echo(f"Baseline: {baseline}")
-        typer.echo(f"Current:  {current}")
-        typer.echo(f"Threshold: {threshold}%")
-        typer.echo("-" * 60)
-
         baseline_results = {
             r["benchmark_name"]: r for r in baseline_data.get("results", [])
         }
@@ -363,20 +356,56 @@ def compare_cmd(
                 elif pct_change < -threshold:
                     improvements.append((name, base_duration, curr_duration, pct_change))
 
-        if regressions:
-            typer.echo("\nREGRESSIONS:")
-            for name, base_d, curr_d, pct in regressions:
-                typer.echo(f"  {name}: {base_d:.3f}s -> {curr_d:.3f}s ({pct:+.1f}%)")
+        # Output based on format
+        if format == "json":
+            output_data = {
+                "baseline_file": str(baseline),
+                "current_file": str(current),
+                "threshold_percent": threshold,
+                "regressions": [
+                    {
+                        "name": name,
+                        "baseline_seconds": base_d,
+                        "current_seconds": curr_d,
+                        "change_percent": pct,
+                    }
+                    for name, base_d, curr_d, pct in regressions
+                ],
+                "improvements": [
+                    {
+                        "name": name,
+                        "baseline_seconds": base_d,
+                        "current_seconds": curr_d,
+                        "change_percent": pct,
+                    }
+                    for name, base_d, curr_d, pct in improvements
+                ],
+                "has_regressions": len(regressions) > 0,
+            }
+            typer.echo(json.dumps(output_data, indent=2))
+        else:
+            # Console format
+            typer.echo("\nBenchmark Comparison")
+            typer.echo("=" * 60)
+            typer.echo(f"Baseline: {baseline}")
+            typer.echo(f"Current:  {current}")
+            typer.echo(f"Threshold: {threshold}%")
+            typer.echo("-" * 60)
 
-        if improvements:
-            typer.echo("\nIMPROVEMENTS:")
-            for name, base_d, curr_d, pct in improvements:
-                typer.echo(f"  {name}: {base_d:.3f}s -> {curr_d:.3f}s ({pct:+.1f}%)")
+            if regressions:
+                typer.echo("\nREGRESSIONS:")
+                for name, base_d, curr_d, pct in regressions:
+                    typer.echo(f"  {name}: {base_d:.3f}s -> {curr_d:.3f}s ({pct:+.1f}%)")
 
-        if not regressions and not improvements:
-            typer.echo("\nNo significant changes detected.")
+            if improvements:
+                typer.echo("\nIMPROVEMENTS:")
+                for name, base_d, curr_d, pct in improvements:
+                    typer.echo(f"  {name}: {base_d:.3f}s -> {curr_d:.3f}s ({pct:+.1f}%)")
 
-        typer.echo("")
+            if not regressions and not improvements:
+                typer.echo("\nNo significant changes detected.")
+
+            typer.echo("")
 
         if regressions:
             raise typer.Exit(1)
