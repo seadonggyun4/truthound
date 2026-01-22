@@ -295,6 +295,12 @@ def unload_plugin(
 ) -> None:
     """Unload a loaded plugin."""
     manager = get_plugin_manager()
+    manager.discover_plugins()
+
+    # Load the plugin first if only discovered (not loaded)
+    if not manager.is_plugin_loaded(name):
+        typer.echo(f"Plugin '{name}' is not loaded.", err=True)
+        raise typer.Exit(1)
 
     try:
         manager.unload_plugin(name)
@@ -330,6 +336,11 @@ def disable_plugin(
 ) -> None:
     """Disable a plugin."""
     manager = get_plugin_manager()
+    manager.discover_plugins()
+
+    # Load if not loaded
+    if not manager.is_plugin_loaded(name):
+        manager.load_plugin(name)
 
     try:
         manager.disable_plugin(name)
