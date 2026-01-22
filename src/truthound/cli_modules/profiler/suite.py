@@ -14,6 +14,33 @@ import typer
 from truthound.cli_modules.common.errors import error_boundary, require_file
 from truthound.cli_modules.common.options import parse_list_callback
 
+# Valid rule categories (must match RuleCategory enum in generators/base.py)
+VALID_CATEGORIES = [
+    "schema",
+    "completeness",
+    "uniqueness",
+    "format",
+    "distribution",
+    "pattern",
+    "temporal",
+    "relationship",
+    "anomaly",
+]
+
+CATEGORIES_HELP = f"Categories: {', '.join(VALID_CATEGORIES)}"
+
+
+def _validate_categories(categories: list[str] | None, option_name: str) -> None:
+    """Validate that all categories are valid."""
+    if not categories:
+        return
+    invalid = [c for c in categories if c not in VALID_CATEGORIES]
+    if invalid:
+        raise ValueError(
+            f"Invalid {option_name}: {', '.join(invalid)}. "
+            f"Valid categories: {', '.join(VALID_CATEGORIES)}"
+        )
+
 
 @error_boundary
 def generate_suite_cmd(
@@ -39,11 +66,19 @@ def generate_suite_cmd(
     ] = "medium",
     include: Annotated[
         Optional[list[str]],
-        typer.Option("--include", "-i", help="Include only these categories"),
+        typer.Option(
+            "--include",
+            "-i",
+            help=f"Include only these categories. {CATEGORIES_HELP}",
+        ),
     ] = None,
     exclude: Annotated[
         Optional[list[str]],
-        typer.Option("--exclude", "-e", help="Exclude these categories"),
+        typer.Option(
+            "--exclude",
+            "-e",
+            help=f"Exclude these categories. {CATEGORIES_HELP}",
+        ),
     ] = None,
     min_confidence: Annotated[
         Optional[str],
@@ -127,9 +162,16 @@ def generate_suite_cmd(
                 )
                 raise typer.Exit(1)
 
-        # Parse categories
+        # Parse and validate categories
         include_cats = parse_list_callback(include) if include else None
         exclude_cats = parse_list_callback(exclude) if exclude else None
+
+        try:
+            _validate_categories(include_cats, "--include categories")
+            _validate_categories(exclude_cats, "--exclude categories")
+        except ValueError as e:
+            typer.echo(f"Error: {e}", err=True)
+            raise typer.Exit(1)
 
         # Run generation using the handler
         exit_code = run_generate_suite(
@@ -179,11 +221,19 @@ def quick_suite_cmd(
     ] = "medium",
     include: Annotated[
         Optional[list[str]],
-        typer.Option("--include", "-i", help="Include only these categories"),
+        typer.Option(
+            "--include",
+            "-i",
+            help=f"Include only these categories. {CATEGORIES_HELP}",
+        ),
     ] = None,
     exclude: Annotated[
         Optional[list[str]],
-        typer.Option("--exclude", "-e", help="Exclude these categories"),
+        typer.Option(
+            "--exclude",
+            "-e",
+            help=f"Exclude these categories. {CATEGORIES_HELP}",
+        ),
     ] = None,
     min_confidence: Annotated[
         Optional[str],
@@ -253,9 +303,16 @@ def quick_suite_cmd(
                 )
                 raise typer.Exit(1)
 
-        # Parse categories
+        # Parse and validate categories
         include_cats = parse_list_callback(include) if include else None
         exclude_cats = parse_list_callback(exclude) if exclude else None
+
+        try:
+            _validate_categories(include_cats, "--include categories")
+            _validate_categories(exclude_cats, "--exclude categories")
+        except ValueError as e:
+            typer.echo(f"Error: {e}", err=True)
+            raise typer.Exit(1)
 
         # Run quick suite using the handler
         exit_code = run_quick_suite(
