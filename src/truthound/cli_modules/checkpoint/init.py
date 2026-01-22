@@ -21,18 +21,8 @@ SAMPLE_CONFIG = {
         {
             "name": "daily_data_validation",
             "data_source": "data/production.csv",
-            "validators": ["null", "duplicate", "range", "regex"],
+            "validators": ["null", "duplicate", "range"],
             "validator_config": {
-                "regex": {
-                    "patterns": {
-                        # Email validation pattern
-                        "email": r"^[\w.+-]+@[\w-]+\.[\w.-]+$",
-                        # Product code pattern (e.g., PROD-001, SKU_12345)
-                        "product_code": r"^[A-Z]{2,4}[-_][0-9]{3,6}$",
-                        # Phone number pattern (optional country code)
-                        "phone": r"^(\+\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}$",
-                    }
-                },
                 "range": {
                     # Column-specific range constraints
                     "columns": {
@@ -41,6 +31,8 @@ SAMPLE_CONFIG = {
                     }
                 },
             },
+            # Note: For regex validation, use th.check() with RegexValidator directly:
+            #   RegexValidator(pattern=r"^[\w.+-]+@[\w-]+\.[\w.-]+$", columns=["email"])
             "min_severity": "medium",
             "auto_schema": True,
             "tags": {
