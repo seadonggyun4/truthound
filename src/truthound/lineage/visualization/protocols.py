@@ -86,12 +86,24 @@ class RenderConfig:
     })
 
     def get_node_color(self, node_type: str) -> str:
-        """Get color for node type."""
-        return self.node_colors.get(node_type) or self.DEFAULT_NODE_COLORS.get(node_type, "#9E9E9E")
+        """Get color for node type (case-insensitive)."""
+        # Try exact match first, then uppercase (enum values are lowercase, keys are uppercase)
+        upper_type = node_type.upper()
+        return (
+            self.node_colors.get(node_type)
+            or self.node_colors.get(upper_type)
+            or self.DEFAULT_NODE_COLORS.get(upper_type, "#9E9E9E")
+        )
 
     def get_edge_color(self, edge_type: str) -> str:
-        """Get color for edge type."""
-        return self.edge_colors.get(edge_type) or self.DEFAULT_EDGE_COLORS.get(edge_type, "#9E9E9E")
+        """Get color for edge type (case-insensitive)."""
+        # Try exact match first, then uppercase (enum values are lowercase, keys are uppercase)
+        upper_type = edge_type.upper()
+        return (
+            self.edge_colors.get(edge_type)
+            or self.edge_colors.get(upper_type)
+            or self.DEFAULT_EDGE_COLORS.get(upper_type, "#9E9E9E")
+        )
 
 
 @runtime_checkable
