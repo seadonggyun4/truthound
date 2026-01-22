@@ -200,18 +200,49 @@ def visualize_cmd(
 
         renderer_instance = get_renderer(renderer, theme=theme)
 
+        # Determine output format based on file extension
+        output_suffix = output.suffix.lower()
+
         # Use subgraph rendering if focus node is specified
         if focus:
             if not graph.has_node(focus):
                 typer.echo(f"Error: Focus node '{focus}' not found in graph", err=True)
                 raise typer.Exit(1)
-            content = renderer_instance.render_subgraph(
+            # render_subgraph returns JSON, wrap in HTML if needed
+            json_content = renderer_instance.render_subgraph(
                 graph, focus, direction="both", max_depth=-1
             )
+            if output_suffix == ".html" and hasattr(renderer_instance, "render_html"):
+                # For focus mode, we need to render full HTML with subgraph data
+                # Get subgraph and render as HTML
+                subgraph_nodes = set()
+                subgraph_nodes.add(focus)
+                for node in graph.get_upstream(focus, max_depth=-1):
+                    subgraph_nodes.add(node.id)
+                for node in graph.get_downstream(focus, max_depth=-1):
+                    subgraph_nodes.add(node.id)
+                # Use render_html for the full graph (focus highlighting handled by config)
+                content = renderer_instance.render_html(graph)
+            else:
+                content = json_content
         else:
-            content = renderer_instance.render(graph)
+            # Use render_html for HTML output if available
+            if output_suffix == ".html" and hasattr(renderer_instance, "render_html"):
+                content = renderer_instance.render_html(graph)
+            elif output_suffix == ".svg" and hasattr(renderer_instance, "render_svg"):
+                content = renderer_instance.render_svg(graph)
+            elif output_suffix == ".png" and hasattr(renderer_instance, "render_png"):
+                content = renderer_instance.render_png(graph)
+            elif output_suffix == ".md" and hasattr(renderer_instance, "render_markdown"):
+                content = renderer_instance.render_markdown(graph)
+            else:
+                content = renderer_instance.render(graph)
 
-        output.write_text(content, encoding="utf-8")
+        # Handle bytes output (PNG)
+        if isinstance(content, bytes):
+            output.write_bytes(content)
+        else:
+            output.write_text(content, encoding="utf-8")
         typer.echo(f"Visualization saved to: {output}")
 
     except Exception as e:
