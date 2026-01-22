@@ -570,22 +570,31 @@ class ColumnProfiler:
         self.config = config or ProfilerConfig()
 
         # Default analyzers
-        self.analyzers = list(analyzers) if analyzers else [
-            BasicStatsAnalyzer(),
-            NumericAnalyzer(),
-            StringAnalyzer(),
-            DatetimeAnalyzer(),
-            ValueFrequencyAnalyzer(),
-            PatternAnalyzer(),
-        ]
+        if analyzers:
+            self.analyzers = list(analyzers)
+        else:
+            self.analyzers = [
+                BasicStatsAnalyzer(),
+                NumericAnalyzer(),
+                StringAnalyzer(),
+                DatetimeAnalyzer(),
+                ValueFrequencyAnalyzer(),
+            ]
+            # Only add PatternAnalyzer if include_patterns is True
+            if self.config.include_patterns:
+                self.analyzers.append(PatternAnalyzer())
 
         # Default type inferrers (sorted by priority, highest first)
-        default_inferrers = [
-            PatternBasedTypeInferrer(),
-            CardinalityTypeInferrer(),
-            PhysicalTypeInferrer(),
-        ]
-        self.type_inferrers = list(type_inferrers) if type_inferrers else default_inferrers
+        if type_inferrers:
+            self.type_inferrers = list(type_inferrers)
+        else:
+            self.type_inferrers = [
+                CardinalityTypeInferrer(),
+                PhysicalTypeInferrer(),
+            ]
+            # Only add PatternBasedTypeInferrer if include_patterns is True
+            if self.config.include_patterns:
+                self.type_inferrers.append(PatternBasedTypeInferrer())
         self.type_inferrers.sort(key=lambda x: -x.priority)
 
     def add_analyzer(self, analyzer: ColumnAnalyzer) -> None:
