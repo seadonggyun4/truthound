@@ -207,17 +207,9 @@ truthound lineage visualize lineage.json -o focused.html --renderer d3 --theme d
 
 ## Theme Options
 
-### Light Theme
-- White background
-- Dark text and edges
-- Colored nodes by type
-- Best for: Presentations, printing
-
-### Dark Theme
-- Dark background (#1e1e1e)
-- Light text and edges
-- Bright colored nodes
-- Best for: Dark mode UIs, screen viewing
+!!! note "Theme Support"
+    The `--theme` option is reserved for future use. Currently, all renderers use a single color scheme.
+    Custom colors can be configured programmatically via `RenderConfig`.
 
 ## Output Formats by Renderer
 
@@ -286,18 +278,31 @@ truthound lineage visualize lineage.json -o lineage.md --renderer mermaid
 
 ### Node Colors (by type)
 
-| Type | Light Theme | Dark Theme |
-|------|-------------|------------|
-| source | Blue (#e3f2fd) | Blue (#1565c0) |
-| table | Green (#e8f5e9) | Green (#2e7d32) |
-| file | Cyan (#e0f7fa) | Cyan (#00838f) |
-| stream | Teal (#e0f2f1) | Teal (#00695c) |
-| transformation | Orange (#fff3e0) | Orange (#ef6c00) |
-| validation | Light Green (#f1f8e9) | Light Green (#558b2f) |
-| model | Purple (#f3e5f5) | Purple (#7b1fa2) |
-| report | Yellow (#fffde7) | Yellow (#f9a825) |
-| external | Red (#ffebee) | Red (#c62828) |
-| virtual | Grey (#fafafa) | Grey (#616161) |
+| Type | Color | Hex Code |
+|------|-------|----------|
+| source | Green | `#4CAF50` |
+| table | Blue | `#2196F3` |
+| file | Purple | `#9C27B0` |
+| stream | Orange | `#FF9800` |
+| transformation | Blue Grey | `#607D8B` |
+| validation | Pink | `#E91E63` |
+| model | Cyan | `#00BCD4` |
+| report | Brown | `#795548` |
+| external | Grey | `#9E9E9E` |
+| virtual | Lime | `#CDDC39` |
+
+### Edge Colors (by type)
+
+| Type | Color | Hex Code |
+|------|-------|----------|
+| derived_from | Blue | `#2196F3` |
+| validated_by | Pink | `#E91E63` |
+| used_by | Green | `#4CAF50` |
+| transformed_to | Orange | `#FF9800` |
+| joined_with | Purple | `#9C27B0` |
+| aggregated_to | Cyan | `#00BCD4` |
+| filtered_to | Blue Grey | `#607D8B` |
+| depends_on | Brown | `#795548` |
 
 ### Edge Styles
 
@@ -352,15 +357,20 @@ graph = LineageGraph.load("lineage.json")
 
 # Option 1: Use factory function (recommended)
 renderer = get_renderer("d3", theme="dark")
-html = renderer.render(graph)
 
-# Option 2: Create renderer directly
+# render() returns JSON data for D3.js
+json_data = renderer.render(graph)
+
+# render_html() returns complete interactive HTML page
+html = renderer.render_html(graph)
+
+# Option 2: Create renderer directly with config
 renderer = D3Renderer()
 config = RenderConfig(highlight_nodes=["my_node"])
-html = renderer.render(graph, config)
+html = renderer.render_html(graph, config)
 
-# Render subgraph focused on a specific node
-html = renderer.render_subgraph(
+# Render subgraph focused on a specific node (returns JSON)
+json_subgraph = renderer.render_subgraph(
     graph,
     root_node_id="my_table",
     direction="both",  # "upstream" or "downstream"
