@@ -1,11 +1,11 @@
-# truthound plugin list
+# truthound plugins list
 
 List all discovered plugins.
 
 ## Synopsis
 
 ```bash
-truthound plugin list [OPTIONS]
+truthound plugins list [OPTIONS]
 ```
 
 ## Options
@@ -53,7 +53,7 @@ The `plugin list` command displays all discovered plugins:
 ### List All Plugins
 
 ```bash
-truthound plugin list
+truthound plugins list
 ```
 
 Output:
@@ -70,7 +70,7 @@ Output:
 ### Filter by Type
 
 ```bash
-truthound plugin list --type validator
+truthound plugins list --type validator
 ```
 
 Output:
@@ -86,13 +86,13 @@ Output:
 ### Filter by State
 
 ```bash
-truthound plugin list --state active
+truthound plugins list --state active
 ```
 
 ### Verbose Output
 
 ```bash
-truthound plugin list --verbose
+truthound plugins list --verbose
 ```
 
 Output:
@@ -108,7 +108,7 @@ Output:
 ### JSON Output
 
 ```bash
-truthound plugin list --json
+truthound plugins list --json
 ```
 
 Output:
@@ -128,7 +128,7 @@ Output:
 ### Combined Filters
 
 ```bash
-truthound plugin list --type validator --state active --verbose
+truthound plugins list --type validator --state active --verbose
 ```
 
 ## Use Cases
@@ -137,27 +137,27 @@ truthound plugin list --type validator --state active --verbose
 
 ```bash
 # See all plugins and their states
-truthound plugin list
+truthound plugins list
 
 # Check which plugins are active
-truthound plugin list --state active
+truthound plugins list --state active
 ```
 
 ### 2. Find Specific Plugin Types
 
 ```bash
 # Find all validator plugins
-truthound plugin list --type validator
+truthound plugins list --type validator
 
 # Find all reporter plugins
-truthound plugin list --type reporter
+truthound plugins list --type reporter
 ```
 
 ### 3. Export Plugin List
 
 ```bash
 # Export to JSON for automation
-truthound plugin list --json > plugins.json
+truthound plugins list --json > plugins.json
 ```
 
 ## Exit Codes

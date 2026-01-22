@@ -1,11 +1,11 @@
-# truthound plugin load
+# truthound plugins load
 
 Load a discovered plugin.
 
 ## Synopsis
 
 ```bash
-truthound plugin load <NAME> [OPTIONS]
+truthound plugins load <NAME> [OPTIONS]
 ```
 
 ## Arguments
@@ -44,7 +44,7 @@ discovered → loading → loaded
 ### Load and Activate (Default)
 
 ```bash
-truthound plugin load my-validator
+truthound plugins load my-validator
 ```
 
 Output:
@@ -56,7 +56,7 @@ Plugin is now active.
 ### Load Without Activating
 
 ```bash
-truthound plugin load my-validator --no-activate
+truthound plugins load my-validator --no-activate
 ```
 
 Output:
@@ -68,10 +68,10 @@ Loaded plugin: my-validator v0.1.0
 
 ```bash
 # Load the plugin
-truthound plugin load my-validator
+truthound plugins load my-validator
 
 # Verify it's active
-truthound plugin list --state active
+truthound plugins list --state active
 ```
 
 ## Use Cases
@@ -80,7 +80,7 @@ truthound plugin list --state active
 
 ```bash
 # Load plugin
-truthound plugin load my-validator
+truthound plugins load my-validator
 
 # Test with validation
 truthound check data.csv --validators my-validator
@@ -90,22 +90,22 @@ truthound check data.csv --validators my-validator
 
 ```bash
 # Load but don't activate yet
-truthound plugin load my-validator --no-activate
+truthound plugins load my-validator --no-activate
 
 # Inspect the loaded plugin
-truthound plugin info my-validator
+truthound plugins info my-validator
 
 # Activate when ready
-truthound plugin enable my-validator
+truthound plugins enable my-validator
 ```
 
 ### 3. Load Multiple Plugins
 
 ```bash
 # Load several plugins
-truthound plugin load validator-a
-truthound plugin load validator-b
-truthound plugin load custom-reporter
+truthound plugins load validator-a
+truthound plugins load validator-b
+truthound plugins load custom-reporter
 ```
 
 ## Error Handling
@@ -113,7 +113,7 @@ truthound plugin load custom-reporter
 ### Plugin Not Found
 
 ```bash
-truthound plugin load unknown-plugin
+truthound plugins load unknown-plugin
 ```
 
 Output:
@@ -124,7 +124,7 @@ Error: Plugin 'unknown-plugin' not found.
 ### Dependency Error
 
 ```bash
-truthound plugin load my-validator
+truthound plugins load my-validator
 ```
 
 Output:
@@ -135,7 +135,7 @@ Error: Plugin 'my-validator' requires 'pandas>=2.0' which is not installed.
 ### Compatibility Error
 
 ```bash
-truthound plugin load my-validator
+truthound plugins load my-validator
 ```
 
 Output:

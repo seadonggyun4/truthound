@@ -79,7 +79,7 @@ Installing plugin from ./truthound-plugin-my_validators...
 
 Next steps:
   1. Edit ./truthound-plugin-my_validators/my_validators/plugin.py to implement your plugin
-  2. truthound plugin list
+  2. truthound plugins list
 ```
 
 ### Validator Plugin

@@ -49,20 +49,20 @@ for plugin in manager.get_active_plugins():
 
 ```bash
 # List discovered plugins
-truthound plugin list
+truthound plugins list
 
 # Plugin details
-truthound plugin info my-plugin
+truthound plugins info my-plugin
 
 # Load plugin
-truthound plugin load my-plugin
+truthound plugins load my-plugin
 
 # Enable/disable plugin
-truthound plugin enable my-plugin
-truthound plugin disable my-plugin
+truthound plugins enable my-plugin
+truthound plugins disable my-plugin
 
 # Create new plugin template
-truthound plugin create my-new-plugin --type validator
+truthound plugins create my-new-plugin --type validator
 ```
 
 ## Plugin Types

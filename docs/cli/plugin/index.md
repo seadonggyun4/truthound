@@ -58,71 +58,71 @@ graph LR
 
 ```bash
 # List all plugins
-truthound plugin list
+truthound plugins list
 
 # Filter by type
-truthound plugin list --type validator
+truthound plugins list --type validator
 
 # Filter by state
-truthound plugin list --state active
+truthound plugins list --state active
 
 # Verbose output with details
-truthound plugin list --verbose
+truthound plugins list --verbose
 
 # JSON output
-truthound plugin list --json
+truthound plugins list --json
 ```
 
 ### Manage Plugins
 
 ```bash
 # Load and activate plugin
-truthound plugin load my-validator
+truthound plugins load my-validator
 
 # Load without activating
-truthound plugin load my-validator --no-activate
+truthound plugins load my-validator --no-activate
 
 # Enable/disable plugin
-truthound plugin enable my-validator
-truthound plugin disable my-validator
+truthound plugins enable my-validator
+truthound plugins disable my-validator
 
 # Unload plugin
-truthound plugin unload my-validator
+truthound plugins unload my-validator
 ```
 
 ### Create Plugins
 
 ```bash
 # Create validator plugin
-truthound plugin create my-validator --type validator
+truthound plugins create my-validator --type validator
 
 # Create with author info
-truthound plugin create my-reporter --type reporter --author "John Doe"
+truthound plugins create my-reporter --type reporter --author "John Doe"
 
 # Create in specific directory
-truthound plugin create my-hook --type hook --output ./plugins
+truthound plugins create my-hook --type hook --output ./plugins
 ```
 
 ## Plugin Development Workflow
 
 ```bash
 # 1. Create plugin template
-truthound plugin create my-custom-validator --type validator
+truthound plugins create my-custom-validator --type validator
 
 # 2. Develop and install
 cd truthound-plugin-my-custom-validator
 pip install -e .
 
 # 3. Verify plugin
-truthound plugin list
+truthound plugins list
 
 # 4. Load and test
-truthound plugin load my-custom-validator
+truthound plugins load my-custom-validator
 truthound check data.csv --validators my-custom-validator
 
 # 5. Disable/unload when done
-truthound plugin disable my-custom-validator
-truthound plugin unload my-custom-validator
+truthound plugins disable my-custom-validator
+truthound plugins unload my-custom-validator
 ```
 
 ## Generated Plugin Structure
@@ -142,33 +142,33 @@ truthound-plugin-my-validator/
 
 ```bash
 # See all plugins with their states
-truthound plugin list --verbose
+truthound plugins list --verbose
 
 # Find validator plugins
-truthound plugin list --type validator
+truthound plugins list --type validator
 ```
 
 ### 2. Manage Plugin Lifecycle
 
 ```bash
 # Load plugin for use
-truthound plugin load my-validator
+truthound plugins load my-validator
 
 # Temporarily disable
-truthound plugin disable my-validator
+truthound plugins disable my-validator
 
 # Re-enable when needed
-truthound plugin enable my-validator
+truthound plugins enable my-validator
 
 # Unload when no longer needed
-truthound plugin unload my-validator
+truthound plugins unload my-validator
 ```
 
 ### 3. Create Custom Plugins
 
 ```bash
 # Create a custom validator
-truthound plugin create company-validators \
+truthound plugins create company-validators \
   --type validator \
   --author "Data Team" \
   --output ./plugins

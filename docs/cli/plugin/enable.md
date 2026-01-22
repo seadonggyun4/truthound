@@ -1,11 +1,11 @@
-# truthound plugin enable
+# truthound plugins enable
 
 Enable (activate) a loaded plugin.
 
 ## Synopsis
 
 ```bash
-truthound plugin enable <NAME>
+truthound plugins enable <NAME>
 ```
 
 ## Arguments
@@ -35,7 +35,7 @@ inactive → active
 ### Enable Plugin
 
 ```bash
-truthound plugin enable my-validator
+truthound plugins enable my-validator
 ```
 
 Output:
@@ -47,17 +47,17 @@ Enabled plugin: my-validator
 
 ```bash
 # Load without activating
-truthound plugin load my-validator --no-activate
+truthound plugins load my-validator --no-activate
 
 # Enable when ready
-truthound plugin enable my-validator
+truthound plugins enable my-validator
 ```
 
 ### Re-enable Disabled Plugin
 
 ```bash
 # Plugin was disabled
-truthound plugin enable my-validator
+truthound plugins enable my-validator
 ```
 
 Output:
@@ -69,10 +69,10 @@ Enabled plugin: my-validator
 
 ```bash
 # Enable the plugin
-truthound plugin enable my-validator
+truthound plugins enable my-validator
 
 # Verify it's active
-truthound plugin list --state active
+truthound plugins list --state active
 ```
 
 ## Use Cases
@@ -81,20 +81,20 @@ truthound plugin list --state active
 
 ```bash
 # Load without activating
-truthound plugin load my-validator --no-activate
+truthound plugins load my-validator --no-activate
 
 # Inspect plugin
-truthound plugin info my-validator
+truthound plugins info my-validator
 
 # Enable if satisfied
-truthound plugin enable my-validator
+truthound plugins enable my-validator
 ```
 
 ### 2. Re-enable Temporarily Disabled Plugin
 
 ```bash
 # Previously disabled for testing
-truthound plugin enable my-validator
+truthound plugins enable my-validator
 
 # Use in validation
 truthound check data.csv --validators my-validator
@@ -104,13 +104,13 @@ truthound check data.csv --validators my-validator
 
 ```bash
 # Load multiple plugins
-truthound plugin load validator-a --no-activate
-truthound plugin load validator-b --no-activate
-truthound plugin load validator-c --no-activate
+truthound plugins load validator-a --no-activate
+truthound plugins load validator-b --no-activate
+truthound plugins load validator-c --no-activate
 
 # Enable only what's needed
-truthound plugin enable validator-a
-truthound plugin enable validator-c
+truthound plugins enable validator-a
+truthound plugins enable validator-c
 ```
 
 ## Error Handling
@@ -118,7 +118,7 @@ truthound plugin enable validator-c
 ### Plugin Not Found
 
 ```bash
-truthound plugin enable unknown-plugin
+truthound plugins enable unknown-plugin
 ```
 
 Output:

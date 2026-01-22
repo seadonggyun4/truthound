@@ -1,11 +1,11 @@
-# truthound plugin disable
+# truthound plugins disable
 
 Disable (deactivate) an active plugin.
 
 ## Synopsis
 
 ```bash
-truthound plugin disable <NAME>
+truthound plugins disable <NAME>
 ```
 
 ## Arguments
@@ -33,7 +33,7 @@ active → inactive
 ### Disable Plugin
 
 ```bash
-truthound plugin disable my-validator
+truthound plugins disable my-validator
 ```
 
 Output:
@@ -45,10 +45,10 @@ Disabled plugin: my-validator
 
 ```bash
 # Disable the plugin
-truthound plugin disable my-validator
+truthound plugins disable my-validator
 
 # Verify state changed
-truthound plugin list
+truthound plugins list
 ```
 
 Output:
@@ -64,10 +64,10 @@ Output:
 
 ```bash
 # Disable temporarily
-truthound plugin disable my-validator
+truthound plugins disable my-validator
 
 # Re-enable when needed
-truthound plugin enable my-validator
+truthound plugins enable my-validator
 ```
 
 ## Use Cases
@@ -76,20 +76,20 @@ truthound plugin enable my-validator
 
 ```bash
 # Disable for testing without the plugin
-truthound plugin disable my-validator
+truthound plugins disable my-validator
 
 # Run validation without the plugin
 truthound check data.csv
 
 # Re-enable when done
-truthound plugin enable my-validator
+truthound plugins enable my-validator
 ```
 
 ### 2. Troubleshooting
 
 ```bash
 # Disable suspected problematic plugin
-truthound plugin disable buggy-plugin
+truthound plugins disable buggy-plugin
 
 # Check if issue persists
 truthound check data.csv
@@ -101,13 +101,13 @@ truthound check data.csv
 
 ```bash
 # Disable plugins not needed for this run
-truthound plugin disable extra-validator
+truthound plugins disable extra-validator
 
 # Run validation with fewer plugins
 truthound check data.csv
 
 # Re-enable after
-truthound plugin enable extra-validator
+truthound plugins enable extra-validator
 ```
 
 ### 4. A/B Testing
@@ -117,7 +117,7 @@ truthound plugin enable extra-validator
 truthound check data.csv --output with-plugin.json
 
 # Disable plugin
-truthound plugin disable my-validator
+truthound plugins disable my-validator
 
 # Test without plugin
 truthound check data.csv --output without-plugin.json
@@ -130,7 +130,7 @@ truthound check data.csv --output without-plugin.json
 ### Plugin Not Found or Error
 
 ```bash
-truthound plugin disable unknown-plugin
+truthound plugins disable unknown-plugin
 ```
 
 Output:

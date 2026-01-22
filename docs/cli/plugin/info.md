@@ -1,11 +1,11 @@
-# truthound plugin info
+# truthound plugins info
 
 Show detailed information about a specific plugin.
 
 ## Synopsis
 
 ```bash
-truthound plugin info <NAME> [OPTIONS]
+truthound plugins info <NAME> [OPTIONS]
 ```
 
 ## Arguments
@@ -35,7 +35,7 @@ The `plugin info` command displays detailed information about a plugin:
 ### Basic Info
 
 ```bash
-truthound plugin info my-validator
+truthound plugins info my-validator
 ```
 
 Output:
@@ -64,7 +64,7 @@ Output:
 ### JSON Output
 
 ```bash
-truthound plugin info my-validator --json
+truthound plugins info my-validator --json
 ```
 
 Output:
@@ -110,21 +110,21 @@ Output:
 
 ```bash
 # Verify plugin is compatible with your Truthound version
-truthound plugin info my-validator
+truthound plugins info my-validator
 ```
 
 ### 2. View Dependencies
 
 ```bash
 # Check what dependencies a plugin needs
-truthound plugin info custom-reporter
+truthound plugins info custom-reporter
 ```
 
 ### 3. Export Plugin Info
 
 ```bash
 # Export to JSON for documentation
-truthound plugin info my-validator --json > plugin-info.json
+truthound plugins info my-validator --json > plugin-info.json
 ```
 
 ## Exit Codes

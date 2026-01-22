@@ -1,11 +1,11 @@
-# truthound plugin create
+# truthound plugins create
 
 Create a new plugin template.
 
 ## Synopsis
 
 ```bash
-truthound plugin create <NAME> [OPTIONS]
+truthound plugins create <NAME> [OPTIONS]
 ```
 
 ## Arguments
@@ -45,7 +45,7 @@ The `plugin create` command generates a new plugin template:
 ### Create Validator Plugin
 
 ```bash
-truthound plugin create my-validator
+truthound plugins create my-validator
 ```
 
 Generated structure:
@@ -61,25 +61,25 @@ truthound-plugin-my-validator/
 ### Create Reporter Plugin
 
 ```bash
-truthound plugin create my-reporter --type reporter
+truthound plugins create my-reporter --type reporter
 ```
 
 ### Create Hook Plugin
 
 ```bash
-truthound plugin create audit-hook --type hook
+truthound plugins create audit-hook --type hook
 ```
 
 ### With Author Info
 
 ```bash
-truthound plugin create my-validator --author "John Doe"
+truthound plugins create my-validator --author "John Doe"
 ```
 
 ### Custom Output Directory
 
 ```bash
-truthound plugin create my-validator --output ./plugins
+truthound plugins create my-validator --output ./plugins
 ```
 
 Creates in `./plugins/truthound-plugin-my-validator/`.
@@ -195,7 +195,7 @@ class AuditHookPlugin(Plugin):
 
 ```bash
 # 1. Create plugin template
-truthound plugin create my-validator --type validator
+truthound plugins create my-validator --type validator
 
 # 2. Navigate to plugin directory
 cd truthound-plugin-my-validator
@@ -207,10 +207,10 @@ cd truthound-plugin-my-validator
 pip install -e .
 
 # 5. Verify plugin is discovered
-truthound plugin list
+truthound plugins list
 
 # 6. Load and test
-truthound plugin load my-validator
+truthound plugins load my-validator
 truthound check data.csv --validators my-validator
 
 # 7. Build for distribution
@@ -227,7 +227,7 @@ twine upload dist/*
 ### 1. Company-Specific Validators
 
 ```bash
-truthound plugin create company-validators \
+truthound plugins create company-validators \
   --type validator \
   --author "Data Team"
 ```
@@ -235,7 +235,7 @@ truthound plugin create company-validators \
 ### 2. Custom Report Format
 
 ```bash
-truthound plugin create slack-reporter \
+truthound plugins create slack-reporter \
   --type reporter \
   --author "DevOps Team"
 ```
@@ -243,7 +243,7 @@ truthound plugin create slack-reporter \
 ### 3. Audit Logging Hook
 
 ```bash
-truthound plugin create compliance-audit \
+truthound plugins create compliance-audit \
   --type hook \
   --author "Compliance Team"
 ```
@@ -251,7 +251,7 @@ truthound plugin create compliance-audit \
 ### 4. Multi-Purpose Plugin
 
 ```bash
-truthound plugin create enterprise-suite \
+truthound plugins create enterprise-suite \
   --type custom \
   --author "Enterprise Team"
 ```

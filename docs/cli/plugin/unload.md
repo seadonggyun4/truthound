@@ -1,11 +1,11 @@
-# truthound plugin unload
+# truthound plugins unload
 
 Unload a loaded plugin.
 
 ## Synopsis
 
 ```bash
-truthound plugin unload <NAME>
+truthound plugins unload <NAME>
 ```
 
 ## Arguments
@@ -34,7 +34,7 @@ loaded → unloading → discovered
 ### Unload Plugin
 
 ```bash
-truthound plugin unload my-validator
+truthound plugins unload my-validator
 ```
 
 Output:
@@ -46,7 +46,7 @@ Unloaded plugin: my-validator
 
 ```bash
 # Plugin is currently active
-truthound plugin unload my-validator
+truthound plugins unload my-validator
 ```
 
 Output:
@@ -58,10 +58,10 @@ Unloaded plugin: my-validator
 
 ```bash
 # Unload the plugin
-truthound plugin unload my-validator
+truthound plugins unload my-validator
 
 # Verify state changed to discovered
-truthound plugin list
+truthound plugins list
 ```
 
 Output:
@@ -79,27 +79,27 @@ Output:
 
 ```bash
 # Done testing plugin
-truthound plugin unload my-validator
+truthound plugins unload my-validator
 ```
 
 ### 2. Reload Plugin (Update)
 
 ```bash
 # Unload current version
-truthound plugin unload my-validator
+truthound plugins unload my-validator
 
 # Install update
 pip install --upgrade truthound-plugin-my-validator
 
 # Reload
-truthound plugin load my-validator
+truthound plugins load my-validator
 ```
 
 ### 3. Troubleshooting
 
 ```bash
 # Unload problematic plugin
-truthound plugin unload buggy-plugin
+truthound plugins unload buggy-plugin
 
 # Check validation works without it
 truthound check data.csv
@@ -110,7 +110,7 @@ truthound check data.csv
 ### Plugin Not Found or Error
 
 ```bash
-truthound plugin unload unknown-plugin
+truthound plugins unload unknown-plugin
 ```
 
 Output:
