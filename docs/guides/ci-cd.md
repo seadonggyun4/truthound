@@ -119,6 +119,26 @@ truthound checkpoint list --config truthound.yaml
 truthound checkpoint validate truthound.yaml
 ```
 
+#### Using Environment Variables in CLI Options
+
+!!! warning "Environment Variable Quoting"
+    When passing environment variables to CLI options like `--slack` or `--webhook`, **you must use double quotes**. Without quotes, an empty or unset variable will cause an argument parsing error.
+
+```bash
+# Correct: Always quote environment variables
+truthound checkpoint run daily_data_validation \
+  --config truthound.yaml \
+  --slack "$SLACK_WEBHOOK_URL"
+
+# Incorrect: Without quotes, empty variable causes error
+# "Option '--slack' requires an argument"
+truthound checkpoint run daily_data_validation \
+  --config truthound.yaml \
+  --slack $SLACK_WEBHOOK_URL  # DO NOT do this!
+```
+
+**Why this happens**: When `$SLACK_WEBHOOK_URL` is empty or unset, the shell removes it entirely, leaving `--slack` without an argument. Double quotes preserve the empty string, which the CLI can then validate properly.
+
 ---
 
 ## Core Components
@@ -158,13 +178,7 @@ checkpoints:
   - 'null'
   - duplicate
   - range
-  - regex
   validator_config:
-    regex:
-      patterns:
-        email: ^[\w.+-]+@[\w-]+\.[\w.-]+$
-        product_code: ^[A-Z]{2,4}[-_][0-9]{3,6}$
-        phone: ^(\+\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}$
     range:
       columns:
         age:
@@ -193,6 +207,28 @@ checkpoints:
     interval_hours: 24
     run_on_weekdays: [0, 1, 2, 3, 4]  # Mon-Fri
 ```
+
+!!! note "Regex Validation in Checkpoints"
+    For regex validation, use `th.check()` with `RegexValidator` directly in Python code.
+    Each `RegexValidator` takes a single `pattern` parameter:
+
+    ```python
+    from truthound.validators import RegexValidator
+
+    # Validate email format
+    email_validator = RegexValidator(
+        pattern=r"^[\w.+-]+@[\w-]+\.[\w.-]+$",
+        columns=["email"],
+    )
+
+    # Validate product codes
+    product_validator = RegexValidator(
+        pattern=r"^[A-Z]{2,4}[-_][0-9]{3,6}$",
+        columns=["product_code"],
+    )
+
+    result = th.check(df, validators=[email_validator, product_validator])
+    ```
 
 ---
 
