@@ -22,6 +22,8 @@ truthound realtime validate <source> [OPTIONS]
 | `--batch-size` | `-b` | `1000` | Batch size for processing |
 | `--max-batches` | | `10` | Maximum batches to process (0=unlimited) |
 | `--output` | `-o` | None | Output file for validation results |
+| `--checkpoint-dir` | `-c` | `./checkpoints` | Directory to save checkpoints |
+| `--checkpoint-interval` | | `0` | Save checkpoint every N batches (0=final only) |
 
 ## Description
 
@@ -252,20 +254,74 @@ truthound realtime validate kinesis:clickstream \
 
 ## Checkpoints
 
-Validation automatically creates checkpoints for recovery:
+Checkpoints are automatically saved to `./checkpoints` directory.
+
+### Save Checkpoints
 
 ```bash
-# Checkpoints are saved to ./checkpoints/ by default
-./checkpoints/
-└── abc12345.json
+# Default: saves to ./checkpoints
+truthound realtime validate mock
 
-# View checkpoint
-truthound realtime checkpoint show abc12345
+# Custom checkpoint directory
+truthound realtime validate mock -c ./my_checkpoints
 
-# Resume from checkpoint (automatic on restart)
-truthound realtime validate kafka:orders
-# Resumes from last checkpoint
+# Save checkpoint every 5 batches
+truthound realtime validate mock --checkpoint-interval 5
 ```
+
+Output:
+```
+Starting streaming validation...
+  Source: mock
+  Batch size: 1000
+  Validators: all
+  Checkpoint dir: checkpoints
+  Checkpoint interval: every 5 batches
+
+Batch 1b95bd0e: 1000 records, 0 issues [OK]
+Batch 70fe5925: 1000 records, 0 issues [OK]
+Batch 4ccadf60: 1000 records, 0 issues [OK]
+Batch 8a2e1f3b: 1000 records, 0 issues [OK]
+Batch 9c4d2e5a: 1000 records, 0 issues [OK]
+  [Checkpoint saved: a1b2c3d4]
+...
+
+Final checkpoint saved: e5f6g7h8
+```
+
+### Manage Checkpoints
+
+```bash
+# List checkpoints (default: ./checkpoints)
+truthound realtime checkpoint list
+
+# View checkpoint details
+truthound realtime checkpoint show a1b2c3d4
+
+# Delete checkpoint
+truthound realtime checkpoint delete a1b2c3d4
+
+# Use custom directory
+truthound realtime checkpoint list --dir ./my_checkpoints
+```
+
+### Checkpoint File Structure
+
+```
+./checkpoints/
+├── checkpoint_a1b2c3d4.json
+├── checkpoint_e5f6g7h8.json
+└── ...
+```
+
+Each checkpoint contains:
+
+- `checkpoint_id`: Unique identifier
+- `created_at`: Creation timestamp
+- `batch_count`: Number of batches processed
+- `total_records`: Total records validated
+- `total_issues`: Total issues found
+- `state_snapshot`: Validation state for recovery
 
 ## Exit Codes
 

@@ -44,6 +44,14 @@ def validate_cmd(
         Optional[Path],
         typer.Option("--output", "-o", help="Output file for results"),
     ] = None,
+    checkpoint_dir: Annotated[
+        Path,
+        typer.Option("--checkpoint-dir", "-c", help="Directory to save checkpoints"),
+    ] = Path("./checkpoints"),
+    checkpoint_interval: Annotated[
+        int,
+        typer.Option("--checkpoint-interval", help="Save checkpoint every N batches"),
+    ] = 0,
 ) -> None:
     """Validate streaming data in real-time.
 
@@ -56,12 +64,14 @@ def validate_cmd(
         truthound realtime validate mock --max-batches 5
         truthound realtime validate mock --validators null,range --batch-size 500
         truthound realtime validate kafka:my_topic --max-batches 100
+        truthound realtime validate mock -c ./checkpoints --checkpoint-interval 5
     """
     from truthound.realtime import (
         MockStreamingSource,
         StreamingValidator,
         StreamingConfig,
     )
+    from truthound.realtime.incremental import CheckpointManager, MemoryStateStore
 
     try:
         # Parse source
@@ -101,23 +111,60 @@ def validate_cmd(
             config=config,
         )
 
+        # Initialize checkpoint manager
+        checkpoint_manager = CheckpointManager(checkpoint_dir=checkpoint_dir)
+        state_store = MemoryStateStore()
+
         results = []
+        batch_count = 0
+        total_records = 0
+        total_issues = 0
+
         with stream:
             typer.echo("Starting streaming validation...")
             typer.echo(f"  Source: {source}")
             typer.echo(f"  Batch size: {batch_size}")
             typer.echo(f"  Validators: {validator_list or 'all'}")
+            typer.echo(f"  Checkpoint dir: {checkpoint_dir}")
+            if checkpoint_interval > 0:
+                typer.echo(f"  Checkpoint interval: every {checkpoint_interval} batches")
             typer.echo()
 
             for result in streaming_validator.validate_stream(
                 stream, max_batches=max_batches if max_batches > 0 else None
             ):
+                batch_count += 1
+                total_records += result.record_count
+                total_issues += result.issue_count
+
                 status = "[ISSUES]" if result.has_issues else "[OK]"
                 typer.echo(
                     f"Batch {result.batch_id}: {result.record_count} records, "
                     f"{result.issue_count} issues {status}"
                 )
                 results.append(result.to_dict())
+
+                # Save checkpoint at interval
+                if (
+                    checkpoint_interval > 0
+                    and batch_count % checkpoint_interval == 0
+                ):
+                    cp = checkpoint_manager.create_checkpoint(
+                        state=state_store,
+                        batch_count=batch_count,
+                        total_records=total_records,
+                        total_issues=total_issues,
+                    )
+                    typer.echo(f"  [Checkpoint saved: {cp.checkpoint_id}]")
+
+        # Save final checkpoint
+        cp = checkpoint_manager.create_checkpoint(
+            state=state_store,
+            batch_count=batch_count,
+            total_records=total_records,
+            total_issues=total_issues,
+        )
+        typer.echo(f"\nFinal checkpoint saved: {cp.checkpoint_id}")
 
         stats = streaming_validator.get_stats()
         typer.echo("\nSummary")
