@@ -397,33 +397,69 @@ class MermaidRenderer(IGraphRenderer):
     <title>Lineage Graph - Mermaid</title>
     <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
     <style>
-        body {{
+        * {{
             margin: 0;
-            padding: 20px;
-            font-family: Arial, sans-serif;
+            padding: 0;
+            box-sizing: border-box;
+        }}
+        html, body {{
+            width: 100%;
+            height: 100%;
+            background: {bg_color};
+        }}
+        body {{
             display: flex;
             justify-content: center;
-            background: {bg_color};
+            align-items: center;
+            min-height: 100vh;
+            padding: 40px;
+            font-family: Arial, sans-serif;
+        }}
+        .container {{
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
+            max-width: 1600px;
         }}
         .mermaid {{
             background: {container_bg};
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            min-width: 800px;
+            min-height: 600px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }}
+        .mermaid svg {{
+            max-width: 100%;
+            height: auto;
+            min-width: 700px;
+            min-height: 500px;
         }}
     </style>
 </head>
 <body>
-    <div class="mermaid">
+    <div class="container">
+        <div class="mermaid">
 {mermaid}
+        </div>
     </div>
     <script>
         mermaid.initialize({{
             startOnLoad: true,
             theme: '{mermaid_theme}',
             flowchart: {{
-                useMaxWidth: true,
+                useMaxWidth: false,
                 htmlLabels: true,
+                curve: 'basis',
+                nodeSpacing: 50,
+                rankSpacing: 80,
+            }},
+            themeVariables: {{
+                fontSize: '16px',
             }}
         }});
     </script>
