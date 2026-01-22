@@ -38,7 +38,7 @@ def get_renderer(
 
     Args:
         renderer_type: Type of renderer ('d3', 'cytoscape', 'graphviz', 'mermaid')
-        theme: Color theme ('light', 'dark') - reserved for future use
+        theme: Color theme ('light', 'dark')
         **kwargs: Additional renderer configuration
 
     Returns:
@@ -66,7 +66,7 @@ def get_renderer(
         )
 
     renderer_class = renderer_map[renderer_type]
-    return renderer_class()
+    return renderer_class(theme=theme)
 
 
 __all__ = [

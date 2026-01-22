@@ -194,22 +194,76 @@ truthound lineage visualize lineage.json -o focused.html --renderer d3 --theme d
 
 | Feature | D3 | Cytoscape | Graphviz | Mermaid |
 |---------|----|-----------|---------:|---------|
-| Interactive | ✅ | ✅ | ❌ | ❌ |
-| Pan/Zoom | ✅ | ✅ | ❌ | ❌ |
-| Drag Nodes | ✅ | ✅ | ❌ | ❌ |
-| Static Export | ❌ | ✅ | ✅ | ✅ |
-| Markdown Embed | ❌ | ❌ | ❌ | ✅ |
+| Interactive | Yes | Yes | No | No |
+| Pan/Zoom | Yes | Yes | No | No |
+| Drag Nodes | Yes | Yes | No | No |
+| Static Export | No | Yes | Yes | Yes |
+| Markdown Embed | No | No | No | Yes |
 | Custom Layouts | Basic | Advanced | Automatic | Basic |
 | Large Graphs | Good | Excellent | Good | Limited |
-| Offline Use | ✅ | ✅ | ✅ | ❌* |
+| Offline Use | Yes | Yes | Yes | No* |
 
 *Mermaid requires renderer (GitHub, GitLab, or mermaid-cli)
 
 ## Theme Options
 
-!!! note "Theme Support"
-    The `--theme` option is reserved for future use. Currently, all renderers use a single color scheme.
-    Custom colors can be configured programmatically via `RenderConfig`.
+All renderers support both `light` and `dark` themes:
+
+```bash
+# Light theme (default)
+truthound lineage visualize lineage.json -o graph.html --theme light
+
+# Dark theme
+truthound lineage visualize lineage.json -o graph.html --theme dark
+```
+
+### Theme Comparison
+
+| Aspect | Light | Dark |
+|--------|-------|------|
+| Background | White (`#FFFFFF`) | Navy (`#1a1a2e`) |
+| Text | Dark grey (`#333`) | Light grey (`#e0e0e0`) |
+| Panel background | White | Dark blue (`#16213e`) |
+| Node colors | Standard palette | Brighter palette |
+
+### Dark Theme Node Colors
+
+| Type | Light | Dark |
+|------|-------|------|
+| source | `#4CAF50` | `#66BB6A` |
+| table | `#2196F3` | `#42A5F5` |
+| file | `#9C27B0` | `#AB47BC` |
+| stream | `#FF9800` | `#FFA726` |
+| transformation | `#607D8B` | `#78909C` |
+| validation | `#E91E63` | `#EC407A` |
+| model | `#00BCD4` | `#26C6DA` |
+| report | `#795548` | `#8D6E63` |
+| external | `#9E9E9E` | `#BDBDBD` |
+| virtual | `#CDDC39` | `#D4E157` |
+
+Custom colors can be configured programmatically via `RenderConfig`.
+
+### Theme Support by Renderer
+
+| Renderer | Theme Support | Notes |
+|----------|---------------|-------|
+| d3 | Full | HTML output with dark background, text, tooltips |
+| cytoscape | Full | HTML output with dark panels, controls |
+| graphviz | Full | SVG/PNG with dark background, font colors |
+| mermaid | HTML only | Markdown output ignores theme (rendered by viewer) |
+
+!!! warning "Mermaid Theme Limitation"
+    The `--theme` option only works when Mermaid outputs to `.html` format.
+    When outputting to `.md` or `.mmd`, the theme is ignored because the diagram
+    is rendered by the viewing platform (GitHub, GitLab, etc.), not by Truthound.
+
+    ```bash
+    # Theme applies (HTML output)
+    truthound lineage visualize lineage.json -o graph.html --renderer mermaid --theme dark
+
+    # Theme ignored (Markdown output - viewer decides theme)
+    truthound lineage visualize lineage.json -o graph.md --renderer mermaid --theme dark
+    ```
 
 ## Output Formats by Renderer
 
@@ -355,18 +409,25 @@ from truthound.lineage.visualization import (
 # Load graph
 graph = LineageGraph.load("lineage.json")
 
-# Option 1: Use factory function (recommended)
+# Option 1: Use factory function with theme (recommended)
 renderer = get_renderer("d3", theme="dark")
 
 # render() returns JSON data for D3.js
 json_data = renderer.render(graph)
 
-# render_html() returns complete interactive HTML page
+# render_html() returns complete interactive HTML page with dark theme
 html = renderer.render_html(graph)
 
-# Option 2: Create renderer directly with config
+# Option 2: Create renderer directly with theme
+renderer = D3Renderer(theme="dark")
+html = renderer.render_html(graph)
+
+# Option 3: Use RenderConfig for fine-grained control
 renderer = D3Renderer()
-config = RenderConfig(highlight_nodes=["my_node"])
+config = RenderConfig(
+    theme="dark",
+    highlight_nodes=["my_node"],
+)
 html = renderer.render_html(graph, config)
 
 # Render subgraph focused on a specific node (returns JSON)

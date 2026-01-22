@@ -362,8 +362,9 @@ config = RenderConfig(
     include_metadata=True,
     max_depth=-1,              # Unlimited depth
     layout="force",            # force, hierarchical, circular, grid
+    theme="light",             # "light" or "dark"
 
-    # Custom colors (optional)
+    # Custom colors (optional, overrides theme defaults)
     node_colors={
         "SOURCE": "#4CAF50",
         "TABLE": "#2196F3",
@@ -392,6 +393,33 @@ config = RenderConfig(
 )
 ```
 
+### Theme Support
+
+All renderers support light and dark themes:
+
+```python
+from truthound.lineage.visualization import get_renderer
+
+# Factory function with theme
+renderer = get_renderer("d3", theme="dark")
+html = renderer.render_html(graph)
+
+# Or renderer with theme
+from truthound.lineage.visualization.renderers import D3Renderer
+renderer = D3Renderer(theme="dark")
+html = renderer.render_html(graph)
+```
+
+| Theme | Background | Text | Use Case |
+|-------|------------|------|----------|
+| `light` | White | Dark | Documents, presentations |
+| `dark` | Navy (`#1a1a2e`) | Light | Dark mode UIs, dashboards |
+
+!!! note "Mermaid Theme Limitation"
+    For MermaidRenderer, the theme only applies to `render_html()` output.
+    The `render()` and `render_markdown()` methods output raw Mermaid syntax,
+    which is rendered by the viewing platform (GitHub, GitLab, etc.) with its own theme.
+
 ### D3 Renderer
 
 Interactive force-directed visualization.
@@ -399,7 +427,11 @@ Interactive force-directed visualization.
 ```python
 from truthound.lineage.visualization.renderers import D3Renderer
 
+# Light theme (default)
 renderer = D3Renderer()
+
+# Dark theme
+renderer = D3Renderer(theme="dark")
 
 # Get JSON for D3.js
 json_data = renderer.render(tracker.graph, config)

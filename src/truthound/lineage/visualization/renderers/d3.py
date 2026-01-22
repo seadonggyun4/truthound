@@ -28,7 +28,19 @@ class D3Renderer(IGraphRenderer):
         >>> renderer = D3Renderer()
         >>> json_output = renderer.render(graph)
         >>> # Use in D3.js: d3.forceSimulation(data.nodes)...
+
+        >>> # Dark theme
+        >>> renderer = D3Renderer(theme="dark")
+        >>> html_output = renderer.render_html(graph)
     """
+
+    def __init__(self, theme: str = "light") -> None:
+        """Initialize renderer with theme.
+
+        Args:
+            theme: Color theme ('light' or 'dark')
+        """
+        self._theme = theme
 
     @property
     def format(self) -> RenderFormat:
@@ -48,7 +60,9 @@ class D3Renderer(IGraphRenderer):
         Returns:
             JSON string for D3.js
         """
-        config = config or RenderConfig()
+        config = config or RenderConfig(theme=self._theme)
+        if config.theme == "light" and self._theme == "dark":
+            config.theme = self._theme
         data = self._build_d3_data(graph, config)
         return json.dumps(data, indent=2, default=str)
 
@@ -65,7 +79,7 @@ class D3Renderer(IGraphRenderer):
         Args:
             graph: Full lineage graph
             root_node_id: Root node ID
-            direction: "upstream" or "downstream"
+            direction: "upstream", "downstream", or "both"
             max_depth: Maximum depth
             config: Render configuration
 
@@ -74,17 +88,113 @@ class D3Renderer(IGraphRenderer):
         """
         config = config or RenderConfig()
 
-        # Get subgraph nodes
-        if direction == "upstream":
-            subgraph = graph.get_upstream(root_node_id, max_depth)
-        else:
-            subgraph = graph.get_downstream(root_node_id, max_depth)
+        # Collect subgraph nodes
+        subgraph_node_ids: set[str] = {root_node_id}
+
+        if direction in ("upstream", "both"):
+            for node in graph.get_upstream(root_node_id, max_depth):
+                subgraph_node_ids.add(node.id)
+
+        if direction in ("downstream", "both"):
+            for node in graph.get_downstream(root_node_id, max_depth):
+                subgraph_node_ids.add(node.id)
+
+        # Build filtered node list
+        subgraph_nodes = [graph.get_node(nid) for nid in subgraph_node_ids]
+
+        # Filter edges to only those within subgraph
+        subgraph_edges = [
+            edge for edge in graph.edges
+            if edge.source in subgraph_node_ids and edge.target in subgraph_node_ids
+        ]
 
         # Add root to highlights
         config.highlight_nodes = config.highlight_nodes + [root_node_id]
 
-        data = self._build_d3_data(subgraph, config)
+        data = self._build_d3_data_from_lists(subgraph_nodes, subgraph_edges, config)
         return json.dumps(data, indent=2, default=str)
+
+    def _build_d3_data_from_lists(
+        self,
+        node_list: list["LineageNode"],
+        edge_list: list["LineageEdge"],
+        config: RenderConfig,
+    ) -> dict[str, Any]:
+        """Build D3.js data structure from node and edge lists.
+
+        Args:
+            node_list: List of LineageNode objects
+            edge_list: List of LineageEdge objects
+            config: Render configuration
+
+        Returns:
+            D3.js compatible data structure
+        """
+        nodes = []
+        links = []
+        node_index: dict[str, int] = {}
+
+        # Build nodes
+        for node in node_list:
+            if config.filter_node_types and node.node_type.value not in config.filter_node_types:
+                continue
+
+            node_index[node.id] = len(nodes)
+
+            node_data: dict[str, Any] = {
+                "id": node.id,
+                "name": node.name,
+                "type": node.node_type.value,
+                "color": config.get_node_color(node.node_type.value),
+                "size": config.node_sizes.get(node.node_type.value, 10),
+                "highlighted": node.id in config.highlight_nodes,
+            }
+
+            if config.include_metadata:
+                node_data["metadata"] = {
+                    "description": node.metadata.description if hasattr(node, "metadata") else None,
+                    "owner": node.metadata.owner if hasattr(node, "metadata") else None,
+                    "tags": list(node.metadata.tags) if hasattr(node, "metadata") and node.metadata.tags else [],
+                }
+                if hasattr(node, "schema") and node.schema:
+                    node_data["schema"] = node.schema
+                if hasattr(node, "statistics") and node.statistics:
+                    node_data["statistics"] = node.statistics
+
+            nodes.append(node_data)
+
+        # Build links (edges)
+        for edge in edge_list:
+            if config.filter_edge_types and edge.edge_type.value not in config.filter_edge_types:
+                continue
+
+            source_id = getattr(edge, 'source_id', None) or getattr(edge, 'source', None)
+            target_id = getattr(edge, 'target_id', None) or getattr(edge, 'target', None)
+
+            if source_id not in node_index or target_id not in node_index:
+                continue
+
+            link_data: dict[str, Any] = {
+                "source": node_index[source_id],
+                "target": node_index[target_id],
+                "type": edge.edge_type.value,
+                "color": config.get_edge_color(edge.edge_type.value),
+            }
+
+            if config.include_metadata and hasattr(edge, "metadata"):
+                link_data["metadata"] = edge.metadata.to_dict() if hasattr(edge.metadata, "to_dict") else {}
+
+            links.append(link_data)
+
+        return {
+            "nodes": nodes,
+            "links": links,
+            "config": {
+                "layout": config.layout,
+                "width": config.width,
+                "height": config.height,
+            },
+        }
 
     def _build_d3_data(
         self,
@@ -183,8 +293,18 @@ class D3Renderer(IGraphRenderer):
         Returns:
             Complete HTML page
         """
-        config = config or RenderConfig()
+        config = config or RenderConfig(theme=self._theme)
+        if config.theme == "light" and self._theme == "dark":
+            config.theme = self._theme
         data_json = self.render(graph, config)
+
+        # Theme-specific styles
+        is_dark = config.theme == "dark"
+        bg_color = "#1a1a2e" if is_dark else "white"
+        text_color = "#e0e0e0" if is_dark else "#333"
+        tooltip_bg = "#16213e" if is_dark else "white"
+        tooltip_border = "#0f3460" if is_dark else "#ccc"
+        arrow_color = "#b0b0b0" if is_dark else "#999"
 
         return f"""<!DOCTYPE html>
 <html>
@@ -193,19 +313,20 @@ class D3Renderer(IGraphRenderer):
     <title>Lineage Graph</title>
     <script src="https://d3js.org/d3.v7.min.js"></script>
     <style>
-        body {{ margin: 0; padding: 0; font-family: Arial, sans-serif; }}
+        body {{ margin: 0; padding: 0; font-family: Arial, sans-serif; background: {bg_color}; }}
         svg {{ width: 100%; height: 100vh; }}
         .node {{ cursor: pointer; }}
-        .node text {{ font-size: 12px; }}
+        .node text {{ font-size: 12px; fill: {text_color}; }}
         .link {{ stroke-opacity: 0.6; fill: none; }}
         .highlighted {{ stroke: #ff0000; stroke-width: 3px; }}
         .tooltip {{
             position: absolute;
-            background: white;
-            border: 1px solid #ccc;
+            background: {tooltip_bg};
+            color: {text_color};
+            border: 1px solid {tooltip_border};
             padding: 10px;
             border-radius: 4px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
             pointer-events: none;
             display: none;
         }}
@@ -251,7 +372,7 @@ class D3Renderer(IGraphRenderer):
             .attr("markerHeight", 6)
             .attr("orient", "auto")
             .append("path")
-            .attr("fill", "#999")
+            .attr("fill", "{arrow_color}")
             .attr("d", "M0,-5L10,0L0,5");
 
         // Links

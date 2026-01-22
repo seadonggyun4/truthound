@@ -27,7 +27,19 @@ class MermaidRenderer(IGraphRenderer):
         >>> renderer = MermaidRenderer()
         >>> mermaid = renderer.render(graph)
         >>> # Embed in Markdown: ```mermaid\\n{mermaid}\\n```
+
+        >>> # Dark theme
+        >>> renderer = MermaidRenderer(theme="dark")
+        >>> html_output = renderer.render_html(graph)
     """
+
+    def __init__(self, theme: str = "light") -> None:
+        """Initialize renderer with theme.
+
+        Args:
+            theme: Color theme ('light' or 'dark')
+        """
+        self._theme = theme
 
     # Node shapes in Mermaid syntax
     NODE_SHAPES = {
@@ -73,7 +85,9 @@ class MermaidRenderer(IGraphRenderer):
         Returns:
             Mermaid diagram string
         """
-        config = config or RenderConfig()
+        config = config or RenderConfig(theme=self._theme)
+        if config.theme == "light" and self._theme == "dark":
+            config.theme = self._theme
         return self._build_mermaid(graph, config)
 
     def render_subgraph(
@@ -89,7 +103,7 @@ class MermaidRenderer(IGraphRenderer):
         Args:
             graph: Full lineage graph
             root_node_id: Root node ID
-            direction: "upstream" or "downstream"
+            direction: "upstream", "downstream", or "both"
             max_depth: Maximum depth
             config: Render configuration
 
@@ -98,14 +112,114 @@ class MermaidRenderer(IGraphRenderer):
         """
         config = config or RenderConfig()
 
-        if direction == "upstream":
-            subgraph = graph.get_upstream(root_node_id, max_depth)
-        else:
-            subgraph = graph.get_downstream(root_node_id, max_depth)
+        # Collect subgraph nodes
+        subgraph_node_ids: set[str] = {root_node_id}
+
+        if direction in ("upstream", "both"):
+            for node in graph.get_upstream(root_node_id, max_depth):
+                subgraph_node_ids.add(node.id)
+
+        if direction in ("downstream", "both"):
+            for node in graph.get_downstream(root_node_id, max_depth):
+                subgraph_node_ids.add(node.id)
+
+        # Build filtered node list
+        subgraph_nodes = [graph.get_node(nid) for nid in subgraph_node_ids]
+
+        # Filter edges to only those within subgraph
+        subgraph_edges = [
+            edge for edge in graph.edges
+            if edge.source in subgraph_node_ids and edge.target in subgraph_node_ids
+        ]
 
         config.highlight_nodes = config.highlight_nodes + [root_node_id]
 
-        return self._build_mermaid(subgraph, config)
+        return self._build_mermaid_from_lists(subgraph_nodes, subgraph_edges, config)
+
+    def _build_mermaid_from_lists(
+        self,
+        node_list: list,
+        edge_list: list,
+        config: RenderConfig,
+    ) -> str:
+        """Build Mermaid diagram string from node and edge lists.
+
+        Args:
+            node_list: List of LineageNode objects
+            edge_list: List of LineageEdge objects
+            config: Render configuration
+
+        Returns:
+            Mermaid diagram string
+        """
+        lines = []
+
+        # Diagram header
+        lines.append(f"graph {config.orientation}")
+        lines.append("")
+
+        # Group nodes by type for styling
+        node_by_type: dict[str, list[str]] = {}
+        node_ids = set()
+
+        # Node definitions
+        for node in node_list:
+            if config.filter_node_types and node.node_type.value not in config.filter_node_types:
+                continue
+
+            node_ids.add(node.id)
+
+            node_type = node.node_type.value
+            if node_type not in node_by_type:
+                node_by_type[node_type] = []
+            node_by_type[node_type].append(node.id)
+
+            safe_id = self._safe_id(node.id)
+            label = self._escape_label(node.name)
+            left, right = self.NODE_SHAPES.get(node_type, ("[", "]"))
+
+            lines.append(f"    {safe_id}{left}{label}{right}")
+
+        lines.append("")
+
+        # Edge definitions
+        for edge in edge_list:
+            if config.filter_edge_types and edge.edge_type.value not in config.filter_edge_types:
+                continue
+
+            source_id = getattr(edge, 'source_id', None) or getattr(edge, 'source', None)
+            target_id = getattr(edge, 'target_id', None) or getattr(edge, 'target', None)
+
+            if source_id not in node_ids or target_id not in node_ids:
+                continue
+
+            safe_source = self._safe_id(source_id)
+            safe_target = self._safe_id(target_id)
+            arrow = self.EDGE_ARROWS.get(edge.edge_type.value, "-->")
+
+            edge_label = edge.edge_type.value
+            if len(edge_label) <= 15:
+                lines.append(f"    {safe_source} {arrow}|{edge_label}| {safe_target}")
+            else:
+                lines.append(f"    {safe_source} {arrow} {safe_target}")
+
+        lines.append("")
+
+        # Styling by node type
+        lines.append("    %% Styling")
+        for node_type, ids in node_by_type.items():
+            color = config.get_node_color(node_type)
+            safe_ids = ",".join(self._safe_id(nid) for nid in ids)
+            lines.append(f"    style {safe_ids} fill:{color}")
+
+        # Highlight nodes
+        if config.highlight_nodes:
+            for node_id in config.highlight_nodes:
+                if node_id in node_ids:
+                    safe_id = self._safe_id(node_id)
+                    lines.append(f"    style {safe_id} stroke:#ff0000,stroke-width:3px")
+
+        return "\n".join(lines)
 
     def _build_mermaid(
         self,
@@ -265,8 +379,16 @@ class MermaidRenderer(IGraphRenderer):
         Returns:
             Complete HTML page
         """
-        config = config or RenderConfig()
+        config = config or RenderConfig(theme=self._theme)
+        if config.theme == "light" and self._theme == "dark":
+            config.theme = self._theme
         mermaid = self.render(graph, config)
+
+        # Theme-specific styles
+        is_dark = config.theme == "dark"
+        bg_color = "#1a1a2e" if is_dark else "white"
+        container_bg = "#16213e" if is_dark else "white"
+        mermaid_theme = "dark" if is_dark else "default"
 
         return f"""<!DOCTYPE html>
 <html>
@@ -281,12 +403,13 @@ class MermaidRenderer(IGraphRenderer):
             font-family: Arial, sans-serif;
             display: flex;
             justify-content: center;
+            background: {bg_color};
         }}
         .mermaid {{
-            background: white;
+            background: {container_bg};
             padding: 20px;
             border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.3);
         }}
     </style>
 </head>
@@ -297,7 +420,7 @@ class MermaidRenderer(IGraphRenderer):
     <script>
         mermaid.initialize({{
             startOnLoad: true,
-            theme: 'default',
+            theme: '{mermaid_theme}',
             flowchart: {{
                 useMaxWidth: true,
                 htmlLabels: true,
