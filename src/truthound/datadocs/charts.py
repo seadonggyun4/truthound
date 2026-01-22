@@ -336,23 +336,24 @@ class SVGChartRenderer(BaseChartRenderer):
         height: int,
         colors: list[str],
     ) -> str:
-        """Render a vertical bar chart as SVG."""
+        """Render a vertical bar chart as SVG with value labels."""
         if not spec.values:
             return self._render_empty(width, height)
 
-        margin = {"top": 20, "right": 20, "bottom": 60, "left": 60}
+        margin = {"top": 30, "right": 20, "bottom": 70, "left": 60}
         chart_width = width - margin["left"] - margin["right"]
         chart_height = height - margin["top"] - margin["bottom"]
 
         max_val = max(spec.values) if spec.values else 1
-        bar_width = chart_width / len(spec.values) * 0.8
-        bar_gap = chart_width / len(spec.values) * 0.2
+        bar_width = chart_width / len(spec.values) * 0.7
+        bar_gap = chart_width / len(spec.values) * 0.3
 
         bars = []
         labels = []
+        value_labels = []
 
         for i, (label, value) in enumerate(zip(spec.labels, spec.values)):
-            bar_height = (value / max_val) * chart_height
+            bar_height = (value / max_val) * chart_height if max_val > 0 else 0
             x = margin["left"] + i * (bar_width + bar_gap) + bar_gap / 2
             y = margin["top"] + chart_height - bar_height
             color = colors[i % len(colors)]
@@ -360,20 +361,32 @@ class SVGChartRenderer(BaseChartRenderer):
             bars.append(
                 f'<rect x="{x}" y="{y}" width="{bar_width}" height="{bar_height}" '
                 f'fill="{color}" rx="4">'
-                f'<title>{label}: {value}</title></rect>'
+                f'<title>{label}: {value:.1f}</title></rect>'
+            )
+
+            # Value label on top of bar
+            value_x = x + bar_width / 2
+            value_y = y - 8
+            value_labels.append(
+                f'<text x="{value_x}" y="{value_y}" text-anchor="middle" '
+                f'style="font-size: 10px; font-weight: 600; fill: #1a1a2e;">'
+                f'{value:.1f}</text>'
             )
 
             # X-axis label
             label_x = x + bar_width / 2
-            label_y = height - margin["bottom"] + 20
+            label_y = height - margin["bottom"] + 15
+            display_label = label[:10] + "..." if len(label) > 10 else label
             labels.append(
-                f'<text x="{label_x}" y="{label_y}" text-anchor="middle" '
-                f'class="chart-label" transform="rotate(-45 {label_x} {label_y})">{label[:12]}</text>'
+                f'<text x="{label_x}" y="{label_y}" text-anchor="end" '
+                f'style="font-size: 10px; fill: #374151;" '
+                f'transform="rotate(-45 {label_x} {label_y})">{display_label}</text>'
             )
 
         return f'''
-<svg width="{width}" height="{height}" class="svg-chart">
+<svg width="{width}" height="{height}" class="svg-chart" style="overflow: visible;">
     {"".join(bars)}
+    {"".join(value_labels)}
     {"".join(labels)}
 </svg>
 '''
@@ -385,23 +398,24 @@ class SVGChartRenderer(BaseChartRenderer):
         height: int,
         colors: list[str],
     ) -> str:
-        """Render a horizontal bar chart as SVG."""
+        """Render a horizontal bar chart as SVG with value labels."""
         if not spec.values:
             return self._render_empty(width, height)
 
-        margin = {"top": 20, "right": 20, "bottom": 30, "left": 100}
+        margin = {"top": 20, "right": 80, "bottom": 30, "left": 120}
         chart_width = width - margin["left"] - margin["right"]
         chart_height = height - margin["top"] - margin["bottom"]
 
         max_val = max(spec.values) if spec.values else 1
-        bar_height = chart_height / len(spec.values) * 0.8
-        bar_gap = chart_height / len(spec.values) * 0.2
+        bar_height = chart_height / len(spec.values) * 0.7
+        bar_gap = chart_height / len(spec.values) * 0.3
 
         bars = []
         labels = []
+        value_labels = []
 
         for i, (label, value) in enumerate(zip(spec.labels, spec.values)):
-            bar_width = (value / max_val) * chart_width
+            bar_width = (value / max_val) * chart_width if max_val > 0 else 0
             x = margin["left"]
             y = margin["top"] + i * (bar_height + bar_gap) + bar_gap / 2
             color = colors[i % len(colors)]
@@ -409,21 +423,34 @@ class SVGChartRenderer(BaseChartRenderer):
             bars.append(
                 f'<rect x="{x}" y="{y}" width="{bar_width}" height="{bar_height}" '
                 f'fill="{color}" rx="4">'
-                f'<title>{label}: {value}</title></rect>'
+                f'<title>{label}: {value:.1f}%</title></rect>'
             )
 
-            # Y-axis label
+            # Y-axis label (column name)
             label_x = margin["left"] - 10
             label_y = y + bar_height / 2
+            # Truncate long labels
+            display_label = label[:18] + "..." if len(label) > 18 else label
             labels.append(
                 f'<text x="{label_x}" y="{label_y}" text-anchor="end" '
-                f'dominant-baseline="middle" class="chart-label">{label[:15]}</text>'
+                f'dominant-baseline="middle" class="chart-label" '
+                f'style="font-size: 11px; fill: #374151;">{display_label}</text>'
+            )
+
+            # Value label (percentage) - positioned at end of bar
+            value_x = x + bar_width + 8
+            value_y = y + bar_height / 2
+            value_labels.append(
+                f'<text x="{value_x}" y="{value_y}" text-anchor="start" '
+                f'dominant-baseline="middle" class="chart-value-label" '
+                f'style="font-size: 11px; font-weight: 600; fill: #1a1a2e;">{value:.1f}%</text>'
             )
 
         return f'''
-<svg width="{width}" height="{height}" class="svg-chart">
+<svg width="{width}" height="{height}" class="svg-chart" style="overflow: visible;">
     {"".join(bars)}
     {"".join(labels)}
+    {"".join(value_labels)}
 </svg>
 '''
 
@@ -434,48 +461,56 @@ class SVGChartRenderer(BaseChartRenderer):
         height: int,
         colors: list[str],
     ) -> str:
-        """Render a pie chart as SVG."""
+        """Render a pie/donut chart as SVG with percentage labels and legend."""
         if not spec.values:
             return self._render_empty(width, height)
 
-        cx = width / 2
+        import math
+
+        # Adjust layout to accommodate legend on the right
+        chart_area_width = width * 0.55
+        legend_area_width = width * 0.45
+        cx = chart_area_width / 2
         cy = height / 2
-        radius = min(width, height) / 2 - 40
-        inner_radius = radius * 0.5 if spec.chart_type == ChartType.DONUT else 0
+        radius = min(chart_area_width, height) / 2 - 30
+        inner_radius = radius * 0.55 if spec.chart_type == ChartType.DONUT else 0
 
         total = sum(spec.values)
         if total == 0:
             return self._render_empty(width, height)
 
         slices = []
+        labels = []
+        legend_items = []
         current_angle = -90  # Start at top
 
         for i, (label, value) in enumerate(zip(spec.labels, spec.values)):
             if value == 0:
                 continue
 
+            percentage = (value / total) * 100
             angle = (value / total) * 360
             start_angle = current_angle
             end_angle = current_angle + angle
 
             # Calculate arc path
-            start_rad = start_angle * 3.14159 / 180
-            end_rad = end_angle * 3.14159 / 180
+            start_rad = start_angle * math.pi / 180
+            end_rad = end_angle * math.pi / 180
 
-            x1 = cx + radius * __import__("math").cos(start_rad)
-            y1 = cy + radius * __import__("math").sin(start_rad)
-            x2 = cx + radius * __import__("math").cos(end_rad)
-            y2 = cy + radius * __import__("math").sin(end_rad)
+            x1 = cx + radius * math.cos(start_rad)
+            y1 = cy + radius * math.sin(start_rad)
+            x2 = cx + radius * math.cos(end_rad)
+            y2 = cy + radius * math.sin(end_rad)
 
             large_arc = 1 if angle > 180 else 0
             color = colors[i % len(colors)]
 
             if inner_radius > 0:
                 # Donut
-                ix1 = cx + inner_radius * __import__("math").cos(start_rad)
-                iy1 = cy + inner_radius * __import__("math").sin(start_rad)
-                ix2 = cx + inner_radius * __import__("math").cos(end_rad)
-                iy2 = cy + inner_radius * __import__("math").sin(end_rad)
+                ix1 = cx + inner_radius * math.cos(start_rad)
+                iy1 = cy + inner_radius * math.sin(start_rad)
+                ix2 = cx + inner_radius * math.cos(end_rad)
+                iy2 = cy + inner_radius * math.sin(end_rad)
 
                 path = (
                     f"M {x1} {y1} "
@@ -493,14 +528,49 @@ class SVGChartRenderer(BaseChartRenderer):
 
             slices.append(
                 f'<path d="{path}" fill="{color}" stroke="white" stroke-width="2">'
-                f'<title>{label}: {value} ({value/total*100:.1f}%)</title></path>'
+                f'<title>{label}: {value} ({percentage:.1f}%)</title></path>'
+            )
+
+            # Add percentage label on the slice (only if slice is big enough)
+            if percentage >= 5:
+                mid_angle = (start_angle + end_angle) / 2
+                mid_rad = mid_angle * math.pi / 180
+                # Position label between inner and outer radius
+                label_radius = (radius + inner_radius) / 2 if inner_radius > 0 else radius * 0.65
+                label_x = cx + label_radius * math.cos(mid_rad)
+                label_y = cy + label_radius * math.sin(mid_rad)
+
+                labels.append(
+                    f'<text x="{label_x}" y="{label_y}" text-anchor="middle" '
+                    f'dominant-baseline="middle" '
+                    f'style="font-size: 11px; font-weight: 600; fill: white; '
+                    f'text-shadow: 0 1px 2px rgba(0,0,0,0.5);">{percentage:.1f}%</text>'
+                )
+
+            # Add legend item
+            legend_y = 30 + i * 25
+            display_label = label[:16] + "..." if len(label) > 16 else label
+            legend_items.append(
+                f'<rect x="{chart_area_width + 20}" y="{legend_y - 6}" width="14" height="14" '
+                f'fill="{color}" rx="3"/>'
+                f'<text x="{chart_area_width + 40}" y="{legend_y + 1}" '
+                f'style="font-size: 11px; fill: #374151;" dominant-baseline="middle">'
+                f'{display_label}</text>'
+                f'<text x="{width - 10}" y="{legend_y + 1}" text-anchor="end" '
+                f'style="font-size: 11px; font-weight: 600; fill: #1a1a2e;" dominant-baseline="middle">'
+                f'{percentage:.1f}%</text>'
             )
 
             current_angle = end_angle
 
         return f'''
-<svg width="{width}" height="{height}" class="svg-chart">
+<svg width="{width}" height="{height}" class="svg-chart" style="overflow: visible;">
+    <!-- Chart slices -->
     {"".join(slices)}
+    <!-- Percentage labels on slices -->
+    {"".join(labels)}
+    <!-- Legend -->
+    {"".join(legend_items)}
 </svg>
 '''
 

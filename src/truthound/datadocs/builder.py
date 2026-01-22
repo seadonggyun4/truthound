@@ -373,6 +373,54 @@ class HTMLReportBuilder:
 
         return self._render_html(spec)
 
+    def build_for_pdf(
+        self,
+        profile: dict[str, Any] | Any,
+        title: str = "Data Profile Report",
+        subtitle: str = "",
+        description: str = "",
+    ) -> str:
+        """Build a professional PDF-ready HTML report from profile data.
+
+        This method generates HTML optimized for PDF export with:
+        - Professional cover/title page with date
+        - Document-style table of contents with numbering
+        - Section numbering
+        - Professional typography and layout
+
+        Args:
+            profile: TableProfile dict or object
+            title: Report title
+            subtitle: Report subtitle
+            description: Report description
+
+        Returns:
+            Complete HTML document optimized for PDF export
+        """
+        converter = ProfileDataConverter(profile)
+
+        # Create metadata
+        metadata = ReportMetadata(
+            title=title,
+            subtitle=subtitle,
+            description=description,
+            data_source=profile.get("source", "") if isinstance(profile, dict) else getattr(profile, "source", ""),
+            created_at=datetime.now(),
+        )
+
+        # Build sections
+        sections = self._build_sections(converter)
+
+        # Create report spec
+        spec = ReportSpec(
+            metadata=metadata,
+            config=self.config,
+            sections=sections,
+            profile_data=converter.data,
+        )
+
+        return self._render_html(spec, for_pdf=True)
+
     def _build_sections(self, converter: ProfileDataConverter) -> list[SectionSpec]:
         """Build all section specifications."""
         sections = []
@@ -504,8 +552,16 @@ class HTMLReportBuilder:
 
         return None
 
-    def _render_html(self, spec: ReportSpec) -> str:
-        """Render the complete HTML document."""
+    def _render_html(self, spec: ReportSpec, for_pdf: bool = False) -> str:
+        """Render the complete HTML document.
+
+        Args:
+            spec: Report specification
+            for_pdf: Whether rendering for PDF export (uses professional document layout)
+
+        Returns:
+            Complete HTML document as string
+        """
         is_dark = spec.config.theme == ReportTheme.DARK
         css = get_complete_stylesheet(
             self._theme_config.to_css_vars(),
@@ -514,34 +570,102 @@ class HTMLReportBuilder:
 
         # Render sections
         sections_html = []
-        for section_spec in spec.sections:
+        for idx, section_spec in enumerate(spec.sections, 1):
             renderer = get_section_renderer(section_spec.section_type)
             section_html = renderer.render(
                 section_spec,
                 self._chart_renderer,
                 self._theme_config,
             )
+            # Add section numbering for PDF
+            if for_pdf:
+                section_html = section_html.replace(
+                    f'<h2 class="section-title">{section_spec.title}</h2>',
+                    f'<h2 class="section-title">{idx}. {section_spec.title}</h2>'
+                )
             sections_html.append(section_html)
 
-        # Build TOC
+        # Build TOC - professional style for PDF
         toc_html = ""
         if spec.config.include_toc:
-            toc_items = []
-            for section_spec in spec.sections:
-                section_id = f"section-{section_spec.section_type.value}"
-                toc_items.append(
-                    f'<li class="toc-item"><a href="#{section_id}">{section_spec.title}</a></li>'
-                )
-            toc_html = f'''
-                <nav class="report-toc">
-                    <h3 class="toc-title">Contents</h3>
-                    <ul class="toc-list">{"".join(toc_items)}</ul>
-                </nav>
+            if for_pdf:
+                # Professional document-style TOC for PDF
+                toc_items = []
+                for idx, section_spec in enumerate(spec.sections, 1):
+                    section_id = f"section-{section_spec.section_type.value}"
+                    toc_items.append(
+                        f'''<tr class="toc-row">
+                            <td class="toc-number">{idx}.</td>
+                            <td class="toc-entry"><a href="#{section_id}">{section_spec.title}</a></td>
+                            <td class="toc-dots"></td>
+                        </tr>'''
+                    )
+                toc_html = f'''
+                    <section class="report-toc-professional">
+                        <h2 class="toc-title-professional">Table of Contents</h2>
+                        <table class="toc-table">
+                            <tbody>{"".join(toc_items)}</tbody>
+                        </table>
+                    </section>
+                '''
+            else:
+                # Standard TOC for HTML
+                toc_items = []
+                for section_spec in spec.sections:
+                    section_id = f"section-{section_spec.section_type.value}"
+                    toc_items.append(
+                        f'<li class="toc-item"><a href="#{section_id}">{section_spec.title}</a></li>'
+                    )
+                toc_html = f'''
+                    <nav class="report-toc">
+                        <h3 class="toc-title">Contents</h3>
+                        <ul class="toc-list">{"".join(toc_items)}</ul>
+                    </nav>
+                '''
+
+        # Build title/cover page for PDF
+        title_page_html = ""
+        if for_pdf:
+            logo_html = ""
+            if spec.config.logo_base64:
+                logo_html = f'<img src="{spec.config.logo_base64}" alt="Logo" class="cover-logo">'
+            elif spec.config.logo_url:
+                logo_html = f'<img src="{spec.config.logo_url}" alt="Logo" class="cover-logo">'
+
+            # Get overview metrics for cover page
+            overview_data = spec.profile_data
+            row_count = overview_data.get("row_count", 0)
+            column_count = overview_data.get("column_count", 0)
+
+            title_page_html = f'''
+                <section class="cover-page">
+                    {logo_html}
+                    <div class="cover-content">
+                        <h1 class="cover-title">{html.escape(spec.metadata.title)}</h1>
+                        {f'<p class="cover-subtitle">{html.escape(spec.metadata.subtitle)}</p>' if spec.metadata.subtitle else ''}
+                        <div class="cover-divider"></div>
+                        <div class="cover-meta">
+                            <div class="cover-meta-item">
+                                <span class="cover-meta-label">Report Date</span>
+                                <span class="cover-meta-value">{spec.metadata.created_at.strftime("%B %d, %Y")}</span>
+                            </div>
+                            {f'<div class="cover-meta-item"><span class="cover-meta-label">Data Source</span><span class="cover-meta-value">{html.escape(spec.metadata.data_source)}</span></div>' if spec.metadata.data_source else ''}
+                            <div class="cover-meta-item">
+                                <span class="cover-meta-label">Dataset Size</span>
+                                <span class="cover-meta-value">{row_count:,} rows × {column_count} columns</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="cover-footer">
+                        <p class="cover-generator">Generated by Truthound Data Quality Framework</p>
+                        <p class="cover-timestamp">{spec.metadata.created_at.strftime("%Y-%m-%d %H:%M:%S")}</p>
+                    </div>
+                </section>
             '''
 
-        # Build header
+        # Build header (not for PDF - uses cover page instead)
         header_html = ""
-        if spec.config.include_header:
+        if spec.config.include_header and not for_pdf:
             logo_html = ""
             if spec.config.logo_base64:
                 logo_html = f'<img src="{spec.config.logo_base64}" alt="Logo" class="report-logo">'
@@ -574,17 +698,31 @@ class HTMLReportBuilder:
         # Build footer
         footer_html = ""
         if spec.config.include_footer:
-            footer_html = f'''
-                <footer class="report-footer">
-                    <p>{html.escape(spec.config.footer_text)}</p>
-                </footer>
-            '''
+            if for_pdf:
+                footer_html = f'''
+                    <footer class="report-footer-professional">
+                        <div class="footer-line"></div>
+                        <p class="footer-text">{html.escape(spec.config.footer_text)}</p>
+                        <p class="footer-disclaimer">This report was automatically generated and should be reviewed for accuracy.</p>
+                    </footer>
+                '''
+            else:
+                footer_html = f'''
+                    <footer class="report-footer">
+                        <p>{html.escape(spec.config.footer_text)}</p>
+                    </footer>
+                '''
 
         # Get CDN dependencies
         cdn_scripts = self._chart_renderer.get_dependencies()
         scripts_html = "\n".join(
             f'<script src="{url}"></script>' for url in cdn_scripts
         )
+
+        # Add PDF-specific CSS
+        pdf_css = ""
+        if for_pdf:
+            pdf_css = self._get_pdf_professional_css()
 
         # Build complete HTML
         html_content = f'''<!DOCTYPE html>
@@ -597,12 +735,14 @@ class HTMLReportBuilder:
     <meta name="generator" content="Truthound">
     <style>
 {css}
+{pdf_css}
 {spec.config.custom_css}
     </style>
     {scripts_html}
 </head>
-<body>
+<body class="{'pdf-document' if for_pdf else ''}">
     <div class="report-container">
+        {title_page_html}
         {header_html}
         {toc_html}
         <main class="report-main">
@@ -617,6 +757,264 @@ class HTMLReportBuilder:
 </html>'''
 
         return html_content
+
+    def _get_pdf_professional_css(self) -> str:
+        """Get CSS for professional PDF document styling."""
+        return '''
+/* =============================================================================
+   Professional PDF Document Styling
+   ============================================================================= */
+
+/* Cover Page */
+.cover-page {
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 3rem;
+    page-break-after: always;
+    background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+}
+
+.cover-logo {
+    max-height: 80px;
+    margin-bottom: 2rem;
+}
+
+.cover-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.cover-title {
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: #1a1a2e;
+    margin-bottom: 0.75rem;
+    letter-spacing: -0.02em;
+}
+
+.cover-subtitle {
+    font-size: 1.25rem;
+    color: #6c757d;
+    margin-bottom: 2rem;
+    font-weight: 400;
+}
+
+.cover-divider {
+    width: 100px;
+    height: 4px;
+    background: linear-gradient(90deg, #4361ee 0%, #7209b7 100%);
+    margin: 2rem 0;
+    border-radius: 2px;
+}
+
+.cover-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    margin-top: 1rem;
+}
+
+.cover-meta-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+}
+
+.cover-meta-label {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #6c757d;
+    font-weight: 600;
+}
+
+.cover-meta-value {
+    font-size: 1rem;
+    color: #1a1a2e;
+    font-weight: 500;
+}
+
+.cover-footer {
+    margin-top: auto;
+    padding-top: 2rem;
+}
+
+.cover-generator {
+    font-size: 0.875rem;
+    color: #4361ee;
+    font-weight: 500;
+    margin-bottom: 0.25rem;
+}
+
+.cover-timestamp {
+    font-size: 0.75rem;
+    color: #6c757d;
+}
+
+/* Professional Table of Contents */
+.report-toc-professional {
+    page-break-after: always;
+    padding: 3rem 2rem;
+}
+
+.toc-title-professional {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #1a1a2e;
+    margin-bottom: 2rem;
+    padding-bottom: 1rem;
+    border-bottom: 2px solid #4361ee;
+}
+
+.toc-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.toc-row {
+    border-bottom: 1px dotted #dee2e6;
+}
+
+.toc-row:last-child {
+    border-bottom: none;
+}
+
+.toc-number {
+    width: 2rem;
+    padding: 0.75rem 0;
+    font-weight: 600;
+    color: #4361ee;
+    vertical-align: top;
+}
+
+.toc-entry {
+    padding: 0.75rem 0;
+    vertical-align: top;
+}
+
+.toc-entry a {
+    color: #1a1a2e;
+    text-decoration: none;
+    font-weight: 500;
+}
+
+.toc-entry a:hover {
+    color: #4361ee;
+}
+
+.toc-dots {
+    width: 100%;
+    border-bottom: 1px dotted #adb5bd;
+    vertical-align: bottom;
+}
+
+/* Professional Footer */
+.report-footer-professional {
+    margin-top: 3rem;
+    padding-top: 1.5rem;
+}
+
+.footer-line {
+    height: 2px;
+    background: linear-gradient(90deg, #4361ee 0%, transparent 100%);
+    margin-bottom: 1rem;
+}
+
+.footer-text {
+    font-size: 0.875rem;
+    color: #1a1a2e;
+    font-weight: 500;
+    margin-bottom: 0.25rem;
+}
+
+.footer-disclaimer {
+    font-size: 0.75rem;
+    color: #6c757d;
+    font-style: italic;
+}
+
+/* PDF Document Body */
+body.pdf-document {
+    font-size: 11pt;
+    line-height: 1.6;
+}
+
+body.pdf-document .report-container {
+    max-width: none;
+    padding: 0;
+}
+
+body.pdf-document .section-header {
+    margin-top: 2rem;
+    margin-bottom: 1.5rem;
+}
+
+body.pdf-document .section-title {
+    font-size: 1.375rem;
+    color: #1a1a2e;
+    border-bottom: 2px solid #4361ee;
+    padding-bottom: 0.5rem;
+}
+
+body.pdf-document .section-subtitle {
+    font-size: 0.9375rem;
+    margin-top: 0.5rem;
+}
+
+body.pdf-document .report-section {
+    page-break-inside: avoid;
+    margin-bottom: 2rem;
+}
+
+body.pdf-document .chart-container {
+    page-break-inside: avoid;
+    margin: 1rem 0;
+}
+
+body.pdf-document .data-table {
+    font-size: 0.875rem;
+}
+
+body.pdf-document .data-table th {
+    background-color: #f8f9fa;
+    font-weight: 600;
+}
+
+body.pdf-document .metric-card {
+    box-shadow: none;
+    border: 1px solid #dee2e6;
+}
+
+body.pdf-document .column-card {
+    box-shadow: none;
+    border: 1px solid #dee2e6;
+    page-break-inside: avoid;
+}
+
+/* Ensure charts don't break across pages */
+body.pdf-document .svg-chart {
+    page-break-inside: avoid;
+}
+
+/* Quality score styling for PDF */
+body.pdf-document .quality-score-card {
+    box-shadow: none;
+    border: 1px solid #dee2e6;
+}
+
+/* Hide interactive elements in PDF */
+body.pdf-document .download-button,
+body.pdf-document .no-print {
+    display: none !important;
+}
+'''
 
     def save(self, html_content: str, path: str | Path) -> Path:
         """Save HTML content to file.
@@ -808,9 +1206,15 @@ def export_to_pdf(
     subtitle: str = "",
     theme: ReportTheme | str = ReportTheme.PROFESSIONAL,
 ) -> Path:
-    """Export report to PDF.
+    """Export report to PDF with professional document formatting.
 
     Uses SVG rendering for charts (compatible with PDF generation).
+    Includes:
+    - Professional cover/title page with date
+    - Document-style table of contents
+    - Numbered sections
+    - Value labels on all charts
+    - Professional typography and layout
 
     Requires:
         - System dependencies: pango, cairo, gdk-pixbuf (see error message for OS-specific commands)
@@ -838,7 +1242,9 @@ def export_to_pdf(
 
     # Use SVG renderer for PDF (no JavaScript)
     builder = HTMLReportBuilder(theme=theme, _use_svg=True)
-    html_content = builder.build(profile, title=title, subtitle=subtitle)
+
+    # Build HTML with professional PDF formatting
+    html_content = builder.build_for_pdf(profile, title=title, subtitle=subtitle)
 
     # Convert to PDF - catch system library errors
     try:
