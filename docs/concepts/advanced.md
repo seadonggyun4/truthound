@@ -234,6 +234,8 @@ loaded_graph = LineageGraph.load("lineage.json")
 | `VALIDATION` | Validation checkpoint |
 | `MODEL` | ML model |
 | `REPORT` | Output report |
+| `EXTERNAL` | External system |
+| `VIRTUAL` | Virtual/computed dataset |
 
 #### Available EdgeTypes
 
