@@ -68,20 +68,17 @@ checkpoints:
   - 'null'
   - duplicate
   - range
-  - regex
   validator_config:
-    regex:
-      patterns:
-        email: ^[\w.+-]+@[\w-]+\.[\w.-]+$
-        product_code: ^[A-Z]{2,4}[-_][0-9]{3,6}$
-        phone: ^(\+\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}$
     range:
+      # Column-specific range constraints
       columns:
         age:
           min_value: 0
           max_value: 150
         price:
           min_value: 0
+  # Note: For regex validation, use th.check() with RegexValidator directly:
+  #   RegexValidator(pattern=r"^[\w.+-]+@[\w-]+\.[\w.-]+$", columns=["email"])
   min_severity: medium
   auto_schema: true
   tags:
@@ -140,15 +137,8 @@ checkpoints:
     {
       "name": "daily_data_validation",
       "data_source": "data/production.csv",
-      "validators": ["null", "duplicate", "range", "regex"],
+      "validators": ["null", "duplicate", "range"],
       "validator_config": {
-        "regex": {
-          "patterns": {
-            "email": "^[\\w.+-]+@[\\w-]+\\.[\\w.-]+$",
-            "product_code": "^[A-Z]{2,4}[-_][0-9]{3,6}$",
-            "phone": "^(\\+\\d{1,3}[-.\\s]?)?\\(?\\d{3}\\)?[-.\\s]?\\d{3}[-.\\s]?\\d{4}$"
-          }
-        },
         "range": {
           "columns": {
             "age": {"min_value": 0, "max_value": 150},
@@ -239,8 +229,15 @@ validators:
 - 'null'        # Check for null values
 - duplicate     # Check for duplicates
 - range         # Check numeric ranges
-- regex         # Check pattern matching
 ```
+
+!!! note "Regex Validation"
+    RegexValidator requires a single `pattern` parameter and is not configurable via YAML checkpoint config.
+    Use Python API directly:
+    ```python
+    from truthound.validators import RegexValidator
+    th.check(data, validators=[RegexValidator(pattern=r"^[\w.+-]+@[\w-]+\.[\w.-]+$", columns=["email"])])
+    ```
 
 ### Validator Configuration
 
@@ -251,9 +248,6 @@ validator_config:
       age:
         min_value: 0
         max_value: 150
-  regex:
-    patterns:
-      email: ^[\w.+-]+@[\w-]+\.[\w.-]+$
 ```
 
 ### Actions

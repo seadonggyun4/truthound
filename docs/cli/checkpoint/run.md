@@ -231,13 +231,7 @@ checkpoints:
   - 'null'
   - duplicate
   - range
-  - regex
   validator_config:
-    regex:
-      patterns:
-        email: ^[\w.+-]+@[\w-]+\.[\w.-]+$
-        product_code: ^[A-Z]{2,4}[-_][0-9]{3,6}$
-        phone: ^(\+\d{1,3}[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}$
     range:
       columns:
         age:
@@ -245,6 +239,8 @@ checkpoints:
           max_value: 150
         price:
           min_value: 0
+  # Note: For regex validation, use th.check() with RegexValidator directly:
+  #   RegexValidator(pattern=r"^[\w.+-]+@[\w-]+\.[\w.-]+$", columns=["email"])
   min_severity: medium
   auto_schema: true
   tags:

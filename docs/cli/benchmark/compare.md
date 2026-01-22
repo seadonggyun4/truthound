@@ -111,54 +111,26 @@ truthound benchmark compare baseline.json current.json --format json
 Output:
 ```json
 {
-  "baseline": {
-    "file": "baseline.json",
-    "timestamp": "2025-01-14T10:30:00Z",
-    "suite": "ci"
-  },
-  "current": {
-    "file": "current.json",
-    "timestamp": "2025-01-15T14:22:00Z",
-    "suite": "ci"
-  },
-  "threshold": 10.0,
-  "comparisons": [
+  "baseline_file": "baseline.json",
+  "current_file": "current.json",
+  "threshold_percent": 10.0,
+  "regressions": [
     {
-      "benchmark": "profile",
-      "baseline_time": 0.376,
-      "current_time": 0.382,
-      "change_percent": 1.6,
-      "status": "ok"
-    },
-    {
-      "benchmark": "check",
-      "baseline_time": 0.524,
-      "current_time": 0.498,
-      "change_percent": -5.0,
-      "status": "improved"
-    },
-    {
-      "benchmark": "scan",
-      "baseline_time": 0.245,
-      "current_time": 0.289,
-      "change_percent": 18.0,
-      "status": "regression"
-    },
-    {
-      "benchmark": "compare",
-      "baseline_time": 0.412,
-      "current_time": 0.425,
-      "change_percent": 3.2,
-      "status": "ok"
+      "name": "scan",
+      "baseline_seconds": 0.245,
+      "current_seconds": 0.289,
+      "change_percent": 18.0
     }
   ],
-  "summary": {
-    "total": 4,
-    "improved": 1,
-    "regressed": 1,
-    "unchanged": 2,
-    "has_regression": true
-  }
+  "improvements": [
+    {
+      "name": "check",
+      "baseline_seconds": 0.524,
+      "current_seconds": 0.498,
+      "change_percent": -5.0
+    }
+  ],
+  "has_regressions": true
 }
 ```
 

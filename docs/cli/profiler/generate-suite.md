@@ -21,8 +21,8 @@ truthound generate-suite <profile_file> [OPTIONS]
 | `--output` | `-o` | None | Output file path |
 | `--format` | `-f` | `yaml` | Output format (yaml, json, python, toml, checkpoint) |
 | `--strictness` | `-s` | `medium` | Rule strictness (loose, medium, strict) |
-| `--include` | `-i` | All | Rule categories to include (comma-separated) |
-| `--exclude` | `-e` | None | Rule categories to exclude (comma-separated) |
+| `--include` | `-i` | All | Rule categories to include. Categories: schema, completeness, uniqueness, format, distribution, pattern, temporal, relationship, anomaly |
+| `--exclude` | `-e` | None | Rule categories to exclude. Categories: schema, completeness, uniqueness, format, distribution, pattern, temporal, relationship, anomaly |
 | `--min-confidence` | | None | Minimum confidence level (low, medium, high) |
 | `--name` | `-n` | Auto | Suite name |
 | `--preset` | `-p` | None | Use preset configuration |
@@ -260,9 +260,12 @@ truthound generate-suite profile.json -o suite.yaml --name "Customer Data Valida
 | `schema` | dtype, nullable | Data type validation |
 | `completeness` | not_null, completeness_ratio | Null value checks |
 | `uniqueness` | unique, no_duplicates | Duplicate detection |
-| `range` | min, max, between | Numeric bounds |
 | `format` | pattern, email, phone | Format validation |
-| `consistency` | cross_column | Multi-column checks |
+| `distribution` | range, min, max, between | Numeric bounds |
+| `pattern` | regex patterns | Pattern detection |
+| `temporal` | date range, freshness | Time-based checks |
+| `relationship` | cross_column, referential | Multi-column checks |
+| `anomaly` | outlier detection | Statistical anomalies |
 
 ## Use Cases
 
