@@ -126,8 +126,18 @@ class PluginDiscovery:
                         logger.warning(
                             f"Entry point {ep.name} does not point to a valid Plugin class"
                         )
+                except ModuleNotFoundError as e:
+                    # Module not found - likely stale entry point from uninstalled package
+                    # Get package info if available
+                    pkg_info = f" (from {ep.dist.name})" if hasattr(ep, "dist") else ""
+                    logger.debug(
+                        f"Skipping entry point '{ep.name}'{pkg_info}: {e}. "
+                        f"Consider uninstalling the package or reinstalling it."
+                    )
                 except Exception as e:
-                    logger.error(f"Failed to load entry point {ep.name}: {e}")
+                    # Other errors - log as warning with package info
+                    pkg_info = f" (from {ep.dist.name})" if hasattr(ep, "dist") else ""
+                    logger.warning(f"Failed to load plugin '{ep.name}'{pkg_info}: {e}")
 
         except Exception as e:
             logger.error(f"Error discovering entry points: {e}")
