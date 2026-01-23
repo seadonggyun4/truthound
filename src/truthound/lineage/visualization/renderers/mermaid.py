@@ -411,7 +411,7 @@ class MermaidRenderer(IGraphRenderer):
             display: flex;
             justify-content: center;
             align-items: center;
-            min-height: 100vh;
+            height: 100vh;
             padding: 40px;
             font-family: Arial, sans-serif;
         }}
@@ -427,7 +427,7 @@ class MermaidRenderer(IGraphRenderer):
             padding: 40px;
             border-radius: 12px;
             box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-            min-width: 800px;
+            min-width: 1200px;
             min-height: 600px;
             display: flex;
             justify-content: center;
