@@ -44,7 +44,7 @@ theme:
     - navigation.tabs
     - navigation.tabs.sticky
     - navigation.sections
-    # - navigation.expand  # 제거: 섹션 아코디언 동작 활성화
+    - navigation.expand
     - navigation.path
     - navigation.indexes
     - navigation.top
