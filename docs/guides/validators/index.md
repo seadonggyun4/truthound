@@ -1,8 +1,204 @@
-# Truthound Validator Reference
+# Validators Guide
 
-This document provides a reference for validators implemented in Truthound. Each validator is designed to address specific data quality concerns and follows consistent patterns for configuration and usage.
+This guide covers data validation with Truthound's Python API. It includes practical usage patterns, error handling, and the complete validator reference.
 
 **Current Implementation: 264 validators across 28 categories (23 validator categories + 5 infrastructure categories).**
+
+---
+
+## Quick Start
+
+```python
+import truthound as th
+
+# Basic validation with all built-in validators
+report = th.check("data.csv")
+
+# Specific validators only
+report = th.check(df, validators=["null", "duplicate", "range"])
+
+# With validator configuration
+report = th.check(
+    df,
+    validators=["regex"],
+    validator_config={"regex": {"pattern": r"^[A-Z]{3}-\d{4}$"}}
+)
+```
+
+---
+
+## Common Usage Patterns
+
+### Pattern 1: Combining Multiple Validators
+
+```python
+import truthound as th
+from truthound.validators import (
+    NullValidator,
+    RegexValidator,
+    CompletenessRatioValidator,
+    BetweenValidator,
+)
+
+# Create validator instances
+validators = [
+    NullValidator(columns=["email", "phone"]),
+    RegexValidator(pattern=r"^[\w.+-]+@[\w-]+\.[\w.-]+$", columns=["email"]),
+    CompletenessRatioValidator(column="phone", min_ratio=0.95),
+    BetweenValidator(min_value=0, max_value=150, columns=["age"]),
+]
+
+# Run validation
+report = th.check(df, validators=validators)
+```
+
+### Pattern 2: Conditional Validation
+
+```python
+import polars as pl
+from truthound.validators import ConditionalNullValidator, ExpressionValidator
+
+# If status is "active", email must not be null
+conditional_null = ConditionalNullValidator(
+    column="email",
+    condition=pl.col("status") == "active"
+)
+
+# Custom condition with expression
+custom_check = ExpressionValidator(
+    expression=(pl.col("end_date") > pl.col("start_date")),
+    description="End date must be after start date"
+)
+
+report = th.check(df, validators=[conditional_null, custom_check])
+```
+
+### Pattern 3: Schema-Based Validation
+
+```python
+import truthound as th
+
+# Learn schema from baseline data
+schema = th.learn("baseline.csv")
+
+# Validate new data against schema
+report = th.check("new_data.csv", schema=schema)
+
+# Filter schema-specific issues
+schema_issues = [i for i in report.issues if i.validator == "schema"]
+```
+
+### Pattern 4: Processing Validation Results
+
+```python
+import truthound as th
+
+report = th.check("data.csv")
+
+# Filter by severity
+critical_issues = [i for i in report.issues if i.severity == "critical"]
+high_issues = report.filter_by_severity("high").issues
+
+# Group by column
+from collections import defaultdict
+by_column = defaultdict(list)
+for issue in report.issues:
+    by_column[issue.column].append(issue)
+
+# Group by validator
+by_validator = defaultdict(list)
+for issue in report.issues:
+    by_validator[issue.validator].append(issue)
+
+# Export to different formats
+from truthound.reporters import JSONReporter, JUnitXMLReporter
+
+json_output = JSONReporter().render(report)
+junit_output = JUnitXMLReporter().render(report)
+```
+
+### Pattern 5: Cross-Table Validation
+
+```python
+import polars as pl
+from truthound.validators import (
+    ReferentialIntegrityValidator,
+    CrossTableRowCountValidator,
+)
+
+# Load reference data
+departments = pl.read_csv("departments.csv")
+
+# Validate foreign key relationship
+fk_validator = ReferentialIntegrityValidator(
+    column="department_id",
+    reference_data=departments,
+    reference_column="id"
+)
+
+# Compare row counts
+row_count_validator = CrossTableRowCountValidator(
+    reference_data=departments,
+    operator=">=",
+    tolerance=0.0
+)
+
+report = th.check(employees_df, validators=[fk_validator, row_count_validator])
+```
+
+---
+
+## Error Handling
+
+### ValidationIssue Structure
+
+```python
+from truthound.validators.base import ValidationIssue
+
+# Each issue contains:
+issue.column         # str: Affected column name
+issue.issue_type     # str: Issue type (e.g., "null_value", "pattern_mismatch")
+issue.count          # int: Number of affected rows
+issue.severity       # Severity: LOW, MEDIUM, HIGH, CRITICAL
+issue.details        # str | None: Human-readable description
+issue.expected       # Any | None: Expected value
+issue.actual         # Any | None: Actual value found
+issue.sample_values  # list | None: Sample of problematic values
+```
+
+### Handling Validation Errors
+
+```python
+import truthound as th
+from truthound.validators.base import (
+    ValidationTimeoutError,
+    ColumnNotFoundError,
+)
+from truthound.datasources.base import DataSourceError
+
+try:
+    report = th.check("data.csv", validators=["null", "regex"])
+except ColumnNotFoundError as e:
+    print(f"Column not found: {e.column}")
+except ValidationTimeoutError as e:
+    print(f"Validation timed out after {e.timeout}s")
+except DataSourceError as e:
+    print(f"Could not read data source: {e}")
+```
+
+### Strict Mode for Missing Columns
+
+```python
+import truthound as th
+
+# Default: warns and skips missing columns
+report = th.check(df, validators=["null"])  # MaskingWarning if column missing
+
+# Strict mode: raises error for missing columns
+from truthound.validators import NullValidator
+validator = NullValidator(columns=["nonexistent"], strict=True)
+# Raises ColumnNotFoundError
+```
 
 ---
 

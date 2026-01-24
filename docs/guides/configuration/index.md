@@ -1,4 +1,146 @@
-# Configuration Overview
+# Configuration Guide
+
+This guide covers configuration management with Truthound's Python API. It includes practical workflows for environment setup, secrets management, logging, metrics, and resilience patterns.
+
+---
+
+## Quick Start
+
+```python
+from truthound.infrastructure.config import load_config
+
+# Load configuration (auto-detects environment)
+config = load_config()
+
+# Access values with type safety
+db_host = config.get("database.host", default="localhost")
+db_port = config.get_int("database.port", default=5432)
+debug = config.get_bool("debug", default=False)
+```
+
+---
+
+## Common Workflows
+
+### Workflow 1: Production Environment Setup
+
+```python
+from truthound.infrastructure.config import load_config, Environment
+
+# Production configuration with Vault secrets
+config = load_config(
+    environment=Environment.PRODUCTION,
+    config_path="config/",
+    env_prefix="TRUTHOUND",
+    use_vault=True,
+    vault_url="http://vault:8200",
+    vault_path="truthound/production",
+    validate=True,
+)
+
+# Access secrets (fetched from Vault)
+db_password = config.get("database.password")
+api_key = config.get("external_api.key")
+```
+
+### Workflow 2: Structured Logging Setup
+
+```python
+from truthound.infrastructure.logging import setup_logging, LogConfig
+
+# Configure structured JSON logging
+log_config = LogConfig(
+    level="INFO",
+    format="json",
+    correlation_id_header="X-Request-ID",
+    include_timestamp=True,
+    include_hostname=True,
+)
+
+logger = setup_logging(log_config)
+
+# Log with correlation ID
+logger.info(
+    "Validation completed",
+    extra={
+        "data_asset": "customers.csv",
+        "issue_count": 5,
+        "duration_ms": 1234,
+    }
+)
+```
+
+### Workflow 3: Prometheus Metrics
+
+```python
+from truthound.infrastructure.metrics import MetricsCollector, start_http_server
+
+# Initialize metrics
+metrics = MetricsCollector()
+
+# Start Prometheus endpoint
+start_http_server(port=9090)
+
+# Record validation metrics
+with metrics.validation_duration.time():
+    report = th.check("data.csv")
+
+metrics.validation_total.inc(labels={"status": "success"})
+metrics.issues_found.inc(len(report.issues))
+```
+
+### Workflow 4: Resilience Patterns
+
+```python
+from truthound.common.resilience import ResilienceBuilder
+import truthound as th
+
+# Build resilience policy
+resilience = (
+    ResilienceBuilder()
+    .with_retry(max_attempts=3, backoff_factor=2.0)
+    .with_circuit_breaker(failure_threshold=5, recovery_timeout=30)
+    .with_timeout(seconds=60)
+    .with_bulkhead(max_concurrent=10)
+    .build()
+)
+
+# Execute with resilience
+from truthound.datasources import PostgreSQLDataSource
+source = PostgreSQLDataSource(table="users", host="db.example.com")
+
+result = resilience.execute(lambda: th.check(source=source))
+```
+
+### Workflow 5: Audit Logging for Compliance
+
+```python
+from truthound.infrastructure.audit import AuditLogger, AuditConfig
+
+# Configure audit logging
+audit_config = AuditConfig(
+    enabled=True,
+    storage="elasticsearch",
+    elasticsearch_url="http://elasticsearch:9200",
+    index_prefix="truthound-audit",
+    retention_days=365,  # SOC 2 compliance
+)
+
+audit = AuditLogger(audit_config)
+
+# Log validation operations
+audit.log(
+    operation="validation",
+    actor="system",
+    resource="customers.csv",
+    result="success",
+    metadata={"issue_count": 0},
+)
+```
+
+---
+
+## Full Documentation
 
 Truthound provides an enterprise-grade configuration management system with support for multiple environments, configuration sources, validation, and hot reloading.
 

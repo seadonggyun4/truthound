@@ -1,4 +1,110 @@
-# Truthound Reporters
+# Reporters Guide
+
+This guide covers output formatting with Truthound's Python API. It includes practical workflows for generating reports in various formats and creating custom reporters.
+
+---
+
+## Quick Start
+
+```python
+from truthound.reporters import get_reporter
+import truthound as th
+
+# Run validation
+report = th.check("data.csv")
+
+# Output as JSON
+json_reporter = get_reporter("json")
+json_output = json_reporter.render(report)
+
+# Write to file
+json_reporter.write(report, "results.json")
+```
+
+---
+
+## Common Workflows
+
+### Workflow 1: Multiple Output Formats
+
+```python
+from truthound.reporters import get_reporter
+import truthound as th
+
+report = th.check("data.csv")
+
+# Generate multiple formats
+formats = ["json", "markdown", "html"]
+for fmt in formats:
+    reporter = get_reporter(fmt)
+    reporter.write(report, f"results.{reporter.file_extension}")
+```
+
+### Workflow 2: CI/CD Integration (GitHub Actions)
+
+```python
+from truthound.reporters import get_reporter
+import truthound as th
+
+report = th.check("data.csv")
+
+# GitHub Actions reporter with annotations
+gh_reporter = get_reporter("github")
+gh_reporter.write(report, "results.json")
+
+# Also output JUnit XML for test reporting
+junit_reporter = get_reporter("junit")
+junit_reporter.write(report, "results.xml")
+```
+
+### Workflow 3: Custom Reporter Implementation
+
+```python
+from truthound.reporters import BaseReporter, register_reporter
+
+class CSVReporter(BaseReporter):
+    name = "csv"
+    file_extension = "csv"
+    content_type = "text/csv"
+
+    def render(self, report):
+        lines = ["column,issue_type,severity,count"]
+        for issue in report.issues:
+            lines.append(
+                f"{issue.column},{issue.issue_type},{issue.severity},{issue.count}"
+            )
+        return "\n".join(lines)
+
+# Register custom reporter
+register_reporter("csv", CSVReporter)
+
+# Use custom reporter
+reporter = get_reporter("csv")
+csv_output = reporter.render(report)
+```
+
+### Workflow 4: Styled Console Output
+
+```python
+from truthound.reporters import get_reporter
+
+# Console reporter with configuration
+reporter = get_reporter(
+    "console",
+    show_summary=True,
+    show_issues=True,
+    group_by="column",
+    max_issues=50,
+)
+
+# Print to terminal with Rich formatting
+output = reporter.render(report)
+print(output)
+```
+
+---
+
+## Full Documentation
 
 The Truthound reporter system outputs validation results in various formats.
 

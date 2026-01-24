@@ -1,6 +1,131 @@
-# Data Sources and Execution Engines
+# Data Sources Guide
 
-This document describes the multi-data source architecture introduced in Phase 5 of Truthound, enabling validation across different data backends.
+This guide covers connecting Truthound to various data backends through the Python API. It includes connection patterns, authentication methods, and practical workflows for database validation.
+
+---
+
+## Quick Start
+
+```python
+import truthound as th
+from truthound.datasources import get_sql_datasource
+
+# File-based validation
+report = th.check("data.csv")
+
+# Database validation
+source = get_sql_datasource("mydb.db", table="users")
+report = th.check(source=source)
+
+# With query pushdown (runs on database server)
+from truthound.datasources import PostgreSQLDataSource
+source = PostgreSQLDataSource(table="users", host="localhost", database="mydb")
+report = th.check(source=source, pushdown=True)
+```
+
+---
+
+## Common Workflows
+
+### Workflow 1: Multi-Source Validation Pipeline
+
+```python
+import truthound as th
+from truthound.datasources import PostgreSQLDataSource, BigQueryDataSource
+
+# Define sources
+sources = {
+    "postgres_users": PostgreSQLDataSource(
+        table="users", host="localhost", database="app"
+    ),
+    "bigquery_events": BigQueryDataSource(
+        project="my-project", dataset="analytics", table="events"
+    ),
+}
+
+# Validate all sources
+results = {}
+for name, source in sources.items():
+    report = th.check(source=source)
+    results[name] = report
+    print(f"{name}: {len(report.issues)} issues found")
+```
+
+### Workflow 2: Cross-Database Comparison
+
+```python
+import truthound as th
+from truthound.validators import CrossTableRowCountValidator
+from truthound.datasources import PostgreSQLDataSource, MySQLDataSource
+
+# Source and target databases
+source_db = PostgreSQLDataSource(table="users", host="source-db", database="app")
+target_db = MySQLDataSource(table="users", host="target-db", database="app")
+
+# Load data
+source_data = source_db.to_polars_lazyframe().collect()
+target_data = target_db.to_polars_lazyframe().collect()
+
+# Compare row counts
+validator = CrossTableRowCountValidator(
+    reference_data=source_data,
+    operator="==",
+    tolerance=0.0
+)
+issues = validator.validate(target_data.lazy())
+```
+
+### Workflow 3: Query Mode Validation
+
+```python
+from truthound.datasources.sql import PostgreSQLDataSource
+
+# Validate custom query results instead of entire table
+source = PostgreSQLDataSource(
+    database="analytics",
+    host="localhost",
+    query="""
+        SELECT user_id, email, created_at
+        FROM users
+        WHERE status = 'active'
+        AND created_at > '2024-01-01'
+    """
+)
+
+# Validate query results
+report = th.check(source=source, validators=["null", "email"])
+```
+
+### Workflow 4: Environment-Based Connection
+
+```python
+import os
+from truthound.datasources.sql import PostgreSQLDataSource
+
+# Set environment variables
+# export DB_HOST=localhost
+# export DB_NAME=myapp
+# export DB_USER=readonly
+# export DB_PASSWORD=secret
+
+source = PostgreSQLDataSource(
+    table="users",
+    host=os.environ["DB_HOST"],
+    database=os.environ["DB_NAME"],
+    user=os.environ["DB_USER"],
+    password=os.environ["DB_PASSWORD"],
+)
+
+# Or use from_env() where available
+from truthound.datasources.sql import SnowflakeDataSource
+source = SnowflakeDataSource.from_env(
+    table="users",
+    database="MY_DB",
+    env_prefix="SNOWFLAKE",  # Reads SNOWFLAKE_USER, SNOWFLAKE_PASSWORD, etc.
+)
+```
+
+---
 
 ## Overview
 

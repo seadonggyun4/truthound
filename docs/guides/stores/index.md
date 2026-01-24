@@ -1,4 +1,153 @@
-# Storage Backends
+# Storage Backends Guide
+
+This guide covers persisting validation results with Truthound's Python API. It includes practical workflows for configuring storage backends, combining enterprise features, and managing result lifecycle.
+
+---
+
+## Quick Start
+
+```python
+from truthound.stores import get_store
+from truthound.stores.results import ValidationResult
+
+# Create store
+store = get_store("filesystem", base_path=".truthound/store")
+
+# Save validation result
+result = ValidationResult.from_report(report, "customers.csv")
+run_id = store.save(result)
+
+# Retrieve result
+loaded = store.get(run_id)
+```
+
+---
+
+## Common Workflows
+
+### Workflow 1: Production Storage with S3
+
+```python
+from truthound.stores import get_store
+from truthound.stores.results import ValidationResult
+import truthound as th
+
+# Configure S3 store
+store = get_store(
+    "s3",
+    bucket="company-validation-results",
+    prefix="prod/daily/",
+    region="us-east-1",
+)
+
+# Run validation
+report = th.check("data.csv")
+
+# Save with metadata
+result = ValidationResult.from_report(
+    report,
+    data_asset="data.csv",
+    tags={"environment": "production", "team": "data-eng"},
+)
+run_id = store.save(result)
+print(f"Saved as: {run_id}")
+```
+
+### Workflow 2: Combining Versioning + Caching + Observability
+
+```python
+from truthound.stores import get_store
+from truthound.stores.versioning import VersionedStore, VersioningConfig
+from truthound.stores.caching import CachedStore, CacheMode
+from truthound.stores.caching.backends import LRUCache
+from truthound.stores.observability import ObservableStore
+from truthound.stores.observability.config import (
+    ObservabilityConfig,
+    AuditConfig,
+    MetricsConfig,
+)
+
+# Layer 1: Base storage
+base = get_store("s3", bucket="validation-results", prefix="prod/")
+
+# Layer 2: Add version history (keep last 10 versions)
+versioned = VersionedStore(base, VersioningConfig(max_versions=10))
+
+# Layer 3: Add caching (LRU cache with 1-hour TTL)
+cache = LRUCache(max_size=1000, ttl_seconds=3600)
+cached = CachedStore(versioned, cache, mode=CacheMode.READ_WRITE)
+
+# Layer 4: Add observability (audit logs + metrics)
+store = ObservableStore(
+    cached,
+    ObservabilityConfig(
+        audit=AuditConfig(enabled=True),
+        metrics=MetricsConfig(enabled=True),
+    ),
+)
+
+# Use the fully-featured store
+result = store.save(validation_result)
+
+# Version operations
+history = versioned.get_history(run_id, limit=5)
+versioned.rollback(run_id, version=3)
+```
+
+### Workflow 3: Query Historical Results
+
+```python
+from truthound.stores import get_store
+from truthound.stores.base import StoreQuery
+from datetime import datetime, timedelta
+
+store = get_store("database", connection_url="postgresql://localhost/truthound")
+
+# Query last 7 days of failures
+query = StoreQuery(
+    data_asset="customers.csv",
+    start_time=datetime.now() - timedelta(days=7),
+    status="failure",
+    limit=100,
+    order_by="run_time",
+    ascending=False,
+)
+
+results = store.query(query)
+for result in results:
+    print(f"{result.run_time}: {result.issue_count} issues")
+```
+
+### Workflow 4: Retention Policy with Auto-Cleanup
+
+```python
+from truthound.stores import get_store
+from truthound.stores.retention import (
+    RetentionStore,
+    TimeBasedPolicy,
+    CountBasedPolicy,
+    CompositePolicy,
+)
+from datetime import timedelta
+
+# Base store
+base = get_store("filesystem", base_path=".truthound/store")
+
+# Define retention policies
+policy = CompositePolicy([
+    TimeBasedPolicy(max_age=timedelta(days=90)),  # Delete after 90 days
+    CountBasedPolicy(max_count=1000),              # Keep max 1000 results
+])
+
+# Wrap with retention
+store = RetentionStore(base, policy, cleanup_interval_hours=24)
+
+# Results older than 90 days are automatically cleaned up
+```
+
+---
+
+## Full Documentation
 
 Truthound provides flexible storage backends for persisting validation results, schemas, and profiles. All stores implement a common interface with support for CRUD operations, querying, and optional features like versioning, caching, and replication.
 

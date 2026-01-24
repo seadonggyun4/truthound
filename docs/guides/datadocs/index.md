@@ -1,4 +1,123 @@
-# Data Docs - HTML Report Generation (Phase 8)
+# Data Docs Guide
+
+This guide covers HTML report generation with Truthound's Python API. It includes practical workflows for creating customized reports, applying themes, and exporting to PDF.
+
+---
+
+## Quick Start
+
+```python
+from truthound.datadocs import generate_html_report
+
+# Generate report from profile
+html = generate_html_report(
+    profile=profile_dict,
+    title="Data Quality Report",
+    theme="professional",
+)
+
+# Save to file
+with open("report.html", "w") as f:
+    f.write(html)
+```
+
+---
+
+## Common Workflows
+
+### Workflow 1: Full Validation Report Pipeline
+
+```python
+import truthound as th
+from truthound.datadocs import generate_html_report
+from pathlib import Path
+
+# Step 1: Validate data
+report = th.check("data.csv")
+
+# Step 2: Profile data for detailed statistics
+profile = th.profile("data.csv")
+
+# Step 3: Generate HTML report with validation results
+html = generate_html_report(
+    profile=profile.to_dict(),
+    validation_report=report,
+    title="Daily Data Quality Report",
+    theme="professional",
+)
+
+# Step 4: Save report
+Path("report.html").write_text(html)
+```
+
+### Workflow 2: Custom Themed Report
+
+```python
+from truthound.datadocs import generate_html_report
+from truthound.datadocs.themes import ThemeConfig, ThemeColors
+
+# Create custom theme
+custom_theme = ThemeConfig(
+    name="corporate",
+    colors=ThemeColors(
+        primary="#0066CC",
+        secondary="#004499",
+        success="#28A745",
+        warning="#FFC107",
+        error="#DC3545",
+        background="#FFFFFF",
+        text="#333333",
+    ),
+    logo_url="https://company.com/logo.png",
+    font_family="'Segoe UI', Tahoma, sans-serif",
+)
+
+# Generate with custom theme
+html = generate_html_report(
+    profile=profile_dict,
+    theme=custom_theme,
+    title="Q4 Data Quality Report",
+    subtitle="Finance Department",
+)
+```
+
+### Workflow 3: PDF Export for Distribution
+
+```python
+from truthound.datadocs import generate_html_report
+from truthound.datadocs.exporters import PDFExporter
+
+# Generate HTML report
+html = generate_html_report(
+    profile=profile_dict,
+    theme="professional",
+    chart_library="svg",  # Use SVG for PDF compatibility
+)
+
+# Export to PDF
+exporter = PDFExporter()
+exporter.export(html, output_path="report.pdf")
+```
+
+### Workflow 4: Multilingual Report
+
+```python
+from truthound.datadocs import generate_html_report
+from truthound.datadocs.i18n import set_locale
+
+# Set locale for report labels
+set_locale("ko")  # Korean
+
+html = generate_html_report(
+    profile=profile_dict,
+    title="데이터 품질 보고서",
+    theme="light",
+)
+```
+
+---
+
+## Full Documentation
 
 The Truthound Data Docs module transforms data profile results into visually appealing and interactive HTML reports.
 

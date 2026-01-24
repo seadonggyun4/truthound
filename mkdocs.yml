@@ -44,7 +44,7 @@ theme:
     - navigation.tabs
     - navigation.tabs.sticky
     - navigation.sections
-    - navigation.expand
+    # - navigation.expand  # 제거: 섹션 아코디언 동작 활성화
     - navigation.path
     - navigation.indexes
     - navigation.top
@@ -215,15 +215,99 @@ nav:
       - plugin create: cli/plugin/create.md
   - Guides:
     - guides/index.md
-    - Validators: guides/validators.md
-    - Data Sources: guides/datasources.md
-    - CI/CD Integration: guides/ci-cd.md
-    - Configuration: guides/configuration.md
-    - Performance: guides/performance.md
-    - Data Profiling: guides/profiler.md
-    - Data Docs: guides/datadocs.md
-    - Reporters: guides/reporters.md
-    - Storage Backends: guides/stores.md
+    - Validators:
+      - guides/validators/index.md
+      - Built-in Validators: guides/validators/built-in.md
+      - Categories: guides/validators/categories.md
+      - Custom Validators: guides/validators/custom-validators.md
+      - Enterprise SDK: guides/validators/enterprise-sdk.md
+      - Security: guides/validators/security.md
+      - i18n: guides/validators/i18n.md
+      - Optimization: guides/validators/optimization.md
+    - Data Sources:
+      - guides/datasources/index.md
+      - Files: guides/datasources/files.md
+      - Databases: guides/datasources/databases.md
+      - Cloud Warehouses: guides/datasources/cloud-warehouses.md
+      - Streaming: guides/datasources/streaming.md
+      - Custom Sources: guides/datasources/custom-sources.md
+    - Data Profiling:
+      - guides/profiler/index.md
+      - Basics: guides/profiler/basics.md
+      - Sampling: guides/profiler/sampling.md
+      - Patterns: guides/profiler/patterns.md
+      - Rule Generation: guides/profiler/rule-generation.md
+      - Quality Scoring: guides/profiler/quality-scoring.md
+      - Drift Detection: guides/profiler/drift-detection.md
+      - ML Inference: guides/profiler/ml-inference.md
+      - Threshold Tuning: guides/profiler/threshold-tuning.md
+      - Visualization: guides/profiler/visualization.md
+      - Caching: guides/profiler/caching.md
+      - Distributed: guides/profiler/distributed.md
+      - i18n: guides/profiler/i18n.md
+    - Data Docs:
+      - guides/datadocs/index.md
+      - HTML Reports: guides/datadocs/html-reports.md
+      - Themes: guides/datadocs/themes.md
+      - Charts: guides/datadocs/charts.md
+      - Sections: guides/datadocs/sections.md
+      - Versioning: guides/datadocs/versioning.md
+      - Custom Renderers: guides/datadocs/custom-renderers.md
+      - PDF Export: guides/datadocs/pdf-export.md
+      - Dashboard: guides/datadocs/dashboard.md
+    - Storage Backends:
+      - guides/stores/index.md
+      - Filesystem: guides/stores/filesystem.md
+      - Cloud Storage: guides/stores/cloud-storage.md
+      - Versioning: guides/stores/versioning.md
+      - Retention: guides/stores/retention.md
+      - Tiering: guides/stores/tiering.md
+      - Caching: guides/stores/caching.md
+      - Replication: guides/stores/replication.md
+      - Observability: guides/stores/observability.md
+    - Reporters:
+      - guides/reporters/index.md
+      - Console: guides/reporters/console.md
+      - JSON & YAML: guides/reporters/json-yaml.md
+      - HTML & Markdown: guides/reporters/html-markdown.md
+      - CI Reporters: guides/reporters/ci-reporters.md
+      - Custom SDK: guides/reporters/custom-sdk.md
+    - Configuration:
+      - guides/configuration/index.md
+      - Sources: guides/configuration/sources.md
+      - Environment Variables: guides/configuration/environment-vars.md
+      - Logging: guides/configuration/logging.md
+      - Metrics: guides/configuration/metrics.md
+      - Audit: guides/configuration/audit.md
+      - Encryption: guides/configuration/encryption.md
+      - Resilience: guides/configuration/resilience.md
+      - Checkpoint Config: guides/configuration/checkpoint-config.md
+      - DataSource Config: guides/configuration/datasource-config.md
+      - Store Config: guides/configuration/store-config.md
+      - Profiler Config: guides/configuration/profiler-config.md
+    - CI/CD Integration:
+      - guides/checkpoint/index.md
+      - Basics: guides/checkpoint/basics.md
+      - Triggers: guides/checkpoint/triggers.md
+      - Async Execution: guides/checkpoint/async.md
+      - CI Platforms: guides/checkpoint/ci-platforms.md
+      - Routing: guides/checkpoint/routing.md
+      - Deduplication: guides/checkpoint/deduplication.md
+      - Throttling: guides/checkpoint/throttling.md
+      - Escalation: guides/checkpoint/escalation.md
+      - Actions:
+        - guides/checkpoint/actions/index.md
+        - Notifications: guides/checkpoint/actions/notifications.md
+        - Webhook: guides/checkpoint/actions/webhook.md
+        - Storage: guides/checkpoint/actions/storage.md
+        - Incident: guides/checkpoint/actions/incident.md
+        - Custom: guides/checkpoint/actions/custom.md
+    - Advanced Features:
+      - guides/advanced/index.md
+      - ML Anomaly: guides/advanced/ml-anomaly.md
+      - Lineage: guides/advanced/lineage.md
+      - Plugins: guides/advanced/plugins.md
+      - Performance: guides/advanced/performance.md
   - Concepts:
     - concepts/index.md
     - Architecture: concepts/architecture.md

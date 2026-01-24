@@ -1,4 +1,119 @@
-# Auto-Profiling & Rule Generation (Phase 7)
+# Data Profiling Guide
+
+This guide covers automatic data profiling with Truthound's Python API. It includes practical workflows for schema learning, rule generation, and integration with validation pipelines.
+
+---
+
+## Quick Start
+
+```python
+import truthound as th
+
+# Profile a file
+profile = th.profile("data.csv")
+print(f"Rows: {profile.row_count}, Columns: {profile.column_count}")
+
+# Generate validation rules from profile
+from truthound.profiler import generate_suite
+from truthound.profiler.generators import save_suite
+
+suite = generate_suite(profile)
+save_suite(suite, "rules.yaml", format="yaml")
+```
+
+---
+
+## Common Workflows
+
+### Workflow 1: Profile and Validate Pipeline
+
+```python
+import truthound as th
+from truthound.profiler import generate_suite
+
+# Step 1: Profile baseline data
+profile = th.profile("baseline.csv")
+
+# Step 2: Generate validation rules
+suite = generate_suite(profile, strictness="medium")
+
+# Step 3: Validate new data using generated rules
+report = suite.execute(new_data)
+
+# Step 4: Check for issues
+if report.issues:
+    for issue in report.issues:
+        print(f"{issue.column}: {issue.issue_type} ({issue.severity})")
+```
+
+### Workflow 2: Schema Evolution Detection
+
+```python
+from truthound.profiler import DataProfiler, ProfilerConfig
+from truthound.profiler.evolution import SchemaEvolutionDetector
+
+# Profile old and new data
+config = ProfilerConfig(sample_size=10000)
+profiler = DataProfiler(config)
+
+old_profile = profiler.profile_file("data_v1.csv")
+new_profile = profiler.profile_file("data_v2.csv")
+
+# Detect schema changes
+detector = SchemaEvolutionDetector()
+changes = detector.detect(old_profile, new_profile)
+
+for change in changes:
+    print(f"{change.change_type}: {change.description}")
+    if change.is_breaking:
+        print(f"  WARNING: Breaking change detected!")
+```
+
+### Workflow 3: Incremental Profiling with Cache
+
+```python
+from truthound.profiler import ProfileCache, IncrementalProfiler
+
+# Setup cache
+cache = ProfileCache(cache_dir=".truthound/cache")
+
+# Check if profile is cached
+fingerprint = cache.compute_fingerprint("data.csv")
+if cache.exists(fingerprint):
+    profile = cache.get(fingerprint)
+    print("Using cached profile")
+else:
+    profile = th.profile("data.csv")
+    cache.set(fingerprint, profile)
+    print("Profile cached for future use")
+```
+
+### Workflow 4: Large File Streaming Profile
+
+```python
+import polars as pl
+from truthound.profiler import StreamingPatternMatcher, IncrementalAggregation
+
+# Setup streaming matcher for pattern detection
+matcher = StreamingPatternMatcher(
+    aggregation_strategy=IncrementalAggregation(),
+    chunk_size=100000,
+)
+
+# Process large file in chunks
+for chunk in pl.scan_csv("large_file.csv").iter_slices(100000):
+    for col in chunk.columns:
+        matcher.process_chunk(chunk, col)
+
+# Get aggregated results
+results = matcher.finalize()
+for col, patterns in results.items():
+    print(f"{col}: {patterns.pattern_name} ({patterns.match_ratio:.1%})")
+```
+
+---
+
+## Full Documentation
 
 This document describes Truthound's Auto-Profiling system, a streaming profiler with schema versioning and distributed processing capabilities. The system automatically analyzes datasets and generates validation rules without manual configuration.
 
