@@ -273,7 +273,7 @@ router.add_route(route)
 # Complex rule with combinators
 complex_rule = AllOf([
     SeverityRule(min_severity="high"),
-    IssueCountRule(min_count=10),
+    IssueCountRule(min_issues=10),
 ])
 
 router.add_route(Route(
@@ -616,7 +616,7 @@ router.add_route(Route(
     name="high_volume",
     rule=AllOf([
         SeverityRule(min_severity="high"),
-        IssueCountRule(min_count=10),
+        IssueCountRule(min_issues=10),
     ]),
     actions=[slack],
     priority="high",

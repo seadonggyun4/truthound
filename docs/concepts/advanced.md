@@ -57,21 +57,30 @@ df = pl.DataFrame({
     "value": [1.0, 2.0, 3.0, 2.5, 1.5, 2.8, 1.8, 2.2, 3.1, 2.9, 100.0],  # 100.0 is an anomaly
 }).lazy()
 
-# Z-Score based detection
-zscore_detector = ZScoreAnomalyDetector(threshold=3.0)
+# Import specific configs
+from truthound.ml.anomaly_models.statistical import StatisticalConfig
+from truthound.ml.anomaly_models.isolation_forest import IsolationForestConfig
+from truthound.ml.anomaly_models.ensemble import EnsembleConfig, EnsembleStrategy
+
+# Z-Score based detection (use StatisticalConfig)
+zscore_detector = ZScoreAnomalyDetector(
+    config=StatisticalConfig(z_threshold=3.0)
+)
 zscore_detector.fit(df)
 result = zscore_detector.predict(df)
 print(f"Anomalies found: {result.anomaly_count}")
 
-# Isolation Forest (ML-based)
-iso_detector = IsolationForestDetector(contamination=0.1)
+# Isolation Forest (ML-based, use IsolationForestConfig)
+iso_detector = IsolationForestDetector(
+    config=IsolationForestConfig(contamination=0.1)
+)
 iso_detector.fit(df)
 result = iso_detector.predict(df)
 
-# Ensemble approach (combines multiple detectors)
+# Ensemble approach (use EnsembleConfig with EnsembleStrategy)
 ensemble = EnsembleAnomalyDetector(
     detectors=[zscore_detector, iso_detector],
-    voting_strategy="majority"
+    config=EnsembleConfig(strategy=EnsembleStrategy.AVERAGE)
 )
 ensemble.fit(df)
 result = ensemble.predict(df)
@@ -101,8 +110,14 @@ import polars as pl
 baseline = pl.DataFrame({"value": [1, 2, 3, 4, 5] * 20}).lazy()
 current = pl.DataFrame({"value": [10, 11, 12, 13, 14] * 20}).lazy()  # Drifted!
 
-# Distribution drift detection
-detector = DistributionDriftDetector(method="psi", threshold=0.05)
+# Import specific configs for drift detectors
+from truthound.ml.drift_detection.distribution import DistributionDriftConfig
+from truthound.ml.drift_detection.feature import FeatureDriftConfig
+
+# Distribution drift detection (use DistributionDriftConfig)
+detector = DistributionDriftDetector(
+    config=DistributionDriftConfig(method="psi", threshold=0.05)
+)
 detector.fit(baseline)
 result = detector.detect(baseline, current)  # Both reference and current required
 
@@ -112,8 +127,10 @@ if result.is_drifted:
     drifted = [col for col, score in result.column_scores if score >= 0.5]
     print(f"Drifted columns: {drifted}")
 
-# Feature-level drift detection
-feature_detector = FeatureDriftDetector()
+# Feature-level drift detection (use FeatureDriftConfig)
+feature_detector = FeatureDriftDetector(
+    config=FeatureDriftConfig(threshold=0.05)
+)
 feature_detector.fit(baseline)
 result = feature_detector.detect(baseline, current)
 ```
@@ -124,6 +141,9 @@ Automatically learn validation rules from your data.
 
 ```python
 from truthound.ml import PatternRuleLearner, DataProfileRuleLearner, ConstraintMiner
+from truthound.ml.rule_learning.profile_learner import ProfileLearnerConfig
+from truthound.ml.rule_learning.pattern_learner import PatternLearnerConfig
+from truthound.ml.rule_learning.constraint_miner import ConstraintMinerConfig
 import polars as pl
 
 df = pl.DataFrame({
@@ -132,19 +152,28 @@ df = pl.DataFrame({
     "status": ["active", "active", "inactive", "active", "pending"],
 })
 
-# Pattern-based rule learning
-pattern_learner = PatternRuleLearner()
-rules = pattern_learner.learn(df)
-for rule in rules:
-    print(f"Rule: {rule.description}, Column: {rule.column}")
+# Pattern-based rule learning (use PatternLearnerConfig)
+pattern_learner = PatternRuleLearner(
+    config=PatternLearnerConfig(min_pattern_ratio=0.9)
+)
+pattern_learner.fit(df.lazy())
+result = pattern_learner.predict(df.lazy())
+for rule in result.rules:
+    print(f"Rule: {rule.name}, Column: {rule.column}")
 
-# Profile-based rule learning
-profile_learner = DataProfileRuleLearner()
-rules = profile_learner.learn(df)
+# Profile-based rule learning (use ProfileLearnerConfig)
+profile_learner = DataProfileRuleLearner(
+    config=ProfileLearnerConfig(strictness="medium")
+)
+profile_learner.fit(df.lazy())
+result = profile_learner.predict(df.lazy())
 
-# Constraint mining
-miner = ConstraintMiner()
-constraints = miner.mine(df)
+# Constraint mining (use ConstraintMinerConfig)
+miner = ConstraintMiner(
+    config=ConstraintMinerConfig(discover_functional_deps=True)
+)
+miner.fit(df.lazy())
+result = miner.predict(df.lazy())
 ```
 
 ### Model Registry
@@ -299,10 +328,14 @@ print(f"Nodes: {graph.node_count}, Edges: {graph.edge_count}")
 
 ```python
 with tracker.track("my_operation", OperationType.TRANSFORM) as ctx:
-    # Access context sources and targets as lists
+    # TrackingContext has sources and targets as lists
+    # Use append() to add items (not add_source/add_target methods)
     ctx.sources.append("input_data")
     ctx.targets.append("output_data")
     # ... your transformation code ...
+    print(f"Operation ID: {ctx.operation_id}")
+    print(f"Sources: {ctx.sources}")
+    print(f"Targets: {ctx.targets}")
 ```
 
 ### Impact Analysis
@@ -456,12 +489,16 @@ with tempfile.TemporaryDirectory() as tmpdir:
     # List checkpoints
     checkpoints = manager.list_checkpoints()
 
-    # Get latest checkpoint
+    # Get latest checkpoint (method is get_latest, not get_latest_checkpoint)
     latest = manager.get_latest()
 
-    # Restore from checkpoint
+    # Get checkpoint by ID
     restored = manager.get_checkpoint(checkpoint.checkpoint_id)
     print(f"Restored batch_count: {restored.batch_count}")
+
+    # Restore state from checkpoint
+    new_state = MemoryStateStore()
+    manager.restore(checkpoint.checkpoint_id, new_state)
 ```
 
 ---

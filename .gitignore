@@ -95,4 +95,8 @@ CLAUDE.md
 site/
 
 #copilot
-copilot-instructions.md
+copilot-instructions.mdtruthound-test/
+
+# truthound test folder
+truthound-test/
+.github/copilot-instructions.md

@@ -412,7 +412,7 @@ from truthound.checkpoint.routing import (
 
 # Create routing rules
 critical_rule = SeverityRule(min_severity="critical")
-many_issues_rule = IssueCountRule(min_count=100)
+many_issues_rule = IssueCountRule(min_issues=100)
 business_hours = TimeWindowRule(start_hour=9, end_hour=17, weekdays_only=True)
 
 # Combine rules

@@ -123,6 +123,84 @@ profile = profile_dataframe(df, name="my_data")
 profile_dict = profile.to_dict()
 ```
 
+### Specialized Table Analyzers
+
+The profiler architecture provides modular analyzers for specific analysis tasks. These components can be utilized independently or in conjunction with `DataProfiler` for fine-grained control over the profiling process.
+
+#### DuplicateRowAnalyzer
+
+Identifies duplicate rows within the dataset:
+
+```python
+from truthound.profiler import DuplicateRowAnalyzer, ProfilerConfig
+
+analyzer = DuplicateRowAnalyzer()
+result = analyzer.analyze(df.lazy(), ProfilerConfig())
+
+print(f"Duplicate rows: {result['duplicate_row_count']}")
+print(f"Duplicate ratio: {result['duplicate_row_ratio']:.2%}")
+```
+
+#### MemoryEstimator
+
+Estimates memory consumption for datasets:
+
+```python
+from truthound.profiler import MemoryEstimator, ProfilerConfig
+
+estimator = MemoryEstimator()
+result = estimator.analyze(df.lazy(), ProfilerConfig())
+
+size_mb = result["estimated_memory_bytes"] / (1024 * 1024)
+print(f"Estimated memory: {size_mb:.2f} MB")
+```
+
+#### CorrelationAnalyzer
+
+Computes pairwise correlations between numeric columns:
+
+```python
+from truthound.profiler import CorrelationAnalyzer, ProfilerConfig
+
+# Configure correlation threshold
+analyzer = CorrelationAnalyzer(threshold=0.5)
+config = ProfilerConfig(correlation_threshold=0.5)
+result = analyzer.analyze(df.lazy(), config)
+
+for col1, col2, corr in result["correlations"]:
+    direction = "positive" if corr > 0 else "negative"
+    print(f"{col1} <-> {col2}: {corr:.3f} ({direction} correlation)")
+```
+
+#### Custom TableAnalyzer Implementation
+
+The `TableAnalyzer` protocol enables extension of profiling capabilities through custom implementations:
+
+```python
+from truthound.profiler import TableAnalyzer, ProfilerConfig
+import polars as pl
+
+class RowCountAnalyzer(TableAnalyzer):
+    """Custom analyzer for row count categorization."""
+    name = "row_count_custom"
+
+    def analyze(self, lf: pl.LazyFrame, config: ProfilerConfig) -> dict:
+        row_count = lf.select(pl.len()).collect().item()
+        return {
+            "custom_row_count": row_count,
+            "row_category": (
+                "small" if row_count < 100
+                else "medium" if row_count < 1000
+                else "large"
+            ),
+        }
+
+# Register custom analyzer with DataProfiler
+profiler = DataProfiler()
+profiler.add_table_analyzer(RowCountAnalyzer())
+profile = profiler.profile(df.lazy(), name="custom_analysis")
+```
+
 ## Generating Validation Rules
 
 ### From Profile to Rules
@@ -206,7 +284,11 @@ report = th.check("data.csv", auto_schema=True)
 
 ## Data Drift Detection
 
-Truthound provides `th.compare()` for detecting data drift between datasets:
+Truthound provides multiple approaches for detecting data drift between datasets. The high-level `th.compare()` API offers simplified access, while the `ProfileComparator` class provides comprehensive control over the comparison process.
+
+### High-Level API: th.compare()
+
+The `th.compare()` function provides a streamlined interface for drift detection:
 
 ```python
 import truthound as th
@@ -228,6 +310,94 @@ if drift.has_high_drift:
 # Get list of drifted column names
 drifted_cols = drift.get_drifted_columns()
 print(f"Drifted columns: {drifted_cols}")
+```
+
+### Advanced API: ProfileComparator
+
+For fine-grained control over drift detection, the `ProfileComparator` class operates on pre-computed `TableProfile` objects:
+
+```python
+from truthound.profiler import (
+    DataProfiler,
+    ProfileComparator,
+    compare_profiles,
+    DriftType,
+    DriftSeverity,
+    DriftThresholds,
+)
+
+# Generate profiles
+profiler = DataProfiler()
+baseline_profile = profiler.profile(baseline_df.lazy(), name="baseline")
+current_profile = profiler.profile(current_df.lazy(), name="current")
+
+# Compare using ProfileComparator
+comparator = ProfileComparator()
+comparison = comparator.compare(baseline_profile, current_profile)
+
+print(f"Has Drift: {comparison.has_drift}")
+print(f"Total Drifts: {comparison.drift_count}")
+
+# Alternatively, use the convenience function
+comparison = compare_profiles(baseline_profile, current_profile)
+```
+
+#### Filtering by Drift Type and Severity
+
+```python
+# Filter by drift type
+completeness_drifts = comparison.get_by_type(DriftType.COMPLETENESS)
+distribution_drifts = comparison.get_by_type(DriftType.DISTRIBUTION)
+range_drifts = comparison.get_by_type(DriftType.RANGE)
+cardinality_drifts = comparison.get_by_type(DriftType.CARDINALITY)
+
+# Filter by severity
+critical_drifts = comparison.get_by_severity(DriftSeverity.CRITICAL)
+warning_drifts = comparison.get_by_severity(DriftSeverity.WARNING)
+info_drifts = comparison.get_by_severity(DriftSeverity.INFO)
+
+# Get specific column comparison
+age_comparison = comparison.get_column("age")
+if age_comparison and age_comparison.has_drift:
+    for drift in age_comparison.drifts:
+        print(f"  {drift.drift_type}: {drift.severity}")
+```
+
+#### Custom Drift Thresholds
+
+```python
+# Configure sensitive thresholds
+sensitive_thresholds = DriftThresholds(
+    null_ratio_warning=0.01,   # 1% change triggers warning
+    null_ratio_critical=0.05,
+    mean_warning=0.05,
+    mean_critical=0.1,
+)
+
+# Configure lenient thresholds
+lenient_thresholds = DriftThresholds(
+    null_ratio_warning=0.2,    # 20% change required for warning
+    null_ratio_critical=0.5,
+    mean_warning=0.3,
+    mean_critical=0.5,
+)
+
+# Apply thresholds to comparator
+comparator_sensitive = ProfileComparator(thresholds=sensitive_thresholds)
+comparison = comparator_sensitive.compare(baseline_profile, current_profile)
+```
+
+#### Generating Drift Reports
+
+```python
+# Generate text report
+report = comparison.to_report()
+print(report)
+
+# Output includes:
+# - Summary with drift counts by severity
+# - Detailed breakdown of critical and warning drifts
+# - Per-column change descriptions
 ```
 
 ### Specifying Detection Method
@@ -397,6 +567,19 @@ Configuration options for profiling:
 | `include_distributions` | `bool` | `True` | Calculate distribution stats |
 | `top_n_values` | `int` | `10` | Top N frequent values |
 | `n_jobs` | `int` | `1` | Parallel threads |
+| `correlation_threshold` | `float` | `0.7` | Minimum correlation to report |
+
+### TableAnalyzer Protocol
+
+Base protocol for implementing custom table-level analyzers:
+
+| Method | Parameters | Return | Description |
+|--------|------------|--------|-------------|
+| `analyze` | `lf: LazyFrame, config: ProfilerConfig` | `dict` | Execute analysis and return results |
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `name` | `str` | Unique identifier for the analyzer |
 
 ### DriftReport (from th.compare)
 
@@ -420,6 +603,52 @@ Methods:
 - `to_json()` - Convert to JSON string
 - `get_drifted_columns()` - Get list of drifted column names
 
+### ProfileComparison (from ProfileComparator)
+
+The detailed comparison result returned by `ProfileComparator.compare()`:
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `has_drift` | `bool` | Whether any drift was detected |
+| `drift_count` | `int` | Total number of detected drifts |
+| `columns` | `list[ColumnComparison]` | Per-column comparison results |
+| `all_drifts` | `list[Drift]` | Flattened list of all drifts |
+
+Methods:
+- `get_by_type(drift_type)` - Filter drifts by `DriftType`
+- `get_by_severity(severity)` - Filter drifts by `DriftSeverity`
+- `get_column(name)` - Get comparison for specific column
+- `to_report()` - Generate formatted text report
+
+### DriftType Enumeration
+
+| Value | Description |
+|-------|-------------|
+| `COMPLETENESS` | Changes in null ratio |
+| `DISTRIBUTION` | Changes in statistical distribution |
+| `RANGE` | Changes in min/max values |
+| `CARDINALITY` | Changes in distinct value count |
+| `UNIQUENESS` | Changes in uniqueness ratio |
+
+### DriftSeverity Enumeration
+
+| Value | Description |
+|-------|-------------|
+| `INFO` | Minor change, informational only |
+| `WARNING` | Moderate change, may require attention |
+| `CRITICAL` | Significant change, likely requires action |
+
+### DriftThresholds
+
+Configuration for drift detection sensitivity:
+
+| Attribute | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `null_ratio_warning` | `float` | `0.05` | Null ratio change for warning |
+| `null_ratio_critical` | `float` | `0.1` | Null ratio change for critical |
+| `mean_warning` | `float` | `0.1` | Mean change ratio for warning |
+| `mean_critical` | `float` | `0.2` | Mean change ratio for critical |
+
 ## CLI Commands Reference
 
 | Command | Description |
@@ -430,8 +659,21 @@ Methods:
 | `truthound quick-suite <file>` | One-step profile + rules |
 | `truthound compare <baseline> <current>` | Compare datasets for drift |
 
+## API Summary
+
+The following table summarizes the two complementary approaches for data profiling and comparison:
+
+| Use Case | High-Level API | Advanced API |
+|----------|----------------|--------------|
+| Basic profiling | `th.profile()` → `ProfileReport` | `DataProfiler.profile()` → `TableProfile` |
+| Drift detection | `th.compare()` → `DriftReport` | `ProfileComparator.compare()` → `ProfileComparison` |
+| Convenience function | - | `compare_profiles()` |
+
+The high-level API is recommended for standard use cases, while the advanced API provides additional capabilities for custom analysis pipelines, threshold configuration, and integration with scheduling systems.
+
 ## Next Steps
 
 - [Custom Validator Tutorial](custom-validator.md) - Create validators from learned patterns
 - [Enterprise Setup](enterprise-setup.md) - CI/CD integration with profiling
+- [Profiler Configuration](../guides/configuration/profiler-config.md) - Advanced configuration options
 - [Examples](examples.md) - More API usage examples

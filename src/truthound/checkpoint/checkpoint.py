@@ -243,7 +243,7 @@ class Checkpoint:
             self._config.name = name
 
         # Apply data source
-        if data_source:
+        if data_source is not None:
             self._config.data_source = data_source
 
         # Apply validators

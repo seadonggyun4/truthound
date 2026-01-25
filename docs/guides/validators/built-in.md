@@ -217,7 +217,18 @@ Ensures no null values.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `column` | `str` | Yes | - | Target column |
+| `columns` | `list[str] \| None` | No | `None` | Target columns (all if None) |
+
+```python
+# Single column
+validator = NotNullValidator(columns=["email"])
+
+# Multiple columns
+validator = NotNullValidator(columns=["user_id", "username", "email"])
+
+# All columns (default)
+validator = NotNullValidator()
+```
 
 ### CompletenessRatioValidator
 
@@ -225,11 +236,15 @@ Validates minimum completeness.
 
 | Parameter | Type | Required | Default | Description |
 |-----------|------|----------|---------|-------------|
-| `column` | `str` | Yes | - | Target column |
-| `min_ratio` | `float` | Yes | - | Min completeness (0.0-1.0) |
+| `min_ratio` | `float` | No | `0.95` | Min completeness (0.0-1.0) |
+| `columns` | `list[str] \| None` | No | `None` | Target columns (all if None) |
 
 ```python
-validator = CompletenessRatioValidator(column="phone", min_ratio=0.95)
+# Single column with custom ratio
+validator = CompletenessRatioValidator(min_ratio=0.95, columns=["phone"])
+
+# Multiple columns
+validator = CompletenessRatioValidator(min_ratio=0.90, columns=["email", "phone"])
 ```
 
 ### EmptyStringValidator
@@ -1436,12 +1451,14 @@ These parameters are shared across many validators:
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `column` | `str` | - | Target column name |
+| `column` | `str` | - | Target column name (legacy, prefer `columns`) |
 | `columns` | `list[str]` | `None` | Multiple columns (None = all) |
 | `mostly` | `float` | `None` | Min pass ratio (0.0-1.0) |
 | `max_anomaly_ratio` | `float` | `0.1` | Max anomaly ratio |
 | `reference_data` | `pl.DataFrame` | - | Baseline dataset for drift |
 | `tolerance` | `float` | `0.0` | Acceptable numeric tolerance |
+
+> **Note**: Most validators support both `column` (single) and `columns` (multiple) parameters via `**kwargs`. The `columns` parameter is preferred for consistency and flexibility. When `columns=None`, validators typically apply to all applicable columns.
 
 ---
 

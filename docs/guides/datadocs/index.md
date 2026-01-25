@@ -102,16 +102,18 @@ exporter.export(html, output_path="report.pdf")
 ### Workflow 4: Multilingual Report
 
 ```python
-from truthound.datadocs import generate_html_report
-from truthound.datadocs.i18n import set_locale
+from truthound.datadocs import generate_html_report, HTMLReportBuilder, ReportConfig
 
-# Set locale for report labels
-set_locale("ko")  # Korean
+# Use ReportConfig to set language
+config = ReportConfig(
+    theme="light",
+    language="ko",  # Korean
+)
 
-html = generate_html_report(
+builder = HTMLReportBuilder(config=config)
+html = builder.build(
     profile=profile_dict,
     title="데이터 품질 보고서",
-    theme="light",
 )
 ```
 

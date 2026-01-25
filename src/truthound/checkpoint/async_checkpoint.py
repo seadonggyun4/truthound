@@ -147,7 +147,7 @@ class AsyncCheckpoint:
 
         if name:
             self._config.name = name
-        if data_source:
+        if data_source is not None:
             self._config.data_source = data_source
         if validators:
             self._config.validators = validators
