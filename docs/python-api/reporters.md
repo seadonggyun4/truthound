@@ -93,12 +93,13 @@ from truthound.reporters.base import ReporterConfig
 class ReporterConfig:
     """Base configuration for reporters."""
 
-    include_summary: bool = True
+    output_path: str | Path | None = None
+    title: str = "Truthound Validation Report"
+    include_metadata: bool = True
+    include_statistics: bool = True
     include_details: bool = True
-    include_samples: bool = True
-    max_samples: int = 5
-    severity_filter: Severity | None = None
-    output_encoding: str = "utf-8"
+    timestamp_format: str = "%Y-%m-%d %H:%M:%S"
+    max_sample_values: int = 5
 ```
 
 ---
@@ -313,18 +314,21 @@ Create custom reporters using the SDK.
 ### Using Decorators
 
 ```python
-from truthound.reporters.sdk import reporter
+from truthound.reporters.sdk import create_reporter
 
-@reporter(name="my_custom", output_format="txt")
-def my_reporter(data) -> str:
+@create_reporter("my_custom", extension=".txt")
+def render_my_format(result, config):
     """Simple custom reporter."""
     lines = ["My Custom Report", "=" * 40]
-    for issue in data.issues:
-        lines.append(f"- {issue.column}: {issue.issue_type}")
+    for r in result.results:
+        if not r.success:
+            lines.append(f"- {r.column}: {r.issue_type}")
     return "\n".join(lines)
 
 # Use like any other reporter
-output = my_reporter(report)
+from truthound.reporters import get_reporter
+reporter = get_reporter("my_custom")
+output = reporter.render(result)
 ```
 
 ### Using ReporterBuilder
@@ -334,16 +338,15 @@ from truthound.reporters.sdk.builder import ReporterBuilder
 
 # Fluent builder pattern
 MyReporter = (
-    ReporterBuilder()
-    .with_name("my_reporter")
-    .with_format("text")
-    .as_validation_reporter()
-    .with_render_function(lambda data: f"Issues: {len(data.issues)}")
+    ReporterBuilder("my_reporter")
+    .with_extension(".txt")
+    .with_content_type("text/plain")
+    .with_renderer(lambda result, config: f"Issues: {result.statistics.total_issues}")
     .build()
 )
 
 reporter = MyReporter()
-print(reporter.render(report))
+print(reporter.render(result))
 ```
 
 ### Subclassing ValidationReporter
@@ -354,36 +357,59 @@ from truthound.reporters.base import ValidationReporter, ReporterConfig
 class MyCustomReporter(ValidationReporter[ReporterConfig]):
     """A fully custom reporter."""
 
+    name = "my_custom"
+    file_extension = ".txt"
+    content_type = "text/plain"
+
+    @classmethod
+    def _default_config(cls) -> ReporterConfig:
+        return ReporterConfig()
+
     def render(self, result) -> str:
-        lines = [f"Total Issues: {len(result.issues)}"]
-        for issue in result.issues:
-            lines.append(f"[{issue.severity.value}] {issue.column}: {issue.issue_type}")
+        lines = [f"Total Issues: {result.statistics.total_issues}"]
+        for r in result.results:
+            if not r.success:
+                lines.append(f"[{r.severity}] {r.column}: {r.issue_type}")
         return "\n".join(lines)
 ```
 
 ### Using Mixins
 
 ```python
-from truthound.reporters.sdk.mixins import (
+from truthound.reporters.sdk import (
     FormattingMixin,
     FilteringMixin,
     AggregationMixin,
 )
 from truthound.reporters.base import ValidationReporter, ReporterConfig
-from truthound.types import Severity
 
 class EnhancedReporter(
     FormattingMixin,
     FilteringMixin,
+    AggregationMixin,
     ValidationReporter[ReporterConfig]
 ):
     """Reporter with formatting and filtering capabilities."""
 
+    name = "enhanced"
+    file_extension = ".txt"
+    content_type = "text/plain"
+
+    @classmethod
+    def _default_config(cls) -> ReporterConfig:
+        return ReporterConfig()
+
     def render(self, result) -> str:
         # Use mixin methods
-        filtered = self.filter_by_severity(result.issues, min_severity=Severity.MEDIUM)
-        formatted = self.format_issues(filtered)
-        return "\n".join(formatted)
+        failed_results = self.filter_failed(result.results)
+        by_severity = self.group_by_severity(failed_results)
+
+        lines = [f"Summary: {result.statistics.total_issues} issues"]
+        for severity, results in by_severity.items():
+            lines.append(f"\n{severity.upper()} ({len(results)}):")
+            for r in results:
+                lines.append(f"  - {r.validator_name}: {r.column}")
+        return "\n".join(lines)
 ```
 
 ---

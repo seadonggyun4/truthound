@@ -150,8 +150,10 @@ class CSVReporter(
             "count": result.count or 0,
             "message": result.message or "",
             "sample_values": (
-                json.dumps(result.sample_values[:self._config.max_sample_values])
-                if result.sample_values
+                json.dumps(
+                    result.details.get("sample_values", [])[:self._config.max_sample_values]
+                )
+                if result.details.get("sample_values")
                 else ""
             ),
         }
@@ -436,8 +438,9 @@ class JUnitXMLReporter(
         }
 
         failure_content = ""
-        if result.sample_values:
-            samples = ", ".join(str(v) for v in result.sample_values[:5])
+        sample_values = result.details.get("sample_values", [])
+        if sample_values:
+            samples = ", ".join(str(v) for v in sample_values[:5])
             failure_content = f"Sample values: {samples}"
 
         failure = self.to_xml_element(

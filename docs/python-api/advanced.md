@@ -81,17 +81,36 @@ Machine learning-based validation and anomaly detection.
 
 ```python
 from truthound import ml
+from truthound.ml.anomaly_models.statistical import StatisticalConfig
+from truthound.ml.anomaly_models.isolation_forest import IsolationForestConfig
+from truthound.ml.anomaly_models.ensemble import EnsembleConfig, EnsembleStrategy
 import polars as pl
 
-# Statistical anomaly detectors
-detector = ml.ZScoreAnomalyDetector(threshold=3.0)
-detector = ml.IQRAnomalyDetector(multiplier=1.5)
-detector = ml.MADAnomalyDetector(threshold=3.5)
+# Statistical anomaly detectors (using Config objects)
+detector = ml.ZScoreAnomalyDetector(
+    config=StatisticalConfig(
+        z_threshold=3.0,
+        columns=["amount", "count"],  # specify columns in config
+    )
+)
+detector = ml.IQRAnomalyDetector(
+    config=StatisticalConfig(
+        iqr_multiplier=1.5,
+    )
+)
+detector = ml.MADAnomalyDetector(
+    config=StatisticalConfig(
+        z_threshold=3.5,  # MAD uses z_threshold for scaling
+    )
+)
 
-# Isolation Forest (requires scikit-learn)
+# Isolation Forest
 detector = ml.IsolationForestDetector(
-    n_estimators=100,
-    contamination=0.01,
+    config=IsolationForestConfig(
+        n_estimators=100,
+        contamination=0.01,
+        max_samples=256,
+    )
 )
 
 # Ensemble detector (combines multiple methods)
@@ -100,65 +119,99 @@ detector = ml.EnsembleAnomalyDetector(
         ml.ZScoreAnomalyDetector(),
         ml.IQRAnomalyDetector(),
     ],
-    voting="majority",  # or "any", "all"
+    config=EnsembleConfig(
+        strategy=EnsembleStrategy.AVERAGE,  # AVERAGE, MAX, MIN, VOTE, UNANIMOUS
+    ),
 )
 
-# Fit and predict
+# Fit and predict (use LazyFrame)
 df = pl.read_csv("data.csv")
-detector.fit(df, columns=["amount", "count"])
-result = detector.predict(df)
+detector.fit(df.lazy())  # pass LazyFrame
+result = detector.predict(df.lazy())
 
 print(f"Anomalies: {result.anomaly_count}")
-for score in result.scores:
-    if score.is_anomaly:
-        print(f"  Row {score.row_index}: {score.anomaly_type}")
+for score in result.get_anomalies():  # use get_anomalies() method
+    print(f"  Row {score.index}: {score.anomaly_type.value}")
 ```
 
 ### ML Drift Detection
 
 ```python
 from truthound import ml
+from truthound.ml.drift_detection.distribution import DistributionDriftConfig
+from truthound.ml.drift_detection.feature import FeatureDriftConfig
 
-# Distribution drift detector
+# Distribution drift detector (using Config object)
 detector = ml.DistributionDriftDetector(
-    method="ks",  # "ks", "psi", "chi2", "js"
-    threshold=0.05,
+    config=DistributionDriftConfig(
+        method="psi",  # "ks", "psi", "jensen_shannon", "wasserstein"
+        threshold=0.05,
+        n_bins=10,
+    )
 )
 
 # Feature drift detector (multi-column)
 detector = ml.FeatureDriftDetector(
-    columns=["age", "income", "score"],
-    method="psi",
+    config=FeatureDriftConfig(
+        threshold=0.05,
+        relative_threshold=True,
+        alert_on_new_values=True,
+    )
 )
 
-# Fit baseline
-detector.fit(baseline_df)
+# Fit baseline (use LazyFrame)
+detector.fit(baseline_df.lazy())
 
-# Detect drift
-result = detector.detect(current_df)
-if result.has_drift:
-    print(f"Drift detected: {result.drifted_columns}")
+# Detect drift with predict()
+result = detector.predict(current_df.lazy())
+if result.is_drifted:
+    drifted_cols = result.get_drifted_columns(threshold=0.05)
+    print(f"Drift detected: {drifted_cols}")
 ```
 
 ### Rule Learning
 
 ```python
 from truthound import ml
+from truthound.ml.rule_learning.profile_learner import ProfileLearnerConfig
+from truthound.ml.rule_learning.pattern_learner import PatternLearnerConfig
+from truthound.ml.rule_learning.constraint_miner import ConstraintMinerConfig
 
-# Learn rules from data
-learner = ml.DataProfileRuleLearner()
-result = learner.learn(df)
+# Learn rules from data (using Config object)
+learner = ml.DataProfileRuleLearner(
+    config=ProfileLearnerConfig(
+        strictness="medium",  # "loose", "medium", "strict"
+        min_support=0.1,
+        min_confidence=0.8,
+        include_range_rules=True,
+        include_null_rules=True,
+    )
+)
+learner.fit(df.lazy())
+result = learner.predict(df.lazy())
 
 for rule in result.rules:
-    print(f"{rule.column}: {rule.rule_type} - {rule.parameters}")
+    print(f"{rule.column}: {rule.rule_type} - {rule.condition}")
 
 # Pattern-based rule learning
-learner = ml.PatternRuleLearner()
-result = learner.learn(df, columns=["email", "phone"])
+learner = ml.PatternRuleLearner(
+    config=PatternLearnerConfig(
+        min_pattern_ratio=0.9,
+        learn_custom_patterns=True,
+    )
+)
+learner.fit(df.lazy())
+result = learner.predict(df.lazy())
 
 # Constraint mining
-miner = ml.ConstraintMiner()
-constraints = miner.mine(df)
+miner = ml.ConstraintMiner(
+    config=ConstraintMinerConfig(
+        discover_functional_deps=True,
+        discover_value_constraints=True,
+    )
+)
+miner.fit(df.lazy())
+result = miner.predict(df.lazy())
 ```
 
 ### Model Registry
@@ -190,7 +243,7 @@ detector = registry.create("my_detector")
 | **Rule Learners** | `DataProfileRuleLearner`, `ConstraintMiner`, `PatternRuleLearner` |
 | **Base Classes** | `MLModel`, `AnomalyDetector`, `MLDriftDetector`, `RuleLearner` |
 | **Results** | `AnomalyScore`, `AnomalyResult`, `DriftResult`, `LearnedRule`, `RuleLearningResult`, `ModelInfo` |
-| **Configurations** | `MLConfig`, `AnomalyConfig`, `DriftConfig`, `RuleLearningConfig` |
+| **Configurations** | `AnomalyConfig`, `StatisticalConfig`, `IsolationForestConfig`, `EnsembleConfig`, `DriftConfig`, `DistributionDriftConfig`, `FeatureDriftConfig`, `ConceptDriftConfig`, `MultivariateDriftConfig`, `RuleLearningConfig`, `ProfileLearnerConfig`, `PatternLearnerConfig`, `ConstraintMinerConfig` |
 | **Enums** | `ModelType`, `ModelState`, `AnomalyType`, `SeverityLevel` |
 | **Registry** | `ModelRegistry`, `model_registry`, `register_model` |
 | **Exceptions** | `MLError`, `ModelNotTrainedError`, `ModelTrainingError`, `ModelLoadError`, `InsufficientDataError` |
@@ -206,40 +259,44 @@ Track data flow and analyze impact of changes.
 ```python
 from truthound import lineage
 
-# Create tracker
+# Create tracker (with optional config)
 tracker = lineage.LineageTracker()
 
 # Track data sources
 tracker.track_source(
-    "raw_customers",
-    source_type="csv",
-    path="/data/customers.csv",
+    name="raw_customers",
+    source_type="file",
+    location="/data/customers.csv",
+    schema={"id": "Int64", "name": "Utf8", "email": "Utf8"},
+    description="Raw customer data",
+    owner="data_team",
+    tags=["raw", "pii"],
 )
 
 tracker.track_source(
-    "raw_orders",
-    source_type="database",
-    connection="postgresql://localhost/db",
-    table="orders",
+    name="raw_orders",
+    source_type="table",
+    location="postgresql://localhost/db/orders",
 )
 
 # Track transformations
 tracker.track_transformation(
-    "cleaned_customers",
+    name="cleaned_customers",
     sources=["raw_customers"],
     operation="clean",
-    metadata={"removed_nulls": True},
+    location="memory://cleaned_customers",
+    description="Removed nulls and normalized emails",
 )
 
 tracker.track_transformation(
-    "customer_orders",
+    name="customer_orders",
     sources=["cleaned_customers", "raw_orders"],
     operation="join",
 )
 
 # Track validation
 tracker.track_validation(
-    "validated_data",
+    name="validated_data",
     sources=["customer_orders"],
     validators=["null", "range", "format"],
 )
@@ -250,15 +307,30 @@ tracker.track_validation(
 ```python
 from truthound import lineage
 
-analyzer = lineage.ImpactAnalyzer(tracker.get_graph())
+# Use .graph property (not get_graph() method)
+analyzer = lineage.ImpactAnalyzer(tracker.graph)
 
 # Forward impact: what depends on this node?
 impact = analyzer.analyze_impact("raw_customers")
-print(f"Affected nodes: {[n.node_id for n in impact.affected_nodes]}")
+print(f"Affected nodes: {[n.node.id for n in impact.affected_nodes]}")
+print(f"Total affected: {impact.total_affected}")
+print(f"Max depth: {impact.max_depth}")
 
-# Backward lineage: where does this data come from?
-sources = analyzer.trace_sources("validated_data")
-print(f"Source nodes: {sources}")
+# Get nodes by impact level
+critical_nodes = impact.get_by_level(lineage.ImpactLevel.CRITICAL)
+high_nodes = impact.get_by_level(lineage.ImpactLevel.HIGH)
+
+# Get summary
+print(impact.summary())
+
+# Backward lineage: use get_upstream() on graph
+upstream = tracker.graph.get_upstream("validated_data")
+print(f"Source nodes: {[n.id for n in upstream]}")
+
+# Find path between nodes
+path = tracker.get_path("raw_customers", "validated_data")
+if path:
+    print(f"Path: {[n.id for n in path]}")
 ```
 
 ### Visualization
@@ -270,52 +342,88 @@ from truthound.lineage.visualization import (
     GraphvizRenderer,
     MermaidRenderer,
     RenderConfig,
+    get_renderer,  # factory function
 )
 
-graph = tracker.get_graph()
+# Use .graph property
+graph = tracker.graph
 
 # D3.js visualization (interactive HTML)
-renderer = D3Renderer()
+renderer = D3Renderer(theme="light")  # or "dark"
 html = renderer.render_html(graph, RenderConfig(
-    layout="dagre",
-    node_color_by="type",
+    layout="hierarchical",  # force, hierarchical, circular, grid
+    width=1200,
+    height=800,
+    orientation="TB",  # TB, BT, LR, RL
+    include_metadata=True,
 ))
 with open("lineage.html", "w") as f:
     f.write(html)
 
 # Mermaid diagram (for documentation)
 renderer = MermaidRenderer()
-mermaid_code = renderer.render(graph)
+mermaid_code = renderer.render(graph, RenderConfig())
 print(mermaid_code)
 
 # Graphviz (for static images)
 renderer = GraphvizRenderer()
-dot = renderer.render(graph)
+dot = renderer.render(graph, RenderConfig())
+
+# Cytoscape.js (interactive graph)
+renderer = CytoscapeRenderer(theme="dark")
+html = renderer.render_html(graph, RenderConfig(layout="cose"))
+
+# Factory function for creating renderers
+renderer = get_renderer("d3", theme="light")
+renderer = get_renderer("mermaid")
 ```
 
 ### OpenLineage Integration
 
 ```python
-from truthound.lineage.integrations.openlineage import OpenLineageEmitter
+from truthound.lineage.integrations.openlineage import (
+    OpenLineageEmitter,
+    OpenLineageConfig,
+)
 
+# Create emitter with config
 emitter = OpenLineageEmitter(
-    api_url="http://localhost:5000",
-    namespace="my-pipeline",
+    config=OpenLineageConfig(
+        endpoint="http://localhost:5000/api/v1/lineage",
+        namespace="my-pipeline",
+        producer="truthound",
+    )
 )
 
 # Start a run
 run = emitter.start_run(
     job_name="data-validation",
-    job_namespace="truthound",
+    inputs=[
+        emitter.build_input_dataset(
+            name="raw_data",
+            namespace="file",
+            schema=[{"name": "id", "type": "int"}, {"name": "value", "type": "string"}],
+        )
+    ],
 )
+
+# Emit running status (optional)
+emitter.emit_running(run)
 
 # Emit completion with outputs
 emitter.emit_complete(
     run,
     outputs=[
-        {"namespace": "file", "name": "/data/validated.parquet"},
+        emitter.build_output_dataset(
+            name="/data/validated.parquet",
+            namespace="file",
+            row_count=10000,
+        )
     ],
 )
+
+# Or emit from existing lineage graph
+events = emitter.emit_from_graph(tracker.graph, job_name="etl-pipeline")
 ```
 
 ### Lineage Module Classes
@@ -328,7 +436,7 @@ emitter.emit_complete(
 | **Enums** | `NodeType`, `EdgeType`, `OperationType` |
 | **Data Classes** | `LineageMetadata`, `LineageConfig` |
 | **Exceptions** | `LineageError`, `NodeNotFoundError`, `CyclicDependencyError` |
-| **Integration** | `OpenLineageEmitter` |
+| **Integration** | `OpenLineageEmitter`, `OpenLineageConfig`, `RunEvent`, `EventType`, `DatasetFacets` |
 
 ---
 
@@ -340,59 +448,81 @@ Streaming and incremental validation.
 
 ```python
 from truthound import realtime
+from truthound.realtime import StreamingConfig, StreamingMode
 
-# Create streaming validator
+# Create streaming validator with config
 validator = realtime.StreamingValidator(
     validators=["null", "range", "format"],
-    window_size=1000,
-    mode=realtime.StreamingMode.MICRO_BATCH,
+    config=StreamingConfig(
+        mode=StreamingMode.MICRO_BATCH,
+        batch_size=1000,
+        batch_timeout_ms=1000,
+        error_handling="skip",  # "skip", "fail", "retry"
+    ),
 )
 
-# Process batches
-async for batch in data_stream:
-    result = validator.validate_batch(batch)
+# Process batches (pass DataFrame, not LazyFrame)
+for batch in data_batches:
+    result = validator.validate_batch(batch, batch_id="batch_001")
     if result.has_issues:
         for issue in result.issues:
             print(f"Issue: {issue.column} - {issue.issue_type}")
+    print(f"Processed: {result.record_count}, Issues: {result.issue_count}")
 ```
 
 ### Incremental Validator
 
 ```python
 from truthound import realtime
+from truthound.realtime import StreamingConfig, WindowConfig, WindowType
 
 # Create incremental validator with state
 validator = realtime.IncrementalValidator(
     validators=["unique", "aggregate"],
+    config=StreamingConfig(checkpoint_interval_ms=5000),
+    window_config=WindowConfig(
+        window_type=WindowType.TUMBLING,
+        window_size=60,  # seconds
+    ),
     state_store=realtime.MemoryStateStore(),
 )
 
-# Process increments
+# Process increments (use validate_batch method)
 for chunk in data_chunks:
-    result = validator.validate_increment(chunk)
-    print(f"Total rows processed: {validator.total_rows}")
+    result = validator.validate_batch(chunk)
+    print(f"Total rows processed: {validator.total_records}")
+    print(f"Total issues: {validator.total_issues}")
+
+# Get aggregate statistics
+stats = validator.get_aggregate_stats()
+print(f"Batch count: {stats['batch_count']}")
+print(f"Issue rate: {stats['issue_rate']:.2%}")
 ```
 
 ### Kafka Integration
 
 ```python
-from truthound.realtime.adapters import KafkaAdapter, KafkaAdapterConfig
+from truthound.realtime.adapters.kafka import KafkaAdapter, KafkaAdapterConfig
 from truthound.realtime.factory import StreamAdapterFactory
+from truthound.realtime import OffsetReset, DeserializationFormat
 
-# Create via factory
+# Create via factory (pass dict config)
 adapter = StreamAdapterFactory.create("kafka", {
     "bootstrap_servers": "localhost:9092",
     "topic": "events",
-    "group_id": "truthound-validators",
+    "consumer_group": "truthound-validators",
 })
 
-# Or direct instantiation
-adapter = KafkaAdapter(KafkaAdapterConfig(
-    bootstrap_servers="localhost:9092",
-    topic="events",
-    group_id="truthound-validators",
-    auto_offset_reset="earliest",
-))
+# Or direct instantiation with typed config
+adapter = KafkaAdapter(
+    config=KafkaAdapterConfig(
+        bootstrap_servers="localhost:9092",
+        topic="events",
+        consumer_group="truthound-validators",
+        auto_offset_reset=OffsetReset.EARLIEST,
+        value_deserializer=DeserializationFormat.JSON,
+    )
+)
 
 async with adapter:
     async for message in adapter.consume():
@@ -407,13 +537,20 @@ async with adapter:
 ### Kinesis Integration
 
 ```python
-from truthound.realtime.adapters import KinesisAdapter, KinesisAdapterConfig
+from truthound.realtime.adapters.kinesis import KinesisAdapter, KinesisAdapterConfig
+from truthound.realtime import DeserializationFormat
 
-adapter = KinesisAdapter(KinesisAdapterConfig(
-    stream_name="my-stream",
-    region_name="us-east-1",
-    shard_iterator_type="LATEST",
-))
+adapter = KinesisAdapter(
+    config=KinesisAdapterConfig(
+        stream_name="my-stream",
+        region_name="us-east-1",
+        shard_iterator_type="LATEST",  # or "TRIM_HORIZON", "AT_SEQUENCE_NUMBER"
+        value_deserializer=DeserializationFormat.JSON,
+        # AWS credentials (optional, uses default credential chain)
+        # aws_access_key_id="...",
+        # aws_secret_access_key="...",
+    )
+)
 
 async with adapter:
     async for message in adapter.consume():
@@ -424,20 +561,37 @@ async with adapter:
 
 ```python
 from truthound import realtime
+from truthound.realtime import WindowConfig, WindowType, WindowResult
+from datetime import datetime, timedelta
 
-validator = realtime.StreamingValidator(
-    validators=["null", "range"],
-    window_config=realtime.WindowConfig(
-        type=realtime.WindowType.TUMBLING,
-        size_seconds=60,
-    ),
+# Configure window
+window_config = WindowConfig(
+    window_type=WindowType.TUMBLING,  # TUMBLING, SLIDING, SESSION, GLOBAL
+    window_size=60,  # seconds
+    # For SLIDING windows:
+    # slide_interval=10,  # slide every 10 seconds
+    # For SESSION windows:
+    # allowed_lateness=30,  # allow 30s late data
 )
 
-# Results are aggregated per window
-async for window_result in validator.validate_stream(stream):
+# IncrementalValidator supports windowing
+validator = realtime.IncrementalValidator(
+    validators=["null", "range"],
+    window_config=window_config,
+    state_store=realtime.MemoryStateStore(),
+)
+
+# Process batches and get window results
+for batch in data_batches:
+    result = validator.validate_batch(batch)
+
+# Get current window result
+window_result = validator.get_current_window()
+if window_result:
     print(f"Window {window_result.window_id}:")
-    print(f"  Rows: {window_result.row_count}")
-    print(f"  Issues: {len(window_result.issues)}")
+    print(f"  Total records: {window_result.total_records}")
+    print(f"  Total issues: {window_result.total_issues}")
+    print(f"  Batch count: {window_result.batch_count}")
 ```
 
 ### Realtime Module Classes
@@ -450,7 +604,7 @@ async for window_result in validator.validate_stream(stream):
 | **Protocols** | `IStreamSource`, `IStreamSink`, `IStreamProcessor`, `IStateStoreProtocol`, `IMetricsCollector` |
 | **Data Classes** | `StreamMessage`, `MessageBatch`, `MessageHeader`, `StreamMetrics` |
 | **Results** | `BatchResult`, `WindowResult` |
-| **Configs** | `StreamingConfig`, `WindowConfig` |
+| **Configs** | `StreamingConfig`, `WindowConfig`, `KafkaAdapterConfig`, `KinesisAdapterConfig` |
 | **Enums** | `StreamingMode`, `WindowType`, `TriggerType`, `DeserializationFormat`, `OffsetReset`, `AckMode` |
 | **Factory** | `StreamAdapterFactory` |
 | **Exceptions** | `StreamingError`, `ConnectionError`, `TimeoutError` |

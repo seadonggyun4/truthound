@@ -503,6 +503,9 @@ from truthound.datasources import get_datasource
 
 # File path
 source = get_datasource("data.csv")           # FileDataSource
+source = get_datasource("data.parquet")       # FileDataSource
+source = get_datasource("data.json")          # FileDataSource
+source = get_datasource("data.ndjson")        # FileDataSource
 
 # Polars DataFrame
 source = get_datasource(polars_df)            # PolarsDataSource
@@ -514,13 +517,19 @@ source = get_datasource(pandas_df)            # PandasDataSource
 source = get_datasource({"col": [1, 2, 3]})   # DictDataSource
 ```
 
+> **Note**: `get_datasource()` does NOT support `.db` (SQLite) files directly. Use `get_sql_datasource()` for SQLite databases.
+
 ### get_sql_datasource()
 
-Create SQL source from connection URL.
+Create SQL source from connection URL or file path.
 
 ```python
 from truthound.datasources import get_sql_datasource
 
+# SQLite database file (requires table parameter)
+source = get_sql_datasource("mydb.db", table="users")
+
+# PostgreSQL connection URL
 source = get_sql_datasource(
     "postgresql://user:pass@localhost/db",
     table="users"

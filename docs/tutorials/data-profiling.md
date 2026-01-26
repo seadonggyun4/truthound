@@ -33,10 +33,11 @@ print(f"Columns: {profile.column_count}")
 print(f"Size: {profile.size_bytes / 1024:.2f} KB")
 
 # Column details (columns is a list of dicts)
+# Note: Both 'null_pct'/'unique_pct' and 'null_count'/'unique_count' are available
 for col in profile.columns:
     print(f"\n{col['name']} ({col['dtype']}):")
-    print(f"  Null %: {col['null_pct']}")
-    print(f"  Unique %: {col['unique_pct']}")
+    print(f"  Null %: {col['null_pct']}")       # or col['null_count'] for count
+    print(f"  Unique %: {col['unique_pct']}")   # or col['unique_count'] for count
     if col.get('min'):
         print(f"  Range: [{col['min']}, {col['max']}]")
 
