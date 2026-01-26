@@ -361,11 +361,31 @@ nav:
   - Dashboard:
     - dashboard/index.md
     - Getting Started: dashboard/getting-started.md
-    - Features: dashboard/features.md
-    - API Reference: dashboard/api.md
-    - Configuration: dashboard/configuration.md
-    - Advanced Features: dashboard/advanced-features.md
-    - Internationalization: dashboard/internationalization.md
+    - Architecture: dashboard/architecture.md
+    - Internationalization: dashboard/intlayer-i18n-Guide.md
+    - Data Management:
+      - Dashboard: dashboard/data-management/dashboard.md
+      - Data Sources: dashboard/data-management/sources.md
+      - Data Catalog: dashboard/data-management/catalog.md
+      - Business Glossary: dashboard/data-management/glossary.md
+    - Data Quality:
+      - Drift Detection: dashboard/data-quality/drift.md
+      - Drift Monitoring: dashboard/data-quality/drift-monitoring.md
+      - Privacy & PII: dashboard/data-quality/privacy.md
+      - Data Lineage: dashboard/data-quality/lineage.md
+    - ML & Monitoring:
+      - Anomaly Detection: dashboard/ml-monitoring/anomaly.md
+      - Model Monitoring: dashboard/ml-monitoring/model-monitoring.md
+    - System:
+      - Unified Alerts: dashboard/system/alerts.md
+      - Schedules: dashboard/system/schedules.md
+      - Activity Feed: dashboard/system/activity.md
+      - Notifications: dashboard/system/notifications.md
+      - Advanced Notifications: dashboard/system/notifications-advanced.md
+      - Reports: dashboard/system/reports.md
+      - Plugins: dashboard/system/plugins.md
+      - Maintenance: dashboard/system/maintenance.md
+
 
 # Extra Configuration
 extra:
