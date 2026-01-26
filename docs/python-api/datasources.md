@@ -10,7 +10,7 @@ Truthound supports multiple data backends through the DataSource abstraction:
 |----------|---------|
 | **Files** | CSV, Parquet, JSON, NDJSON |
 | **DataFrames** | Polars, Pandas |
-| **SQL Databases** | PostgreSQL, MySQL, SQLite |
+| **SQL Databases** | PostgreSQL, MySQL, SQLite, DuckDB |
 | **Cloud Warehouses** | BigQuery, Snowflake, Redshift, Databricks |
 | **Enterprise** | Oracle, SQL Server |
 | **Big Data** | Apache Spark |
@@ -27,6 +27,7 @@ Each data source requires specific Python packages. Core file formats (CSV, JSON
 | | Pandas | `pandas` | `pip install truthound[pandas]` |
 | | Spark | `pyspark` | `pip install truthound[spark]` |
 | **Core SQL** | SQLite | (built-in) | - |
+| | DuckDB | `duckdb` | `pip install truthound[duckdb]` |
 | | PostgreSQL | `psycopg2` | `pip install truthound[postgresql]` |
 | | MySQL | `mysql-connector-python` | `pip install truthound[mysql]` |
 | **Cloud DW** | BigQuery | `google-cloud-bigquery` | `pip install truthound[bigquery]` |
@@ -62,6 +63,7 @@ pip install truthound[all]
 | | Pandas | `datasources/pandas_source.py` |
 | | Spark | `datasources/spark_source.py` |
 | Core SQL | SQLite | `datasources/sql/sqlite.py` |
+| | DuckDB | `datasources/sql/duckdb.py` |
 | | PostgreSQL | `datasources/sql/postgresql.py` |
 | | MySQL | `datasources/sql/mysql.py` |
 | Cloud DW | BigQuery | `datasources/sql/bigquery.py` |
@@ -276,6 +278,43 @@ source = SQLiteDataSource(
     database="mydb.db",
     query="SELECT * FROM users WHERE active = 1",
 )
+```
+
+### DuckDBDataSource
+
+DuckDB is an in-process analytical database with excellent Polars integration.
+
+```python
+from truthound.datasources.sql import DuckDBDataSource
+
+# From table
+source = DuckDBDataSource(
+    database="analytics.duckdb",
+    table="events",
+)
+
+# With custom query
+source = DuckDBDataSource(
+    database="analytics.duckdb",
+    query="SELECT * FROM events WHERE date > '2024-01-01'",
+)
+
+# In-memory database
+source = DuckDBDataSource(
+    database=":memory:",
+    query="SELECT 1 as id, 'test' as value",
+)
+
+# Read directly from Parquet file (DuckDB feature)
+source = DuckDBDataSource.from_parquet("data/*.parquet")
+
+# Read from CSV file
+source = DuckDBDataSource.from_csv("data.csv")
+
+# Create from Polars DataFrame
+import polars as pl
+df = pl.DataFrame({"id": [1, 2, 3], "value": ["a", "b", "c"]})
+source = DuckDBDataSource.from_dataframe(df, "my_table")
 ```
 
 ### PostgreSQLDataSource
@@ -542,11 +581,16 @@ source = get_sql_datasource(
 
 ```python
 import truthound as th
-from truthound.datasources.sql import PostgreSQLDataSource, BigQueryDataSource
+from truthound.datasources.sql import PostgreSQLDataSource, BigQueryDataSource, SQLiteDataSource
 
 # Check
 source = PostgreSQLDataSource(table="users", host="localhost", database="mydb")
 report = th.check(source=source)
+
+# Learn schema from database
+source = SQLiteDataSource(database="mydb.db", table="users")
+schema = th.learn(source=source)
+schema.save("schema.yaml")
 
 # Scan for PII
 source = BigQueryDataSource(project="...", dataset="...", table="customers")

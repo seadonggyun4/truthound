@@ -92,7 +92,8 @@ Learns a schema from data.
 
 ```python
 def learn(
-    data: Any,
+    data: Any = None,
+    source: BaseDataSource | None = None,
     infer_constraints: bool = True,
     categorical_threshold: int = 20,
 ) -> Schema:
@@ -102,7 +103,8 @@ def learn(
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `data` | `Any` | Required | Input data (file path, DataFrame, dict) |
+| `data` | `Any` | `None` | Input data (file path, DataFrame, dict) |
+| `source` | `BaseDataSource` | `None` | DataSource for databases (overrides `data`) |
 | `infer_constraints` | `bool` | `True` | Infer min/max, allowed values, etc. |
 | `categorical_threshold` | `int` | `20` | Max unique values to treat as categorical |
 
@@ -129,6 +131,16 @@ schema.save("schema.yaml")
 
 # Use for validation
 report = th.check("new_data.csv", schema=schema)
+
+# From database using DataSource
+from truthound.datasources.sql import SQLiteDataSource
+source = SQLiteDataSource(database="mydb.db", table="users")
+schema = th.learn(source=source)
+
+# PostgreSQL example
+from truthound.datasources.sql import PostgreSQLDataSource
+source = PostgreSQLDataSource(table="users", host="localhost", database="mydb")
+schema = th.learn(source=source)
 ```
 
 ---

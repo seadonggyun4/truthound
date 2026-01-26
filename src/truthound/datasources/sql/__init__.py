@@ -8,6 +8,7 @@ Supported databases:
 
 Traditional RDBMS:
 - SQLite (built-in)
+- DuckDB (requires: pip install duckdb)
 - PostgreSQL (requires: pip install psycopg2-binary)
 - MySQL (requires: pip install pymysql)
 - Oracle (requires: pip install oracledb)
@@ -36,6 +37,12 @@ from truthound.datasources.sql.cloud_base import (
 from truthound.datasources.sql.sqlite import SQLiteDataSource
 
 # Optional imports with graceful fallback
+try:
+    from truthound.datasources.sql.duckdb import DuckDBDataSource, DuckDBDataSourceConfig
+except ImportError:
+    DuckDBDataSource = None  # type: ignore
+    DuckDBDataSourceConfig = None  # type: ignore
+
 try:
     from truthound.datasources.sql.postgresql import PostgreSQLDataSource
 except ImportError:
@@ -96,6 +103,7 @@ def get_available_sources() -> dict[str, type | None]:
     """
     return {
         "sqlite": SQLiteDataSource,
+        "duckdb": DuckDBDataSource,
         "postgresql": PostgreSQLDataSource,
         "mysql": MySQLDataSource,
         "oracle": OracleDataSource,
@@ -135,6 +143,8 @@ __all__ = [
     # Core implementations (always available)
     "SQLiteDataSource",
     # Traditional RDBMS (optional)
+    "DuckDBDataSource",
+    "DuckDBDataSourceConfig",
     "PostgreSQLDataSource",
     "MySQLDataSource",
     "OracleDataSource",

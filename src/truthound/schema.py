@@ -4,12 +4,15 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import polars as pl
 import yaml
 
 from truthound.adapters import to_lazyframe
+
+if TYPE_CHECKING:
+    from truthound.datasources.base import BaseDataSource
 
 
 @dataclass
@@ -170,7 +173,8 @@ class Schema:
 
 
 def learn(
-    data: Any,
+    data: Any = None,
+    source: "BaseDataSource | None" = None,
     infer_constraints: bool = True,
     categorical_threshold: int = 20,
 ) -> Schema:
@@ -186,6 +190,8 @@ def learn(
 
     Args:
         data: Input data (file path, DataFrame, dict, etc.)
+        source: Optional DataSource instance. If provided, data is ignored.
+                This enables schema learning on SQL databases, Spark, etc.
         infer_constraints: Whether to infer constraints from data.
         categorical_threshold: Max unique values to treat as categorical.
 
@@ -195,8 +201,25 @@ def learn(
     Example:
         >>> schema = th.learn("data.csv")
         >>> schema.save("schema.yaml")
+
+        >>> # Using DataSource for SQL database
+        >>> from truthound.datasources.sql import SQLiteDataSource
+        >>> source = SQLiteDataSource(database="mydb.db", table="users")
+        >>> schema = th.learn(source=source)
     """
-    lf = to_lazyframe(data)
+    # Handle DataSource if provided
+    if source is not None:
+        from truthound.datasources.base import BaseDataSource
+
+        if not isinstance(source, BaseDataSource):
+            raise ValueError(
+                f"source must be a DataSource instance, got {type(source).__name__}"
+            )
+        lf = source.to_polars_lazyframe()
+    else:
+        if data is None:
+            raise ValueError("Either 'data' or 'source' must be provided")
+        lf = to_lazyframe(data)
     polars_schema = lf.collect_schema()
     col_names = list(polars_schema.keys())
 

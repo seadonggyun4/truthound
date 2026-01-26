@@ -315,6 +315,28 @@ for col_name, col_schema in schema.columns.items():
 schema.save("schema.yaml")
 ```
 
+### Learning Schema from Database
+
+```python
+import truthound as th
+from truthound.datasources.sql import SQLiteDataSource, PostgreSQLDataSource
+
+# Learn schema from SQLite database
+source = SQLiteDataSource(database="mydb.db", table="users")
+schema = th.learn(source=source)
+schema.save("users_schema.yaml")
+
+# Learn schema from PostgreSQL
+source = PostgreSQLDataSource(
+    table="orders",
+    host="localhost",
+    database="mydb",
+    user="postgres",
+)
+schema = th.learn(source=source)
+print(f"Learned schema with {len(schema.columns)} columns")
+```
+
 ### Validating with Schema
 
 ```python
