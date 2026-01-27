@@ -10,6 +10,12 @@ This guide covers connecting Truthound to various data backends through the Pyth
 import truthound as th
 from truthound.datasources import get_sql_datasource
 
+# Quick data loading with th.read()
+df = th.read("data.csv")                                     # File path
+df = th.read({"a": [1, 2, 3], "b": ["x", "y", "z"]})         # Dict data
+df = th.read("large_data.parquet", sample_size=10000)        # With sampling
+df = th.read({"path": "data.csv", "delimiter": ";"})         # Config dict
+
 # File-based validation
 report = th.check("data.csv")
 
@@ -543,6 +549,32 @@ source = FileDataSource("data.jsonl")
 ```
 
 ## Factory Functions
+
+### th.read() - Convenience Data Loading
+
+The `th.read()` function provides a simple way to load data from various sources:
+
+```python
+import truthound as th
+
+# File paths
+df = th.read("data.csv")
+df = th.read("data.parquet")
+df = th.read("data.json")
+
+# Raw data dict (column-oriented)
+df = th.read({"a": [1, 2, 3], "b": ["x", "y", "z"]})
+
+# Config dict with options
+df = th.read({"path": "data.csv", "delimiter": ";"})
+
+# With sampling for large datasets
+df = th.read("large_data.csv", sample_size=10000)
+
+# Polars DataFrame/LazyFrame passthrough
+df = th.read(existing_df)
+df = th.read(existing_lf)
+```
 
 ### Auto-Detection
 

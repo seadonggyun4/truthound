@@ -2,6 +2,71 @@
 
 Main entry points for Truthound data quality operations.
 
+## th.read()
+
+Reads data from various sources and returns as Polars DataFrame. Convenience wrapper for `datasources.get_datasource()`.
+
+### Signature
+
+```python
+def read(
+    data: Any,
+    sample_size: int | None = None,
+    **kwargs: Any,
+) -> pl.DataFrame:
+```
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `data` | `Any` | Required | File path, DataFrame, dict, or DataSource |
+| `sample_size` | `int` | `None` | Optional sample size for large datasets |
+| `**kwargs` | `Any` | - | Additional args passed to `get_datasource()` |
+
+### Supported Input Types
+
+| Type | Description | Example |
+|------|-------------|---------|
+| `str` | File path | `th.read("data.csv")` |
+| `pl.DataFrame` | Polars DataFrame | `th.read(df)` |
+| `pl.LazyFrame` | Polars LazyFrame | `th.read(lf)` |
+| `dict` (data) | Column-oriented data | `th.read({"a": [1,2,3], "b": ["x","y","z"]})` |
+| `dict` (config) | Config with "path" key | `th.read({"path": "data.csv", "delimiter": ";"})` |
+| `BaseDataSource` | DataSource instance | `th.read(source)` |
+
+### Returns
+
+`pl.DataFrame` - Polars DataFrame containing the loaded data.
+
+### Examples
+
+```python
+import truthound as th
+
+# Read from file path
+df = th.read("data.csv")
+df = th.read("data.parquet")
+df = th.read("data.json")
+
+# Read from raw data dict
+df = th.read({"a": [1, 2, 3], "b": ["x", "y", "z"]})
+
+# Read with config dict
+df = th.read({"path": "data.csv", "delimiter": ";"})
+
+# With sampling for large datasets
+df = th.read("large_data.csv", sample_size=10000)
+
+# Read from Polars DataFrame/LazyFrame (passthrough)
+df = th.read(pl.DataFrame({"x": [1, 2, 3]}))
+
+# With additional options
+df = th.read("data.csv", has_header=False)
+```
+
+---
+
 ## th.check()
 
 Validates data against rules and returns a validation report.
@@ -348,16 +413,37 @@ def compare(
 
 ### Methods
 
+**Statistical Tests (p-value based):**
+
 | Method | Description | Column Type | Best For |
 |--------|-------------|-------------|----------|
 | `auto` | Automatic selection based on dtype | Any | General use (recommended) |
-| `ks` | Kolmogorov-Smirnov test | **Numeric only** | Continuous numeric |
-| `psi` | Population Stability Index | **Numeric only** | ML monitoring |
+| `ks` | Kolmogorov-Smirnov test | Numeric only | Continuous numeric |
+| `psi` | Population Stability Index | Numeric only | ML monitoring |
 | `chi2` | Chi-squared test | Categorical | Categorical |
-| `js` | Jensen-Shannon divergence | Any | Any distribution |
+| `cvm` | Cramér-von Mises test | Numeric only | Tail sensitivity |
+| `anderson` | Anderson-Darling test | Numeric only | Extreme values |
 
-> **Important:** `ks` and `psi` methods only work with numeric columns. If your data contains
-> non-numeric columns, either use `columns` to specify numeric columns only, or use `method="auto"`.
+**Divergence Metrics:**
+
+| Method | Description | Column Type | Best For |
+|--------|-------------|-------------|----------|
+| `js` | Jensen-Shannon divergence | Any | Any distribution |
+| `kl` | Kullback-Leibler divergence | Numeric only | Information theory |
+
+**Distance Metrics:**
+
+| Method | Description | Column Type | Best For |
+|--------|-------------|-------------|----------|
+| `wasserstein` | Wasserstein (Earth Mover's) distance | Numeric only | Intuitive distance |
+| `hellinger` | Hellinger distance | Any | Bounded metric [0,1] |
+| `bhattacharyya` | Bhattacharyya distance | Any | Classification bounds |
+| `tv` | Total Variation distance | Any | Max probability diff |
+| `energy` | Energy distance | Numeric only | Location/scale changes |
+| `mmd` | Maximum Mean Discrepancy | Numeric only | High-dimensional data |
+
+> **Important:** Methods `ks`, `psi`, `kl`, `wasserstein`, `cvm`, `anderson`, `energy`, and `mmd` only work with numeric columns.
+> For non-numeric columns, use `method="auto"`, `method="chi2"`, `method="js"`, `method="hellinger"`, `method="bhattacharyya"`, or `method="tv"`.
 
 ### Returns
 
@@ -379,6 +465,18 @@ if drift.has_high_drift:
 
 # Specific method (psi requires numeric columns)
 drift = th.compare("train.csv", "prod.csv", method="psi", columns=["age", "income", "score"])
+
+# KL divergence
+drift = th.compare("baseline.csv", "current.csv", method="kl", columns=["age", "income"])
+
+# Wasserstein distance (normalized)
+drift = th.compare("baseline.csv", "current.csv", method="wasserstein", columns=["age", "income"])
+
+# Cramér-von Mises (sensitive to tails)
+drift = th.compare("baseline.csv", "current.csv", method="cvm", columns=["age", "income"])
+
+# Anderson-Darling (most sensitive to tail differences)
+drift = th.compare("baseline.csv", "current.csv", method="anderson", columns=["age", "income"])
 
 # With custom threshold
 drift = th.compare("old.csv", "new.csv", threshold=0.1)

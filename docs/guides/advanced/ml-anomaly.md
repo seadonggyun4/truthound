@@ -233,7 +233,51 @@ for score in result:
 
 ## Drift Detection
 
-### Supported Methods
+### Quick Drift Detection with th.compare()
+
+For simple drift detection between two datasets, use `th.compare()` with 14 available methods:
+
+```python
+import truthound as th
+
+# Auto-select best method based on column type
+drift = th.compare("baseline.csv", "current.csv", method="auto")
+
+# Statistical tests (numeric columns)
+drift = th.compare("baseline.csv", "current.csv", method="ks")          # Kolmogorov-Smirnov
+drift = th.compare("baseline.csv", "current.csv", method="psi")         # Population Stability Index
+drift = th.compare("baseline.csv", "current.csv", method="cvm")         # Cramér-von Mises
+drift = th.compare("baseline.csv", "current.csv", method="anderson")    # Anderson-Darling
+
+# Divergence metrics
+drift = th.compare("baseline.csv", "current.csv", method="kl")          # Kullback-Leibler divergence
+drift = th.compare("baseline.csv", "current.csv", method="js")          # Jensen-Shannon divergence
+
+# Distance metrics (any column type)
+drift = th.compare("baseline.csv", "current.csv", method="wasserstein") # Earth Mover's Distance
+drift = th.compare("baseline.csv", "current.csv", method="hellinger")   # Hellinger distance (bounded)
+drift = th.compare("baseline.csv", "current.csv", method="bhattacharyya") # Bhattacharyya distance
+drift = th.compare("baseline.csv", "current.csv", method="tv")          # Total Variation distance
+
+# Distance metrics (numeric only)
+drift = th.compare("baseline.csv", "current.csv", method="energy")      # Energy distance
+drift = th.compare("baseline.csv", "current.csv", method="mmd")         # Maximum Mean Discrepancy
+
+# For categorical columns
+drift = th.compare("baseline.csv", "current.csv", method="chi2")        # Chi-squared
+
+# Check results
+if drift.has_drift:
+    for col in drift.columns:
+        if col.result.drifted:
+            print(f"{col.column}: {col.result.method} = {col.result.statistic:.4f}")
+```
+
+See [Python API: th.compare()](../../python-api/core-functions.md#thcompare) for full documentation.
+
+### ML-Based Drift Detection
+
+For advanced ML-based drift detection with model monitoring capabilities:
 
 | Detector | Type | Methods | Use Case |
 |----------|------|---------|----------|
@@ -284,6 +328,16 @@ drifted = result.get_drifted_columns(threshold=0.1)
 | `ks` | Kolmogorov-Smirnov test | p-value based significance |
 | `jensen_shannon` | Symmetric KL divergence | 0-1 range, 0 = identical |
 | `wasserstein` | Earth-Mover distance | Minimum transport cost |
+| `kl` | Kullback-Leibler divergence | Information loss measurement |
+| `cvm` | Cramér-von Mises test | More sensitive to tails than KS |
+| `anderson` | Anderson-Darling test | Most sensitive to tail differences |
+| `hellinger` | Hellinger distance | Bounded [0,1], true metric |
+| `bhattacharyya` | Bhattacharyya distance | Classification error bounds |
+| `tv` | Total Variation distance | Max probability difference |
+| `energy` | Energy distance | Location/scale sensitivity |
+| `mmd` | Maximum Mean Discrepancy | High-dimensional kernel-based |
+
+> **Note:** For quick drift checks, use `th.compare()` instead. The ML module is better suited for continuous monitoring and model training workflows.
 
 ### Feature Drift Detection
 

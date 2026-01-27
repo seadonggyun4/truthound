@@ -19,13 +19,13 @@ This document provides a comprehensive reference for the statistical methods emp
 
 ## 1. Overview
 
-Truthound implements a comprehensive suite of statistical methods for data quality validation:
+Truthound implements a suite of statistical methods for data quality validation:
 
 | Category | Methods | Primary Use Case |
 |----------|---------|------------------|
-| Drift Detection | 13 methods | Distribution comparison between datasets |
-| Anomaly Detection | 15 methods | Outlier and anomaly identification |
-| Distribution Analysis | 8 methods | Statistical characterization |
+| Drift Detection | 14 methods (auto, ks, psi, chi2, js, kl, wasserstein, cvm, anderson, hellinger, bhattacharyya, tv, energy, mmd) | Distribution comparison between datasets |
+| Anomaly Detection | Multiple methods | Outlier and anomaly identification |
+| Distribution Analysis | Various methods | Statistical characterization |
 
 All methods are optimized for Polars LazyFrame execution, enabling efficient processing of large-scale datasets.
 
@@ -177,13 +177,26 @@ KL(P||Q) = Σ P(x) × log(P(x) / Q(x))
 **Usage**:
 
 ```python
-drift = th.compare(baseline, current, method="kl")
+# KL divergence requires numeric columns
+drift = th.compare(baseline, current, method="kl", columns=["age", "salary", "score"])
 ```
+
+> **Note:** KL divergence only works with numeric columns. For categorical data or symmetric divergence, use `method="js"` (Jensen-Shannon).
+
+**Interpretation**:
+
+| KL Value | Interpretation |
+|----------|----------------|
+| KL ≈ 0 | Distributions are identical |
+| KL < 0.1 | Very similar distributions |
+| 0.1 <= KL < 0.2 | Moderate difference |
+| KL >= 0.2 | Significant difference |
 
 **Properties**:
 - **Asymmetric**: KL(P||Q) ≠ KL(Q||P)
 - **Non-negative**: KL >= 0, with KL = 0 iff P = Q
 - **Unbounded**: Can be infinite if Q(x) = 0 where P(x) > 0
+- **Numeric columns only**
 
 ### 2.6 Wasserstein Distance (Earth Mover's Distance)
 
@@ -200,14 +213,27 @@ Where F_P and F_Q are the cumulative distribution functions.
 **Usage**:
 
 ```python
-drift = th.compare(baseline, current, method="wasserstein")
+# Wasserstein distance requires numeric columns
+drift = th.compare(baseline, current, method="wasserstein", columns=["age", "salary", "score"])
 ```
 
+> **Note:** Wasserstein distance only works with numeric columns. The statistic is normalized by baseline standard deviation for comparability.
+
+**Interpretation**:
+
+| Normalized Wasserstein | Interpretation |
+|------------------------|----------------|
+| W < 0.05 | Very similar distributions |
+| 0.05 <= W < 0.1 | Minor shift |
+| 0.1 <= W < 0.2 | Moderate shift |
+| W >= 0.2 | Significant shift |
+
 **Characteristics**:
+- **Numeric columns only**
 - Metric (satisfies triangle inequality)
 - Meaningful even when distributions have non-overlapping support
 - Interpretable as "work" needed to move probability mass
-- Scale-dependent: sensitive to the scale of the variable
+- Normalized by baseline standard deviation for scale independence
 
 ### 2.7 Cramér-von Mises Test
 
@@ -222,36 +248,285 @@ Cramér-von Mises is an alternative to KS that integrates squared differences be
 **Usage**:
 
 ```python
-drift = th.compare(baseline, current, method="cvm")
+# Cramér-von Mises test requires numeric columns
+drift = th.compare(baseline, current, method="cvm", columns=["age", "salary", "score"])
 ```
 
+> **Note:** Cramér-von Mises test only works with numeric columns and requires at least 2 samples in each dataset.
+
 **Characteristics**:
-- More sensitive to differences in tails than KS
-- Output: ω² statistic, p-value
+
+| Aspect | Description |
+|--------|-------------|
+| Column Type | **Numeric only** |
+| Best For | Detecting differences in entire distribution shape |
+| Sensitivity | More sensitive to tail differences than KS |
+| Output | ω² statistic, p-value |
+| Threshold | p-value < 0.05 indicates drift |
 
 ### 2.8 Anderson-Darling Test
 
 Anderson-Darling test gives more weight to the tails of the distribution.
 
+**Mathematical Definition**:
+
+```
+A² = -n - (1/n) × Σ (2i-1) × [ln(F(xᵢ)) + ln(1-F(x_{n+1-i}))]
+```
+
 **Usage**:
 
 ```python
-drift = th.compare(baseline, current, method="anderson")
+# Anderson-Darling test requires numeric columns
+drift = th.compare(baseline, current, method="anderson", columns=["age", "salary", "score"])
 ```
 
+> **Note:** Anderson-Darling test only works with numeric columns and requires at least 2 samples in each dataset.
+
 **Characteristics**:
-- More sensitive to tail deviations than KS or CvM
-- Useful for detecting differences in distribution extremes
 
-### 2.9 Additional Drift Methods
+| Aspect | Description |
+|--------|-------------|
+| Column Type | **Numeric only** |
+| Best For | Detecting differences in distribution tails |
+| Sensitivity | More sensitive to tail deviations than KS or CvM |
+| Output | A² statistic, p-value |
+| Threshold | p-value < 0.05 indicates drift |
 
-| Method | Function | Best For |
-|--------|----------|----------|
-| `hellinger` | Hellinger distance | Probability distributions |
-| `bhattacharyya` | Bhattacharyya distance | Probability overlap |
-| `total_variation` | Total variation distance | Binary classification |
-| `energy` | Energy distance | Multivariate distributions |
-| `mmd` | Maximum Mean Discrepancy | High-dimensional data |
+**Interpretation** (based on critical values):
+
+| p-value | Interpretation |
+|---------|----------------|
+| p > 0.25 | No significant difference |
+| 0.05 < p <= 0.25 | Weak evidence of difference |
+| 0.01 < p <= 0.05 | Moderate evidence of difference |
+| p <= 0.01 | Strong evidence of difference |
+
+### 2.9 Hellinger Distance
+
+Hellinger distance measures the similarity between two probability distributions with desirable metric properties.
+
+**Mathematical Definition**:
+
+```
+H(P, Q) = (1/√2) × √(Σ(√pᵢ - √qᵢ)²)
+```
+
+Where pᵢ and qᵢ are probabilities for category/bin i.
+
+**Usage**:
+
+```python
+drift = th.compare(baseline, current, method="hellinger")
+```
+
+**Interpretation**:
+
+| Hellinger Value | Interpretation |
+|-----------------|----------------|
+| H = 0 | Distributions are identical |
+| H < 0.1 | Very similar distributions |
+| 0.1 <= H < 0.2 | Moderate difference |
+| H >= 0.2 | Significant difference |
+| H = 1 | Distributions have no overlap |
+
+**Characteristics**:
+
+| Aspect | Description |
+|--------|-------------|
+| Column Type | **Numeric and Categorical** |
+| Range | Bounded [0, 1] |
+| Symmetry | Symmetric: H(P,Q) = H(Q,P) |
+| Metric | True metric (satisfies triangle inequality) |
+| Relationship | H(P,Q) = √(1 - BC(P,Q)) where BC is Bhattacharyya coefficient |
+
+### 2.10 Bhattacharyya Distance
+
+Bhattacharyya distance measures the overlap between two probability distributions, with connections to classification error bounds.
+
+**Mathematical Definition**:
+
+```
+D_B(P, Q) = -ln(BC(P, Q))
+BC(P, Q) = Σ√(pᵢ × qᵢ)  (Bhattacharyya coefficient)
+```
+
+**Usage**:
+
+```python
+drift = th.compare(baseline, current, method="bhattacharyya")
+```
+
+**Interpretation**:
+
+| Bhattacharyya Distance | Interpretation |
+|------------------------|----------------|
+| D_B ≈ 0 | Distributions are identical |
+| D_B < 0.1 | Very similar distributions |
+| 0.1 <= D_B < 0.2 | Moderate difference |
+| D_B >= 0.2 | Significant difference |
+
+**Characteristics**:
+
+| Aspect | Description |
+|--------|-------------|
+| Column Type | **Numeric and Categorical** |
+| Range | [0, +∞) |
+| BC Coefficient | Bounded [0, 1] (reported in details) |
+| Application | Related to Bayes classification error |
+| Relationship | Related to Hellinger: H² = 1 - BC |
+
+### 2.11 Total Variation Distance
+
+Total Variation (TV) distance measures the maximum difference in probability between two distributions.
+
+**Mathematical Definition**:
+
+```
+TV(P, Q) = (1/2) × Σ|pᵢ - qᵢ| = max_A |P(A) - Q(A)|
+```
+
+**Usage**:
+
+```python
+drift = th.compare(baseline, current, method="tv")
+# or
+drift = th.compare(baseline, current, method="total_variation")
+```
+
+**Interpretation**:
+
+| TV Value | Interpretation |
+|----------|----------------|
+| TV = 0 | Distributions are identical |
+| TV < 0.1 | Very similar distributions |
+| 0.1 <= TV < 0.2 | Moderate difference |
+| TV >= 0.2 | Significant difference |
+| TV = 1 | Distributions have completely disjoint support |
+
+**Characteristics**:
+
+| Aspect | Description |
+|--------|-------------|
+| Column Type | **Numeric and Categorical** |
+| Range | Bounded [0, 1] |
+| Symmetry | Symmetric: TV(P,Q) = TV(Q,P) |
+| Metric | True metric (satisfies triangle inequality) |
+| Interpretation | "Largest possible probability difference for any event" |
+
+**Relationship with Hellinger**:
+
+```
+H²(P,Q) ≤ TV(P,Q) ≤ √2 × H(P,Q)
+```
+
+### 2.12 Energy Distance
+
+Energy distance is a statistical distance that characterizes the equality of distributions and has desirable metric properties.
+
+**Mathematical Definition**:
+
+```
+E(P, Q) = 2×E[|X-Y|] - E[|X-X'|] - E[|Y-Y'|]
+```
+
+Where X, X' ~ P and Y, Y' ~ Q are independent samples.
+
+**Usage**:
+
+```python
+# Energy distance requires numeric columns
+drift = th.compare(baseline, current, method="energy", columns=["age", "salary"])
+```
+
+> **Note:** Energy distance only works with numeric columns.
+
+**Interpretation**:
+
+| Normalized Energy | Interpretation |
+|-------------------|----------------|
+| E ≈ 0 | Distributions are identical |
+| E < 0.1 | Very similar distributions |
+| 0.1 <= E < 0.2 | Moderate difference |
+| E >= 0.2 | Significant difference |
+
+**Characteristics**:
+
+| Aspect | Description |
+|--------|-------------|
+| Column Type | **Numeric only** |
+| Range | [0, +∞), normalized by pooled std |
+| Metric | True metric (satisfies triangle inequality) |
+| Consistency | E(P,Q) = 0 if and only if P = Q |
+| Computational | O(n²) for exact, can subsample for efficiency |
+
+### 2.13 Maximum Mean Discrepancy (MMD)
+
+Maximum Mean Discrepancy is a kernel-based distance measure that compares distributions in a reproducing kernel Hilbert space (RKHS).
+
+**Mathematical Definition**:
+
+```
+MMD²(P, Q) = E[k(X,X')] + E[k(Y,Y')] - 2×E[k(X,Y)]
+```
+
+Where k is a kernel function (default: Gaussian RBF kernel).
+
+**Usage**:
+
+```python
+# MMD requires numeric columns
+drift = th.compare(baseline, current, method="mmd", columns=["feature1", "feature2"])
+```
+
+> **Note:** MMD only works with numeric columns.
+
+**Kernel Options** (configurable via API):
+
+| Kernel | Formula | Best For |
+|--------|---------|----------|
+| RBF (default) | k(x,y) = exp(-γ‖x-y‖²) | General purpose |
+| Linear | k(x,y) = x·y | Linear differences |
+| Polynomial | k(x,y) = (1 + x·y)² | Non-linear patterns |
+
+**Interpretation**:
+
+| MMD Value | Interpretation |
+|-----------|----------------|
+| MMD ≈ 0 | Distributions are identical (in RKHS) |
+| MMD < 0.1 | Very similar distributions |
+| 0.1 <= MMD < 0.2 | Moderate difference |
+| MMD >= 0.2 | Significant difference |
+
+**Characteristics**:
+
+| Aspect | Description |
+|--------|-------------|
+| Column Type | **Numeric only** |
+| Range | [0, +∞) |
+| Non-parametric | No density estimation required |
+| High-dimensional | Works well where density estimation fails |
+| Bandwidth | Auto-selected via median heuristic or custom |
+| Computational | O(n²), can subsample for efficiency |
+
+### Currently Available Methods Summary
+
+| Method | `th.compare()` | ML API | Column Type |
+|--------|:--------------:|:------:|-------------|
+| `auto` | ✅ | - | Any (auto-select) |
+| `ks` | ✅ | - | Numeric only |
+| `psi` | ✅ | ✅ | Numeric only |
+| `chi2` | ✅ | - | Categorical |
+| `js` | ✅ | ✅ (`jensen_shannon`) | Any |
+| `kl` | ✅ | - | Numeric only |
+| `wasserstein` | ✅ | ✅ | Numeric only |
+| `cvm` | ✅ | - | Numeric only |
+| `anderson` | ✅ | - | Numeric only |
+| `hellinger` | ✅ | - | Any |
+| `bhattacharyya` | ✅ | - | Any |
+| `tv` | ✅ | - | Any |
+| `energy` | ✅ | - | Numeric only |
+| `mmd` | ✅ | - | Numeric only |
 
 ---
 
@@ -547,11 +822,12 @@ detector = ZScoreAnomalyDetector(threshold=2.5)  # More sensitive
 
 | Data Type | Drift Method | Anomaly Method |
 |-----------|--------------|----------------|
-| Continuous | KS, Wasserstein | Z-Score, IQR, Isolation Forest |
-| Categorical | Chi-Square, JS | Mode deviation, category frequency |
+| Continuous | KS, Wasserstein, Energy | Z-Score, IQR, Isolation Forest |
+| Categorical | Chi-Square, JS, Hellinger, TV | Mode deviation, category frequency |
 | Ordinal | KS, Wasserstein | IQR, percentile |
 | High-dimensional | MMD, Energy | Isolation Forest, Autoencoder |
 | Time Series | KS with windows | LOF, ARIMA residuals |
+| Probability Distributions | Hellinger, Bhattacharyya, TV | - |
 
 ### 6.2 By Sample Size
 
@@ -566,9 +842,10 @@ detector = ZScoreAnomalyDetector(threshold=2.5)  # More sensitive
 
 | Requirement | Methods |
 |-------------|---------|
-| High sensitivity | Anderson-Darling, MAD (low threshold) |
-| Balanced | KS, PSI, IQR |
-| Low false positives | Mahalanobis, Ensemble voting |
+| High sensitivity | Anderson-Darling, MAD (low threshold), Energy |
+| Balanced | KS, PSI, IQR, Hellinger, TV |
+| Low false positives | Mahalanobis, Ensemble voting, Bhattacharyya |
+| True metric needed | Hellinger, TV, Energy, MMD |
 
 ### 6.4 Decision Tree
 
@@ -658,6 +935,10 @@ drift = th.compare(baseline, current, correction="bh")
 9. Vaserstein, L. N. (1969). "Markov processes over denumerable products of spaces"
 10. Tukey, J. W. (1977). "Exploratory Data Analysis"
 11. Pearson, K. (1900). "On the criterion that a given system of deviations..."
+12. Hellinger, E. (1909). "Neue Begründung der Theorie quadratischer Formen..."
+13. Bhattacharyya, A. (1943). "On a measure of divergence between two statistical populations"
+14. Gretton, A., et al. (2012). "A Kernel Two-Sample Test" (MMD)
+15. Székely, G. J., & Rizzo, M. L. (2004). "Testing for equal distributions in high dimension"
 
 ---
 

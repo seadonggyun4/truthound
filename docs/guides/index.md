@@ -13,6 +13,11 @@ This section provides comprehensive guides for using Truthound through the Pytho
 ```python
 import truthound as th
 
+# Read data from various sources
+df = th.read("data.csv")                                     # File path
+df = th.read({"a": [1, 2, 3], "b": ["x", "y", "z"]})         # Dict data
+df = th.read("large_data.parquet", sample_size=10000)        # With sampling
+
 # Basic validation
 report = th.check("data.csv")
 print(f"Found {len(report.issues)} issues")
@@ -28,6 +33,14 @@ report = th.check("new_data.csv", schema=schema)
 from truthound.datasources import PostgreSQLDataSource
 source = PostgreSQLDataSource(table="users", host="localhost", database="mydb")
 report = th.check(source=source)
+
+# Data drift detection (14 methods available)
+drift = th.compare("baseline.csv", "current.csv", method="auto")        # Auto-select
+drift = th.compare("baseline.csv", "current.csv", method="ks")          # Kolmogorov-Smirnov
+drift = th.compare("baseline.csv", "current.csv", method="wasserstein") # Earth Mover's Distance
+drift = th.compare("baseline.csv", "current.csv", method="anderson")    # Anderson-Darling
+drift = th.compare("baseline.csv", "current.csv", method="hellinger")   # Hellinger distance
+drift = th.compare("baseline.csv", "current.csv", method="mmd")         # Maximum Mean Discrepancy
 ```
 
 ---

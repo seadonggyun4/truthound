@@ -60,12 +60,67 @@ anomalous_rows = new_df.filter(pl.Series(result.labels) == -1)
 ### Workflow 2: Distribution Drift Detection
 
 ```python
-from truthound.ml import DistributionDriftDetector
+import truthound as th
 
 # Reference data (baseline)
-reference_df = pl.read_csv("january_data.csv")
+baseline = "january_data.csv"
+current = "february_data.csv"
 
-# Current data
+# Quick drift detection with th.compare() - 14 methods available
+# Statistical: auto, ks, psi, chi2, cvm, anderson
+# Divergence: js, kl
+# Distance: wasserstein, hellinger, bhattacharyya, tv, energy, mmd
+
+# Auto-select method based on column type (recommended)
+drift = th.compare(baseline, current, method="auto")
+
+# Kolmogorov-Smirnov test (numeric columns)
+drift = th.compare(baseline, current, method="ks")
+
+# Population Stability Index (ML monitoring)
+drift = th.compare(baseline, current, method="psi")
+
+# Wasserstein distance (Earth Mover's Distance)
+drift = th.compare(baseline, current, method="wasserstein")
+
+# KL divergence (information theory)
+drift = th.compare(baseline, current, method="kl")
+
+# Cramér-von Mises (tail sensitivity)
+drift = th.compare(baseline, current, method="cvm")
+
+# Anderson-Darling (most sensitive to tails)
+drift = th.compare(baseline, current, method="anderson")
+
+# Hellinger distance (bounded metric)
+drift = th.compare(baseline, current, method="hellinger")
+
+# Bhattacharyya distance (classification bounds)
+drift = th.compare(baseline, current, method="bhattacharyya")
+
+# Total Variation distance (max probability diff)
+drift = th.compare(baseline, current, method="tv")
+
+# Energy distance (location/scale sensitivity)
+drift = th.compare(baseline, current, method="energy")
+
+# Maximum Mean Discrepancy (high-dimensional)
+drift = th.compare(baseline, current, method="mmd")
+
+# Check results
+if drift.has_drift:
+    for col_drift in drift.columns:
+        if col_drift.result.drifted:
+            print(f"DRIFT: {col_drift.column} - {col_drift.result.method} = {col_drift.result.statistic:.4f}")
+```
+
+**Alternative: ML-based Drift Detection**
+
+```python
+from truthound.ml import DistributionDriftDetector
+import polars as pl
+
+reference_df = pl.read_csv("january_data.csv")
 current_df = pl.read_csv("february_data.csv")
 
 # Detect drift using PSI (Population Stability Index)
@@ -216,21 +271,24 @@ Truthound provides sophisticated capabilities beyond basic validation:
 ### ML Anomaly Detection
 
 - **6 Anomaly Detectors**: Z-Score, IQR, MAD, Isolation Forest, Ensemble
-- **4 Drift Detectors**: Distribution (PSI/KS), Feature, Concept, Multivariate
+- **14 Drift Methods**: auto, ks, psi, chi2, js, kl, wasserstein, cvm, anderson, hellinger, bhattacharyya, tv, energy, mmd
 - **Model Monitoring**: Performance, drift, quality metrics with alerting
 
 ```python
-from truthound import ml
+import truthound as th
 
-# Anomaly detection
+# Quick drift detection with th.compare()
+drift = th.compare("baseline.csv", "current.csv", method="auto")      # Auto-select
+drift = th.compare("baseline.csv", "current.csv", method="wasserstein")  # Earth Mover's
+drift = th.compare("baseline.csv", "current.csv", method="anderson")     # Tail-sensitive
+drift = th.compare("baseline.csv", "current.csv", method="hellinger")    # Bounded metric
+drift = th.compare("baseline.csv", "current.csv", method="mmd")          # High-dimensional
+
+# ML-based anomaly detection
+from truthound import ml
 detector = ml.IsolationForestDetector(contamination=0.1)
 detector.fit(train_data)
 result = detector.predict(test_data)
-
-# Drift detection
-drift = ml.DistributionDriftDetector(method="psi")
-drift.fit(reference_data)
-result = drift.detect(reference_data, current_data)
 ```
 
 ### Data Lineage
@@ -289,7 +347,9 @@ issues = executor.execute(lf)  # Single collect() for all
 | Statistical Anomaly Detection | Yes | Yes |
 | Isolation Forest | Yes | Yes |
 | Ensemble Anomaly Detection | Yes | Yes |
-| Distribution Drift (PSI, KS) | Yes | Yes |
+| Distribution Drift (14 methods) | Yes | Yes |
+| Statistical: KS, PSI, Chi2, CvM, Anderson | Yes | Yes |
+| Divergence/Distance: JS, KL, Wasserstein, Hellinger, Bhattacharyya, TV, Energy, MMD | Yes | Yes |
 | Concept Drift (DDM, ADWIN) | Yes | Yes |
 | Model Monitoring | Yes | Yes |
 | Data Lineage Tracking | Yes | Yes |
