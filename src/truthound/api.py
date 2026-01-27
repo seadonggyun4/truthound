@@ -509,3 +509,99 @@ def profile(
         size_bytes=profile_dict["size_bytes"],
         columns=profile_dict["columns"],
     )
+
+
+def read(
+    data: Any,
+    sample_size: int | None = None,
+    **kwargs: Any,
+) -> pl.DataFrame:
+    """Read data from various sources and return as Polars DataFrame.
+
+    This is a convenience function that wraps datasources.get_datasource()
+    for simpler data loading. It supports file paths, dict configurations,
+    DataFrames, and DataSource objects.
+
+    Supported Input Types:
+        - str: File path (CSV, JSON, Parquet, etc.)
+        - pl.DataFrame: Polars DataFrame (returned as-is with optional sampling)
+        - pl.LazyFrame: Polars LazyFrame (collected to DataFrame)
+        - dict: Either raw data dict ({"col": [values]}) or
+                configuration dict with "path" key ({"path": "file.csv", ...})
+        - DataSource: Existing DataSource instance
+
+    Args:
+        data: File path, DataFrame, dict data, dict config, or DataSource object.
+        sample_size: Optional sample size for large datasets. If the dataset
+                    exceeds this size, a random sample is returned.
+        **kwargs: Additional arguments passed to get_datasource().
+                 Common options include:
+                 - delimiter: CSV delimiter character
+                 - has_header: Whether CSV has headers
+                 - schema: Explicit column schema
+
+    Returns:
+        Polars DataFrame containing the loaded data.
+
+    Example:
+        >>> import truthound as th
+        >>> # Simple file reading
+        >>> df = th.read("data.csv")
+        >>> df = th.read("data.parquet")
+        >>> df = th.read("data.json")
+
+        >>> # Raw data dict (like a DataFrame)
+        >>> df = th.read({"a": [1, 2, 3], "b": ["x", "y", "z"]})
+
+        >>> # Config dict with "path" key
+        >>> df = th.read({"path": "data.csv", "delimiter": ";"})
+
+        >>> # With sampling for large datasets
+        >>> df = th.read("large_data.csv", sample_size=10000)
+
+        >>> # With additional options
+        >>> df = th.read("data.csv", has_header=False)
+    """
+    from truthound.datasources import get_datasource
+    from truthound.datasources.base import BaseDataSource
+
+    # Handle DataSource instance
+    if isinstance(data, BaseDataSource):
+        source = data
+        df = source.to_polars_lazyframe().collect()
+    # Handle dict - distinguish between data dict and config dict
+    elif isinstance(data, dict):
+        # Check if this looks like a config dict (has "path" key)
+        if "path" in data:
+            path = data["path"]
+            # Merge dict config with kwargs
+            config = {k: v for k, v in data.items() if k != "path"}
+            config.update(kwargs)
+            source = get_datasource(path, **config)
+            df = source.to_polars_lazyframe().collect()
+        else:
+            # Treat as raw data dict (column-oriented data)
+            # Check if values are list-like (data dict) vs scalar (likely config)
+            first_value = next(iter(data.values()), None) if data else None
+            if first_value is not None and isinstance(first_value, (list, tuple)):
+                # This is a data dict like {"col": [1, 2, 3]}
+                df = pl.DataFrame(data)
+            else:
+                # Likely intended as config but missing "path"
+                raise ValueError(
+                    "Dict configuration must include 'path' key.\n\n"
+                    "Example:\n"
+                    "  th.read({'path': 'data.csv', 'delimiter': ';'})\n\n"
+                    "For raw data, use column-oriented format:\n"
+                    "  th.read({'col1': [1, 2, 3], 'col2': ['a', 'b', 'c']})"
+                )
+    # Handle file path or other data types (DataFrame, LazyFrame, etc.)
+    else:
+        source = get_datasource(data, **kwargs)
+        df = source.to_polars_lazyframe().collect()
+
+    # Apply sampling if requested
+    if sample_size is not None and len(df) > sample_size:
+        df = df.sample(n=sample_size, seed=42)
+
+    return df

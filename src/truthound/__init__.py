@@ -23,7 +23,7 @@ from typing import TYPE_CHECKING, Any
 # =============================================================================
 # Core API - Eagerly loaded (most commonly used)
 # =============================================================================
-from truthound.api import check, mask, profile, scan
+from truthound.api import check, mask, profile, read, scan
 from truthound.decorators import validator
 from truthound.schema import Schema, learn
 
@@ -64,7 +64,7 @@ def __dir__() -> list[str]:
     """Return list of available attributes for tab completion."""
     # Eagerly loaded attributes
     eager = [
-        "check", "scan", "mask", "profile", "learn",
+        "check", "scan", "mask", "profile", "read", "learn",
         "validator", "Schema", "__version__",
         "get_truthound_import_metrics",
     ]
@@ -168,6 +168,7 @@ __all__ = [
     "scan",
     "mask",
     "profile",
+    "read",
     "learn",
     "validator",
     "Schema",

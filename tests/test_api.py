@@ -202,3 +202,106 @@ class TestCustomValidator:
 
         assert report.has_issues
         assert any(i.issue_type == "check_positive" for i in report.issues)
+
+
+class TestRead:
+    """Tests for th.read()."""
+
+    def test_read_dict_data(self):
+        """Test reading from dictionary data."""
+        data = {"a": [1, 2, 3], "b": ["x", "y", "z"]}
+        df = th.read(data)
+
+        assert isinstance(df, pl.DataFrame)
+        assert len(df) == 3
+        assert df.columns == ["a", "b"]
+
+    def test_read_polars_dataframe(self):
+        """Test reading from Polars DataFrame."""
+        original = pl.DataFrame({"id": [1, 2, 3], "value": [10, 20, 30]})
+        df = th.read(original)
+
+        assert isinstance(df, pl.DataFrame)
+        assert len(df) == 3
+        assert df.columns == original.columns
+        assert df["id"].to_list() == original["id"].to_list()
+        assert df["value"].to_list() == original["value"].to_list()
+
+    def test_read_polars_lazyframe(self):
+        """Test reading from Polars LazyFrame."""
+        original = pl.LazyFrame({"id": [1, 2, 3], "value": [10, 20, 30]})
+        df = th.read(original)
+
+        assert isinstance(df, pl.DataFrame)
+        assert len(df) == 3
+
+    def test_read_with_sample_size(self):
+        """Test reading with sample_size parameter."""
+        data = {"id": list(range(1000))}
+        df = th.read(data, sample_size=100)
+
+        assert isinstance(df, pl.DataFrame)
+        assert len(df) == 100
+
+    def test_read_sample_size_larger_than_data(self):
+        """Test that sample_size larger than data returns all data."""
+        data = {"id": [1, 2, 3, 4, 5]}
+        df = th.read(data, sample_size=1000)
+
+        assert len(df) == 5
+
+    def test_read_dict_config_with_path_key(self):
+        """Test reading with dict config containing 'path' key."""
+        import tempfile
+        import os
+
+        # Create a temporary CSV file
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
+            f.write("a,b\n1,x\n2,y\n3,z\n")
+            temp_path = f.name
+
+        try:
+            df = th.read({"path": temp_path})
+            assert isinstance(df, pl.DataFrame)
+            assert len(df) == 3
+            assert "a" in df.columns
+            assert "b" in df.columns
+        finally:
+            os.unlink(temp_path)
+
+    def test_read_dict_config_missing_path_raises(self):
+        """Test that dict config without 'path' key raises ValueError."""
+        with pytest.raises(ValueError, match="must include 'path' key"):
+            th.read({"delimiter": ","})
+
+    def test_read_csv_file(self, tmp_path):
+        """Test reading from CSV file."""
+        csv_file = tmp_path / "test.csv"
+        csv_file.write_text("id,name\n1,Alice\n2,Bob\n3,Charlie\n")
+
+        df = th.read(str(csv_file))
+
+        assert isinstance(df, pl.DataFrame)
+        assert len(df) == 3
+        assert df.columns == ["id", "name"]
+
+    def test_read_parquet_file(self, tmp_path):
+        """Test reading from Parquet file."""
+        parquet_file = tmp_path / "test.parquet"
+        pl.DataFrame({"x": [1, 2, 3], "y": [4, 5, 6]}).write_parquet(parquet_file)
+
+        df = th.read(str(parquet_file))
+
+        assert isinstance(df, pl.DataFrame)
+        assert len(df) == 3
+        assert set(df.columns) == {"x", "y"}
+
+    def test_read_json_file(self, tmp_path):
+        """Test reading from JSON file."""
+        json_file = tmp_path / "test.json"
+        json_file.write_text('[{"a": 1, "b": "x"}, {"a": 2, "b": "y"}]')
+
+        df = th.read(str(json_file))
+
+        assert isinstance(df, pl.DataFrame)
+        assert len(df) == 2
