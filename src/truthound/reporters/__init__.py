@@ -26,6 +26,15 @@ Supported CI Platforms:
     - CircleCI: "circleci"
     - Bitbucket Pipelines: "bitbucket"
     - Auto-detect: "ci"
+
+Quality Reporters:
+    Quality reporters provide specialized reporting for rule quality scores.
+    See truthound.reporters.quality for the full quality reporting system.
+
+    >>> from truthound.reporters.quality import get_quality_reporter
+    >>>
+    >>> reporter = get_quality_reporter("html", include_charts=True)
+    >>> report = reporter.render(quality_scores)
 """
 
 from truthound.reporters.base import (
@@ -35,6 +44,20 @@ from truthound.reporters.base import (
 )
 from truthound.reporters.factory import get_reporter, register_reporter
 
+# Quality reporter lazy imports (avoid circular imports)
+def __getattr__(name: str):
+    """Lazy load quality reporter components."""
+    if name in (
+        "get_quality_reporter",
+        "QualityReporterConfig",
+        "QualityFilter",
+        "QualityReportEngine",
+    ):
+        from truthound.reporters import quality
+        return getattr(quality, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+
 __all__ = [
     # Base classes
     "BaseReporter",
@@ -43,4 +66,9 @@ __all__ = [
     # Factory functions
     "get_reporter",
     "register_reporter",
+    # Quality reporters (lazy loaded)
+    "get_quality_reporter",
+    "QualityReporterConfig",
+    "QualityFilter",
+    "QualityReportEngine",
 ]

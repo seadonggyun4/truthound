@@ -6,6 +6,7 @@ This package contains advanced feature commands:
     - lineage: Data lineage tracking
     - realtime: Real-time streaming validation
     - benchmark: Performance benchmarking
+    - quality: Quality score reporting and filtering
 """
 
 import typer
@@ -16,6 +17,7 @@ from truthound.cli_modules.advanced import ml
 from truthound.cli_modules.advanced import lineage
 from truthound.cli_modules.advanced import realtime
 from truthound.cli_modules.advanced import benchmark
+from truthound.cli_modules.advanced import quality
 
 
 def register_commands(parent_app: typer.Typer) -> None:
@@ -30,6 +32,7 @@ def register_commands(parent_app: typer.Typer) -> None:
     parent_app.add_typer(lineage.app, name="lineage")
     parent_app.add_typer(realtime.app, name="realtime")
     parent_app.add_typer(benchmark.app, name="benchmark")
+    parent_app.add_typer(quality.app, name="quality")
 
     # Register top-level dashboard command
     parent_app.command(name="dashboard")(docs.dashboard_cmd)
@@ -42,4 +45,5 @@ __all__ = [
     "lineage",
     "realtime",
     "benchmark",
+    "quality",
 ]
