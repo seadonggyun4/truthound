@@ -12,7 +12,7 @@
   <em>Sniffs out bad data</em>
 </p>
 
-> **Beta Release**: Core features are stable; APIs may still change in minor versions.
+> **Beta Release**: Core features are stable, APIs may still change in minor versions.
 
 ---
 
