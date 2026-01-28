@@ -12,7 +12,7 @@
   <em>Sniffs out bad data</em>
 </p>
 
-> **Alpha Release**: This framework is currently in alpha stage. APIs may change without notice. We are continuously improving core features and expanding ecosystem integrations.
+> **Beta Release**: Core features are stable; APIs may still change in minor versions.
 
 ---
 
@@ -31,45 +31,22 @@ Truthound is a data quality validation framework built on Polars, a Rust-based D
 
 **Documentation**: [https://truthound.netlify.app](https://truthound.netlify.app/)
 
-**Related Projects** (Alpha)
+**Related Projects**
 
-> **Note**  
-> These projects are under active development and depend on a Truthound API that is not yet finalized.  
-> As the API contract is subject to change, production use or direct integration into real-world projects is discouraged at this stage.
-> 
 | Project | Description | Status |
 |---------|-------------|--------|
-| [truthound-orchestration](https://github.com/seadonggyun4/truthound-orchestration) | Workflow integration for Airflow, Dagster, Prefect, and dbt | Alpha |
-| [truthound-dashboard](https://github.com/seadonggyun4/truthound-dashboard) | Web-based data quality monitoring dashboard | Alpha |
+| [truthound-orchestration](https://github.com/seadonggyun4/truthound-orchestration) | Workflow integration for Airflow, Dagster, Prefect, and dbt | Beta |
+| [truthound-dashboard](https://github.com/seadonggyun4/truthound-dashboard) | Web-based data quality monitoring dashboard | Beta |
 
 ---
 
-## Implementation Status
+## Metrics
 
-### Verified Metrics
-
-| Metric | Value | Notes |
-|--------|-------|-------|
-| Test Cases | 8,259 | Collected via pytest |
-| Validators | 264 | Validator classes available |
-| Validator Categories | 28 | Distinct subdirectories |
-
-### Core Features
-
-| Feature | Description |
-|---------|-------------|
-| **Zero Configuration** | Automatic schema inference with fingerprint-based caching (xxhash) |
-| **264 Validators** | 28 categories including schema, completeness, uniqueness, distribution, drift, anomaly |
-| **Polars LazyFrame** | Native Polars operations, expression-based batch execution, single collect() optimization |
-| **DAG Parallel Execution** | Dependency-aware orchestration with 3 execution strategies (Sequential, Parallel, Adaptive) |
-| **Custom Validator SDK** | `@custom_validator` decorator, `ValidatorBuilder` fluent API, testing utilities, 7 templates |
-| **i18n Error Messages** | 7 languages (EN, KO, JA, ZH, DE, FR, ES) with message catalogs |
-| **Privacy Compliance** | GDPR, CCPA, LGPD, PIPEDA, APPI support with PII detection and masking |
-| **ReDoS Protection** | Regex safety analysis, ML-based prediction (sklearn), CVE database, RE2 engine support |
-| **Distributed Timeout** | Deadline propagation, cascading timeout, graceful degradation |
-| **Enterprise Sampling** | Block, multi-stage, column-aware, progressive sampling for 100M+ rows |
-| **Performance Profiling** | Validator-level timing, memory, throughput metrics with Prometheus export |
-| **File Format Support** | CSV, JSON, Parquet, NDJSON, JSONL |
+| Metric | Value |
+|--------|-------|
+| Test Cases | 8,259 |
+| Validators | 264 |
+| Validator Categories | 28 |
 
 ---
 
@@ -92,9 +69,6 @@ import truthound as th
 # Basic validation
 report = th.check("data.csv")
 
-# Parallel validation (DAG-based execution)
-report = th.check("data.csv", parallel=True, max_workers=4)
-
 # Schema-based validation
 schema = th.learn("baseline.csv")
 report = th.check("new_data.csv", schema=schema)
@@ -114,43 +88,239 @@ profile = th.profile("data.csv")
 
 ```bash
 truthound check data.csv                    # Validate
-truthound check data.csv --strict           # CI/CD mode
 truthound compare baseline.csv current.csv  # Drift detection
 truthound scan data.csv                     # PII scanning
-truthound auto-profile data.csv -o profile.json  # Profiling
-
-# Code scaffolding
-truthound new validator my_validator        # Create validator
-truthound new reporter json_export          # Create reporter
-truthound new plugin my_plugin              # Create plugin
+truthound auto-profile data.csv             # Profiling
+truthound new validator my_validator        # Code scaffolding
 ```
+
+---
+
+## CLI Reference
+
+### Core Commands
+
+| Command | Description | Key Options |
+|---------|-------------|-------------|
+| `learn` | Learn schema from data | `--output`, `--no-constraints` |
+| `check` | Validate data quality | `--validators`, `--min-severity`, `--schema`, `--strict`, `--format` |
+| `scan` | Scan for PII | `--format`, `--output` |
+| `mask` | Mask sensitive data | `--columns`, `--strategy` (redact/hash/fake), `--strict` |
+| `profile` | Generate data profile | `--format`, `--output` |
+| `compare` | Detect data drift | `--method` (auto/ks/psi/chi2/js), `--threshold`, `--strict` |
+
+### Profiler Commands
+
+| Command | Description | Key Options |
+|---------|-------------|-------------|
+| `auto-profile` | Profile with auto-detection | `--patterns`, `--correlations`, `--sample`, `--top-n` |
+| `generate-suite` | Generate validation rules from profile | `--strictness`, `--preset`, `--code-style` |
+| `quick-suite` | Profile and generate rules in one step | `--strictness`, `--sample-size` |
+| `list-formats` | List supported output formats | - |
+| `list-presets` | List available presets | - |
+| `list-categories` | List rule categories | - |
+
+### Checkpoint Commands (CI/CD)
+
+| Command | Description | Key Options |
+|---------|-------------|-------------|
+| `checkpoint run` | Run validation pipeline | `--config`, `--data`, `--strict`, `--slack`, `--webhook` |
+| `checkpoint list` | List available checkpoints | `--config`, `--format` |
+| `checkpoint validate` | Validate configuration | `--strict` |
+| `checkpoint init` | Initialize sample config | `--output`, `--format` |
+
+### ML Commands
+
+| Command | Description | Key Options |
+|---------|-------------|-------------|
+| `ml anomaly` | Detect anomalies | `--method` (zscore/iqr/mad/isolation_forest), `--contamination` |
+| `ml drift` | Detect data drift | `--method` (distribution/feature/multivariate), `--threshold` |
+| `ml learn-rules` | Learn validation rules | `--strictness`, `--min-confidence`, `--max-rules` |
+
+### Docs Commands
+
+| Command | Description | Key Options |
+|---------|-------------|-------------|
+| `docs generate` | Generate HTML/PDF report | `--theme`, `--format` (html/pdf), `--title` |
+| `docs themes` | List available themes | - |
+
+### Lineage Commands
+
+| Command | Description | Key Options |
+|---------|-------------|-------------|
+| `lineage show` | Display lineage information | `--node`, `--direction` (upstream/downstream/both) |
+| `lineage impact` | Analyze change impact | `--max-depth`, `--output` |
+| `lineage visualize` | Generate lineage visualization | `--renderer` (d3/cytoscape/graphviz/mermaid), `--theme` |
+
+### Realtime Commands (Streaming)
+
+| Command | Description | Key Options |
+|---------|-------------|-------------|
+| `realtime validate` | Validate streaming data | `--batch-size`, `--max-batches` |
+| `realtime monitor` | Monitor validation metrics | `--interval`, `--duration` |
+| `realtime checkpoint list` | List checkpoints | `--dir` |
+| `realtime checkpoint show` | Show checkpoint details | `--dir` |
+| `realtime checkpoint delete` | Delete checkpoint | `--dir`, `--force` |
+
+### Benchmark Commands
+
+| Command | Description | Key Options |
+|---------|-------------|-------------|
+| `benchmark run` | Run performance benchmarks | `--suite` (quick/ci/full), `--size`, `--iterations` |
+| `benchmark list` | List available benchmarks | `--format` |
+| `benchmark compare` | Compare benchmark results | `--threshold` |
+
+### Scaffolding Commands
+
+| Command | Description | Key Options |
+|---------|-------------|-------------|
+| `new validator` | Create custom validator | `--template` (basic/column/pattern/range/comparison/composite/full) |
+| `new reporter` | Create custom reporter | `--template` (basic/full), `--extension` |
+| `new plugin` | Create plugin package | `--type` (validator/reporter/hook/datasource/action/full) |
+| `new list` | List scaffold types | `--verbose` |
+| `new templates` | List available templates | - |
+
+### Plugin Commands
+
+| Command | Description | Key Options |
+|---------|-------------|-------------|
+| `plugin list` | List discovered plugins | `--type`, `--state`, `--verbose` |
+| `plugin info` | Show plugin details | `--json` |
+| `plugin load` | Load a plugin | `--activate/--no-activate` |
+| `plugin unload` | Unload a plugin | - |
+| `plugin enable` | Enable a plugin | - |
+| `plugin disable` | Disable a plugin | - |
+| `plugin create` | Create plugin template | `--type`, `--author` |
+
+### Dashboard Command
+
+| Command | Description | Key Options |
+|---------|-------------|-------------|
+| `dashboard` | Launch interactive dashboard | `--profile`, `--port`, `--host`, `--debug` |
+
+---
+
+## Python API Guides
+
+### Validators
+
+| Guide | Description |
+|-------|-------------|
+| [Categories](https://truthound.netlify.app/guides/validators/categories/) | 28 validator categories overview |
+| [Built-in](https://truthound.netlify.app/guides/validators/built-in/) | 264 built-in validators reference |
+| [Custom Validators](https://truthound.netlify.app/guides/validators/custom-validators/) | `@custom_validator` decorator, `ValidatorBuilder` fluent API |
+| [Enterprise SDK](https://truthound.netlify.app/guides/validators/enterprise-sdk/) | Sandbox, signing, licensing, fuzzing |
+| [Security](https://truthound.netlify.app/guides/validators/security/) | ReDoS protection, SQL injection prevention |
+| [i18n](https://truthound.netlify.app/guides/validators/i18n/) | 7-language error messages |
+| [Optimization](https://truthound.netlify.app/guides/validators/optimization/) | Expression batch execution, DAG parallel |
 
 ### Data Sources
 
-| Interface | Supported Sources |
-|-----------|-------------------|
-| **CLI** | File formats only: CSV, JSON, Parquet, NDJSON, JSONL |
-| **Python API** | All sources: Files, DataFrames, SQL databases, Spark, Cloud DW |
+| Guide | Description |
+|-------|-------------|
+| [Files](https://truthound.netlify.app/guides/datasources/files/) | CSV, JSON, Parquet, NDJSON, JSONL |
+| [Databases](https://truthound.netlify.app/guides/datasources/databases/) | PostgreSQL, MySQL, SQLite, Oracle, SQL Server |
+| [Cloud Warehouses](https://truthound.netlify.app/guides/datasources/cloud-warehouses/) | BigQuery, Snowflake, Redshift, Databricks |
+| [Streaming](https://truthound.netlify.app/guides/datasources/streaming/) | Kafka, Kinesis, Pub/Sub adapters |
+| [Custom Sources](https://truthound.netlify.app/guides/datasources/custom-sources/) | IDataSource protocol implementation |
 
-```python
-# Python API - SQL databases, Spark, Cloud DW
-from truthound.datasources import BigQueryDataSource
+### Profiler
 
-source = BigQueryDataSource(
-    table="users",
-    project="my-project",
-    dataset="analytics",
-)
-report = th.check(source=source)
-```
+| Guide | Description |
+|-------|-------------|
+| [Basics](https://truthound.netlify.app/guides/profiler/basics/) | Column statistics, distribution analysis |
+| [Patterns](https://truthound.netlify.app/guides/profiler/patterns/) | Email, phone, credit card detection |
+| [Rule Generation](https://truthound.netlify.app/guides/profiler/rule-generation/) | Auto-generate validation rules |
+| [Drift Detection](https://truthound.netlify.app/guides/profiler/drift-detection/) | KS, PSI, Chi-square, Wasserstein |
+| [Quality Scoring](https://truthound.netlify.app/guides/profiler/quality-scoring/) | Data quality metrics |
+| [Sampling](https://truthound.netlify.app/guides/profiler/sampling/) | Block, multi-stage, progressive sampling |
+| [Caching](https://truthound.netlify.app/guides/profiler/caching/) | xxhash fingerprint-based caching |
+| [ML Inference](https://truthound.netlify.app/guides/profiler/ml-inference/) | ML-based rule generation |
+| [Threshold Tuning](https://truthound.netlify.app/guides/profiler/threshold-tuning/) | Automatic threshold optimization |
+| [Visualization](https://truthound.netlify.app/guides/profiler/visualization/) | Profile visualization |
+| [i18n](https://truthound.netlify.app/guides/profiler/i18n/) | Localized profiling output |
+| [Schema Evolution](https://truthound.netlify.app/guides/profiler/schema-evolution/) | Change detection, compatibility analysis |
+| [Distributed](https://truthound.netlify.app/guides/profiler/distributed/) | Spark, Dask, Ray backends |
+| [Enterprise Sampling](https://truthound.netlify.app/guides/profiler/enterprise-sampling/) | 100M+ row sampling strategies |
 
-> **Note**: Spark, BigQuery, Snowflake, Redshift, Databricks, and other database sources require the Python API with the `source=` parameter. The CLI only supports file-based inputs.
+### Data Docs
+
+| Guide | Description |
+|-------|-------------|
+| [HTML Reports](https://truthound.netlify.app/guides/datadocs/html-reports/) | Report generation pipeline |
+| [Charts](https://truthound.netlify.app/guides/datadocs/charts/) | ApexCharts, Chart.js, Plotly.js, SVG |
+| [Sections](https://truthound.netlify.app/guides/datadocs/sections/) | Report sections configuration |
+| [Themes](https://truthound.netlify.app/guides/datadocs/themes/) | 6 built-in themes, white-labeling |
+| [Versioning](https://truthound.netlify.app/guides/datadocs/versioning/) | 4 versioning strategies |
+| [PDF Export](https://truthound.netlify.app/guides/datadocs/pdf-export/) | Chunked rendering, parallel processing |
+| [Custom Renderers](https://truthound.netlify.app/guides/datadocs/custom-renderers/) | Jinja2, String, File, Callable templates |
+| [Dashboard](https://truthound.netlify.app/guides/datadocs/dashboard/) | Interactive dashboard integration |
+
+### Reporters
+
+| Guide | Description |
+|-------|-------------|
+| [Console](https://truthound.netlify.app/guides/reporters/console/) | Rich terminal output |
+| [JSON/YAML](https://truthound.netlify.app/guides/reporters/json-yaml/) | Structured output formats |
+| [HTML/Markdown](https://truthound.netlify.app/guides/reporters/html-markdown/) | Document formats |
+| [CI Reporters](https://truthound.netlify.app/guides/reporters/ci-reporters/) | JUnit, GitHub Actions, GitLab CI |
+| [Custom SDK](https://truthound.netlify.app/guides/reporters/custom-sdk/) | IReporter protocol implementation |
+
+### Storage
+
+| Guide | Description |
+|-------|-------------|
+| [Filesystem](https://truthound.netlify.app/guides/stores/filesystem/) | Local file storage |
+| [Cloud Storage](https://truthound.netlify.app/guides/stores/cloud-storage/) | S3, GCS, Azure Blob |
+| [Versioning](https://truthound.netlify.app/guides/stores/versioning/) | Incremental, Semantic, Timestamp, GitLike |
+| [Retention](https://truthound.netlify.app/guides/stores/retention/) | Time, Count, Size, Status, Tag policies |
+| [Tiering](https://truthound.netlify.app/guides/stores/tiering/) | Hot/Warm/Cold/Archive migration |
+| [Caching](https://truthound.netlify.app/guides/stores/caching/) | LRU, LFU, TTL backends |
+| [Replication](https://truthound.netlify.app/guides/stores/replication/) | Sync/Async/Semi-Sync cross-region |
+| [Observability](https://truthound.netlify.app/guides/stores/observability/) | Audit, Metrics, Tracing |
+
+### Checkpoint & CI/CD
+
+| Guide | Description |
+|-------|-------------|
+| [Basics](https://truthound.netlify.app/guides/checkpoint/basics/) | Checkpoint configuration |
+| [Triggers](https://truthound.netlify.app/guides/checkpoint/triggers/) | Event-based triggering |
+| [Actions](https://truthound.netlify.app/guides/checkpoint/actions/) | Notifications, Webhook, Storage, Incident |
+| [Routing](https://truthound.netlify.app/guides/checkpoint/routing/) | Python + Jinja2 rule engine, 11 built-in rules |
+| [Deduplication](https://truthound.netlify.app/guides/checkpoint/deduplication/) | InMemory/Redis, 4 window strategies |
+| [Throttling](https://truthound.netlify.app/guides/checkpoint/throttling/) | Token Bucket, Fixed/Sliding Window |
+| [Escalation](https://truthound.netlify.app/guides/checkpoint/escalation/) | Multi-level policies, state machine |
+| [Async](https://truthound.netlify.app/guides/checkpoint/async/) | Celery, Ray, Kubernetes backends |
+| [CI Platforms](https://truthound.netlify.app/guides/checkpoint/ci-platforms/) | GitHub Actions, GitLab CI, Jenkins, etc. |
+
+### Configuration
+
+| Guide | Description |
+|-------|-------------|
+| [Environment Variables](https://truthound.netlify.app/guides/configuration/environment-vars/) | Environment-based configuration |
+| [Sources](https://truthound.netlify.app/guides/configuration/sources/) | Data source configuration |
+| [Datasource Config](https://truthound.netlify.app/guides/configuration/datasource-config/) | Connection settings |
+| [Store Config](https://truthound.netlify.app/guides/configuration/store-config/) | Storage backend settings |
+| [Profiler Config](https://truthound.netlify.app/guides/configuration/profiler-config/) | Profiler settings |
+| [Checkpoint Config](https://truthound.netlify.app/guides/configuration/checkpoint-config/) | CI/CD pipeline settings |
+| [Logging](https://truthound.netlify.app/guides/configuration/logging/) | JSON format, ELK/Loki integration |
+| [Metrics](https://truthound.netlify.app/guides/configuration/metrics/) | Prometheus counters, gauges, histograms |
+| [Audit](https://truthound.netlify.app/guides/configuration/audit/) | Operation trail, compliance reporting |
+| [Encryption](https://truthound.netlify.app/guides/configuration/encryption/) | AES-256-GCM, Cloud KMS integration |
+| [Resilience](https://truthound.netlify.app/guides/configuration/resilience/) | Circuit breaker, retry, bulkhead |
+
+### Advanced
+
+| Guide | Description |
+|-------|-------------|
+| [ML Anomaly](https://truthound.netlify.app/guides/advanced/ml-anomaly/) | Isolation Forest, LOF, One-Class SVM |
+| [Lineage](https://truthound.netlify.app/guides/advanced/lineage/) | DAG tracking, OpenLineage integration |
+| [Plugins](https://truthound.netlify.app/guides/advanced/plugins/) | Security sandbox, signing, hot reload |
+| [Performance](https://truthound.netlify.app/guides/advanced/performance/) | Optimization strategies |
 
 ---
 
 ## Validator Categories
-
-The following validator categories are implemented:
 
 | Category | Description |
 |----------|-------------|
@@ -175,13 +345,13 @@ The following validator categories are implemented:
 | referential | Foreign keys, orphan records |
 | timeseries | Gaps, seasonality, trend detection |
 | privacy | PII detection and compliance rules |
-| security | SQL injection prevention, ReDoS protection |
-| sdk | Custom validator development tools |
+| security | SQL injection, ReDoS protection |
+| sdk | Custom validator development |
 | timeout | Distributed timeout management |
 | i18n | Internationalized error messages |
 | streaming | Streaming data validation |
 | memory | Memory-aware processing |
-| optimization | Validator execution optimization |
+| optimization | Execution optimization |
 
 ---
 
@@ -194,129 +364,7 @@ The following validator categories are implemented:
 | Cloud DW | BigQuery, Snowflake, Redshift, Databricks |
 | Enterprise | Oracle, SQL Server |
 | File | CSV, Parquet, JSON, NDJSON |
-
----
-
-## Streaming Support
-
-### Protocol-based Adapters
-
-Kafka and Kinesis adapters implement `IStreamSource`/`IStreamSink` protocols with async operations:
-
-| Adapter | Library | Features |
-|---------|---------|----------|
-| KafkaAdapter | aiokafka | Consumer groups, partition management, SASL/SSL authentication |
-| KinesisAdapter | aiobotocore | Multi-shard consumption, enhanced fan-out, checkpointing |
-
-### StreamingSource Pattern
-
-File-based and cloud streaming sources use `StreamingSource` base class:
-
-| Source | Description |
-|--------|-------------|
-| ParquetSource | Parquet file streaming |
-| CSVSource | CSV file streaming |
-| JSONLSource | JSON Lines streaming |
-| ArrowIPCSource | Arrow IPC format |
-| ArrowFlightSource | Arrow Flight protocol |
-| PubSubSource | Google Cloud Pub/Sub (requires google-cloud-pubsub) |
-
-Note: Kafka and Kinesis use protocol-based adapters with `aiokafka` and `aiobotocore`. Pub/Sub uses the `StreamingSource` pattern with synchronous operations.
-
----
-
-## Enterprise Features
-
-### Auto-Profiling
-
-| Feature | Description |
-|---------|-------------|
-| **Statistical Profiling** | Column-level statistics, distribution analysis, missing value detection |
-| **Pattern Detection** | Email, phone, credit card, custom regex patterns |
-| **Rule Generation** | Auto-generate validation rules from profile with `Suite.execute()` |
-| **Distributed Processing** | Spark, Dask, Ray, Local backends |
-| **Incremental Scheduling** | Cron, interval, data change triggers |
-| **Schema Evolution** | Change detection, compatibility analysis (FULL, BACKWARD, FORWARD, NONE) |
-| **Unified Resilience** | Circuit breaker, retry, bulkhead, rate limiter with fluent builder |
-
-### Data Docs (HTML Reports)
-
-| Feature | Description |
-|---------|-------------|
-| **6 Built-in Themes** | Default, Light, Dark, Minimal, Modern, Professional |
-| **4 Chart Libraries** | ApexCharts, Chart.js, Plotly.js, SVG (zero-dependency) |
-| **15 Languages** | EN, KO, JA, ZH, DE, FR, ES, PT, IT, RU, AR, TH, VI, ID, TR |
-| **White-labeling** | Enterprise themes with custom branding, logo, colors |
-| **PDF Export** | Chunked rendering, parallel processing for large reports |
-| **Report Versioning** | 4 strategies with diff and rollback support |
-
-### Plugin Architecture
-
-| Feature | Description |
-|---------|-------------|
-| **Security Sandbox** | NoOp, Process, Container isolation engines |
-| **Plugin Signing** | HMAC, RSA, Ed25519 algorithms with trust store |
-| **6 Security Presets** | DEVELOPMENT, TESTING, STANDARD, ENTERPRISE, STRICT, AIRGAPPED |
-| **Version Constraints** | Semver-based (^, ~, >=, <, ranges) |
-| **Dependency Management** | Graph-based resolution, cycle detection, topological sort |
-| **Hot Reload** | File watching, graceful reload with rollback |
-| **Documentation** | AST-based extraction, Markdown/HTML/JSON renderers |
-| **CLI Extension** | Entry point based plugin system (`truthound.cli` group) |
-
-### Checkpoint & CI/CD
-
-| Feature | Description |
-|---------|-------------|
-| **Saga Pattern** | 8 compensation strategies (Backward, Forward, Semantic, Pivot, etc.) |
-| **12 CI Platforms** | GitHub Actions, GitLab CI, Jenkins, CircleCI, Azure DevOps, etc. |
-| **9 Notification Providers** | Slack, Email, PagerDuty, GitHub, Webhook, Teams, OpsGenie, Discord, Telegram |
-| **GitHub OIDC** | 30+ claims parsing, AWS/GCP/Azure/Vault credential exchange |
-| **4 Distributed Backends** | Local, Celery, Ray, Kubernetes |
-| **Circuit Breaker** | 3 states (CLOSED, OPEN, HALF_OPEN), failure detection strategies |
-| **Idempotency** | Request fingerprinting, duplicate detection, TTL expiration |
-
-### Advanced Notifications
-
-| Feature | Description |
-|---------|-------------|
-| **Rule-based Routing** | Python expression + Jinja2 engine, 11 built-in rules, combinators (AllOf, AnyOf, NotRule) |
-| **Deduplication** | InMemory/Redis Streams backends, 4 window strategies (Sliding, Tumbling, Session, Adaptive) |
-| **Rate Limiting** | Token Bucket, Fixed/Sliding Window, 5 throttler types with builder pattern |
-| **Escalation Policies** | Multi-level escalation, state machine, 3 storage backends (InMemory, Redis, SQLite) |
-
-### ML & Lineage
-
-| Feature | Description |
-|---------|-------------|
-| **6 Anomaly Algorithms** | Isolation Forest, LOF, One-Class SVM, DBSCAN, Statistical, Autoencoders |
-| **4 Drift Algorithms** | KS Test, Chi-Square, PSI, Jensen-Shannon Divergence |
-| **ML Model Monitoring** | Performance metrics, quality metrics, drift detection, alerting |
-| **Lineage Graph** | DAG-based dependency tracking, column-level lineage, impact analysis |
-| **4 Visualization Renderers** | D3.js, Cytoscape.js, Graphviz, Mermaid |
-| **OpenLineage Integration** | Industry-standard lineage events, run lifecycle management |
-
-### Storage Features
-
-| Feature | Description |
-|---------|-------------|
-| **Cloud Storage** | S3, GCS, Azure Blob backends with connection pooling |
-| **Versioning** | 4 strategies (Incremental, Semantic, Timestamp, GitLike) |
-| **Retention** | 6 policies (Time, Count, Size, Status, Tag, Composite) |
-| **Tiering** | Hot/Warm/Cold/Archive with 5 migration policies |
-| **Caching** | LRU, LFU, TTL backends with 4 cache modes |
-| **Replication** | Sync/Async/Semi-Sync cross-region with conflict resolution |
-| **Backpressure** | 6 strategies with circuit breaker and monitoring |
-| **Batch Optimization** | Memory-aware buffer, async batch writer |
-
-### Enterprise Infrastructure
-
-| Component | Features |
-|-----------|----------|
-| **Logging** | JSON format, correlation IDs, ELK/Loki/Fluentd integration, async logging |
-| **Metrics** | Prometheus counters, gauges, histograms, HTTP endpoint, push gateway |
-| **Config** | Environment profiles (dev/staging/prod), Vault/AWS Secrets integration, hot reload |
-| **Audit** | Full operation trail, Elasticsearch/S3/Kafka storage, compliance reporting (SOC2/GDPR/HIPAA) |
-| **Encryption** | AES-256-GCM, ChaCha20-Poly1305, field-level encryption, Cloud KMS (AWS/GCP/Azure/Vault) |
+| Streaming | Kafka, Kinesis, Pub/Sub |
 
 ---
 
