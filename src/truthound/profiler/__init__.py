@@ -222,6 +222,43 @@ from truthound.profiler.enterprise_sampling import (
     classify_dataset_scale,
 )
 
+# Parallel block processing for maximum throughput
+from truthound.profiler.parallel_sampling import (
+    # Configuration
+    ParallelSamplingConfig,
+    ExecutionMode,
+    SchedulingPolicy,
+    # Strategies
+    ParallelBlockSampler,
+    SketchBasedSampler,
+    # Work stealing
+    WorkStealingQueue,
+    BlockTask,
+    BlockResult,
+    # Metrics
+    ParallelSamplingMetrics,
+    # Convenience functions
+    sample_parallel,
+)
+
+# Probabilistic data structures for O(1) memory aggregations
+from truthound.profiler.sketches import (
+    # Core implementations
+    HyperLogLog,
+    CountMinSketch,
+    BloomFilter,
+    # Factory
+    create_sketch,
+    SketchType,
+    SketchFactory,
+    # Protocols
+    Sketch,
+    MergeableSketch,
+    CardinalityEstimator,
+    FrequencyEstimator,
+    MembershipTester,
+)
+
 from truthound.profiler.sampled_matcher import (
     # Results
     SampledPatternMatchResult,

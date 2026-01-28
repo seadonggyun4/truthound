@@ -460,156 +460,132 @@ def sample(self, lf: pl.LazyFrame) -> pl.LazyFrame:
 
 For datasets exceeding 100 million rows, Truthound provides specialized sampling strategies with O(1) memory footprint.
 
-### Scale Categories
+> **Full Documentation**: See [Enterprise Sampling Guide](enterprise-sampling.md) for complete details on parallel processing, probabilistic data structures, and advanced configurations.
 
-| Category | Row Count | Recommended Strategy |
-|----------|-----------|---------------------|
-| SMALL | < 1M | No sampling needed |
-| MEDIUM | 1M - 10M | Systematic or adaptive |
-| LARGE | 10M - 100M | Block sampling |
-| XLARGE | 100M - 1B | Multi-stage sampling |
-| XXLARGE | > 1B | Probabilistic sketches |
-
-### Enterprise Sampling Strategies
-
-#### Block Sampling
-
-Processes data in fixed-size blocks with O(1) memory:
-
-```python
-from truthound.profiler.enterprise_sampling import (
-    BlockSamplingStrategy,
-    EnterpriseScaleConfig,
-)
-
-config = EnterpriseScaleConfig(
-    target_rows=100_000,
-    memory_budget_mb=512,
-)
-strategy = BlockSamplingStrategy(config)
-result = strategy.sample(lf, base_config)
-```
-
-#### Multi-Stage Sampling
-
-Hierarchical sampling for billion-row datasets:
-
-```python
-from truthound.profiler.enterprise_sampling import MultiStageSamplingStrategy
-
-strategy = MultiStageSamplingStrategy(config, num_stages=3)
-result = strategy.sample(lf, base_config)
-```
-
-#### Column-Aware Sampling
-
-Weights samples based on column types and cardinality:
-
-```python
-from truthound.profiler.enterprise_sampling import ColumnAwareSamplingStrategy
-
-strategy = ColumnAwareSamplingStrategy(config)
-result = strategy.sample(lf, base_config)
-```
-
-#### Progressive Sampling
-
-Iteratively refines sample until convergence:
-
-```python
-from truthound.profiler.enterprise_sampling import ProgressiveSamplingStrategy
-
-strategy = ProgressiveSamplingStrategy(
-    config,
-    convergence_threshold=0.01,
-    max_stages=5,
-)
-result = strategy.sample(lf, base_config)
-```
-
-### Enterprise Sampler Interface
+### Quick Start
 
 ```python
 from truthound.profiler.enterprise_sampling import (
     EnterpriseScaleSampler,
-    EnterpriseScaleConfig,
-    MemoryBudgetConfig,
-    SamplingQuality,
+    sample_large_dataset,
 )
 
-# Configure for enterprise scale
-config = EnterpriseScaleConfig(
+# Quick sampling with quality preset
+result = sample_large_dataset(lf, target_rows=100_000, quality="high")
+print(f"Sampled {result.metrics.sample_size:,} rows")
+
+# Auto-select best strategy based on data size
+sampler = EnterpriseScaleSampler()
+result = sampler.sample(lf)
+```
+
+### Scale Categories
+
+| Category | Row Count | Strategy | Memory |
+|----------|-----------|----------|--------|
+| SMALL | < 1M | No sampling | Full |
+| MEDIUM | 1M - 10M | Column-aware | ~500MB |
+| LARGE | 10M - 100M | Block (parallel) | ~1GB |
+| XLARGE | 100M - 1B | Multi-stage | ~2GB |
+| XXLARGE | > 1B | Sketches | O(1) |
+
+### Parallel Block Processing
+
+For maximum throughput with multi-core parallelism:
+
+```python
+from truthound.profiler.parallel_sampling import (
+    ParallelBlockSampler,
+    ParallelSamplingConfig,
+    sample_parallel,
+)
+
+# Quick parallel sampling
+result = sample_parallel(lf, target_rows=100_000, max_workers=4)
+
+# Advanced configuration
+config = ParallelSamplingConfig(
     target_rows=100_000,
-    memory_budget=MemoryBudgetConfig(max_memory_mb=1024),
-    time_budget_seconds=60.0,
-    quality=SamplingQuality.STANDARD,
-    confidence_level=0.95,
+    max_workers=8,
+    enable_work_stealing=True,  # Dynamic load balancing
+    backpressure_threshold=0.75,  # Memory-aware scheduling
+)
+sampler = ParallelBlockSampler(config)
+result = sampler.sample(lf)
+
+# Access parallel metrics
+print(f"Workers: {result.metrics.workers_used}")
+print(f"Speedup: {result.metrics.parallel_speedup:.2f}x")
+```
+
+### Probabilistic Data Structures
+
+For 10B+ row datasets, use O(1) memory sketches:
+
+```python
+from truthound.profiler.sketches import (
+    HyperLogLog,      # Cardinality estimation
+    CountMinSketch,   # Frequency estimation
+    BloomFilter,      # Membership testing
+    create_sketch,
 )
 
-# Create sampler
+# Cardinality estimation (distinct count)
+hll = create_sketch("hyperloglog", precision=14)  # ~16KB, ±0.41% error
+for chunk in data_stream:
+    hll.add_batch(chunk["user_id"])
+print(f"Distinct users: ~{hll.estimate():,}")
+
+# Frequency estimation (heavy hitters)
+cms = create_sketch("countmin", epsilon=0.001, delta=0.01)
+for item in stream:
+    cms.add(item)
+heavy_hitters = cms.get_heavy_hitters(threshold=0.01)
+
+# Membership testing
+bf = create_sketch("bloom", capacity=10_000_000, error_rate=0.001)
+bf.add_batch(known_items)
+if bf.contains(query_item):
+    print("Possibly in set")
+```
+
+### Enterprise Sampler Strategies
+
+| Strategy | Best For | Features |
+|----------|----------|----------|
+| `block` | 10M-100M rows | Parallel, even coverage |
+| `multi_stage` | 100M-1B rows | Hierarchical reduction |
+| `column_aware` | Mixed types | Type-weighted sampling |
+| `progressive` | Exploratory | Early stopping |
+| `parallel_block` | High throughput | Work stealing |
+
+```python
+from truthound.profiler.enterprise_sampling import EnterpriseScaleSampler
+
 sampler = EnterpriseScaleSampler(config)
 
 # Auto-select best strategy
 result = sampler.sample(lf)
 
-# Or specify strategy explicitly
+# Or specify explicitly
 result = sampler.sample(lf, strategy="block")
 result = sampler.sample(lf, strategy="multi_stage")
-result = sampler.sample(lf, strategy="column_aware")
-result = sampler.sample(lf, strategy="progressive")
 ```
 
-### Convenience Functions
-
-```python
-from truthound.profiler.enterprise_sampling import (
-    sample_large_dataset,
-    estimate_optimal_sample_size,
-    classify_dataset_scale,
-)
-
-# Quick sampling
-result = sample_large_dataset(
-    lf,
-    target_rows=50_000,
-    quality="standard",
-    time_budget_seconds=30.0,
-)
-
-# Estimate optimal sample size
-size = estimate_optimal_sample_size(
-    total_rows=100_000_000,
-    confidence_level=0.95,
-    margin_of_error=0.05,
-)
-
-# Classify dataset scale
-scale = classify_dataset_scale(total_rows)  # Returns ScaleCategory enum
-```
-
-### Sampling in Validators
-
-Use `EnterpriseScaleSamplingMixin` in custom validators:
+### Validators with Large Data Support
 
 ```python
 from truthound.validators.base import Validator, EnterpriseScaleSamplingMixin
 
 class MyLargeDataValidator(Validator, EnterpriseScaleSamplingMixin):
-    sampling_threshold = 10_000_000   # Enable sampling above 10M rows
-    sampling_target_rows = 100_000    # Target sample size
-    sampling_quality = "standard"
+    sampling_threshold = 10_000_000
+    sampling_target_rows = 100_000
 
     def validate(self, lf):
-        # Automatically samples if dataset is large
         sampled_lf, metrics = self._sample_for_validation(lf)
-
-        # Validate on sampled data
         issues = self._do_validation(sampled_lf)
-
-        # Extrapolate counts if sampled
         if metrics.is_sampled:
             issues = self._extrapolate_issues(issues, metrics)
-
         return issues
 ```
 
@@ -1832,6 +1808,9 @@ else:
 
 ## See Also
 
+- [Schema Evolution](schema-evolution.md) - Schema versioning, history, and monitoring
+- [Drift Detection](drift-detection.md) - Detect data distribution changes
+- [Quality Scoring](quality-scoring.md) - Evaluate data quality
 - [Validators Reference](VALIDATORS.md)
 - [Statistical Methods](STATISTICAL_METHODS.md)
 - [Checkpoint & CI/CD](CHECKPOINT.md)

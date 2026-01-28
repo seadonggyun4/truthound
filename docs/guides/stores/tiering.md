@@ -214,16 +214,17 @@ policy = ScheduledTierPolicy(
 
 ### CompositeTierPolicy
 
-Combine multiple policies with AND/OR logic.
+Combine multiple policies with AND/OR logic for complex migration rules.
 
 ```python
 from truthound.stores.tiering.policies import (
     AgeBasedTierPolicy,
     SizeBasedTierPolicy,
+    AccessBasedTierPolicy,
     CompositeTierPolicy,
 )
 
-# Migrate if old AND large
+# AND logic: Migrate if old AND large (both conditions must be true)
 policy = CompositeTierPolicy(
     from_tier="hot",
     to_tier="cold",
@@ -231,10 +232,10 @@ policy = CompositeTierPolicy(
         AgeBasedTierPolicy("hot", "cold", after_days=30),
         SizeBasedTierPolicy("hot", "cold", min_size_mb=100),
     ],
-    require_all=True,  # Both conditions must be true
+    require_all=True,
 )
 
-# Migrate if old OR large
+# OR logic: Migrate if old OR large (either condition triggers migration)
 policy = CompositeTierPolicy(
     from_tier="hot",
     to_tier="cold",
@@ -242,8 +243,93 @@ policy = CompositeTierPolicy(
         AgeBasedTierPolicy("hot", "cold", after_days=90),
         SizeBasedTierPolicy("hot", "cold", min_size_mb=500),
     ],
-    require_all=False,  # Either condition triggers migration
+    require_all=False,
 )
+```
+
+#### Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `from_tier` | `str` | required | Source tier name |
+| `to_tier` | `str` | required | Destination tier name |
+| `policies` | `list[TierPolicy]` | required | Child policies to combine |
+| `require_all` | `bool` | `True` | `True` = AND logic (all must match), `False` = OR logic (any match) |
+| `direction` | `MigrationDirection` | `DEMOTE` | Migration direction |
+
+#### Advanced Examples
+
+**Combining Three or More Policies:**
+
+```python
+# Migrate if: old AND large AND inactive
+policy = CompositeTierPolicy(
+    from_tier="hot",
+    to_tier="archive",
+    policies=[
+        AgeBasedTierPolicy("hot", "archive", after_days=180),
+        SizeBasedTierPolicy("hot", "archive", min_size_mb=500),
+        AccessBasedTierPolicy("hot", "archive", inactive_days=90),
+    ],
+    require_all=True,
+)
+```
+
+**Nested Composite Policies:**
+
+```python
+# Complex rule: (old AND large) OR (very old)
+age_and_size = CompositeTierPolicy(
+    from_tier="hot",
+    to_tier="cold",
+    policies=[
+        AgeBasedTierPolicy("hot", "cold", after_days=30),
+        SizeBasedTierPolicy("hot", "cold", min_size_mb=100),
+    ],
+    require_all=True,
+)
+
+very_old = AgeBasedTierPolicy("hot", "cold", after_days=365)
+
+combined = CompositeTierPolicy(
+    from_tier="hot",
+    to_tier="cold",
+    policies=[age_and_size, very_old],
+    require_all=False,  # Either nested condition triggers
+)
+```
+
+**Batch Processing:**
+
+```python
+# CompositeTierPolicy delegates prepare_batch() to all child policies
+# This enables efficient batch evaluation
+policy.prepare_batch(tier_items)  # Prepares all child policies
+
+# Description shows combined logic
+print(policy.description)
+# Output:
+# Migrate from hot to cold when all of:
+#   - Migrate from hot to cold if older than 30 days
+#   - Migrate from hot to cold if size >= 100 MB
+```
+
+**Serialization:**
+
+```python
+# Serialize to dictionary (useful for configuration persistence)
+config = policy.to_dict()
+# {
+#     "type": "CompositeTierPolicy",
+#     "from_tier": "hot",
+#     "to_tier": "cold",
+#     "direction": "DEMOTE",
+#     "policies": [
+#         {"type": "AgeBasedTierPolicy", "from_tier": "hot", ...},
+#         {"type": "SizeBasedTierPolicy", "from_tier": "hot", ...},
+#     ],
+#     "require_all": true
+# }
 ```
 
 ### CustomTierPolicy
