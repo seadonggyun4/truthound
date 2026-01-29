@@ -27,7 +27,7 @@ Truthound is a data quality validation framework built on Polars, a Rust-based D
 [![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-orange.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Powered by Polars](https://img.shields.io/badge/Powered%20by-Polars-2563EB?logo=polars&logoColor=white)](https://pola.rs/)
 [![Awesome](https://awesome.re/badge.svg)](https://github.com/ddotta/awesome-polars)
-[![Downloads](https://img.shields.io/pepy/dt/truthound?color=brightgreen)](https://pepy.tech/project/truthound)
+[![Downloads](https://static.pepy.tech/badge/truthound?color=green)](https://pepy.tech/project/truthound)
 
 **Documentation**: [https://truthound.netlify.app](https://truthound.netlify.app/)
 
