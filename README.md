@@ -35,8 +35,8 @@ Truthound is a data quality validation framework built on Polars, a Rust-based D
 
 | Project | Description | Status |
 |---------|-------------|--------|
-| [truthound-orchestration](https://github.com/seadonggyun4/truthound-orchestration) | Workflow integration for Airflow, Dagster, Prefect, and dbt | Beta |
-| [truthound-dashboard](https://github.com/seadonggyun4/truthound-dashboard) | Web-based data quality monitoring dashboard | Beta |
+| [truthound-orchestration](https://github.com/seadonggyun4/truthound-orchestration) | Workflow integration for Airflow, Dagster, Prefect, and dbt | α test |
+| [truthound-dashboard](https://github.com/seadonggyun4/truthound-dashboard) | Web-based data quality monitoring dashboard | α test |
 
 ---
 
