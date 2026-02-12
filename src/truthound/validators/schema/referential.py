@@ -40,6 +40,9 @@ class ReferentialIntegrityValidator(Validator):
 
     name = "referential_integrity"
     category = "schema"
+    dependencies = {"column_exists"}
+    provides = {"referential_integrity"}
+    priority = 30
 
     def __init__(
         self,
@@ -163,6 +166,9 @@ class StreamingReferentialIntegrityValidator(Validator):
 
     name = "streaming_referential_integrity"
     category = "schema"
+    dependencies = {"column_exists"}
+    provides = {"streaming_referential_integrity"}
+    priority = 30
 
     def __init__(
         self,

@@ -190,6 +190,9 @@ class ApproximateDistinctCountValidator(Validator, StreamingValidatorMixin):
 
     name = "approximate_distinct_count"
     category = "uniqueness"
+    dependencies = {"column_exists"}
+    provides = {"approximate_distinct_count"}
+    priority = 60
 
     def __init__(
         self,
@@ -305,6 +308,9 @@ class ApproximateUniqueRatioValidator(Validator, StreamingValidatorMixin):
 
     name = "approximate_unique_ratio"
     category = "uniqueness"
+    dependencies = {"column_exists"}
+    provides = {"approximate_unique_ratio"}
+    priority = 60
 
     def __init__(
         self,
@@ -396,6 +402,9 @@ class StreamingDistinctCountValidator(Validator, StreamingValidatorMixin):
 
     name = "streaming_distinct_count"
     category = "uniqueness"
+    dependencies = {"column_exists"}
+    provides = {"streaming_distinct_count"}
+    priority = 60
 
     def __init__(
         self,

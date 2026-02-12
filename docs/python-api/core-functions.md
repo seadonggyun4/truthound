@@ -86,6 +86,9 @@ def check(
     parallel: bool = False,
     max_workers: int | None = None,
     pushdown: bool | None = None,
+    result_format: str | ResultFormat | ResultFormatConfig = ResultFormat.SUMMARY,
+    catch_exceptions: bool = True,
+    max_retries: int = 0,
 ) -> Report:
 ```
 
@@ -104,6 +107,9 @@ def check(
 | `parallel` | `bool` | `False` | Use DAG-based parallel execution |
 | `max_workers` | `int` | `None` | Max threads for parallel execution |
 | `pushdown` | `bool` | `None` | Enable query pushdown for SQL sources |
+| `result_format` | `str \| ResultFormat \| ResultFormatConfig` | `SUMMARY` | Detail level for validation results (VE-1) |
+| `catch_exceptions` | `bool` | `True` | Isolate exceptions instead of aborting (VE-5) |
+| `max_retries` | `int` | `0` | Retry count for transient failures (VE-5) |
 
 ### Returns
 
@@ -145,6 +151,31 @@ report = th.check("data.csv", parallel=True, max_workers=4)
 
 # Query pushdown for SQL sources
 report = th.check(source=source, pushdown=True)
+
+# Result format control (VE-1)
+report = th.check("data.csv", result_format="boolean_only")  # Fastest, pass/fail only
+report = th.check("data.csv", result_format="complete")       # Full detail with debug queries
+
+# Fine-grained result format configuration
+from truthound.types import ResultFormatConfig
+config = ResultFormatConfig(
+    format=ResultFormat.COMPLETE,
+    include_unexpected_rows=True,
+    max_unexpected_rows=500,
+    return_debug_query=True,
+)
+report = th.check("data.csv", result_format=config)
+
+# Exception isolation with auto-retry (VE-5)
+report = th.check("data.csv", catch_exceptions=True, max_retries=3)
+
+# Access structured results (VE-2)
+for issue in report.issues:
+    if issue.result:
+        print(f"Elements: {issue.result.element_count}")
+        print(f"Unexpected: {issue.result.unexpected_count} ({issue.result.unexpected_percent:.1%})")
+    if issue.exception_info:
+        print(f"Exception: {issue.exception_info.failure_category}")
 ```
 
 ---
@@ -596,6 +627,53 @@ for col in drift.columns:
 # Export
 json_output = drift.to_json(indent=2)
 dict_output = drift.to_dict()
+```
+
+---
+
+## ResultFormat (VE-1)
+
+Controls the detail level of validation results, inspired by Great Expectations' `result_format` parameter.
+
+### ResultFormat Enum
+
+```python
+from truthound.types import ResultFormat
+
+class ResultFormat(str, Enum):
+    BOOLEAN_ONLY = "boolean_only"  # Only pass/fail flag
+    BASIC = "basic"                # + observed_value, unexpected_count, samples
+    SUMMARY = "summary"            # + value_counts, index_list (DEFAULT)
+    COMPLETE = "complete"          # + full unexpected_list, unexpected_rows, debug_query
+```
+
+**Enrichment Phases:**
+
+| Phase | Level | Data Collected |
+|-------|-------|----------------|
+| Phase 1 | Always | `element_count`, `missing_count` |
+| Phase 2 | BASIC+ | `partial_unexpected_list` (samples) |
+| Phase 3 | SUMMARY+ | `partial_unexpected_counts` (value frequencies) |
+| Phase 4 | COMPLETE | `unexpected_rows` DataFrame, `debug_query` |
+
+### ResultFormatConfig
+
+```python
+from truthound.types import ResultFormatConfig
+
+config = ResultFormatConfig(
+    format=ResultFormat.SUMMARY,          # Detail level
+    partial_unexpected_count=20,          # Max samples to collect
+    include_unexpected_rows=False,        # Include full DataFrame of failing rows
+    max_unexpected_rows=1000,             # Max rows in unexpected_rows
+    include_unexpected_index=False,       # Include row indices
+    return_debug_query=False,             # Include Polars query string
+)
+
+# Factory from any input type
+config = ResultFormatConfig.from_any("complete")
+config = ResultFormatConfig.from_any(ResultFormat.BASIC)
+config = ResultFormatConfig.from_any(None)  # Returns default SUMMARY
 ```
 
 ---

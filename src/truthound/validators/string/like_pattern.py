@@ -40,6 +40,9 @@ class LikePatternValidator(Validator, StringValidatorMixin, SampledEarlyTerminat
 
     name = "like_pattern"
     category = "string"
+    dependencies = {"column_exists", "null_checked"}
+    provides = {"like_pattern"}
+    priority = 70
 
     def __init__(
         self,
@@ -202,6 +205,9 @@ class NotLikePatternValidator(Validator, StringValidatorMixin, SampledEarlyTermi
 
     name = "not_like_pattern"
     category = "string"
+    dependencies = {"column_exists", "null_checked"}
+    provides = {"not_like_pattern"}
+    priority = 70
 
     def __init__(
         self,

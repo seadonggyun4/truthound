@@ -31,6 +31,20 @@ class Validator(ABC):
 
     def validate_with_timeout(self, lf: pl.LazyFrame) -> list[ValidationIssue]:
         """Run validation with timeout protection."""
+
+    # VE-3: Metric deduplication
+    def get_required_metrics(self, columns: list[str]) -> list[MetricKey]:
+        """Declare metrics this validator needs (for deduplication)."""
+
+    def validate_with_metrics(self, lf: pl.LazyFrame, metric_store: SharedMetricStore) -> list[ValidationIssue]:
+        """Run validation using pre-computed metrics from the store."""
+
+    # VE-4: Conditional execution
+    def should_skip(self, prior_results: dict[str, ValidatorExecutionResult]) -> tuple[bool, str | None]:
+        """Decide whether to skip based on prior results."""
+
+    def get_skip_conditions(self) -> list[SkipCondition]:
+        """Declare fine-grained skip conditions."""
 ```
 
 ### Class Attributes
@@ -81,6 +95,81 @@ def validate_with_timeout(self, lf: pl.LazyFrame) -> list[ValidationIssue]:
     """Run validation with timeout protection."""
 ```
 
+#### `get_required_metrics()` (VE-3)
+
+Declare shared metric dependencies for deduplication across validators.
+
+```python
+def get_required_metrics(self, columns: list[str]) -> list[MetricKey]:
+    """
+    Declare base metrics this validator needs.
+
+    Args:
+        columns: Columns this validator will operate on.
+
+    Returns:
+        List of MetricKey objects to be pre-computed.
+    """
+    return []  # Override in subclasses
+```
+
+Validators with built-in metric declarations: `NullValidator`, `NotNullValidator`, `CompletenessRatioValidator`, `UniqueValidator`, `UniqueRatioValidator`, `DistinctCountValidator`, `BetweenValidator`.
+
+#### `validate_with_metrics()` (VE-3)
+
+Execute validation using pre-computed metrics from the `SharedMetricStore`.
+
+```python
+def validate_with_metrics(
+    self,
+    lf: pl.LazyFrame,
+    metric_store: SharedMetricStore,
+) -> list[ValidationIssue]:
+    """
+    Run validation using pre-computed metrics from the store.
+    Default: delegates to validate().
+    """
+    return self.validate(lf)
+```
+
+#### `should_skip()` (VE-4)
+
+Decide whether to skip this validator based on prior results.
+
+```python
+def should_skip(
+    self,
+    prior_results: dict[str, ValidatorExecutionResult],
+) -> tuple[bool, str | None]:
+    """
+    Returns:
+        (should_skip, reason) — True when this validator should be skipped.
+    """
+```
+
+The method checks two conditions:
+1. Whether any declared `dependencies` ended in FAILED/TIMEOUT/SKIPPED status.
+2. Whether any `get_skip_conditions()` evaluate to True against prior results.
+
+#### `get_skip_conditions()` (VE-4)
+
+Declare fine-grained skip conditions beyond basic dependency failure.
+
+```python
+def get_skip_conditions(self) -> list[SkipCondition]:
+    """
+    Returns:
+        List of SkipCondition objects.
+
+    Example:
+        return [
+            SkipCondition(depends_on="schema_check", skip_when="failed"),
+            SkipCondition(depends_on="null_check", skip_when="critical"),
+        ]
+    """
+    return []
+```
+
 ---
 
 ## ValidationIssue
@@ -96,14 +185,25 @@ from truthound.validators.base import ValidationIssue
 class ValidationIssue:
     """Represents a single data quality issue found during validation."""
 
+    # Core fields (always populated)
     column: str
     issue_type: str
     count: int
     severity: Severity
+
+    # Legacy detail fields (backward compatible)
     details: str | None = None
     expected: Any | None = None
     actual: Any | None = None
     sample_values: list[Any] | None = None
+
+    # VE-2: Structured validation result
+    result: ValidationDetail | None = None
+    validator_name: str | None = None
+    success: bool = False
+
+    # VE-5: Exception context
+    exception_info: ExceptionInfo | None = None
 ```
 
 ### Fields
@@ -118,12 +218,33 @@ class ValidationIssue:
 | `expected` | `Any \| None` | Expected value or constraint |
 | `actual` | `Any \| None` | Actual value found |
 | `sample_values` | `list[Any] \| None` | Sample of problematic values |
+| `result` | `ValidationDetail \| None` | Structured result detail (VE-2) |
+| `validator_name` | `str \| None` | Name of the validator that produced this issue |
+| `success` | `bool` | Whether the validation passed |
+| `exception_info` | `ExceptionInfo \| None` | Exception context if validation failed (VE-5) |
+
+### Convenience Properties (VE-2)
+
+```python
+@property
+def unexpected_percent(self) -> float | None:
+    """Delegates to result.unexpected_percent."""
+
+@property
+def unexpected_rows(self) -> pl.DataFrame | None:
+    """Delegates to result.unexpected_rows."""
+
+@property
+def debug_query(self) -> str | None:
+    """Delegates to result.debug_query."""
+```
 
 ### Methods
 
 ```python
 def to_dict(self) -> dict:
-    """Convert to dictionary for JSON serialization."""
+    """Convert to dictionary for JSON serialization.
+    Includes result and exception_info when present."""
 ```
 
 ---
@@ -267,6 +388,14 @@ class ValidatorConfig:
     timeout_seconds: float | None = 300.0
     graceful_degradation: bool = True
     log_errors: bool = True
+
+    # VE-1: Result format
+    result_format: ResultFormat | ResultFormatConfig = ResultFormat.SUMMARY
+
+    # VE-5: Exception isolation
+    catch_exceptions: bool = True          # False = abort on first error
+    max_retries: int = 0                   # Retry count for transient errors
+    partial_failure_mode: str = "collect"   # "collect" | "skip" | "raise"
 ```
 
 ### Fields
@@ -281,6 +410,10 @@ class ValidatorConfig:
 | `timeout_seconds` | `float` | `300.0` | Timeout for validation |
 | `graceful_degradation` | `bool` | `True` | Skip on error instead of failing |
 | `log_errors` | `bool` | `True` | Log errors when they occur |
+| `result_format` | `ResultFormat \| ResultFormatConfig` | `SUMMARY` | Detail level for results (VE-1) |
+| `catch_exceptions` | `bool` | `True` | Isolate exceptions instead of aborting (VE-5) |
+| `max_retries` | `int` | `0` | Retry count for transient errors (VE-5) |
+| `partial_failure_mode` | `str` | `"collect"` | How to handle partial failures: `"collect"` (gather partial results), `"skip"` (discard), `"raise"` (re-raise) (VE-5) |
 
 ---
 
@@ -472,6 +605,93 @@ elif result.status == ValidationResult.SKIPPED:
     print(f"Skipped: {result.error_message}")
 elif result.status == ValidationResult.FAILED:
     print(f"Failed: {result.error_message}")
+
+# VE-5: Extended fields
+if result.exception_info:
+    print(f"Category: {result.exception_info.failure_category}")
+    print(f"Retries: {result.retry_count}")
+if result.partial_issues:
+    print(f"Partial results collected: {len(result.partial_issues)}")
+```
+
+---
+
+## SkipCondition (VE-4)
+
+Declares when a Validator should be skipped based on prior results.
+
+```python
+from truthound.validators.base import SkipCondition
+
+@dataclass(frozen=True)
+class SkipCondition:
+    depends_on: str                          # Upstream validator name
+    skip_when: str = "failed"                # "failed" | "critical" | "any_issue"
+    reason_template: str = "Skipped due to {depends_on} {skip_when}"
+```
+
+**skip_when Modes:**
+
+| Mode | Skip When |
+|------|-----------|
+| `"failed"` | Upstream ended FAILED or TIMEOUT |
+| `"critical"` | Upstream produced CRITICAL-severity issue |
+| `"any_issue"` | Upstream produced any issue |
+
+**Usage:**
+
+```python
+class RangeValidator(Validator):
+    def get_skip_conditions(self) -> list[SkipCondition]:
+        return [
+            SkipCondition(depends_on="schema_check", skip_when="failed"),
+            SkipCondition(depends_on="null_check", skip_when="critical"),
+        ]
+```
+
+---
+
+## ExceptionInfo (VE-5)
+
+Detailed exception information with automatic classification.
+
+```python
+from truthound.validators.base import ExceptionInfo
+
+@dataclass
+class ExceptionInfo:
+    raised_exception: bool = False
+    exception_type: str | None = None
+    exception_message: str | None = None
+    exception_traceback: str | None = None
+    retry_count: int = 0
+    max_retries: int = 0
+    is_retryable: bool = False
+    validator_name: str | None = None
+    column: str | None = None
+    expression_alias: str | None = None
+    failure_category: str = "unknown"
+```
+
+**Exception Classification:**
+
+| Category | Exception Types |
+|----------|----------------|
+| `transient` | `TimeoutError`, `ConnectionError`, `OSError`, `ValidationTimeoutError` |
+| `configuration` | `ValueError`, `TypeError`, `KeyError`, `ColumnNotFoundError` |
+| `data` | Polars `ComputeError`, `SchemaError` |
+| `permanent` | All other exceptions |
+
+**Factory:**
+
+```python
+info = ExceptionInfo.from_exception(
+    exc=some_error,
+    validator_name="null_check",
+    column="email",
+)
+print(info.failure_category)  # e.g., "transient"
+print(info.is_retryable)      # True for transient errors
 ```
 
 ## See Also

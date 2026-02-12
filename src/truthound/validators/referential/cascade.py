@@ -78,6 +78,9 @@ class CascadeIntegrityValidator(MultiTableValidator):
     """
 
     name = "cascade_integrity"
+    dependencies = {"column_exists", "uniqueness_checked"}
+    provides = {"cascade_integrity"}
+    priority = 90
 
     def __init__(
         self,
@@ -305,6 +308,9 @@ class CascadeDepthValidator(MultiTableValidator):
     """
 
     name = "cascade_depth"
+    dependencies = {"column_exists", "uniqueness_checked"}
+    provides = {"cascade_depth"}
+    priority = 90
 
     def __init__(
         self,

@@ -1,6 +1,8 @@
 """Null value validators."""
 
-from typing import Any
+from __future__ import annotations
+
+from typing import Any, TYPE_CHECKING
 
 import polars as pl
 
@@ -13,6 +15,9 @@ from truthound.validators.base import (
     ExpressionValidatorMixin,
 )
 from truthound.validators.registry import register_validator
+
+if TYPE_CHECKING:
+    from truthound.validators.metrics import MetricKey
 
 
 @register_validator
@@ -37,6 +42,16 @@ class NullValidator(Validator, ExpressionValidatorMixin):
 
     name = "null"
     category = "completeness"
+    dependencies = {"column_exists"}
+    provides = {"null_checked", "null"}
+    priority = 50
+
+    def get_required_metrics(self, columns: list[str]) -> list[MetricKey]:
+        from truthound.validators.metrics import CommonMetrics
+        metrics = [CommonMetrics.row_count()[0]]
+        for col in columns:
+            metrics.append(CommonMetrics.null_count(col)[0])
+        return metrics
 
     def get_validation_exprs(
         self,
@@ -62,6 +77,7 @@ class NullValidator(Validator, ExpressionValidatorMixin):
                     count_expr=pl.col(col).null_count(),
                     non_null_expr=pl.len(),  # Use total rows as denominator
                     details_template="{ratio:.1%} of values are null",
+                    filter_expr=pl.col(col).is_null(),
                 )
             )
         return specs
@@ -83,6 +99,16 @@ class NotNullValidator(Validator, ExpressionValidatorMixin):
 
     name = "not_null"
     category = "completeness"
+    dependencies = {"column_exists"}
+    provides = {"not_null_checked", "not_null"}
+    priority = 50
+
+    def get_required_metrics(self, columns: list[str]) -> list[MetricKey]:
+        from truthound.validators.metrics import CommonMetrics
+        metrics = [CommonMetrics.row_count()[0]]
+        for col in columns:
+            metrics.append(CommonMetrics.null_count(col)[0])
+        return metrics
 
     def get_validation_exprs(
         self,
@@ -102,6 +128,7 @@ class NotNullValidator(Validator, ExpressionValidatorMixin):
                     severity_ratio_thresholds=(0.01, 0.001, 0.0001),  # Strict thresholds
                     details_template="Expected no nulls, found {count} ({ratio:.1%})",
                     expected=0,
+                    filter_expr=pl.col(col).is_null(),
                 )
             )
         return specs
@@ -120,6 +147,17 @@ class CompletenessRatioValidator(Validator, ExpressionValidatorMixin):
 
     name = "completeness_ratio"
     category = "completeness"
+    dependencies = {"column_exists"}
+    provides = {"completeness_ratio"}
+    priority = 50
+
+    def get_required_metrics(self, columns: list[str]) -> list[MetricKey]:
+        from truthound.validators.metrics import CommonMetrics
+        metrics = [CommonMetrics.row_count()[0]]
+        for col in columns:
+            metrics.append(CommonMetrics.null_count(col)[0])
+            metrics.append(CommonMetrics.non_null_count(col)[0])
+        return metrics
 
     def __init__(
         self,
@@ -151,6 +189,7 @@ class CompletenessRatioValidator(Validator, ExpressionValidatorMixin):
                     severity_ratio_thresholds=(0.5, 0.2, 0.05),
                     details_template=f"Completeness {{ratio:.1%}} < {self.min_ratio:.1%}",
                     expected=self.min_ratio,
+                    filter_expr=pl.col(col).is_null(),
                 )
             )
         return specs

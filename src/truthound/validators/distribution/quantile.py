@@ -19,6 +19,9 @@ class QuantileValidator(Validator, NumericValidatorMixin):
 
     name = "quantile"
     category = "distribution"
+    dependencies = {"column_exists", "null_checked"}
+    provides = {"quantile"}
+    priority = 70
 
     def __init__(
         self,

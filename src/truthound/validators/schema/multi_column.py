@@ -15,6 +15,9 @@ class MultiColumnUniqueValidator(Validator):
 
     name = "multi_column_unique"
     category = "schema"
+    dependencies = {"column_exists"}
+    provides = {"multi_column_unique"}
+    priority = 30
 
     def __init__(
         self,

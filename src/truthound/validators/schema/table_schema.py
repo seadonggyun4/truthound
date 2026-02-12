@@ -4,7 +4,7 @@ from typing import Any
 
 import polars as pl
 
-from truthound.types import Severity
+from truthound.types import Severity, ValidationDetail
 from truthound.validators.base import ValidationIssue, Validator
 from truthound.validators.registry import register_validator
 
@@ -15,6 +15,8 @@ class TableSchemaValidator(Validator):
 
     name = "table_schema"
     category = "schema"
+    provides = {"schema_validated", "type_validated", "table_schema"}
+    priority = 10
 
     def __init__(
         self,
@@ -42,6 +44,9 @@ class TableSchemaValidator(Validator):
                     count=1,
                     severity=Severity.CRITICAL,
                     details=f"Expected column '{col}' not found",
+                    validator_name=self.name,
+                    success=False,
+                    result=ValidationDetail(element_count=0),
                 )
             )
 
@@ -56,6 +61,9 @@ class TableSchemaValidator(Validator):
                         count=1,
                         severity=Severity.MEDIUM,
                         details=f"Unexpected column '{col}'",
+                        validator_name=self.name,
+                        success=False,
+                        result=ValidationDetail(element_count=0),
                     )
                 )
 
@@ -85,6 +93,9 @@ class TableSchemaValidator(Validator):
                         details=f"Expected {expected_type}, got {actual_type}",
                         expected=str(expected_type),
                         actual=str(actual_type),
+                        validator_name=self.name,
+                        success=False,
+                        result=ValidationDetail(element_count=0),
                     )
                 )
 

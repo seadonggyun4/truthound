@@ -4,7 +4,7 @@ from typing import Any
 
 import polars as pl
 
-from truthound.types import Severity
+from truthound.types import Severity, ValidationDetail
 from truthound.validators.base import (
     ValidationIssue,
     Validator,
@@ -19,6 +19,9 @@ class EmptyStringValidator(Validator, StringValidatorMixin):
 
     name = "empty_string"
     category = "completeness"
+    dependencies = {"column_exists"}
+    provides = {"empty_string"}
+    priority = 50
 
     def validate(self, lf: pl.LazyFrame) -> list[ValidationIssue]:
         issues: list[ValidationIssue] = []
@@ -51,6 +54,13 @@ class EmptyStringValidator(Validator, StringValidatorMixin):
                         count=empty_count,
                         severity=self._calculate_severity(empty_pct),
                         details=f"{empty_pct:.1%} of values are empty strings",
+                        validator_name=self.name,
+                        success=False,
+                        result=ValidationDetail.from_aggregates(
+                            element_count=total_rows,
+                            unexpected_count=empty_count,
+                            observed_value=f"{empty_pct:.1%}",
+                        ),
                     )
                 )
 
@@ -63,6 +73,9 @@ class WhitespaceOnlyValidator(Validator, StringValidatorMixin):
 
     name = "whitespace_only"
     category = "completeness"
+    dependencies = {"column_exists"}
+    provides = {"whitespace_only"}
+    priority = 50
 
     def validate(self, lf: pl.LazyFrame) -> list[ValidationIssue]:
         issues: list[ValidationIssue] = []
@@ -97,6 +110,13 @@ class WhitespaceOnlyValidator(Validator, StringValidatorMixin):
                         count=ws_count,
                         severity=self._calculate_severity(ws_pct),
                         details=f"{ws_pct:.1%} of values contain only whitespace",
+                        validator_name=self.name,
+                        success=False,
+                        result=ValidationDetail.from_aggregates(
+                            element_count=total_rows,
+                            unexpected_count=ws_count,
+                            observed_value=f"{ws_pct:.1%}",
+                        ),
                     )
                 )
 

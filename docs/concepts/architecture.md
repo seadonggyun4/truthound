@@ -98,7 +98,9 @@ src/truthound/
 ├── types.py                 # Type definitions
 ├── core/                    # Core validation logic
 ├── validators/              # 289 validator implementations across 28 categories
-│   ├── base.py              # Validator base classes
+│   ├── base.py              # Validator base classes, ExpressionBatchExecutor, _validate_safe
+│   ├── metrics.py           # VE-3: MetricKey, SharedMetricStore, CommonMetrics
+│   ├── resilience_bridge.py # VE-5: ValidationResiliencePolicy (circuit breaker + retry)
 │   ├── schema/              # Schema validators (10)
 │   ├── completeness/        # Completeness validators (5)
 │   ├── uniqueness/          # Uniqueness validators (6)
@@ -242,17 +244,79 @@ class Validator(ABC):
 ```python
 @dataclass
 class ValidationIssue:
-    """Represents a single validation issue."""
+    """Represents a single data quality issue found during validation."""
 
-    validator: str       # Validator that found the issue
-    column: str | None   # Affected column (if applicable)
-    severity: Severity   # low, medium, high, critical
-    message: str         # Human-readable message
-    details: dict        # Additional context
-    row_indices: list[int] | None  # Affected rows (if available)
+    # Core fields (always populated)
+    column: str
+    issue_type: str
+    count: int
+    severity: Severity
+
+    # Legacy detail fields (backward compatible)
+    details: str | None = None
+    expected: Any | None = None
+    actual: Any | None = None
+    sample_values: list[Any] | None = None
+
+    # VE-2: Structured validation result
+    result: ValidationDetail | None = None     # GX-style structured detail
+    validator_name: str | None = None
+    success: bool = False
+
+    # VE-5: Exception context
+    exception_info: ExceptionInfo | None = None
 ```
 
-### 3.5 Reporter
+### 3.5 ValidationDetail (VE-2)
+
+Structured detail for a single validation result, modeled after GX `ExpectationValidationResult.result`.
+
+```python
+@dataclass
+class ValidationDetail:
+    """Structured detail with 4-phase progressive enrichment."""
+
+    # BOOLEAN_ONLY (always populated)
+    element_count: int = 0
+    missing_count: int = 0
+
+    # BASIC and above
+    observed_value: Any = None
+    unexpected_count: int = 0
+    unexpected_percent: float = 0.0
+    partial_unexpected_list: list[Any] | None = None
+
+    # SUMMARY and above
+    partial_unexpected_counts: list[dict[str, Any]] | None = None
+    partial_unexpected_index_list: list[int] | None = None
+
+    # COMPLETE only
+    unexpected_list: list[Any] | None = None
+    unexpected_rows: pl.DataFrame | None = None
+    debug_query: str | None = None
+```
+
+### 3.6 ExceptionInfo (VE-5)
+
+Rich exception context with automatic classification.
+
+```python
+@dataclass
+class ExceptionInfo:
+    """Detailed exception information for validation failures."""
+
+    raised_exception: bool = False
+    exception_type: str | None = None
+    exception_message: str | None = None
+    exception_traceback: str | None = None
+    retry_count: int = 0
+    max_retries: int = 0
+    is_retryable: bool = False
+    validator_name: str | None = None
+    failure_category: str = "unknown"  # transient | permanent | configuration | data
+```
+
+### 3.7 Reporter
 
 Reporters transform validation results into various output formats.
 
@@ -274,7 +338,7 @@ class ValidationReporter(Protocol[C]):
         ...
 ```
 
-### 3.6 Store
+### 3.8 Store
 
 Stores persist validation results and expectations.
 
@@ -482,6 +546,76 @@ def run_validators(lf: pl.LazyFrame, validators: list[Validator]) -> list[Valida
     return issues
 ```
 
+### Metric Deduplication (VE-3)
+
+The `SharedMetricStore` eliminates redundant computations across validators. When multiple validators require the same metric (e.g., `null_count` on column `email`), the metric is computed once and shared.
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                     Metric Deduplication Pipeline                       │
+├────────────────────────────────────────────────────────────────────────┤
+│                                                                         │
+│  NullValidator      NotNullValidator     CompletenessRatioValidator    │
+│       │                    │                        │                   │
+│       ▼                    ▼                        ▼                   │
+│  get_required_metrics() → MetricKey(null_count, email)                 │
+│  get_required_metrics() → MetricKey(null_count, email)  ← DUPLICATE   │
+│  get_required_metrics() → MetricKey(row_count, None)                   │
+│                                                                         │
+│  ┌─────────────────────────────────────────────────────────┐           │
+│  │  SharedMetricStore._precompute_shared_metrics()          │           │
+│  │  Deduplicates → 2 unique MetricKeys                      │           │
+│  │  Single lf.select([null_count_expr, row_count_expr])     │           │
+│  │        .collect()                                         │           │
+│  └────────────────────────────┬────────────────────────────┘           │
+│                                │                                        │
+│                     store.get(key) → cached value                      │
+│                                                                         │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+**Key components** (`validators/metrics.py`):
+
+| Component | Description |
+|-----------|-------------|
+| `MetricKey` | Frozen dataclass: `(metric_name, column, kwargs_hash)` |
+| `SharedMetricStore` | RLock-based thread-safe cache with `get_or_compute()` |
+| `CommonMetrics` | 11 standard metrics (row_count, null_count, n_unique, mean, std, min, max, sum, quantile, median, non_null_count) |
+
+### Conditional Execution via Dependency DAG (VE-4)
+
+Validators declare dependencies and skip conditions. The DAG executor evaluates these at runtime:
+
+```python
+class MyValidator(Validator):
+    dependencies = {"schema_check"}  # Must run after schema_check
+
+    def get_skip_conditions(self) -> list[SkipCondition]:
+        return [
+            SkipCondition(depends_on="schema_check", skip_when="failed"),
+            SkipCondition(depends_on="null_check", skip_when="critical"),
+        ]
+```
+
+Priority hierarchy: Schema (10–30) → Completeness (50) → Uniqueness (60) → Distribution (70–80) → Referential (90).
+
+### Exception Isolation with 3-Tier Fallback (VE-5)
+
+The `ExpressionBatchExecutor` implements progressive fallback to maximize partial result collection:
+
+```
+Tier 1: Batch all validators → single collect()
+        │ failure
+        ▼
+Tier 2: Per-validator execution → individual collect() per validator
+        │ failure
+        ▼
+Tier 3: Per-expression execution → individual collect() per expression
+        (partial_failure_mode: collect | skip | raise)
+```
+
+`_validate_safe()` wraps each execution with exponential backoff retry (0.1s → 0.2s → 0.4s, capped at 5s). The `ExceptionInfo` dataclass classifies exceptions into four categories: `transient`, `permanent`, `configuration`, `data`.
+
 ### Memory Management
 
 ```python
@@ -580,6 +714,17 @@ Truthound's development follows a phased approach:
 | **Phase 8** | Complete | Data Docs (HTML report generation) |
 | **Phase 9** | Complete | Plugin architecture |
 | **Phase 10** | Complete | Advanced features (ML, Lineage, Realtime) |
+| **VE 1-5** | Complete | Validation Engine Enhancement (GX-inspired architecture) |
+
+### Validation Engine Enhancement (VE) Phases
+
+| Phase | Feature | Key Components | Tests |
+|-------|---------|----------------|-------|
+| **VE-1** | Result Format System | `ResultFormat` enum (4 levels), `ResultFormatConfig`, 4-phase enrichment | 84 |
+| **VE-2** | Structured Results | `ValidationDetail`, `ValidationIssue.result/validator_name/success` | 57 |
+| **VE-3** | Metric Deduplication | `MetricKey`, `SharedMetricStore`, `CommonMetrics` (11 metrics) | 58 |
+| **VE-4** | Dependency DAG Activation | `SkipCondition`, `should_skip()`, priority-based level grouping | 64 |
+| **VE-5** | Exception Isolation & Retry | `ExceptionInfo`, 3-tier fallback, `ValidationResiliencePolicy` | 53 |
 
 ### Feature Distribution
 
@@ -629,6 +774,13 @@ Truthound's development follows a phased approach:
 │  ├── ML Module (anomaly detection, drift, rule learning)                   │
 │  ├── Lineage Module (graph, tracking, impact analysis)                     │
 │  └── Realtime Module (streaming, incremental, checkpointing)              │
+│                                                                             │
+│  VE 1-5: Validation Engine Enhancement (GX-Inspired)                       │
+│  ├── VE-1: Result Format System (4-level detail control)                   │
+│  ├── VE-2: Structured Validation Results (ValidationDetail)                │
+│  ├── VE-3: Metric Deduplication (SharedMetricStore, CommonMetrics)         │
+│  ├── VE-4: Dependency DAG Activation (SkipCondition, conditional exec)    │
+│  └── VE-5: Exception Isolation & Auto Retry (3-tier fallback)             │
 │                                                                             │
 └────────────────────────────────────────────────────────────────────────────┘
 ```
@@ -681,9 +833,12 @@ Truthound implements an expression-based architecture that allows multiple valid
 
 | Component | Description |
 |-----------|-------------|
-| `ValidationExpressionSpec` | Defines validation expression (count_expr, non_null_expr, severity thresholds) |
+| `ValidationExpressionSpec` | Defines validation expression (count_expr, non_null_expr, severity thresholds, `filter_expr` for sample collection) |
 | `ExpressionValidatorMixin` | Mixin for single-validator expression-based execution |
-| `ExpressionBatchExecutor` | Batches multiple validators into single collect() |
+| `ExpressionBatchExecutor` | Batches multiple validators into single `collect()` with 3-tier fallback (VE-5) |
+| `SharedMetricStore` | Session-scoped thread-safe metric cache for deduplication (VE-3) |
+| `SkipCondition` | Conditional execution based on prior validator results (VE-4) |
+| `ExceptionInfo` | Rich exception context with 4-category classification (VE-5) |
 
 ### Lazy Loading Architecture
 
@@ -776,6 +931,10 @@ def add_issue(self, issue: ValidationIssue) -> None:
 | Heap-Based Sorting | `report.py` | O(1) severity access |
 | Batched Statistics | `schema.py` | Single select() for all stats |
 | Streaming Mode | `maskers.py` | `engine="streaming"` for >1M rows |
+| Result Format Gating (VE-1) | `validators/base.py` | Skip enrichment phases based on `ResultFormat` level |
+| Shared Metric Store (VE-3) | `validators/metrics.py` | Deduplicate metric computations across validators |
+| Dependency DAG Skip (VE-4) | `validators/base.py` | Skip validators when upstream dependencies fail |
+| 3-Tier Fallback (VE-5) | `validators/base.py` | Graceful degradation: batch → per-validator → per-expression |
 
 ---
 

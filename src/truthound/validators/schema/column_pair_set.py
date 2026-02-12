@@ -43,6 +43,9 @@ class ColumnPairInSetValidator(Validator):
 
     name = "column_pair_in_set"
     category = "schema"
+    dependencies = {"column_exists"}
+    provides = {"column_pair_in_set"}
+    priority = 30
 
     def __init__(
         self,
@@ -132,6 +135,9 @@ class ColumnPairNotInSetValidator(Validator):
 
     name = "column_pair_not_in_set"
     category = "schema"
+    dependencies = {"column_exists"}
+    provides = {"column_pair_not_in_set"}
+    priority = 30
 
     def __init__(
         self,

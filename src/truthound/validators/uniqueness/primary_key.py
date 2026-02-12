@@ -4,7 +4,7 @@ from typing import Any
 
 import polars as pl
 
-from truthound.types import Severity
+from truthound.types import Severity, ValidationDetail
 from truthound.validators.base import ValidationIssue, Validator
 from truthound.validators.registry import register_validator
 
@@ -15,6 +15,9 @@ class PrimaryKeyValidator(Validator):
 
     name = "primary_key"
     category = "uniqueness"
+    dependencies = {"column_exists"}
+    provides = {"primary_key"}
+    priority = 60
 
     def __init__(
         self,
@@ -52,6 +55,14 @@ class PrimaryKeyValidator(Validator):
                     count=null_count,
                     severity=Severity.CRITICAL,
                     details=f"Primary key has {null_count} null values",
+                    validator_name=self.name,
+                    success=False,
+                    result=ValidationDetail.from_aggregates(
+                        element_count=total_rows,
+                        missing_count=null_count,
+                        unexpected_count=null_count,
+                        observed_value=f"{null_count} nulls in primary key",
+                    ),
                 )
             )
 
@@ -65,6 +76,14 @@ class PrimaryKeyValidator(Validator):
                     count=dup_count,
                     severity=Severity.CRITICAL,
                     details=f"Primary key has {dup_count} duplicate values",
+                    validator_name=self.name,
+                    success=False,
+                    result=ValidationDetail.from_aggregates(
+                        element_count=total_rows,
+                        missing_count=0,
+                        unexpected_count=dup_count,
+                        observed_value=f"{dup_count} duplicate primary key values",
+                    ),
                 )
             )
 
@@ -77,6 +96,9 @@ class CompoundKeyValidator(Validator):
 
     name = "compound_key"
     category = "uniqueness"
+    dependencies = {"column_exists"}
+    provides = {"compound_key"}
+    priority = 60
 
     def __init__(
         self,
@@ -97,7 +119,9 @@ class CompoundKeyValidator(Validator):
                 pl.col(c).null_count().alias(f"_null_{c}")
                 for c in self.key_columns
             ]
+            null_exprs.append(pl.len().alias("_total_for_nulls"))
             null_result = lf.select(null_exprs).collect()
+            total_for_nulls = null_result["_total_for_nulls"][0]
 
             for col in self.key_columns:
                 null_count = null_result[f"_null_{col}"][0]
@@ -109,6 +133,14 @@ class CompoundKeyValidator(Validator):
                             count=null_count,
                             severity=Severity.CRITICAL,
                             details=f"Compound key column has {null_count} nulls",
+                            validator_name=self.name,
+                            success=False,
+                            result=ValidationDetail.from_aggregates(
+                                element_count=total_for_nulls,
+                                missing_count=null_count,
+                                unexpected_count=null_count,
+                                observed_value=f"{null_count} nulls in compound key column {col}",
+                            ),
                         )
                     )
 
@@ -134,6 +166,14 @@ class CompoundKeyValidator(Validator):
                     count=dup_count,
                     severity=Severity.CRITICAL,
                     details=f"Compound key has {dup_count} duplicate combinations",
+                    validator_name=self.name,
+                    success=False,
+                    result=ValidationDetail.from_aggregates(
+                        element_count=total_rows,
+                        missing_count=0,
+                        unexpected_count=dup_count,
+                        observed_value=f"{dup_count} duplicate key combinations",
+                    ),
                 )
             )
 

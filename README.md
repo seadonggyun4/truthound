@@ -44,9 +44,10 @@ Truthound is a data quality validation framework built on Polars, a Rust-based D
 
 | Metric | Value |
 |--------|-------|
-| Test Cases | 8,259 |
+| Test Cases | 8,585+ |
 | Validators | 264 |
 | Validator Categories | 28 |
+| VE Test Cases | 316 (Validation Engine Enhancement) |
 
 ---
 
@@ -82,12 +83,22 @@ masked_df = th.mask(df, strategy="hash")
 
 # Statistical profiling
 profile = th.profile("data.csv")
+
+# Validation Engine Enhancement features
+report = th.check("data.csv",
+    result_format="complete",       # 4-level detail control
+    catch_exceptions=True,          # Exception isolation
+    max_retries=2,                  # Auto-retry for transient errors
+    parallel=True,                  # DAG-based parallel execution
+)
 ```
 
 ### CLI
 
 ```bash
 truthound check data.csv                    # Validate
+truthound check data.csv --rf complete      # With full result detail
+truthound check data.csv --catch-exceptions --max-retries 2  # Resilient mode
 truthound compare baseline.csv current.csv  # Drift detection
 truthound scan data.csv                     # PII scanning
 truthound auto-profile data.csv             # Profiling
@@ -103,7 +114,7 @@ truthound new validator my_validator        # Code scaffolding
 | Command | Description | Key Options |
 |---------|-------------|-------------|
 | `learn` | Learn schema from data | `--output`, `--no-constraints` |
-| `check` | Validate data quality | `--validators`, `--min-severity`, `--schema`, `--strict`, `--format` |
+| `check` | Validate data quality | `--validators`, `--min-severity`, `--schema`, `--strict`, `--format`, `--rf`, `--catch-exceptions`, `--max-retries` |
 | `scan` | Scan for PII | `--format`, `--output` |
 | `mask` | Mask sensitive data | `--columns`, `--strategy` (redact/hash/fake), `--strict` |
 | `profile` | Generate data profile | `--format`, `--output` |
@@ -317,6 +328,37 @@ truthound new validator my_validator        # Code scaffolding
 | [Lineage](https://truthound.netlify.app/guides/advanced/lineage/) | DAG tracking, OpenLineage integration |
 | [Plugins](https://truthound.netlify.app/guides/advanced/plugins/) | Security sandbox, signing, hot reload |
 | [Performance](https://truthound.netlify.app/guides/advanced/performance/) | Optimization strategies |
+
+---
+
+## Validation Engine Enhancement (VE)
+
+Truthound v1.3.0 introduces a GX-inspired Validation Engine Enhancement comprising five phases that strengthen the validation pipeline's expressiveness, performance, and fault tolerance.
+
+| Phase | Feature | Description |
+|-------|---------|-------------|
+| **VE-1** | Result Format System | 4-level detail control (`BOOLEAN_ONLY` < `BASIC` < `SUMMARY` < `COMPLETE`) with progressive enrichment |
+| **VE-2** | Structured Results | `ValidationDetail` dataclass mirroring GX `ExpectationValidationResult.result` |
+| **VE-3** | Metric Deduplication | `SharedMetricStore` with `MetricKey`-based caching, `CommonMetrics` (11 standard metrics), deduplication across validators |
+| **VE-4** | Dependency DAG | `SkipCondition` for conditional execution, `should_skip()` based on prior results, priority-based level grouping |
+| **VE-5** | Exception Isolation | `ExceptionInfo` with 4-category classification, 3-tier fallback (batch → per-validator → per-expression), exponential backoff retry |
+
+### Key API Additions
+
+```python
+import truthound as th
+
+# Result format control (VE-1)
+report = th.check("data.csv", result_format="complete")
+
+# Exception isolation with retry (VE-5)
+report = th.check("data.csv", catch_exceptions=True, max_retries=3)
+
+# Access structured results (VE-2)
+for issue in report.issues:
+    if issue.result:
+        print(f"Unexpected: {issue.result.unexpected_count} ({issue.result.unexpected_percent:.1%})")
+```
 
 ---
 

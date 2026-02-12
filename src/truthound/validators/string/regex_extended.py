@@ -63,6 +63,9 @@ class RegexListValidator(Validator, StringValidatorMixin, RegexValidatorMixin):
 
     name = "regex_list"
     category = "string"
+    dependencies = {"column_exists", "null_checked"}
+    provides = {"regex_list"}
+    priority = 70
 
     def __init__(
         self,
@@ -202,6 +205,9 @@ class NotMatchRegexValidator(Validator, StringValidatorMixin, RegexValidatorMixi
 
     name = "not_match_regex"
     category = "string"
+    dependencies = {"column_exists", "null_checked"}
+    provides = {"not_match_regex"}
+    priority = 70
 
     def __init__(
         self,
@@ -330,6 +336,9 @@ class NotMatchRegexListValidator(Validator, StringValidatorMixin, RegexValidator
 
     name = "not_match_regex_list"
     category = "string"
+    dependencies = {"column_exists", "null_checked"}
+    provides = {"not_match_regex_list"}
+    priority = 70
 
     def __init__(
         self,

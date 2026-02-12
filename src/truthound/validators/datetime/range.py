@@ -20,6 +20,9 @@ class DateBetweenValidator(Validator, DatetimeValidatorMixin):
 
     name = "date_between"
     category = "datetime"
+    dependencies = {"column_exists", "null_checked"}
+    provides = {"date_between"}
+    priority = 70
 
     def __init__(
         self,
@@ -91,6 +94,9 @@ class FutureDateValidator(Validator, DatetimeValidatorMixin):
 
     name = "future_date"
     category = "datetime"
+    dependencies = {"column_exists", "null_checked"}
+    provides = {"future_date"}
+    priority = 70
 
     def validate(self, lf: pl.LazyFrame) -> list[ValidationIssue]:
         issues: list[ValidationIssue] = []
@@ -142,6 +148,9 @@ class PastDateValidator(Validator, DatetimeValidatorMixin):
 
     name = "past_date"
     category = "datetime"
+    dependencies = {"column_exists", "null_checked"}
+    provides = {"past_date"}
+    priority = 70
 
     def __init__(
         self,

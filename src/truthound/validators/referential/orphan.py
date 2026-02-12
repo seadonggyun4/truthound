@@ -40,6 +40,9 @@ class OrphanRecordValidator(ReferentialValidator):
     """
 
     name = "orphan_record"
+    dependencies = {"column_exists", "uniqueness_checked"}
+    provides = {"orphan_record"}
+    priority = 90
 
     def __init__(
         self,
@@ -202,6 +205,9 @@ class MultiTableOrphanValidator(MultiTableValidator):
     """
 
     name = "multi_table_orphan"
+    dependencies = {"column_exists", "uniqueness_checked"}
+    provides = {"multi_table_orphan"}
+    priority = 90
 
     def __init__(
         self,
@@ -359,6 +365,9 @@ class DanglingReferenceValidator(ReferentialValidator):
     """
 
     name = "dangling_reference"
+    dependencies = {"column_exists", "uniqueness_checked"}
+    provides = {"dangling_reference"}
+    priority = 90
 
     def __init__(
         self,

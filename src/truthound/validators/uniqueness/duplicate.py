@@ -4,7 +4,7 @@ from typing import Any
 
 import polars as pl
 
-from truthound.types import Severity
+from truthound.types import Severity, ValidationDetail
 from truthound.validators.base import ValidationIssue, Validator
 from truthound.validators.registry import register_validator
 
@@ -15,6 +15,9 @@ class DuplicateValidator(Validator):
 
     name = "duplicate"
     category = "uniqueness"
+    dependencies = {"column_exists"}
+    provides = {"duplicate"}
+    priority = 60
 
     def __init__(
         self,
@@ -54,6 +57,14 @@ class DuplicateValidator(Validator):
                         dup_pct, thresholds=(0.3, 0.1, 0.01)
                     ),
                     details=f"{dup_count} duplicate rows ({dup_pct:.1%})",
+                    validator_name=self.name,
+                    success=False,
+                    result=ValidationDetail.from_aggregates(
+                        element_count=total_rows,
+                        missing_count=0,
+                        unexpected_count=dup_count,
+                        observed_value=f"{dup_pct:.1%} duplicates",
+                    ),
                 )
             )
 
@@ -74,6 +85,9 @@ class DuplicateWithinGroupValidator(Validator):
 
     name = "duplicate_within_group"
     category = "uniqueness"
+    dependencies = {"column_exists"}
+    provides = {"duplicate_within_group"}
+    priority = 60
 
     def __init__(
         self,
@@ -112,6 +126,14 @@ class DuplicateWithinGroupValidator(Validator):
                     count=dup_count,
                     severity=Severity.HIGH,
                     details=f"{dup_count} duplicates within [{group_desc}] groups",
+                    validator_name=self.name,
+                    success=False,
+                    result=ValidationDetail.from_aggregates(
+                        element_count=total_rows,
+                        missing_count=0,
+                        unexpected_count=dup_count,
+                        observed_value=f"{dup_count} duplicates in [{group_desc}] groups",
+                    ),
                 )
             )
 

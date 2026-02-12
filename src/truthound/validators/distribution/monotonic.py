@@ -4,7 +4,7 @@ from typing import Any
 
 import polars as pl
 
-from truthound.types import Severity
+from truthound.types import Severity, ValidationDetail
 from truthound.validators.base import (
     ValidationIssue,
     Validator,
@@ -19,6 +19,9 @@ class IncreasingValidator(Validator, NumericValidatorMixin):
 
     name = "increasing"
     category = "distribution"
+    dependencies = {"column_exists", "null_checked"}
+    provides = {"increasing"}
+    priority = 70
 
     def __init__(
         self,
@@ -60,6 +63,14 @@ class IncreasingValidator(Validator, NumericValidatorMixin):
                         count=violations,
                         severity=self._calculate_severity(ratio),
                         details=f"{violations} violations of {mode} order",
+                        validator_name=self.name,
+                        success=False,
+                        result=ValidationDetail.from_aggregates(
+                            element_count=total_rows,
+                            missing_count=0,
+                            unexpected_count=violations,
+                            observed_value=f"{violations} violations of {mode} order",
+                        ),
                     )
                 )
 
@@ -72,6 +83,9 @@ class DecreasingValidator(Validator, NumericValidatorMixin):
 
     name = "decreasing"
     category = "distribution"
+    dependencies = {"column_exists", "null_checked"}
+    provides = {"decreasing"}
+    priority = 70
 
     def __init__(
         self,
@@ -113,6 +127,14 @@ class DecreasingValidator(Validator, NumericValidatorMixin):
                         count=violations,
                         severity=self._calculate_severity(ratio),
                         details=f"{violations} violations of {mode} order",
+                        validator_name=self.name,
+                        success=False,
+                        result=ValidationDetail.from_aggregates(
+                            element_count=total_rows,
+                            missing_count=0,
+                            unexpected_count=violations,
+                            observed_value=f"{violations} violations of {mode} order",
+                        ),
                     )
                 )
 

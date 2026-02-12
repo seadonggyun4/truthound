@@ -4,7 +4,7 @@ from typing import Any
 
 import polars as pl
 
-from truthound.types import Severity
+from truthound.types import Severity, ValidationDetail
 from truthound.validators.base import ValidationIssue, Validator
 from truthound.validators.registry import register_validator
 
@@ -15,6 +15,9 @@ class ColumnTypeValidator(Validator):
 
     name = "column_type"
     category = "schema"
+    dependencies = {"column_exists"}
+    provides = {"type_validated", "column_type"}
+    priority = 20
 
     # Common type mappings
     TYPE_ALIASES: dict[str, set[type[pl.DataType]]] = {
@@ -44,6 +47,7 @@ class ColumnTypeValidator(Validator):
     def validate(self, lf: pl.LazyFrame) -> list[ValidationIssue]:
         issues: list[ValidationIssue] = []
         schema = lf.collect_schema()
+        build_details = self._should_build_details()
 
         for col, expected in self.expected_types.items():
             if col not in schema.names():
@@ -53,7 +57,10 @@ class ColumnTypeValidator(Validator):
                         issue_type="missing_column",
                         count=1,
                         severity=Severity.CRITICAL,
-                        details=f"Column '{col}' not found",
+                        details=f"Column '{col}' not found" if build_details else None,
+                        validator_name=self.name,
+                        success=False,
+                        result=ValidationDetail(element_count=0),
                     )
                 )
                 continue
@@ -71,9 +78,15 @@ class ColumnTypeValidator(Validator):
                                 issue_type="type_mismatch",
                                 count=1,
                                 severity=Severity.HIGH,
-                                details=f"Expected {expected}, got {actual_type.__name__}",
-                                expected=expected,
-                                actual=actual_type.__name__,
+                                details=(
+                                    f"Expected {expected}, got {actual_type.__name__}"
+                                    if build_details else None
+                                ),
+                                expected=expected if build_details else None,
+                                actual=actual_type.__name__ if build_details else None,
+                                validator_name=self.name,
+                                success=False,
+                                result=ValidationDetail(element_count=0),
                             )
                         )
             else:
@@ -85,9 +98,15 @@ class ColumnTypeValidator(Validator):
                             issue_type="type_mismatch",
                             count=1,
                             severity=Severity.HIGH,
-                            details=f"Expected {expected.__name__}, got {actual_type.__name__}",
-                            expected=expected.__name__,
-                            actual=actual_type.__name__,
+                            details=(
+                                f"Expected {expected.__name__}, got {actual_type.__name__}"
+                                if build_details else None
+                            ),
+                            expected=expected.__name__ if build_details else None,
+                            actual=actual_type.__name__ if build_details else None,
+                            validator_name=self.name,
+                            success=False,
+                            result=ValidationDetail(element_count=0),
                         )
                     )
 

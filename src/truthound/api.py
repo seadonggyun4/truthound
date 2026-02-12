@@ -16,7 +16,7 @@ import polars as pl
 from truthound.adapters import to_lazyframe
 from truthound.maskers import mask_data
 from truthound.scanners import scan_pii
-from truthound.types import Severity
+from truthound.types import ResultFormat, ResultFormatConfig, Severity
 
 
 # =============================================================================
@@ -70,6 +70,9 @@ def check(
     parallel: bool = False,
     max_workers: int | None = None,
     pushdown: bool | None = None,
+    result_format: str | ResultFormat | ResultFormatConfig = ResultFormat.SUMMARY,
+    catch_exceptions: bool = True,
+    max_retries: int = 0,
 ) -> Report:
     """Perform data quality validation on the input data.
 
@@ -119,6 +122,11 @@ def check(
                  Validation logic is executed server-side when possible,
                  reducing data transfer and improving performance.
                  If None (default), auto-detects based on data source type.
+        catch_exceptions: If True (default), validator exceptions are caught
+                         and reported as issues. If False, the first exception
+                         aborts the run (strict mode).
+        max_retries: Number of automatic retry attempts for transient errors
+                    (timeouts, connection errors). Default 0 (no retries).
 
     Returns:
         Report containing all validation issues found.
@@ -272,6 +280,23 @@ def check(
             else:
                 raise ValueError(f"Invalid validator: {v}. Expected str or Validator instance.")
 
+    # Resolve result_format and inject PHASE 5 options into all validators
+    result_format_config = ResultFormatConfig.from_any(result_format)
+    for v in validator_instances:
+        if hasattr(v, "config") and hasattr(v.config, "replace"):
+            try:
+                v.config = v.config.replace(
+                    result_format=result_format_config.format,
+                    catch_exceptions=catch_exceptions,
+                    max_retries=max_retries,
+                )
+            except (TypeError, AttributeError):
+                pass  # Some validators may have non-standard configs
+
+    # Create session-scoped SharedMetricStore for metric deduplication (PHASE 3)
+    from truthound.validators.metrics import SharedMetricStore
+    metric_store = SharedMetricStore()
+
     # Run all validators and collect issues
     all_issues = []
 
@@ -283,7 +308,7 @@ def check(
         all_issues = engine.validate(validator_instances)
 
     elif parallel and len(validator_instances) > 1:
-        # Use DAG-based parallel execution
+        # Use DAG-based parallel execution with dependency-aware skipping (PHASE 4)
         from truthound.validators.optimization.orchestrator import (
             ValidatorDAG,
             ParallelExecutionStrategy,
@@ -294,30 +319,72 @@ def check(
         dag.add_validators(validator_instances)
         plan = dag.build_execution_plan()
 
+        # Log execution plan summary
+        plan_summary = plan.get_summary()
+        import logging as _logging
+        _dag_logger = _logging.getLogger("truthound.orchestrator")
+        _dag_logger.debug(
+            "DAG execution plan: %d validators, %d levels, max_parallelism=%d",
+            plan_summary["total_nodes"],
+            plan_summary["total_levels"],
+            plan_summary.get("max_parallelism", 0),
+        )
+
         # Choose strategy based on max_workers
         if max_workers is not None:
             strategy = ParallelExecutionStrategy(max_workers=max_workers)
         else:
             strategy = AdaptiveExecutionStrategy()
 
-        result = plan.execute(lf, strategy)
+        result = plan.execute(
+            lf, strategy,
+            skip_on_error=catch_exceptions,
+        )
         all_issues = result.all_issues
+
+        # Log skip info
+        if result.skipped_count > 0:
+            _dag_logger.info(
+                "DAG execution: %d validators skipped due to dependency failures",
+                result.skipped_count,
+            )
     else:
         # Sequential or lightweight parallel execution
+        from truthound.validators.base import _validate_safe
+
+        def _run_validator(v: Validator) -> list:
+            """Run a single validator with retry and metric support."""
+            v_retries = getattr(v.config, "max_retries", 0) if hasattr(v, "config") else 0
+            v_catch = getattr(v.config, "catch_exceptions", True) if hasattr(v, "config") else True
+            result = _validate_safe(
+                v, lf,
+                skip_on_error=v_catch,
+                log_errors=True,
+                max_retries=v_retries,
+            )
+            return result.issues
+
         # For small validator sets, avoid ThreadPool creation overhead
         if len(validator_instances) < 5:
             # Sequential execution for small sets
             for validator in validator_instances:
-                issues = validator.validate(lf)
-                all_issues.extend(issues)
+                all_issues.extend(_run_validator(validator))
         else:
             # Lightweight parallel execution for larger sets
             from concurrent.futures import ThreadPoolExecutor
 
             with ThreadPoolExecutor(max_workers=4) as executor:
-                results = list(executor.map(lambda v: v.validate(lf), validator_instances))
+                results = list(executor.map(_run_validator, validator_instances))
             for issues in results:
                 all_issues.extend(issues)
+
+    # Log metric store stats and clean up
+    if len(metric_store) > 0:
+        import logging as _logging
+        _logging.getLogger("truthound.metrics").debug(
+            f"Metric store stats: {metric_store.get_stats_dict()}"
+        )
+    metric_store.clear()
 
     # Create report (lazy import Report class)
     _, _, Report = _get_report_classes()
@@ -326,6 +393,7 @@ def check(
         source=source_name,
         row_count=row_count,
         column_count=column_count,
+        result_format=result_format_config.format,
     )
 
     # Filter by severity if specified

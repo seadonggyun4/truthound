@@ -1,6 +1,145 @@
 # Advanced Features
 
-Advanced Python API for ML, Lineage, Real-time streaming, and Profiling.
+Advanced Python API for ML, Lineage, Real-time streaming, Profiling, and the Validation Engine Enhancement (VE) system.
+
+## Validation Engine Enhancement (VE)
+
+The VE system introduces five cross-cutting enhancements to the validation pipeline, inspired by Great Expectations (GX) patterns and adapted for Polars LazyFrame architecture.
+
+### Result Format Control (VE-1)
+
+Control the detail level of validation results with a 4-level hierarchy.
+
+```python
+import truthound as th
+from truthound.types import ResultFormat, ResultFormatConfig
+
+# Quick pass/fail check (fastest)
+report = th.check("data.csv", result_format="boolean_only")
+
+# Default: summary with value counts
+report = th.check("data.csv", result_format="summary")
+
+# Full detail with unexpected rows and debug queries
+report = th.check("data.csv", result_format="complete")
+
+# Fine-grained control
+config = ResultFormatConfig(
+    format=ResultFormat.COMPLETE,
+    partial_unexpected_count=50,      # Collect up to 50 samples
+    include_unexpected_rows=True,     # Include failing rows as DataFrame
+    max_unexpected_rows=500,          # Cap at 500 rows
+    return_debug_query=True,          # Include Polars query string
+)
+report = th.check("data.csv", result_format=config)
+
+# Access structured results
+for issue in report.issues:
+    if issue.result:
+        print(f"Elements: {issue.result.element_count}")
+        print(f"Missing: {issue.result.missing_count}")
+        print(f"Unexpected: {issue.result.unexpected_count} ({issue.result.unexpected_percent:.1%})")
+        if issue.result.partial_unexpected_list:
+            print(f"Samples: {issue.result.partial_unexpected_list[:5]}")
+        if issue.result.unexpected_rows is not None:
+            print(f"Failing rows: {issue.result.unexpected_rows.shape}")
+        if issue.result.debug_query:
+            print(f"Query: {issue.result.debug_query}")
+```
+
+### Shared Metric Store (VE-3)
+
+Deduplicate metric computations across validators in a session.
+
+```python
+from truthound.validators.metrics import MetricKey, SharedMetricStore, CommonMetrics
+
+# The store is automatically created and managed by th.check()
+# For manual use:
+store = SharedMetricStore()
+
+# Common metrics provide standard expressions
+key, expr = CommonMetrics.null_count("email")
+key, expr = CommonMetrics.row_count()
+key, expr = CommonMetrics.n_unique("user_id")
+
+# Pre-compute and cache
+store.put(key, 42)
+value = store.get(key)  # 42
+
+# Or compute-on-demand
+value = store.get_or_compute(key, lambda: lf.select(expr).collect().item())
+
+# Statistics
+print(store.stats)  # hits, misses, evictions
+```
+
+**Validators with built-in metric declarations:** `NullValidator`, `NotNullValidator`, `CompletenessRatioValidator`, `UniqueValidator`, `UniqueRatioValidator`, `DistinctCountValidator`, `BetweenValidator`.
+
+### Exception Isolation & Auto Retry (VE-5)
+
+Gracefully handle validation failures without aborting the entire pipeline.
+
+```python
+import truthound as th
+
+# Enable exception isolation with retries
+report = th.check(
+    "data.csv",
+    catch_exceptions=True,  # Default: True
+    max_retries=3,           # Retry transient errors up to 3 times
+)
+
+# Inspect exception summary
+if report.exception_summary:
+    summary = report.exception_summary
+    print(f"Total exceptions: {summary.total_count}")
+    print(f"By category: {summary.by_category}")
+    print(f"Retried: {summary.retried_count}")
+
+# Per-issue exception detail
+for issue in report.issues:
+    if issue.exception_info:
+        info = issue.exception_info
+        print(f"Validator: {info.validator_name}")
+        print(f"Category: {info.failure_category}")  # transient/permanent/configuration/data
+        print(f"Retries: {info.retry_count}/{info.max_retries}")
+        print(f"Retryable: {info.is_retryable}")
+```
+
+### Resilience Bridge (VE-5)
+
+Combine circuit breaker and retry patterns for validator execution.
+
+```python
+from truthound.validators.resilience_bridge import (
+    ValidationResiliencePolicy,
+    create_default_policy,
+    create_strict_policy,
+)
+from truthound.common.resilience import CircuitBreakerConfig
+
+# Default policy: lenient circuit breaker
+policy = create_default_policy(max_retries=2)
+
+# Strict policy: no retries, aggressive circuit breaker
+policy = create_strict_policy()
+
+# Custom policy
+policy = ValidationResiliencePolicy(
+    circuit_breaker_config=CircuitBreakerConfig.for_database(),
+    max_retries=3,
+    on_retry=lambda attempt, exc, delay: print(f"Retry {attempt}: {exc}"),
+)
+
+# Execute with resilience
+result = policy.execute(validator, lf)
+
+# Check circuit state
+state = policy.get_circuit_state("my_validator")  # CLOSED | OPEN | HALF_OPEN
+```
+
+---
 
 ## Parallel Execution
 
@@ -852,6 +991,10 @@ print(f"Slowest loads: {metrics['slowest_loads'][:5]}")
 
 | Module | Description |
 |--------|-------------|
+| `truthound.types` | ResultFormat, ResultFormatConfig, ValidationDetail (VE-1/2) |
+| `truthound.validators.metrics` | MetricKey, SharedMetricStore, CommonMetrics (VE-3) |
+| `truthound.validators.base` | SkipCondition, ExceptionInfo, _validate_safe (VE-4/5) |
+| `truthound.validators.resilience_bridge` | ValidationResiliencePolicy (VE-5) |
 | `truthound.ml` | ML anomaly/drift detection, rule learning |
 | `truthound.lineage` | Data lineage tracking and visualization |
 | `truthound.realtime` | Streaming and incremental validation |

@@ -98,6 +98,9 @@ class ReferentialValidator(Validator):
     """
 
     category = "referential"
+    dependencies = {"column_exists", "uniqueness_checked"}
+    provides = {"referential_validated"}
+    priority = 90
 
     def __init__(
         self,
@@ -270,6 +273,9 @@ class MultiTableValidator(Validator):
     """
 
     category = "referential"
+    dependencies = {"column_exists", "uniqueness_checked"}
+    provides = {"referential_validated"}
+    priority = 90
 
     def __init__(
         self,

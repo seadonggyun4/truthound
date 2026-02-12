@@ -61,12 +61,14 @@ from typing import Any, Callable, TypeVar, Generic, Iterator
 
 import polars as pl
 
+from truthound.types import Severity
 from truthound.validators.base import (
     Validator,
     ValidationIssue,
     ValidatorExecutionResult,
     ValidationResult,
     ErrorContext,
+    ExceptionInfo,
     _validate_safe,
 )
 from truthound.validators.optimization.graph import TopologicalSort
@@ -280,6 +282,14 @@ class ExecutionResult:
     def failure_count(self) -> int:
         return sum(lr.failure_count for lr in self.level_results)
 
+    @property
+    def skipped_count(self) -> int:
+        return sum(
+            1
+            for nr in self.node_results
+            if nr.status == ValidationResult.SKIPPED
+        )
+
     def get_metrics(self) -> dict[str, Any]:
         """Get execution metrics summary."""
         return {
@@ -288,6 +298,7 @@ class ExecutionResult:
             "total_issues": len(self.all_issues),
             "success_count": self.success_count,
             "failure_count": self.failure_count,
+            "skipped_count": self.skipped_count,
             "levels": len(self.level_results),
             "strategy": self.strategy_name,
             "parallelism_factor": self._compute_parallelism_factor(),
@@ -327,17 +338,46 @@ class ExecutionStrategy(ABC):
 
 @dataclass
 class ExecutionContext:
-    """Shared context for execution."""
+    """Shared context for DAG execution with result propagation.
+
+    Tracks completed results, critical columns, and skip decisions
+    so that downstream Validators can make informed skip/filter choices.
+    """
     previous_results: dict[str, NodeExecutionResult] = field(default_factory=dict)
     cached_data: dict[str, Any] = field(default_factory=dict)
     skip_on_error: bool = True
     log_errors: bool = True
+
+    # PHASE 4: result propagation fields
+    critical_columns: set[str] = field(default_factory=set)
+    failed_validators: set[str] = field(default_factory=set)
+    skipped_validators: set[str] = field(default_factory=set)
 
     def get_result(self, node_id: str) -> NodeExecutionResult | None:
         return self.previous_results.get(node_id)
 
     def add_result(self, result: NodeExecutionResult) -> None:
         self.previous_results[result.node_id] = result
+
+    def record_result(self, node_id: str, result: ValidatorExecutionResult) -> None:
+        """Record a validator result and update propagation state."""
+        if result.status in (ValidationResult.FAILED, ValidationResult.TIMEOUT):
+            self.failed_validators.add(node_id)
+        elif result.status == ValidationResult.SKIPPED:
+            self.skipped_validators.add(node_id)
+
+        for issue in result.issues:
+            if issue.severity == Severity.CRITICAL:
+                self.critical_columns.add(issue.column)
+
+    def get_completed_execution_results(self) -> dict[str, ValidatorExecutionResult]:
+        """Return ``{node_id: ValidatorExecutionResult}`` for ``should_skip()``."""
+        return {
+            nid: nr.result for nid, nr in self.previous_results.items()
+        }
+
+    def is_column_critical(self, column: str) -> bool:
+        return column in self.critical_columns
 
 
 class SequentialExecutionStrategy(ExecutionStrategy):
@@ -359,11 +399,13 @@ class SequentialExecutionStrategy(ExecutionStrategy):
 
         for node in level:
             start = time.time()
+            v_cfg = getattr(node.validator, "config", None)
             result = _validate_safe(
                 node.validator,
                 lf,
                 skip_on_error=context.skip_on_error,
                 log_errors=context.log_errors,
+                max_retries=getattr(v_cfg, "max_retries", 0) if v_cfg else 0,
             )
             end = time.time()
 
@@ -414,11 +456,13 @@ class ParallelExecutionStrategy(ExecutionStrategy):
         if len(level) <= 1:
             for node in level:
                 start = time.time()
+                v_cfg = getattr(node.validator, "config", None)
                 result = _validate_safe(
                     node.validator,
                     lf,
                     skip_on_error=context.skip_on_error,
                     log_errors=context.log_errors,
+                    max_retries=getattr(v_cfg, "max_retries", 0) if v_cfg else 0,
                 )
                 end = time.time()
 
@@ -453,6 +497,9 @@ class ParallelExecutionStrategy(ExecutionStrategy):
                         context.add_result(node_result)
                     except Exception as e:
                         logger.error(f"Error executing {node.node_id}: {e}")
+                        exc_info = ExceptionInfo.from_exception(
+                            e, validator_name=node.validator.name,
+                        )
                         node_result = NodeExecutionResult(
                             node_id=node.node_id,
                             result=ValidatorExecutionResult(
@@ -460,7 +507,8 @@ class ParallelExecutionStrategy(ExecutionStrategy):
                                 status=ValidationResult.FAILED,
                                 issues=[],
                                 error_message=str(e),
-                                error_context=ErrorContext(type(e).__name__, str(e)),
+                                error_context=exc_info.to_error_context(),
+                                exception_info=exc_info,
                             ),
                             start_time=time.time(),
                             end_time=time.time(),
@@ -484,11 +532,13 @@ class ParallelExecutionStrategy(ExecutionStrategy):
     ) -> NodeExecutionResult:
         """Execute a single node (for thread pool)."""
         start = time.time()
+        v_cfg = getattr(node.validator, "config", None)
         result = _validate_safe(
             node.validator,
             lf,
             skip_on_error=skip_on_error,
             log_errors=log_errors,
+            max_retries=getattr(v_cfg, "max_retries", 0) if v_cfg else 0,
         )
         end = time.time()
 
@@ -561,7 +611,16 @@ class ExecutionPlan:
         skip_on_error: bool = True,
         log_errors: bool = True,
     ) -> ExecutionResult:
-        """Execute the plan.
+        """Execute the plan with dependency-based conditional skipping.
+
+        For each level the executor:
+
+        1. Evaluates ``Validator.should_skip()`` against prior results.
+        2. Builds a *skipped* result for validators that should be skipped.
+        3. Delegates the remaining validators to the chosen strategy.
+        4. Records all results in the shared :class:`ExecutionContext` so
+           that subsequent levels can use them for skip decisions and
+           column-level filtering.
 
         Args:
             lf: LazyFrame to validate
@@ -583,7 +642,62 @@ class ExecutionPlan:
         level_results: list[LevelExecutionResult] = []
 
         for level in self.levels:
-            level_result = strategy.execute_level(level, lf, context)
+            level_start = time.time()
+            nodes_to_run: list[ValidatorNode] = []
+            skipped_results: list[NodeExecutionResult] = []
+
+            prior = context.get_completed_execution_results()
+
+            for node in level:
+                should_skip, reason = node.validator.should_skip(prior)
+
+                if should_skip:
+                    logger.info(
+                        "Skipping validator '%s': %s",
+                        node.node_id,
+                        reason,
+                    )
+                    now = time.time()
+                    skip_result = ValidatorExecutionResult(
+                        validator_name=node.validator.name,
+                        status=ValidationResult.SKIPPED,
+                        issues=[],
+                        error_message=reason,
+                    )
+                    nr = NodeExecutionResult(
+                        node_id=node.node_id,
+                        result=skip_result,
+                        start_time=now,
+                        end_time=now,
+                    )
+                    skipped_results.append(nr)
+                    context.add_result(nr)
+                    context.record_result(node.node_id, skip_result)
+                else:
+                    nodes_to_run.append(node)
+
+            if nodes_to_run:
+                run_level = ExecutionLevel(
+                    level_index=level.level_index,
+                    nodes=nodes_to_run,
+                    phase=level.phase,
+                )
+                level_result = strategy.execute_level(run_level, lf, context)
+
+                # Propagate results to context
+                for nr in level_result.node_results:
+                    context.record_result(nr.node_id, nr.result)
+
+                # Merge skipped results into level result
+                level_result.node_results.extend(skipped_results)
+            else:
+                level_result = LevelExecutionResult(
+                    level_index=level.level_index,
+                    node_results=skipped_results,
+                    start_time=level_start,
+                    end_time=time.time(),
+                )
+
             level_results.append(level_result)
 
         return ExecutionResult(
@@ -595,9 +709,11 @@ class ExecutionPlan:
 
     def get_summary(self) -> dict[str, Any]:
         """Get plan summary."""
+        max_parallelism = max((lvl.size for lvl in self.levels), default=0)
         return {
             "total_nodes": self.total_nodes,
             "total_levels": len(self.levels),
+            "max_parallelism": max_parallelism,
             "has_cycles": self.has_cycles,
             "levels": [
                 {
@@ -657,17 +773,21 @@ class ValidatorDAG:
         dependencies: set[str] | None = None,
         provides: set[str] | None = None,
         phase: ValidatorPhase | None = None,
-        priority: int = 100,
+        priority: int | None = None,
         estimated_cost: float = 1.0,
     ) -> ValidatorNode:
         """Add a validator to the DAG.
 
+        Class-level ``dependencies``, ``provides``, and ``priority``
+        attributes are read from the Validator when the corresponding
+        parameter is ``None``.
+
         Args:
             validator: Validator instance
-            dependencies: Set of node_ids this depends on
-            provides: Set of capabilities this provides
+            dependencies: Override set of node_ids this depends on
+            provides: Override set of capabilities this provides
             phase: Execution phase override
-            priority: Priority within phase (lower = earlier)
+            priority: Override priority (lower = earlier)
             estimated_cost: Estimated execution cost
 
         Returns:
@@ -675,11 +795,13 @@ class ValidatorDAG:
         """
         node_id = validator.name
 
-        # Check for explicit dependencies on validator class
+        # Read class-level declarations when not overridden
         if dependencies is None:
-            dependencies = getattr(validator, "dependencies", set())
-            if dependencies is None:
-                dependencies = set()
+            dependencies = getattr(validator, "dependencies", None) or set()
+        if provides is None:
+            provides = getattr(validator, "provides", None) or {node_id}
+        if priority is None:
+            priority = getattr(validator, "priority", 100)
 
         # Auto-detect phase from category
         if phase is None:
@@ -690,7 +812,7 @@ class ValidatorDAG:
             validator=validator,
             node_id=node_id,
             dependencies=set(dependencies),
-            provides=provides or {node_id},
+            provides=set(provides),
             phase=phase,
             priority=priority,
             estimated_cost=estimated_cost,
@@ -758,33 +880,64 @@ class ValidatorDAG:
             total_nodes=len(self.nodes),
         )
 
-    def _build_adjacency_with_phases(self) -> dict[str, list[str]]:
-        """Build adjacency list including implicit phase dependencies."""
-        adjacency: dict[str, list[str]] = {node_id: [] for node_id in self.nodes}
-
-        # Add explicit dependencies
+    def _build_provides_map(self) -> dict[str, set[str]]:
+        """Map each ``provides`` tag to the set of node_ids that provide it."""
+        provides_map: dict[str, set[str]] = {}
         for node_id, node in self.nodes.items():
+            for tag in node.provides:
+                provides_map.setdefault(tag, set()).add(node_id)
+        return provides_map
+
+    def _resolve_dependencies(self) -> dict[str, set[str]]:
+        """Resolve ``dependencies`` to concrete node_ids.
+
+        A dependency string is resolved in order:
+
+        1. Direct node_id match (``"null"`` → the ``null`` node).
+        2. ``provides`` tag match (``"null_checked"`` → all nodes that
+           include ``"null_checked"`` in their ``provides``).
+        3. Unresolvable references are silently ignored (the upstream
+           Validator may not be part of this particular run).
+        """
+        provides_map = self._build_provides_map()
+        resolved: dict[str, set[str]] = {}
+
+        for node_id, node in self.nodes.items():
+            deps: set[str] = set()
             for dep in node.dependencies:
                 if dep in self.nodes:
-                    adjacency[dep].append(node_id)
+                    deps.add(dep)
+                elif dep in provides_map:
+                    deps.update(provides_map[dep])
+            # Never depend on yourself
+            deps.discard(node_id)
+            resolved[node_id] = deps
+
+        return resolved
+
+    def _build_adjacency_with_phases(self) -> dict[str, list[str]]:
+        """Build adjacency list from resolved dependencies + phase ordering."""
+        adjacency: dict[str, list[str]] = {nid: [] for nid in self.nodes}
+
+        resolved = self._resolve_dependencies()
+
+        # Add resolved explicit dependencies
+        for node_id, deps in resolved.items():
+            for dep_id in deps:
+                if dep_id in adjacency and node_id not in adjacency[dep_id]:
+                    adjacency[dep_id].append(node_id)
 
         # Add implicit phase dependencies
-        # Validators in later phases depend on validators in earlier phases
         phase_to_nodes: dict[ValidatorPhase, list[str]] = {}
         for node_id, node in self.nodes.items():
-            if node.phase not in phase_to_nodes:
-                phase_to_nodes[node.phase] = []
-            phase_to_nodes[node.phase].append(node_id)
+            phase_to_nodes.setdefault(node.phase, []).append(node_id)
 
-        # Sort phases by value
         sorted_phases = sorted(phase_to_nodes.keys(), key=lambda p: p.value)
 
-        # Add edges from each phase to the next
         for i in range(len(sorted_phases) - 1):
             current_phase = sorted_phases[i]
             next_phase = sorted_phases[i + 1]
 
-            # Each node in next phase depends on all nodes in current phase
             for current_node in phase_to_nodes[current_phase]:
                 for next_node in phase_to_nodes[next_phase]:
                     if next_node not in adjacency[current_node]:
@@ -801,60 +954,51 @@ class ValidatorDAG:
         return [n.node_id for n in sorted_nodes]
 
     def _group_into_levels(self, sorted_ids: list[str]) -> list[ExecutionLevel]:
-        """Group sorted node IDs into execution levels.
+        """Group topologically-sorted node IDs into dependency-based levels.
 
-        Nodes with no dependencies on each other can be in the same level.
+        Two nodes share a level only when:
+        - Neither depends on the other (directly or transitively).
+        - They belong to the same execution phase.
+
+        Validators within a level can safely run in parallel.
         """
         if not sorted_ids:
             return []
 
-        levels: list[ExecutionLevel] = []
-        assigned: set[str] = set()
-        remaining = list(sorted_ids)
+        resolved_deps = self._resolve_dependencies()
 
-        while remaining:
-            # Find all nodes whose dependencies are already assigned
-            current_level_nodes: list[ValidatorNode] = []
-            current_phase = None
-
-            for node_id in remaining:
-                node = self.nodes[node_id]
-                deps_satisfied = all(
-                    dep in assigned or dep not in self.nodes
-                    for dep in node.dependencies
+        # Compute each node's level index (longest-path from roots)
+        node_level: dict[str, int] = {}
+        for node_id in sorted_ids:
+            deps = resolved_deps.get(node_id, set())
+            if not deps:
+                node_level[node_id] = 0
+            else:
+                max_dep = max(
+                    (node_level.get(d, 0) for d in deps if d in node_level),
+                    default=0,
                 )
+                node_level[node_id] = max_dep + 1
 
-                if deps_satisfied:
-                    # Check phase compatibility - only group same phase
-                    if current_phase is None:
-                        current_phase = node.phase
+        # Group by (level_index, phase) to keep phases separate
+        from collections import defaultdict
+        groups: dict[tuple[int, ValidatorPhase], list[ValidatorNode]] = defaultdict(list)
+        for node_id in sorted_ids:
+            node = self.nodes[node_id]
+            key = (node_level[node_id], node.phase)
+            groups[key].append(node)
 
-                    if node.phase == current_phase:
-                        current_level_nodes.append(node)
-
-            if not current_level_nodes:
-                # Shouldn't happen if graph is acyclic, but handle gracefully
-                logger.warning("Could not find nodes for next level")
-                # Take the first remaining node
-                node_id = remaining[0]
-                current_level_nodes = [self.nodes[node_id]]
-                current_phase = self.nodes[node_id].phase
-
-            # Sort within level by priority
-            current_level_nodes.sort(key=lambda n: (n.priority, n.node_id))
-
-            # Create level
-            level = ExecutionLevel(
-                level_index=len(levels),
-                nodes=current_level_nodes,
-                phase=current_phase or ValidatorPhase.CUSTOM,
+        # Sort groups by (level_index, phase.value) and build ExecutionLevels
+        levels: list[ExecutionLevel] = []
+        for (lvl_idx, phase) in sorted(groups.keys(), key=lambda k: (k[0], k[1].value)):
+            nodes = sorted(groups[(lvl_idx, phase)], key=lambda n: (n.priority, n.node_id))
+            levels.append(
+                ExecutionLevel(
+                    level_index=len(levels),
+                    nodes=nodes,
+                    phase=phase,
+                )
             )
-            levels.append(level)
-
-            # Mark as assigned
-            for node in current_level_nodes:
-                assigned.add(node.node_id)
-                remaining.remove(node.node_id)
 
         return levels
 
@@ -887,32 +1031,101 @@ class ValidatorDAG:
         return chain
 
     def visualize(self) -> str:
-        """Create ASCII visualization of the DAG.
+        """Create an ASCII visualization of the execution DAG.
 
-        Returns:
-            ASCII art representation of the DAG
+        Example output::
+
+            ValidatorDAG (6 validators, 4 levels):
+
+            Level 0 [SCHEMA]:
+              ├─ column_exists (provides: schema_validated, column_exists)
+
+            Level 1 [COMPLETENESS]:
+              ├─ null (depends: column_exists | provides: null_checked, null)
+              ├─ unique (depends: column_exists | provides: uniqueness_checked, unique)
+
+            Level 2 [RANGE]:
+              ├─ between (depends: column_exists, null_checked | provides: range_checked, between)
+
+            Level 3 [STATISTICAL]:
+              └─ outlier (depends: column_exists, null_checked, range_checked)
         """
         if not self.nodes:
             return "Empty DAG"
 
-        lines = ["ValidatorDAG:"]
+        plan = self.build_execution_plan()
+        lines = [f"ValidatorDAG ({len(self.nodes)} validators, {len(plan.levels)} levels):"]
 
-        # Group by phase
-        phase_to_nodes: dict[ValidatorPhase, list[ValidatorNode]] = {}
-        for node in self.nodes.values():
-            if node.phase not in phase_to_nodes:
-                phase_to_nodes[node.phase] = []
-            phase_to_nodes[node.phase].append(node)
+        for level in plan.levels:
+            lines.append(f"\n  Level {level.level_index} [{level.phase.name}]:")
+            sorted_nodes = sorted(level.nodes, key=lambda n: (n.priority, n.node_id))
 
-        for phase in sorted(phase_to_nodes.keys(), key=lambda p: p.value):
-            lines.append(f"\n  [{phase.name}]")
-            nodes = sorted(phase_to_nodes[phase], key=lambda n: n.priority)
+            for i, node in enumerate(sorted_nodes):
+                is_last = i == len(sorted_nodes) - 1
+                prefix = "  └─ " if is_last else "  ├─ "
 
-            for node in nodes:
-                deps = ", ".join(sorted(node.dependencies)) if node.dependencies else "none"
-                lines.append(f"    - {node.node_id} (deps: {deps})")
+                parts = [node.node_id]
+
+                deps = sorted(node.dependencies)
+                if deps:
+                    parts.append(f"depends: {', '.join(deps)}")
+
+                # Only show provides if it's more than just {node_id}
+                extra_provides = sorted(node.provides - {node.node_id})
+                if extra_provides:
+                    parts.append(f"provides: {', '.join(extra_provides)}")
+
+                if len(parts) > 1:
+                    lines.append(f"  {prefix}{parts[0]} ({' | '.join(parts[1:])})")
+                else:
+                    lines.append(f"  {prefix}{parts[0]}")
 
         return "\n".join(lines)
+
+    def get_execution_summary(self, plan: ExecutionPlan | None = None) -> dict[str, Any]:
+        """Return a summary of the execution plan.
+
+        Args:
+            plan: Pre-built plan. If *None*, ``build_execution_plan()``
+                is called internally.
+
+        Returns:
+            Dict with keys ``total_validators``, ``total_levels``,
+            ``max_parallelism``, ``dependency_chains``,
+            ``estimated_speedup``.
+        """
+        if plan is None:
+            plan = self.build_execution_plan()
+
+        max_parallelism = max((len(lvl) for lvl in plan.levels), default=0)
+
+        # Find longest dependency chains
+        chains: list[list[str]] = []
+        leaf_nodes = [
+            nid
+            for nid in self.nodes
+            if not any(nid in n.dependencies for n in self.nodes.values())
+        ]
+        for leaf_id in leaf_nodes:
+            chain = self.get_dependency_chain(leaf_id)
+            if len(chain) > 1:
+                chains.append(chain)
+        # Keep top-5 longest chains
+        chains.sort(key=len, reverse=True)
+        chains = chains[:5]
+
+        # Rough speedup estimate: total_validators / total_levels
+        estimated_speedup = (
+            len(self.nodes) / len(plan.levels) if plan.levels else 1.0
+        )
+
+        return {
+            "total_validators": len(self.nodes),
+            "total_levels": len(plan.levels),
+            "max_parallelism": max_parallelism,
+            "dependency_chains": chains,
+            "estimated_speedup": round(estimated_speedup, 2),
+        }
 
     def __repr__(self) -> str:
         return f"ValidatorDAG(nodes={len(self.nodes)})"

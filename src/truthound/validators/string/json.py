@@ -26,6 +26,9 @@ class JsonParseableValidator(Validator, StringValidatorMixin, SampledEarlyTermin
 
     name = "json_parseable"
     category = "string"
+    dependencies = {"column_exists", "null_checked"}
+    provides = {"json_parseable"}
+    priority = 70
 
     def __init__(
         self,

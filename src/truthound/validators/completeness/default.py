@@ -4,7 +4,7 @@ from typing import Any
 
 import polars as pl
 
-from truthound.types import Severity
+from truthound.types import Severity, ValidationDetail
 from truthound.validators.base import ValidationIssue, Validator
 from truthound.validators.registry import register_validator
 
@@ -22,6 +22,9 @@ class DefaultValueValidator(Validator):
 
     name = "default_value"
     category = "completeness"
+    dependencies = {"column_exists"}
+    provides = {"default_value"}
+    priority = 50
 
     # Common default/placeholder values
     COMMON_DEFAULTS = [
@@ -92,6 +95,13 @@ class DefaultValueValidator(Validator):
                             details=f"{ratio:.1%} values are defaults (max {self.max_ratio:.1%})",
                             expected=f"<= {self.max_ratio:.1%}",
                             actual=f"{ratio:.1%}",
+                            validator_name=self.name,
+                            success=False,
+                            result=ValidationDetail.from_aggregates(
+                                element_count=total_rows,
+                                unexpected_count=default_count,
+                                observed_value=f"{ratio:.1%}",
+                            ),
                         )
                     )
 

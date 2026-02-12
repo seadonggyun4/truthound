@@ -71,6 +71,9 @@ class RegexValidator(
 
     name = "regex"
     category = "string"
+    dependencies = {"column_exists", "null_checked"}
+    provides = {"pattern_checked", "regex"}
+    priority = 70
 
     def __init__(
         self,
@@ -199,6 +202,7 @@ class RegexValidator(
                     non_null_expr=pl.col(col).is_not_null().sum(),
                     details_template=f"Pattern: {safe_pattern}",
                     expected=self.pattern,
+                    filter_expr=invalid_expr,
                 )
             )
         return specs
@@ -235,19 +239,23 @@ class RegexValidator(
         # Process early termination columns
         for col in early_term_cols:
             result = early_results[col]
-            samples = self._get_invalid_samples(lf.head(self.early_termination_sample_size), col)
 
             # Check mostly threshold with extrapolated values
             if self._passes_mostly(result.estimated_fail_count, result.total_rows):
                 continue
+
+            samples = (
+                self._get_invalid_samples(lf.head(self.early_termination_sample_size), col)
+                if self._should_collect_samples() else None
+            )
 
             issues.append(
                 self._build_early_termination_issue(
                     col=col,
                     result=result,
                     issue_type="regex_mismatch",
-                    details=f"Pattern: {self.pattern}",
-                    expected=self.pattern,
+                    details=f"Pattern: {self.pattern}" if self._should_build_details() else "",
+                    expected=self.pattern if self._should_build_details() else None,
                     sample_values=samples,
                 )
             )
@@ -267,7 +275,7 @@ class RegexValidator(
         """Full validation with sample values collection.
 
         This method performs full validation and collects sample invalid values
-        for better error reporting.
+        for better error reporting. Respects result_format settings.
         """
         if not columns:
             return []
@@ -300,8 +308,9 @@ class RegexValidator(
 
                 ratio = invalid_count / non_null_count
 
-                # Get sample invalid values
-                samples = self._get_invalid_samples(lf, col)
+                # Build details and samples based on result_format
+                details = f"Pattern: {self.pattern}" if self._should_build_details() else None
+                samples = self._get_invalid_samples(lf, col) if self._should_collect_samples() else None
 
                 issues.append(
                     ValidationIssue(
@@ -309,8 +318,8 @@ class RegexValidator(
                         issue_type="regex_mismatch",
                         count=invalid_count,
                         severity=self._calculate_severity(ratio),
-                        details=f"Pattern: {self.pattern}",
-                        expected=self.pattern,
+                        details=details,
+                        expected=self.pattern if self._should_build_details() else None,
                         sample_values=samples,
                     )
                 )

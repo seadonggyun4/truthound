@@ -24,6 +24,9 @@ class ColumnPairValidator(Validator):
 
     name = "column_pair"
     category = "schema"
+    dependencies = {"column_exists"}
+    provides = {"column_pair"}
+    priority = 30
 
     OPERATORS = {
         "<": lambda a, b: a < b,

@@ -19,6 +19,9 @@ class DistributionValidator(Validator, NumericValidatorMixin):
 
     name = "distribution"
     category = "distribution"
+    dependencies = {"column_exists", "null_checked"}
+    provides = {"distribution"}
+    priority = 80
 
     def __init__(
         self,

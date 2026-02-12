@@ -4,7 +4,7 @@ from typing import Any
 
 import polars as pl
 
-from truthound.types import Severity
+from truthound.types import Severity, ValidationDetail
 from truthound.validators.base import ValidationIssue, Validator
 from truthound.validators.registry import register_validator
 
@@ -23,6 +23,9 @@ class DistinctValuesInSetValidator(Validator):
 
     name = "distinct_values_in_set"
     category = "uniqueness"
+    dependencies = {"column_exists"}
+    provides = {"distinct_values_in_set"}
+    priority = 60
 
     def __init__(
         self,
@@ -50,6 +53,7 @@ class DistinctValuesInSetValidator(Validator):
 
         if unexpected:
             samples = list(unexpected)[: self.config.sample_size]
+            total_rows = lf.select(pl.len()).collect().item()
             issues.append(
                 ValidationIssue(
                     column=self.column,
@@ -59,6 +63,14 @@ class DistinctValuesInSetValidator(Validator):
                     details=f"{len(unexpected)} unexpected distinct values found",
                     expected=f"Values in {list(self.allowed_values)[:5]}{'...' if len(self.allowed_values) > 5 else ''}",
                     sample_values=samples,
+                    validator_name=self.name,
+                    success=False,
+                    result=ValidationDetail.from_aggregates(
+                        element_count=total_rows,
+                        missing_count=0,
+                        unexpected_count=len(unexpected),
+                        observed_value=samples,
+                    ),
                 )
             )
 
@@ -79,6 +91,9 @@ class DistinctValuesEqualSetValidator(Validator):
 
     name = "distinct_values_equal_set"
     category = "uniqueness"
+    dependencies = {"column_exists"}
+    provides = {"distinct_values_equal_set"}
+    priority = 60
 
     def __init__(
         self,
@@ -103,6 +118,12 @@ class DistinctValuesEqualSetValidator(Validator):
 
         # Check for missing values
         missing = self.expected_values - distinct_values
+        # Check for unexpected values
+        unexpected = distinct_values - self.expected_values
+
+        if missing or unexpected:
+            total_rows = lf.select(pl.len()).collect().item()
+
         if missing:
             issues.append(
                 ValidationIssue(
@@ -113,11 +134,17 @@ class DistinctValuesEqualSetValidator(Validator):
                     details=f"Missing {len(missing)} expected distinct values",
                     expected=list(self.expected_values),
                     sample_values=list(missing)[: self.config.sample_size],
+                    validator_name=self.name,
+                    success=False,
+                    result=ValidationDetail.from_aggregates(
+                        element_count=total_rows,
+                        missing_count=0,
+                        unexpected_count=len(missing),
+                        observed_value=list(missing)[: self.config.sample_size],
+                    ),
                 )
             )
 
-        # Check for unexpected values
-        unexpected = distinct_values - self.expected_values
         if unexpected:
             issues.append(
                 ValidationIssue(
@@ -128,6 +155,14 @@ class DistinctValuesEqualSetValidator(Validator):
                     details=f"Found {len(unexpected)} unexpected distinct values",
                     expected=list(self.expected_values),
                     sample_values=list(unexpected)[: self.config.sample_size],
+                    validator_name=self.name,
+                    success=False,
+                    result=ValidationDetail.from_aggregates(
+                        element_count=total_rows,
+                        missing_count=0,
+                        unexpected_count=len(unexpected),
+                        observed_value=list(unexpected)[: self.config.sample_size],
+                    ),
                 )
             )
 
@@ -148,6 +183,9 @@ class DistinctValuesContainSetValidator(Validator):
 
     name = "distinct_values_contain_set"
     category = "uniqueness"
+    dependencies = {"column_exists"}
+    provides = {"distinct_values_contain_set"}
+    priority = 60
 
     def __init__(
         self,
@@ -174,6 +212,7 @@ class DistinctValuesContainSetValidator(Validator):
         missing = self.required_values - distinct_values
 
         if missing:
+            total_rows = lf.select(pl.len()).collect().item()
             issues.append(
                 ValidationIssue(
                     column=self.column,
@@ -183,6 +222,14 @@ class DistinctValuesContainSetValidator(Validator):
                     details=f"Missing {len(missing)} required values",
                     expected=list(self.required_values),
                     sample_values=list(missing)[: self.config.sample_size],
+                    validator_name=self.name,
+                    success=False,
+                    result=ValidationDetail.from_aggregates(
+                        element_count=total_rows,
+                        missing_count=0,
+                        unexpected_count=len(missing),
+                        observed_value=list(missing)[: self.config.sample_size],
+                    ),
                 )
             )
 
@@ -204,6 +251,9 @@ class DistinctCountBetweenValidator(Validator):
 
     name = "distinct_count_between"
     category = "uniqueness"
+    dependencies = {"column_exists"}
+    provides = {"distinct_count_between"}
+    priority = 60
 
     def __init__(
         self,
@@ -220,7 +270,12 @@ class DistinctCountBetweenValidator(Validator):
     def validate(self, lf: pl.LazyFrame) -> list[ValidationIssue]:
         issues: list[ValidationIssue] = []
 
-        distinct_count = lf.select(pl.col(self.column).n_unique()).collect().item()
+        result = lf.select([
+            pl.col(self.column).n_unique().alias("_distinct"),
+            pl.len().alias("_total"),
+        ]).collect()
+        distinct_count = result["_distinct"][0]
+        total_rows = result["_total"][0]
 
         # Check minimum
         if self.min_count is not None and distinct_count < self.min_count:
@@ -233,6 +288,14 @@ class DistinctCountBetweenValidator(Validator):
                     details=f"Distinct count {distinct_count} below minimum {self.min_count}",
                     expected=f">= {self.min_count}",
                     actual=distinct_count,
+                    validator_name=self.name,
+                    success=False,
+                    result=ValidationDetail.from_aggregates(
+                        element_count=total_rows,
+                        missing_count=0,
+                        unexpected_count=self.min_count - distinct_count,
+                        observed_value=distinct_count,
+                    ),
                 )
             )
 
@@ -247,6 +310,14 @@ class DistinctCountBetweenValidator(Validator):
                     details=f"Distinct count {distinct_count} above maximum {self.max_count}",
                     expected=f"<= {self.max_count}",
                     actual=distinct_count,
+                    validator_name=self.name,
+                    success=False,
+                    result=ValidationDetail.from_aggregates(
+                        element_count=total_rows,
+                        missing_count=0,
+                        unexpected_count=distinct_count - self.max_count,
+                        observed_value=distinct_count,
+                    ),
                 )
             )
 

@@ -19,6 +19,9 @@ class LengthValidator(Validator, StringValidatorMixin):
 
     name = "length"
     category = "string"
+    dependencies = {"column_exists", "null_checked"}
+    provides = {"length"}
+    priority = 70
 
     def __init__(
         self,

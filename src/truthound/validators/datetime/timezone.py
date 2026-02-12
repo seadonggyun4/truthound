@@ -15,6 +15,9 @@ class TimezoneValidator(Validator):
 
     name = "timezone"
     category = "datetime"
+    dependencies = {"column_exists", "null_checked"}
+    provides = {"timezone"}
+    priority = 70
 
     def __init__(
         self,

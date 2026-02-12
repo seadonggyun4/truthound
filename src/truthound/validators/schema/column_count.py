@@ -4,7 +4,7 @@ from typing import Any
 
 import polars as pl
 
-from truthound.types import Severity
+from truthound.types import Severity, ValidationDetail
 from truthound.validators.base import ValidationIssue, Validator
 from truthound.validators.registry import register_validator
 
@@ -15,6 +15,8 @@ class ColumnCountValidator(Validator):
 
     name = "column_count"
     category = "schema"
+    provides = {"column_count"}
+    priority = 10
 
     def __init__(
         self,
@@ -43,6 +45,9 @@ class ColumnCountValidator(Validator):
                     details=f"Expected {self.exact_count} columns, got {actual_count}",
                     expected=self.exact_count,
                     actual=actual_count,
+                    validator_name=self.name,
+                    success=False,
+                    result=ValidationDetail(element_count=0),
                 )
             )
             return issues
@@ -57,6 +62,9 @@ class ColumnCountValidator(Validator):
                     details=f"Expected >= {self.min_count} columns, got {actual_count}",
                     expected=f">= {self.min_count}",
                     actual=actual_count,
+                    validator_name=self.name,
+                    success=False,
+                    result=ValidationDetail(element_count=0),
                 )
             )
 
@@ -70,6 +78,9 @@ class ColumnCountValidator(Validator):
                     details=f"Expected <= {self.max_count} columns, got {actual_count}",
                     expected=f"<= {self.max_count}",
                     actual=actual_count,
+                    validator_name=self.name,
+                    success=False,
+                    result=ValidationDetail(element_count=0),
                 )
             )
 
@@ -82,6 +93,8 @@ class RowCountValidator(Validator):
 
     name = "row_count"
     category = "schema"
+    provides = {"row_count"}
+    priority = 10
 
     def __init__(
         self,
@@ -109,6 +122,9 @@ class RowCountValidator(Validator):
                     details=f"Expected {self.exact_count} rows, got {actual_count}",
                     expected=self.exact_count,
                     actual=actual_count,
+                    validator_name=self.name,
+                    success=False,
+                    result=ValidationDetail(element_count=0),
                 )
             )
             return issues
@@ -123,6 +139,9 @@ class RowCountValidator(Validator):
                     details=f"Expected >= {self.min_count} rows, got {actual_count}",
                     expected=f">= {self.min_count}",
                     actual=actual_count,
+                    validator_name=self.name,
+                    success=False,
+                    result=ValidationDetail(element_count=0),
                 )
             )
 
@@ -136,6 +155,9 @@ class RowCountValidator(Validator):
                     details=f"Expected <= {self.max_count} rows, got {actual_count}",
                     expected=f"<= {self.max_count}",
                     actual=actual_count,
+                    validator_name=self.name,
+                    success=False,
+                    result=ValidationDetail(element_count=0),
                 )
             )
 

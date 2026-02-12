@@ -11,18 +11,22 @@ Features:
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Callable, Protocol, runtime_checkable
+from typing import Any, Callable, Protocol, runtime_checkable, TYPE_CHECKING
 import re
 import signal
 import threading
 import logging
 import time
+import traceback as _traceback_mod
 from functools import wraps
 from enum import Enum
 
 import polars as pl
 
-from truthound.types import Severity
+from truthound.types import ResultFormat, ResultFormatConfig, Severity, ValidationDetail
+
+if TYPE_CHECKING:
+    from truthound.validators.metrics import MetricKey, SharedMetricStore
 
 
 # ============================================================================
@@ -267,6 +271,117 @@ class ErrorContext:
 
 
 @dataclass
+class ExceptionInfo:
+    """Detailed exception information for validation failures.
+
+    Captures full context about an exception that occurred during
+    validation, including classification, retry metadata, and traceback.
+    This enables precise diagnostics and smart retry decisions.
+    """
+
+    raised_exception: bool = False
+    exception_type: str | None = None
+    exception_message: str | None = None
+    exception_traceback: str | None = None
+
+    # Retry metadata
+    retry_count: int = 0
+    max_retries: int = 0
+    is_retryable: bool = False
+
+    # Context
+    validator_name: str | None = None
+    column: str | None = None
+    expression_alias: str | None = None
+
+    # Classification: transient | permanent | configuration | data
+    failure_category: str = "unknown"
+
+    @classmethod
+    def from_exception(
+        cls,
+        exc: Exception,
+        validator_name: str | None = None,
+        column: str | None = None,
+        expression_alias: str | None = None,
+    ) -> "ExceptionInfo":
+        """Create ExceptionInfo from a caught exception."""
+        category = cls._classify_exception(exc)
+        return cls(
+            raised_exception=True,
+            exception_type=type(exc).__name__,
+            exception_message=str(exc),
+            exception_traceback=_traceback_mod.format_exc(),
+            is_retryable=(category == "transient"),
+            validator_name=validator_name,
+            column=column,
+            expression_alias=expression_alias,
+            failure_category=category,
+        )
+
+    @staticmethod
+    def _classify_exception(exc: Exception) -> str:
+        """Classify an exception into a failure category."""
+        # Transient — worth retrying
+        if isinstance(exc, (TimeoutError, ConnectionError, OSError)):
+            return "transient"
+        if isinstance(exc, ValidationTimeoutError):
+            return "transient"
+
+        # Configuration — bad setup, no retry
+        if isinstance(exc, (ValueError, TypeError, KeyError)):
+            return "configuration"
+        if isinstance(exc, ColumnNotFoundError):
+            return "configuration"
+        if isinstance(exc, RegexValidationError):
+            return "configuration"
+
+        # Data — Polars compute/schema errors
+        try:
+            import polars.exceptions as pl_exc
+            if isinstance(exc, (pl_exc.ComputeError, pl_exc.SchemaError)):
+                return "data"
+        except (ImportError, AttributeError):
+            pass
+
+        return "permanent"
+
+    def to_dict(self) -> dict[str, Any]:
+        """Serialise to dict, omitting default/empty values."""
+        d: dict[str, Any] = {}
+        if self.raised_exception:
+            d["raised_exception"] = True
+        if self.exception_type:
+            d["exception_type"] = self.exception_type
+        if self.exception_message:
+            d["exception_message"] = self.exception_message
+        if self.exception_traceback:
+            d["exception_traceback"] = self.exception_traceback
+        if self.retry_count > 0:
+            d["retry_count"] = self.retry_count
+        if self.max_retries > 0:
+            d["max_retries"] = self.max_retries
+        if self.is_retryable:
+            d["is_retryable"] = True
+        if self.validator_name:
+            d["validator_name"] = self.validator_name
+        if self.column:
+            d["column"] = self.column
+        if self.expression_alias:
+            d["expression_alias"] = self.expression_alias
+        if self.failure_category != "unknown":
+            d["failure_category"] = self.failure_category
+        return d
+
+    def to_error_context(self) -> ErrorContext:
+        """Downgrade to legacy ErrorContext for backward compatibility."""
+        return ErrorContext(
+            error_type=self.exception_type or "Unknown",
+            message=self.exception_message or "",
+        )
+
+
+@dataclass
 class ValidatorExecutionResult:
     """Result of a single validator execution with error handling."""
     validator_name: str
@@ -276,14 +391,36 @@ class ValidatorExecutionResult:
     error_context: ErrorContext | None = None
     execution_time_ms: float = 0.0
 
+    # PHASE 5 fields
+    exception_info: ExceptionInfo | None = None
+    retry_count: int = 0
+    partial_issues: list["ValidationIssue"] | None = None
+
+    @property
+    def has_exception(self) -> bool:
+        """Whether this result involved an exception."""
+        return self.exception_info is not None and self.exception_info.raised_exception
+
+    @property
+    def is_partial(self) -> bool:
+        """Whether only some expressions succeeded (partial failure)."""
+        return self.status == ValidationResult.PARTIAL and self.partial_issues is not None
+
     def to_dict(self) -> dict[str, Any]:
-        return {
+        d: dict[str, Any] = {
             "validator": self.validator_name,
             "status": self.status.value,
             "issue_count": len(self.issues),
             "execution_time_ms": self.execution_time_ms,
             "error": self.error_context.to_dict() if self.error_context else None,
         }
+        if self.exception_info is not None:
+            d["exception_info"] = self.exception_info.to_dict()
+        if self.retry_count > 0:
+            d["retry_count"] = self.retry_count
+        if self.partial_issues is not None:
+            d["partial_issue_count"] = len(self.partial_issues)
+        return d
 
 
 def _validate_safe(
@@ -291,61 +428,122 @@ def _validate_safe(
     lf: pl.LazyFrame,
     skip_on_error: bool = True,
     log_errors: bool = True,
+    max_retries: int = 0,
+    retry_on: tuple[type[Exception], ...] = (ValidationTimeoutError, ConnectionError, OSError),
 ) -> ValidatorExecutionResult:
-    """Execute validation with error handling.
+    """Execute validation with error handling and automatic retry.
+
+    Args:
+        validator: Validator instance to execute.
+        lf: LazyFrame to validate.
+        skip_on_error: If True, return FAILED status instead of raising.
+        log_errors: If True, log exceptions.
+        max_retries: Number of retry attempts for transient errors.
+        retry_on: Exception types eligible for automatic retry.
 
     Returns:
-        ValidatorExecutionResult with status and any issues found
+        ValidatorExecutionResult with status, issues, and exception info.
     """
     start_time = time.time()
-    logger = _get_logger(validator.name)
+    lgr = _get_logger(validator.name)
+    last_exception: Exception | None = None
+    retry_count = 0
 
-    try:
-        issues = validator.validate(lf)
-        return ValidatorExecutionResult(
-            validator_name=validator.name,
-            status=ValidationResult.SUCCESS,
-            issues=issues,
-            execution_time_ms=(time.time() - start_time) * 1000,
-        )
-
-    except ColumnNotFoundError as e:
-        if log_errors:
-            logger.warning(f"Column not found: {e.column}")
-        return ValidatorExecutionResult(
-            validator_name=validator.name,
-            status=ValidationResult.SKIPPED,
-            issues=[],
-            error_message=str(e),
-            error_context=ErrorContext("ColumnNotFoundError", str(e)),
-            execution_time_ms=(time.time() - start_time) * 1000,
-        )
-
-    except ValidationTimeoutError as e:
-        if log_errors:
-            logger.warning(f"Validation timed out: {e.timeout_seconds}s")
-        return ValidatorExecutionResult(
-            validator_name=validator.name,
-            status=ValidationResult.TIMEOUT,
-            issues=[],
-            error_message=str(e),
-            error_context=ErrorContext("ValidationTimeoutError", str(e)),
-            execution_time_ms=(time.time() - start_time) * 1000,
-        )
-
-    except Exception as e:
-        if log_errors:
-            logger.exception(f"Error in {validator.name}: {e}")
-        if skip_on_error:
+    for attempt in range(max_retries + 1):
+        try:
+            issues = validator.validate(lf)
             return ValidatorExecutionResult(
                 validator_name=validator.name,
-                status=ValidationResult.FAILED,
+                status=ValidationResult.SUCCESS,
+                issues=issues,
+                execution_time_ms=(time.time() - start_time) * 1000,
+                retry_count=retry_count,
+            )
+
+        except ColumnNotFoundError as e:
+            # Configuration error — never retry
+            exc_info = ExceptionInfo.from_exception(
+                e, validator_name=validator.name, column=e.column,
+            )
+            if log_errors:
+                lgr.warning("Column not found: %s", e.column)
+            return ValidatorExecutionResult(
+                validator_name=validator.name,
+                status=ValidationResult.SKIPPED,
                 issues=[],
                 error_message=str(e),
-                error_context=ErrorContext(type(e).__name__, str(e)),
+                error_context=exc_info.to_error_context(),
                 execution_time_ms=(time.time() - start_time) * 1000,
+                exception_info=exc_info,
             )
-        raise
+
+        except retry_on as e:
+            # Transient error — eligible for retry
+            last_exception = e
+            retry_count = attempt + 1
+            exc_info = ExceptionInfo.from_exception(
+                e, validator_name=validator.name,
+            )
+            exc_info.retry_count = retry_count
+            exc_info.max_retries = max_retries
+
+            if attempt < max_retries:
+                wait = min(2 ** attempt * 0.1, 5.0)
+                lgr.warning(
+                    "Validator '%s' failed (attempt %d/%d), retrying in %.1fs: %s",
+                    validator.name, attempt + 1, max_retries + 1, wait, e,
+                )
+                time.sleep(wait)
+            else:
+                if log_errors:
+                    lgr.error(
+                        "Validator '%s' failed after %d attempts: %s",
+                        validator.name, max_retries + 1, e,
+                    )
+
+        except Exception as e:
+            # Permanent error — no retry
+            exc_info = ExceptionInfo.from_exception(
+                e, validator_name=validator.name,
+            )
+            if log_errors:
+                lgr.exception("Error in %s: %s", validator.name, e)
+            if skip_on_error:
+                return ValidatorExecutionResult(
+                    validator_name=validator.name,
+                    status=ValidationResult.FAILED,
+                    issues=[],
+                    error_message=str(e),
+                    error_context=exc_info.to_error_context(),
+                    execution_time_ms=(time.time() - start_time) * 1000,
+                    exception_info=exc_info,
+                )
+            raise
+
+    # All retries exhausted
+    exc_info = ExceptionInfo.from_exception(
+        last_exception, validator_name=validator.name,  # type: ignore[arg-type]
+    )
+    exc_info.retry_count = retry_count
+    exc_info.max_retries = max_retries
+
+    if skip_on_error:
+        status = (
+            ValidationResult.TIMEOUT
+            if isinstance(last_exception, ValidationTimeoutError)
+            else ValidationResult.FAILED
+        )
+        return ValidatorExecutionResult(
+            validator_name=validator.name,
+            status=status,
+            issues=[],
+            error_message=f"Failed after {retry_count} retries: {last_exception}",
+            error_context=exc_info.to_error_context(),
+            execution_time_ms=(time.time() - start_time) * 1000,
+            exception_info=exc_info,
+            retry_count=retry_count,
+        )
+    raise last_exception  # type: ignore[misc]
 
 
 class GracefulValidator:
@@ -451,6 +649,12 @@ class ValidatorConfig:
     timeout_seconds: float | None = 300.0
     graceful_degradation: bool = True
     log_errors: bool = True
+    result_format: ResultFormat | ResultFormatConfig = ResultFormat.SUMMARY
+
+    # PHASE 5: Exception control options
+    catch_exceptions: bool = True        # False = strict mode (first error aborts)
+    max_retries: int = 0                 # Retry count for transient errors
+    partial_failure_mode: str = "collect" # collect | skip | raise
 
     def __post_init__(self) -> None:
         """Validate configuration parameters."""
@@ -460,6 +664,24 @@ class ValidatorConfig:
             raise ValueError(f"mostly must be in [0.0, 1.0], got {self.mostly}")
         if self.timeout_seconds is not None and self.timeout_seconds <= 0:
             raise ValueError(f"timeout_seconds must be > 0, got {self.timeout_seconds}")
+        if self.max_retries < 0:
+            raise ValueError(f"max_retries must be >= 0, got {self.max_retries}")
+        if self.partial_failure_mode not in ("collect", "skip", "raise"):
+            raise ValueError(
+                f"partial_failure_mode must be collect/skip/raise, "
+                f"got {self.partial_failure_mode!r}"
+            )
+        # Normalize string result_format to enum
+        if isinstance(self.result_format, str):
+            object.__setattr__(self, "result_format", ResultFormat.from_string(self.result_format))
+
+    def get_result_format_config(self) -> ResultFormatConfig:
+        """Resolve result_format to a full ResultFormatConfig.
+
+        If result_format is a ResultFormat enum, wraps it with default options.
+        If already a ResultFormatConfig, returns as-is.
+        """
+        return ResultFormatConfig.from_any(self.result_format)
 
     def replace(self, **kwargs: Any) -> "ValidatorConfig":
         """Create a new config with updated values."""
@@ -471,6 +693,15 @@ class ValidatorConfig:
             current["columns"] = tuple(current["columns"])
         if "exclude_columns" in current and isinstance(current["exclude_columns"], list):
             current["exclude_columns"] = tuple(current["exclude_columns"])
+        # Restore result_format from dict representation
+        rf = current.get("result_format")
+        if isinstance(rf, dict):
+            fmt = rf.get("format")
+            if isinstance(fmt, str):
+                rf["format"] = ResultFormat.from_string(fmt)
+            current["result_format"] = ResultFormatConfig(**rf)
+        elif isinstance(rf, str):
+            current["result_format"] = ResultFormat.from_string(rf)
         return ValidatorConfig(**current)
 
     @classmethod
@@ -480,9 +711,14 @@ class ValidatorConfig:
             kwargs["columns"] = tuple(kwargs["columns"])
         if "exclude_columns" in kwargs and isinstance(kwargs["exclude_columns"], list):
             kwargs["exclude_columns"] = tuple(kwargs["exclude_columns"])
+        # Normalize result_format from string
+        if "result_format" in kwargs and isinstance(kwargs["result_format"], str):
+            kwargs["result_format"] = ResultFormat.from_string(kwargs["result_format"])
         valid_fields = {
             "columns", "exclude_columns", "severity_override", "sample_size",
-            "mostly", "timeout_seconds", "graceful_degradation", "log_errors"
+            "mostly", "timeout_seconds", "graceful_degradation", "log_errors",
+            "result_format", "catch_exceptions", "max_retries",
+            "partial_failure_mode",
         }
         filtered = {k: v for k, v in kwargs.items() if k in valid_fields}
         return cls(**filtered)
@@ -550,33 +786,96 @@ def with_timeout(func: Callable) -> Callable:
 
 @dataclass
 class ValidationIssue:
-    """Represents a single data quality issue found during validation."""
+    """Represents a single data quality issue found during validation.
 
+    Core fields (column, issue_type, count, severity) are always populated.
+    Legacy fields (details, expected, actual, sample_values) are kept for
+    backward compatibility.  The new ``result`` field holds a structured
+    :class:`~truthound.types.ValidationDetail` that provides richer,
+    type-safe access to the same (and more) information.
+
+    ``validator_name`` records which validator produced this issue, and
+    ``success`` is always ``False`` for issues (``True`` means the
+    validation passed — no issue is created in that case).
+    """
+
+    # -- Core fields (always populated) --
     column: str
     issue_type: str
     count: int
     severity: Severity
+
+    # -- Legacy detail fields (backward compatible) --
     details: str | None = None
     expected: Any | None = None
     actual: Any | None = None
     sample_values: list[Any] | None = None
 
+    # -- PHASE 2 fields --
+    result: ValidationDetail | None = None
+    validator_name: str | None = None
+    success: bool = False
+
+    # -- PHASE 5 fields --
+    exception_info: ExceptionInfo | None = None
+
+    # ------------------------------------------------------------------ #
+    # Convenience accessors (delegate to result when available)
+    # ------------------------------------------------------------------ #
+
+    @property
+    def unexpected_percent(self) -> float | None:
+        """Failure percentage from structured result."""
+        if self.result is not None:
+            return self.result.unexpected_percent
+        return None
+
+    @property
+    def unexpected_rows(self) -> "pl.DataFrame | None":
+        """Failure rows DataFrame from structured result."""
+        if self.result is not None:
+            return self.result.unexpected_rows
+        return None
+
+    @property
+    def debug_query(self) -> str | None:
+        """Debug query string from structured result."""
+        if self.result is not None:
+            return self.result.debug_query
+        return None
+
+    # ------------------------------------------------------------------ #
+    # Serialisation
+    # ------------------------------------------------------------------ #
+
     def to_dict(self) -> dict:
-        """Convert to dictionary for JSON serialization."""
-        result = {
+        """Convert to dictionary for JSON serialization.
+
+        Backward-compatible: always includes legacy keys.  When ``result``
+        is present its ``to_dict()`` output is nested under ``"result"``.
+        """
+        d: dict[str, Any] = {
             "column": self.column,
             "issue_type": self.issue_type,
             "count": self.count,
             "severity": self.severity.value,
-            "details": self.details,
+            "success": self.success,
         }
+        if self.details is not None:
+            d["details"] = self.details
         if self.expected is not None:
-            result["expected"] = self.expected
+            d["expected"] = self.expected
         if self.actual is not None:
-            result["actual"] = self.actual
+            d["actual"] = self.actual
         if self.sample_values is not None:
-            result["sample_values"] = self.sample_values
-        return result
+            d["sample_values"] = self.sample_values
+        if self.validator_name is not None:
+            d["validator_name"] = self.validator_name
+        if self.result is not None:
+            d["result"] = self.result.to_dict()
+        if self.exception_info is not None:
+            d["exception_info"] = self.exception_info.to_dict()
+        return d
 
 
 # ============================================================================
@@ -594,6 +893,56 @@ STRING_TYPES: set[type[pl.DataType]] = {pl.String, pl.Utf8}
 DATETIME_TYPES: set[type[pl.DataType]] = {pl.Date, pl.Datetime, pl.Time, pl.Duration}
 
 FLOAT_TYPES: set[type[pl.DataType]] = {pl.Float32, pl.Float64}
+
+
+# ============================================================================
+# Skip Condition (PHASE 4: DAG Conditional Execution)
+# ============================================================================
+
+@dataclass(frozen=True)
+class SkipCondition:
+    """Declares when a Validator should be skipped based on prior results.
+
+    Used by ``Validator.get_skip_conditions()`` to declare fine-grained
+    skip logic that goes beyond simple dependency failure checks.
+
+    Attributes:
+        depends_on: Name (or ``provides`` tag) of the upstream Validator.
+        skip_when: Trigger mode:
+            - ``"failed"``   – skip if the upstream ended FAILED or TIMEOUT.
+            - ``"critical"`` – skip if the upstream produced a CRITICAL-severity issue.
+            - ``"any_issue"``– skip if the upstream produced **any** issue.
+        reason_template: Human-readable reason; ``{depends_on}`` and
+            ``{skip_when}`` are interpolated at evaluation time.
+    """
+    depends_on: str
+    skip_when: str = "failed"  # "failed" | "critical" | "any_issue"
+    reason_template: str = "Skipped due to {depends_on} {skip_when}"
+
+    def evaluate(self, result: ValidatorExecutionResult) -> tuple[bool, str]:
+        """Evaluate this condition against an upstream result.
+
+        Returns:
+            ``(should_skip, reason)`` – *should_skip* is ``True`` when the
+            condition is satisfied and the downstream Validator should be
+            skipped.
+        """
+        if self.skip_when == "failed":
+            should_skip = result.status in (ValidationResult.FAILED, ValidationResult.TIMEOUT)
+        elif self.skip_when == "critical":
+            should_skip = any(
+                i.severity == Severity.CRITICAL for i in result.issues
+            )
+        elif self.skip_when == "any_issue":
+            should_skip = len(result.issues) > 0
+        else:
+            should_skip = False
+
+        reason = self.reason_template.format(
+            depends_on=self.depends_on,
+            skip_when=self.skip_when,
+        )
+        return should_skip, reason
 
 
 # ============================================================================
@@ -676,6 +1025,41 @@ class Validator(ABC):
         """Run validation on the given LazyFrame."""
         pass
 
+    def get_required_metrics(self, columns: list[str]) -> list["MetricKey"]:
+        """Declare base metrics this validator needs.
+
+        Override in subclasses to declare shared metric dependencies.
+        The ExpressionBatchExecutor collects these from all validators,
+        deduplicates, computes once, and stores results in SharedMetricStore.
+
+        Args:
+            columns: Target columns for this validator.
+
+        Returns:
+            List of MetricKey instances this validator requires.
+        """
+        return []
+
+    def validate_with_metrics(
+        self,
+        lf: pl.LazyFrame,
+        metric_store: "SharedMetricStore",
+    ) -> list[ValidationIssue]:
+        """Run validation using pre-computed metrics from the store.
+
+        Default implementation delegates to ``validate()``.
+        Validators that benefit from shared metrics should override
+        this to read from *metric_store* instead of recomputing.
+
+        Args:
+            lf: LazyFrame to validate.
+            metric_store: Session-scoped metric cache.
+
+        Returns:
+            List of ValidationIssue objects.
+        """
+        return self.validate(lf)
+
     def validate_safe(self, lf: pl.LazyFrame) -> ValidatorExecutionResult:
         """Run validation with graceful error handling."""
         return _validate_safe(
@@ -692,6 +1076,103 @@ class Validator(ABC):
 
         with TimeoutHandler(timeout, validator_name):
             return self.validate(lf)
+
+    # -- DAG conditional execution (PHASE 4) --
+
+    def should_skip(
+        self,
+        prior_results: dict[str, ValidatorExecutionResult],
+    ) -> tuple[bool, str | None]:
+        """Decide whether to skip this Validator based on prior results.
+
+        The default implementation checks two things in order:
+
+        1. **Explicit dependencies** – if any Validator listed in
+           ``self.dependencies`` has status FAILED, TIMEOUT, or SKIPPED, skip.
+        2. **SkipConditions** – evaluate each condition returned by
+           ``get_skip_conditions()``.
+
+        Override for custom skip logic (e.g. always-run validators).
+
+        Args:
+            prior_results: ``{validator_name: ValidatorExecutionResult}``
+                for already-executed Validators.
+
+        Returns:
+            ``(skip, reason)`` – *skip* is ``True`` when this Validator
+            should not run; *reason* explains why.
+        """
+        # 1. Check explicit dependencies
+        for dep_name in self.dependencies:
+            dep_result = prior_results.get(dep_name)
+            if dep_result is not None and dep_result.status in (
+                ValidationResult.FAILED,
+                ValidationResult.TIMEOUT,
+                ValidationResult.SKIPPED,
+            ):
+                return (
+                    True,
+                    f"Dependency '{dep_name}' {dep_result.status.value}",
+                )
+
+        # 2. Evaluate fine-grained SkipConditions
+        for condition in self.get_skip_conditions():
+            dep_result = prior_results.get(condition.depends_on)
+            if dep_result is not None:
+                skip, reason = condition.evaluate(dep_result)
+                if skip:
+                    return True, reason
+
+        return False, None
+
+    def get_skip_conditions(self) -> list[SkipCondition]:
+        """Declare fine-grained skip conditions for this Validator.
+
+        Override to specify conditions beyond the basic
+        dependency-failure check performed by ``should_skip()``.
+
+        Example::
+
+            def get_skip_conditions(self):
+                return [
+                    SkipCondition(
+                        depends_on="column_exists",
+                        skip_when="critical",
+                        reason_template="Column missing – skipping {depends_on}",
+                    ),
+                ]
+
+        Returns:
+            List of :class:`SkipCondition` instances.
+        """
+        return []
+
+    def _filter_columns_by_context(
+        self,
+        columns: list[str],
+        critical_columns: set[str] | None,
+    ) -> list[str]:
+        """Remove columns that already have CRITICAL issues from prior validators.
+
+        Called automatically by the DAG executor when an
+        :class:`ExecutionContext` is available.
+
+        Args:
+            columns: Candidate columns for validation.
+            critical_columns: Columns with prior CRITICAL-severity issues.
+
+        Returns:
+            Filtered list of columns (may be empty).
+        """
+        if not critical_columns:
+            return columns
+
+        filtered = [c for c in columns if c not in critical_columns]
+        if not filtered and columns:
+            self.logger.debug(
+                f"All columns skipped for {self.name} due to prior critical issues"
+            )
+        return filtered
 
     def _get_target_columns(
         self,
@@ -758,15 +1239,46 @@ class Validator(ABC):
         filter_expr: pl.Expr,
         columns: list[str] | None = None,
     ) -> list[Any]:
-        """Safely get sample values."""
+        """Safely get sample values.
+
+        Respects result_format: returns empty list for BOOLEAN_ONLY.
+        """
+        if not self._should_collect_samples():
+            return []
         try:
+            sample_size = self._get_partial_count()
             df = SafeSampler.safe_filter_sample(
-                lf, filter_expr, self.config.sample_size, columns
+                lf, filter_expr, sample_size, columns
             )
             return df.to_dicts() if len(df) > 0 else []
         except Exception as e:
             self.logger.warning(f"Failed to collect samples: {e}")
             return []
+
+    # -- Result format helpers --
+
+    def _get_result_format_config(self) -> ResultFormatConfig:
+        """Get the resolved ResultFormatConfig for this validator."""
+        return self.config.get_result_format_config()
+
+    def _should_collect_samples(self) -> bool:
+        """Whether to collect sample values (BASIC+)."""
+        return self._get_result_format_config().includes_unexpected_samples()
+
+    def _should_collect_index(self) -> bool:
+        """Whether to collect failure row indices (SUMMARY+)."""
+        return self._get_result_format_config().includes_unexpected_counts()
+
+    def _should_build_details(self) -> bool:
+        """Whether to build detail strings (BASIC+)."""
+        return self._get_result_format_config().includes_observed_value()
+
+    def _get_partial_count(self) -> int:
+        """Number of sample values to collect."""
+        fmt = self._get_result_format_config()
+        if not fmt.includes_unexpected_samples():
+            return 0
+        return fmt.partial_unexpected_count
 
 
 # ============================================================================
@@ -1272,6 +1784,8 @@ class ValidationExpressionSpec:
         expected: Expected value/pattern for reporting
         extra_exprs: Additional expressions for more complex validation
         extra_keys: Keys for extra_exprs results
+        filter_expr: Boolean expression selecting invalid rows (for sample/row collection)
+        sample_columns: Columns to include when collecting failure row samples
     """
 
     column: str
@@ -1284,6 +1798,8 @@ class ValidationExpressionSpec:
     expected: Any = None
     extra_exprs: list[pl.Expr] = field(default_factory=list)
     extra_keys: list[str] = field(default_factory=list)
+    filter_expr: pl.Expr | None = None
+    sample_columns: list[str] | None = None
 
     def get_all_exprs(self, prefix: str) -> list[pl.Expr]:
         """Get all expressions with unique aliases.
@@ -1417,11 +1933,11 @@ class ExpressionValidatorMixin:
     ) -> list["ValidationIssue"]:
         """Execute validation using expression-based approach.
 
-        This method:
-        1. Gets columns to validate
-        2. Builds expression specs
-        3. Executes all expressions in single collect()
-        4. Builds issues from results
+        Execution phases (controlled by result_format):
+            Phase 1 (always): Aggregate expressions → single collect()
+            Phase 2 (BASIC+):  Enrich issues with failure value samples
+            Phase 3 (SUMMARY+): Enrich with value frequency counts
+            Phase 4 (COMPLETE): Enrich with full failure rows/indices
 
         Args:
             lf: LazyFrame to validate
@@ -1451,7 +1967,7 @@ class ExpressionValidatorMixin:
             prefix_map[prefix] = spec
             all_exprs.extend(spec.get_all_exprs(prefix))
 
-        # Single collect with query plan optimizations and streaming
+        # Phase 1: Single aggregate collect (always performed)
         result_df = optimized_collect(lf.select(all_exprs), streaming=True)
         result_row = result_df.row(0, named=True)
         total_rows = result_row["_total"]
@@ -1471,13 +1987,33 @@ class ExpressionValidatorMixin:
                 spec_results[key] = result_row.get(f"{prefix}_{key}")
             all_results[prefix] = spec_results
 
-        # Build issues
-        return self.build_issues_from_results(  # type: ignore
+        # Build issues (details/samples controlled by result_format)
+        issues = self.build_issues_from_results(  # type: ignore
             specs=specs,
             results=all_results,
             total_rows=total_rows,
             prefix_map=prefix_map,
         )
+
+        if not issues:
+            return issues
+
+        # Resolve result_format config
+        fmt = self._get_result_format_config()  # type: ignore
+
+        # Phase 2: Collect failure value samples (BASIC+)
+        if fmt.includes_unexpected_samples():
+            self._enrich_with_samples(lf, issues, list(prefix_map.values()), fmt)
+
+        # Phase 3: Collect value frequency counts (SUMMARY+)
+        if fmt.includes_unexpected_counts():
+            self._enrich_with_value_counts(lf, issues, list(prefix_map.values()), fmt)
+
+        # Phase 4: Collect full failure rows (COMPLETE)
+        if fmt.includes_full_results():
+            self._enrich_with_full_results(lf, issues, list(prefix_map.values()), fmt)
+
+        return issues
 
     def build_issues_from_results(
         self,
@@ -1486,7 +2022,14 @@ class ExpressionValidatorMixin:
         total_rows: int,
         prefix_map: dict[str, ValidationExpressionSpec],
     ) -> list["ValidationIssue"]:
-        """Default implementation for building issues from results.
+        """Build issues from aggregate results with structured ``ValidationDetail``.
+
+        Result format controls what fields are populated:
+            BOOLEAN_ONLY: count, severity, result with element_count/missing_count
+            BASIC+:       + details string, expected, observed_value, unexpected_%
+
+        Sample values, value counts, and full rows are handled in separate
+        enrichment phases by ``_validate_with_expressions``.
 
         Args:
             specs: List of validation specs
@@ -1498,6 +2041,10 @@ class ExpressionValidatorMixin:
             List of ValidationIssue objects
         """
         issues: list[ValidationIssue] = []
+        # Resolve format; fall back to SUMMARY for safety if config unavailable
+        config = getattr(self, "config", None)
+        fmt = config.get_result_format_config() if config else ResultFormatConfig()
+        validator_name = getattr(self, "name", None)
 
         for prefix, spec in prefix_map.items():
             spec_results = results[prefix]
@@ -1514,7 +2061,6 @@ class ExpressionValidatorMixin:
             ratio = count / denominator
 
             # Check mostly threshold if available
-            config = getattr(self, "config", None)
             if config and getattr(config, "mostly", None) is not None:
                 pass_ratio = 1 - ratio
                 if pass_ratio >= config.mostly:
@@ -1525,12 +2071,33 @@ class ExpressionValidatorMixin:
                 ratio, spec.severity_ratio_thresholds
             )
 
-            # Build details
-            details = spec.details_template.format(
-                count=count,
-                ratio=ratio,
-                column=spec.column,
-            )
+            # Build structured detail (always — cheap for BOOLEAN_ONLY)
+            missing_count = total_rows - denominator if spec.non_null_expr is not None else 0
+            detail: ValidationDetail | None = None
+
+            if fmt.includes_observed_value():
+                # BASIC+: full aggregate detail
+                detail = ValidationDetail.from_aggregates(
+                    element_count=total_rows,
+                    missing_count=missing_count,
+                    unexpected_count=count,
+                    observed_value=self._compute_observed_value(spec, spec_results),
+                )
+            else:
+                # BOOLEAN_ONLY: minimal detail
+                detail = ValidationDetail(
+                    element_count=total_rows,
+                    missing_count=missing_count,
+                )
+
+            # Build details string only for BASIC+ (skip for BOOLEAN_ONLY)
+            details = None
+            if fmt.includes_observed_value():
+                details = spec.details_template.format(
+                    count=count,
+                    ratio=ratio,
+                    column=spec.column,
+                )
 
             issues.append(
                 ValidationIssue(
@@ -1539,11 +2106,177 @@ class ExpressionValidatorMixin:
                     count=count,
                     severity=severity,
                     details=details,
-                    expected=spec.expected,
+                    expected=spec.expected if fmt.includes_observed_value() else None,
+                    actual=detail.observed_value if detail else None,
+                    validator_name=validator_name,
+                    success=False,
+                    result=detail,
                 )
             )
 
         return issues
+
+    @staticmethod
+    def _compute_observed_value(
+        spec: ValidationExpressionSpec,
+        spec_results: dict[str, Any],
+    ) -> Any:
+        """Derive a human-meaningful observed_value for this spec.
+
+        Subclasses may override to provide validator-specific values
+        (e.g., mean, unique count, min/max).  The default returns the
+        failure count.
+        """
+        return spec_results.get("count", 0)
+
+    # -- Enrichment phases (called by _validate_with_expressions) --
+
+    def _enrich_with_samples(
+        self,
+        lf: pl.LazyFrame,
+        issues: list["ValidationIssue"],
+        specs: list[ValidationExpressionSpec],
+        fmt: "ResultFormatConfig",
+    ) -> None:
+        """Phase 2: Collect failure value samples for issues with filter_expr.
+
+        Populates both the legacy ``sample_values`` field and the structured
+        ``result.partial_unexpected_list`` for backward compatibility.
+        """
+        sample_count = fmt.partial_unexpected_count
+        logger = getattr(self, "logger", logging.getLogger(__name__))
+
+        for issue, spec in zip(issues, specs):
+            if spec.filter_expr is None:
+                continue
+            try:
+                sample_df = (
+                    lf.filter(spec.filter_expr)
+                    .select(spec.column)
+                    .head(sample_count)
+                    .collect()
+                )
+                if len(sample_df) > 0:
+                    sample_list = sample_df[spec.column].to_list()
+                    issue.sample_values = sample_list
+                    if issue.result is not None:
+                        issue.result.partial_unexpected_list = sample_list
+            except Exception as e:
+                logger.debug(f"Failed to collect samples for {spec.column}: {e}")
+
+    def _enrich_with_value_counts(
+        self,
+        lf: pl.LazyFrame,
+        issues: list["ValidationIssue"],
+        specs: list[ValidationExpressionSpec],
+        fmt: "ResultFormatConfig",
+    ) -> None:
+        """Phase 3: Collect value frequency counts for failure values.
+
+        Populates ``result.partial_unexpected_counts`` with
+        ``[{"value": x, "count": n}, ...]`` and appends a human-readable
+        summary to the legacy ``details`` string.
+        """
+        logger = getattr(self, "logger", logging.getLogger(__name__))
+
+        for issue, spec in zip(issues, specs):
+            if spec.filter_expr is None:
+                continue
+            try:
+                count_df = (
+                    lf.filter(spec.filter_expr)
+                    .group_by(spec.column)
+                    .agg(pl.len().alias("_count"))
+                    .sort("_count", descending=True)
+                    .head(fmt.partial_unexpected_count)
+                    .collect()
+                )
+                if len(count_df) > 0:
+                    value_counts = [
+                        {"value": row[spec.column], "count": row["_count"]}
+                        for row in count_df.iter_rows(named=True)
+                    ]
+                    # Store in structured result
+                    if issue.result is not None:
+                        issue.result.partial_unexpected_counts = value_counts
+                    # Also append to legacy details string
+                    top_values = ", ".join(
+                        f"{vc['value']}({vc['count']})" for vc in value_counts[:5]
+                    )
+                    if issue.details:
+                        issue.details += f" | top failures: {top_values}"
+            except Exception as e:
+                logger.debug(f"Failed to collect value counts for {spec.column}: {e}")
+
+    def _enrich_with_full_results(
+        self,
+        lf: pl.LazyFrame,
+        issues: list["ValidationIssue"],
+        specs: list[ValidationExpressionSpec],
+        fmt: "ResultFormatConfig",
+    ) -> None:
+        """Phase 4: Collect full failure rows and indices (COMPLETE level).
+
+        Populates ``result.unexpected_list``, ``unexpected_index_list``,
+        ``unexpected_rows``, and ``debug_query`` on the structured result.
+        Also sets the legacy ``sample_values`` if not yet populated.
+        """
+        logger = getattr(self, "logger", logging.getLogger(__name__))
+        max_rows = fmt.max_unexpected_rows
+
+        for issue, spec in zip(issues, specs):
+            if spec.filter_expr is None:
+                continue
+            try:
+                columns = spec.sample_columns or [spec.column]
+                result_df = (
+                    lf.with_row_index("_truthound_row_idx")
+                    .filter(spec.filter_expr)
+                    .select(["_truthound_row_idx"] + columns)
+                    .head(max_rows)
+                    .collect()
+                )
+                if len(result_df) > 0:
+                    # Legacy fallback
+                    if issue.sample_values is None:
+                        issue.sample_values = result_df[spec.column].to_list()
+
+                    # Structured result
+                    if issue.result is not None:
+                        issue.result.unexpected_index_list = (
+                            result_df["_truthound_row_idx"].to_list()
+                        )
+                        issue.result.unexpected_list = (
+                            result_df[spec.column].to_list()
+                        )
+                        if fmt.include_unexpected_rows:
+                            issue.result.unexpected_rows = result_df.drop(
+                                "_truthound_row_idx"
+                            )
+
+                # Debug query (always for COMPLETE when return_debug_query)
+                if fmt.return_debug_query and issue.result is not None:
+                    issue.result.debug_query = self._generate_debug_query(spec)
+
+            except Exception as e:
+                logger.debug(f"Failed to collect full results for {spec.column}: {e}")
+
+    @staticmethod
+    def _generate_debug_query(spec: ValidationExpressionSpec) -> str:
+        """Generate a reproducible Polars filter expression string.
+
+        Returns a human-readable snippet that users can paste into a
+        notebook / REPL to retrieve the failing rows.
+        """
+        if spec.filter_expr is not None:
+            filter_str = str(spec.filter_expr)
+            cols = spec.sample_columns or [spec.column]
+            col_arg = ", ".join(f'"{c}"' for c in cols)
+            return f'df.filter({filter_str}).select({col_arg})'
+        return (
+            f'# {spec.validator_name}: {spec.issue_type} '
+            f'on column "{spec.column}"'
+        )
 
     def _calculate_severity_from_ratio(
         self,
@@ -1579,6 +2312,19 @@ class ExpressionBatchExecutor:
     This executor collects expressions from multiple validators and executes
     them in a single query, significantly improving performance.
 
+    Supports result_format-aware execution:
+        - BOOLEAN_ONLY: Only aggregate expressions (single collect, no enrichment)
+        - BASIC: + sample collection phase
+        - SUMMARY: + value frequency counts
+        - COMPLETE: + full failure rows
+
+    Metric deduplication (PHASE 3):
+        When a SharedMetricStore is provided, the executor:
+        1. Collects ``get_required_metrics()`` from all validators
+        2. Deduplicates by MetricKey
+        3. Computes missing metrics in a single collect()
+        4. Passes metric_store to traditional validators via ``validate_with_metrics()``
+
     Usage:
         executor = ExpressionBatchExecutor()
 
@@ -1590,13 +2336,24 @@ class ExpressionBatchExecutor:
         # Execute all in one collect()
         all_issues = executor.execute(lf)
 
+        # Execute with specific result_format
+        all_issues = executor.execute(lf, result_format="boolean_only")
+
+        # With shared metric store for deduplication
+        from truthound.validators.metrics import SharedMetricStore
+        store = SharedMetricStore()
+        all_issues = executor.execute(lf, metric_store=store)
+
     Performance:
         - 3 validators, 10M rows: ~0.5s (batched) vs ~1.5s (sequential)
         - 10 validators, 10M rows: ~1s (batched) vs ~5s (sequential)
+        - BOOLEAN_ONLY further reduces cost by skipping enrichment phases
+        - Metric deduplication: 1.5-2x improvement when validators share metrics
     """
 
-    def __init__(self) -> None:
+    def __init__(self, metric_store: "SharedMetricStore | None" = None) -> None:
         self._validators: list[Validator] = []
+        self._metric_store = metric_store
 
     def add_validator(self, validator: "Validator") -> "ExpressionBatchExecutor":
         """Add a validator to the batch.
@@ -1622,7 +2379,12 @@ class ExpressionBatchExecutor:
         self._validators.extend(validators)
         return self
 
-    def execute(self, lf: pl.LazyFrame) -> list["ValidationIssue"]:
+    def execute(
+        self,
+        lf: pl.LazyFrame,
+        result_format: "str | ResultFormat | ResultFormatConfig | None" = None,
+        metric_store: "SharedMetricStore | None" = None,
+    ) -> list["ValidationIssue"]:
         """Execute all validators in a single batched query.
 
         Validators that implement ExpressionValidatorProtocol will have their
@@ -1630,12 +2392,22 @@ class ExpressionBatchExecutor:
 
         Args:
             lf: LazyFrame to validate
+            result_format: Override result_format for all validators in this batch.
+                           If None, each validator uses its own config.
+            metric_store: Optional SharedMetricStore for metric deduplication.
+                          Overrides the instance-level store if provided.
 
         Returns:
             Combined list of ValidationIssue from all validators
         """
         if not self._validators:
             return []
+
+        # Use provided store or fall back to instance store
+        store = metric_store or self._metric_store
+
+        # Resolve override format
+        fmt_override = ResultFormatConfig.from_any(result_format) if result_format is not None else None
 
         # Separate expression-based and traditional validators
         expr_validators: list[tuple[Validator, list[ValidationExpressionSpec]]] = []
@@ -1654,61 +2426,168 @@ class ExpressionBatchExecutor:
             else:
                 traditional_validators.append(validator)
 
+        # Phase 0: Precompute shared metrics (deduplication)
+        if store is not None:
+            self._precompute_shared_metrics(lf, store)
+
         all_issues: list[ValidationIssue] = []
 
-        # Execute expression-based validators in batch
+        # Phase 1: Execute expression-based validators in batch (aggregate collect)
         if expr_validators:
-            batched_issues = self._execute_batched(lf, expr_validators)
+            batched_issues = self._execute_batched(lf, expr_validators, fmt_override)
             all_issues.extend(batched_issues)
 
-        # Execute traditional validators individually
+        # Execute traditional validators (with metric store if available)
+        lgr = _get_logger("batch_executor")
         for validator in traditional_validators:
-            issues = validator.validate(lf)
-            all_issues.extend(issues)
+            try:
+                if store is not None:
+                    issues = validator.validate_with_metrics(lf, store)
+                else:
+                    issues = validator.validate(lf)
+                all_issues.extend(issues)
+            except Exception as e:
+                config = getattr(validator, "config", None)
+                catch = config.catch_exceptions if config else True
+                if catch:
+                    lgr.warning(
+                        "Traditional validator %s failed: %s", validator.name, e,
+                    )
+                    exc_info = ExceptionInfo.from_exception(
+                        e, validator_name=validator.name,
+                    )
+                    all_issues.append(ValidationIssue(
+                        column="*",
+                        issue_type="validator_error",
+                        count=0,
+                        severity=Severity.LOW,
+                        details=f"Validator failed: {e}",
+                        validator_name=validator.name,
+                        exception_info=exc_info,
+                    ))
+                else:
+                    raise
 
         return all_issues
+
+    def _precompute_shared_metrics(
+        self,
+        lf: pl.LazyFrame,
+        store: "SharedMetricStore",
+    ) -> None:
+        """Collect metric needs from all validators, deduplicate, compute once.
+
+        This is the core of PHASE 3 metric deduplication. It:
+        1. Asks each validator for its required MetricKeys
+        2. Filters out keys already in the store
+        3. Resolves keys to Polars expressions
+        4. Executes all in a single collect()
+        5. Stores results for later consumption
+        """
+        from truthound.validators.metrics import metric_key_to_expr, MetricKey
+
+        # Gather all required metric keys
+        all_keys: dict[MetricKey, pl.Expr] = {}
+
+        for validator in self._validators:
+            try:
+                columns = validator._get_target_columns(lf)
+            except Exception:
+                columns = []
+            if not columns:
+                continue
+
+            for key in validator.get_required_metrics(columns):
+                if key in all_keys or key in store:
+                    continue
+                expr = metric_key_to_expr(key)
+                if expr is not None:
+                    all_keys[key] = expr
+
+        if not all_keys:
+            return
+
+        # Record how many deduplicated metrics we avoided computing
+        store.stats.deduplication_saves += (
+            sum(
+                len(v.get_required_metrics(
+                    v._get_target_columns(lf) if hasattr(v, '_get_target_columns') else []
+                ))
+                for v in self._validators
+            ) - len(all_keys)
+        )
+
+        # Single collect for all shared metrics
+        exprs = list(all_keys.values())
+        try:
+            result_df = optimized_collect(lf.select(exprs), streaming=True)
+            result_row = result_df.row(0, named=True)
+
+            pairs = {}
+            for key, expr in all_keys.items():
+                alias = expr.meta.output_name()
+                if alias in result_row:
+                    pairs[key] = result_row[alias]
+
+            store.put_many(pairs)
+        except Exception as e:
+            _get_logger("batch_executor").warning(
+                f"Shared metric precomputation failed: {e}"
+            )
 
     def _execute_batched(
         self,
         lf: pl.LazyFrame,
         expr_validators: list[tuple["Validator", list[ValidationExpressionSpec]]],
+        fmt_override: "ResultFormatConfig | None" = None,
     ) -> list["ValidationIssue"]:
-        """Execute all expression-based validators in single collect().
+        """Execute expression-based validators with 3-tier fallback.
+
+        Tier 1: Single batched collect for all validators (fastest).
+        Tier 2: Per-validator collect — tried if the batch fails.
+        Tier 3: Per-expression collect — tried if a per-validator collect fails.
+
+        Each tier gracefully degrades to the next, attaching
+        ``ExceptionInfo`` to any error-generated issues so callers can
+        diagnose what went wrong.
+
+        Enrichment phases (samples, value counts, full rows) run per-
+        validator after the aggregate phase, with their own error
+        isolation so a single enrichment failure doesn't lose aggregate
+        results.
 
         Args:
             lf: LazyFrame to validate
             expr_validators: List of (validator, specs) tuples
+            fmt_override: If set, overrides each validator's result_format
 
         Returns:
             Combined list of ValidationIssue
         """
-        # Build all expressions
-        all_exprs: list[pl.Expr] = [pl.len().alias("_total")]
-        validator_prefix_map: dict[int, dict[str, ValidationExpressionSpec]] = {}
+        lgr = _get_logger("batch_executor")
 
-        for v_idx, (validator, specs) in enumerate(expr_validators):
-            prefix_map: dict[str, ValidationExpressionSpec] = {}
-            for s_idx, spec in enumerate(specs):
-                prefix = f"_v{v_idx}_s{s_idx}"
-                prefix_map[prefix] = spec
-                all_exprs.extend(spec.get_all_exprs(prefix))
-            validator_prefix_map[v_idx] = prefix_map
+        # ── helpers ──────────────────────────────────────────────────
+        def _build_prefix_map(
+            v_idx: int, specs: list[ValidationExpressionSpec],
+        ) -> dict[str, ValidationExpressionSpec]:
+            return {
+                f"_v{v_idx}_s{s_idx}": spec
+                for s_idx, spec in enumerate(specs)
+            }
 
-        # Single collect with query plan optimizations and streaming
-        result_df = optimized_collect(lf.select(all_exprs), streaming=True)
-        result_row = result_df.row(0, named=True)
-        total_rows = result_row["_total"]
+        def _collect_exprs(
+            prefix_map: dict[str, ValidationExpressionSpec],
+        ) -> list[pl.Expr]:
+            exprs: list[pl.Expr] = [pl.len().alias("_total")]
+            for prefix, spec in prefix_map.items():
+                exprs.extend(spec.get_all_exprs(prefix))
+            return exprs
 
-        if total_rows == 0:
-            return []
-
-        # Build issues for each validator
-        all_issues: list[ValidationIssue] = []
-
-        for v_idx, (validator, specs) in enumerate(expr_validators):
-            prefix_map = validator_prefix_map[v_idx]
-
-            # Build results dict for this validator
+        def _extract_spec_results(
+            prefix_map: dict[str, ValidationExpressionSpec],
+            result_row: dict[str, Any],
+            total_rows: int,
+        ) -> dict[str, dict[str, Any]]:
             results: dict[str, dict[str, Any]] = {}
             for prefix, spec in prefix_map.items():
                 spec_results: dict[str, Any] = {
@@ -1716,21 +2595,220 @@ class ExpressionBatchExecutor:
                 }
                 if spec.non_null_expr is not None:
                     spec_results["non_null"] = result_row.get(f"{prefix}_nn", total_rows)
-                for i, key in enumerate(spec.extra_keys):
+                for key in spec.extra_keys:
                     spec_results[key] = result_row.get(f"{prefix}_{key}")
                 results[prefix] = spec_results
+            return results
 
-            # Let validator build its issues
-            if hasattr(validator, "build_issues_from_results"):
-                issues = validator.build_issues_from_results(
-                    specs=specs,
-                    results=results,
-                    total_rows=total_rows,
-                    prefix_map=prefix_map,
+        def _build_issues_for_validator(
+            validator: "Validator",
+            specs: list[ValidationExpressionSpec],
+            prefix_map: dict[str, ValidationExpressionSpec],
+            result_row: dict[str, Any],
+            total_rows: int,
+            fmt: "ResultFormatConfig",
+        ) -> list["ValidationIssue"]:
+            results = _extract_spec_results(prefix_map, result_row, total_rows)
+
+            original_config = None
+            if fmt_override is not None and hasattr(validator, "config"):
+                original_config = validator.config
+                validator.config = validator.config.replace(result_format=fmt_override)
+            try:
+                if hasattr(validator, "build_issues_from_results"):
+                    return validator.build_issues_from_results(
+                        specs=specs,
+                        results=results,
+                        total_rows=total_rows,
+                        prefix_map=prefix_map,
+                    )
+                return []
+            finally:
+                if original_config is not None:
+                    validator.config = original_config
+
+        def _resolve_fmt(validator: "Validator") -> "ResultFormatConfig":
+            if fmt_override is not None:
+                return fmt_override
+            config = getattr(validator, "config", None)
+            return config.get_result_format_config() if config else ResultFormatConfig()
+
+        def _enrich_issues(
+            validator: "Validator",
+            issues: list["ValidationIssue"],
+            spec_list: list[ValidationExpressionSpec],
+            fmt: "ResultFormatConfig",
+        ) -> None:
+            """Run enrichment phases with per-phase error isolation."""
+            # Phase 2: Sample enrichment (BASIC+)
+            if fmt.includes_unexpected_samples() and hasattr(validator, "_enrich_with_samples"):
+                try:
+                    validator._enrich_with_samples(lf, issues, spec_list, fmt)
+                except Exception as e:
+                    lgr.warning("Sample enrichment failed for %s: %s", validator.name, e)
+
+            # Phase 3: Value frequency counts (SUMMARY+)
+            if fmt.includes_unexpected_counts() and hasattr(validator, "_enrich_with_value_counts"):
+                try:
+                    validator._enrich_with_value_counts(lf, issues, spec_list, fmt)
+                except Exception as e:
+                    lgr.warning("Value count enrichment failed for %s: %s", validator.name, e)
+
+            # Phase 4: Full failure rows (COMPLETE)
+            if fmt.includes_full_results() and hasattr(validator, "_enrich_with_full_results"):
+                try:
+                    validator._enrich_with_full_results(lf, issues, spec_list, fmt)
+                except Exception as e:
+                    lgr.warning("Full results enrichment failed for %s: %s", validator.name, e)
+
+        def _make_error_issue(
+            validator: "Validator", exc: Exception, column: str = "*",
+        ) -> "ValidationIssue":
+            """Create a ValidationIssue that records an expression-level error."""
+            exc_info = ExceptionInfo.from_exception(
+                exc, validator_name=validator.name, column=column,
+            )
+            return ValidationIssue(
+                column=column,
+                issue_type="expression_error",
+                count=0,
+                severity=Severity.LOW,
+                details=f"Expression failed: {exc}",
+                validator_name=validator.name,
+                exception_info=exc_info,
+            )
+
+        # ── Tier 2: per-validator fallback ───────────────────────────
+        def _fallback_per_validator(
+            v_idx: int,
+            validator: "Validator",
+            specs: list[ValidationExpressionSpec],
+        ) -> list["ValidationIssue"]:
+            """Execute a single validator's expressions independently."""
+            prefix_map = _build_prefix_map(v_idx, specs)
+            fmt = _resolve_fmt(validator)
+            exprs = _collect_exprs(prefix_map)
+
+            try:
+                result_df = optimized_collect(lf.select(exprs), streaming=True)
+                result_row = result_df.row(0, named=True)
+                total_rows = result_row["_total"]
+                if total_rows == 0:
+                    return []
+
+                issues = _build_issues_for_validator(
+                    validator, specs, prefix_map, result_row, total_rows, fmt,
                 )
+                if issues:
+                    _enrich_issues(validator, issues, list(prefix_map.values()), fmt)
+                return issues
+
+            except Exception as e2:
+                lgr.warning(
+                    "Per-validator collect failed for %s, falling back to per-expression: %s",
+                    validator.name, e2,
+                )
+                return _fallback_per_expression(v_idx, validator, specs)
+
+        # ── Tier 3: per-expression fallback ──────────────────────────
+        def _fallback_per_expression(
+            v_idx: int,
+            validator: "Validator",
+            specs: list[ValidationExpressionSpec],
+        ) -> list["ValidationIssue"]:
+            """Execute each expression independently as last resort."""
+            partial_issues: list["ValidationIssue"] = []
+            config = getattr(validator, "config", None)
+            mode = config.partial_failure_mode if config else "collect"
+
+            for s_idx, spec in enumerate(specs):
+                prefix = f"_v{v_idx}_s{s_idx}"
+                single_map = {prefix: spec}
+                exprs = _collect_exprs(single_map)
+
+                try:
+                    result_df = optimized_collect(lf.select(exprs), streaming=True)
+                    result_row = result_df.row(0, named=True)
+                    total_rows = result_row["_total"]
+                    if total_rows == 0:
+                        continue
+
+                    fmt = _resolve_fmt(validator)
+                    issues = _build_issues_for_validator(
+                        validator, [spec], single_map, result_row, total_rows, fmt,
+                    )
+                    partial_issues.extend(issues)
+
+                except Exception as e3:
+                    lgr.warning(
+                        "Expression %s failed for %s: %s", prefix, validator.name, e3,
+                    )
+                    if mode == "collect":
+                        partial_issues.append(_make_error_issue(
+                            validator, e3, column=spec.column if hasattr(spec, "column") else "*",
+                        ))
+                    elif mode == "raise":
+                        raise
+                    # mode == "skip": silently skip this expression
+
+            return partial_issues
+
+        # ── Tier 1: full batch collect ───────────────────────────────
+        # Build combined prefix maps
+        all_prefix_maps: dict[int, dict[str, ValidationExpressionSpec]] = {}
+        all_exprs: list[pl.Expr] = [pl.len().alias("_total")]
+
+        for v_idx, (validator, specs) in enumerate(expr_validators):
+            prefix_map = _build_prefix_map(v_idx, specs)
+            all_prefix_maps[v_idx] = prefix_map
+            for prefix, spec in prefix_map.items():
+                all_exprs.extend(spec.get_all_exprs(prefix))
+
+        try:
+            result_df = optimized_collect(lf.select(all_exprs), streaming=True)
+            result_row = result_df.row(0, named=True)
+            total_rows = result_row["_total"]
+
+            if total_rows == 0:
+                return []
+
+            # Batch succeeded — build issues per validator
+            all_issues: list[ValidationIssue] = []
+            for v_idx, (validator, specs) in enumerate(expr_validators):
+                prefix_map = all_prefix_maps[v_idx]
+                fmt = _resolve_fmt(validator)
+
+                try:
+                    issues = _build_issues_for_validator(
+                        validator, specs, prefix_map, result_row, total_rows, fmt,
+                    )
+                except Exception as e_build:
+                    lgr.warning("Issue building failed for %s: %s", validator.name, e_build)
+                    all_issues.append(_make_error_issue(validator, e_build))
+                    continue
+
+                if not issues:
+                    continue
+
+                _enrich_issues(validator, issues, list(prefix_map.values()), fmt)
                 all_issues.extend(issues)
 
-        return all_issues
+            return all_issues
+
+        except Exception as e_batch:
+            lgr.warning(
+                "Batched collect failed, falling back to per-validator: %s", e_batch,
+            )
+            # Tier 2 fallback: execute each validator independently
+            all_issues = []
+            for v_idx, (validator, specs) in enumerate(expr_validators):
+                try:
+                    issues = _fallback_per_validator(v_idx, validator, specs)
+                    all_issues.extend(issues)
+                except Exception as e_final:
+                    lgr.error("All tiers failed for %s: %s", validator.name, e_final)
+                    all_issues.append(_make_error_issue(validator, e_final))
+            return all_issues
 
     def clear(self) -> None:
         """Clear all validators from the batch."""

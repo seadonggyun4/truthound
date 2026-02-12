@@ -53,6 +53,37 @@ def check_cmd(
         bool,
         typer.Option("--strict", help="Exit with code 1 if issues are found"),
     ] = False,
+    result_format: Annotated[
+        str,
+        typer.Option(
+            "--result-format",
+            "--rf",
+            help="Result detail level: boolean_only, basic, summary, complete",
+        ),
+    ] = "summary",
+    include_unexpected_rows: Annotated[
+        bool,
+        typer.Option("--include-unexpected-rows", help="Include failure rows (SUMMARY+)"),
+    ] = False,
+    max_unexpected_rows: Annotated[
+        int,
+        typer.Option("--max-unexpected-rows", help="Max failure rows to return"),
+    ] = 1000,
+    catch_exceptions: Annotated[
+        bool,
+        typer.Option(
+            "--catch-exceptions/--no-catch-exceptions",
+            help="Catch validator exceptions (default: True). Use --no-catch-exceptions to abort on first error.",
+        ),
+    ] = True,
+    max_retries: Annotated[
+        int,
+        typer.Option("--max-retries", help="Number of retry attempts for transient errors"),
+    ] = 0,
+    show_exceptions: Annotated[
+        bool,
+        typer.Option("--show-exceptions", help="Show exception details in console output"),
+    ] = False,
 ) -> None:
     """Validate data quality in a file.
 
@@ -65,8 +96,14 @@ def check_cmd(
         truthound check data.csv --min-severity high --strict
         truthound check data.csv --auto-schema
         truthound check data.csv --format json -o report.json
+        truthound check data.csv --result-format complete
+        truthound check data.csv --rf boolean_only
+        truthound check data.csv --no-catch-exceptions
+        truthound check data.csv --max-retries 3
+        truthound check data.csv --show-exceptions --format json
     """
     from truthound.api import check
+    from truthound.types import ResultFormatConfig, ResultFormat
 
     # Validate files exist
     require_file(file)
@@ -76,6 +113,15 @@ def check_cmd(
     # Parse validators if provided
     validator_list = parse_list_callback(validators) if validators else None
 
+    # Build result_format config
+    rf_config: str | ResultFormatConfig = result_format
+    if include_unexpected_rows or max_unexpected_rows != 1000:
+        rf_config = ResultFormatConfig(
+            format=ResultFormat.from_string(result_format),
+            include_unexpected_rows=include_unexpected_rows,
+            max_unexpected_rows=max_unexpected_rows,
+        )
+
     try:
         report = check(
             str(file),
@@ -83,6 +129,9 @@ def check_cmd(
             min_severity=min_severity,
             schema=schema_file,
             auto_schema=auto_schema,
+            result_format=rf_config,
+            catch_exceptions=catch_exceptions,
+            max_retries=max_retries,
         )
     except Exception as e:
         typer.echo(f"Error: {e}", err=True)
@@ -124,6 +173,19 @@ def check_cmd(
 
     else:
         report.print()
+
+    # Show exception details if requested
+    if show_exceptions and report.exception_summary is not None:
+        es = report.exception_summary
+        typer.echo(f"\nException Details ({es.total_exceptions} exception(s)):")
+        for issue in report.issues:
+            exc = issue.exception_info
+            if exc is not None and exc.raised_exception:
+                typer.echo(f"  [{exc.failure_category}] {exc.exception_type}: {exc.exception_message}")
+                if exc.validator_name:
+                    typer.echo(f"    Validator: {exc.validator_name}")
+                if exc.retry_count > 0:
+                    typer.echo(f"    Retries: {exc.retry_count}/{exc.max_retries}")
 
     # Exit with error if strict mode and issues found
     if strict and report.has_issues:

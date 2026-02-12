@@ -160,6 +160,13 @@ if TYPE_CHECKING:
 
     # Report
     from truthound.report import Report as Report
+    from truthound.report import ReportStatistics as ReportStatistics
+
+    # Types
+    from truthound.types import ValidationDetail as ValidationDetail
+    from truthound.types import ResultFormat as ResultFormat
+    from truthound.types import ResultFormatConfig as ResultFormatConfig
+    from truthound.validators.base import ValidationIssue as ValidationIssue
 
 
 __all__ = [
@@ -236,4 +243,10 @@ __all__ = [
     "compare",
     # Report (lazy)
     "Report",
+    "ReportStatistics",
+    # Types
+    "ValidationDetail",
+    "ValidationIssue",
+    "ResultFormat",
+    "ResultFormatConfig",
 ]

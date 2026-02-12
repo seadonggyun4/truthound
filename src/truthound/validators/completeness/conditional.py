@@ -4,7 +4,7 @@ from typing import Any, Callable
 
 import polars as pl
 
-from truthound.types import Severity
+from truthound.types import Severity, ValidationDetail
 from truthound.validators.base import ValidationIssue, Validator
 from truthound.validators.registry import register_validator
 
@@ -24,6 +24,9 @@ class ConditionalNullValidator(Validator):
 
     name = "conditional_null"
     category = "completeness"
+    dependencies = {"column_exists"}
+    provides = {"conditional_null"}
+    priority = 50
 
     def __init__(
         self,
@@ -67,6 +70,14 @@ class ConditionalNullValidator(Validator):
                     details=f"Found {null_count} nulls when {condition_str}",
                     expected=0,
                     actual=null_count,
+                    validator_name=self.name,
+                    success=False,
+                    result=ValidationDetail.from_aggregates(
+                        element_count=total_rows,
+                        missing_count=null_count,
+                        unexpected_count=null_count,
+                        observed_value=null_count,
+                    ),
                 )
             )
 

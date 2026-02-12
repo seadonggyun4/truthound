@@ -4,11 +4,12 @@ from typing import Any
 
 import polars as pl
 
-from truthound.types import Severity
+from truthound.types import Severity, ValidationDetail
 from truthound.validators.base import (
     ValidationIssue,
     Validator,
     NumericValidatorMixin,
+    SkipCondition,
 )
 from truthound.validators.registry import register_validator
 
@@ -19,6 +20,28 @@ class OutlierValidator(Validator, NumericValidatorMixin):
 
     name = "outlier"
     category = "distribution"
+    dependencies = {"column_exists", "null_checked", "range_checked"}
+    provides = {"outlier_checked", "outlier"}
+    priority = 80
+
+    def get_skip_conditions(self) -> list[SkipCondition]:
+        return [
+            SkipCondition(
+                depends_on="column_exists",
+                skip_when="critical",
+                reason_template="Column missing — skipping outlier detection",
+            ),
+            SkipCondition(
+                depends_on="null",
+                skip_when="critical",
+                reason_template="Column has critical null rate — skipping outlier detection",
+            ),
+            SkipCondition(
+                depends_on="between",
+                skip_when="critical",
+                reason_template="Range validation critical — skipping outlier detection",
+            ),
+        ]
 
     def __init__(
         self,
@@ -94,6 +117,14 @@ class OutlierValidator(Validator, NumericValidatorMixin):
                         severity=Severity.MEDIUM if outlier_pct > 0.1 else Severity.LOW,
                         details=f"IQR bounds: [{lower:.2f}, {upper:.2f}]",
                         expected=f"[{lower:.2f}, {upper:.2f}]",
+                        validator_name=self.name,
+                        success=False,
+                        result=ValidationDetail.from_aggregates(
+                            element_count=total_rows,
+                            missing_count=0,
+                            unexpected_count=outlier_count,
+                            observed_value=f"IQR bounds: [{lower:.2f}, {upper:.2f}]",
+                        ),
                     )
                 )
 
@@ -106,6 +137,9 @@ class ZScoreOutlierValidator(Validator, NumericValidatorMixin):
 
     name = "zscore_outlier"
     category = "distribution"
+    dependencies = {"column_exists", "null_checked"}
+    provides = {"zscore_outlier"}
+    priority = 80
 
     def __init__(
         self,
@@ -172,6 +206,14 @@ class ZScoreOutlierValidator(Validator, NumericValidatorMixin):
                         count=outlier_count,
                         severity=Severity.MEDIUM if outlier_pct > 0.1 else Severity.LOW,
                         details=f"|Z-score| > {self.threshold} (mean={mean:.2f}, std={std:.2f})",
+                        validator_name=self.name,
+                        success=False,
+                        result=ValidationDetail.from_aggregates(
+                            element_count=total_rows,
+                            missing_count=0,
+                            unexpected_count=outlier_count,
+                            observed_value=f"|Z-score| > {self.threshold} (mean={mean:.2f}, std={std:.2f})",
+                        ),
                     )
                 )
 

@@ -31,6 +31,9 @@ class JsonSchemaValidator(Validator, StringValidatorMixin):
 
     name = "json_schema"
     category = "string"
+    dependencies = {"column_exists", "null_checked"}
+    provides = {"json_schema"}
+    priority = 70
 
     def __init__(
         self,

@@ -10,6 +10,9 @@ The optimization module covers the following areas:
 |------|--------|--------------|
 | **DAG Execution** | `orchestrator` | Dependency-based execution order, parallel execution |
 | **Graph Algorithms** | `graph` | Cycle detection, topological sort, DFS |
+| **Metric Deduplication** | `metrics` (VE-3) | Cross-validator metric caching via `SharedMetricStore` |
+| **Conditional Execution** | `base` (VE-4) | `SkipCondition`, dependency-based skip logic |
+| **3-Tier Fallback** | `base` (VE-5) | Batch → per-validator → per-expression graceful degradation |
 | **Covariance Computation** | `covariance` | Incremental covariance, Woodbury updates |
 | **Geographic Operations** | `geo` | Vectorized Haversine, spatial indexing |
 | **Aggregation Optimization** | `aggregation` | Lazy aggregation, streaming joins |
@@ -171,6 +174,140 @@ result = execute_validators(
     strategy=ParallelExecutionStrategy(max_workers=4),
 )
 ```
+
+## Metric Deduplication (VE-3)
+
+When multiple validators require the same computed metric (e.g., `null_count` on column `email`), the `SharedMetricStore` ensures each metric is computed exactly once per session.
+
+### Architecture
+
+```
+ExpressionBatchExecutor._precompute_shared_metrics()
+├── Collects MetricKey lists from all validators via get_required_metrics()
+├── Deduplicates into unique MetricKey set
+├── Builds single lf.select([expr1, expr2, ...]).collect()
+└── Stores results in SharedMetricStore
+```
+
+### Declaring Metric Dependencies
+
+```python
+from truthound.validators.base import Validator
+from truthound.validators.metrics import MetricKey, CommonMetrics
+
+class MyValidator(Validator):
+    def get_required_metrics(self, columns: list[str]) -> list[MetricKey]:
+        keys = []
+        for col in columns:
+            key, _ = CommonMetrics.null_count(col)
+            keys.append(key)
+            key, _ = CommonMetrics.row_count()
+            keys.append(key)
+        return keys
+
+    def validate_with_metrics(self, lf, metric_store):
+        for col in self._get_target_columns(lf):
+            key, _ = CommonMetrics.null_count(col)
+            null_count = metric_store.get(key)
+            # Use cached value instead of recomputing
+```
+
+### Available Common Metrics
+
+| Metric | Scope | Expression |
+|--------|-------|------------|
+| `row_count()` | Table | `pl.len()` |
+| `null_count(col)` | Column | `pl.col(col).is_null().sum()` |
+| `non_null_count(col)` | Column | `pl.col(col).is_not_null().sum()` |
+| `n_unique(col)` | Column | `pl.col(col).n_unique()` |
+| `mean(col)` | Column | `pl.col(col).mean()` |
+| `std(col)` | Column | `pl.col(col).std()` |
+| `min(col)` | Column | `pl.col(col).min()` |
+| `max(col)` | Column | `pl.col(col).max()` |
+| `sum(col)` | Column | `pl.col(col).sum()` |
+| `quantile(col, q)` | Column | `pl.col(col).quantile(q)` |
+| `median(col)` | Column | `pl.col(col).median()` |
+
+### SharedMetricStore API
+
+```python
+from truthound.validators.metrics import SharedMetricStore, MetricKey
+
+store = SharedMetricStore()
+
+# Basic operations
+store.put(key, value)
+value = store.get(key)             # Returns None if missing
+value = store.get_or_compute(key, compute_fn)
+
+# Bulk operations
+store.put_many({key1: val1, key2: val2})
+results = store.get_many([key1, key2])
+missing = store.missing_keys([key1, key2, key3])
+
+# Statistics
+stats = store.stats  # MetricStoreStats(hits, misses, size)
+```
+
+## Conditional Execution via SkipCondition (VE-4)
+
+Validators can declare conditions under which they should be skipped based on prior validator results. This eliminates redundant work when upstream validators have already detected fatal issues.
+
+### Priority Hierarchy
+
+Validators are grouped into priority levels for execution ordering:
+
+| Priority Range | Category | Examples |
+|----------------|----------|----------|
+| 10–30 | Schema | ColumnExistsValidator, ColumnTypeValidator |
+| 50 | Completeness | NullValidator, NotNullValidator |
+| 60 | Uniqueness | UniqueValidator, DuplicateValidator |
+| 70–80 | Distribution | RangeValidator, BetweenValidator |
+| 90 | Referential | ForeignKeyValidator |
+
+### Declaring Skip Conditions
+
+```python
+from truthound.validators.base import Validator, SkipCondition
+
+class DistributionValidator(Validator):
+    dependencies = {"schema_check", "null_check"}
+    priority = 75
+
+    def get_skip_conditions(self) -> list[SkipCondition]:
+        return [
+            # Skip if schema validation failed entirely
+            SkipCondition(depends_on="schema_check", skip_when="failed"),
+            # Skip if null check found critical-level nulls
+            SkipCondition(depends_on="null_check", skip_when="critical"),
+        ]
+```
+
+### 3-Stage Dependency Resolution
+
+1. **Dependency status check**: If any `dependencies` validator ended FAILED/TIMEOUT/SKIPPED → skip.
+2. **SkipCondition evaluation**: Each condition is evaluated against prior `ValidatorExecutionResult`.
+3. **Column context filtering**: `_filter_columns_by_context()` narrows target columns based on upstream results.
+
+## 3-Tier Expression Fallback (VE-5)
+
+The `ExpressionBatchExecutor` implements progressive fallback to maximize result collection:
+
+```
+Tier 1: Batch all validators → single lf.select([...]).collect()
+        │ ComputeError / SchemaError
+        ▼
+Tier 2: Per-validator execution → individual collect() per validator
+        │ failure on specific validator
+        ▼
+Tier 3: Per-expression execution → individual collect() per expression
+        partial_failure_mode controls behavior:
+          "collect" → gather partial results, continue
+          "skip"    → discard failing expressions
+          "raise"   → re-raise the exception
+```
+
+---
 
 ## Graph Traversal Algorithms
 

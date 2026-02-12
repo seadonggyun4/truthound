@@ -40,6 +40,9 @@ class CircularReferenceValidator(MultiTableValidator):
     """
 
     name = "circular_reference"
+    dependencies = {"column_exists", "uniqueness_checked"}
+    provides = {"circular_reference"}
+    priority = 90
 
     def __init__(
         self,
@@ -133,6 +136,9 @@ class HierarchyCircularValidator(ReferentialValidator):
     """
 
     name = "hierarchy_circular"
+    dependencies = {"column_exists", "uniqueness_checked"}
+    provides = {"hierarchy_circular"}
+    priority = 90
 
     def __init__(
         self,
@@ -297,6 +303,9 @@ class HierarchyDepthValidator(ReferentialValidator):
     """
 
     name = "hierarchy_depth"
+    dependencies = {"column_exists", "uniqueness_checked"}
+    provides = {"hierarchy_depth"}
+    priority = 90
 
     def __init__(
         self,
@@ -458,6 +467,9 @@ class OptimizedHierarchyCircularValidator(ReferentialValidator, GraphTraversalMi
     """
 
     name = "optimized_hierarchy_circular"
+    dependencies = {"column_exists", "uniqueness_checked"}
+    provides = {"optimized_hierarchy_circular"}
+    priority = 90
 
     def __init__(
         self,

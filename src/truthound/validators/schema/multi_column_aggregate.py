@@ -29,6 +29,9 @@ class MultiColumnSumValidator(Validator):
 
     name = "multi_column_sum"
     category = "schema"
+    dependencies = {"column_exists"}
+    provides = {"multi_column_sum"}
+    priority = 30
 
     def __init__(
         self,
@@ -109,6 +112,9 @@ class MultiColumnCalculationValidator(Validator):
 
     name = "multi_column_calculation"
     category = "schema"
+    dependencies = {"column_exists"}
+    provides = {"multi_column_calculation"}
+    priority = 30
 
     OPERATORS = {
         "+": lambda a, b: a + b,

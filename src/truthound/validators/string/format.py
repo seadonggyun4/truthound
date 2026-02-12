@@ -195,6 +195,9 @@ class EmailValidator(VectorizedFormatValidator):
 
     name = "email"
     category = "string"
+    dependencies = {"column_exists", "null_checked"}
+    provides = {"email"}
+    priority = 70
     format_name = "email"
     # Pattern with anchors for full match
     pattern_str = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
@@ -217,6 +220,9 @@ class UrlValidator(VectorizedFormatValidator):
 
     name = "url"
     category = "string"
+    dependencies = {"column_exists", "null_checked"}
+    provides = {"url"}
+    priority = 70
     format_name = "url"
     pattern_str = (
         r"^https?://"
@@ -306,6 +312,9 @@ class PhoneValidator(VectorizedFormatValidator):
 
     name = "phone"
     category = "string"
+    dependencies = {"column_exists", "null_checked"}
+    provides = {"phone"}
+    priority = 70
     format_name = "phone"
 
     # Default to strict pattern
@@ -355,6 +364,9 @@ class UuidValidator(VectorizedFormatValidator):
 
     name = "uuid"
     category = "string"
+    dependencies = {"column_exists", "null_checked"}
+    provides = {"uuid"}
+    priority = 70
     format_name = "uuid"
     pattern_str = (
         r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
@@ -374,6 +386,9 @@ class IpAddressValidator(VectorizedFormatValidator):
 
     name = "ip_address"
     category = "string"
+    dependencies = {"column_exists", "null_checked"}
+    provides = {"ip_address"}
+    priority = 70
     format_name = "ip_address"
     pattern_str = (
         r"^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}"
@@ -396,6 +411,9 @@ class Ipv6AddressValidator(VectorizedFormatValidator):
 
     name = "ipv6_address"
     category = "string"
+    dependencies = {"column_exists", "null_checked"}
+    provides = {"ipv6_address"}
+    priority = 70
     format_name = "ipv6_address"
     # Simplified pattern for common IPv6 formats
     pattern_str = (
@@ -434,6 +452,9 @@ class FormatValidator(Validator, StringValidatorMixin):
 
     name = "format"
     category = "string"
+    dependencies = {"column_exists", "null_checked"}
+    provides = {"format"}
+    priority = 70
 
     PATTERNS: ClassVar[dict[str, tuple[str, str]]] = {
         "email": (

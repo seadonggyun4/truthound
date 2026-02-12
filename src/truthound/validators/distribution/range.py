@@ -1,6 +1,8 @@
 """Range and boundary validators."""
 
-from typing import Any
+from __future__ import annotations
+
+from typing import Any, TYPE_CHECKING
 
 import polars as pl
 
@@ -11,8 +13,12 @@ from truthound.validators.base import (
     Validator,
     NumericValidatorMixin,
     ExpressionValidatorMixin,
+    SkipCondition,
 )
 from truthound.validators.registry import register_validator
+
+if TYPE_CHECKING:
+    from truthound.validators.metrics import MetricKey
 
 
 @register_validator
@@ -37,6 +43,31 @@ class BetweenValidator(Validator, NumericValidatorMixin, ExpressionValidatorMixi
 
     name = "between"
     category = "distribution"
+    dependencies = {"column_exists", "null_checked"}
+    provides = {"range_checked", "between"}
+    priority = 70
+
+    def get_skip_conditions(self) -> list[SkipCondition]:
+        return [
+            SkipCondition(
+                depends_on="column_exists",
+                skip_when="critical",
+                reason_template="Column missing — skipping range validation",
+            ),
+            SkipCondition(
+                depends_on="null",
+                skip_when="critical",
+                reason_template="Column has critical null rate — skipping range validation",
+            ),
+        ]
+
+    def get_required_metrics(self, columns: list[str]) -> list[MetricKey]:
+        from truthound.validators.metrics import CommonMetrics
+        metrics = [CommonMetrics.row_count()[0]]
+        for col in columns:
+            metrics.append(CommonMetrics.min(col)[0])
+            metrics.append(CommonMetrics.max(col)[0])
+        return metrics
 
     def __init__(
         self,
@@ -81,6 +112,7 @@ class BetweenValidator(Validator, NumericValidatorMixin, ExpressionValidatorMixi
                     severity_ratio_thresholds=(0.1, 0.05, 0.01),
                     details_template=f"{{count}} values outside {range_str}",
                     expected=range_str,
+                    filter_expr=out_of_range_expr,
                 )
             )
         return specs
@@ -100,6 +132,9 @@ class RangeValidator(Validator, NumericValidatorMixin, ExpressionValidatorMixin)
 
     name = "range"
     category = "distribution"
+    dependencies = {"column_exists", "null_checked"}
+    provides = {"range"}
+    priority = 70
 
     KNOWN_RANGES: dict[str, tuple[float | None, float | None]] = {
         "age": (0, 150),
@@ -166,6 +201,7 @@ class RangeValidator(Validator, NumericValidatorMixin, ExpressionValidatorMixin)
                     severity_ratio_thresholds=(0.1, 0.05, 0.01),
                     details_template=f"Expected {range_desc}",
                     expected=range_desc,
+                    filter_expr=oob_expr,
                 )
             )
         return specs
@@ -185,6 +221,9 @@ class PositiveValidator(Validator, NumericValidatorMixin, ExpressionValidatorMix
 
     name = "positive"
     category = "distribution"
+    dependencies = {"column_exists", "null_checked"}
+    provides = {"positive"}
+    priority = 70
 
     def get_validation_exprs(
         self,
@@ -204,6 +243,7 @@ class PositiveValidator(Validator, NumericValidatorMixin, ExpressionValidatorMix
                     non_null_expr=pl.len(),
                     details_template="{count} non-positive values",
                     expected="> 0",
+                    filter_expr=non_positive_expr,
                 )
             )
         return specs
@@ -223,6 +263,9 @@ class NonNegativeValidator(Validator, NumericValidatorMixin, ExpressionValidator
 
     name = "non_negative"
     category = "distribution"
+    dependencies = {"column_exists", "null_checked"}
+    provides = {"non_negative"}
+    priority = 70
 
     def get_validation_exprs(
         self,
@@ -242,6 +285,7 @@ class NonNegativeValidator(Validator, NumericValidatorMixin, ExpressionValidator
                     non_null_expr=pl.len(),
                     details_template="{count} negative values",
                     expected=">= 0",
+                    filter_expr=negative_expr,
                 )
             )
         return specs

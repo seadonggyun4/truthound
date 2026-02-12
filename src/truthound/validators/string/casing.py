@@ -24,6 +24,9 @@ class ConsistentCasingValidator(Validator, StringValidatorMixin):
 
     name = "consistent_casing"
     category = "string"
+    dependencies = {"column_exists", "null_checked"}
+    provides = {"consistent_casing"}
+    priority = 70
 
     CASING_CHECKS = {
         "upper": str.isupper,

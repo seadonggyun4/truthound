@@ -4,7 +4,7 @@ from typing import Any
 
 import polars as pl
 
-from truthound.types import Severity
+from truthound.types import Severity, ValidationDetail
 from truthound.validators.base import ValidationIssue, Validator
 from truthound.validators.registry import register_validator
 
@@ -15,6 +15,9 @@ class InSetValidator(Validator):
 
     name = "in_set"
     category = "distribution"
+    dependencies = {"column_exists"}
+    provides = {"in_set"}
+    priority = 70
 
     def __init__(
         self,
@@ -62,6 +65,14 @@ class InSetValidator(Validator):
                         severity=self._calculate_severity(ratio),
                         details=f"{not_in_count} values not in allowed set",
                         expected=allowed_str,
+                        validator_name=self.name,
+                        success=False,
+                        result=ValidationDetail.from_aggregates(
+                            element_count=total_rows,
+                            missing_count=0,
+                            unexpected_count=not_in_count,
+                            observed_value=f"{not_in_count} values not in allowed set",
+                        ),
                     )
                 )
 
@@ -74,6 +85,9 @@ class NotInSetValidator(Validator):
 
     name = "not_in_set"
     category = "distribution"
+    dependencies = {"column_exists"}
+    provides = {"not_in_set"}
+    priority = 70
 
     def __init__(
         self,
@@ -119,6 +133,14 @@ class NotInSetValidator(Validator):
                         severity=Severity.HIGH,
                         details=f"{in_count} forbidden values found",
                         expected=f"Not in {forbidden_str}",
+                        validator_name=self.name,
+                        success=False,
+                        result=ValidationDetail.from_aggregates(
+                            element_count=total_rows,
+                            missing_count=0,
+                            unexpected_count=in_count,
+                            observed_value=f"{in_count} forbidden values found",
+                        ),
                     )
                 )
 

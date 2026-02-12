@@ -24,6 +24,9 @@ class DateOrderValidator(Validator):
 
     name = "date_order"
     category = "datetime"
+    dependencies = {"column_exists", "null_checked"}
+    provides = {"date_order"}
+    priority = 70
 
     def __init__(
         self,

@@ -45,6 +45,9 @@ class NaNValidator(Validator, FloatValidatorMixin):
 
     name = "nan"
     category = "completeness"
+    dependencies = {"column_exists"}
+    provides = {"nan_checked", "nan"}
+    priority = 50
 
     def validate(self, lf: pl.LazyFrame) -> list[ValidationIssue]:
         issues: list[ValidationIssue] = []
@@ -106,6 +109,9 @@ class NotNaNValidator(Validator, FloatValidatorMixin):
 
     name = "not_nan"
     category = "completeness"
+    dependencies = {"column_exists"}
+    provides = {"not_nan"}
+    priority = 50
 
     def validate(self, lf: pl.LazyFrame) -> list[ValidationIssue]:
         issues: list[ValidationIssue] = []
@@ -160,6 +166,9 @@ class NaNRatioValidator(Validator, FloatValidatorMixin):
 
     name = "nan_ratio"
     category = "completeness"
+    dependencies = {"column_exists"}
+    provides = {"nan_ratio"}
+    priority = 50
 
     def __init__(
         self,
@@ -231,6 +240,9 @@ class InfinityValidator(Validator, FloatValidatorMixin):
 
     name = "infinity"
     category = "completeness"
+    dependencies = {"column_exists"}
+    provides = {"infinity"}
+    priority = 50
 
     def validate(self, lf: pl.LazyFrame) -> list[ValidationIssue]:
         issues: list[ValidationIssue] = []
@@ -289,6 +301,9 @@ class FiniteValidator(Validator, FloatValidatorMixin):
 
     name = "finite"
     category = "completeness"
+    dependencies = {"column_exists"}
+    provides = {"finite"}
+    priority = 50
 
     def validate(self, lf: pl.LazyFrame) -> list[ValidationIssue]:
         issues: list[ValidationIssue] = []

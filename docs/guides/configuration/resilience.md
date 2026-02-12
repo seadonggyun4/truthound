@@ -361,6 +361,107 @@ queue_config = (
 )
 ```
 
+## Validation Pipeline Integration (VE-5)
+
+The `ValidationResiliencePolicy` bridges Truthound's validation engine with the resilience patterns above, providing per-validator circuit breakers and retry logic.
+
+### ValidationResiliencePolicy
+
+```python
+from truthound.validators.resilience_bridge import (
+    ValidationResiliencePolicy,
+    create_default_policy,
+    create_strict_policy,
+)
+
+# Default: lenient circuit breaker (10 failures to open, 15s timeout)
+policy = create_default_policy(max_retries=2)
+
+# Strict: no retries, aggressive circuit breaker
+policy = create_strict_policy()
+
+# Custom policy
+from truthound.common.resilience import CircuitBreakerConfig
+
+policy = ValidationResiliencePolicy(
+    circuit_breaker_config=CircuitBreakerConfig(
+        failure_threshold=5,
+        success_threshold=2,
+        timeout_seconds=30.0,
+    ),
+    max_retries=3,
+    on_retry=lambda attempt, exc, delay: logger.warning(
+        f"Retry {attempt} after {delay:.1f}s: {exc}"
+    ),
+)
+```
+
+### Execution Flow
+
+```
+policy.execute(validator, lf)
+    │
+    ├── Circuit breaker check → OPEN? → return SKIPPED result
+    │
+    ├── _validate_safe(validator, lf, max_retries=policy.max_retries)
+    │       │
+    │       ├── Attempt 1 → success? → record success → return
+    │       ├── Attempt 2 → exponential backoff (0.1s × 2^n, cap 5s)
+    │       └── Attempt N → max_retries exceeded → record failure
+    │
+    └── Circuit breaker update → failure count → maybe OPEN
+```
+
+### Per-Validator Circuit States
+
+Each validator gets its own circuit breaker instance:
+
+```python
+# Check circuit state for a specific validator
+state = policy.get_circuit_state("null_check")  # "CLOSED" | "OPEN" | "HALF_OPEN"
+
+# Reset a specific validator's circuit
+policy.reset("null_check")
+
+# Reset all circuits
+policy.reset()
+```
+
+### Exception Classification
+
+The `ExceptionInfo.from_exception()` factory automatically classifies exceptions:
+
+| Category | Retryable | Exception Types |
+|----------|-----------|----------------|
+| `transient` | Yes | `TimeoutError`, `ConnectionError`, `OSError`, `ValidationTimeoutError` |
+| `configuration` | No | `ValueError`, `TypeError`, `KeyError`, `ColumnNotFoundError` |
+| `data` | No | Polars `ComputeError`, `SchemaError` |
+| `permanent` | No | All other exceptions |
+
+Retry logic only attempts retries for `transient` category exceptions.
+
+### Integration with th.check()
+
+The `catch_exceptions` and `max_retries` parameters on `th.check()` are propagated to all execution paths:
+
+```python
+import truthound as th
+
+# All validators wrapped with exception isolation and retry
+report = th.check(
+    "data.csv",
+    catch_exceptions=True,   # Default: True
+    max_retries=3,            # Retry transient errors
+)
+
+# Access exception summary on the report
+if report.exception_summary:
+    print(f"Exceptions: {report.exception_summary.total_count}")
+    print(f"By category: {report.exception_summary.by_category}")
+```
+
+---
+
 ## Validation
 
 All configuration classes validate their parameters on initialization:

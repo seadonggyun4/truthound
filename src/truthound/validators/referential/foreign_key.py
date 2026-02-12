@@ -57,6 +57,9 @@ class ForeignKeyValidator(ReferentialValidator):
     """
 
     name = "foreign_key"
+    dependencies = {"column_exists", "uniqueness_checked"}
+    provides = {"referential_checked", "foreign_key"}
+    priority = 90
 
     def __init__(
         self,
@@ -250,6 +253,9 @@ class CompositeForeignKeyValidator(ReferentialValidator):
     """
 
     name = "composite_foreign_key"
+    dependencies = {"column_exists", "uniqueness_checked"}
+    provides = {"composite_foreign_key"}
+    priority = 90
 
     def __init__(
         self,
@@ -466,6 +472,9 @@ class SelfReferentialFKValidator(ReferentialValidator):
     """
 
     name = "self_referential_fk"
+    dependencies = {"column_exists", "uniqueness_checked"}
+    provides = {"self_referential_fk"}
+    priority = 90
 
     def __init__(
         self,

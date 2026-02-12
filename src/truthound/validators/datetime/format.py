@@ -19,6 +19,9 @@ class DateFormatValidator(Validator, StringValidatorMixin):
 
     name = "date_format"
     category = "datetime"
+    dependencies = {"column_exists", "null_checked"}
+    provides = {"date_format"}
+    priority = 70
 
     def __init__(
         self,

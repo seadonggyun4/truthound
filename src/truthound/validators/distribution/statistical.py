@@ -197,6 +197,9 @@ class KLDivergenceValidator(Validator, NumericValidatorMixin):
 
     name = "kl_divergence"
     category = "distribution"
+    dependencies = {"column_exists", "null_checked"}
+    provides = {"kl_divergence"}
+    priority = 80
 
     def __init__(
         self,
@@ -299,6 +302,9 @@ class ChiSquareValidator(Validator):
 
     name = "chi_square"
     category = "distribution"
+    dependencies = {"column_exists", "null_checked"}
+    provides = {"chi_square"}
+    priority = 80
 
     def __init__(
         self,
@@ -416,6 +422,9 @@ class MostCommonValueValidator(Validator):
 
     name = "most_common_value"
     category = "distribution"
+    dependencies = {"column_exists"}
+    provides = {"most_common_value"}
+    priority = 70
 
     def __init__(
         self,

@@ -4,7 +4,7 @@ from typing import Any
 
 import polars as pl
 
-from truthound.types import Severity
+from truthound.types import Severity, ValidationDetail
 from truthound.validators.base import ValidationIssue, Validator
 from truthound.validators.registry import register_validator
 
@@ -15,6 +15,9 @@ class ColumnOrderValidator(Validator):
 
     name = "column_order"
     category = "schema"
+    dependencies = {"column_exists"}
+    provides = {"column_order"}
+    priority = 20
 
     def __init__(
         self,
@@ -55,6 +58,9 @@ class ColumnOrderValidator(Validator):
                         details="; ".join(mismatches[:3]) + ("..." if len(mismatches) > 3 else ""),
                         expected=self.expected_order,
                         actual=actual_columns,
+                        validator_name=self.name,
+                        success=False,
+                        result=ValidationDetail(element_count=0),
                     )
                 )
         else:
@@ -76,6 +82,9 @@ class ColumnOrderValidator(Validator):
                         details=f"Columns not in expected order: {missing}",
                         expected=self.expected_order,
                         actual=actual_columns,
+                        validator_name=self.name,
+                        success=False,
+                        result=ValidationDetail(element_count=0),
                     )
                 )
 

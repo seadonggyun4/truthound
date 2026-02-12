@@ -29,6 +29,9 @@ class DateutilParseableValidator(Validator, StringValidatorMixin):
 
     name = "dateutil_parseable"
     category = "datetime"
+    dependencies = {"column_exists", "null_checked"}
+    provides = {"dateutil_parseable"}
+    priority = 70
 
     # Common date formats to try if dateutil is not available
     # Ordered by specificity: more specific formats first

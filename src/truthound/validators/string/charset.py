@@ -19,6 +19,9 @@ class AlphanumericValidator(Validator, StringValidatorMixin, SampledEarlyTermina
 
     name = "alphanumeric"
     category = "string"
+    dependencies = {"column_exists", "null_checked"}
+    provides = {"alphanumeric"}
+    priority = 70
 
     def __init__(
         self,

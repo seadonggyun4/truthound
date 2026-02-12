@@ -24,6 +24,9 @@ class RecentDataValidator(Validator, DatetimeValidatorMixin):
 
     name = "recent_data"
     category = "datetime"
+    dependencies = {"column_exists", "null_checked"}
+    provides = {"recent_data"}
+    priority = 70
 
     def __init__(
         self,
@@ -106,6 +109,9 @@ class DatePartCoverageValidator(Validator, DatetimeValidatorMixin):
 
     name = "date_part_coverage"
     category = "datetime"
+    dependencies = {"column_exists", "null_checked"}
+    provides = {"date_part_coverage"}
+    priority = 70
 
     def __init__(
         self,
@@ -216,6 +222,9 @@ class GroupedRecentDataValidator(Validator, DatetimeValidatorMixin):
 
     name = "grouped_recent_data"
     category = "datetime"
+    dependencies = {"column_exists", "null_checked"}
+    provides = {"grouped_recent_data"}
+    priority = 70
 
     def __init__(
         self,

@@ -16,6 +16,8 @@ truthound check <file> [OPTIONS]
 
 ## Options
 
+### Core Options
+
 | Option | Short | Default | Description |
 |--------|-------|---------|-------------|
 | `--validators` | `-v` | None | Comma-separated list of validators to run (runs all validators when not specified) |
@@ -25,6 +27,22 @@ truthound check <file> [OPTIONS]
 | `--format` | `-f` | `console` | Output format (console, json, html) |
 | `--output` | `-o` | None | Output file path (required for html format) |
 | `--strict` | | `false` | Exit with code 1 if issues found |
+
+### Result Format Options (VE-1)
+
+| Option | Short | Default | Description |
+|--------|-------|---------|-------------|
+| `--result-format` | `--rf` | `summary` | Detail level: `boolean_only`, `basic`, `summary`, `complete` |
+| `--include-unexpected-rows` | | `false` | Include failing rows in output (requires `--rf complete`) |
+| `--max-unexpected-rows` | | `1000` | Maximum number of unexpected rows to include |
+
+### Exception Handling Options (VE-5)
+
+| Option | Short | Default | Description |
+|--------|-------|---------|-------------|
+| `--catch-exceptions` / `--no-catch-exceptions` | | `true` | Isolate validator exceptions instead of aborting |
+| `--max-retries` | | `0` | Number of retries for transient failures |
+| `--show-exceptions` | | `false` | Display exception details in output |
 
 ## Description
 
@@ -102,6 +120,42 @@ Exit with code 1 if any issues are found:
 
 ```bash
 truthound check data.csv --strict
+```
+
+### Result Format Control (VE-1)
+
+Control the detail level of validation output:
+
+```bash
+# Quick pass/fail check (fastest)
+truthound check data.csv --rf boolean_only
+
+# Basic with sample values
+truthound check data.csv --rf basic
+
+# Full detail with unexpected rows and debug queries
+truthound check data.csv --rf complete --include-unexpected-rows
+
+# Limit unexpected rows
+truthound check data.csv --rf complete --include-unexpected-rows --max-unexpected-rows 500
+```
+
+### Exception Handling (VE-5)
+
+Control error behavior during validation:
+
+```bash
+# Retry transient failures up to 3 times
+truthound check data.csv --max-retries 3
+
+# Strict mode: abort on first exception
+truthound check data.csv --no-catch-exceptions
+
+# Show exception details in output
+truthound check data.csv --show-exceptions
+
+# Combined: resilient mode with visibility
+truthound check data.csv --catch-exceptions --max-retries 2 --show-exceptions
 ```
 
 ### Output Formats

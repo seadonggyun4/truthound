@@ -281,6 +281,9 @@ class UniqueWithinRecordValidator(Validator):
 
     name = "unique_within_record"
     category = "uniqueness"
+    dependencies = {"column_exists"}
+    provides = {"unique_within_record"}
+    priority = 60
 
     # Threshold for switching strategies
     PAIRWISE_THRESHOLD = 6
@@ -425,6 +428,9 @@ class AllColumnsUniqueWithinRecordValidator(Validator):
 
     name = "all_columns_unique_within_record"
     category = "uniqueness"
+    dependencies = {"column_exists"}
+    provides = {"all_columns_unique_within_record"}
+    priority = 60
 
     def __init__(
         self,
@@ -510,6 +516,9 @@ class ColumnPairUniqueValidator(Validator):
 
     name = "column_pair_unique"
     category = "uniqueness"
+    dependencies = {"column_exists"}
+    provides = {"column_pair_unique"}
+    priority = 60
 
     def __init__(
         self,

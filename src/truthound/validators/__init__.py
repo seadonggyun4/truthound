@@ -68,6 +68,9 @@ from truthound.validators.base import (
     optimized_collect,
 )
 
+# Metric deduplication (PHASE 3) - eagerly loaded as lightweight
+from truthound.validators.metrics import MetricKey, SharedMetricStore, CommonMetrics
+
 # Registry - singleton, lazy loading inside
 from truthound.validators.registry import registry, register_validator
 
@@ -286,6 +289,10 @@ __all__ = [
     # Query plan optimization utilities
     "QUERY_OPTIMIZATIONS",
     "optimized_collect",
+    # Metric deduplication (PHASE 3)
+    "MetricKey",
+    "SharedMetricStore",
+    "CommonMetrics",
     # Registry
     "registry",
     "register_validator",
