@@ -387,10 +387,14 @@ def discover_plugins() -> list[ModuleMetadata]:
 
         for ep in eps:
             try:
+                # ep.value is in "module:attribute" format (e.g.
+                # "truthound_dashboard.cli:register_commands").
+                # importlib.import_module only accepts the module part.
+                ep_module_path = ep.value.split(":")[0] if ":" in ep.value else ep.value
                 metadata = ModuleMetadata(
                     name=ep.name,
                     description=f"Plugin: {ep.name}",
-                    module_path=ep.value,
+                    module_path=ep_module_path,
                     priority=200,  # Plugins load after built-ins
                 )
                 discovered.append(metadata)
