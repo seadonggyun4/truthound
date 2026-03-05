@@ -73,6 +73,7 @@ def check(
     result_format: str | ResultFormat | ResultFormatConfig = ResultFormat.SUMMARY,
     catch_exceptions: bool = True,
     max_retries: int = 0,
+    exclude_columns: list[str] | None = None,
 ) -> Report:
     """Perform data quality validation on the input data.
 
@@ -127,6 +128,9 @@ def check(
                          aborts the run (strict mode).
         max_retries: Number of automatic retry attempts for transient errors
                     (timeouts, connection errors). Default 0 (no retries).
+        exclude_columns: Optional list of column names to exclude from all
+                        validators. Applied globally to every validator instance.
+                        Example: ["first_name", "last_name"]
 
     Returns:
         Report containing all validation issues found.
@@ -292,6 +296,18 @@ def check(
                 )
             except (TypeError, AttributeError):
                 pass  # Some validators may have non-standard configs
+
+    # Apply global exclude_columns to all validators
+    if exclude_columns:
+        exclude_tuple = tuple(exclude_columns)
+        for v in validator_instances:
+            if hasattr(v, "config") and hasattr(v.config, "replace"):
+                try:
+                    existing = v.config.exclude_columns or ()
+                    merged = tuple(set(existing + exclude_tuple))
+                    v.config = v.config.replace(exclude_columns=merged)
+                except (TypeError, AttributeError):
+                    pass
 
     # Create session-scoped SharedMetricStore for metric deduplication (PHASE 3)
     from truthound.validators.metrics import SharedMetricStore

@@ -7,7 +7,7 @@ data quality in files.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated, Any, Optional
 
 import typer
 
@@ -84,6 +84,25 @@ def check_cmd(
         bool,
         typer.Option("--show-exceptions", help="Show exception details in console output"),
     ] = False,
+    exclude_columns: Annotated[
+        Optional[list[str]],
+        typer.Option(
+            "--exclude-columns",
+            "-e",
+            help="Columns to exclude from all validators (comma-separated)",
+        ),
+    ] = None,
+    validator_config: Annotated[
+        Optional[str],
+        typer.Option(
+            "--validator-config",
+            "-vc",
+            help=(
+                "Validator configuration as JSON string or path to JSON/YAML file. "
+                'Example: \'{"unique": {"exclude_columns": ["first_name"]}}\''
+            ),
+        ),
+    ] = None,
 ) -> None:
     """Validate data quality in a file.
 
@@ -101,6 +120,9 @@ def check_cmd(
         truthound check data.csv --no-catch-exceptions
         truthound check data.csv --max-retries 3
         truthound check data.csv --show-exceptions --format json
+        truthound check data.csv --exclude-columns first_name,last_name
+        truthound check data.csv --validator-config '{"unique": {"exclude_columns": ["first_name"]}}'
+        truthound check data.csv --validator-config config.json
     """
     from truthound.api import check
     from truthound.types import ResultFormatConfig, ResultFormat
@@ -112,6 +134,54 @@ def check_cmd(
 
     # Parse validators if provided
     validator_list = parse_list_callback(validators) if validators else None
+
+    # Parse exclude_columns if provided
+    exclude_cols = parse_list_callback(exclude_columns) if exclude_columns else None
+
+    # Parse validator_config (JSON string or file path)
+    v_config: dict[str, dict[str, Any]] | None = None
+    if validator_config:
+        import json
+
+        config_str = validator_config.strip()
+        # Check if it's a file path
+        if config_str.endswith((".json", ".yaml", ".yml")):
+            config_path = Path(config_str)
+            if not config_path.exists():
+                typer.echo(f"Error: Config file not found: {config_path}", err=True)
+                raise typer.Exit(1)
+            content = config_path.read_text(encoding="utf-8")
+            if config_str.endswith(".json"):
+                try:
+                    v_config = json.loads(content)
+                except json.JSONDecodeError as e:
+                    typer.echo(f"Error: Invalid JSON in config file: {e}", err=True)
+                    raise typer.Exit(1)
+            else:
+                try:
+                    import yaml
+                    v_config = yaml.safe_load(content)
+                except ImportError:
+                    typer.echo(
+                        "Error: YAML config requires PyYAML. "
+                        "Install with: pip install pyyaml",
+                        err=True,
+                    )
+                    raise typer.Exit(1)
+                except Exception as e:
+                    typer.echo(f"Error: Invalid YAML in config file: {e}", err=True)
+                    raise typer.Exit(1)
+        else:
+            # Parse as inline JSON string
+            try:
+                v_config = json.loads(config_str)
+            except json.JSONDecodeError as e:
+                typer.echo(f"Error: Invalid JSON in --validator-config: {e}", err=True)
+                raise typer.Exit(1)
+
+        if not isinstance(v_config, dict):
+            typer.echo("Error: --validator-config must be a JSON object", err=True)
+            raise typer.Exit(1)
 
     # Build result_format config
     rf_config: str | ResultFormatConfig = result_format
@@ -126,12 +196,14 @@ def check_cmd(
         report = check(
             str(file),
             validators=validator_list,
+            validator_config=v_config,
             min_severity=min_severity,
             schema=schema_file,
             auto_schema=auto_schema,
             result_format=rf_config,
             catch_exceptions=catch_exceptions,
             max_retries=max_retries,
+            exclude_columns=exclude_cols,
         )
     except Exception as e:
         typer.echo(f"Error: {e}", err=True)

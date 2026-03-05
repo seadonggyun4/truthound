@@ -209,6 +209,16 @@ ColumnsOpt = Annotated[
     ),
 ]
 
+# Exclude columns
+ExcludeColumnsOpt = Annotated[
+    list[str] | None,
+    typer.Option(
+        "--exclude-columns",
+        "-e",
+        help="Columns to exclude from validation (comma-separated)",
+    ),
+]
+
 # Validator selection
 ValidatorsOpt = Annotated[
     list[str] | None,

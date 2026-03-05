@@ -84,6 +84,12 @@ masked_df = th.mask(df, strategy="hash")
 # Statistical profiling
 profile = th.profile("data.csv")
 
+# Column exclusion and per-validator configuration
+report = th.check("users.csv",
+    exclude_columns=["first_name"],                            # Global column exclusion
+    validator_config={"unique": {"exclude_columns": ["email"]}},  # Per-validator config
+)
+
 # Validation Engine Enhancement features
 report = th.check("data.csv",
     result_format="complete",       # 4-level detail control
@@ -97,6 +103,8 @@ report = th.check("data.csv",
 
 ```bash
 truthound check data.csv                    # Validate
+truthound check data.csv -e first_name      # Exclude column from all validators
+truthound check data.csv --validator-config '{"unique": {"exclude_columns": ["first_name"]}}'
 truthound check data.csv --rf complete      # With full result detail
 truthound check data.csv --catch-exceptions --max-retries 2  # Resilient mode
 truthound compare baseline.csv current.csv  # Drift detection
@@ -114,7 +122,7 @@ truthound new validator my_validator        # Code scaffolding
 | Command | Description | Key Options |
 |---------|-------------|-------------|
 | `learn` | Learn schema from data | `--output`, `--no-constraints` |
-| `check` | Validate data quality | `--validators`, `--min-severity`, `--schema`, `--strict`, `--format`, `--rf`, `--catch-exceptions`, `--max-retries` |
+| `check` | Validate data quality | `--validators`, `--exclude-columns`, `--validator-config`, `--min-severity`, `--schema`, `--strict`, `--format`, `--rf`, `--catch-exceptions`, `--max-retries` |
 | `scan` | Scan for PII | `--format`, `--output` |
 | `mask` | Mask sensitive data | `--columns`, `--strategy` (redact/hash/fake), `--strict` |
 | `profile` | Generate data profile | `--format`, `--output` |

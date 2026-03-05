@@ -89,6 +89,7 @@ def check(
     result_format: str | ResultFormat | ResultFormatConfig = ResultFormat.SUMMARY,
     catch_exceptions: bool = True,
     max_retries: int = 0,
+    exclude_columns: list[str] | None = None,
 ) -> Report:
 ```
 
@@ -99,7 +100,7 @@ def check(
 | `data` | `Any` | `None` | Input data (DataFrame, file path, dict) |
 | `source` | `BaseDataSource` | `None` | DataSource for databases (overrides `data`) |
 | `validators` | `list[str \| Validator]` | `None` | Specific validators to run (None = all) |
-| `validator_config` | `dict` | `None` | Configuration for validators |
+| `validator_config` | `dict` | `None` | Per-validator configuration dict |
 | `min_severity` | `str \| Severity` | `None` | Minimum severity to include |
 | `schema` | `Schema \| str \| Path` | `None` | Schema to validate against |
 | `auto_schema` | `bool` | `False` | Auto-learn and cache schema |
@@ -110,6 +111,7 @@ def check(
 | `result_format` | `str \| ResultFormat \| ResultFormatConfig` | `SUMMARY` | Detail level for validation results (VE-1) |
 | `catch_exceptions` | `bool` | `True` | Isolate exceptions instead of aborting (VE-5) |
 | `max_retries` | `int` | `0` | Retry count for transient failures (VE-5) |
+| `exclude_columns` | `list[str]` | `None` | Columns to exclude from all validators globally |
 
 ### Returns
 
@@ -132,6 +134,15 @@ report = th.check(
     "data.csv",
     validators=["regex"],
     validator_config={"regex": {"patterns": {"email": r"^[\w.+-]+@[\w-]+\.[\w.-]+$"}}}
+)
+
+# Exclude columns from all validators
+report = th.check("users.csv", exclude_columns=["first_name", "last_name"])
+
+# Per-validator column exclusion via validator_config
+report = th.check(
+    "users.csv",
+    validator_config={"unique": {"exclude_columns": ["first_name"]}}
 )
 
 # With schema validation

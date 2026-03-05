@@ -21,6 +21,8 @@ truthound check <file> [OPTIONS]
 | Option | Short | Default | Description |
 |--------|-------|---------|-------------|
 | `--validators` | `-v` | None | Comma-separated list of validators to run (runs all validators when not specified) |
+| `--exclude-columns` | `-e` | None | Columns to exclude from all validators (comma-separated) |
+| `--validator-config` | `-vc` | None | Validator configuration as JSON string or path to JSON/YAML file |
 | `--min-severity` | `-s` | None | Minimum severity level to report (low, medium, high, critical) |
 | `--schema` | | None | Schema file for validation |
 | `--auto-schema` | | `false` | Auto-learn and cache schema |
@@ -156,6 +158,50 @@ truthound check data.csv --show-exceptions
 
 # Combined: resilient mode with visibility
 truthound check data.csv --catch-exceptions --max-retries 2 --show-exceptions
+```
+
+### Column Exclusion
+
+Exclude specific columns from all validators globally:
+
+```bash
+# Exclude columns that are expected to have non-unique values
+truthound check users.csv --exclude-columns first_name,last_name
+
+# Combine with specific validators
+truthound check users.csv -v null,unique,schema -e first_name
+```
+
+The `--exclude-columns` option applies to every validator in the run. This is useful when certain columns are known to violate constraints by design (e.g., `first_name` is not expected to be unique).
+
+### Validator Configuration
+
+Pass per-validator configuration via JSON string or file:
+
+```bash
+# Inline JSON: exclude first_name from uniqueness checks only
+truthound check users.csv --validator-config '{"unique": {"exclude_columns": ["first_name"]}}'
+
+# JSON file
+truthound check users.csv --validator-config validator_config.json
+
+# YAML file (requires PyYAML)
+truthound check users.csv --validator-config validator_config.yaml
+```
+
+The `--validator-config` option accepts a JSON object mapping validator names to their configuration dictionaries. Each validator's configuration is passed as keyword arguments to the validator constructor, enabling fine-grained control over individual validator behavior without affecting others.
+
+**Example `validator_config.json`:**
+
+```json
+{
+  "unique": {
+    "exclude_columns": ["first_name", "last_name"]
+  },
+  "range": {
+    "columns": ["age", "price"]
+  }
+}
 ```
 
 ### Output Formats
