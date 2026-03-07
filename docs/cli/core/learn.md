@@ -20,6 +20,7 @@ truthound learn <file> [OPTIONS]
 |--------|-------|---------|-------------|
 | `--output` | `-o` | `schema.yaml` | Output schema file path |
 | `--no-constraints` | | `false` | Don't infer constraints from data |
+| `--categorical-threshold` | | `20` | Maximum unique values to treat a column as categorical |
 
 ## Description
 
@@ -66,6 +67,23 @@ truthound learn data.csv --no-constraints
 ```
 
 This is useful when you want to define constraints manually.
+
+### Categorical Threshold
+
+Control when columns are treated as categorical:
+
+```bash
+# Default: columns with <= 20 unique values are categorical
+truthound learn data.csv
+
+# Higher threshold: treat columns with up to 50 unique values as categorical
+truthound learn data.csv --categorical-threshold 50
+
+# Lower threshold: only truly low-cardinality columns
+truthound learn data.csv --categorical-threshold 5
+```
+
+Columns classified as categorical will have `allowed_values` in the generated schema, enabling strict enum validation.
 
 ### From Different File Formats
 

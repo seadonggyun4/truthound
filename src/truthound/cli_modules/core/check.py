@@ -69,6 +69,27 @@ def check_cmd(
         int,
         typer.Option("--max-unexpected-rows", help="Max failure rows to return"),
     ] = 1000,
+    partial_unexpected_count: Annotated[
+        int,
+        typer.Option(
+            "--partial-unexpected-count",
+            help="Maximum number of unexpected values in partial list (BASIC+)",
+        ),
+    ] = 20,
+    include_unexpected_index: Annotated[
+        bool,
+        typer.Option(
+            "--include-unexpected-index",
+            help="Include row index for each unexpected value in results",
+        ),
+    ] = False,
+    return_debug_query: Annotated[
+        bool,
+        typer.Option(
+            "--return-debug-query",
+            help="Include Polars debug query expression in results (COMPLETE level)",
+        ),
+    ] = False,
     catch_exceptions: Annotated[
         bool,
         typer.Option(
@@ -103,6 +124,46 @@ def check_cmd(
             ),
         ),
     ] = None,
+    # -- Execution Options --
+    parallel: Annotated[
+        bool,
+        typer.Option(
+            "--parallel/--no-parallel",
+            help=(
+                "Enable DAG-based parallel execution. "
+                "Validators are grouped by dependency level and executed concurrently."
+            ),
+        ),
+    ] = False,
+    max_workers: Annotated[
+        Optional[int],
+        typer.Option(
+            "--max-workers",
+            help=(
+                "Maximum worker threads for parallel execution. "
+                "Only effective with --parallel. Defaults to min(32, cpu_count + 4)."
+            ),
+            min=1,
+        ),
+    ] = None,
+    pushdown: Annotated[
+        Optional[bool],
+        typer.Option(
+            "--pushdown/--no-pushdown",
+            help=(
+                "Enable query pushdown for SQL data sources. "
+                "Validation logic is executed server-side when possible. "
+                "Default: auto-detect based on data source type."
+            ),
+        ),
+    ] = None,
+    use_engine: Annotated[
+        bool,
+        typer.Option(
+            "--use-engine/--no-use-engine",
+            help="Use execution engine for validation (experimental).",
+        ),
+    ] = False,
 ) -> None:
     """Validate data quality in a file.
 
@@ -123,6 +184,10 @@ def check_cmd(
         truthound check data.csv --exclude-columns first_name,last_name
         truthound check data.csv --validator-config '{"unique": {"exclude_columns": ["first_name"]}}'
         truthound check data.csv --validator-config config.json
+        truthound check data.csv --parallel --max-workers 8
+        truthound check data.csv --return-debug-query --rf complete
+        truthound check data.csv --partial-unexpected-count 50
+        truthound check data.csv --include-unexpected-index
     """
     from truthound.api import check
     from truthound.types import ResultFormatConfig, ResultFormat
@@ -183,14 +248,26 @@ def check_cmd(
             typer.echo("Error: --validator-config must be a JSON object", err=True)
             raise typer.Exit(1)
 
-    # Build result_format config
-    rf_config: str | ResultFormatConfig = result_format
-    if include_unexpected_rows or max_unexpected_rows != 1000:
+    # Build result_format config — include all fine-grained parameters
+    has_custom_rf = (
+        include_unexpected_rows
+        or max_unexpected_rows != 1000
+        or partial_unexpected_count != 20
+        or include_unexpected_index
+        or return_debug_query
+    )
+    rf_config: str | ResultFormatConfig
+    if has_custom_rf:
         rf_config = ResultFormatConfig(
             format=ResultFormat.from_string(result_format),
+            partial_unexpected_count=partial_unexpected_count,
             include_unexpected_rows=include_unexpected_rows,
             max_unexpected_rows=max_unexpected_rows,
+            include_unexpected_index=include_unexpected_index,
+            return_debug_query=return_debug_query,
         )
+    else:
+        rf_config = result_format
 
     try:
         report = check(
@@ -204,6 +281,10 @@ def check_cmd(
             catch_exceptions=catch_exceptions,
             max_retries=max_retries,
             exclude_columns=exclude_cols,
+            parallel=parallel,
+            max_workers=max_workers,
+            pushdown=pushdown,
+            use_engine=use_engine,
         )
     except Exception as e:
         typer.echo(f"Error: {e}", err=True)

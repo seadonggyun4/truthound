@@ -337,6 +337,95 @@ IterationsOpt = Annotated[
     ),
 ]
 
+# Parallel execution (DAG-based)
+ParallelOpt = Annotated[
+    bool,
+    typer.Option(
+        "--parallel/--no-parallel",
+        help=(
+            "Enable DAG-based parallel execution. "
+            "Validators are grouped by dependency level and executed concurrently."
+        ),
+    ),
+]
+
+# Max workers for parallel execution
+MaxWorkersOpt = Annotated[
+    int | None,
+    typer.Option(
+        "--max-workers",
+        help=(
+            "Maximum worker threads for parallel execution. "
+            "Only effective with --parallel. "
+            "Defaults to min(32, cpu_count + 4)."
+        ),
+        min=1,
+    ),
+]
+
+# Query pushdown for SQL data sources
+PushdownOpt = Annotated[
+    bool | None,
+    typer.Option(
+        "--pushdown/--no-pushdown",
+        help=(
+            "Enable query pushdown for SQL data sources. "
+            "Validation logic is executed server-side when possible. "
+            "Default: auto-detect based on data source type."
+        ),
+    ),
+]
+
+# Execution engine (experimental)
+UseEngineOpt = Annotated[
+    bool,
+    typer.Option(
+        "--use-engine/--no-use-engine",
+        help="Use execution engine for validation (experimental).",
+    ),
+]
+
+# Partial unexpected count
+PartialUnexpectedCountOpt = Annotated[
+    int,
+    typer.Option(
+        "--partial-unexpected-count",
+        help="Maximum number of unexpected values in partial list (BASIC+).",
+        min=0,
+    ),
+]
+
+# Include unexpected index
+IncludeUnexpectedIndexOpt = Annotated[
+    bool,
+    typer.Option(
+        "--include-unexpected-index",
+        help="Include row index for each unexpected value in results.",
+    ),
+]
+
+# Return debug query
+ReturnDebugQueryOpt = Annotated[
+    bool,
+    typer.Option(
+        "--return-debug-query",
+        help="Include Polars debug query expression in results (COMPLETE level).",
+    ),
+]
+
+# Categorical threshold for schema learning
+CategoricalThresholdOpt = Annotated[
+    int,
+    typer.Option(
+        "--categorical-threshold",
+        help=(
+            "Maximum unique values to treat a column as categorical "
+            "during schema inference."
+        ),
+        min=1,
+    ),
+]
+
 
 # =============================================================================
 # Option Groups (for related options)

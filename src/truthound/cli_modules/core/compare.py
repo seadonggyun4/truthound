@@ -31,11 +31,27 @@ def compare_cmd(
     ] = None,
     method: Annotated[
         str,
-        typer.Option("--method", "-m", help="Detection method (auto, ks, psi, chi2, js)"),
+        typer.Option(
+            "--method",
+            "-m",
+            help=(
+                "Detection method: auto, ks, psi, chi2, js, kl, wasserstein, "
+                "cvm, anderson, hellinger, bhattacharyya, tv, energy, mmd"
+            ),
+        ),
     ] = "auto",
     threshold: Annotated[
         Optional[float],
         typer.Option("--threshold", "-t", help="Custom drift threshold"),
+    ] = None,
+    sample_size: Annotated[
+        Optional[int],
+        typer.Option(
+            "--sample-size",
+            "--sample",
+            help="Sample size for large datasets. Uses random sampling for faster comparison.",
+            min=1,
+        ),
     ] = None,
     format: Annotated[
         str,
@@ -56,17 +72,28 @@ def compare_cmd(
     detects statistical drift in column distributions.
 
     Detection Methods:
-        - auto: Automatically select best method per column
+        - auto: Automatically select best method per column (recommended)
         - ks: Kolmogorov-Smirnov test (numeric)
-        - psi: Population Stability Index
+        - psi: Population Stability Index (ML monitoring)
         - chi2: Chi-squared test (categorical)
-        - js: Jensen-Shannon divergence
+        - js: Jensen-Shannon divergence (any type)
+        - kl: Kullback-Leibler divergence (numeric)
+        - wasserstein: Earth Mover's distance (numeric)
+        - cvm: Cramér-von Mises test (numeric, tail-sensitive)
+        - anderson: Anderson-Darling test (numeric, extreme values)
+        - hellinger: Hellinger distance (bounded metric)
+        - bhattacharyya: Bhattacharyya distance (classification bounds)
+        - tv: Total Variation distance (max probability diff)
+        - energy: Energy distance (location/scale)
+        - mmd: Maximum Mean Discrepancy (high-dimensional)
 
     Examples:
         truthound compare baseline.csv current.csv
         truthound compare ref.parquet new.parquet --method psi
         truthound compare old.csv new.csv --threshold 0.2 --strict
         truthound compare old.csv new.csv --columns price,quantity
+        truthound compare big_train.csv big_prod.csv --sample-size 10000
+        truthound compare baseline.csv current.csv --method wasserstein
     """
     from truthound.drift import compare
 
@@ -84,6 +111,7 @@ def compare_cmd(
             columns=column_list,
             method=method,
             threshold=threshold,
+            sample_size=sample_size,
         )
     except Exception as e:
         typer.echo(f"Error: {e}", err=True)

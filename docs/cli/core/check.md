@@ -37,6 +37,9 @@ truthound check <file> [OPTIONS]
 | `--result-format` | `--rf` | `summary` | Detail level: `boolean_only`, `basic`, `summary`, `complete` |
 | `--include-unexpected-rows` | | `false` | Include failing rows in output (requires `--rf complete`) |
 | `--max-unexpected-rows` | | `1000` | Maximum number of unexpected rows to include |
+| `--partial-unexpected-count` | | `20` | Maximum number of unexpected values in partial list (BASIC+) |
+| `--include-unexpected-index` | | `false` | Include row index for each unexpected value in results |
+| `--return-debug-query` | | `false` | Include Polars debug query expression in results (COMPLETE level) |
 
 ### Exception Handling Options (VE-5)
 
@@ -45,6 +48,15 @@ truthound check <file> [OPTIONS]
 | `--catch-exceptions` / `--no-catch-exceptions` | | `true` | Isolate validator exceptions instead of aborting |
 | `--max-retries` | | `0` | Number of retries for transient failures |
 | `--show-exceptions` | | `false` | Display exception details in output |
+
+### Execution Options
+
+| Option | Short | Default | Description |
+|--------|-------|---------|-------------|
+| `--parallel` / `--no-parallel` | | `false` | Enable DAG-based parallel execution with dependency-aware scheduling |
+| `--max-workers` | | Auto | Maximum worker threads (only with `--parallel`). Defaults to `min(32, cpu_count + 4)` |
+| `--pushdown` / `--no-pushdown` | | Auto | Enable query pushdown for SQL data sources. Auto-detects by default |
+| `--use-engine` / `--no-use-engine` | | `false` | Use execution engine for validation (experimental) |
 
 ## Description
 
@@ -140,6 +152,58 @@ truthound check data.csv --rf complete --include-unexpected-rows
 
 # Limit unexpected rows
 truthound check data.csv --rf complete --include-unexpected-rows --max-unexpected-rows 500
+```
+
+### Parallel Execution
+
+Enable DAG-based parallel execution for large validator sets:
+
+```bash
+# Enable parallel execution with automatic worker count
+truthound check data.csv --parallel
+
+# Control the number of worker threads
+truthound check data.csv --parallel --max-workers 8
+
+# Combine with other options
+truthound check data.csv --parallel --max-workers 4 --rf summary --strict
+```
+
+Validators are organized into dependency levels (Schema → Completeness → Uniqueness → Distribution → Referential) and executed concurrently within each level.
+
+### Advanced Result Format Control
+
+Fine-tune the detail level of validation results:
+
+```bash
+# Control partial unexpected list size
+truthound check data.csv --rf basic --partial-unexpected-count 50
+
+# Include row indices for unexpected values
+truthound check data.csv --rf summary --include-unexpected-index
+
+# Include Polars debug query in results (for troubleshooting)
+truthound check data.csv --rf complete --return-debug-query
+
+# All fine-grained options combined
+truthound check data.csv --rf complete \
+    --include-unexpected-rows \
+    --max-unexpected-rows 500 \
+    --partial-unexpected-count 100 \
+    --include-unexpected-index \
+    --return-debug-query
+```
+
+### Query Pushdown
+
+For SQL data sources, enable server-side validation:
+
+```bash
+# Auto-detect pushdown capability
+truthound check data.csv --pushdown
+
+# Explicitly disable pushdown
+truthound check data.csv --no-pushdown
 ```
 
 ### Exception Handling (VE-5)

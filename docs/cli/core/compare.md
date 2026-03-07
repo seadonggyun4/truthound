@@ -22,6 +22,7 @@ truthound compare <baseline> <current> [OPTIONS]
 | `--columns` | `-c` | All | Comma-separated columns to compare |
 | `--method` | `-m` | `auto` | Detection method (see [Detection Methods](#detection-methods)) |
 | `--threshold` | `-t` | Auto | Custom drift threshold |
+| `--sample-size` | `--sample` | None | Sample size for large datasets (random sampling) |
 | `--format` | `-f` | `console` | Output format (console, json) |
 | `--output` | `-o` | None | Output file path |
 | `--strict` | | `false` | Exit with code 1 if drift detected |
@@ -126,6 +127,19 @@ truthound compare baseline.csv current.csv --method energy
 
 # Maximum Mean Discrepancy (MMD)
 truthound compare baseline.csv current.csv --method mmd
+```
+
+### Large Dataset Sampling
+
+For large datasets, use sampling for faster comparison:
+
+```bash
+# Sample 10,000 rows from each dataset
+truthound compare big_train.csv big_prod.csv --sample-size 10000
+
+# Combine with method and threshold
+truthound compare large_baseline.parquet large_current.parquet \
+    --sample-size 50000 --method psi --threshold 0.15
 ```
 
 ### Custom Threshold

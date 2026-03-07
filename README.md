@@ -107,7 +107,11 @@ truthound check data.csv -e first_name      # Exclude column from all validators
 truthound check data.csv --validator-config '{"unique": {"exclude_columns": ["first_name"]}}'
 truthound check data.csv --rf complete      # With full result detail
 truthound check data.csv --catch-exceptions --max-retries 2  # Resilient mode
+truthound check data.csv --parallel --max-workers 8          # DAG parallel execution
+truthound check data.csv --return-debug-query --rf complete  # Debug query output
 truthound compare baseline.csv current.csv  # Drift detection
+truthound compare big.csv new.csv --sample-size 10000        # Sampled comparison
+truthound learn data.csv --categorical-threshold 50          # Custom threshold
 truthound scan data.csv                     # PII scanning
 truthound auto-profile data.csv             # Profiling
 truthound new validator my_validator        # Code scaffolding
@@ -121,12 +125,12 @@ truthound new validator my_validator        # Code scaffolding
 
 | Command | Description | Key Options |
 |---------|-------------|-------------|
-| `learn` | Learn schema from data | `--output`, `--no-constraints` |
-| `check` | Validate data quality | `--validators`, `--exclude-columns`, `--validator-config`, `--min-severity`, `--schema`, `--strict`, `--format`, `--rf`, `--catch-exceptions`, `--max-retries` |
+| `learn` | Learn schema from data | `--output`, `--no-constraints`, `--categorical-threshold` |
+| `check` | Validate data quality | `--validators`, `--exclude-columns`, `--validator-config`, `--min-severity`, `--schema`, `--strict`, `--format`, `--rf`, `--catch-exceptions`, `--max-retries`, `--parallel`, `--max-workers`, `--pushdown`, `--partial-unexpected-count`, `--return-debug-query`, `--include-unexpected-index` |
 | `scan` | Scan for PII | `--format`, `--output` |
 | `mask` | Mask sensitive data | `--columns`, `--strategy` (redact/hash/fake), `--strict` |
 | `profile` | Generate data profile | `--format`, `--output` |
-| `compare` | Detect data drift | `--method` (auto/ks/psi/chi2/js), `--threshold`, `--strict` |
+| `compare` | Detect data drift | `--method` (14 methods), `--threshold`, `--sample-size`, `--strict` |
 
 ### Profiler Commands
 

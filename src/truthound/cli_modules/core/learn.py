@@ -28,6 +28,17 @@ def learn_cmd(
         bool,
         typer.Option("--no-constraints", help="Don't infer constraints from data"),
     ] = False,
+    categorical_threshold: Annotated[
+        int,
+        typer.Option(
+            "--categorical-threshold",
+            help=(
+                "Maximum unique values to treat a column as categorical "
+                "during schema inference (default: 20)"
+            ),
+            min=1,
+        ),
+    ] = 20,
 ) -> None:
     """Learn schema from a data file.
 
@@ -38,6 +49,7 @@ def learn_cmd(
         truthound learn data.csv
         truthound learn data.parquet -o my_schema.yaml
         truthound learn data.csv --no-constraints
+        truthound learn data.csv --categorical-threshold 50
     """
     from truthound.schema import learn
 
@@ -45,7 +57,11 @@ def learn_cmd(
     require_file(file)
 
     try:
-        schema = learn(str(file), infer_constraints=not no_constraints)
+        schema = learn(
+            str(file),
+            infer_constraints=not no_constraints,
+            categorical_threshold=categorical_threshold,
+        )
         schema.save(output)
 
         typer.echo(f"Schema saved to {output}")
