@@ -45,7 +45,7 @@ Truthound is a data quality validation framework built on Polars, a Rust-based D
 | Metric | Value |
 |--------|-------|
 | Test Cases | 8,585+ |
-| Validators | 264 |
+| Validators | 289 |
 | Validator Categories | 28 |
 | VE Test Cases | 316 (Validation Engine Enhancement) |
 
