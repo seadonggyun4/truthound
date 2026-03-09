@@ -187,27 +187,23 @@ def get_datasource(
 
         # Check if it might be a SQL connection string
         if isinstance(data, str):
-            if data.startswith(("postgresql://", "postgres://")):
+            sql_prefixes = (
+                "postgresql://", "postgres://", "mysql://",
+                "sqlite:", "duckdb:", "mssql://", "sqlserver://",
+            )
+            sql_suffixes = (".db", ".duckdb")
+            is_sql = (
+                data.startswith(sql_prefixes)
+                or data.endswith(sql_suffixes)
+                or "redshift.amazonaws.com" in data
+            )
+            if is_sql:
                 table = kwargs.pop("table", None)
                 if not table:
                     raise DataSourceError(
                         "SQL connection string requires 'table' parameter"
                     )
-                from truthound.datasources.sql import PostgreSQLDataSource
-                return PostgreSQLDataSource.from_connection_string(
-                    data, table=table, **kwargs
-                )
-
-            if data.startswith("mysql://"):
-                table = kwargs.pop("table", None)
-                if not table:
-                    raise DataSourceError(
-                        "SQL connection string requires 'table' parameter"
-                    )
-                from truthound.datasources.sql import MySQLDataSource
-                return MySQLDataSource.from_connection_string(
-                    data, table=table, **kwargs
-                )
+                return get_sql_datasource(data, table=table, **kwargs)
 
         # File doesn't exist
         if not path.exists():
@@ -257,9 +253,40 @@ def get_sql_datasource(
             connection_string, table=table, **kwargs
         )
 
+    # SQLite: URI format (sqlite:///path) or file path (.db)
+    if connection_string.startswith("sqlite:"):
+        # sqlite:///path/to/db or sqlite:///:memory:
+        db_path = connection_string.replace("sqlite:///", "").replace("sqlite://", "")
+        if not db_path:
+            db_path = ":memory:"
+        from truthound.datasources.sql import SQLiteDataSource
+        return SQLiteDataSource(table=table, database=db_path, **kwargs)
+
     if connection_string.endswith(".db") or connection_string == ":memory:":
         from truthound.datasources.sql import SQLiteDataSource
         return SQLiteDataSource(table=table, database=connection_string, **kwargs)
+
+    # DuckDB: URI format (duckdb:///path) or file suffix (.duckdb)
+    if connection_string.startswith("duckdb:") or connection_string.endswith(".duckdb"):
+        try:
+            from truthound.datasources.sql import DuckDBDataSource
+        except ImportError:
+            raise DataSourceError(
+                "DuckDB support requires duckdb. "
+                "Install with: pip install duckdb"
+            )
+        if DuckDBDataSource is None:
+            raise DataSourceError(
+                "DuckDB support requires duckdb. "
+                "Install with: pip install duckdb"
+            )
+        if connection_string.startswith("duckdb:"):
+            db_path = connection_string.replace("duckdb:///", "").replace("duckdb://", "")
+            if not db_path:
+                db_path = ":memory:"
+        else:
+            db_path = connection_string
+        return DuckDBDataSource(table=table, database=db_path, **kwargs)
 
     # Oracle
     if connection_string.startswith("oracle://") or "oracle" in connection_string.lower():
@@ -305,7 +332,8 @@ def get_sql_datasource(
 
     raise DataSourceError(
         f"Unsupported SQL connection string format: {connection_string}. "
-        "Supported: postgresql://, mysql://, mssql://, SQLite file path. "
+        "Supported: postgresql://, mysql://, sqlite:///path, duckdb:///path, "
+        "mssql://, sqlserver://, *.db, *.duckdb. "
         "For BigQuery, Snowflake, Redshift, Databricks, use their specific classes."
     )
 
@@ -343,8 +371,12 @@ def detect_datasource_type(data: Any) -> str:
                 return "postgresql"
             if "mysql" in data:
                 return "mysql"
-            if data.endswith(".db") or data == ":memory:":
+            if data.startswith("sqlite:") or data.endswith(".db") or data == ":memory:":
                 return "sqlite"
+            if data.startswith("duckdb:") or data.endswith(".duckdb"):
+                return "duckdb"
+            if data.startswith(("mssql://", "sqlserver://")):
+                return "sqlserver"
     return "unknown"
 
 
@@ -431,3 +463,80 @@ def from_dict(data: dict[str, list], name: str | None = None) -> DataSourceProto
     """
     from truthound.datasources.polars_source import DictDataSource
     return DictDataSource(data)
+
+
+def get_datasource_from_config(config: dict[str, Any]) -> DataSourceProtocol:
+    """Create a DataSource from a configuration dictionary.
+
+    Convenience function for creating data sources from parsed
+    configuration files (JSON/YAML). Delegates to ``get_sql_datasource()``
+    for connection-string-based configs or constructs backend-specific
+    classes from individual parameters.
+
+    Config styles supported:
+
+        Connection string::
+
+            {"connection": "postgresql://user:pass@host/db", "table": "users"}
+
+        Individual parameters::
+
+            {"type": "postgresql", "host": "localhost", "database": "mydb",
+             "user": "postgres", "password": "...", "table": "users"}
+
+    Args:
+        config: Configuration dictionary with connection details.
+
+    Returns:
+        Configured DataSource instance.
+
+    Raises:
+        DataSourceError: If the config is invalid or backend unavailable.
+    """
+    connection = config.get("connection")
+    table = config.get("table")
+    query = config.get("query")
+    source_type = config.get("type")
+
+    # Style 1: Connection string
+    if connection:
+        if not table and not query:
+            raise DataSourceError(
+                "Config with 'connection' requires 'table' or 'query'."
+            )
+        return get_sql_datasource(
+            connection, table=table or "__query__", query=query
+        )
+
+    # Style 2: Individual parameters
+    if not source_type:
+        raise DataSourceError(
+            "Config must have either 'connection' or 'type' field."
+        )
+
+    if not table and not query:
+        raise DataSourceError(
+            f"Config for type '{source_type}' requires 'table' or 'query'."
+        )
+
+    from truthound.datasources.sql import get_available_sources
+
+    available = get_available_sources()
+    source_cls = available.get(source_type)
+    if source_cls is None:
+        available_names = [k for k, v in available.items() if v is not None]
+        raise DataSourceError(
+            f"Data source type '{source_type}' is not available. "
+            f"Available: {', '.join(available_names)}."
+        )
+
+    # Build kwargs (exclude meta keys)
+    meta_keys = {"type", "table", "query", "name"}
+    kwargs: dict[str, Any] = {"table": table} if table else {}
+    if query:
+        kwargs["query"] = query
+    for key, value in config.items():
+        if key not in meta_keys:
+            kwargs[key] = value
+
+    return source_cls(**kwargs)
