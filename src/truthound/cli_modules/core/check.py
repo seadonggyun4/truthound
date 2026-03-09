@@ -1,7 +1,7 @@
 """Check command - Validate data quality.
 
-This module implements the `truthound check` command for validating
-data quality in files.
+This module implements the ``truthound check`` command for validating
+data quality in files and database tables.
 """
 
 from __future__ import annotations
@@ -11,6 +11,14 @@ from typing import Annotated, Any, Optional
 
 import typer
 
+from truthound.cli_modules.common.datasource import (
+    ConnectionOpt,
+    QueryOpt,
+    SourceConfigOpt,
+    SourceNameOpt,
+    TableOpt,
+    resolve_datasource,
+)
 from truthound.cli_modules.common.errors import error_boundary, require_file
 from truthound.cli_modules.common.options import parse_list_callback
 
@@ -18,9 +26,18 @@ from truthound.cli_modules.common.options import parse_list_callback
 @error_boundary
 def check_cmd(
     file: Annotated[
-        Path,
-        typer.Argument(help="Path to the data file"),
-    ],
+        Optional[Path],
+        typer.Argument(
+            help="Path to the data file (CSV, JSON, Parquet, NDJSON)",
+        ),
+    ] = None,
+    # -- DataSource Options --
+    connection: ConnectionOpt = None,
+    table: TableOpt = None,
+    query: QueryOpt = None,
+    source_config: SourceConfigOpt = None,
+    source_name: SourceNameOpt = None,
+    # -- Validator Options --
     validators: Annotated[
         Optional[list[str]],
         typer.Option("--validators", "-v", help="Comma-separated list of validators"),
@@ -165,10 +182,11 @@ def check_cmd(
         ),
     ] = False,
 ) -> None:
-    """Validate data quality in a file.
+    """Validate data quality in a file or database table.
 
-    This command runs data quality validators on the specified file and
-    reports any issues found.
+    This command runs data quality validators on the specified data
+    and reports any issues found. Supports file paths, database
+    connections, and source config files.
 
     Examples:
         truthound check data.csv
@@ -177,23 +195,25 @@ def check_cmd(
         truthound check data.csv --auto-schema
         truthound check data.csv --format json -o report.json
         truthound check data.csv --result-format complete
-        truthound check data.csv --rf boolean_only
-        truthound check data.csv --no-catch-exceptions
-        truthound check data.csv --max-retries 3
-        truthound check data.csv --show-exceptions --format json
-        truthound check data.csv --exclude-columns first_name,last_name
-        truthound check data.csv --validator-config '{"unique": {"exclude_columns": ["first_name"]}}'
-        truthound check data.csv --validator-config config.json
+        truthound check --connection "postgresql://user:pass@host/db" --table users
+        truthound check --conn "sqlite:///data.db" --table orders --pushdown
+        truthound check --source-config db.yaml --strict
         truthound check data.csv --parallel --max-workers 8
-        truthound check data.csv --return-debug-query --rf complete
-        truthound check data.csv --partial-unexpected-count 50
-        truthound check data.csv --include-unexpected-index
+        truthound check data.csv --exclude-columns first_name,last_name
     """
     from truthound.api import check
     from truthound.types import ResultFormatConfig, ResultFormat
 
-    # Validate files exist
-    require_file(file)
+    # Resolve data source
+    data_path, source = resolve_datasource(
+        file=file,
+        connection=connection,
+        table=table,
+        query=query,
+        source_config=source_config,
+        source_name=source_name,
+    )
+
     if schema_file:
         require_file(schema_file, "Schema file")
 
@@ -269,26 +289,34 @@ def check_cmd(
     else:
         rf_config = result_format
 
+    # Build API call kwargs
+    check_kwargs: dict[str, Any] = {
+        "validators": validator_list,
+        "validator_config": v_config,
+        "min_severity": min_severity,
+        "schema": schema_file,
+        "auto_schema": auto_schema,
+        "result_format": rf_config,
+        "catch_exceptions": catch_exceptions,
+        "max_retries": max_retries,
+        "exclude_columns": exclude_cols,
+        "parallel": parallel,
+        "max_workers": max_workers,
+        "pushdown": pushdown,
+        "use_engine": use_engine,
+    }
+
     try:
-        report = check(
-            str(file),
-            validators=validator_list,
-            validator_config=v_config,
-            min_severity=min_severity,
-            schema=schema_file,
-            auto_schema=auto_schema,
-            result_format=rf_config,
-            catch_exceptions=catch_exceptions,
-            max_retries=max_retries,
-            exclude_columns=exclude_cols,
-            parallel=parallel,
-            max_workers=max_workers,
-            pushdown=pushdown,
-            use_engine=use_engine,
-        )
+        if source is not None:
+            report = check(source=source, **check_kwargs)
+        else:
+            report = check(data_path, **check_kwargs)
     except Exception as e:
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(1)
+
+    # Determine label for HTML report title
+    report_label = source_name or (source.name if source else str(file))
 
     # Output the report
     if format == "json":
@@ -306,7 +334,7 @@ def check_cmd(
         try:
             from truthound.html_reporter import generate_html_report
 
-            html = generate_html_report(report, title=f"Validation Report: {file.name}")
+            html = generate_html_report(report, title=f"Validation Report: {report_label}")
             output.write_text(html, encoding="utf-8")
             typer.echo(f"HTML report written to {output}")
         except ImportError as e:
