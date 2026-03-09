@@ -180,6 +180,53 @@ class TestValidatorConfig:
             assert call_kwargs["validator_config"] is None
 
 
+class TestCheckDatasourceOptions:
+    """Tests for --connection, --table, and --source-config on check."""
+
+    def test_check_with_connection_string(self, runner, app):
+        """--connection + --table passes source to API."""
+        with (
+            patch("truthound.datasources.factory.get_sql_datasource") as mock_sql,
+            patch("truthound.api.check") as mock_check,
+        ):
+            import polars as pl
+            mock_source = MagicMock()
+            mock_source.name = "users"
+            mock_source.to_polars_lazyframe.return_value = pl.LazyFrame({"id": [1]})
+            mock_sql.return_value = mock_source
+
+            mock_report = MagicMock()
+            mock_report.has_issues = False
+            mock_report.exception_summary = None
+            mock_check.return_value = mock_report
+
+            result = runner.invoke(app, [
+                "--connection", "postgresql://user:pass@host/db",
+                "--table", "users",
+            ])
+
+            assert result.exit_code == 0
+            # check() should be called with source= keyword
+            call_kwargs = mock_check.call_args
+            assert call_kwargs.kwargs.get("source") is not None
+
+    def test_check_file_and_connection_mutually_exclusive(self, runner, app, sample_csv):
+        """Both file and --connection raises error."""
+        result = runner.invoke(app, [
+            str(sample_csv),
+            "--connection", "postgresql://host/db",
+            "--table", "t",
+        ])
+        assert result.exit_code != 0
+
+    def test_check_connection_without_table_error(self, runner, app):
+        """--connection without --table raises error."""
+        result = runner.invoke(app, [
+            "--connection", "postgresql://host/db",
+        ])
+        assert result.exit_code != 0
+
+
 class TestCombinedOptions:
     """Tests for combined --exclude-columns and --validator-config."""
 
