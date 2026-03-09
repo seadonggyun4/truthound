@@ -15,6 +15,13 @@ truthound compare <baseline> <current> [OPTIONS]
 | `baseline` | Yes | Path to the baseline (reference) data file |
 | `current` | Yes | Path to the current data file to compare |
 
+## Data Source Options
+
+| Option | Short | Default | Description |
+|--------|-------|---------|-------------|
+| `--source-config` | `--sc` | None | Path to data source config file (JSON/YAML) for dual-source comparison |
+| `--source-name` | | None | Custom label for the data source |
+
 ## Options
 
 | Option | Short | Default | Description |

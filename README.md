@@ -115,6 +115,13 @@ truthound learn data.csv --categorical-threshold 50          # Custom threshold
 truthound scan data.csv                     # PII scanning
 truthound auto-profile data.csv             # Profiling
 truthound new validator my_validator        # Code scaffolding
+
+# Database connections (all core commands support --connection/--table)
+truthound check --connection "postgresql://user:pass@host/db" --table users
+truthound scan --connection "sqlite:///data.db" --table orders
+truthound read --connection "postgresql://host/db" --table users --head 20
+truthound read data.csv --schema-only       # Inspect schema
+truthound compare --source-config drift.yaml  # Dual-source drift detection
 ```
 
 ---
@@ -125,12 +132,15 @@ truthound new validator my_validator        # Code scaffolding
 
 | Command | Description | Key Options |
 |---------|-------------|-------------|
+| `read` | Read and preview data | `--head`, `--sample`, `--columns`, `--schema-only`, `--count-only`, `--format` |
 | `learn` | Learn schema from data | `--output`, `--no-constraints`, `--categorical-threshold` |
 | `check` | Validate data quality | `--validators`, `--exclude-columns`, `--validator-config`, `--min-severity`, `--schema`, `--strict`, `--format`, `--rf`, `--catch-exceptions`, `--max-retries`, `--parallel`, `--max-workers`, `--pushdown`, `--partial-unexpected-count`, `--return-debug-query`, `--include-unexpected-index` |
 | `scan` | Scan for PII | `--format`, `--output` |
 | `mask` | Mask sensitive data | `--columns`, `--strategy` (redact/hash/fake), `--strict` |
 | `profile` | Generate data profile | `--format`, `--output` |
 | `compare` | Detect data drift | `--method` (14 methods), `--threshold`, `--sample-size`, `--strict` |
+
+All core commands accept **Data Source Options**: `--connection`/`--conn`, `--table`, `--query`, `--source-config`/`--sc`, `--source-name` for database connectivity (PostgreSQL, MySQL, SQLite, DuckDB, SQL Server, etc.).
 
 ### Profiler Commands
 

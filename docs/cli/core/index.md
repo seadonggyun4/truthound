@@ -11,6 +11,7 @@ The core commands provide essential data quality operations for validation, prof
 | [`scan`](scan.md) | Scan for PII | Privacy compliance |
 | [`mask`](mask.md) | Mask sensitive data | Data anonymization |
 | [`profile`](profile.md) | Generate data profile | Data exploration |
+| [`read`](read.md) | Read and preview data | Data inspection |
 | [`compare`](compare.md) | Detect data drift | Model monitoring |
 
 ## Typical Workflow
@@ -110,6 +111,31 @@ truthound check data.csv --strict
 truthound compare baseline.csv current.csv --strict
 ```
 
+## Data Source Options
+
+All core commands accept data source options for reading directly from databases instead of files. When using these options, the file argument becomes optional.
+
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--connection` | `--conn` | Database connection string (e.g., `postgresql://user:pass@host/db`) |
+| `--table` | | Database table name |
+| `--query` | | SQL query (alternative to `--table`) |
+| `--source-config` | `--sc` | Path to a data source config file (JSON/YAML) |
+| `--source-name` | | Custom label for the data source |
+
+```bash
+# Validate a database table directly
+truthound check --connection "postgresql://user:pass@host/db" --table users --strict
+
+# Profile from a source config file
+truthound profile --source-config prod_db.yaml
+
+# Read and preview database data
+truthound read --connection "sqlite:///data.db" --table orders --head 20
+```
+
+For full details on connection string formats, config files, and security best practices, see the [CLI Data Source Guide](../../guides/datasources/cli-datasource-guide.md).
+
 ## CI/CD Integration
 
 Use core commands in your CI/CD pipeline:
@@ -125,6 +151,7 @@ Use core commands in your CI/CD pipeline:
 
 ## Next Steps
 
+- [read](read.md) - Read and preview data
 - [learn](learn.md) - Learn schema from data
 - [check](check.md) - Validate data quality
 - [scan](scan.md) - Scan for PII

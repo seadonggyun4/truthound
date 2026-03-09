@@ -5,14 +5,24 @@ Validate data quality in a file. This command runs validators against your data 
 ## Synopsis
 
 ```bash
-truthound check <file> [OPTIONS]
+truthound check [FILE] [OPTIONS]
 ```
 
 ## Arguments
 
 | Argument | Required | Description |
 |----------|----------|-------------|
-| `file` | Yes | Path to the data file (CSV, JSON, Parquet, NDJSON, JSONL) |
+| `file` | No | Path to the data file (CSV, JSON, Parquet, NDJSON, JSONL) |
+
+## Data Source Options
+
+| Option | Short | Default | Description |
+|--------|-------|---------|-------------|
+| `--connection` | `--conn` | None | Database connection string |
+| `--table` | | None | Database table name |
+| `--query` | | None | SQL query (alternative to `--table`) |
+| `--source-config` | `--sc` | None | Path to data source config file (JSON/YAML) |
+| `--source-name` | | None | Custom label for the data source |
 
 ## Options
 
@@ -192,6 +202,25 @@ truthound check data.csv --rf complete \
     --partial-unexpected-count 100 \
     --include-unexpected-index \
     --return-debug-query
+```
+
+### Database Validation
+
+Validate data directly from a database connection:
+
+```bash
+# Validate a PostgreSQL table
+truthound check --connection "postgresql://user:pass@host/db" --table users
+
+# Validate with a SQL query
+truthound check --connection "sqlite:///data.db" --query "SELECT * FROM orders WHERE status = 'active'"
+
+# Validate using a source config file
+truthound check --source-config db_config.yaml --strict
+
+# Combine with other options
+truthound check --connection "postgresql://user:pass@host/db" --table users \
+    -v null,unique --rf summary --strict
 ```
 
 ### Query Pushdown

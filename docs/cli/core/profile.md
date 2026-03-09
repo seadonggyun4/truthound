@@ -5,14 +5,24 @@ Generate a statistical profile of the data. This command provides summary statis
 ## Synopsis
 
 ```bash
-truthound profile <file> [OPTIONS]
+truthound profile [FILE] [OPTIONS]
 ```
 
 ## Arguments
 
 | Argument | Required | Description |
 |----------|----------|-------------|
-| `file` | Yes | Path to the data file (CSV, JSON, Parquet, NDJSON, JSONL) |
+| `file` | No | Path to the data file (CSV, JSON, Parquet, NDJSON, JSONL) |
+
+## Data Source Options
+
+| Option | Short | Default | Description |
+|--------|-------|---------|-------------|
+| `--connection` | `--conn` | None | Database connection string |
+| `--table` | | None | Database table name |
+| `--query` | | None | SQL query (alternative to `--table`) |
+| `--source-config` | `--sc` | None | Path to data source config file (JSON/YAML) |
+| `--source-name` | | None | Custom label for the data source |
 
 ## Options
 
