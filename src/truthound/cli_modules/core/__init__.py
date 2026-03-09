@@ -1,6 +1,7 @@
 """Core CLI commands for Truthound.
 
 This package contains the fundamental CLI commands:
+    - read: Read and preview data
     - learn: Learn schema from data files
     - check: Validate data quality
     - scan: Scan for PII
@@ -11,6 +12,7 @@ This package contains the fundamental CLI commands:
 
 import typer
 
+from truthound.cli_modules.core.read import read_cmd
 from truthound.cli_modules.core.learn import learn_cmd
 from truthound.cli_modules.core.check import check_cmd
 from truthound.cli_modules.core.scan import scan_cmd
@@ -28,6 +30,7 @@ def register_commands(parent_app: typer.Typer) -> None:
     Args:
         parent_app: Parent Typer app to register commands to
     """
+    parent_app.command(name="read")(read_cmd)
     parent_app.command(name="learn")(learn_cmd)
     parent_app.command(name="check")(check_cmd)
     parent_app.command(name="scan")(scan_cmd)
@@ -39,6 +42,7 @@ def register_commands(parent_app: typer.Typer) -> None:
 __all__ = [
     "app",
     "register_commands",
+    "read_cmd",
     "learn_cmd",
     "check_cmd",
     "scan_cmd",
