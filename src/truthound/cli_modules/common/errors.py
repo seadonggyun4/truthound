@@ -56,6 +56,10 @@ class ErrorCode(Enum):
     DATA_EMPTY = 51
     DATA_CORRUPT = 52
 
+    # DataSource errors (55-59)
+    DATASOURCE_ERROR = 55
+    DATASOURCE_CONNECTION_ERROR = 56
+
 
 # =============================================================================
 # Exception Classes
@@ -220,6 +224,30 @@ class DataError(CLIError):
             hint=hint,
         )
         self.data_path = data_path
+
+
+class DataSourceError(CLIError):
+    """Error with data source connection or configuration."""
+
+    def __init__(
+        self,
+        message: str,
+        source_type: str | None = None,
+        hint: str | None = None,
+    ) -> None:
+        """Initialize data source error.
+
+        Args:
+            message: Error message
+            source_type: Type of data source (e.g., "postgresql", "mysql")
+            hint: Resolution hint
+        """
+        super().__init__(
+            message=message,
+            code=ErrorCode.DATASOURCE_ERROR,
+            details={"source_type": source_type} if source_type else {},
+            hint=hint or "Check the connection string, credentials, and table name.",
+        )
 
 
 # =============================================================================
