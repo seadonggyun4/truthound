@@ -1,18 +1,21 @@
-/* Truthound Custom Theme Colors */
+/* ===================================================
+   Truthound Theme – CSS-only, no JavaScript required
+   =================================================== */
+
+/* ----- Color Tokens ----- */
 
 :root,
 [data-md-color-scheme="default"] {
-  /* Hue for Material's HSL-based variables (blue 225 → orange 25) */
   --md-hue: 25deg;
 
-  /* Primary palette */
+  /* Primary */
   --md-primary-fg-color: #d4854a;
   --md-primary-fg-color--light: #e2a06e;
   --md-primary-fg-color--dark: #b76b34;
   --md-primary-bg-color: #fff;
   --md-primary-bg-color--light: rgba(255, 255, 255, 0.7);
 
-  /* Accent palette (hover, focus, active states) */
+  /* Accent (hover / focus / active) */
   --md-accent-fg-color: #d4854a;
   --md-accent-fg-color--transparent: rgba(212, 133, 74, 0.1);
   --md-accent-bg-color: #fff;
@@ -20,184 +23,122 @@
 
   /* Search highlight */
   --md-typeset-mark-color: rgba(212, 133, 74, 0.3);
-
-  /* Toggle dimensions */
-  --th-transition-duration: 0.32s;
-  --th-transition-curve: cubic-bezier(0.4, 0, 0.2, 1);
-  --th-toggle-width: 4.5rem;
-  --th-toggle-height: 2.25rem;
-  --th-toggle-padding: 0.2rem;
-  --th-toggle-thumb-size: 1.85rem;
 }
 
-/* Dark mode adjustments */
 [data-md-color-scheme="slate"] {
   --md-hue: 25deg;
 
-  /* Primary palette */
+  /* Primary */
   --md-primary-fg-color: #d4854a;
   --md-primary-fg-color--light: #e2a06e;
   --md-primary-fg-color--dark: #b76b34;
   --md-primary-bg-color: #fff;
   --md-primary-bg-color--light: rgba(255, 255, 255, 0.7);
 
-  /* Accent palette – lightened for dark background contrast */
+  /* Accent – slightly lighter for dark-bg contrast */
   --md-accent-fg-color: #e2a06e;
   --md-accent-fg-color--transparent: rgba(226, 160, 110, 0.1);
   --md-accent-bg-color: #fff;
   --md-accent-bg-color--light: rgba(255, 255, 255, 0.7);
 
-  /* Links – lightened for dark mode readability */
+  /* Links */
   --md-typeset-a-color: #e2a06e;
 
   /* Search highlight */
   --md-typeset-mark-color: rgba(226, 160, 110, 0.3);
 }
 
-html.theme-ready body,
-html.theme-ready .md-header,
-html.theme-ready .md-tabs,
-html.theme-ready .md-main,
-html.theme-ready .md-sidebar,
-html.theme-ready .md-nav,
-html.theme-ready .md-content,
-html.theme-ready .md-search__inner,
-html.theme-ready .md-search__form,
-html.theme-ready .md-search__input,
-html.theme-ready .md-typeset .admonition,
-html.theme-ready .md-typeset details,
-html.theme-ready .md-typeset table:not([class]),
-html.theme-ready .md-typeset code,
-html.theme-ready .md-typeset pre > code,
-html.theme-ready .md-button,
-html.theme-ready .md-footer {
-  transition:
-    background-color var(--th-transition-duration) var(--th-transition-curve),
-    color var(--th-transition-duration) var(--th-transition-curve),
-    border-color var(--th-transition-duration) var(--th-transition-curve),
-    box-shadow var(--th-transition-duration) var(--th-transition-curve);
+/* ----- Header Site Title ----- */
+
+.md-header__title .md-header__topic:first-child .md-ellipsis {
+  text-transform: uppercase;
+  font-weight: 900;
+  font-size: 1.3rem;
+  letter-spacing: 0.08em;
+  color: #fdf5ec;
+  -webkit-text-stroke: 1.5px #8b4c1a;
+  paint-order: stroke fill;
+  text-shadow:
+    2px 2px 0 #7a4218,
+    3px 3px 0 #6b3a15,
+    4px 4px 2px rgba(80, 40, 10, 0.4);
 }
 
-html.theme-ready form[data-md-component="palette"]::before,
-html.theme-ready form[data-md-component="palette"] label.md-header__button.md-icon,
-html.theme-ready form[data-md-component="palette"] label.md-header__button.md-icon svg {
-  transition:
-    transform var(--th-transition-duration) var(--th-transition-curve),
-    color var(--th-transition-duration) var(--th-transition-curve),
-    background-color var(--th-transition-duration) var(--th-transition-curve),
-    opacity var(--th-transition-duration) var(--th-transition-curve),
-    box-shadow var(--th-transition-duration) var(--th-transition-curve);
-}
+/* ----- Theme Toggle (pure CSS) ----- */
 
 form[data-md-component="palette"] {
-  position: relative;
   display: flex;
   align-items: center;
-  width: var(--th-toggle-width);
-  height: var(--th-toggle-height);
-  margin-inline: 0.35rem 0;
-  padding: var(--th-toggle-padding);
-  border-radius: 999px;
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  overflow: hidden;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
 }
 
-form[data-md-component="palette"]::before {
-  position: absolute;
-  top: var(--th-toggle-padding);
-  left: var(--th-toggle-padding);
-  width: var(--th-toggle-thumb-size);
-  height: var(--th-toggle-thumb-size);
-  border-radius: 999px;
-  content: "";
-  z-index: 0;
+/* Force-hide the inactive label (Material's display:flex overrides [hidden]) */
+form[data-md-component="palette"] label[hidden] {
+  display: none !important;
 }
 
-form[data-md-component="palette"] label.md-header__button.md-icon {
-  position: absolute;
-  top: var(--th-toggle-padding);
-  left: var(--th-toggle-padding);
-  z-index: 1;
-  display: flex;
+/* The visible label – styled as a round button */
+form[data-md-component="palette"] label.md-header__button.md-icon:not([hidden]) {
+  position: relative;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: var(--th-toggle-thumb-size);
-  height: var(--th-toggle-thumb-size);
+  width: 2.2rem;
+  height: 2.2rem;
   margin: 0;
-  border-radius: 999px;
+  border-radius: 50%;
+  cursor: pointer;
+  transition:
+    background-color 0.2s ease,
+    transform 0.25s ease,
+    box-shadow 0.2s ease;
 }
 
 form[data-md-component="palette"] label.md-header__button.md-icon svg {
-  width: 1rem;
-  height: 1rem;
+  width: 1.15rem;
+  height: 1.15rem;
+  transition: transform 0.3s ease;
 }
 
-[data-md-color-scheme="slate"] form[data-md-component="palette"] {
-  background: linear-gradient(135deg, rgba(20, 25, 35, 0.96), rgba(42, 49, 62, 0.96));
-  border-color: rgba(255, 255, 255, 0.1);
+/* Hover */
+form[data-md-component="palette"] label.md-header__button.md-icon:hover {
+  background-color: rgba(255, 255, 255, 0.12);
+  transform: scale(1.1);
 }
 
-[data-md-color-scheme="slate"] form[data-md-component="palette"]::before {
-  background: linear-gradient(135deg, #f9ca7a, #f29b4b);
-  box-shadow:
-    0 8px 18px rgba(242, 155, 75, 0.28),
-    inset 0 1px 0 rgba(255, 255, 255, 0.38);
+form[data-md-component="palette"] label.md-header__button.md-icon:hover svg {
+  transform: rotate(25deg);
 }
 
-[data-md-color-scheme="slate"] form[data-md-component="palette"] label[for="__palette_1"] {
-  color: #33210d;
-  transform: translateX(0);
+/* Active press */
+form[data-md-component="palette"] label.md-header__button.md-icon:active {
+  transform: scale(0.92);
 }
 
-[data-md-color-scheme="slate"] form[data-md-component="palette"] label[for="__palette_1"] svg {
-  transform: rotate(0deg) scale(1);
+/* Sun icon in dark mode – warm glow */
+[data-md-color-scheme="slate"] form[data-md-component="palette"] label.md-header__button.md-icon {
+  color: #f9ca7a;
 }
 
-[data-md-color-scheme="default"] form[data-md-component="palette"] {
-  background: linear-gradient(135deg, rgba(255, 245, 235, 0.98), rgba(250, 236, 223, 0.98));
-  border-color: rgba(183, 107, 52, 0.16);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.85);
+[data-md-color-scheme="slate"] form[data-md-component="palette"] label.md-header__button.md-icon:hover {
+  background-color: rgba(249, 202, 122, 0.15);
+  box-shadow: 0 0 12px rgba(249, 202, 122, 0.2);
 }
 
-[data-md-color-scheme="default"] form[data-md-component="palette"]::before {
-  background: linear-gradient(135deg, #1f2632, #3d4a5d);
-  box-shadow:
-    0 10px 20px rgba(31, 38, 50, 0.16),
-    inset 0 1px 0 rgba(255, 255, 255, 0.12);
-  transform: translateX(calc(var(--th-toggle-width) - var(--th-toggle-thumb-size) - (var(--th-toggle-padding) * 2)));
+/* Moon icon in light mode – cool tone */
+[data-md-color-scheme="default"] form[data-md-component="palette"] label.md-header__button.md-icon {
+  color: #fff;
 }
 
-[data-md-color-scheme="default"] form[data-md-component="palette"] label[for="__palette_0"] {
-  color: #f8c46f;
-  transform: translateX(calc(var(--th-toggle-width) - var(--th-toggle-thumb-size) - (var(--th-toggle-padding) * 2)));
+[data-md-color-scheme="default"] form[data-md-component="palette"] label.md-header__button.md-icon:hover {
+  background-color: rgba(255, 255, 255, 0.18);
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.15);
 }
 
-[data-md-color-scheme="default"] form[data-md-component="palette"] label[for="__palette_0"] svg {
-  transform: rotate(-18deg) scale(1);
-}
+/* ----- Reduced motion ----- */
 
 @media (prefers-reduced-motion: reduce) {
-  html.theme-ready body,
-  html.theme-ready .md-header,
-  html.theme-ready .md-tabs,
-  html.theme-ready .md-main,
-  html.theme-ready .md-sidebar,
-  html.theme-ready .md-nav,
-  html.theme-ready .md-content,
-  html.theme-ready .md-search__inner,
-  html.theme-ready .md-search__form,
-  html.theme-ready .md-search__input,
-  html.theme-ready .md-typeset .admonition,
-  html.theme-ready .md-typeset details,
-  html.theme-ready .md-typeset table:not([class]),
-  html.theme-ready .md-typeset code,
-  html.theme-ready .md-typeset pre > code,
-  html.theme-ready .md-button,
-  html.theme-ready .md-footer,
-  html.theme-ready form[data-md-component="palette"]::before,
-  html.theme-ready form[data-md-component="palette"] label.md-header__button.md-icon,
-  html.theme-ready form[data-md-component="palette"] label.md-header__button.md-icon svg {
+  form[data-md-component="palette"] label.md-header__button.md-icon,
+  form[data-md-component="palette"] label.md-header__button.md-icon svg {
     transition: none;
   }
 }

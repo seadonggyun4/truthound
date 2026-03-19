@@ -74,9 +74,6 @@ markdown_extensions:
 extra_css:
   - stylesheets/extra.css
 
-extra_javascript:
-  - javascripts/theme-toggle.js
-
 nav:
   - Home: index.md
   - Getting Started:
