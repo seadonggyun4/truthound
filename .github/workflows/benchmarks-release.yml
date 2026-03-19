@@ -26,14 +26,19 @@ jobs:
       TRUTHOUND_BENCHMARK_CPU_MODEL: ${{ vars.TRUTHOUND_BENCHMARK_CPU_MODEL }}
       TRUTHOUND_BENCHMARK_RAM_BYTES: ${{ vars.TRUTHOUND_BENCHMARK_RAM_BYTES }}
       TRUTHOUND_BENCHMARK_CPU_PHYSICAL_CORES: ${{ vars.TRUTHOUND_BENCHMARK_CPU_PHYSICAL_CORES }}
-      RUNNER_TOOL_CACHE: ${{ runner.workspace }}/_toolcache
-      AGENT_TOOLSDIRECTORY: ${{ runner.workspace }}/_toolcache
     steps:
       - uses: actions/checkout@v4
 
       - name: Prepare writable Python tool cache
         shell: bash
-        run: mkdir -p "${RUNNER_TOOL_CACHE}"
+        run: |
+          set -euo pipefail
+          TOOLCACHE="${GITHUB_WORKSPACE}/../_toolcache"
+          mkdir -p "${TOOLCACHE}"
+          {
+            echo "RUNNER_TOOL_CACHE=${TOOLCACHE}"
+            echo "AGENT_TOOLSDIRECTORY=${TOOLCACHE}"
+          } >> "${GITHUB_ENV}"
 
       - uses: actions/setup-python@v5
         with:
