@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "truthound"
-version = "1.5.0"
+version = "2.0.0"
 description = "Zero-Configuration Data Quality Framework Powered by Polars"
 readme = "README.md"
 license = "Apache-2.0"
