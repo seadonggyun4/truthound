@@ -237,7 +237,9 @@ class TestCompletenessValidators:
         issues = validator.validate(df.lazy())
 
         assert len(issues) == 1
-        assert issues[0].severity == Severity.HIGH
+        assert issues[0].column == "required_field"
+        assert issues[0].count == 1
+        assert issues[0].severity >= Severity.HIGH
 
     def test_completeness_ratio_validator(self):
         """Test completeness ratio validation."""

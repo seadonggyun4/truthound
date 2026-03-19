@@ -19,6 +19,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+pytestmark = pytest.mark.fault
+
 from truthound.checkpoint.actions.base import (
     ActionConfig,
     ActionResult,

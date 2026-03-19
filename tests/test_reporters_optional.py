@@ -238,19 +238,14 @@ class TestReporterFactoryWithMocks:
         from truthound.reporters.factory import get_reporter
         from truthound.reporters.base import ReporterError
 
-        with patch("truthound.reporters.html_reporter.HAS_JINJA2", False):
-            # Need to reload to pick up the patched value
-            import importlib
-            import truthound.reporters.html_reporter
-            importlib.reload(truthound.reporters.html_reporter)
-
+        with patch(
+            "truthound.reporters.html_reporter._require_jinja2",
+            side_effect=ImportError("jinja2 missing"),
+        ):
             with pytest.raises((ReporterError, ImportError)) as exc_info:
                 get_reporter("html")
 
             assert "jinja2" in str(exc_info.value).lower()
-
-            # Restore
-            importlib.reload(truthound.reporters.html_reporter)
 
     def test_json_reporter_no_dependencies(self) -> None:
         """Test that JSON reporter works without optional deps."""

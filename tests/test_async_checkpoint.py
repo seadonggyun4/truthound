@@ -16,6 +16,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+pytestmark = pytest.mark.fault
+
 # Configure pytest-asyncio
 pytest_plugins = ('pytest_asyncio',)
 

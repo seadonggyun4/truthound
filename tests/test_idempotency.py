@@ -22,6 +22,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+pytestmark = pytest.mark.fault
+
 from truthound.checkpoint.idempotency import (
     # Core types
     IdempotencyRecord,

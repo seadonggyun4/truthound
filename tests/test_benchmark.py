@@ -626,7 +626,8 @@ class TestReporters:
         reporter = HTMLReporter()
         output = reporter.report_suite(sample_suite_result)
 
-        assert "<html>" in output
+        assert output.lstrip().startswith("<!DOCTYPE html>")
+        assert '<html lang="en">' in output
         assert "test_suite" in output
 
 
