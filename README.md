@@ -29,7 +29,7 @@
 ## Abstract
 
 <p align="center">
-  <img width="200" alt="Truthound Icon" src="docs/assets/truthound_icon_banner.png" />
+  <img width="200" alt="Truthound Icon" src="docs/assets/Truthound_icon_banner.png" />
 </p>
 
 Truthound is a Polars-first data validation framework for modern data engineering systems. It combines an approachable zero-configuration workflow with a more disciplined internal architecture: a compact validation kernel, backend-aware planning, structured runtime results, unified plugin lifecycle management, and direct validation-doc/reporter composition over the same canonical result model.
