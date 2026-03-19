@@ -58,6 +58,7 @@ def _get_profile_data() -> Any:
     return profile_data
 
 
+
 def check(
     data: Any = None,
     source: "BaseDataSource | None" = None,
@@ -66,7 +67,6 @@ def check(
     min_severity: str | Severity | None = None,
     schema: str | Path | Schema | None = None,
     auto_schema: bool = False,
-    use_engine: bool = False,
     parallel: bool = False,
     max_workers: int | None = None,
     pushdown: bool | None = None,
@@ -75,350 +75,48 @@ def check(
     max_retries: int = 0,
     exclude_columns: list[str] | None = None,
 ) -> Report:
-    """Perform data quality validation on the input data.
+    """Perform data quality validation through the Truthound 2.0 kernel.
 
-    This is the main entry point for data quality validation. It accepts various
-    input types and automatically converts them to Polars LazyFrame internally.
-
-    Supported Input Types:
-        - str: File path (CSV, JSON, Parquet)
-        - pl.DataFrame: Polars DataFrame (converted to LazyFrame)
-        - pl.LazyFrame: Polars LazyFrame (used directly)
-        - pd.DataFrame: pandas DataFrame (converted via Polars)
-        - dict: Python dictionary (converted to DataFrame then LazyFrame)
-        - BaseDataSource: DataSource instance for SQL databases, Spark, etc.
-
-    Note:
-        Individual Validator classes only accept pl.LazyFrame directly.
-        This API handles the conversion for convenience. If using validators
-        directly, use ``truthound.adapters.to_lazyframe()`` to convert your data.
-
-    Args:
-        data: Input data (file path, DataFrame, dict, etc.)
-        source: Optional DataSource instance. If provided, data is ignored.
-                This enables validation on SQL databases, Spark, etc.
-        validators: Optional list of validator names or Validator instances.
-                   If None, all built-in validators are used.
-        validator_config: Optional configuration dict for validators.
-                         Maps validator name to configuration dict.
-                         Example: {"regex": {"patterns": {"email": r"^[\\w.+-]+@..."}}}
-        min_severity: Minimum severity level to include in results.
-                     Can be "low", "medium", "high", or "critical".
-        schema: Optional schema for validation. Can be:
-               - Path to a schema YAML file
-               - Schema object from th.learn()
-               When provided, schema validation runs in addition to other validators.
-        auto_schema: If True, automatically learns and caches a schema from the data.
-                    On subsequent runs with the same data source, validates against
-                    the cached schema. This enables true "zero-config" validation.
-        use_engine: If True, uses execution engine for validation (experimental).
-                   Currently validators still use Polars LazyFrame fallback.
-        parallel: If True, uses DAG-based parallel execution for validators.
-                 Validators are grouped by dependency and executed in parallel
-                 when possible. This can significantly improve performance for
-                 large datasets with many validators.
-        max_workers: Maximum number of worker threads for parallel execution.
-                    Only used when parallel=True. Defaults to min(32, cpu_count + 4).
-        pushdown: If True, enables query pushdown for SQL data sources.
-                 Validation logic is executed server-side when possible,
-                 reducing data transfer and improving performance.
-                 If None (default), auto-detects based on data source type.
-        catch_exceptions: If True (default), validator exceptions are caught
-                         and reported as issues. If False, the first exception
-                         aborts the run (strict mode).
-        max_retries: Number of automatic retry attempts for transient errors
-                    (timeouts, connection errors). Default 0 (no retries).
-        exclude_columns: Optional list of column names to exclude from all
-                        validators. Applied globally to every validator instance.
-                        Example: ["first_name", "last_name"]
-
-    Returns:
-        Report containing all validation issues found.
-
-    Example:
-        >>> import truthound as th
-        >>> report = th.check("data.csv")
-        >>> print(report)
-
-        >>> # With specific validators
-        >>> report = th.check(df, validators=["null", "duplicate"])
-
-        >>> # Filter by severity
-        >>> report = th.check(df, min_severity="medium")
-
-        >>> # With schema validation
-        >>> schema = th.learn("baseline.csv")
-        >>> report = th.check("new_data.csv", schema=schema)
-
-        >>> # Zero-config with auto schema caching
-        >>> report = th.check("data.csv", auto_schema=True)
-
-        >>> # Using DataSource for SQL database
-        >>> from truthound.datasources.sql import PostgreSQLDataSource
-        >>> source = PostgreSQLDataSource(
-        ...     table="users",
-        ...     host="localhost",
-        ...     database="mydb",
-        ...     user="postgres",
-        ... )
-        >>> report = th.check(source=source, validators=["null", "duplicate"])
-
-        >>> # Using auto-detection with DataSource
-        >>> from truthound.datasources import get_datasource
-        >>> source = get_datasource(spark_df)  # PySpark DataFrame
-        >>> if source.needs_sampling():
-        ...     source = source.sample(n=100_000)
-        >>> report = th.check(source=source)
-
-        >>> # With query pushdown for SQL data sources
-        >>> from truthound.datasources.sql import PostgreSQLDataSource
-        >>> source = PostgreSQLDataSource(table="users", host="localhost", database="mydb")
-        >>> report = th.check(source=source, pushdown=True)  # Execute validations server-side
+    The public ``th.check()`` API remains stable, but execution is now routed
+    through ``truthound.core`` where suite building, planning, runtime
+    orchestration, and result adaptation are separated.
     """
-    # Handle DataSource if provided
-    use_pushdown = False
-    sql_source = None
-
-    if source is not None:
-        from truthound.datasources.base import BaseDataSource
-        from truthound.datasources._protocols import DataSourceCapability
-
-        if not isinstance(source, BaseDataSource):
-            raise ValueError(
-                f"source must be a DataSource instance, got {type(source).__name__}"
-            )
-
-        # Determine if pushdown should be used
-        if pushdown is True:
-            use_pushdown = True
-        elif pushdown is None:
-            # Auto-detect: use pushdown for SQL sources with SQL_PUSHDOWN capability
-            use_pushdown = DataSourceCapability.SQL_PUSHDOWN in source.capabilities
-
-        if use_pushdown:
-            # Verify it's actually a SQL data source
-            try:
-                from truthound.datasources.sql.base import BaseSQLDataSource
-                if isinstance(source, BaseSQLDataSource):
-                    sql_source = source
-                else:
-                    use_pushdown = False
-            except ImportError:
-                use_pushdown = False
-
-        # Check size limits and warn if needed (only if not using pushdown)
-        if not use_pushdown and source.needs_sampling():
-            import warnings
-            warnings.warn(
-                f"Data source '{source.name}' has {source.row_count:,} rows, "
-                f"which exceeds the limit of {source.config.max_rows:,}. "
-                "Consider using source.sample() for better performance.",
-                UserWarning,
-            )
-
-        source_name = source.name
-    else:
-        if data is None:
-            raise ValueError("Either 'data' or 'source' must be provided")
-
-        # Convert input to LazyFrame (legacy path)
-        source_name = str(data) if isinstance(data, str) else type(data).__name__
-
-    # For pushdown path, get metadata without loading all data
-    if use_pushdown and sql_source is not None:
-        row_count = sql_source.row_count or 0
-        column_count = len(sql_source.columns)
-        lf = None  # Will be loaded lazily if needed for non-pushdown validators
-    else:
-        # Standard path: load data into Polars
-        if source is not None:
-            lf = source.to_polars_lazyframe()
-        else:
-            lf = to_lazyframe(data)
-
-        # Collect metadata without materializing the entire DataFrame
-        polars_schema = lf.collect_schema()  # Lazy operation - only reads schema
-        row_count = lf.select(pl.len()).collect().item()  # Efficient row count
-        column_count = len(polars_schema)
-        # lf remains lazy - validators will collect only when needed
-
-    # Lazy load validator utilities
-    BUILTIN_VALIDATORS, Validator, get_validator = _get_validator_utils()
-
-    # Determine which validators to use
-    validator_instances: list[Validator] = []
-
-    # Add schema validator if schema is provided or auto_schema is enabled
-    if schema is not None or auto_schema:
-        from truthound.schema import Schema as SchemaClass
-        from truthound.validators.schema_validator import SchemaValidator
-
-        if schema is not None:
-            if isinstance(schema, (str, Path)):
-                schema_obj = SchemaClass.load(schema)
-            else:
-                schema_obj = schema
-        else:
-            # Auto schema mode: get from cache or learn new
-            from truthound.cache import get_or_learn_schema
-            schema_obj, was_cached = get_or_learn_schema(data)
-
-        validator_instances.append(SchemaValidator(schema_obj))
-
-    # Normalize validator_config to empty dict if None
-    validator_config = validator_config or {}
-
-    if validators is None:
-        # Use all built-in validators with their configs
-        for name, cls in BUILTIN_VALIDATORS.items():
-            config = validator_config.get(name, {})
-            validator_instances.append(cls(**config) if config else cls())
-    else:
-        for v in validators:
-            if isinstance(v, str):
-                validator_cls = get_validator(v)
-                config = validator_config.get(v, {})
-                validator_instances.append(validator_cls(**config) if config else validator_cls())
-            elif isinstance(v, Validator):
-                validator_instances.append(v)
-            else:
-                raise ValueError(f"Invalid validator: {v}. Expected str or Validator instance.")
-
-    # Resolve result_format and inject PHASE 5 options into all validators
-    result_format_config = ResultFormatConfig.from_any(result_format)
-    for v in validator_instances:
-        if hasattr(v, "config") and hasattr(v.config, "replace"):
-            try:
-                v.config = v.config.replace(
-                    result_format=result_format_config.format,
-                    catch_exceptions=catch_exceptions,
-                    max_retries=max_retries,
-                )
-            except (TypeError, AttributeError):
-                pass  # Some validators may have non-standard configs
-
-    # Apply global exclude_columns to all validators
-    if exclude_columns:
-        exclude_tuple = tuple(exclude_columns)
-        for v in validator_instances:
-            if hasattr(v, "config") and hasattr(v.config, "replace"):
-                try:
-                    existing = v.config.exclude_columns or ()
-                    merged = tuple(set(existing + exclude_tuple))
-                    v.config = v.config.replace(exclude_columns=merged)
-                except (TypeError, AttributeError):
-                    pass
-
-    # Create session-scoped SharedMetricStore for metric deduplication (PHASE 3)
-    from truthound.validators.metrics import SharedMetricStore
-    metric_store = SharedMetricStore()
-
-    # Run all validators and collect issues
-    all_issues = []
-
-    if use_pushdown and sql_source is not None:
-        # Use pushdown validation engine for SQL data sources
-        from truthound.validators.pushdown_support import PushdownValidationEngine
-
-        engine = PushdownValidationEngine(sql_source)
-        all_issues = engine.validate(validator_instances)
-
-    elif parallel and len(validator_instances) > 1:
-        # Use DAG-based parallel execution with dependency-aware skipping (PHASE 4)
-        from truthound.validators.optimization.orchestrator import (
-            ValidatorDAG,
-            ParallelExecutionStrategy,
-            AdaptiveExecutionStrategy,
-        )
-
-        dag = ValidatorDAG()
-        dag.add_validators(validator_instances)
-        plan = dag.build_execution_plan()
-
-        # Log execution plan summary
-        plan_summary = plan.get_summary()
-        import logging as _logging
-        _dag_logger = _logging.getLogger("truthound.orchestrator")
-        _dag_logger.debug(
-            "DAG execution plan: %d validators, %d levels, max_parallelism=%d",
-            plan_summary["total_nodes"],
-            plan_summary["total_levels"],
-            plan_summary.get("max_parallelism", 0),
-        )
-
-        # Choose strategy based on max_workers
-        if max_workers is not None:
-            strategy = ParallelExecutionStrategy(max_workers=max_workers)
-        else:
-            strategy = AdaptiveExecutionStrategy()
-
-        result = plan.execute(
-            lf, strategy,
-            skip_on_error=catch_exceptions,
-        )
-        all_issues = result.all_issues
-
-        # Log skip info
-        if result.skipped_count > 0:
-            _dag_logger.info(
-                "DAG execution: %d validators skipped due to dependency failures",
-                result.skipped_count,
-            )
-    else:
-        # Sequential or lightweight parallel execution
-        from truthound.validators.base import _validate_safe
-
-        def _run_validator(v: Validator) -> list:
-            """Run a single validator with retry and metric support."""
-            v_retries = getattr(v.config, "max_retries", 0) if hasattr(v, "config") else 0
-            v_catch = getattr(v.config, "catch_exceptions", True) if hasattr(v, "config") else True
-            result = _validate_safe(
-                v, lf,
-                skip_on_error=v_catch,
-                log_errors=True,
-                max_retries=v_retries,
-            )
-            return result.issues
-
-        # For small validator sets, avoid ThreadPool creation overhead
-        if len(validator_instances) < 5:
-            # Sequential execution for small sets
-            for validator in validator_instances:
-                all_issues.extend(_run_validator(validator))
-        else:
-            # Lightweight parallel execution for larger sets
-            from concurrent.futures import ThreadPoolExecutor
-
-            with ThreadPoolExecutor(max_workers=4) as executor:
-                results = list(executor.map(_run_validator, validator_instances))
-            for issues in results:
-                all_issues.extend(issues)
-
-    # Log metric store stats and clean up
-    if len(metric_store) > 0:
-        import logging as _logging
-        _logging.getLogger("truthound.metrics").debug(
-            f"Metric store stats: {metric_store.get_stats_dict()}"
-        )
-    metric_store.clear()
-
-    # Create report (lazy import Report class)
-    _, _, Report = _get_report_classes()
-    report = Report(
-        issues=all_issues,
-        source=source_name,
-        row_count=row_count,
-        column_count=column_count,
-        result_format=result_format_config.format,
+    from truthound.core import (
+        ScanPlanner,
+        ValidationRuntime,
+        ValidationSuite,
+        build_validation_asset,
     )
 
-    # Filter by severity if specified
+    asset = build_validation_asset(data=data, source=source, pushdown=pushdown)
+    suite = ValidationSuite.from_legacy(
+        validators=validators,
+        validator_config=validator_config,
+        schema=schema,
+        auto_schema=auto_schema,
+        data=data,
+        source=source,
+        catch_exceptions=catch_exceptions,
+        max_retries=max_retries,
+        exclude_columns=exclude_columns,
+        result_format=result_format,
+        min_severity=min_severity,
+    )
+    plan = ScanPlanner().plan(
+        suite=suite,
+        asset=asset,
+        parallel=parallel,
+        max_workers=max_workers,
+        pushdown=pushdown,
+    )
+    run_result = ValidationRuntime().execute(asset=asset, plan=plan)
+
     if min_severity is not None:
         if isinstance(min_severity, str):
             min_severity = _parse_severity(min_severity)
-        report = report.filter_by_severity(min_severity)
+        run_result = run_result.filter_by_severity(min_severity)
 
-    return report
+    return run_result.to_legacy_report()
 
 
 def scan(
