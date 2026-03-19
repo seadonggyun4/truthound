@@ -29,22 +29,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Prepare writable Python tool cache
-        shell: bash
-        run: |
-          set -euo pipefail
-          TOOLCACHE="${GITHUB_WORKSPACE}/../_toolcache"
-          mkdir -p "${TOOLCACHE}"
-          {
-            echo "RUNNER_TOOL_CACHE=${TOOLCACHE}"
-            echo "AGENT_TOOLSDIRECTORY=${TOOLCACHE}"
-          } >> "${GITHUB_ENV}"
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
       - uses: astral-sh/setup-uv@v4
+
+      - name: Install managed Python 3.11 for release gate
+        run: uv python install 3.11
+
+      - name: Create release benchmark virtual environment
+        run: uv venv --python 3.11 .release-venv
 
       - name: Validate fixed runner metadata
         shell: bash
@@ -63,13 +54,13 @@ jobs:
           done
 
       - name: Install project with release benchmark constraints
-        run: uv pip install --system -c benchmarks/constraints/release.txt ".[dev,benchmarks]"
+        run: uv pip install --python .release-venv/bin/python -c benchmarks/constraints/release.txt ".[dev,benchmarks]"
 
       - name: Run release GA parity suite
-        run: python -m truthound.cli benchmark parity --suite release-ga --frameworks both --strict --output benchmark-artifacts/release-ga.json
+        run: .release-venv/bin/python -m truthound.cli benchmark parity --suite release-ga --frameworks both --strict --output benchmark-artifacts/release-ga.json
 
       - name: Render docs release summary draft
-        run: python docs/scripts/publish_benchmark_summary.py --json benchmark-artifacts/release-ga.json --artifact-base-url .. --output benchmark-artifacts/published/latest-benchmark-summary.md
+        run: .release-venv/bin/python docs/scripts/publish_benchmark_summary.py --json benchmark-artifacts/release-ga.json --artifact-base-url .. --output benchmark-artifacts/published/latest-benchmark-summary.md
 
       - name: Upload release benchmark artifacts
         if: always()

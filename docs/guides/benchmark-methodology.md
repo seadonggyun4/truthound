@@ -66,9 +66,9 @@ The release workflow reads these from the fixed host plus the following environm
 - `TRUTHOUND_BENCHMARK_RAM_BYTES`
 - `TRUTHOUND_BENCHMARK_CPU_PHYSICAL_CORES`
 
-For self-hosted macOS runners, the workflow also pins `RUNNER_TOOL_CACHE` and `AGENT_TOOLSDIRECTORY`
-to a writable directory under the runner workspace so `actions/setup-python` does not attempt to install
-toolcache payloads under `/Users/runner`.
+For self-hosted macOS runners, the release workflow avoids `actions/setup-python` and instead uses
+`uv` to install a managed Python 3.11 runtime plus a dedicated `.release-venv`. This sidesteps the
+hosted-toolcache assumptions that often point at `/Users/runner` on macOS.
 
 ## Thresholds
 
