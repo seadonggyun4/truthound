@@ -66,6 +66,10 @@ The release workflow reads these from the fixed host plus the following environm
 - `TRUTHOUND_BENCHMARK_RAM_BYTES`
 - `TRUTHOUND_BENCHMARK_CPU_PHYSICAL_CORES`
 
+For self-hosted macOS runners, the workflow also pins `RUNNER_TOOL_CACHE` and `AGENT_TOOLSDIRECTORY`
+to a writable directory under the runner workspace so `actions/setup-python` does not attempt to install
+toolcache payloads under `/Users/runner`.
+
 ## Thresholds
 
 The current 3.0 gate thresholds are:
