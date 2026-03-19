@@ -1,0 +1,45 @@
+name: Docs
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/docs.yml"
+      - "README.md"
+      - "CLAUDE.md"
+      - "docs/**"
+      - "mkdocs.yml"
+      - "pyproject.toml"
+      - "tests/cli_modules/test_plugins_cli.py"
+  push:
+    paths:
+      - ".github/workflows/docs.yml"
+      - "README.md"
+      - "CLAUDE.md"
+      - "docs/**"
+      - "mkdocs.yml"
+      - "pyproject.toml"
+      - "tests/cli_modules/test_plugins_cli.py"
+
+jobs:
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: astral-sh/setup-uv@v4
+
+      - name: Install project with docs and dev extras
+        run: uv pip install --system ".[docs,dev]"
+
+      - name: Check markdown links
+        run: python docs/scripts/check_links.py --mkdocs mkdocs.yml README.md CLAUDE.md docs
+
+      - name: Build docs
+        run: mkdocs build --strict
+
+      - name: Verify plugins CLI snapshot
+        run: python -m pytest -q tests/cli_modules/test_plugins_cli.py -p no:cacheprovider

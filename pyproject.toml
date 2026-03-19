@@ -157,6 +157,12 @@ dev = [
     "scipy>=1.10.0",
     "scikit-learn>=1.3.0",
 ]
+docs = [
+    "mkdocs>=1.6.0",
+    "mkdocs-material>=9.5.0",
+    "mkdocstrings[python]>=0.24.0",
+    "pymdown-extensions>=10.8.0",
+]
 
 [project.scripts]
 truthound = "truthound.cli:app"
@@ -217,8 +223,16 @@ warn_unused_ignores = true
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
+addopts = "--import-mode=importlib"
 markers = [
-    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-    "e2e: marks tests as end-to-end tests",
-    "scale_100m: marks tests as 100M+ scale tests (run with '-m scale_100m')",
+    "contract: deterministic public-contract regression coverage",
+    "fault: deterministic failure injection, timeout, corruption, and concurrency coverage",
+    "integration: tests requiring external services or backend integration",
+    "soak: long-running or probabilistic chaos coverage intended for nightly execution",
+    "manual_verification: manual verification artifacts that must not run under pytest by default",
+    "slow: slow tests that are skipped by the fast default lane",
+    "e2e: short end-to-end scenarios allowed in the default PR lane",
+    "scale_100m: large-scale tests intended for nightly execution",
+    "expensive: tests with elevated runtime or infrastructure cost",
+    "stress: load-oriented stress tests intended for nightly execution",
 ]

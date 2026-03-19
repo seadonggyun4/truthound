@@ -1,0 +1,44 @@
+name: Tests PR
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/tests-pr.yml"
+      - ".github/workflows/tests-nightly.yml"
+      - "README.md"
+      - "CLAUDE.md"
+      - "pyproject.toml"
+      - "src/**"
+      - "tests/**"
+      - "verification/**"
+  push:
+    paths:
+      - ".github/workflows/tests-pr.yml"
+      - ".github/workflows/tests-nightly.yml"
+      - "README.md"
+      - "CLAUDE.md"
+      - "pyproject.toml"
+      - "src/**"
+      - "tests/**"
+      - "verification/**"
+
+jobs:
+  quality-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: astral-sh/setup-uv@v4
+
+      - name: Install project with dev extras
+        run: uv pip install --system ".[dev]"
+
+      - name: Verify pytest collection
+        run: python -m pytest --collect-only -q tests
+
+      - name: Run fast contract and fault lanes
+        run: python -m pytest -q tests -m "contract or fault or e2e" -p no:cacheprovider

@@ -1,0 +1,37 @@
+name: Tests Nightly
+
+on:
+  schedule:
+    - cron: "0 18 * * *"
+  workflow_dispatch:
+
+jobs:
+  nightly-chaos:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: astral-sh/setup-uv@v4
+
+      - name: Install project with dev extras
+        run: uv pip install --system ".[dev]"
+
+      - name: Verify pytest collection
+        run: python -m pytest --collect-only -q tests
+
+      - name: Prepare nightly artifacts
+        run: mkdir -p test-artifacts && printf "fault_seed=42\nrun_mode=nightly\n" > test-artifacts/run-metadata.txt
+
+      - name: Run nightly contract, fault, integration, and soak lanes
+        run: python -m pytest -q tests -m "contract or fault or integration or soak or stress or scale_100m or e2e" --run-integration --run-expensive --run-soak -p no:cacheprovider --junitxml test-artifacts/nightly-junit.xml
+
+      - name: Upload nightly test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: truthound-nightly-test-artifacts
+          path: test-artifacts

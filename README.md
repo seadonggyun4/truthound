@@ -1,502 +1,107 @@
-<div align="center">
-  <img width="500px" alt="Truthound Banner" src="https://raw.githubusercontent.com/seadonggyun4/Truthound/main/docs/assets/truthound_banner.png" />
-</div>
+# Truthound
 
-<h1 align="center">Truthound</h1>
+Truthound is a Polars-first data validation framework. The 2.0 redesign keeps the familiar `th.check()`, `th.scan()`, `th.mask()`, `th.profile()`, and `th.learn()` entry points, but routes validation through a smaller core kernel with explicit suite, planning, runtime, result, and plugin boundaries.
 
-<p align="center">
-  <strong>Zero-Configuration Data Quality Framework Powered by Polars</strong>
-</p>
+## Why 2.0
 
-<p align="center">
-  <em>Sniffs out bad data</em>
-</p>
+Truthound now centers on five internal layers:
 
-> **Beta Release**: Core features are stable, APIs may still change in minor versions.
+| Layer | Responsibility |
+| --- | --- |
+| `contracts` | Stable ports such as `DataAsset`, `ExecutionBackend`, `MetricRepository`, and plugin capabilities |
+| `suite` | Immutable validation intent via `ValidationSuite`, `CheckSpec`, `SchemaSpec`, evidence policy, and severity policy |
+| `planning` | Scan planning, backend routing, duplicate check accounting, and pushdown eligibility |
+| `runtime` | Session lifecycle, retries, timeout-safe execution, exception isolation, and evidence capture |
+| `results` | `CheckResult`, `ValidationRunResult`, and `ExecutionIssue` as the canonical output model |
 
----
+This structure is intentionally informed by several mature validation systems:
 
-## Abstract
-
-<img width="300" height="300" alt="Truthound_icon" src="https://github.com/user-attachments/assets/90d9e806-8895-45ec-97dc-f8300da4d997" />
-
-Truthound is a data quality validation framework built on Polars, a Rust-based DataFrame library. The framework provides zero-configuration validation through automatic schema inference and supports a wide range of validation scenarios from basic schema checks to statistical drift detection.
-
-[![PyPI version](https://img.shields.io/pypi/v/truthound.svg)](https://pypi.org/project/truthound/)
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache%202.0-orange.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Powered by Polars](https://img.shields.io/badge/Powered%20by-Polars-2563EB?logo=polars&logoColor=white)](https://pola.rs/)
-[![Awesome](https://awesome.re/badge.svg)](https://github.com/ddotta/awesome-polars)
-[![Downloads](https://static.pepy.tech/badge/truthound?color=green)](https://pepy.tech/project/truthound)
-
-**Documentation**: [Document Site](https://truthound.netlify.app/)
-
-**Related Projects**
-
-| Project | Description | Status |
-|---------|-------------|--------|
-| [truthound-orchestration](https://github.com/seadonggyun4/truthound-orchestration) | Workflow integration for Airflow, Dagster, Prefect, and dbt | α test |
-| [truthound-dashboard](https://github.com/seadonggyun4/truthound-dashboard) | Web-based data quality monitoring dashboard | α test |
-
----
-
-## Metrics
-
-| Metric | Value |
-|--------|-------|
-| Test Cases | 8,585+ |
-| Validators | 289 |
-| Validator Categories | 28 |
-| VE Test Cases | 316 (Validation Engine Enhancement) |
-
----
+- Great Expectations: separation of suite definition, execution, and artifacts
+- Soda: scan planning and backend-aware execution
+- Deequ: analyzer, constraint, verification, and repository decomposition
+- Pandera: schema-first modeling and lazy validation ergonomics
 
 ## Quick Start
 
-### Installation
-
 ```bash
 pip install truthound
-
-# With optional features
-pip install truthound[all]
 ```
-
-### Python API
 
 ```python
 import truthound as th
+from truthound.datadocs import generate_validation_report
+from truthound.reporters import get_reporter
 
-# Basic validation
-report = th.check("data.csv")
-
-# Schema-based validation
-schema = th.learn("baseline.csv")
-report = th.check("new_data.csv", schema=schema)
-
-# Drift detection
-drift = th.compare("train.csv", "production.csv")
-
-# PII scanning and masking
-pii_report = th.scan(df)
-masked_df = th.mask(df, strategy="hash")
-
-# Statistical profiling
-profile = th.profile("data.csv")
-
-# Column exclusion and per-validator configuration
-report = th.check("users.csv",
-    exclude_columns=["first_name"],                            # Global column exclusion
-    validator_config={"unique": {"exclude_columns": ["email"]}},  # Per-validator config
+report = th.check(
+    {"id": [1, 2, 2], "email": ["a@example.com", None, "c@example.com"]},
+    validators=["null", "unique"],
 )
 
-# Validation Engine Enhancement features
-report = th.check("data.csv",
-    result_format="complete",       # 4-level detail control
-    catch_exceptions=True,          # Exception isolation
-    max_retries=2,                  # Auto-retry for transient errors
-    parallel=True,                  # DAG-based parallel execution
-)
-```
+print(report)
+print(report.validation_run.execution_mode)
+print([check.name for check in report.validation_run.checks])
 
-### CLI
+json_report = get_reporter("json").render(report.validation_run)
+validation_docs = generate_validation_report(report.validation_run)
+```
 
 ```bash
-truthound check data.csv                    # Validate
-truthound check data.csv -e first_name      # Exclude column from all validators
-truthound check data.csv --validator-config '{"unique": {"exclude_columns": ["first_name"]}}'
-truthound check data.csv --rf complete      # With full result detail
-truthound check data.csv --catch-exceptions --max-retries 2  # Resilient mode
-truthound check data.csv --parallel --max-workers 8          # DAG parallel execution
-truthound check data.csv --return-debug-query --rf complete  # Debug query output
-truthound compare baseline.csv current.csv  # Drift detection
-truthound compare big.csv new.csv --sample-size 10000        # Sampled comparison
-truthound learn data.csv --categorical-threshold 50          # Custom threshold
-truthound scan data.csv                     # PII scanning
-truthound auto-profile data.csv             # Profiling
-truthound new validator my_validator        # Code scaffolding
-
-# Database connections (all core commands support --connection/--table)
-truthound check --connection "postgresql://user:pass@host/db" --table users
-truthound scan --connection "sqlite:///data.db" --table orders
-truthound read --connection "postgresql://host/db" --table users --head 20
-truthound read data.csv --schema-only       # Inspect schema
-truthound compare --source-config drift.yaml  # Dual-source drift detection
+truthound check data.csv --validators null,unique
+truthound check --connection "sqlite:///warehouse.db" --table users --pushdown
+truthound plugins list --json
 ```
 
----
+## Public Surface
 
-## CLI Reference
+The root package intentionally exports a smaller API:
 
-### Core Commands
+- Stable facade: `check`, `scan`, `mask`, `profile`, `learn`, `read`
+- Core types: `ValidationSuite`, `CheckSpec`, `SchemaSpec`, `ValidationRunResult`, `CheckResult`
+- Checkpoint runtime results: `CheckpointResult.validation_run` is canonical; `validation_result` remains as a deprecated compatibility alias
+- Reporter-facing types: `truthound.reporters.RunPresentation`, `truthound.reporters.ReporterContext`
+- Validation docs entry points: `truthound.datadocs.ValidationDocsBuilder`, `truthound.datadocs.generate_validation_report`
+- Advanced systems: import by namespace, for example `truthound.ml`, `truthound.lineage`, or `truthound.datadocs`
 
-| Command | Description | Key Options |
-|---------|-------------|-------------|
-| `read` | Read and preview data | `--head`, `--sample`, `--columns`, `--schema-only`, `--count-only`, `--format` |
-| `learn` | Learn schema from data | `--output`, `--no-constraints`, `--categorical-threshold` |
-| `check` | Validate data quality | `--validators`, `--exclude-columns`, `--validator-config`, `--min-severity`, `--schema`, `--strict`, `--format`, `--rf`, `--catch-exceptions`, `--max-retries`, `--parallel`, `--max-workers`, `--pushdown`, `--partial-unexpected-count`, `--return-debug-query`, `--include-unexpected-index` |
-| `scan` | Scan for PII | `--format`, `--output` |
-| `mask` | Mask sensitive data | `--columns`, `--strategy` (redact/hash/fake), `--strict` |
-| `profile` | Generate data profile | `--format`, `--output` |
-| `compare` | Detect data drift | `--method` (14 methods), `--threshold`, `--sample-size`, `--strict` |
+The experimental `use_engine` and `--use-engine` switches were removed as part of the 2.0 cleanup.
 
-All core commands accept **Data Source Options**: `--connection`/`--conn`, `--table`, `--query`, `--source-config`/`--sc`, `--source-name` for database connectivity (PostgreSQL, MySQL, SQLite, DuckDB, SQL Server, etc.).
+## Plugin Platform
 
-### Profiler Commands
+Truthound now uses one lifecycle runtime:
 
-| Command | Description | Key Options |
-|---------|-------------|-------------|
-| `auto-profile` | Profile with auto-detection | `--patterns`, `--correlations`, `--sample`, `--top-n` |
-| `generate-suite` | Generate validation rules from profile | `--strictness`, `--preset`, `--code-style` |
-| `quick-suite` | Profile and generate rules in one step | `--strictness`, `--sample-size` |
-| `list-formats` | List supported output formats | - |
-| `list-presets` | List available presets | - |
-| `list-categories` | List rule categories | - |
+- `PluginManager` is the canonical plugin manager
+- `EnterprisePluginManager` is an async, capability-driven facade over the same runtime
+- Plugins register through stable ports such as `register_check_factory`, `register_data_asset_provider`, `register_reporter`, `register_hook`, and `register_capability`
+- Reporter plugins should target the contract-v2 surface where `ValidationRunResult` is the canonical input
 
-### Checkpoint Commands (CI/CD)
+## Documentation
 
-| Command | Description | Key Options |
-|---------|-------------|-------------|
-| `checkpoint run` | Run validation pipeline | `--config`, `--data`, `--strict`, `--slack`, `--webhook` |
-| `checkpoint list` | List available checkpoints | `--config`, `--format` |
-| `checkpoint validate` | Validate configuration | `--strict` |
-| `checkpoint init` | Initialize sample config | `--output`, `--format` |
-
-### ML Commands
-
-| Command | Description | Key Options |
-|---------|-------------|-------------|
-| `ml anomaly` | Detect anomalies | `--method` (zscore/iqr/mad/isolation_forest), `--contamination` |
-| `ml drift` | Detect data drift | `--method` (distribution/feature/multivariate), `--threshold` |
-| `ml learn-rules` | Learn validation rules | `--strictness`, `--min-confidence`, `--max-rules` |
-
-### Docs Commands
-
-| Command | Description | Key Options |
-|---------|-------------|-------------|
-| `docs generate` | Generate HTML/PDF report | `--theme`, `--format` (html/pdf), `--title` |
-| `docs themes` | List available themes | - |
-
-### Lineage Commands
-
-| Command | Description | Key Options |
-|---------|-------------|-------------|
-| `lineage show` | Display lineage information | `--node`, `--direction` (upstream/downstream/both) |
-| `lineage impact` | Analyze change impact | `--max-depth`, `--output` |
-| `lineage visualize` | Generate lineage visualization | `--renderer` (d3/cytoscape/graphviz/mermaid), `--theme` |
-
-### Realtime Commands (Streaming)
-
-| Command | Description | Key Options |
-|---------|-------------|-------------|
-| `realtime validate` | Validate streaming data | `--batch-size`, `--max-batches` |
-| `realtime monitor` | Monitor validation metrics | `--interval`, `--duration` |
-| `realtime checkpoint list` | List checkpoints | `--dir` |
-| `realtime checkpoint show` | Show checkpoint details | `--dir` |
-| `realtime checkpoint delete` | Delete checkpoint | `--dir`, `--force` |
-
-### Benchmark Commands
-
-| Command | Description | Key Options |
-|---------|-------------|-------------|
-| `benchmark run` | Run performance benchmarks | `--suite` (quick/ci/full), `--size`, `--iterations` |
-| `benchmark list` | List available benchmarks | `--format` |
-| `benchmark compare` | Compare benchmark results | `--threshold` |
-
-### Scaffolding Commands
-
-| Command | Description | Key Options |
-|---------|-------------|-------------|
-| `new validator` | Create custom validator | `--template` (basic/column/pattern/range/comparison/composite/full) |
-| `new reporter` | Create custom reporter | `--template` (basic/full), `--extension` |
-| `new plugin` | Create plugin package | `--type` (validator/reporter/hook/datasource/action/full) |
-| `new list` | List scaffold types | `--verbose` |
-| `new templates` | List available templates | - |
-
-### Plugin Commands
-
-| Command | Description | Key Options |
-|---------|-------------|-------------|
-| `plugin list` | List discovered plugins | `--type`, `--state`, `--verbose` |
-| `plugin info` | Show plugin details | `--json` |
-| `plugin load` | Load a plugin | `--activate/--no-activate` |
-| `plugin unload` | Unload a plugin | - |
-| `plugin enable` | Enable a plugin | - |
-| `plugin disable` | Disable a plugin | - |
-| `plugin create` | Create plugin template | `--type`, `--author` |
-
-### Dashboard Command
-
-| Command | Description | Key Options |
-|---------|-------------|-------------|
-| `dashboard` | Launch interactive dashboard | `--profile`, `--port`, `--host`, `--debug` |
-
----
-
-## Python API Guides
-
-### Validators
-
-| Guide | Description |
-|-------|-------------|
-| [Categories](https://truthound.netlify.app/guides/validators/categories/) | 28 validator categories overview |
-| [Built-in](https://truthound.netlify.app/guides/validators/built-in/) | 264 built-in validators reference |
-| [Custom Validators](https://truthound.netlify.app/guides/validators/custom-validators/) | `@custom_validator` decorator, `ValidatorBuilder` fluent API |
-| [Enterprise SDK](https://truthound.netlify.app/guides/validators/enterprise-sdk/) | Sandbox, signing, licensing, fuzzing |
-| [Security](https://truthound.netlify.app/guides/validators/security/) | ReDoS protection, SQL injection prevention |
-| [i18n](https://truthound.netlify.app/guides/validators/i18n/) | 7-language error messages |
-| [Optimization](https://truthound.netlify.app/guides/validators/optimization/) | Expression batch execution, DAG parallel |
-
-### Data Sources
-
-| Guide | Description |
-|-------|-------------|
-| [Files](https://truthound.netlify.app/guides/datasources/files/) | CSV, JSON, Parquet, NDJSON, JSONL |
-| [Databases](https://truthound.netlify.app/guides/datasources/databases/) | PostgreSQL, MySQL, SQLite, Oracle, SQL Server |
-| [Cloud Warehouses](https://truthound.netlify.app/guides/datasources/cloud-warehouses/) | BigQuery, Snowflake, Redshift, Databricks |
-| [Streaming](https://truthound.netlify.app/guides/datasources/streaming/) | Kafka, Kinesis, Pub/Sub adapters |
-| [Custom Sources](https://truthound.netlify.app/guides/datasources/custom-sources/) | IDataSource protocol implementation |
-
-### Profiler
-
-| Guide | Description |
-|-------|-------------|
-| [Basics](https://truthound.netlify.app/guides/profiler/basics/) | Column statistics, distribution analysis |
-| [Patterns](https://truthound.netlify.app/guides/profiler/patterns/) | Email, phone, credit card detection |
-| [Rule Generation](https://truthound.netlify.app/guides/profiler/rule-generation/) | Auto-generate validation rules |
-| [Drift Detection](https://truthound.netlify.app/guides/profiler/drift-detection/) | KS, PSI, Chi-square, Wasserstein |
-| [Quality Scoring](https://truthound.netlify.app/guides/profiler/quality-scoring/) | Data quality metrics |
-| [Sampling](https://truthound.netlify.app/guides/profiler/sampling/) | Block, multi-stage, progressive sampling |
-| [Caching](https://truthound.netlify.app/guides/profiler/caching/) | xxhash fingerprint-based caching |
-| [ML Inference](https://truthound.netlify.app/guides/profiler/ml-inference/) | ML-based rule generation |
-| [Threshold Tuning](https://truthound.netlify.app/guides/profiler/threshold-tuning/) | Automatic threshold optimization |
-| [Visualization](https://truthound.netlify.app/guides/profiler/visualization/) | Profile visualization |
-| [i18n](https://truthound.netlify.app/guides/profiler/i18n/) | Localized profiling output |
-| [Schema Evolution](https://truthound.netlify.app/guides/profiler/schema-evolution/) | Change detection, compatibility analysis |
-| [Distributed](https://truthound.netlify.app/guides/profiler/distributed/) | Spark, Dask, Ray backends |
-| [Enterprise Sampling](https://truthound.netlify.app/guides/profiler/enterprise-sampling/) | 100M+ row sampling strategies |
-
-### Data Docs
-
-| Guide | Description |
-|-------|-------------|
-| [HTML Reports](https://truthound.netlify.app/guides/datadocs/html-reports/) | Report generation pipeline |
-| [Charts](https://truthound.netlify.app/guides/datadocs/charts/) | ApexCharts, Chart.js, Plotly.js, SVG |
-| [Sections](https://truthound.netlify.app/guides/datadocs/sections/) | Report sections configuration |
-| [Themes](https://truthound.netlify.app/guides/datadocs/themes/) | 6 built-in themes, white-labeling |
-| [Versioning](https://truthound.netlify.app/guides/datadocs/versioning/) | 4 versioning strategies |
-| [PDF Export](https://truthound.netlify.app/guides/datadocs/pdf-export/) | Chunked rendering, parallel processing |
-| [Custom Renderers](https://truthound.netlify.app/guides/datadocs/custom-renderers/) | Jinja2, String, File, Callable templates |
-| [Dashboard](https://truthound.netlify.app/guides/datadocs/dashboard/) | Interactive dashboard integration |
-
-### Reporters
-
-| Guide | Description |
-|-------|-------------|
-| [Console](https://truthound.netlify.app/guides/reporters/console/) | Rich terminal output |
-| [JSON/YAML](https://truthound.netlify.app/guides/reporters/json-yaml/) | Structured output formats |
-| [HTML/Markdown](https://truthound.netlify.app/guides/reporters/html-markdown/) | Document formats |
-| [CI Reporters](https://truthound.netlify.app/guides/reporters/ci-reporters/) | JUnit, GitHub Actions, GitLab CI |
-| [Custom SDK](https://truthound.netlify.app/guides/reporters/custom-sdk/) | IReporter protocol implementation |
-
-### Storage
-
-| Guide | Description |
-|-------|-------------|
-| [Filesystem](https://truthound.netlify.app/guides/stores/filesystem/) | Local file storage |
-| [Cloud Storage](https://truthound.netlify.app/guides/stores/cloud-storage/) | S3, GCS, Azure Blob |
-| [Versioning](https://truthound.netlify.app/guides/stores/versioning/) | Incremental, Semantic, Timestamp, GitLike |
-| [Retention](https://truthound.netlify.app/guides/stores/retention/) | Time, Count, Size, Status, Tag policies |
-| [Tiering](https://truthound.netlify.app/guides/stores/tiering/) | Hot/Warm/Cold/Archive migration |
-| [Caching](https://truthound.netlify.app/guides/stores/caching/) | LRU, LFU, TTL backends |
-| [Replication](https://truthound.netlify.app/guides/stores/replication/) | Sync/Async/Semi-Sync cross-region |
-| [Observability](https://truthound.netlify.app/guides/stores/observability/) | Audit, Metrics, Tracing |
-
-### Checkpoint & CI/CD
-
-| Guide | Description |
-|-------|-------------|
-| [Basics](https://truthound.netlify.app/guides/checkpoint/basics/) | Checkpoint configuration |
-| [Triggers](https://truthound.netlify.app/guides/checkpoint/triggers/) | Event-based triggering |
-| [Actions](https://truthound.netlify.app/guides/checkpoint/actions/) | Notifications, Webhook, Storage, Incident |
-| [Routing](https://truthound.netlify.app/guides/checkpoint/routing/) | Python + Jinja2 rule engine, 11 built-in rules |
-| [Deduplication](https://truthound.netlify.app/guides/checkpoint/deduplication/) | InMemory/Redis, 4 window strategies |
-| [Throttling](https://truthound.netlify.app/guides/checkpoint/throttling/) | Token Bucket, Fixed/Sliding Window |
-| [Escalation](https://truthound.netlify.app/guides/checkpoint/escalation/) | Multi-level policies, state machine |
-| [Async](https://truthound.netlify.app/guides/checkpoint/async/) | Celery, Ray, Kubernetes backends |
-| [CI Platforms](https://truthound.netlify.app/guides/checkpoint/ci-platforms/) | GitHub Actions, GitLab CI, Jenkins, etc. |
-
-### Configuration
-
-| Guide | Description |
-|-------|-------------|
-| [Environment Variables](https://truthound.netlify.app/guides/configuration/environment-vars/) | Environment-based configuration |
-| [Sources](https://truthound.netlify.app/guides/configuration/sources/) | Data source configuration |
-| [Datasource Config](https://truthound.netlify.app/guides/configuration/datasource-config/) | Connection settings |
-| [Store Config](https://truthound.netlify.app/guides/configuration/store-config/) | Storage backend settings |
-| [Profiler Config](https://truthound.netlify.app/guides/configuration/profiler-config/) | Profiler settings |
-| [Checkpoint Config](https://truthound.netlify.app/guides/configuration/checkpoint-config/) | CI/CD pipeline settings |
-| [Logging](https://truthound.netlify.app/guides/configuration/logging/) | JSON format, ELK/Loki integration |
-| [Metrics](https://truthound.netlify.app/guides/configuration/metrics/) | Prometheus counters, gauges, histograms |
-| [Audit](https://truthound.netlify.app/guides/configuration/audit/) | Operation trail, compliance reporting |
-| [Encryption](https://truthound.netlify.app/guides/configuration/encryption/) | AES-256-GCM, Cloud KMS integration |
-| [Resilience](https://truthound.netlify.app/guides/configuration/resilience/) | Circuit breaker, retry, bulkhead |
-
-### Advanced
-
-| Guide | Description |
-|-------|-------------|
-| [ML Anomaly](https://truthound.netlify.app/guides/advanced/ml-anomaly/) | Isolation Forest, LOF, One-Class SVM |
-| [Lineage](https://truthound.netlify.app/guides/advanced/lineage/) | DAG tracking, OpenLineage integration |
-| [Plugins](https://truthound.netlify.app/guides/advanced/plugins/) | Security sandbox, signing, hot reload |
-| [Performance](https://truthound.netlify.app/guides/advanced/performance/) | Optimization strategies |
-
----
-
-## Validation Engine Enhancement (VE)
-
-Truthound v1.3.0 introduces a GX-inspired Validation Engine Enhancement comprising five phases that strengthen the validation pipeline's expressiveness, performance, and fault tolerance.
-
-| Phase | Feature | Description |
-|-------|---------|-------------|
-| **VE-1** | Result Format System | 4-level detail control (`BOOLEAN_ONLY` < `BASIC` < `SUMMARY` < `COMPLETE`) with progressive enrichment |
-| **VE-2** | Structured Results | `ValidationDetail` dataclass mirroring GX `ExpectationValidationResult.result` |
-| **VE-3** | Metric Deduplication | `SharedMetricStore` with `MetricKey`-based caching, `CommonMetrics` (11 standard metrics), deduplication across validators |
-| **VE-4** | Dependency DAG | `SkipCondition` for conditional execution, `should_skip()` based on prior results, priority-based level grouping |
-| **VE-5** | Exception Isolation | `ExceptionInfo` with 4-category classification, 3-tier fallback (batch → per-validator → per-expression), exponential backoff retry |
-
-### Key API Additions
-
-```python
-import truthound as th
-
-# Result format control (VE-1)
-report = th.check("data.csv", result_format="complete")
-
-# Exception isolation with retry (VE-5)
-report = th.check("data.csv", catch_exceptions=True, max_retries=3)
-
-# Access structured results (VE-2)
-for issue in report.issues:
-    if issue.result:
-        print(f"Unexpected: {issue.result.unexpected_count} ({issue.result.unexpected_percent:.1%})")
-```
-
----
-
-## Validator Categories
-
-| Category | Description |
-|----------|-------------|
-| schema | Column structure, types, relationships |
-| completeness | Null detection, required fields |
-| uniqueness | Duplicates, primary keys, composite keys |
-| distribution | Range, outliers, statistical tests |
-| string | Regex, email, URL, JSON validation |
-| datetime | Format, range, sequence validation |
-| aggregate | Mean, median, sum constraints |
-| cross_table | Multi-table relationships |
-| multi_column | Column comparisons, conditional logic |
-| query | SQL/Polars expression validation |
-| table | Row count, freshness, metadata |
-| geospatial | Coordinates, bounding boxes |
-| drift | KS, PSI, Chi-square, Wasserstein |
-| anomaly | IQR, Z-score, Isolation Forest, LOF |
-| business_rule | Luhn, IBAN, VAT, ISBN validation |
-| localization | Korean, Japanese, Chinese identifiers |
-| ml_feature | Leakage detection, correlation |
-| profiling | Cardinality, entropy, frequency |
-| referential | Foreign keys, orphan records |
-| timeseries | Gaps, seasonality, trend detection |
-| privacy | PII detection and compliance rules |
-| security | SQL injection, ReDoS protection |
-| sdk | Custom validator development |
-| timeout | Distributed timeout management |
-| i18n | Internationalized error messages |
-| streaming | Streaming data validation |
-| memory | Memory-aware processing |
-| optimization | Execution optimization |
-
----
-
-## Data Sources
-
-| Category | Sources |
-|----------|---------|
-| DataFrame | Polars, Pandas, PySpark |
-| Core SQL | PostgreSQL, MySQL, SQLite |
-| Cloud DW | BigQuery, Snowflake, Redshift, Databricks |
-| Enterprise | Oracle, SQL Server |
-| File | CSV, Parquet, JSON, NDJSON |
-| Streaming | Kafka, Kinesis, Pub/Sub |
-
----
-
-## Installation Options
-
-```bash
-# Core installation
-pip install truthound
-
-# Feature-specific extras
-pip install truthound[drift]      # Drift detection (scipy)
-pip install truthound[anomaly]    # Anomaly detection (scikit-learn)
-pip install truthound[pdf]        # PDF export (weasyprint)
-
-# Data source extras
-pip install truthound[bigquery]   # Google BigQuery
-pip install truthound[snowflake]  # Snowflake
-pip install truthound[redshift]   # Amazon Redshift
-pip install truthound[databricks] # Databricks
-pip install truthound[oracle]     # Oracle Database
-pip install truthound[sqlserver]  # SQL Server
-
-# Security extras
-pip install truthound[encryption] # Encryption (cryptography)
-
-# Full installation
-pip install truthound[all]
-```
-
----
-
-## Requirements
-
-- Python 3.11+
-- Polars 1.x
-- PyYAML
-- Rich
-- Typer
-
----
+- Architecture: [docs/concepts/architecture.md](docs/concepts/architecture.md)
+- Plugin platform: [docs/concepts/plugins.md](docs/concepts/plugins.md)
+- Reporter SDK: [docs/guides/reporter-sdk.md](docs/guides/reporter-sdk.md)
+- Checkpoints: [docs/guides/checkpoints.md](docs/guides/checkpoints.md)
+- Migration guide: [docs/guides/migration-2.0.md](docs/guides/migration-2.0.md)
+- Legacy archive: [docs/legacy/index.md](docs/legacy/index.md)
+- Release notes: [docs/releases/truthound-2.0.md](docs/releases/truthound-2.0.md)
+- ADRs: [docs/adr/001-validation-kernel.md](docs/adr/001-validation-kernel.md), [docs/adr/002-plugin-platform.md](docs/adr/002-plugin-platform.md), [docs/adr/003-result-model.md](docs/adr/003-result-model.md), [docs/adr/004-migration-compatibility.md](docs/adr/004-migration-compatibility.md)
 
 ## Development
 
 ```bash
-git clone https://github.com/seadonggyun4/Truthound.git
-cd Truthound
-pip install hatch
-hatch env create
-hatch run test
+uv run --frozen --extra dev python -m pytest -q
+uv run --frozen --extra dev python -m pytest --collect-only -q tests
+uv run --frozen --extra dev python -m pytest -q -m "contract or fault or e2e" -p no:cacheprovider
+uv run --frozen --extra dev python -m pytest -q -m "contract or fault or integration or soak or stress or scale_100m or e2e" --run-integration --run-expensive --run-soak -p no:cacheprovider
+uv run --frozen --extra dev python docs/scripts/check_links.py --mkdocs mkdocs.yml README.md CLAUDE.md
+uv run --frozen --extra dev --extra docs mkdocs build --strict
 ```
 
----
+Tests now follow a failure-first lane model:
 
-## References
+- `contract`: stable public API and compatibility boundaries
+- `fault`: deterministic failure injection, timeout, corruption, and concurrency scenarios
+- `integration`: opt-in backend and external-service coverage
+- `soak` and `stress`: nightly-only load and chaos coverage
 
-1. Polars Documentation. https://pola.rs/
-2. Kolmogorov, A. N. (1933). "Sulla determinazione empirica di una legge di distribuzione"
-3. Liu, F. T., Ting, K. M., & Zhou, Z. H. (2008). "Isolation Forest"
-4. Breunig, M. M., et al. (2000). "LOF: Identifying Density-Based Local Outliers"
+The default local run is intentionally fast. Manual verification artifacts live under `verification/phase6` and are intentionally kept out of pytest discovery.
 
----
-
-## License
-
-Apache License 2.0
-
----
-
-## Acknowledgments
-
-Built with Polars, Rich, Typer, scikit-learn, and SciPy.
+When adding tests, prefer scenarios that protect public contracts or operational failure modes. Avoid adding default-value, getter/setter, enum-literal, `to_dict()` round-trip, or CSS-string existence tests unless they prove a compatibility boundary that has failed before.
