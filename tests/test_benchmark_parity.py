@@ -25,6 +25,7 @@ from truthound.benchmark import (
     write_release_summary,
 )
 from truthound.benchmark.base import EnvironmentInfo
+from truthound.benchmark.workloads import workload_root
 
 
 def _observation(
@@ -80,6 +81,17 @@ def test_workload_dataset_fingerprint_is_stable():
     )
     assert workload.dataset_fingerprint == workload.dataset_fingerprint
     assert len(workload.dataset_fingerprint) == 16
+
+
+@pytest.mark.contract
+def test_workload_root_prefers_repo_benchmarks_from_cwd(monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.delenv("TRUTHOUND_BENCHMARK_WORKLOAD_ROOT", raising=False)
+    monkeypatch.chdir(Path(__file__).resolve().parents[1])
+
+    root = workload_root()
+
+    assert root.name == "workloads"
+    assert (root / "local-null.json").exists()
 
 
 @pytest.mark.contract

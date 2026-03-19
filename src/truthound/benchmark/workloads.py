@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -235,8 +236,27 @@ PARITY_SUITES: tuple[str, ...] = (
 
 def workload_root() -> Path:
     """Return the repo-tracked workload root."""
+    override = os.environ.get("TRUTHOUND_BENCHMARK_WORKLOAD_ROOT", "").strip()
+    if override:
+        return Path(override).expanduser().resolve()
 
-    return Path(__file__).resolve().parents[3] / "benchmarks" / "workloads"
+    candidates: list[Path] = []
+    cwd = Path.cwd().resolve()
+    candidates.append(cwd / "benchmarks" / "workloads")
+    candidates.extend(parent / "benchmarks" / "workloads" for parent in cwd.parents)
+    module_path = Path(__file__).resolve()
+    candidates.extend(parent / "benchmarks" / "workloads" for parent in module_path.parents)
+
+    seen: set[Path] = set()
+    for candidate in candidates:
+        resolved = candidate.resolve()
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        if resolved.is_dir():
+            return resolved
+
+    return candidates[0]
 
 
 def load_workload(path: str | Path) -> ParityWorkload:
