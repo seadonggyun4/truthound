@@ -374,7 +374,7 @@ from truthound.profiler.incremental_validation import (
     # Results
     ValidationIssue,
     ValidationMetrics,
-    ValidationResult,
+    ValidationResult as IncrementalValidationResult,
     # Context
     ValidationContext,
     # Base classes
@@ -1223,7 +1223,7 @@ __all__ = [
     # Results
     "ValidationIssue",
     "ValidationMetrics",
-    "ValidationResult",
+    "IncrementalValidationResult",
     # Context
     "ValidationContext",
     # Base classes

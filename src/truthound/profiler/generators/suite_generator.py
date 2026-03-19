@@ -54,12 +54,11 @@ from truthound.profiler.generators.base import (
 if TYPE_CHECKING:
     from truthound.validators.base import Validator
     from truthound.profiler.integration.protocols import ExecutionContext, ExecutionResult
-    from truthound.report import ProfileReport
 
 logger = logging.getLogger(__name__)
 
 # Type alias for supported profile types
-ProfileInput = Union["TableProfile", "ProfileReport", dict[str, Any]]
+ProfileInput = Union["TableProfile", dict[str, Any], Any]
 
 
 @dataclass(frozen=True)

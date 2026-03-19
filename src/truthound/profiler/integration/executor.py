@@ -32,7 +32,6 @@ if TYPE_CHECKING:
     from truthound.profiler.generators.suite_generator import ValidationSuite
     from truthound.profiler.generators.base import GeneratedRule
     from truthound.validators.base import Validator
-    from truthound.report import Report
 
 logger = logging.getLogger(__name__)
 
