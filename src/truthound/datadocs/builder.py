@@ -326,6 +326,7 @@ class HTMLReportBuilder:
                 theme=ReportTheme(theme) if isinstance(theme, str) else theme,
             )
 
+        self._use_svg = _use_svg
         self._theme_config = self.config.custom_theme or get_theme(self.config.theme)
         # Use SVG for PDF, ApexCharts for HTML
         chart_lib = ChartLibrary.SVG if _use_svg else ChartLibrary.APEXCHARTS
@@ -566,6 +567,7 @@ class HTMLReportBuilder:
         css = get_complete_stylesheet(
             self._theme_config.to_css_vars(),
             is_dark=is_dark,
+            include_apexcharts=not self._use_svg,
         )
 
         # Render sections
@@ -740,7 +742,7 @@ class HTMLReportBuilder:
     </style>
     {scripts_html}
 </head>
-<body class="{'pdf-document' if for_pdf else ''}">
+<body{' class="pdf-document"' if for_pdf else ''}>
     <div class="report-container">
         {title_page_html}
         {header_html}

@@ -4,6 +4,7 @@ This module provides comprehensive data documentation and reporting:
 
 **Stage 1: Static HTML Report** (Minimal dependencies - Jinja2 optional)
 - Generate beautiful, self-contained HTML reports from profile data
+- Generate validation-focused Data Docs directly from `ValidationRunResult`
 - CI/CD pipeline compatible (artifacts)
 - Shareable via email/Slack
 - CDN-based charts (no build step required)
@@ -24,7 +25,9 @@ Usage:
 Example:
     from truthound.datadocs import (
         HTMLReportBuilder,
+        ValidationDocsBuilder,
         generate_html_report,
+        generate_validation_report,
         ReportConfig,
         ReportTheme,
     )
@@ -34,10 +37,15 @@ Example:
     profile = load_profile("profile.json")
     html = generate_html_report(profile, title="My Data Report")
 
+    validation_html = generate_validation_report(report.validation_run)
+
     # Or use the builder for more control
     builder = HTMLReportBuilder(theme=ReportTheme.PROFESSIONAL)
     html = builder.build(profile)
     builder.save("report.html", html)
+
+    validation_builder = ValidationDocsBuilder(theme=ReportTheme.PROFESSIONAL)
+    validation_html = validation_builder.build(report.validation_run)
 
     # Launch dashboard (requires truthound[dashboard])
     from truthound.datadocs import launch_dashboard
@@ -127,6 +135,11 @@ from truthound.datadocs.builder import (
     generate_report_from_file,
     export_report,
     export_to_pdf,
+)
+from truthound.datadocs.validation import (
+    ValidationDataConverter,
+    ValidationDocsBuilder,
+    generate_validation_report,
 )
 
 
@@ -249,6 +262,9 @@ __all__ = [
     "generate_report_from_file",
     "export_report",
     "export_to_pdf",
+    "ValidationDataConverter",
+    "ValidationDocsBuilder",
+    "generate_validation_report",
     # === Dashboard (optional) ===
     "launch_dashboard",
     "create_dashboard_app",

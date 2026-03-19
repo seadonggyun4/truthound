@@ -1051,17 +1051,28 @@ DARK_MODE_OVERRIDES = """
 # Complete Stylesheet
 # =============================================================================
 
-def get_complete_stylesheet(theme_css_vars: str, is_dark: bool = False) -> str:
+def get_complete_stylesheet(
+    theme_css_vars: str,
+    is_dark: bool = False,
+    *,
+    include_apexcharts: bool = True,
+) -> str:
     """Generate the complete stylesheet.
 
     Args:
         theme_css_vars: CSS custom properties for the theme
         is_dark: Whether this is a dark theme
+        include_apexcharts: Whether to include ApexCharts-specific CSS
 
     Returns:
         Complete CSS stylesheet
     """
+    components_css = COMPONENTS_CSS
     dark_overrides = DARK_MODE_OVERRIDES if is_dark else ""
+
+    if not include_apexcharts:
+        components_css = _strip_apexcharts_components(components_css)
+        dark_overrides = _strip_apexcharts_dark_overrides(dark_overrides)
 
     return f"""
 {theme_css_vars}
@@ -1070,7 +1081,7 @@ def get_complete_stylesheet(theme_css_vars: str, is_dark: bool = False) -> str:
 
 {LAYOUT_CSS}
 
-{COMPONENTS_CSS}
+{components_css}
 
 {RESPONSIVE_CSS}
 
@@ -1078,3 +1089,21 @@ def get_complete_stylesheet(theme_css_vars: str, is_dark: bool = False) -> str:
 
 {dark_overrides}
 """
+
+
+def _strip_apexcharts_components(css: str) -> str:
+    start = "/* ApexCharts Base Styles (Theme-aware) */"
+    end = "/* Alerts */"
+    if start not in css or end not in css:
+        return css
+    before, remainder = css.split(start, 1)
+    _, after = remainder.split(end, 1)
+    return before + end + after
+
+
+def _strip_apexcharts_dark_overrides(css: str) -> str:
+    start = "/* Dark Mode ApexCharts Overrides */"
+    if start not in css:
+        return css
+    before, _ = css.split(start, 1)
+    return before
