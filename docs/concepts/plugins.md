@@ -2,7 +2,7 @@
 
 ## One Runtime, Multiple Capabilities
 
-Truthound 2.0 removes the old split between a standard plugin manager and a separate enterprise lifecycle runtime.
+Truthound 3.0 removes the old split between a standard plugin manager and a separate enterprise lifecycle runtime.
 
 The current design is:
 
@@ -17,7 +17,6 @@ This keeps lifecycle semantics in one place while still allowing enterprise-orie
 Plugins should integrate through stable manager ports:
 
 - `register_check_factory()`
-- `register_validator()`
 - `register_data_asset_provider()`
 - `register_reporter()`
 - `register_hook()`
@@ -25,11 +24,11 @@ Plugins should integrate through stable manager ports:
 
 These ports provide an abstraction boundary between plugin authors and Truthound internals.
 
-For reporter plugins, the current canonical contract is reporter contract version 2:
+For reporter plugins, the canonical 3.0 contract is reporter contract version 3:
 
 - canonical input: `ValidationRunResult`
 - shared projection: `RunPresentation`
-- compatibility adapters still accept legacy `Report` and persisted validation DTOs for one migration cycle
+- render entry point: `render(run_result, *, context)`
 
 `PluginManager` records reporter contract versions so mixed plugin fleets can be audited during migration.
 
@@ -58,11 +57,18 @@ The public command group is `plugins`, not `plugin`.
 
 ## Authoring Guidance
 
-For validator-style plugins, older registry-based approaches still work, but new plugins should prefer manager ports and `CheckSpec`-oriented extension points. Reporter plugins should likewise target `ValidationRunResult` rather than `truthound.stores.results.ValidationResult`. The long-term target is plugin registration against durable kernel contracts rather than direct mutation of internal registries.
+Truthound 3.0 standardizes plugin authoring around declarative and stable contracts:
+
+- validation extensions should register `CheckSpecFactory` implementations
+- reporter extensions should target `ValidationRunResult` and `RunPresentation`
+- datasource extensions should register `DataAssetProvider`
+- lifecycle hooks should only touch kernel contracts, not private registries
+
+Legacy validator-class mutation patterns are no longer the recommended public path.
 
 ## Design Rationale
 
-This platform mirrors the broader 2.0 architecture:
+This platform mirrors the broader 3.0 architecture:
 
 - stable contracts in the center
 - adapters at the edge

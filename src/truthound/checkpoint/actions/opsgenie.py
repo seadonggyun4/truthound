@@ -566,7 +566,7 @@ class DefaultAlertTemplate(AlertTemplate):
         config: "OpsGenieConfig",
     ) -> dict[str, Any]:
         """Build default alert payload."""
-        validation = checkpoint_result.validation_result
+        validation = checkpoint_result.validation_view
         stats = validation.statistics if validation else None
         status = checkpoint_result.status.value
 
@@ -680,7 +680,7 @@ class MinimalAlertTemplate(AlertTemplate):
     ) -> dict[str, Any]:
         """Build minimal alert payload."""
         status = checkpoint_result.status.value
-        stats = checkpoint_result.validation_result.statistics if checkpoint_result.validation_result else None
+        stats = checkpoint_result.validation_view.statistics if checkpoint_result.validation_view else None
 
         message = f"[{status.upper()}] {checkpoint_result.checkpoint_name}"
         if stats and stats.total_issues > 0:
@@ -719,7 +719,7 @@ class DetailedAlertTemplate(AlertTemplate):
         config: "OpsGenieConfig",
     ) -> dict[str, Any]:
         """Build detailed alert payload."""
-        validation = checkpoint_result.validation_result
+        validation = checkpoint_result.validation_view
         stats = validation.statistics if validation else None
         status = checkpoint_result.status.value
 

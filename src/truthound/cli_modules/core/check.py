@@ -300,9 +300,9 @@ def check_cmd(
 
     try:
         if source is not None:
-            report = check(source=source, **check_kwargs)
+            run_result = check(source=source, **check_kwargs)
         else:
-            report = check(data_path, **check_kwargs)
+            run_result = check(data_path, **check_kwargs)
     except Exception as e:
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(1)
@@ -312,7 +312,7 @@ def check_cmd(
 
     # Output the report
     if format == "json":
-        result = report.to_json()
+        result = run_result.to_json()
         if output:
             output.write_text(result)
             typer.echo(f"Report written to {output}")
@@ -326,7 +326,7 @@ def check_cmd(
         try:
             from truthound.html_reporter import generate_html_report
 
-            html = generate_html_report(report, title=f"Validation Report: {report_label}")
+            html = generate_html_report(run_result, title=f"Validation Report: {report_label}")
             output.write_text(html, encoding="utf-8")
             typer.echo(f"HTML report written to {output}")
         except ImportError as e:
@@ -345,21 +345,17 @@ def check_cmd(
             raise typer.Exit(1)
 
     else:
-        report.print()
+        run_result.print()
 
     # Show exception details if requested
-    if show_exceptions and report.exception_summary is not None:
-        es = report.exception_summary
-        typer.echo(f"\nException Details ({es.total_exceptions} exception(s)):")
-        for issue in report.issues:
-            exc = issue.exception_info
-            if exc is not None and exc.raised_exception:
-                typer.echo(f"  [{exc.failure_category}] {exc.exception_type}: {exc.exception_message}")
-                if exc.validator_name:
-                    typer.echo(f"    Validator: {exc.validator_name}")
-                if exc.retry_count > 0:
-                    typer.echo(f"    Retries: {exc.retry_count}/{exc.max_retries}")
+    if show_exceptions and run_result.execution_issues:
+        typer.echo(f"\nException Details ({len(run_result.execution_issues)} exception(s)):")
+        for issue in run_result.execution_issues:
+            typer.echo(f"  [{issue.failure_category or 'unknown'}] {issue.exception_type or 'Exception'}: {issue.message}")
+            typer.echo(f"    Validator: {issue.check_name}")
+            if issue.retry_count > 0:
+                typer.echo(f"    Retries: {issue.retry_count}")
 
     # Exit with error if strict mode and issues found
-    if strict and report.has_issues:
+    if strict and run_result.has_failures:
         raise typer.Exit(1)

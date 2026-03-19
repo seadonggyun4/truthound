@@ -19,6 +19,9 @@ truthound benchmark list
 
 # Compare results
 truthound benchmark compare baseline.json current.json
+
+# Run the Truthound vs GX parity gate
+truthound benchmark parity --suite pr-fast --frameworks truthound
 ```
 
 ## Overview
@@ -28,6 +31,7 @@ truthound benchmark compare baseline.json current.json
 | [`run`](run.md) | Run performance benchmarks | Performance testing |
 | [`list`](list.md) | List available benchmarks | Discovery |
 | [`compare`](compare.md) | Compare benchmark results | Regression detection |
+| [`parity`](parity.md) | Run repo-tracked Truthound vs GX parity suites | Release gating |
 
 !!! tip "Common Mistake"
     `profile`, `check`, `scan` are **benchmark names**, not subcommands.
@@ -51,6 +55,15 @@ Benchmarks measure the performance of Truthound operations:
 | `full` | ~30 seconds | Core benchmarks (10K rows) | Comprehensive testing |
 | `profiling` | ~10 seconds | Profiling-related benchmarks | Profile performance |
 | `validation` | ~10 seconds | Validation-related benchmarks | Validator performance |
+
+## Parity Suites
+
+| Suite | Description |
+| --- | --- |
+| `pr-fast` | Truthound-only smoke on repo-tracked local exact workloads |
+| `nightly-core` | Local exact Truthound vs GX parity suite |
+| `nightly-sql` | SQLite parity plus DuckDB shadow workloads |
+| `release-ga` | Local exact + SQLite exact release-grade gate |
 
 ## Data Size Presets
 
@@ -113,6 +126,9 @@ truthound benchmark compare baseline.json current.json
 
 # Custom threshold
 truthound benchmark compare old.json new.json --threshold 5.0
+
+# Run the nightly local parity suite
+truthound benchmark parity --suite nightly-core --frameworks both --backend local --strict
 ```
 
 ## CI/CD Integration
@@ -213,6 +229,7 @@ truthound benchmark run --suite full --iterations 5
 - [run](run.md) - Run performance benchmarks
 - [list](list.md) - List available benchmarks
 - [compare](compare.md) - Compare benchmark results
+- [parity](parity.md) - Run Truthound vs GX parity suites
 
 ## See Also
 

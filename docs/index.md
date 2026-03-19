@@ -1,29 +1,37 @@
-# Truthound 2.0
+# Truthound 3.0
 
-Truthound 2.0 is a Polars-first data validation framework organized around a small validation kernel, an explicit planning/runtime split, and a unified plugin platform.
+Truthound 3.0 is a Polars-first validation framework centered on three promises:
 
-## What Changed
+- zero-configuration is the default user experience
+- correctness and operational stability are first-class kernel responsibilities
+- extension points stay small, explicit, and durable under change
 
-- Validation now flows through `truthound.core`
-- `th.check()` remains the primary public facade
-- Structured execution output is exposed through `report.validation_run`
-- Plugin lifecycle management is unified behind `PluginManager`
-- `EnterprisePluginManager` now layers async and optional capabilities on top of the same runtime
-
-## Read This First
+## Start Here
 
 - [Getting Started](getting-started/index.md)
+- [Quick Start](getting-started/quickstart.md)
 - [Architecture](concepts/architecture.md)
+- [Zero-Config Context](concepts/zero-config.md)
 - [Plugin Platform](concepts/plugins.md)
-- [Migration to 2.0](guides/migration-2.0.md)
+- [Migration to 3.0](guides/migration-3.0.md)
+
+## Core Shift
+
+Truthound 3.0 is a hard contract reset, not a 2.x compatibility extension:
+
+- `th.check()` returns `ValidationRunResult` directly
+- `TruthoundContext` auto-discovers and manages a local `.truthound/` workspace
+- `validators=None` triggers deterministic auto-suite synthesis
+- planning is backend-aware and metric-oriented instead of validator-loop oriented
+- checkpoints, reporters, and validation docs all consume the same canonical result model
 
 ## Architectural Lineage
 
-Truthound 2.0 synthesizes several proven design ideas:
+Truthound 3.0 synthesizes several proven ideas:
 
-- Great Expectations: suite and artifact separation
-- Soda: scan planning and backend-aware routing
+- Great Expectations: suite, checkpoint, and artifact separation
+- Soda: scan planning and backend-aware metric batching
 - Deequ: analyzer, constraint, verification, and repository decomposition
-- Pandera: schema-centric validation ergonomics and lazy evaluation
+- Pandera: schema-centric ergonomics and lazy data interaction
 
-The resulting design is intentionally conservative: the external API remains approachable, while the internal kernel becomes much easier to extend and test.
+The 3.0 design keeps the friendly facade while making the internals more maintainable, benchmarkable, and predictable at scale.

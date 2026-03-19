@@ -1,0 +1,35 @@
+{
+  "id": "sqlite-null",
+  "name": "SQLite pushdown not-null workload",
+  "dataset": "data/local_core.csv",
+  "backend": "sqlite",
+  "benchmark_class": "sql_exact",
+  "exactness": "exact",
+  "table_name": "customer_quality",
+  "suites": ["nightly-sql", "release-ga"],
+  "loader": {
+    "format": "csv",
+    "null_values": ["", "NULL"]
+  },
+  "expected": {
+    "success": false,
+    "issue_count": 1
+  },
+  "truthound": {
+    "validators": ["not_null"],
+    "validator_config": {
+      "not_null": {
+        "columns": ["email"]
+      }
+    },
+    "pushdown": true
+  },
+  "gx": {
+    "expectations": [
+      {
+        "type": "not_null",
+        "column": "email"
+      }
+    ]
+  }
+}

@@ -798,7 +798,7 @@ class DefaultTemplate(MessageTemplate):
             status, {"color": "default", "emoji": "❓", "title": "Unknown", "accent_color": "#6c757d"}
         )
 
-        validation = checkpoint_result.validation_result
+        validation = checkpoint_result.validation_view
         stats = validation.statistics if validation else None
 
         builder = AdaptiveCardBuilder(config.card_version)
@@ -923,7 +923,7 @@ class MinimalTemplate(MessageTemplate):
     ) -> dict[str, Any]:
         """Render minimal template."""
         status = checkpoint_result.status.value
-        validation = checkpoint_result.validation_result
+        validation = checkpoint_result.validation_view
         stats = validation.statistics if validation else None
 
         status_emoji = {"success": "✅", "failure": "❌", "error": "⚠️", "warning": "⚠️"}.get(status, "❓")
@@ -958,7 +958,7 @@ class DetailedTemplate(MessageTemplate):
         base_message = default.render(checkpoint_result, config)
 
         # Add additional details card for show/hide
-        validation = checkpoint_result.validation_result
+        validation = checkpoint_result.validation_view
         if validation and validation.results and config.include_details:
             # Build details card
             details_builder = AdaptiveCardBuilder()
@@ -1005,7 +1005,7 @@ class CompactTemplate(MessageTemplate):
     ) -> dict[str, Any]:
         """Render compact template."""
         status = checkpoint_result.status.value
-        validation = checkpoint_result.validation_result
+        validation = checkpoint_result.validation_view
         stats = validation.statistics if validation else None
 
         status_emoji = {"success": "✅", "failure": "❌", "error": "⚠️", "warning": "⚠️"}.get(status, "❓")
@@ -1426,7 +1426,7 @@ class TeamsNotification(BaseAction[TeamsConfig]):
         Returns:
             Payload with substituted values.
         """
-        validation = checkpoint_result.validation_result
+        validation = checkpoint_result.validation_view
         stats = validation.statistics if validation else None
 
         substitutions = {

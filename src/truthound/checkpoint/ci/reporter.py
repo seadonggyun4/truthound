@@ -109,7 +109,7 @@ class GitHubActionsReporter(CIReporter):
 
     def _write_summary(self, result: "CheckpointResult", path: Path) -> None:
         """Write GitHub Actions job summary."""
-        validation = result.validation_result
+        validation = result.validation_view
         stats = validation.statistics if validation else None
         status = result.status.value
 
@@ -151,7 +151,7 @@ class GitHubActionsReporter(CIReporter):
 
     def _set_outputs(self, result: "CheckpointResult") -> None:
         """Set GitHub Actions outputs."""
-        validation = result.validation_result
+        validation = result.validation_view
         stats = validation.statistics if validation else None
 
         outputs = {
@@ -210,7 +210,7 @@ class GitLabCIReporter(CIReporter):
 
     def _write_dotenv(self, result: "CheckpointResult") -> None:
         """Write variables to dotenv file for artifacts."""
-        validation = result.validation_result
+        validation = result.validation_view
         stats = validation.statistics if validation else None
 
         dotenv_content = f"""TRUTHOUND_STATUS={result.status.value}
@@ -224,7 +224,7 @@ TRUTHOUND_HAS_FAILURES={str(result.status.value in ('failure', 'error')).lower()
 
     def _print_summary(self, result: "CheckpointResult") -> None:
         """Print summary to console."""
-        validation = result.validation_result
+        validation = result.validation_view
         stats = validation.statistics if validation else None
 
         print("\n" + "=" * 60)
@@ -263,7 +263,7 @@ class JenkinsCIReporter(CIReporter):
 
     def _write_properties(self, result: "CheckpointResult") -> None:
         """Write properties file for Jenkins."""
-        validation = result.validation_result
+        validation = result.validation_view
         stats = validation.statistics if validation else None
 
         properties = f"""truthound.status={result.status.value}
@@ -277,7 +277,7 @@ truthound.has_failures={str(result.status.value in ('failure', 'error')).lower()
 
     def _write_junit_xml(self, result: "CheckpointResult") -> None:
         """Write JUnit XML for Jenkins test reporting."""
-        validation = result.validation_result
+        validation = result.validation_view
         stats = validation.statistics if validation else None
 
         failures = stats.total_issues if stats else 0
@@ -302,7 +302,7 @@ truthound.has_failures={str(result.status.value in ('failure', 'error')).lower()
 
     def _print_summary(self, result: "CheckpointResult") -> None:
         """Print summary for Jenkins console."""
-        validation = result.validation_result
+        validation = result.validation_view
         stats = validation.statistics if validation else None
 
         print("\n" + "=" * 60)
@@ -346,7 +346,7 @@ class CircleCIReporter(CIReporter):
         results_dir = Path("test-results/truthound")
         results_dir.mkdir(parents=True, exist_ok=True)
 
-        validation = result.validation_result
+        validation = result.validation_view
         stats = validation.statistics if validation else None
         status = result.status.value
 
@@ -376,7 +376,7 @@ High: {stats.high_issues if stats else 0}
 
     def _print_summary(self, result: "CheckpointResult") -> None:
         """Print summary for CircleCI console."""
-        validation = result.validation_result
+        validation = result.validation_view
         stats = validation.statistics if validation else None
 
         print("\n╔" + "═" * 58 + "╗")

@@ -29,10 +29,12 @@ def _parse_severity(s: str) -> Severity:
     return Severity(s.lower())
 
 if TYPE_CHECKING:
+    from truthound.context import TruthoundContext
     from truthound.schema import Schema
     from truthound.datasources.base import BaseDataSource
     from truthound.execution.base import BaseExecutionEngine
-    from truthound.report import PIIReport, ProfileReport, Report
+    from truthound.core.results import ValidationRunResult
+    from truthound.report import PIIReport, ProfileReport
     from truthound.validators.base import Validator
 
 
@@ -62,6 +64,7 @@ def _get_profile_data() -> Any:
 def check(
     data: Any = None,
     source: "BaseDataSource | None" = None,
+    context: "TruthoundContext | None" = None,
     validators: list[str | Validator] | None = None,
     validator_config: dict[str, dict[str, Any]] | None = None,
     min_severity: str | Severity | None = None,
@@ -74,12 +77,14 @@ def check(
     catch_exceptions: bool = True,
     max_retries: int = 0,
     exclude_columns: list[str] | None = None,
-) -> Report:
-    """Perform data quality validation through the Truthound 2.0 kernel.
+) -> ValidationRunResult:
+    """Perform data quality validation through the Truthound 3.0 kernel.
 
-    The public ``th.check()`` API remains stable, but execution is now routed
-    through ``truthound.core`` where suite building, planning, runtime
-    orchestration, and result adaptation are separated.
+    ``th.check()`` now returns ``ValidationRunResult`` directly. Truthound
+    automatically discovers or creates the local ``.truthound`` workspace,
+    resolves a baseline schema when needed, synthesizes an auto-suite when
+    validators are omitted, and persists run metadata/docs through the active
+    project context.
     """
     from truthound.core import (
         ScanPlanner,
@@ -87,9 +92,13 @@ def check(
         ValidationSuite,
         build_validation_asset,
     )
+    from truthound.context import get_context
 
+    active_context = context or get_context()
     asset = build_validation_asset(data=data, source=source, pushdown=pushdown)
+    active_context.track_asset(data=data, source=source)
     suite = ValidationSuite.from_legacy(
+        context=active_context,
         validators=validators,
         validator_config=validator_config,
         schema=schema,
@@ -110,13 +119,29 @@ def check(
         pushdown=pushdown,
     )
     run_result = ValidationRuntime().execute(asset=asset, plan=plan)
+    run_result = run_result.with_metadata(
+        context_root=str(active_context.root_dir),
+    )
 
     if min_severity is not None:
         if isinstance(min_severity, str):
             min_severity = _parse_severity(min_severity)
         run_result = run_result.filter_by_severity(min_severity)
 
-    return run_result.to_legacy_report()
+    if active_context.config.persist_runs:
+        run_path = active_context.persist_run(run_result)
+        run_result = run_result.with_metadata(
+            context_run_artifact=str(run_path),
+            _truthound_run_artifact=str(run_path),
+        )
+    if active_context.config.persist_docs:
+        docs_path = active_context.persist_docs(run_result)
+        run_result = run_result.with_metadata(
+            context_docs_artifact=str(docs_path),
+            _truthound_docs_artifact=str(docs_path),
+        )
+
+    return run_result
 
 
 def scan(

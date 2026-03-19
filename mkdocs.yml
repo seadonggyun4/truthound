@@ -1,5 +1,5 @@
 site_name: Truthound
-site_description: Truthound 2.0 validation kernel and plugin platform
+site_description: Truthound 3.0 zero-config validation platform powered by Polars
 site_author: SEO DONG GYUN
 site_url: https://github.com/seadonggyun4/Truthound
 
@@ -69,11 +69,16 @@ nav:
       - Quick Start: getting-started/quickstart.md
   - Concepts:
       - Architecture: concepts/architecture.md
+      - Zero-Config Context: concepts/zero-config.md
       - Plugin Platform: concepts/plugins.md
   - Guides:
       - Reporter SDK: guides/reporter-sdk.md
       - Checkpoints: guides/checkpoints.md
-      - Migration to 2.0: guides/migration-2.0.md
+      - Performance and Benchmarks: guides/performance.md
+      - Benchmark Methodology: guides/benchmark-methodology.md
+      - Workload Catalog: guides/benchmark-workloads.md
+      - GX Parity Gate: guides/gx-parity.md
+      - Migration to 3.0: guides/migration-3.0.md
   - Legacy:
       - Archive Overview: legacy/index.md
   - ADRs:
@@ -82,4 +87,6 @@ nav:
       - ADR 003 Result Model: adr/003-result-model.md
       - ADR 004 Migration Compatibility: adr/004-migration-compatibility.md
   - Release Notes:
+      - Latest Benchmark Summary: releases/latest-benchmark-summary.md
+      - Truthound 3.0 RC1: releases/truthound-3.0-rc1.md
       - Truthound 2.0: releases/truthound-2.0.md

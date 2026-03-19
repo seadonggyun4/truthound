@@ -1,0 +1,41 @@
+name: Benchmarks Nightly
+
+on:
+  schedule:
+    - cron: "0 17 * * *"
+  workflow_dispatch:
+
+jobs:
+  nightly-parity:
+    runs-on: ubuntu-latest
+    env:
+      TRUTHOUND_BENCHMARK_RUNNER_CLASS: github-hosted-nightly
+      TRUTHOUND_BENCHMARK_RUNNER_LABELS: github-hosted,nightly
+      TRUTHOUND_BENCHMARK_STORAGE_CLASS: github-hosted-ephemeral
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: astral-sh/setup-uv@v4
+
+      - name: Install project with benchmark extras
+        run: uv pip install --system ".[dev,benchmarks]"
+
+      - name: Run local GX parity suite
+        run: python -m truthound.cli benchmark parity --suite nightly-core --frameworks both --backend local --strict --output benchmark-artifacts/nightly-core.json
+
+      - name: Run SQLite GX parity suite
+        run: python -m truthound.cli benchmark parity --suite nightly-sql --frameworks both --backend sqlite --strict --output benchmark-artifacts/nightly-sql.json
+
+      - name: Run DuckDB shadow suite
+        run: python -m truthound.cli benchmark parity --suite nightly-sql --frameworks truthound --backend duckdb-shadow --output benchmark-artifacts/nightly-duckdb-shadow.json
+
+      - name: Upload nightly benchmark artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: truthound-benchmark-nightly-artifacts
+          path: benchmark-artifacts

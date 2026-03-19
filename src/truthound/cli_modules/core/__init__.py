@@ -8,6 +8,7 @@ This package contains the fundamental CLI commands:
     - mask: Mask sensitive data
     - profile: Generate data profiles
     - compare: Compare datasets for drift
+    - doctor: Scan for Truthound migration issues
 """
 
 import typer
@@ -19,6 +20,7 @@ from truthound.cli_modules.core.scan import scan_cmd
 from truthound.cli_modules.core.mask import mask_cmd
 from truthound.cli_modules.core.profile import profile_cmd
 from truthound.cli_modules.core.compare import compare_cmd
+from truthound.cli_modules.core.doctor import doctor_cmd
 
 # Core app for mounting commands
 app = typer.Typer(help="Core data quality commands")
@@ -37,6 +39,7 @@ def register_commands(parent_app: typer.Typer) -> None:
     parent_app.command(name="mask")(mask_cmd)
     parent_app.command(name="profile")(profile_cmd)
     parent_app.command(name="compare")(compare_cmd)
+    parent_app.command(name="doctor")(doctor_cmd)
 
 
 __all__ = [
@@ -49,4 +52,5 @@ __all__ = [
     "mask_cmd",
     "profile_cmd",
     "compare_cmd",
+    "doctor_cmd",
 ]

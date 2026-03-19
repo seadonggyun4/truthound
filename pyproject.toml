@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "truthound"
-version = "2.0.0"
+version = "3.0.0rc1"
 description = "Zero-Configuration Data Quality Framework Powered by Polars"
 readme = "README.md"
 license = "Apache-2.0"
@@ -122,6 +122,15 @@ pdf = [
     "weasyprint>=60.0",
 ]
 
+# Benchmark parity and release-gate dependencies
+benchmarks = [
+    "pandas>=2.0.0,<3.0.0",
+    "great-expectations>=1.15.0,<2.0.0",
+    "psutil>=5.9.0,<8.0.0",
+    "duckdb>=1.0.0,<2.0.0",
+    "sqlalchemy>=2.0.0,<3.0.0",
+]
+
 # Performance optimization
 perf = [
     "xxhash>=3.4.0",
@@ -130,20 +139,23 @@ perf = [
 # Full installation with all optional dependencies
 all = [
     "jinja2>=3.0.0",
-    "pandas>=2.0.0",
+    "pandas>=2.0.0,<3.0.0",
     "scipy>=1.10.0",
     "scikit-learn>=1.3.0",
     "boto3>=1.26.0",
     "google-cloud-storage>=2.0.0",
     "azure-storage-blob>=12.0.0",
     "sqlalchemy>=2.0.0",
-    "duckdb>=1.0.0",
+    "duckdb>=1.0.0,<2.0.0",
     "reflex>=0.4.0",
     "weasyprint>=60.0",
     "motor>=3.0.0",
     "elasticsearch[async]>=8.0.0",
     "aiokafka>=0.9.0",
+    "great-expectations>=1.15.0,<2.0.0",
+    "psutil>=5.9.0,<8.0.0",
     "xxhash>=3.4.0",
+    "sqlalchemy>=2.0.0,<3.0.0",
 ]
 
 # Development dependencies
@@ -153,7 +165,7 @@ dev = [
     "pytest-asyncio>=0.23.0",
     "ruff>=0.4.0",
     "mypy>=1.10.0",
-    "pandas>=2.0.0",
+    "pandas>=2.0.0,<3.0.0",
     "scipy>=1.10.0",
     "scikit-learn>=1.3.0",
 ]

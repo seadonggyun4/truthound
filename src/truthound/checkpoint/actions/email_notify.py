@@ -153,7 +153,7 @@ class EmailNotification(BaseAction[EmailConfig]):
 
     def _build_text_body(self, checkpoint_result: "CheckpointResult") -> str:
         """Build plain text email body."""
-        validation = checkpoint_result.validation_result
+        validation = checkpoint_result.validation_view
         stats = validation.statistics if validation else None
 
         lines = [
@@ -183,7 +183,7 @@ class EmailNotification(BaseAction[EmailConfig]):
     def _build_html_body(self, checkpoint_result: "CheckpointResult") -> str:
         """Build HTML email body."""
         status = checkpoint_result.status.value
-        validation = checkpoint_result.validation_result
+        validation = checkpoint_result.validation_view
         stats = validation.statistics if validation else None
 
         status_color = {

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
+import json
 from typing import Any
 from uuid import uuid4
 
@@ -153,6 +154,10 @@ class ValidationRunResult:
     def has_failures(self) -> bool:
         return self.has_issues or bool(self.execution_issues)
 
+    @property
+    def success(self) -> bool:
+        return not self.has_failures
+
     def filter_by_severity(self, min_severity: Severity) -> 'ValidationRunResult':
         filtered_issues = tuple(
             issue for issue in self.issues if issue.severity >= min_severity
@@ -185,18 +190,24 @@ class ValidationRunResult:
             metadata=dict(self.metadata),
         )
 
-    def to_legacy_report(self):
-        from truthound.report import Report
-
-        report = Report(
-            issues=list(self.issues),
+    def with_metadata(self, **metadata: Any) -> 'ValidationRunResult':
+        return ValidationRunResult(
+            run_id=self.run_id,
+            run_time=self.run_time,
+            suite_name=self.suite_name,
             source=self.source,
             row_count=self.row_count,
             column_count=self.column_count,
             result_format=self.result_format,
+            execution_mode=self.execution_mode,
+            checks=self.checks,
+            issues=self.issues,
+            execution_issues=self.execution_issues,
+            metadata={
+                **self.metadata,
+                **metadata,
+            },
         )
-        report.validation_run = self
-        return report
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -213,6 +224,48 @@ class ValidationRunResult:
             'execution_issues': [issue.to_dict() for issue in self.execution_issues],
             'metadata': self.metadata,
         }
+
+    def to_json(self, indent: int = 2) -> str:
+        return json.dumps(self.to_dict(), indent=indent, default=str)
+
+    def render(self, format: str = 'console', **kwargs: Any) -> str:
+        from truthound.reporters import get_reporter
+
+        reporter = get_reporter(format, **kwargs)
+        return reporter.render(self)
+
+    def write(
+        self,
+        path: str | None = None,
+        *,
+        format: str | None = None,
+        **kwargs: Any,
+    ) -> Any:
+        from pathlib import Path
+        from truthound.reporters import get_reporter
+
+        resolved_format = format
+        if resolved_format is None and path:
+            suffix = Path(path).suffix.lower()
+            resolved_format = {
+                '.json': 'json',
+                '.html': 'html',
+                '.htm': 'html',
+                '.md': 'markdown',
+                '.markdown': 'markdown',
+                '.txt': 'console',
+            }.get(suffix, 'json')
+        reporter = get_reporter(resolved_format or 'json', **kwargs)
+        return reporter.write(self, path)
+
+    def build_docs(self, **kwargs: Any) -> str:
+        from truthound.datadocs import generate_validation_report
+
+        return generate_validation_report(self, **kwargs)
+
+    def print(self, format: str = 'console', **kwargs: Any) -> None:
+        output = self.render(format=format, **kwargs)
+        print(output)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> 'ValidationRunResult':

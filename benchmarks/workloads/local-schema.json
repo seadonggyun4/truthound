@@ -1,0 +1,80 @@
+{
+  "id": "local-schema",
+  "name": "Local exact schema presence workload",
+  "dataset": "data/local_schema_missing.csv",
+  "backend": "local",
+  "benchmark_class": "local_exact",
+  "exactness": "exact",
+  "suites": ["nightly-core", "release-ga"],
+  "loader": {
+    "format": "csv",
+    "null_values": ["", "NULL"]
+  },
+  "expected": {
+    "success": false,
+    "issue_count": 1
+  },
+  "truthound": {
+    "validators": [],
+    "schema": {
+      "version": "1.0",
+      "columns": {
+        "customer_id": {
+          "name": "customer_id",
+          "dtype": "Int64",
+          "nullable": false
+        },
+        "email": {
+          "name": "email",
+          "dtype": "String",
+          "nullable": true
+        },
+        "age": {
+          "name": "age",
+          "dtype": "Int64",
+          "nullable": false
+        },
+        "status": {
+          "name": "status",
+          "dtype": "String",
+          "nullable": false
+        }
+      }
+    }
+  },
+  "gx": {
+    "expectations": [
+      {
+        "type": "column_exists",
+        "column": "customer_id"
+      },
+      {
+        "type": "column_exists",
+        "column": "email"
+      },
+      {
+        "type": "column_exists",
+        "column": "age"
+      },
+      {
+        "type": "column_exists",
+        "column": "status"
+      },
+      {
+        "type": "column_type",
+        "column": "customer_id",
+        "dtype": "int64"
+      },
+      {
+        "type": "column_type",
+        "column": "email",
+        "dtype": "object"
+      },
+      {
+        "type": "column_type",
+        "column": "age",
+        "dtype": "int64"
+      }
+    ]
+  }
+}

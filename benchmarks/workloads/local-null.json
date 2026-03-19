@@ -1,0 +1,33 @@
+{
+  "id": "local-null",
+  "name": "Local exact not-null workload",
+  "dataset": "data/local_core.csv",
+  "backend": "local",
+  "benchmark_class": "local_exact",
+  "exactness": "exact",
+  "suites": ["pr-fast", "nightly-core", "release-ga"],
+  "loader": {
+    "format": "csv",
+    "null_values": ["", "NULL"]
+  },
+  "expected": {
+    "success": false,
+    "issue_count": 1
+  },
+  "truthound": {
+    "validators": ["not_null"],
+    "validator_config": {
+      "not_null": {
+        "columns": ["email"]
+      }
+    }
+  },
+  "gx": {
+    "expectations": [
+      {
+        "type": "not_null",
+        "column": "email"
+      }
+    ]
+  }
+}

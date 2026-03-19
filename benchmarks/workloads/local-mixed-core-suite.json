@@ -1,0 +1,109 @@
+{
+  "id": "local-mixed-core-suite",
+  "name": "Local mixed core suite workload",
+  "dataset": "data/local_core.csv",
+  "backend": "local",
+  "benchmark_class": "local_exact",
+  "exactness": "exact",
+  "suites": ["pr-fast", "nightly-core", "release-ga"],
+  "loader": {
+    "format": "csv",
+    "null_values": ["", "NULL"]
+  },
+  "expected": {
+    "success": false,
+    "issue_count": 3
+  },
+  "truthound": {
+    "validators": ["not_null", "unique", "between"],
+    "validator_config": {
+      "not_null": {
+        "columns": ["email"]
+      },
+      "unique": {
+        "columns": ["customer_id"]
+      },
+      "between": {
+        "columns": ["age"],
+        "min_value": 0,
+        "max_value": 120
+      }
+    },
+    "schema": {
+      "version": "1.0",
+      "columns": {
+        "customer_id": {
+          "name": "customer_id",
+          "dtype": "Int64",
+          "nullable": false
+        },
+        "email": {
+          "name": "email",
+          "dtype": "String",
+          "nullable": true
+        },
+        "age": {
+          "name": "age",
+          "dtype": "Int64",
+          "nullable": false
+        },
+        "status": {
+          "name": "status",
+          "dtype": "String",
+          "nullable": false
+        }
+      }
+    }
+  },
+  "gx": {
+    "expectations": [
+      {
+        "type": "not_null",
+        "column": "email"
+      },
+      {
+        "type": "unique",
+        "column": "customer_id"
+      },
+      {
+        "type": "between",
+        "column": "age",
+        "min_value": 0,
+        "max_value": 120,
+        "strict_min": false,
+        "strict_max": false
+      },
+      {
+        "type": "column_exists",
+        "column": "customer_id"
+      },
+      {
+        "type": "column_exists",
+        "column": "email"
+      },
+      {
+        "type": "column_exists",
+        "column": "age"
+      },
+      {
+        "type": "column_exists",
+        "column": "status"
+      },
+      {
+        "type": "column_type",
+        "column": "customer_id",
+        "dtype": "int64"
+      },
+      {
+        "type": "column_type",
+        "column": "email",
+        "dtype": "object"
+      },
+      {
+        "type": "column_type",
+        "column": "age",
+        "dtype": "int64"
+      }
+    ]
+  }
+}

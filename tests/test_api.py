@@ -4,7 +4,8 @@ import polars as pl
 import pytest
 
 import truthound as th
-from truthound.report import PIIReport, ProfileReport, Report
+from truthound.core.results import ValidationRunResult
+from truthound.report import PIIReport, ProfileReport
 
 
 class TestCheck:
@@ -16,11 +17,11 @@ class TestCheck:
             "name": ["Alice", "Bob", None, "David"],
             "age": [25, 30, 35, 40],
         }
-        report = th.check(data)
+        run_result = th.check(data)
 
-        assert isinstance(report, Report)
-        assert report.has_issues
-        assert any(i.issue_type == "null" for i in report.issues)
+        assert isinstance(run_result, ValidationRunResult)
+        assert run_result.has_issues
+        assert any(i.issue_type == "null" for i in run_result.issues)
 
     def test_check_polars_dataframe(self):
         """Test check with Polars DataFrame."""
@@ -30,20 +31,20 @@ class TestCheck:
                 "value": [10, 20, 30, None],
             }
         )
-        report = th.check(df)
+        run_result = th.check(df)
 
-        assert isinstance(report, Report)
-        assert report.row_count == 4
-        assert report.column_count == 2
+        assert isinstance(run_result, ValidationRunResult)
+        assert run_result.row_count == 4
+        assert run_result.column_count == 2
 
     def test_check_with_specific_validators(self):
         """Test check with specific validators."""
         data = {"col": [1, 2, 3, None, 5]}
-        report = th.check(data, validators=["null"])
+        run_result = th.check(data, validators=["null"])
 
-        assert isinstance(report, Report)
+        assert isinstance(run_result, ValidationRunResult)
         # Only null validator should run
-        assert all(i.issue_type == "null" for i in report.issues)
+        assert all(i.issue_type == "null" for i in run_result.issues)
 
     def test_check_min_severity_filter(self):
         """Test check with min_severity filter."""
@@ -51,12 +52,12 @@ class TestCheck:
             "name": ["Alice", None, None, None, None],  # High null rate
             "age": [25, 30, 35, 40, None],  # Low null rate
         }
-        report = th.check(data, min_severity="high")
+        run_result = th.check(data, min_severity="high")
 
         # Should only include high severity issues
         from truthound.types import Severity
 
-        assert all(i.severity >= Severity.HIGH for i in report.issues)
+        assert all(i.severity >= Severity.HIGH for i in run_result.issues)
 
     def test_check_no_issues(self):
         """Test check with clean data."""
@@ -64,9 +65,9 @@ class TestCheck:
             "a": [1, 2, 3],
             "b": ["x", "y", "z"],
         }
-        report = th.check(data, validators=["null"])
+        run_result = th.check(data, validators=["null"])
 
-        assert not report.has_issues
+        assert not run_result.has_issues
 
     def test_check_duplicate_detection(self):
         """Test duplicate row detection."""
@@ -74,10 +75,10 @@ class TestCheck:
             "a": [1, 1, 2, 2],
             "b": ["x", "x", "y", "y"],
         }
-        report = th.check(data, validators=["duplicate"])
+        run_result = th.check(data, validators=["duplicate"])
 
-        assert report.has_issues
-        assert any(i.issue_type == "duplicate_row" for i in report.issues)
+        assert run_result.has_issues
+        assert any(i.issue_type == "duplicate_row" for i in run_result.issues)
 
 
 class TestScan:

@@ -144,7 +144,7 @@ class CustomAction(BaseAction[CustomActionConfig]):
         env.update(config.environment)
 
         # Add result as environment variables
-        validation = checkpoint_result.validation_result
+        validation = checkpoint_result.validation_view
         stats = validation.statistics if validation else None
 
         env["TRUTHOUND_STATUS"] = checkpoint_result.status.value

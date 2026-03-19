@@ -1,0 +1,31 @@
+{
+  "id": "duckdb-null",
+  "name": "DuckDB shadow not-null workload",
+  "dataset": "data/local_core.csv",
+  "backend": "duckdb-shadow",
+  "benchmark_class": "sql_shadow",
+  "exactness": "exact",
+  "table_name": "customer_quality",
+  "suites": ["nightly-sql"],
+  "loader": {
+    "format": "csv",
+    "null_values": ["", "NULL"]
+  },
+  "expected": {
+    "success": false,
+    "issue_count": 1
+  },
+  "supported_frameworks": ["truthound"],
+  "truthound": {
+    "validators": ["not_null"],
+    "validator_config": {
+      "not_null": {
+        "columns": ["email"]
+      }
+    },
+    "pushdown": true
+  },
+  "gx": {
+    "expectations": []
+  }
+}

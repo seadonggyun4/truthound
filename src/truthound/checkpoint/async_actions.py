@@ -266,7 +266,7 @@ class AsyncWebhookAction(AsyncBaseAction[AsyncWebhookConfig]):
     ) -> dict[str, Any]:
         """Build webhook payload."""
         config = self._config
-        validation = checkpoint_result.validation_result
+        validation = checkpoint_result.validation_view
         stats = validation.statistics if validation else None
 
         if config.payload_template:
@@ -303,7 +303,7 @@ class AsyncWebhookAction(AsyncBaseAction[AsyncWebhookConfig]):
         import copy
 
         result = copy.deepcopy(template)
-        validation = checkpoint_result.validation_result
+        validation = checkpoint_result.validation_view
         stats = validation.statistics if validation else None
 
         placeholders = {
@@ -491,7 +491,7 @@ class AsyncSlackNotification(AsyncBaseAction[AsyncSlackConfig]):
         """Build Slack message payload."""
         config = self._config
         status = checkpoint_result.status.value
-        validation = checkpoint_result.validation_result
+        validation = checkpoint_result.validation_view
         stats = validation.statistics if validation else None
 
         color_map = {

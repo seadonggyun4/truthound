@@ -122,7 +122,7 @@ class SlackNotification(BaseAction[SlackConfig]):
         """Build Slack message payload."""
         config = self._config
         status = checkpoint_result.status.value
-        validation = checkpoint_result.validation_result
+        validation = checkpoint_result.validation_view
         stats = validation.statistics if validation else None
 
         # Status colors

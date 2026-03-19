@@ -1,0 +1,33 @@
+{
+  "id": "local-unique",
+  "name": "Local exact uniqueness workload",
+  "dataset": "data/local_core.csv",
+  "backend": "local",
+  "benchmark_class": "local_exact",
+  "exactness": "exact",
+  "suites": ["pr-fast", "nightly-core", "release-ga"],
+  "loader": {
+    "format": "csv",
+    "null_values": ["", "NULL"]
+  },
+  "expected": {
+    "success": false,
+    "issue_count": 1
+  },
+  "truthound": {
+    "validators": ["unique"],
+    "validator_config": {
+      "unique": {
+        "columns": ["customer_id"]
+      }
+    }
+  },
+  "gx": {
+    "expectations": [
+      {
+        "type": "unique",
+        "column": "customer_id"
+      }
+    ]
+  }
+}

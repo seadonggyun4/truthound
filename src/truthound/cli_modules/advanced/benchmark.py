@@ -6,8 +6,8 @@ This module implements performance benchmarking commands.
 from __future__ import annotations
 
 import json
-from pathlib import Path
-from typing import Annotated, Optional
+from pathlib import Path  # noqa: TC003
+from typing import Annotated
 
 import typer
 
@@ -22,13 +22,14 @@ app = typer.Typer(
     name="benchmark",
     help="""Performance benchmarking commands.
 
-Subcommands: run, list, compare
+Subcommands: run, list, compare, parity
 
 Quick start:
   truthound benchmark run --suite quick      # Run quick benchmark suite
   truthound benchmark run profile            # Run single 'profile' benchmark
   truthound benchmark list                   # List available benchmarks
   truthound benchmark compare a.json b.json  # Compare results
+  truthound benchmark parity --suite pr-fast # Run repo-tracked parity gate
 """,
 )
 
@@ -37,11 +38,11 @@ Quick start:
 @error_boundary
 def run_cmd(
     benchmark: Annotated[
-        Optional[str],
+        str | None,
         typer.Argument(help="Benchmark name to run (e.g., 'profile', 'check')"),
     ] = None,
     suite: Annotated[
-        Optional[str],
+        str | None,
         typer.Option(
             "--suite", "-s", help="Predefined suite: quick (~5s), ci (~15s), full (~30s)"
         ),
@@ -51,7 +52,7 @@ def run_cmd(
         typer.Option("--size", help="Data size: tiny (1K), small (10K), medium (100K), large (1M)"),
     ] = "small",
     rows: Annotated[
-        Optional[int],
+        int | None,
         typer.Option("--rows", "-r", help="Custom row count (overrides size)"),
     ] = None,
     iterations: Annotated[
@@ -63,11 +64,11 @@ def run_cmd(
         typer.Option("--warmup", "-w", help="Number of warmup iterations"),
     ] = 1,
     output: Annotated[
-        Optional[Path],
+        Path | None,
         typer.Option("--output", "-o", help="Output file path"),
     ] = None,
     format: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--format", "-f", help="Output format (json, html). Auto-detected from -o extension if not specified"),
     ] = None,
     save_baseline: Annotated[
@@ -97,15 +98,15 @@ def run_cmd(
         truthound benchmark run check --rows 100000 --iterations 5
     """
     from truthound.benchmark import (
-        BenchmarkRunner,
-        BenchmarkSuite,
         BenchmarkConfig,
+        BenchmarkRunner,
         BenchmarkSize,
-        RunnerConfig,
+        BenchmarkSuite,
         ConsoleReporter,
-        JSONReporter,
         HTMLReporter,
+        JSONReporter,
         RegressionDetector,
+        RunnerConfig,
     )
 
     try:
@@ -237,7 +238,7 @@ def run_cmd(
             import traceback
 
             typer.echo(traceback.format_exc(), err=True)
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
 
 
 @app.command(name="list")
@@ -423,7 +424,165 @@ def compare_cmd(
             f"  4. truthound benchmark compare baseline.json current.json",
             err=True,
         )
-        raise typer.Exit(1)
+        raise typer.Exit(1) from e
     except Exception as e:
         typer.echo(f"Error: {e}", err=True)
+        raise typer.Exit(1) from e
+
+
+@app.command(name="parity")
+@error_boundary
+def parity_cmd(
+    suite: Annotated[
+        str,
+        typer.Option(
+            "--suite",
+            help="Parity suite: pr-fast, nightly-core, nightly-sql, release-ga",
+        ),
+    ] = "pr-fast",
+    frameworks: Annotated[
+        str,
+        typer.Option(
+            "--frameworks",
+            help="Framework selector: truthound, gx, both",
+        ),
+    ] = "both",
+    backend: Annotated[
+        str | None,
+        typer.Option(
+            "--backend",
+            help="Optional backend filter: local, sqlite, duckdb-shadow",
+        ),
+    ] = None,
+    output: Annotated[
+        Path | None,
+        typer.Option("--output", "-o", help="Output JSON path"),
+    ] = None,
+    save_baseline: Annotated[
+        bool,
+        typer.Option("--save-baseline", help="Save suite result as the canonical parity baseline"),
+    ] = False,
+    compare_baseline: Annotated[
+        bool,
+        typer.Option("--compare-baseline", help="Compare against the canonical parity baseline"),
+    ] = False,
+    strict: Annotated[
+        bool,
+        typer.Option("--strict", help="Fail on missing parity, threshold regressions, or unavailable requested frameworks"),
+    ] = False,
+) -> None:
+    """Run Truthound vs GX parity and release-grade benchmark gates."""
+    from truthound.benchmark import (
+        PARITY_SUITES,
+        ParityResult,
+        ParityRunner,
+        benchmark_artifact_root,
+        default_baseline_path,
+        default_env_manifest_path,
+        default_output_path,
+        default_release_summary_path,
+        write_environment_manifest,
+        write_parity_artifacts,
+        write_release_summary,
+    )
+
+    if suite not in PARITY_SUITES:
+        typer.echo(
+            f"Unknown parity suite: {suite}. Available: {', '.join(PARITY_SUITES)}",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    if frameworks not in ("truthound", "gx", "both"):
+        typer.echo(
+            "Invalid --frameworks value. Expected one of: truthound, gx, both.",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    if backend is not None and backend not in ("local", "sqlite", "duckdb-shadow"):
+        typer.echo(
+            "Invalid --backend value. Expected one of: local, sqlite, duckdb-shadow.",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    if suite == "release-ga" and frameworks != "both":
+        typer.echo(
+            "The release-ga suite must run both frameworks. Use --frameworks both.",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    if suite == "release-ga" and backend is not None:
+        typer.echo(
+            "The release-ga suite must run the full local + SQLite catalog without --backend.",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    artifact_root = benchmark_artifact_root()
+    baseline_result: ParityResult | None = None
+    baseline_path = default_baseline_path(
+        suite,
+        backend=backend,
+        frameworks=frameworks,
+        artifact_root=artifact_root,
+    )
+    if compare_baseline:
+        if not baseline_path.exists():
+            typer.echo(
+                f"Parity baseline does not exist: {baseline_path}\n"
+                "Run with --save-baseline first.",
+                err=True,
+            )
+            raise typer.Exit(1)
+        baseline_result = ParityResult.from_dict(json.loads(baseline_path.read_text()))
+
+    runner = ParityRunner()
+    result = runner.run_suite(
+        suite,
+        frameworks=frameworks,
+        backend=backend,
+        artifact_root=artifact_root,
+        baseline_result=baseline_result,
+    )
+
+    output_path = output or default_output_path(suite, artifact_root=artifact_root)
+    json_path, markdown_path, html_path = write_parity_artifacts(result, output_path)
+    env_manifest_path = write_environment_manifest(
+        result,
+        default_env_manifest_path(output_path),
+    )
+    release_summary_path: Path | None = None
+    if suite == "release-ga":
+        release_summary_path = write_release_summary(
+            result,
+            default_release_summary_path(output_path),
+            env_manifest_path=env_manifest_path,
+        )
+
+    if save_baseline:
+        baseline_path.parent.mkdir(parents=True, exist_ok=True)
+        baseline_path.write_text(result.to_json(), encoding="utf-8")
+
+    typer.echo(result.to_markdown())
+    typer.echo("")
+    typer.echo(f"JSON artifact: {json_path}")
+    typer.echo(f"Markdown summary: {markdown_path}")
+    typer.echo(f"HTML summary: {html_path}")
+    typer.echo(f"Environment manifest: {env_manifest_path}")
+    if release_summary_path is not None:
+        release_blockers = dict(result.metadata.get("release_blockers", {}))
+        primary_blocker = release_blockers.get("primary")
+        blocker_categories = tuple(release_blockers.get("categories", ()))
+        typer.echo(f"Release summary: {release_summary_path}")
+        if primary_blocker:
+            typer.echo(f"Primary blocker: {primary_blocker}")
+        if blocker_categories:
+            typer.echo(f"Blocker categories: {', '.join(blocker_categories)}")
+    if save_baseline:
+        typer.echo(f"Baseline saved to: {baseline_path}")
+
+    if strict and result.has_blocking_failures:
         raise typer.Exit(1)

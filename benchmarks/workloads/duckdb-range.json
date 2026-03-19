@@ -1,0 +1,33 @@
+{
+  "id": "duckdb-range",
+  "name": "DuckDB shadow range workload",
+  "dataset": "data/local_core.csv",
+  "backend": "duckdb-shadow",
+  "benchmark_class": "sql_shadow",
+  "exactness": "exact",
+  "table_name": "customer_quality",
+  "suites": ["nightly-sql"],
+  "loader": {
+    "format": "csv",
+    "null_values": ["", "NULL"]
+  },
+  "expected": {
+    "success": false,
+    "issue_count": 1
+  },
+  "supported_frameworks": ["truthound"],
+  "truthound": {
+    "validators": ["between"],
+    "validator_config": {
+      "between": {
+        "columns": ["age"],
+        "min_value": 0,
+        "max_value": 120
+      }
+    },
+    "pushdown": true
+  },
+  "gx": {
+    "expectations": []
+  }
+}

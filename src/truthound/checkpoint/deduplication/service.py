@@ -385,9 +385,9 @@ class NotificationDeduplicator:
 
         # Include issues
         if policy in (DeduplicationPolicy.ISSUE_BASED, DeduplicationPolicy.STRICT):
-            if checkpoint_result.validation_result:
+            if checkpoint_result.validation_view:
                 issue_types = set()
-                for issue in checkpoint_result.validation_result.issues:
+                for issue in checkpoint_result.validation_view.issues:
                     issue_types.add(issue.validator_name)
                 if issue_types:
                     extra_components["issue_types"] = sorted(issue_types)
@@ -426,13 +426,13 @@ class NotificationDeduplicator:
 
     def _extract_severity(self, checkpoint_result: CheckpointResult) -> str:
         """Extract highest severity from checkpoint result."""
-        if not checkpoint_result.validation_result:
+        if not checkpoint_result.validation_view:
             return "medium"
 
         severity_order = ["critical", "high", "medium", "low", "info"]
         highest = "info"
 
-        for issue in checkpoint_result.validation_result.issues:
+        for issue in checkpoint_result.validation_view.issues:
             issue_severity = getattr(issue, "severity", "medium")
             if isinstance(issue_severity, str):
                 sev = issue_severity.lower()

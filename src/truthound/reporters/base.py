@@ -15,9 +15,8 @@ from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 if TYPE_CHECKING:
     from truthound.core.results import ValidationRunResult
-    from truthound.report import Report
     from truthound.reporters.presentation import RunPresentation
-    ValidationReporterInput = ValidationRunResult | Report | Any
+    ValidationReporterInput = ValidationRunResult | Any
 else:
     ValidationReporterInput = Any
 
@@ -272,12 +271,10 @@ class ReporterContext:
 class ValidationReporter(BaseReporter[ConfigT, ValidationReporterInput], Generic[ConfigT]):
     """Reporter specialized for validation run data.
 
-    ``ValidationRunResult`` is the canonical input contract. Legacy ``Report``
-    and stored ``ValidationResult`` objects are accepted through compatibility
-    adapters during the migration window.
+    ``ValidationRunResult`` is the canonical input contract.
     """
 
-    contract_version: int = 2
+    contract_version: int = 3
 
     def to_run_result(self, data: ValidationReporterInput) -> "ValidationRunResult":
         """Canonicalize supported reporter inputs into ValidationRunResult."""
@@ -340,14 +337,3 @@ class ValidationReporter(BaseReporter[ConfigT, ValidationReporterInput], Generic
             })
 
         return column_issues
-
-
-class ReportReporter(BaseReporter[ConfigT, "Report"], Generic[ConfigT]):
-    """Reporter specialized for Report objects (legacy format).
-
-    Provides compatibility with the existing Report class.
-    """
-
-    contract_version: int = 1
-
-    pass

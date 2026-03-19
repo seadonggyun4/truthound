@@ -83,6 +83,14 @@ Thumbs.db
 *.parquet
 *.json
 !pyproject.toml
+!benchmarks/
+!benchmarks/constraints/
+!benchmarks/constraints/*.txt
+!benchmarks/workloads/
+!benchmarks/workloads/*.json
+!benchmarks/workloads/data/
+!benchmarks/workloads/data/*.csv
+!benchmarks/workloads/data/*.parquet
 
 # Claude Code
 .claude/
@@ -90,12 +98,13 @@ CLAUDE.md
 
 # Truthound cache
 .truthound/
+benchmark-artifacts/
 
 .truthound_keys
 site/
 
 #copilot
-copilot-instructions.mdtruthound-test/
+copilot-instructions.md
 
 # truthound test folder
 truthound-test/

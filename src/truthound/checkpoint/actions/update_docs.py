@@ -145,7 +145,7 @@ class UpdateDataDocs(BaseAction[UpdateDocsConfig]):
             "warning": "#ffc107",
         }.get(status, "#6c757d")
 
-        validation = checkpoint_result.validation_result
+        validation = checkpoint_result.validation_view
         stats = validation.statistics if validation else None
 
         html = f"""<!DOCTYPE html>
@@ -227,7 +227,7 @@ class UpdateDataDocs(BaseAction[UpdateDocsConfig]):
 
     def _generate_markdown_report(self, checkpoint_result: "CheckpointResult") -> str:
         """Generate Markdown report for a run."""
-        validation = checkpoint_result.validation_result
+        validation = checkpoint_result.validation_view
         stats = validation.statistics if validation else None
 
         md = f"""# Validation Run Report
@@ -407,7 +407,7 @@ class UpdateDataDocs(BaseAction[UpdateDocsConfig]):
                 history = []
 
         # Add new entry
-        validation = checkpoint_result.validation_result
+        validation = checkpoint_result.validation_view
         stats = validation.statistics if validation else None
 
         history.append({

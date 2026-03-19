@@ -1,0 +1,39 @@
+{
+  "id": "local-range",
+  "name": "Local exact numeric range workload",
+  "dataset": "data/local_core.csv",
+  "backend": "local",
+  "benchmark_class": "local_exact",
+  "exactness": "exact",
+  "suites": ["nightly-core", "release-ga"],
+  "loader": {
+    "format": "csv",
+    "null_values": ["", "NULL"]
+  },
+  "expected": {
+    "success": false,
+    "issue_count": 1
+  },
+  "truthound": {
+    "validators": ["between"],
+    "validator_config": {
+      "between": {
+        "columns": ["age"],
+        "min_value": 0,
+        "max_value": 120
+      }
+    }
+  },
+  "gx": {
+    "expectations": [
+      {
+        "type": "between",
+        "column": "age",
+        "min_value": 0,
+        "max_value": 120,
+        "strict_min": false,
+        "strict_max": false
+      }
+    ]
+  }
+}

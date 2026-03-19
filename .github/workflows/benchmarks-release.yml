@@ -1,0 +1,68 @@
+name: Benchmarks Release Gate
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - "release/3.0"
+      - "release/3.0.x"
+    tags:
+      - "v3.0.0rc*"
+
+jobs:
+  release-parity:
+    runs-on:
+      - self-hosted
+      - benchmark-fixed
+    environment: truthound-3-0-ga
+    concurrency:
+      group: truthound-3.0-release-ga
+      cancel-in-progress: false
+    env:
+      TRUTHOUND_BENCHMARK_RUNNER_CLASS: self-hosted-fixed
+      TRUTHOUND_BENCHMARK_RUNNER_LABELS: self-hosted,benchmark-fixed
+      TRUTHOUND_BENCHMARK_RELEASE_VERDICT: "true"
+      TRUTHOUND_BENCHMARK_STORAGE_CLASS: ${{ vars.TRUTHOUND_BENCHMARK_STORAGE_CLASS }}
+      TRUTHOUND_BENCHMARK_CPU_MODEL: ${{ vars.TRUTHOUND_BENCHMARK_CPU_MODEL }}
+      TRUTHOUND_BENCHMARK_RAM_BYTES: ${{ vars.TRUTHOUND_BENCHMARK_RAM_BYTES }}
+      TRUTHOUND_BENCHMARK_CPU_PHYSICAL_CORES: ${{ vars.TRUTHOUND_BENCHMARK_CPU_PHYSICAL_CORES }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: astral-sh/setup-uv@v4
+
+      - name: Validate fixed runner metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in \
+            TRUTHOUND_BENCHMARK_STORAGE_CLASS \
+            TRUTHOUND_BENCHMARK_CPU_MODEL \
+            TRUTHOUND_BENCHMARK_RAM_BYTES \
+            TRUTHOUND_BENCHMARK_CPU_PHYSICAL_CORES
+          do
+            if [ -z "${!name:-}" ]; then
+              echo "Missing required release runner variable: $name" >&2
+              exit 1
+            fi
+          done
+
+      - name: Install project with release benchmark constraints
+        run: uv pip install --system -c benchmarks/constraints/release.txt ".[dev,benchmarks]"
+
+      - name: Run release GA parity suite
+        run: python -m truthound.cli benchmark parity --suite release-ga --frameworks both --strict --output benchmark-artifacts/release-ga.json
+
+      - name: Render docs release summary draft
+        run: python docs/scripts/publish_benchmark_summary.py --json benchmark-artifacts/release-ga.json --artifact-base-url .. --output benchmark-artifacts/published/latest-benchmark-summary.md
+
+      - name: Upload release benchmark artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: truthound-benchmark-release-artifacts
+          path: benchmark-artifacts

@@ -67,77 +67,8 @@ class PackageImportMetrics:
 # Lazy Import Map
 # =============================================================================
 
-# Format: "attribute_name": ("module_path", "attribute_name_in_module" or None for module itself)
-TRUTHOUND_IMPORT_MAP: dict[str, tuple[str, str | None]] = {
-    # === Phase 5: Data sources ===
-    "datasources": ("truthound.datasources", None),
-    "execution": ("truthound.execution", None),
-    "get_datasource": ("truthound.datasources", "get_datasource"),
-    "get_sql_datasource": ("truthound.datasources", "get_sql_datasource"),
-
-    # === Phase 6: Checkpoint & CI/CD ===
-    "checkpoint": ("truthound.checkpoint", None),
-
-    # === Phase 7: Auto-profiling & Rule Generation ===
-    "profiler": ("truthound.profiler", None),
-    "DataProfiler": ("truthound.profiler", "DataProfiler"),
-    "profile_file": ("truthound.profiler", "profile_file"),
-    "profile_dataframe": ("truthound.profiler", "profile_dataframe"),
-    "generate_suite": ("truthound.profiler", "generate_suite"),
-    "ValidationSuite": ("truthound.profiler", "ValidationSuite"),
-    "TableProfile": ("truthound.profiler", "TableProfile"),
-    "ColumnProfile": ("truthound.profiler", "ColumnProfile"),
-
-    # === Phase 8: Data Docs ===
-    "datadocs": ("truthound.datadocs", None),
-    "HTMLReportBuilder": ("truthound.datadocs", "HTMLReportBuilder"),
-    "generate_html_report": ("truthound.datadocs", "generate_html_report"),
-    "generate_report_from_file": ("truthound.datadocs", "generate_report_from_file"),
-    "ReportConfig": ("truthound.datadocs", "ReportConfig"),
-    "ReportTheme": ("truthound.datadocs", "ReportTheme"),
-    "ChartLibrary": ("truthound.datadocs", "ChartLibrary"),
-
-    # === Phase 10: ML ===
-    "ml": ("truthound.ml", None),
-    "ModelRegistry": ("truthound.ml", "ModelRegistry"),
-    "AnomalyDetector": ("truthound.ml", "AnomalyDetector"),
-    "MLDriftDetector": ("truthound.ml", "MLDriftDetector"),
-    "RuleLearner": ("truthound.ml", "RuleLearner"),
-    "ModelType": ("truthound.ml", "ModelType"),
-    "ModelState": ("truthound.ml", "ModelState"),
-    "ZScoreAnomalyDetector": ("truthound.ml.anomaly_models", "ZScoreAnomalyDetector"),
-    "IQRAnomalyDetector": ("truthound.ml.anomaly_models", "IQRAnomalyDetector"),
-    "IsolationForestDetector": ("truthound.ml.anomaly_models", "IsolationForestDetector"),
-    "EnsembleAnomalyDetector": ("truthound.ml.anomaly_models", "EnsembleAnomalyDetector"),
-    "DistributionDriftDetector": ("truthound.ml.drift_detection", "DistributionDriftDetector"),
-    "FeatureDriftDetector": ("truthound.ml.drift_detection", "FeatureDriftDetector"),
-
-    # === Phase 10: Lineage ===
-    "lineage": ("truthound.lineage", None),
-    "LineageGraph": ("truthound.lineage", "LineageGraph"),
-    "LineageNode": ("truthound.lineage", "LineageNode"),
-    "LineageEdge": ("truthound.lineage", "LineageEdge"),
-    "LineageTracker": ("truthound.lineage", "LineageTracker"),
-    "ImpactAnalyzer": ("truthound.lineage", "ImpactAnalyzer"),
-    "NodeType": ("truthound.lineage", "NodeType"),
-    "EdgeType": ("truthound.lineage", "EdgeType"),
-
-    # === Phase 10: Realtime ===
-    "realtime": ("truthound.realtime", None),
-    "StreamingValidator": ("truthound.realtime", "StreamingValidator"),
-    "IncrementalValidator": ("truthound.realtime", "IncrementalValidator"),
-    "StreamingConfig": ("truthound.realtime", "StreamingConfig"),
-    "CheckpointManager": ("truthound.realtime", "CheckpointManager"),
-    "MemoryStateStore": ("truthound.realtime", "MemoryStateStore"),
-    "BatchResult": ("truthound.realtime", "BatchResult"),
-    "StreamingMode": ("truthound.realtime", "StreamingMode"),
-
-    # === Drift ===
-    "compare": ("truthound.drift", "compare"),
-
-    # === Report ===
-    "Report": ("truthound.report", "Report"),
-}
+# Truthound 3.0 intentionally keeps the root package small.
+TRUTHOUND_IMPORT_MAP: dict[str, tuple[str, str | None]] = {}
 
 
 class LazyPackageLoader:

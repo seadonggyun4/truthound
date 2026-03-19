@@ -1,0 +1,7 @@
+# Release-grade benchmark constraints for the fixed self-hosted runner.
+# Nightly parity tracks the latest allowed benchmark extras.
+great-expectations==1.15.0
+pandas>=2.2.0,<3.0.0
+psutil>=5.9.0,<8.0.0
+duckdb>=1.0.0,<2.0.0
+sqlalchemy>=2.0.0,<3.0.0

@@ -1,13 +1,13 @@
 """HTML report generation bridge module.
 
-This module keeps the legacy helper surface stable while routing rendering
-through the Truthound 2.0 ``ValidationRunResult`` contract.
+This module keeps the HTML helper surface stable while routing rendering
+through the Truthound 3.0 ``ValidationRunResult`` contract.
 
 Example:
     >>> from truthound.html_reporter import generate_html_report
-    >>> from truthound.report import Report
-    >>> report = Report(issues=[], source="data.csv")
-    >>> html = generate_html_report(report)
+    >>> from truthound.core import ValidationRunResult
+    >>> run = ValidationRunResult(suite_name="suite", source="data.csv", row_count=0, column_count=0)
+    >>> html = generate_html_report(run)
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from truthound.report import Report, PIIReport
+    from truthound.report import PIIReport
 
 # Check for jinja2 availability
 try:
@@ -64,7 +64,7 @@ def generate_html_report(
     """Generate an HTML report from a supported validation result input.
 
     Args:
-        report: ``ValidationRunResult`` (preferred) or a legacy compatible input.
+        report: ``ValidationRunResult`` or a persisted validation DTO.
         config: Optional configuration for the HTML report.
         **kwargs: Additional keyword arguments passed to HTMLReporter.
 
@@ -111,7 +111,7 @@ def write_html_report(
     """Generate and write an HTML report to a file.
 
     Args:
-        report: The Report object containing validation issues.
+        report: ``ValidationRunResult`` or a persisted validation DTO.
         output_path: Path where the HTML file should be written.
         config: Optional configuration for the HTML report.
         **kwargs: Additional keyword arguments passed to HTMLReporter.
@@ -143,7 +143,7 @@ def generate_html_from_validation_result(
     """Generate an HTML report from a validation result input.
 
     Args:
-        result: ``ValidationRunResult`` or a legacy compatible input.
+        result: ``ValidationRunResult`` or a persisted validation DTO.
         config: Optional configuration for the HTML report.
         **kwargs: Additional keyword arguments passed to HTMLReporter.
 

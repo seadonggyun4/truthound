@@ -232,9 +232,9 @@ class NotificationFingerprint:
         if checkpoint_result.data_asset:
             components["data_asset"] = checkpoint_result.data_asset
 
-        if include_issues and checkpoint_result.validation_result:
+        if include_issues and checkpoint_result.validation_view:
             issue_types = set()
-            for issue in checkpoint_result.validation_result.issues:
+            for issue in checkpoint_result.validation_view.issues:
                 issue_types.add(issue.validator_name)
             if issue_types:
                 components["issue_types"] = sorted(issue_types)

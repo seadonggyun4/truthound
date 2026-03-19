@@ -184,7 +184,7 @@ class WebhookAction(BaseAction[WebhookConfig]):
             )
         else:
             # Default payload
-            validation = checkpoint_result.validation_result
+            validation = checkpoint_result.validation_view
             stats = validation.statistics if validation else None
 
             payload: dict[str, Any] = {
@@ -218,7 +218,7 @@ class WebhookAction(BaseAction[WebhookConfig]):
         import copy
 
         result = copy.deepcopy(template)
-        validation = checkpoint_result.validation_result
+        validation = checkpoint_result.validation_view
         stats = validation.statistics if validation else None
 
         placeholders = {

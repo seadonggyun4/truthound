@@ -120,7 +120,7 @@ class GitHubAction(BaseAction[GitHubConfig]):
         # Determine if we should fail
         should_fail = False
         if config.fail_on_issues:
-            validation = checkpoint_result.validation_result
+            validation = checkpoint_result.validation_view
             if validation and validation.statistics:
                 stats = validation.statistics
                 if config.min_severity_to_fail == "low":
@@ -157,7 +157,7 @@ class GitHubAction(BaseAction[GitHubConfig]):
         if not github_output:
             return
 
-        validation = checkpoint_result.validation_result
+        validation = checkpoint_result.validation_view
         stats = validation.statistics if validation else None
 
         outputs = {
@@ -181,7 +181,7 @@ class GitHubAction(BaseAction[GitHubConfig]):
         if not github_step_summary:
             return
 
-        validation = checkpoint_result.validation_result
+        validation = checkpoint_result.validation_view
         stats = validation.statistics if validation else None
         status = checkpoint_result.status.value
 
@@ -239,7 +239,7 @@ class GitHubAction(BaseAction[GitHubConfig]):
         if not sha:
             return
 
-        validation = checkpoint_result.validation_result
+        validation = checkpoint_result.validation_view
         stats = validation.statistics if validation else None
         status = checkpoint_result.status.value
 
@@ -299,7 +299,7 @@ class GitHubAction(BaseAction[GitHubConfig]):
         if not config.pr_number:
             return
 
-        validation = checkpoint_result.validation_result
+        validation = checkpoint_result.validation_view
         stats = validation.statistics if validation else None
         status = checkpoint_result.status.value
 
@@ -343,7 +343,7 @@ class GitHubAction(BaseAction[GitHubConfig]):
 
     def _build_check_summary(self, checkpoint_result: "CheckpointResult") -> str:
         """Build check run summary."""
-        validation = checkpoint_result.validation_result
+        validation = checkpoint_result.validation_view
         stats = validation.statistics if validation else None
 
         return f"""### Validation Summary
@@ -365,7 +365,7 @@ class GitHubAction(BaseAction[GitHubConfig]):
     ) -> list[dict[str, Any]]:
         """Build check run annotations for issues."""
         annotations = []
-        validation = checkpoint_result.validation_result
+        validation = checkpoint_result.validation_view
 
         if not validation or not validation.results:
             return annotations

@@ -8,15 +8,12 @@ validation pipeline.
 from __future__ import annotations
 
 import time
-import inspect
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
-from warnings import warn
-
 from truthound.core.results import ValidationRunResult
 
 if TYPE_CHECKING:
@@ -80,15 +77,6 @@ class CheckpointConfig:
     sample_size: int | None = None
 
 
-def _should_warn_on_validation_result_access() -> bool:
-    """Warn only for external callers during the migration window."""
-    for frame_info in inspect.stack()[2:8]:
-        filename = Path(frame_info.filename).as_posix()
-        if "/src/truthound/checkpoint/" in filename:
-            return False
-    return True
-
-
 @dataclass(init=False)
 class CheckpointResult:
     """Result of a checkpoint run.
@@ -116,7 +104,6 @@ class CheckpointResult:
     duration_ms: float = 0.0
     error: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
-    _legacy_validation_result: Any | None = field(default=None, init=False, repr=False)
 
     def __init__(
         self,
@@ -125,7 +112,6 @@ class CheckpointResult:
         run_time: datetime,
         status: CheckpointStatus,
         validation_run: ValidationRunResult | None = None,
-        validation_result: Any | None = None,
         action_results: list["ActionResult"] | None = None,
         data_asset: str = "",
         duration_ms: float = 0.0,
@@ -142,12 +128,6 @@ class CheckpointResult:
         self.duration_ms = duration_ms
         self.error = error
         self.metadata = dict(metadata or {})
-        self._legacy_validation_result = None
-
-        if self.validation_run is None and isinstance(validation_result, ValidationRunResult):
-            self.validation_run = validation_result
-        elif validation_result is not None:
-            self._legacy_validation_result = validation_result
 
     @property
     def success(self) -> bool:
@@ -155,50 +135,23 @@ class CheckpointResult:
         return self.status == CheckpointStatus.SUCCESS
 
     @property
-    def validation_result(self) -> Any | None:
-        """Backward-compatible alias for ``validation_run``."""
-        if self._legacy_validation_result is not None:
-            return self._legacy_validation_result
+    def validation_view(self) -> Any | None:
+        """Return the compatibility projection over ``validation_run``."""
         if self.validation_run is None:
             return None
 
         from truthound.checkpoint.adapters import checkpoint_validation_view
 
-        if _should_warn_on_validation_result_access():
-            warn(
-                "CheckpointResult.validation_result is deprecated; use "
-                "CheckpointResult.validation_run instead.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
         return checkpoint_validation_view(self.validation_run)
-
-    @validation_result.setter
-    def validation_result(self, value: Any | None) -> None:
-        if isinstance(value, ValidationRunResult):
-            self.validation_run = value
-            self._legacy_validation_result = None
-            return
-        self._legacy_validation_result = value
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
-        validation_result = (
-            self.validation_result.to_dict()
-            if self.validation_run is None and self.validation_result and hasattr(self.validation_result, "to_dict")
-            else None
-        )
-        if self.validation_run is not None:
-            from truthound.checkpoint.adapters import validation_run_to_persistence_dict
-
-            validation_result = validation_run_to_persistence_dict(self.validation_run)
         return {
             "run_id": self.run_id,
             "checkpoint_name": self.checkpoint_name,
             "run_time": self.run_time.isoformat(),
             "status": self.status.value,
             "validation_run": self.validation_run.to_dict() if self.validation_run else None,
-            "validation_result": validation_result,
             "action_results": [r.to_dict() for r in self.action_results],
             "data_asset": self.data_asset,
             "duration_ms": self.duration_ms,
@@ -227,6 +180,8 @@ class CheckpointResult:
 
     def summary(self) -> str:
         """Get a human-readable summary."""
+        from truthound.checkpoint.adapters import checkpoint_validation_view
+
         lines = [
             f"Checkpoint: {self.checkpoint_name}",
             f"Status: {self.status.value.upper()}",
@@ -235,8 +190,8 @@ class CheckpointResult:
             f"Duration: {self.duration_ms:.2f} ms",
         ]
 
-        if self.validation_result:
-            stats = self.validation_result.statistics
+        if self.validation_run:
+            stats = checkpoint_validation_view(self.validation_run).statistics
             lines.extend([
                 f"Total Issues: {stats.total_issues}",
                 f"  Critical: {stats.critical_issues}",
@@ -461,7 +416,6 @@ class Checkpoint:
         from truthound.api import check
         from truthound.checkpoint.adapters import (
             checkpoint_validation_view,
-            ensure_validation_run_result,
         )
 
         run_id = run_id or self._generate_run_id()
@@ -492,7 +446,7 @@ class Checkpoint:
                 if self._config.sample_size and data_source.needs_sampling():
                     data_source = data_source.sample(n=self._config.sample_size)
 
-                report = check(
+                validation_run = check(
                     source=data_source,
                     validators=self._config.validators,
                     validator_config=self._config.validator_config,
@@ -501,7 +455,7 @@ class Checkpoint:
                     auto_schema=self._config.auto_schema,
                 )
             else:
-                report = check(
+                validation_run = check(
                     data=data_source,
                     validators=self._config.validators,
                     validator_config=self._config.validator_config,
@@ -510,7 +464,6 @@ class Checkpoint:
                     auto_schema=self._config.auto_schema,
                 )
 
-            validation_run = ensure_validation_run_result(report)
             validation_run = ValidationRunResult(
                 run_id=run_id,
                 run_time=validation_run.run_time,

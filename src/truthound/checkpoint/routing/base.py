@@ -111,8 +111,8 @@ class RouteContext:
         info_issues = 0
         pass_rate = 100.0
 
-        if result.validation_result:
-            stats = result.validation_result.statistics
+        if result.validation_view:
+            stats = result.validation_view.statistics
             total_issues = stats.total_issues
             critical_issues = stats.critical_issues
             high_issues = stats.high_issues

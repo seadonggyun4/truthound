@@ -1,17 +1,16 @@
 """Adapters for reporter-facing result contracts.
 
-This module canonicalizes legacy report objects and persisted validation DTOs
-into the Truthound 2.0 ``ValidationRunResult`` model.
+This module canonicalizes persisted validation DTOs into the Truthound 3.0
+``ValidationRunResult`` model. Legacy ``Report`` objects are no longer a
+supported runtime input.
 """
 
 from __future__ import annotations
 
-from collections import OrderedDict
 from typing import Any
 from warnings import warn
 
 from truthound.core.results import CheckResult, ExecutionIssue, ValidationRunResult
-from truthound.report import Report
 from truthound.types import ResultFormat, Severity
 from truthound.validators.base import ValidationIssue
 
@@ -27,9 +26,6 @@ def canonicalize_validation_run_result(
     if isinstance(data, ValidationRunResult):
         return data
 
-    if isinstance(data, Report):
-        return report_to_validation_run_result(data, warn_legacy=warn_legacy)
-
     if isinstance(data, StoredValidationResult):
         return stored_validation_result_to_validation_run_result(
             data,
@@ -37,52 +33,8 @@ def canonicalize_validation_run_result(
         )
 
     raise TypeError(
-        "Reporters expect ValidationRunResult as the canonical input. "
+        "Reporters expect ValidationRunResult as the canonical input in Truthound 3.0. "
         f"Received unsupported type: {type(data).__name__}"
-    )
-
-
-def report_to_validation_run_result(
-    report: Report,
-    *,
-    warn_legacy: bool = False,
-) -> ValidationRunResult:
-    """Convert a legacy ``Report`` into ``ValidationRunResult``."""
-    existing = getattr(report, "validation_run", None)
-    if isinstance(existing, ValidationRunResult):
-        return existing
-
-    if warn_legacy:
-        warn(
-            "Passing truthound.report.Report directly to reporters is deprecated. "
-            "Pass report.validation_run or a ValidationRunResult instead.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-
-    issues = tuple(report.get_sorted_issues() if hasattr(report, "get_sorted_issues") else report.issues)
-    checks = _build_checks_from_issues(issues)
-    metadata: dict[str, Any] = {
-        "legacy_report": True,
-        "report_success": getattr(report, "success", not bool(issues)),
-    }
-    statistics = getattr(report, "statistics", None)
-    if statistics is not None and hasattr(statistics, "to_dict"):
-        metadata["statistics"] = statistics.to_dict()
-    exception_summary = getattr(report, "exception_summary", None)
-    if exception_summary is not None and hasattr(exception_summary, "to_dict"):
-        metadata["exception_summary"] = exception_summary.to_dict()
-
-    return ValidationRunResult(
-        suite_name="legacy-report",
-        source=report.source,
-        row_count=report.row_count,
-        column_count=report.column_count,
-        result_format=report.result_format,
-        execution_mode="legacy",
-        checks=checks,
-        issues=issues,
-        metadata=metadata,
     )
 
 
@@ -181,29 +133,6 @@ def stored_validation_result_to_validation_run_result(
         execution_issues=execution_issues,
         metadata=metadata,
     )
-
-
-def _build_checks_from_issues(
-    issues: tuple[ValidationIssue, ...],
-) -> tuple[CheckResult, ...]:
-    by_name: "OrderedDict[str, list[ValidationIssue]]" = OrderedDict()
-    for issue in issues:
-        check_name = issue.validator_name or issue.issue_type
-        by_name.setdefault(check_name, []).append(issue)
-
-    checks: list[CheckResult] = []
-    for name, grouped in by_name.items():
-        checks.append(
-            CheckResult(
-                name=name,
-                category="legacy",
-                success=False,
-                issue_count=len(grouped),
-                issues=tuple(grouped),
-            )
-        )
-
-    return tuple(checks)
 
 
 def _coerce_severity(value: str | Severity | None) -> Severity:

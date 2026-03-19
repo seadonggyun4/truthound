@@ -33,11 +33,13 @@ Example:
     )
 
     # Generate static HTML report
+    import truthound as th
     from truthound.profiler import load_profile
     profile = load_profile("profile.json")
     html = generate_html_report(profile, title="My Data Report")
 
-    validation_html = generate_validation_report(report.validation_run)
+    run = th.check("data.csv")
+    validation_html = generate_validation_report(run)
 
     # Or use the builder for more control
     builder = HTMLReportBuilder(theme=ReportTheme.PROFESSIONAL)
@@ -45,7 +47,7 @@ Example:
     builder.save("report.html", html)
 
     validation_builder = ValidationDocsBuilder(theme=ReportTheme.PROFESSIONAL)
-    validation_html = validation_builder.build(report.validation_run)
+    validation_html = validation_builder.build(run)
 
     # Launch dashboard (requires truthound[dashboard])
     from truthound.datadocs import launch_dashboard

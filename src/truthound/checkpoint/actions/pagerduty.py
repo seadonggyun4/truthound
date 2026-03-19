@@ -145,7 +145,7 @@ class PagerDutyAction(BaseAction[PagerDutyConfig]):
     ) -> dict[str, Any]:
         """Build PagerDuty Events API v2 payload."""
         config = self._config
-        validation = checkpoint_result.validation_result
+        validation = checkpoint_result.validation_view
         stats = validation.statistics if validation else None
 
         # Generate dedup key

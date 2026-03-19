@@ -410,11 +410,11 @@ class NotificationThrottler:
 
     def _extract_severity(self, checkpoint_result: CheckpointResult) -> str:
         """Extract highest severity from checkpoint result."""
-        if not checkpoint_result.validation_result:
+        if not checkpoint_result.validation_view:
             return "medium"
 
         highest = "info"
-        for issue in checkpoint_result.validation_result.issues:
+        for issue in checkpoint_result.validation_view.issues:
             issue_severity = getattr(issue, "severity", "medium")
             if isinstance(issue_severity, str):
                 sev = issue_severity.lower()

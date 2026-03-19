@@ -1,0 +1,59 @@
+name: Benchmarks PR
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/benchmarks-pr.yml"
+      - "benchmarks/**"
+      - "README.md"
+      - "CLAUDE.md"
+      - "pyproject.toml"
+      - "src/truthound/benchmark/**"
+      - "src/truthound/cli_modules/advanced/benchmark.py"
+      - "tests/test_benchmark.py"
+      - "tests/test_benchmark_parity.py"
+      - "tests/cli_modules/test_benchmark_parity_cli.py"
+  push:
+    paths:
+      - ".github/workflows/benchmarks-pr.yml"
+      - "benchmarks/**"
+      - "README.md"
+      - "CLAUDE.md"
+      - "pyproject.toml"
+      - "src/truthound/benchmark/**"
+      - "src/truthound/cli_modules/advanced/benchmark.py"
+      - "tests/test_benchmark.py"
+      - "tests/test_benchmark_parity.py"
+      - "tests/cli_modules/test_benchmark_parity_cli.py"
+
+jobs:
+  benchmark-smoke:
+    runs-on: ubuntu-latest
+    env:
+      TRUTHOUND_BENCHMARK_RUNNER_CLASS: github-hosted-pr
+      TRUTHOUND_BENCHMARK_RUNNER_LABELS: github-hosted,pr-benchmark
+      TRUTHOUND_BENCHMARK_STORAGE_CLASS: github-hosted-ephemeral
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: astral-sh/setup-uv@v4
+
+      - name: Install project with dev extras
+        run: uv pip install --system ".[dev]"
+
+      - name: Run benchmark unit and CLI tests
+        run: python -m pytest -q tests/test_benchmark.py tests/test_benchmark_parity.py tests/cli_modules/test_benchmark_parity_cli.py -p no:cacheprovider
+
+      - name: Run PR parity smoke
+        run: python -m truthound.cli benchmark parity --suite pr-fast --frameworks truthound --backend local --strict --output benchmark-artifacts/pr-fast.json
+
+      - name: Upload PR benchmark artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: truthound-benchmark-pr-artifacts
+          path: benchmark-artifacts

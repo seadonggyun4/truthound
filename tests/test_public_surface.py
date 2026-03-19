@@ -41,13 +41,14 @@ def test_truthound_dir_exposes_core_surface_only():
 
 
 def test_truthound_top_level_advanced_access_warns():
-    with pytest.warns(DeprecationWarning, match="top-level access is deprecated"):
-        compare = truthound.compare
+    with pytest.raises(AttributeError, match="has no attribute 'compare'"):
+        _ = truthound.compare
 
+    from truthound.drift import compare
     assert callable(compare)
 
 
-def test_checkpoint_result_uses_validation_run_as_canonical_field():
+def test_checkpoint_result_exposes_validation_run_and_view_only():
     run_result = _sample_validation_run()
     checkpoint_result = CheckpointResult(
         run_id="chk_001",
@@ -58,12 +59,12 @@ def test_checkpoint_result_uses_validation_run_as_canonical_field():
     )
 
     assert checkpoint_result.validation_run is run_result
-
-    with pytest.warns(DeprecationWarning, match="validation_result is deprecated"):
-        legacy_view = checkpoint_result.validation_result
+    legacy_view = checkpoint_result.validation_view
 
     assert legacy_view.run_id == run_result.run_id
     assert legacy_view.statistics.total_validators == 1
+    with pytest.raises(AttributeError, match="validation_result"):
+        _ = checkpoint_result.validation_result
 
     restored = CheckpointResult.from_dict(checkpoint_result.to_dict())
     assert restored.validation_run is not None

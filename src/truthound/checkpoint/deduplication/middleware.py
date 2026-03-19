@@ -143,13 +143,13 @@ class DeduplicationMiddleware:
 
     def _extract_severity(self, checkpoint_result: CheckpointResult) -> str:
         """Extract severity from checkpoint result."""
-        if not checkpoint_result.validation_result:
+        if not checkpoint_result.validation_view:
             return "medium"
 
         severity_order = ["critical", "high", "medium", "low", "info"]
         highest = "info"
 
-        for issue in checkpoint_result.validation_result.issues:
+        for issue in checkpoint_result.validation_view.issues:
             issue_severity = getattr(issue, "severity", "medium")
             if isinstance(issue_severity, str):
                 sev = issue_severity.lower()

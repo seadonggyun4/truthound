@@ -267,8 +267,8 @@ class EscalationAction:
             "run_time": checkpoint_result.run_time.isoformat(),
         }
 
-        if checkpoint_result.validation_result:
-            stats = checkpoint_result.validation_result.statistics
+        if checkpoint_result.validation_view:
+            stats = checkpoint_result.validation_view.statistics
             context["total_issues"] = stats.total_issues
             context["critical_issues"] = stats.critical_issues
             context["high_issues"] = stats.high_issues

@@ -34,15 +34,13 @@ class CheckpointValidationView:
     runtime_environment: dict[str, Any] = field(default_factory=dict)
 
 
-def ensure_validation_run_result(report: Any) -> ValidationRunResult:
-    """Extract the canonical validation run result from a legacy report."""
-    run_result = getattr(report, "validation_run", None)
-    if isinstance(run_result, ValidationRunResult):
-        return run_result
-
-    from truthound.reporters.adapters import report_to_validation_run_result
-
-    return report_to_validation_run_result(report)
+def ensure_validation_run_result(result: Any) -> ValidationRunResult:
+    """Return a ValidationRunResult or fail with a clear 3.0 error."""
+    if isinstance(result, ValidationRunResult):
+        return result
+    raise TypeError(
+        "Checkpoint runtime expects ValidationRunResult from truthound.check() in Truthound 3.0."
+    )
 
 
 def checkpoint_validation_view(

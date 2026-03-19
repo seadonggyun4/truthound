@@ -1,0 +1,5 @@
+customer_id,email,age,status
+1,a@example.com,25,active
+2,b@example.com,35,active
+2,,151,inactive
+4,d@example.com,40,active
