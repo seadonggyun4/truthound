@@ -657,7 +657,7 @@ src/truthound/
 
 ## References
 
-- [DATASOURCES.md](DATASOURCES.md) - Usage guide and examples
-- [ARCHITECTURE.md](ARCHITECTURE.md) - Overall system architecture
+- [Data Sources Guide](../guides/datasources.md) - Usage guide and examples
+- [Architecture Overview](architecture.md) - Overall system architecture
 - [Python Protocols PEP 544](https://peps.python.org/pep-0544/)
 - [Polars Documentation](https://pola.rs/)

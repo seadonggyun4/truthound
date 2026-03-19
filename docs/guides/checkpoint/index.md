@@ -424,7 +424,7 @@ Dataset: `{checkpoint_name}`
 Status: {status}
 Issues: {issue_count}
 
-[View Report]({report_url})
+View Report: `{report_url}`
 """,
 )
 ```
@@ -1468,8 +1468,8 @@ env.workflow_name   # str
 
 ## See Also
 
-- [Data Sources](DATASOURCES.md) - Connecting to various data backends
-- [Validators Reference](VALIDATORS.md) - 289 validators reference
-- [Storage Backends](STORES.md) - Storing validation results
-- [Reporters](REPORTERS.md) - Output formats and customization
-- [Examples](EXAMPLES.md) - Complete usage examples
+- [Data Sources](../datasources.md) - Connecting to various data backends
+- [Validators Guide](../validators.md) - Validator authoring and migration guidance
+- [Storage Backends](../stores.md) - Storing validation results
+- [Reporter SDK](../reporters.md) - Output formats and customization
+- [Examples](../../tutorials/examples.md) - Complete usage examples

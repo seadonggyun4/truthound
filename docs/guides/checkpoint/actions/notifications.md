@@ -279,7 +279,7 @@ Dataset: `{checkpoint_name}`
 Status: {status}
 Issues: {issue_count}
 
-[View Report]({report_url})
+View Report: `{report_url}`
 """,
 )
 ```

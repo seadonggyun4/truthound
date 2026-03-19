@@ -944,6 +944,6 @@ drift = th.compare(baseline, current, correction="bh")
 
 ## See Also
 
-- [Validators Reference](VALIDATORS.md) — All validator implementations
-- [Advanced Features](ADVANCED.md) — ML module documentation
-- [API Reference](API_REFERENCE.md) — Complete API documentation
+- [Validators Guide](../guides/validators.md) — Validator authoring and migration guidance
+- [Advanced Concepts](advanced.md) — Legacy advanced feature reference
+- [Python API Reference](../python-api/index.md) — Complete API documentation

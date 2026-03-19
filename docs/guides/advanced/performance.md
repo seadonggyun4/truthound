@@ -203,7 +203,7 @@ truthound benchmark run profile --size medium --iterations 5
 | `ci` | ~15 seconds | 10K rows | CI/CD pipelines |
 | `full` | ~30 seconds | 10K rows | Comprehensive testing |
 
-For detailed CLI options, see the [Benchmark Command Reference](../cli/benchmark/index.md).
+For detailed CLI options, see the [Benchmark Command Reference](../../cli/benchmark/index.md).
 
 ### Running Custom Benchmarks
 
@@ -778,7 +778,7 @@ stats = lf.select(stats_exprs).collect()
 
 ## See Also
 
-- [Architecture Overview](ARCHITECTURE.md) - System design
-- [Validators Reference](VALIDATORS.md) - All validators
-- [Streaming Validation](ADVANCED.md#streaming) - Streaming details
-- [Data Sources](DATASOURCES.md) - Data source optimization
+- [Architecture Overview](../../concepts/architecture.md) - System design
+- [Validators Guide](../validators.md) - Validator authoring and migration guidance
+- [Streaming Validation](../../concepts/advanced.md#streaming) - Streaming details
+- [Data Sources](../datasources.md) - Data source optimization

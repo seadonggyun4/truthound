@@ -379,6 +379,6 @@ jobs:
 
 ## See Also
 
-- [Architecture Overview](ARCHITECTURE.md) — System design
-- [API Reference](API_REFERENCE.md) — Complete API documentation
-- [Examples](EXAMPLES.md) — Usage examples
+- [Architecture Overview](architecture.md) — System design
+- [Python API Reference](../python-api/index.md) — Complete API documentation
+- [Examples](../tutorials/examples.md) — Usage examples

@@ -1811,8 +1811,8 @@ else:
 - [Schema Evolution](schema-evolution.md) - Schema versioning, history, and monitoring
 - [Drift Detection](drift-detection.md) - Detect data distribution changes
 - [Quality Scoring](quality-scoring.md) - Evaluate data quality
-- [Validators Reference](VALIDATORS.md)
-- [Statistical Methods](STATISTICAL_METHODS.md)
-- [Checkpoint & CI/CD](CHECKPOINT.md)
-- [Storage Backends](STORES.md)
-- [Examples](EXAMPLES.md)
+- [Validators Guide](../validators.md)
+- [Statistical Methods](../statistical-methods.md)
+- [Checkpoint & CI/CD](../checkpoints.md)
+- [Storage Backends](../stores.md)
+- [Examples](../../tutorials/examples.md)

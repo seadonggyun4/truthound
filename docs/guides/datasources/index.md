@@ -1175,6 +1175,6 @@ source = OptimizedPandasDataSource(pandas_df, config=config)
 
 ## Further Reading
 
-- **[Data Sources Architecture](DATASOURCES_ARCHITECTURE.md)** - Design patterns, extensibility guide, and quality assessment
-- **[Architecture Overview](ARCHITECTURE.md)** - Overall system architecture
-- **[README](../README.md)** - Main documentation
+- **[Data Sources Architecture](../../concepts/datasources-architecture.md)** - Design patterns, extensibility guide, and quality assessment
+- **[Architecture Overview](../../concepts/architecture.md)** - Overall system architecture
+- **[Docs Overview](../../index.md)** - Main documentation

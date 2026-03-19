@@ -1,130 +1,55 @@
-# MkDocs Configuration for Truthound Documentation
-# https://www.mkdocs.org/
-
 site_name: Truthound
-site_description: Zero-Configuration Data Quality Framework Powered by Polars
+site_description: Truthound 2.0 validation kernel and plugin platform
 site_author: SEO DONG GYUN
-site_url: https://github.com/seadonggyun4/truthound
+site_url: https://github.com/seadonggyun4/Truthound
 
-# Repository
 repo_name: seadonggyun4/Truthound
 repo_url: https://github.com/seadonggyun4/Truthound
 edit_uri: edit/main/docs/
 
-# Copyright
-copyright: Copyright &copy; 2025 SEO DONG GYUN
-
-# Theme Configuration
 theme:
   name: material
   language: en
   logo: assets/truthound_icon.png
   favicon: assets/truthound_icon.png
-  palette:
-    # Light mode
-    - media: "(prefers-color-scheme: light)"
-      scheme: default
-      primary: custom
-      accent: orange
-      toggle:
-        icon: material/brightness-7
-        name: Switch to dark mode
-    # Dark mode
-    - media: "(prefers-color-scheme: dark)"
-      scheme: slate
-      primary: custom
-      accent: orange
-      toggle:
-        icon: material/brightness-4
-        name: Switch to light mode
-  font:
-    text: Roboto
-    code: Roboto Mono
   features:
-    - navigation.tabs
-    - navigation.tabs.sticky
     - navigation.sections
-    - navigation.expand
-    - navigation.path
-    - navigation.indexes
     - navigation.top
-    - navigation.footer
-    - search.suggest
     - search.highlight
-    - search.share
     - content.code.copy
-    - content.code.annotate
-    - content.tabs.link
-    - toc.follow
-  icon:
-    repo: fontawesome/brands/github
 
-# Plugins
 plugins:
-  - search:
-      separator: '[\s\-,:!=\[\]()"/]+|(?!\b)(?=[A-Z][a-z])|\.(?!\d)|&[lg]t;'
+  - search
   - mkdocstrings:
       handlers:
         python:
-          paths: [src]
+          paths:
+            - src
           options:
             docstring_style: google
             show_source: true
             show_root_heading: true
-            show_root_full_path: false
-            show_signature: true
-            show_signature_annotations: true
-            separate_signature: true
-            line_length: 80
-            merge_init_into_class: true
-            show_if_no_docstring: false
-  # Optional plugins - install with: pip install mkdocs-gen-files mkdocs-literate-nav mkdocs-section-index mkdocs-minify-plugin
-  # - gen-files:
-  #     scripts:
-  #       - docs/scripts/gen_ref_pages.py
-  #       - docs/scripts/gen_cli_docs.py
-  # - literate-nav:
-  #     nav_file: SUMMARY.md
-  # - section-index
-  # - minify:
-  #     minify_html: true
 
-# Markdown Extensions
+validation:
+  nav:
+    omitted_files: ignore
+    absolute_links: ignore
+  links:
+    not_found: warn
+    absolute_links: ignore
+    unrecognized_links: warn
+    anchors: ignore
+
 markdown_extensions:
-  - abbr
   - admonition
   - attr_list
-  - def_list
-  - footnotes
-  - md_in_html
   - tables
   - toc:
       permalink: true
-      toc_depth: 3
-  - pymdownx.arithmatex:
-      generic: true
-  - pymdownx.betterem:
-      smart_enable: all
-  - pymdownx.caret
   - pymdownx.details
-  - pymdownx.emoji:
-      emoji_index: !!python/name:material.extensions.emoji.twemoji
-      emoji_generator: !!python/name:material.extensions.emoji.to_svg
   - pymdownx.highlight:
       anchor_linenums: true
-      line_spans: __span
-      pygments_lang_class: true
   - pymdownx.inlinehilite
-  - pymdownx.keys
-  - pymdownx.magiclink:
-      repo_url_shorthand: true
-      user: seadonggyun4
-      repo: Truthound
-  - pymdownx.mark
-  - pymdownx.smartsymbols
-  - pymdownx.snippets:
-      auto_append:
-        - includes/abbreviations.md
   - pymdownx.superfences:
       custom_fences:
         - name: mermaid
@@ -132,289 +57,29 @@ markdown_extensions:
           format: !!python/name:pymdownx.superfences.fence_code_format
   - pymdownx.tabbed:
       alternate_style: true
-  - pymdownx.tasklist:
-      custom_checkbox: true
-  - pymdownx.tilde
 
-# Navigation Structure
-nav:
-  - Home: index.md
-  - Getting Started:
-    - getting-started/index.md
-    - Installation: getting-started/installation.md
-    - Quick Start: getting-started/quickstart.md
-    - First Validation: getting-started/first-validation.md
-  - CLI Reference:
-    - cli/index.md
-    - Core Commands:
-      - cli/core/index.md
-      - learn: cli/core/learn.md
-      - check: cli/core/check.md
-      - scan: cli/core/scan.md
-      - mask: cli/core/mask.md
-      - profile: cli/core/profile.md
-      - compare: cli/core/compare.md
-    - Profiler Commands:
-      - cli/profiler/index.md
-      - auto-profile: cli/profiler/auto-profile.md
-      - generate-suite: cli/profiler/generate-suite.md
-      - quick-suite: cli/profiler/quick-suite.md
-      - list-formats: cli/profiler/list-formats.md
-      - list-presets: cli/profiler/list-presets.md
-      - list-categories: cli/profiler/list-categories.md
-    - Checkpoint Commands:
-      - cli/checkpoint/index.md
-      - run: cli/checkpoint/run.md
-      - list: cli/checkpoint/list.md
-      - validate: cli/checkpoint/validate.md
-      - init: cli/checkpoint/init.md
-    - ML Commands:
-      - cli/ml/index.md
-      - anomaly: cli/ml/anomaly.md
-      - drift: cli/ml/drift.md
-      - learn-rules: cli/ml/learn-rules.md
-    - Lineage Commands:
-      - cli/lineage/index.md
-      - show: cli/lineage/show.md
-      - impact: cli/lineage/impact.md
-      - visualize: cli/lineage/visualize.md
-    - Docs Commands:
-      - cli/docs/index.md
-      - generate: cli/docs/generate.md
-      - themes: cli/docs/themes.md
-    - Dashboard: cli/dashboard.md
-    - Realtime Commands:
-      - cli/realtime/index.md
-      - validate: cli/realtime/validate.md
-      - monitor: cli/realtime/monitor.md
-      - Checkpoint:
-        - cli/realtime/checkpoint/index.md
-        - list: cli/realtime/checkpoint/list.md
-        - show: cli/realtime/checkpoint/show.md
-        - delete: cli/realtime/checkpoint/delete.md
-    - Benchmark Commands:
-      - cli/benchmark/index.md
-      - run: cli/benchmark/run.md
-      - list: cli/benchmark/list.md
-      - compare: cli/benchmark/compare.md
-    - Scaffolding Commands:
-      - cli/scaffolding/index.md
-      - new validator: cli/scaffolding/new-validator.md
-      - new reporter: cli/scaffolding/new-reporter.md
-      - new plugin: cli/scaffolding/new-plugin.md
-      - new list: cli/scaffolding/new-list.md
-      - new templates: cli/scaffolding/new-templates.md
-    - Plugin Commands:
-      - cli/plugin/index.md
-      - plugin list: cli/plugin/list.md
-      - plugin info: cli/plugin/info.md
-      - plugin load: cli/plugin/load.md
-      - plugin unload: cli/plugin/unload.md
-      - plugin enable: cli/plugin/enable.md
-      - plugin disable: cli/plugin/disable.md
-      - plugin create: cli/plugin/create.md
-  - Guides:
-    - guides/index.md
-    - Validators:
-      - guides/validators/index.md
-      - Built-in Validators: guides/validators/built-in.md
-      - Categories: guides/validators/categories.md
-      - Custom Validators: guides/validators/custom-validators.md
-      - Enterprise SDK: guides/validators/enterprise-sdk.md
-      - Security: guides/validators/security.md
-      - i18n: guides/validators/i18n.md
-      - Optimization: guides/validators/optimization.md
-    - Data Sources:
-      - guides/datasources/index.md
-      - Files: guides/datasources/files.md
-      - Databases: guides/datasources/databases.md
-      - Cloud Warehouses: guides/datasources/cloud-warehouses.md
-      - Streaming: guides/datasources/streaming.md
-      - Custom Sources: guides/datasources/custom-sources.md
-    - Data Profiling:
-      - guides/profiler/index.md
-      - Basics: guides/profiler/basics.md
-      - Sampling: guides/profiler/sampling.md
-      - Patterns: guides/profiler/patterns.md
-      - Rule Generation: guides/profiler/rule-generation.md
-      - Quality Scoring: guides/profiler/quality-scoring.md
-      - Drift Detection: guides/profiler/drift-detection.md
-      - ML Inference: guides/profiler/ml-inference.md
-      - Threshold Tuning: guides/profiler/threshold-tuning.md
-      - Visualization: guides/profiler/visualization.md
-      - Caching: guides/profiler/caching.md
-      - Distributed: guides/profiler/distributed.md
-      - i18n: guides/profiler/i18n.md
-    - Data Docs:
-      - guides/datadocs/index.md
-      - HTML Reports: guides/datadocs/html-reports.md
-      - Themes: guides/datadocs/themes.md
-      - Charts: guides/datadocs/charts.md
-      - Sections: guides/datadocs/sections.md
-      - Versioning: guides/datadocs/versioning.md
-      - Custom Renderers: guides/datadocs/custom-renderers.md
-      - PDF Export: guides/datadocs/pdf-export.md
-      - Dashboard: guides/datadocs/dashboard.md
-    - Storage Backends:
-      - guides/stores/index.md
-      - Filesystem: guides/stores/filesystem.md
-      - Cloud Storage: guides/stores/cloud-storage.md
-      - Versioning: guides/stores/versioning.md
-      - Retention: guides/stores/retention.md
-      - Tiering: guides/stores/tiering.md
-      - Caching: guides/stores/caching.md
-      - Replication: guides/stores/replication.md
-      - Observability: guides/stores/observability.md
-    - Reporters:
-      - guides/reporters/index.md
-      - Console: guides/reporters/console.md
-      - JSON & YAML: guides/reporters/json-yaml.md
-      - HTML & Markdown: guides/reporters/html-markdown.md
-      - CI Reporters: guides/reporters/ci-reporters.md
-      - Custom SDK: guides/reporters/custom-sdk.md
-    - Configuration:
-      - guides/configuration/index.md
-      - Sources: guides/configuration/sources.md
-      - Environment Variables: guides/configuration/environment-vars.md
-      - Logging: guides/configuration/logging.md
-      - Metrics: guides/configuration/metrics.md
-      - Audit: guides/configuration/audit.md
-      - Encryption: guides/configuration/encryption.md
-      - Resilience: guides/configuration/resilience.md
-      - Checkpoint Config: guides/configuration/checkpoint-config.md
-      - DataSource Config: guides/configuration/datasource-config.md
-      - Store Config: guides/configuration/store-config.md
-      - Profiler Config: guides/configuration/profiler-config.md
-    - CI/CD Integration:
-      - guides/checkpoint/index.md
-      - Basics: guides/checkpoint/basics.md
-      - Triggers: guides/checkpoint/triggers.md
-      - Async Execution: guides/checkpoint/async.md
-      - CI Platforms: guides/checkpoint/ci-platforms.md
-      - Routing: guides/checkpoint/routing.md
-      - Deduplication: guides/checkpoint/deduplication.md
-      - Throttling: guides/checkpoint/throttling.md
-      - Escalation: guides/checkpoint/escalation.md
-      - Actions:
-        - guides/checkpoint/actions/index.md
-        - Notifications: guides/checkpoint/actions/notifications.md
-        - Webhook: guides/checkpoint/actions/webhook.md
-        - Storage: guides/checkpoint/actions/storage.md
-        - Incident: guides/checkpoint/actions/incident.md
-        - Custom: guides/checkpoint/actions/custom.md
-    - Advanced Features:
-      - guides/advanced/index.md
-      - ML Anomaly: guides/advanced/ml-anomaly.md
-      - Lineage: guides/advanced/lineage.md
-      - Plugins: guides/advanced/plugins.md
-      - Performance: guides/advanced/performance.md
-  - Concepts:
-    - concepts/index.md
-    - Architecture: concepts/architecture.md
-    - Advanced Features: concepts/advanced.md
-    - Plugin System: concepts/plugins.md
-    - Statistical Methods: concepts/statistical-methods.md
-    - DataSources Architecture: concepts/datasources-architecture.md
-    - Test Coverage: concepts/test-coverage.md
-  - Python API:
-    - python-api/index.md
-    - Core Functions: python-api/core-functions.md
-    - Schema: python-api/schema.md
-    - Validators: python-api/validators.md
-    - Data Sources: python-api/datasources.md
-    - Reporters: python-api/reporters.md
-    - Advanced Features: python-api/advanced.md
-  - Tutorials:
-    - tutorials/index.md
-    - Data Profiling: tutorials/data-profiling.md
-    - Custom Validator: tutorials/custom-validator.md
-    - Enterprise Setup: tutorials/enterprise-setup.md
-    - Examples: tutorials/examples.md
-  - Orchestration:
-    - orchestration/index.md
-    - Getting Started: orchestration/getting-started.md
-    - Airflow:
-      - Overview: orchestration/airflow/index.md
-      - Operators: orchestration/airflow/operators.md
-      - Sensors: orchestration/airflow/sensors.md
-      - Hooks: orchestration/airflow/hooks.md
-    - Dagster:
-      - Overview: orchestration/dagster/index.md
-      - Resources: orchestration/dagster/resources.md
-      - Assets: orchestration/dagster/assets.md
-      - Ops: orchestration/dagster/ops.md
-    - Prefect:
-      - Overview: orchestration/prefect/index.md
-      - Blocks: orchestration/prefect/blocks.md
-      - Tasks: orchestration/prefect/tasks.md
-      - Flows: orchestration/prefect/flows.md
-    - dbt:
-      - Overview: orchestration/dbt/index.md
-      - Macros: orchestration/dbt/macros.md
-    - Enterprise:
-      - Engine Adapters: orchestration/enterprise/engines.md
-      - Notifications: orchestration/enterprise/notifications.md
-      - Multi-Tenant: orchestration/enterprise/multi-tenant.md
-    - API Reference:
-      - Common Module: orchestration/api-reference/common.md
-      - Engines: orchestration/api-reference/engines.md
-  - Dashboard:
-    - dashboard/index.md
-    - Getting Started: dashboard/getting-started.md
-    - Architecture: dashboard/architecture.md
-    - Internationalization: dashboard/intlayer-i18n-Guide.md
-    - Data Management:
-      - Dashboard: dashboard/data-management/dashboard.md
-      - Data Sources: dashboard/data-management/sources.md
-      - Data Catalog: dashboard/data-management/catalog.md
-      - Business Glossary: dashboard/data-management/glossary.md
-    - Data Quality:
-      - Drift Detection: dashboard/data-quality/drift.md
-      - Drift Monitoring: dashboard/data-quality/drift-monitoring.md
-      - Privacy & PII: dashboard/data-quality/privacy.md
-      - Data Lineage: dashboard/data-quality/lineage.md
-    - ML & Monitoring:
-      - Anomaly Detection: dashboard/ml-monitoring/anomaly.md
-      - Model Monitoring: dashboard/ml-monitoring/model-monitoring.md
-    - System:
-      - Unified Alerts: dashboard/system/alerts.md
-      - Schedules: dashboard/system/schedules.md
-      - Activity Feed: dashboard/system/activity.md
-      - Notifications: dashboard/system/notifications.md
-      - Advanced Notifications: dashboard/system/notifications-advanced.md
-      - Reports: dashboard/system/reports.md
-      - Plugins: dashboard/system/plugins.md
-      - Maintenance: dashboard/system/maintenance.md
-
-
-# Extra Configuration
-extra:
-  version:
-    provider: mike
-  social:
-    - icon: fontawesome/brands/github
-      link: https://github.com/seadonggyun4/Truthound
-    - icon: fontawesome/brands/python
-      link: https://pypi.org/project/truthound/
-  analytics:
-    provider: google
-    property: G-XXXXXXXXXX  # Replace with actual tracking ID
-  consent:
-    title: Cookie consent
-    description: >-
-      We use cookies to recognize your repeated visits and preferences.
-
-# Extra CSS
 extra_css:
   - stylesheets/extra.css
 
-# Extra JavaScript
-extra_javascript:
-  - javascripts/mathjax.js
-  - https://polyfill.io/v3/polyfill.min.js?features=es6
-  - https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js
-
-# Watch for changes
-watch:
-  - src/truthound
-  - docs
+nav:
+  - Home: index.md
+  - Getting Started:
+      - Overview: getting-started/index.md
+      - Installation: getting-started/installation.md
+      - Quick Start: getting-started/quickstart.md
+  - Concepts:
+      - Architecture: concepts/architecture.md
+      - Plugin Platform: concepts/plugins.md
+  - Guides:
+      - Reporter SDK: guides/reporter-sdk.md
+      - Checkpoints: guides/checkpoints.md
+      - Migration to 2.0: guides/migration-2.0.md
+  - Legacy:
+      - Archive Overview: legacy/index.md
+  - ADRs:
+      - ADR 001 Validation Kernel: adr/001-validation-kernel.md
+      - ADR 002 Plugin Platform: adr/002-plugin-platform.md
+      - ADR 003 Result Model: adr/003-result-model.md
+      - ADR 004 Migration Compatibility: adr/004-migration-compatibility.md
+  - Release Notes:
+      - Truthound 2.0: releases/truthound-2.0.md

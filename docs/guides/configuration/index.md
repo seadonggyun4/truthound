@@ -461,6 +461,6 @@ This guide is split into the following sections for detailed documentation:
 ## See Also
 
 - [CI/CD Integration](../ci-cd.md) - Checkpoint configuration in CI/CD
-- [Data Sources](../datasources/) - DataSource configuration details
-- [Storage Backends](../stores/) - Store configuration options
-- [Data Profiling](../profiler/) - Profiler configuration
+- [Data Sources](../datasources/index.md) - DataSource configuration details
+- [Storage Backends](../stores/index.md) - Store configuration options
+- [Data Profiling](../profiler/index.md) - Profiler configuration
