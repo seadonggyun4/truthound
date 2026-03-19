@@ -5,8 +5,8 @@ document.addEventListener("DOMContentLoaded", () => {
     color: {
       media: "",
       scheme: "slate",
-      primary: "indigo",
-      accent: "indigo",
+      primary: "custom",
+      accent: "custom",
     },
   };
 

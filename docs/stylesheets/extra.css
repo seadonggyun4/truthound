@@ -1,9 +1,27 @@
 /* Truthound Custom Theme Colors */
 
-:root {
+:root,
+[data-md-color-scheme="default"] {
+  /* Hue for Material's HSL-based variables (blue 225 → orange 25) */
+  --md-hue: 25deg;
+
+  /* Primary palette */
   --md-primary-fg-color: #d4854a;
   --md-primary-fg-color--light: #e2a06e;
   --md-primary-fg-color--dark: #b76b34;
+  --md-primary-bg-color: #fff;
+  --md-primary-bg-color--light: rgba(255, 255, 255, 0.7);
+
+  /* Accent palette (hover, focus, active states) */
+  --md-accent-fg-color: #d4854a;
+  --md-accent-fg-color--transparent: rgba(212, 133, 74, 0.1);
+  --md-accent-bg-color: #fff;
+  --md-accent-bg-color--light: rgba(255, 255, 255, 0.7);
+
+  /* Search highlight */
+  --md-typeset-mark-color: rgba(212, 133, 74, 0.3);
+
+  /* Toggle dimensions */
   --th-transition-duration: 0.32s;
   --th-transition-curve: cubic-bezier(0.4, 0, 0.2, 1);
   --th-toggle-width: 4.5rem;
@@ -14,9 +32,26 @@
 
 /* Dark mode adjustments */
 [data-md-color-scheme="slate"] {
+  --md-hue: 25deg;
+
+  /* Primary palette */
   --md-primary-fg-color: #d4854a;
   --md-primary-fg-color--light: #e2a06e;
   --md-primary-fg-color--dark: #b76b34;
+  --md-primary-bg-color: #fff;
+  --md-primary-bg-color--light: rgba(255, 255, 255, 0.7);
+
+  /* Accent palette – lightened for dark background contrast */
+  --md-accent-fg-color: #e2a06e;
+  --md-accent-fg-color--transparent: rgba(226, 160, 110, 0.1);
+  --md-accent-bg-color: #fff;
+  --md-accent-bg-color--light: rgba(255, 255, 255, 0.7);
+
+  /* Links – lightened for dark mode readability */
+  --md-typeset-a-color: #e2a06e;
+
+  /* Search highlight */
+  --md-typeset-mark-color: rgba(226, 160, 110, 0.3);
 }
 
 html.theme-ready body,
