@@ -18,18 +18,37 @@ Memory Optimization:
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterator, TypeVar, Generic
-import tempfile
-import os
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 import polars as pl
-import pyarrow as pa
-import pyarrow.parquet as pq
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+
+try:
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    HAS_PYARROW = True
+except ImportError:  # pragma: no cover - depends on optional dependency set
+    pa = None  # type: ignore[assignment]
+    pq = None  # type: ignore[assignment]
+    HAS_PYARROW = False
 
 
 T = TypeVar("T")
+
+
+def _require_pyarrow(feature: str) -> None:
+    """Require the optional pyarrow dependency for Arrow-backed streaming."""
+
+    if not HAS_PYARROW:
+        raise ImportError(
+            f"pyarrow is required for {feature}. "
+            "Install with: pip install pyarrow"
+        )
 
 
 # =============================================================================
@@ -85,7 +104,7 @@ class StreamingSource(ABC, Generic[T]):
         """Return total row count (may be estimated)."""
         pass
 
-    def __enter__(self) -> "StreamingSource":
+    def __enter__(self) -> StreamingSource:
         self.open()
         return self
 
@@ -172,6 +191,7 @@ class ParquetStreamingSource(StreamingSource):
 
     def open(self) -> None:
         """Open the Parquet file for streaming."""
+        _require_pyarrow("Parquet streaming")
         super().open()
         self._parquet_file = pq.ParquetFile(
             self._file_path,
@@ -186,6 +206,7 @@ class ParquetStreamingSource(StreamingSource):
         super().close()
 
     def __len__(self) -> int:
+        _require_pyarrow("Parquet streaming")
         if self._parquet_file:
             return self._total_rows
         # Open temporarily to get count
@@ -454,6 +475,7 @@ class ArrowIPCStreamingSource(StreamingSource):
 
     def open(self) -> None:
         """Open the Arrow IPC file."""
+        _require_pyarrow("Arrow IPC streaming")
         super().open()
 
         if self.config.use_mmap:
@@ -471,6 +493,7 @@ class ArrowIPCStreamingSource(StreamingSource):
         super().close()
 
     def __len__(self) -> int:
+        _require_pyarrow("Arrow IPC streaming")
         if self._reader:
             return sum(
                 self._reader.get_batch(i).num_rows
@@ -626,13 +649,14 @@ class ArrowFlightStreamingSource(StreamingSource):
 
     def _check_flight_available(self) -> None:
         """Check if Arrow Flight is available."""
+        _require_pyarrow("Arrow Flight streaming")
         try:
             import pyarrow.flight  # noqa: F401
-        except ImportError:
+        except ImportError as exc:
             raise ImportError(
                 "pyarrow.flight is required for Arrow Flight streaming. "
                 "Install with: pip install pyarrow[flight]"
-            )
+            ) from exc
 
     def open(self) -> None:
         """Connect to the Flight server."""

@@ -1,3 +1,7 @@
+<div align="center">
+  <img width="560" alt="Truthound Banner" src="assets/truthound_banner.png" />
+</div>
+
 # Truthound 3.0
 
 Truthound 3.0 is a Polars-first validation framework centered on three promises:

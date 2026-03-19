@@ -12,6 +12,15 @@ theme:
   language: en
   logo: assets/truthound_icon.png
   favicon: assets/truthound_icon.png
+  palette:
+    - scheme: slate
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+    - scheme: default
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
   features:
     - navigation.sections
     - navigation.top

@@ -36,12 +36,17 @@ Truthound is a Polars-first data validation framework for modern data engineerin
 
 **Documentation**: [truthound.netlify.app](https://truthound.netlify.app/)
 
+<!--
+Temporary comment-out: keep the related-projects section hidden until these
+projects are sufficiently mature for the public README again.
+
 **Related Projects**
 
 | Project | Description | Status |
 | --- | --- | --- |
 | [truthound-orchestration](https://github.com/seadonggyun4/truthound-orchestration) | Workflow integration for Airflow, Dagster, Prefect, and dbt | Alpha |
 | [truthound-dashboard](https://github.com/seadonggyun4/truthound-dashboard) | Web-based data quality monitoring dashboard | Alpha |
+-->
 
 ## Why Truthound
 

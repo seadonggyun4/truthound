@@ -42,8 +42,8 @@ jobs:
 
       - uses: astral-sh/setup-uv@v4
 
-      - name: Install project with dev extras
-        run: uv pip install --system ".[dev]"
+      - name: Install project with dev and report extras
+        run: uv pip install --system ".[dev,reports]"
 
       - name: Run benchmark unit and CLI tests
         run: python -m pytest -q tests/test_benchmark.py tests/test_benchmark_parity.py tests/cli_modules/test_benchmark_parity_cli.py -p no:cacheprovider

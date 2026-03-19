@@ -1,3 +1,9 @@
+<div align="center">
+  <img width="280" alt="Truthound Icon Banner" src="../assets/Truthound_icon_banner.png" />
+</div>
+
+> Truthound 3.0 cleared the fixed-runner GA benchmark gate with measured confidence: it outperformed GX across every comparable release-grade workload in this artifact set while preserving correctness parity.
+
 # Latest Benchmark Summary
 
 ## Status

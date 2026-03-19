@@ -11,7 +11,6 @@ Tests cover:
 
 import json
 import tempfile
-import time
 from datetime import datetime
 from pathlib import Path
 
@@ -31,10 +30,15 @@ from truthound.benchmark.base import (
     benchmark_registry,
     register_benchmark,
 )
+from truthound.benchmark.comparison import (
+    BenchmarkComparator,
+    ComparisonResult,
+    PerformanceThreshold,
+    RegressionDetector,
+)
 from truthound.benchmark.generators import (
     ColumnSpec,
     ColumnType,
-    DataGenerator,
     DataPattern,
     FinancialDataGenerator,
     GeneratorConfig,
@@ -43,25 +47,13 @@ from truthound.benchmark.generators import (
     TimeSeriesDataGenerator,
     generator_registry,
 )
-from truthound.benchmark.runner import (
-    BenchmarkRunner,
-    BenchmarkSuite,
-    RunnerConfig,
-    SuiteResult,
-)
 from truthound.benchmark.reporters import (
     ConsoleReporter,
     HTMLReporter,
     JSONReporter,
     MarkdownReporter,
 )
-from truthound.benchmark.comparison import (
-    BenchmarkComparator,
-    ComparisonResult,
-    PerformanceThreshold,
-    RegressionDetector,
-)
-
+from truthound.benchmark.runner import BenchmarkRunner, BenchmarkSuite, RunnerConfig, SuiteResult
 
 # =============================================================================
 # Test Base Classes
@@ -623,6 +615,7 @@ class TestReporters:
 
     def test_html_reporter(self, sample_suite_result):
         """Test HTML reporter."""
+        pytest.importorskip("jinja2")
         reporter = HTMLReporter()
         output = reporter.report_suite(sample_suite_result)
 
