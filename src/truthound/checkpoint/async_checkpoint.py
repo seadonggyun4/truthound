@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, Awaitable
 from uuid import uuid4
 
+from truthound.core.results import ValidationRunResult
 from truthound.checkpoint.checkpoint import (
     Checkpoint,
     CheckpointConfig,
@@ -266,30 +267,33 @@ class AsyncCheckpoint:
 
         # Run validation (sync, in executor)
         try:
-            validation_result = await self._run_validation_async(
+            validation_run = await self._run_validation_async(
                 data_source, data_asset, run_id, start_time
             )
+            from truthound.checkpoint.adapters import checkpoint_validation_view
+
+            validation_view = checkpoint_validation_view(validation_run)
 
             # Determine status
-            if validation_result is None:
+            if validation_run is None:
                 status = CheckpointStatus.ERROR
             elif (
-                validation_result.statistics.critical_issues > 0
+                validation_view.statistics.critical_issues > 0
                 and self._config.fail_on_critical
             ):
                 status = CheckpointStatus.FAILURE
             elif (
-                validation_result.statistics.high_issues > 0
+                validation_view.statistics.high_issues > 0
                 and self._config.fail_on_high
             ):
                 status = CheckpointStatus.FAILURE
-            elif validation_result.statistics.total_issues > 0:
+            elif validation_view.statistics.total_issues > 0:
                 status = CheckpointStatus.WARNING
             else:
                 status = CheckpointStatus.SUCCESS
 
         except Exception as e:
-            validation_result = None
+            validation_run = None
             status = CheckpointStatus.ERROR
 
             result = CheckpointResult(
@@ -297,7 +301,7 @@ class AsyncCheckpoint:
                 checkpoint_name=self.name,
                 run_time=run_time,
                 status=status,
-                validation_result=validation_result,
+                validation_run=validation_run,
                 data_asset=data_asset,
                 duration_ms=(time.time() - start_time) * 1000,
                 error=str(e),
@@ -316,7 +320,7 @@ class AsyncCheckpoint:
             checkpoint_name=self.name,
             run_time=run_time,
             status=status,
-            validation_result=validation_result,
+            validation_run=validation_run,
             data_asset=data_asset,
             duration_ms=(time.time() - start_time) * 1000,
             metadata=context or {},
@@ -345,12 +349,12 @@ class AsyncCheckpoint:
     ) -> Any:
         """Run validation in executor to avoid blocking."""
         from truthound.api import check
-        from truthound.stores.results import ValidationResult
+        from truthound.checkpoint.adapters import ensure_validation_run_result
         from truthound.datasources.base import BaseDataSource
 
         loop = asyncio.get_running_loop()
 
-        def run_check() -> ValidationResult:
+        def run_check() -> ValidationRunResult:
             if isinstance(data_source, BaseDataSource):
                 if self._config.sample_size and data_source.needs_sampling():
                     sampled = data_source.sample(n=self._config.sample_size)
@@ -378,13 +382,25 @@ class AsyncCheckpoint:
                     auto_schema=self._config.auto_schema,
                 )
 
-            return ValidationResult.from_report(
-                report=report,
-                data_asset=data_asset,
+            validation_run = ensure_validation_run_result(report)
+            return ValidationRunResult(
                 run_id=run_id,
-                tags=self._config.tags,
-                metadata=self._config.metadata,
-                execution_time_ms=(time.time() - start_time) * 1000,
+                run_time=validation_run.run_time,
+                suite_name=validation_run.suite_name,
+                source=data_asset,
+                row_count=validation_run.row_count,
+                column_count=validation_run.column_count,
+                result_format=validation_run.result_format,
+                execution_mode=validation_run.execution_mode,
+                checks=validation_run.checks,
+                issues=validation_run.issues,
+                execution_issues=validation_run.execution_issues,
+                metadata={
+                    **validation_run.metadata,
+                    **self._config.metadata,
+                    "tags": dict(self._config.tags),
+                    "execution_time_ms": (time.time() - start_time) * 1000,
+                },
             )
 
         # Run in executor to avoid blocking

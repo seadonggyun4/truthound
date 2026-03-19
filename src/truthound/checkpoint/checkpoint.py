@@ -8,19 +8,22 @@ validation pipeline.
 from __future__ import annotations
 
 import time
+import inspect
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
+from warnings import warn
+
+from truthound.core.results import ValidationRunResult
 
 if TYPE_CHECKING:
     from truthound.checkpoint.actions.base import BaseAction, ActionResult
     from truthound.checkpoint.routing.base import ActionRouter
     from truthound.checkpoint.triggers.base import BaseTrigger
     from truthound.datasources.base import BaseDataSource
-    from truthound.stores.results import ValidationResult
     from truthound.validators.base import Validator
 
 
@@ -77,7 +80,16 @@ class CheckpointConfig:
     sample_size: int | None = None
 
 
-@dataclass
+def _should_warn_on_validation_result_access() -> bool:
+    """Warn only for external callers during the migration window."""
+    for frame_info in inspect.stack()[2:8]:
+        filename = Path(frame_info.filename).as_posix()
+        if "/src/truthound/checkpoint/" in filename:
+            return False
+    return True
+
+
+@dataclass(init=False)
 class CheckpointResult:
     """Result of a checkpoint run.
 
@@ -86,7 +98,7 @@ class CheckpointResult:
         checkpoint_name: Name of the checkpoint that was run.
         run_time: When the checkpoint ran.
         status: Overall status of the run.
-        validation_result: The validation result from check().
+        validation_run: The canonical validation result from check().
         action_results: Results from all executed actions.
         data_asset: Name/path of the data that was validated.
         duration_ms: Total execution time in milliseconds.
@@ -98,26 +110,95 @@ class CheckpointResult:
     checkpoint_name: str
     run_time: datetime
     status: CheckpointStatus
-    validation_result: "ValidationResult | None" = None
+    validation_run: ValidationRunResult | None = None
     action_results: list["ActionResult"] = field(default_factory=list)
     data_asset: str = ""
     duration_ms: float = 0.0
     error: str | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
+    _legacy_validation_result: Any | None = field(default=None, init=False, repr=False)
+
+    def __init__(
+        self,
+        run_id: str,
+        checkpoint_name: str,
+        run_time: datetime,
+        status: CheckpointStatus,
+        validation_run: ValidationRunResult | None = None,
+        validation_result: Any | None = None,
+        action_results: list["ActionResult"] | None = None,
+        data_asset: str = "",
+        duration_ms: float = 0.0,
+        error: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        self.run_id = run_id
+        self.checkpoint_name = checkpoint_name
+        self.run_time = run_time
+        self.status = status
+        self.validation_run = validation_run
+        self.action_results = list(action_results or [])
+        self.data_asset = data_asset
+        self.duration_ms = duration_ms
+        self.error = error
+        self.metadata = dict(metadata or {})
+        self._legacy_validation_result = None
+
+        if self.validation_run is None and isinstance(validation_result, ValidationRunResult):
+            self.validation_run = validation_result
+        elif validation_result is not None:
+            self._legacy_validation_result = validation_result
 
     @property
     def success(self) -> bool:
         """Check if checkpoint was successful."""
         return self.status == CheckpointStatus.SUCCESS
 
+    @property
+    def validation_result(self) -> Any | None:
+        """Backward-compatible alias for ``validation_run``."""
+        if self._legacy_validation_result is not None:
+            return self._legacy_validation_result
+        if self.validation_run is None:
+            return None
+
+        from truthound.checkpoint.adapters import checkpoint_validation_view
+
+        if _should_warn_on_validation_result_access():
+            warn(
+                "CheckpointResult.validation_result is deprecated; use "
+                "CheckpointResult.validation_run instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
+        return checkpoint_validation_view(self.validation_run)
+
+    @validation_result.setter
+    def validation_result(self, value: Any | None) -> None:
+        if isinstance(value, ValidationRunResult):
+            self.validation_run = value
+            self._legacy_validation_result = None
+            return
+        self._legacy_validation_result = value
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for serialization."""
+        validation_result = (
+            self.validation_result.to_dict()
+            if self.validation_run is None and self.validation_result and hasattr(self.validation_result, "to_dict")
+            else None
+        )
+        if self.validation_run is not None:
+            from truthound.checkpoint.adapters import validation_run_to_persistence_dict
+
+            validation_result = validation_run_to_persistence_dict(self.validation_run)
         return {
             "run_id": self.run_id,
             "checkpoint_name": self.checkpoint_name,
             "run_time": self.run_time.isoformat(),
             "status": self.status.value,
-            "validation_result": self.validation_result.to_dict() if self.validation_result else None,
+            "validation_run": self.validation_run.to_dict() if self.validation_run else None,
+            "validation_result": validation_result,
             "action_results": [r.to_dict() for r in self.action_results],
             "data_asset": self.data_asset,
             "duration_ms": self.duration_ms,
@@ -129,14 +210,14 @@ class CheckpointResult:
     def from_dict(cls, data: dict[str, Any]) -> "CheckpointResult":
         """Create from dictionary."""
         from truthound.checkpoint.actions.base import ActionResult
-        from truthound.stores.results import ValidationResult
+        from truthound.checkpoint.adapters import validation_run_from_checkpoint_dict
 
         return cls(
             run_id=data["run_id"],
             checkpoint_name=data["checkpoint_name"],
             run_time=datetime.fromisoformat(data["run_time"]),
             status=CheckpointStatus(data["status"]),
-            validation_result=ValidationResult.from_dict(data["validation_result"]) if data.get("validation_result") else None,
+            validation_run=validation_run_from_checkpoint_dict(data),
             action_results=[ActionResult.from_dict(r) for r in data.get("action_results", [])],
             data_asset=data.get("data_asset", ""),
             duration_ms=data.get("duration_ms", 0.0),
@@ -378,7 +459,10 @@ class Checkpoint:
             CheckpointResult with validation and action results.
         """
         from truthound.api import check
-        from truthound.stores.results import ValidationResult
+        from truthound.checkpoint.adapters import (
+            checkpoint_validation_view,
+            ensure_validation_run_result,
+        )
 
         run_id = run_id or self._generate_run_id()
         run_time = datetime.now()
@@ -426,29 +510,41 @@ class Checkpoint:
                     auto_schema=self._config.auto_schema,
                 )
 
-            # Convert to ValidationResult
-            validation_result = ValidationResult.from_report(
-                report=report,
-                data_asset=data_asset,
+            validation_run = ensure_validation_run_result(report)
+            validation_run = ValidationRunResult(
                 run_id=run_id,
-                tags=self._config.tags,
-                metadata=self._config.metadata,
-                execution_time_ms=(time.time() - start_time) * 1000,
+                run_time=validation_run.run_time,
+                suite_name=validation_run.suite_name,
+                source=data_asset,
+                row_count=validation_run.row_count,
+                column_count=validation_run.column_count,
+                result_format=validation_run.result_format,
+                execution_mode=validation_run.execution_mode,
+                checks=validation_run.checks,
+                issues=validation_run.issues,
+                execution_issues=validation_run.execution_issues,
+                metadata={
+                    **validation_run.metadata,
+                    **self._config.metadata,
+                    "tags": dict(self._config.tags),
+                    "execution_time_ms": (time.time() - start_time) * 1000,
+                },
             )
+            validation_view = checkpoint_validation_view(validation_run)
 
             # Determine status
-            if report.has_critical and self._config.fail_on_critical:
+            if validation_view.statistics.critical_issues > 0 and self._config.fail_on_critical:
                 status = CheckpointStatus.FAILURE
-            elif report.has_high and self._config.fail_on_high:
+            elif validation_view.statistics.high_issues > 0 and self._config.fail_on_high:
                 status = CheckpointStatus.FAILURE
-            elif report.has_issues:
+            elif validation_view.statistics.total_issues > 0:
                 status = CheckpointStatus.WARNING
             else:
                 status = CheckpointStatus.SUCCESS
 
         except Exception as e:
             # Validation failed
-            validation_result = None
+            validation_run = None
             status = CheckpointStatus.ERROR
             error_msg = str(e)
 
@@ -457,7 +553,7 @@ class Checkpoint:
                 checkpoint_name=self.name,
                 run_time=run_time,
                 status=status,
-                validation_result=validation_result,
+                validation_run=validation_run,
                 data_asset=data_asset,
                 duration_ms=(time.time() - start_time) * 1000,
                 error=error_msg,
@@ -475,7 +571,7 @@ class Checkpoint:
             checkpoint_name=self.name,
             run_time=run_time,
             status=status,
-            validation_result=validation_result,
+            validation_run=validation_run,
             data_asset=data_asset,
             duration_ms=(time.time() - start_time) * 1000,
             metadata=context or {},

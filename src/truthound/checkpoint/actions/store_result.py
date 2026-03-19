@@ -131,14 +131,18 @@ class StoreValidationResult(BaseAction[StoreResultConfig]):
     def _prepare_result_data(self, checkpoint_result: "CheckpointResult") -> dict[str, Any]:
         """Prepare result data for storage."""
         data = checkpoint_result.to_dict()
+        if checkpoint_result.validation_run is not None:
+            from truthound.checkpoint.adapters import validation_run_to_persistence_result
+
+            stored_result = validation_run_to_persistence_result(checkpoint_result.validation_run)
+            if not self._config.include_validation_details:
+                stored_result.results = []
+            data["validation_result"] = stored_result.to_dict()
 
         if not self._config.include_validation_details:
             # Remove detailed validation results to reduce size
-            if "validation_result" in data:
-                validation = data["validation_result"]
-                if "results" in validation:
-                    # Keep only summary, not individual results
-                    data["validation_result"]["results"] = []
+            if "validation_run" in data:
+                data["validation_run"] = None
 
         return data
 

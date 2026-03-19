@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 if TYPE_CHECKING:
+    from truthound.core.results import ValidationRunResult
     from truthound.report import Report
     from truthound.validators.base import ValidationIssue
 
@@ -327,6 +328,83 @@ class ValidationResult:
             tags=tags or {},
             metadata=metadata or {"source": report.source},
         )
+
+    @classmethod
+    def from_validation_run_result(
+        cls,
+        run_result: "ValidationRunResult",
+    ) -> "ValidationResult":
+        """Create a persisted ValidationResult from ValidationRunResult."""
+        from truthound.reporters.presentation import build_run_presentation
+
+        presentation = build_run_presentation(run_result)
+        result_rows = [
+            ValidatorResult(
+                validator_name=issue.validator_name,
+                success=False,
+                column=issue.column,
+                issue_type=issue.issue_type,
+                count=issue.count,
+                severity=issue.severity,
+                message=issue.message,
+                details=dict(issue.details),
+            )
+            for issue in presentation.issues
+        ]
+        for check in run_result.checks:
+            if check.success:
+                result_rows.append(
+                    ValidatorResult(
+                        validator_name=check.name,
+                        success=True,
+                        column=None,
+                        issue_type=check.name,
+                        count=0,
+                        severity=None,
+                        message=None,
+                        details=dict(check.metadata),
+                    )
+                )
+
+        status = ResultStatus.SUCCESS if presentation.success else ResultStatus.FAILURE
+        if run_result.execution_issues:
+            status = ResultStatus.ERROR
+
+        metadata = dict(run_result.metadata)
+        metadata["_validation_run_contract"] = {
+            "checks": [
+                {
+                    "name": check.name,
+                    "category": check.category,
+                    "success": check.success,
+                    "issue_count": check.issue_count,
+                    "metadata": dict(check.metadata),
+                }
+                for check in run_result.checks
+            ],
+            "execution_issues": [issue.to_dict() for issue in run_result.execution_issues],
+        }
+        metadata.setdefault("_execution_mode", run_result.execution_mode)
+        metadata.setdefault("_result_format", run_result.result_format.value)
+
+        return cls(
+            run_id=run_result.run_id,
+            run_time=run_result.run_time,
+            data_asset=run_result.source,
+            status=status,
+            results=result_rows,
+            statistics=ResultStatistics.from_dict(presentation.summary.to_legacy_statistics_dict()),
+            tags=dict(metadata.get("tags", {})),
+            metadata=metadata,
+            suite_name=run_result.suite_name,
+            runtime_environment=dict(metadata.get("runtime_environment", {})),
+        )
+
+    def to_validation_run_result(self) -> "ValidationRunResult":
+        """Convert the persisted DTO into ValidationRunResult."""
+        from truthound.reporters.adapters import stored_validation_result_to_validation_run_result
+
+        return stored_validation_result_to_validation_run_result(self)
 
     @staticmethod
     def _generate_run_id() -> str:
