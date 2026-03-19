@@ -29,7 +29,7 @@ from truthound.reporters.base import (
 
 if TYPE_CHECKING:
     from truthound.reporters._protocols import Jinja2EnvironmentProtocol
-    from truthound.stores.results import ValidationResult
+    from truthound.reporters.presentation import RunPresentation
 
 
 def _require_jinja2() -> None:
@@ -263,7 +263,7 @@ DEFAULT_TEMPLATE = """
     <div class="container">
         <div class="header">
             <h1>{{ title }}</h1>
-            <p class="subtitle">{{ result.data_asset }}</p>
+            <p class="subtitle">{{ result.source }}</p>
             <span class="status-badge {{ 'success' if result.success else 'failure' }}">
                 {{ 'Passed' if result.success else 'Failed' }}
             </span>
@@ -470,7 +470,7 @@ class HTMLReporter(ValidationReporter[HTMLReporterConfig]):
 
         return self._env
 
-    def render(self, data: "ValidationResult") -> str:
+    def render(self, data: Any) -> str:
         """Render validation result as HTML.
 
         Args:
@@ -483,6 +483,7 @@ class HTMLReporter(ValidationReporter[HTMLReporterConfig]):
             RenderError: If rendering fails.
         """
         try:
+            presentation = self.present(data)
             env = self._get_environment()
 
             if self._config.template_path:
@@ -492,7 +493,7 @@ class HTMLReporter(ValidationReporter[HTMLReporterConfig]):
                 template = env.get_template("default")
 
             # Prepare issues list
-            issues = [r for r in data.results if not r.success]
+            issues = list(presentation.issues)
 
             # Sort by severity
             severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
@@ -506,8 +507,8 @@ class HTMLReporter(ValidationReporter[HTMLReporterConfig]):
             # Render template
             html = template.render(
                 title=self._config.title,
-                result=data,
-                statistics=data.statistics,
+                result=presentation,
+                statistics=presentation.summary,
                 issues=sorted_issues,
                 generated_at=datetime.now().strftime(self._config.timestamp_format),
                 config=self._config,

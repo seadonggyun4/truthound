@@ -22,7 +22,7 @@ from truthound.reporters.base import (
 )
 
 if TYPE_CHECKING:
-    from truthound.stores.results import ValidationResult
+    from truthound.reporters.presentation import RunPresentation
 
 
 @dataclass
@@ -100,7 +100,7 @@ class ConsoleReporter(ValidationReporter[ConsoleReporterConfig]):
             file=StringIO() if capture else None,
         )
 
-    def _render_header(self, console: Console, result: "ValidationResult") -> None:
+    def _render_header(self, console: Console, result: "RunPresentation") -> None:
         """Render the report header.
 
         Args:
@@ -113,7 +113,7 @@ class ConsoleReporter(ValidationReporter[ConsoleReporterConfig]):
         header_text = Text()
         header_text.append(f"{self._config.title}\n", style="bold")
         header_text.append(f"Data Asset: ", style="dim")
-        header_text.append(f"{result.data_asset}\n", style="cyan")
+        header_text.append(f"{result.source}\n", style="cyan")
         header_text.append(f"Run ID: ", style="dim")
         header_text.append(f"{result.run_id}\n", style="cyan")
         header_text.append(f"Status: ", style="dim")
@@ -121,14 +121,14 @@ class ConsoleReporter(ValidationReporter[ConsoleReporterConfig]):
 
         console.print(Panel(header_text, title="Truthound Report", border_style="blue"))
 
-    def _render_summary(self, console: Console, result: "ValidationResult") -> None:
+    def _render_summary(self, console: Console, result: "RunPresentation") -> None:
         """Render the summary section.
 
         Args:
             console: The Rich console.
             result: The validation result.
         """
-        stats = result.statistics
+        stats = result.summary
 
         table = Table(title="Summary", show_header=False, box=None)
         table.add_column("Metric", style="dim")
@@ -139,7 +139,7 @@ class ConsoleReporter(ValidationReporter[ConsoleReporterConfig]):
         table.add_row("Total Issues", f"{stats.total_issues:,}")
         table.add_row(
             "Pass Rate",
-            f"{stats.pass_rate:.1%}" if stats.total_validators > 0 else "N/A",
+            f"{stats.pass_rate:.1%}" if stats.total_checks > 0 else "N/A",
         )
 
         if stats.execution_time_ms > 0:
@@ -170,14 +170,14 @@ class ConsoleReporter(ValidationReporter[ConsoleReporterConfig]):
             console.print()
             console.print(f"Issues by Severity: {', '.join(parts)}")
 
-    def _render_issues_table(self, console: Console, result: "ValidationResult") -> None:
+    def _render_issues_table(self, console: Console, result: "RunPresentation") -> None:
         """Render the issues table.
 
         Args:
             console: The Rich console.
             result: The validation result.
         """
-        issues = [r for r in result.results if not r.success]
+        issues = list(result.issues)
 
         if not issues:
             console.print()
@@ -213,7 +213,7 @@ class ConsoleReporter(ValidationReporter[ConsoleReporterConfig]):
         console.print()
         console.print(table)
 
-    def _render_compact(self, console: Console, result: "ValidationResult") -> None:
+    def _render_compact(self, console: Console, result: "RunPresentation") -> None:
         """Render a compact version of the report.
 
         Args:
@@ -225,21 +225,20 @@ class ConsoleReporter(ValidationReporter[ConsoleReporterConfig]):
 
         console.print(
             f"[{status_style}]{status_icon}[/{status_style}] "
-            f"[bold]{result.data_asset}[/bold]: "
-            f"{result.status.value} "
-            f"({result.statistics.total_issues} issues)"
+            f"[bold]{result.source}[/bold]: "
+            f"{result.status} "
+            f"({result.summary.total_issues} issues)"
         )
 
         if not result.success:
-            for issue in result.results:
-                if not issue.success:
-                    severity_style = self._config.get_severity_color(issue.severity or "low")
-                    console.print(
-                        f"  [{severity_style}]•[/{severity_style}] "
-                        f"{issue.column or '-'}: {issue.issue_type}"
-                    )
+            for issue in result.issues:
+                severity_style = self._config.get_severity_color(issue.severity or "low")
+                console.print(
+                    f"  [{severity_style}]•[/{severity_style}] "
+                    f"{issue.column or '-'}: {issue.issue_type}"
+                )
 
-    def render(self, data: "ValidationResult") -> str:
+    def render(self, data: Any) -> str:
         """Render validation result as console output.
 
         Args:
@@ -253,18 +252,19 @@ class ConsoleReporter(ValidationReporter[ConsoleReporterConfig]):
         """
         try:
             console = self._create_console(capture=True)
+            presentation = self.present(data)
 
             if self._config.compact:
-                self._render_compact(console, data)
+                self._render_compact(console, presentation)
             else:
                 if self._config.show_header:
-                    self._render_header(console, data)
+                    self._render_header(console, presentation)
 
                 if self._config.show_summary:
-                    self._render_summary(console, data)
+                    self._render_summary(console, presentation)
 
                 if self._config.show_issues_table:
-                    self._render_issues_table(console, data)
+                    self._render_issues_table(console, presentation)
 
                 console.print()
 
@@ -273,7 +273,7 @@ class ConsoleReporter(ValidationReporter[ConsoleReporterConfig]):
         except Exception as e:
             raise RenderError(f"Failed to render console output: {e}")
 
-    def print(self, data: "ValidationResult") -> None:
+    def print(self, data: Any) -> None:
         """Print validation result directly to the console.
 
         Args:
@@ -284,16 +284,18 @@ class ConsoleReporter(ValidationReporter[ConsoleReporterConfig]):
             width=self._config.width,
         )
 
+        presentation = self.present(data)
+
         if self._config.compact:
-            self._render_compact(console, data)
+            self._render_compact(console, presentation)
         else:
             if self._config.show_header:
-                self._render_header(console, data)
+                self._render_header(console, presentation)
 
             if self._config.show_summary:
-                self._render_summary(console, data)
+                self._render_summary(console, presentation)
 
             if self._config.show_issues_table:
-                self._render_issues_table(console, data)
+                self._render_issues_table(console, presentation)
 
             console.print()

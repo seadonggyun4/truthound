@@ -14,8 +14,12 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 if TYPE_CHECKING:
-    from truthound.stores.results import ValidationResult
+    from truthound.core.results import ValidationRunResult
     from truthound.report import Report
+    from truthound.reporters.presentation import RunPresentation
+    ValidationReporterInput = ValidationRunResult | Report | Any
+else:
+    ValidationReporterInput = Any
 
 
 # =============================================================================
@@ -250,67 +254,90 @@ class BaseReporter(ABC, Generic[ConfigT, InputT]):
         return f"{base_name}{self.file_extension}"
 
 
+@dataclass(frozen=True)
+class ReporterContext:
+    """Execution context shared across reporter implementations."""
+
+    title: str
+    generated_at: datetime = field(default_factory=datetime.now)
+    output_path: str | Path | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
 # =============================================================================
 # Specialized Reporter Types
 # =============================================================================
 
 
-class ValidationReporter(BaseReporter[ConfigT, "ValidationResult"], Generic[ConfigT]):
-    """Reporter specialized for ValidationResult objects.
+class ValidationReporter(BaseReporter[ConfigT, ValidationReporterInput], Generic[ConfigT]):
+    """Reporter specialized for validation run data.
 
-    Provides additional helper methods for working with validation results.
+    ``ValidationRunResult`` is the canonical input contract. Legacy ``Report``
+    and stored ``ValidationResult`` objects are accepted through compatibility
+    adapters during the migration window.
     """
 
-    def get_severity_counts(self, result: "ValidationResult") -> dict[str, int]:
+    contract_version: int = 2
+
+    def to_run_result(self, data: ValidationReporterInput) -> "ValidationRunResult":
+        """Canonicalize supported reporter inputs into ValidationRunResult."""
+        from truthound.reporters.adapters import canonicalize_validation_run_result
+
+        return canonicalize_validation_run_result(data)
+
+    def get_context(self) -> ReporterContext:
+        """Build a reporter context from configuration."""
+        return ReporterContext(
+            title=self._config.title,
+            output_path=self._config.output_path,
+        )
+
+    def present(self, data: ValidationReporterInput) -> "RunPresentation":
+        """Build the shared RunPresentation model for renderers."""
+        from truthound.reporters.presentation import build_run_presentation
+
+        run_result = self.to_run_result(data)
+        return build_run_presentation(
+            run_result,
+            title=self._config.title,
+            max_sample_values=self._config.max_sample_values,
+        )
+
+    def get_severity_counts(self, data: ValidationReporterInput) -> dict[str, int]:
         """Get counts of issues by severity.
 
         Args:
-            result: The validation result.
+            data: The validation result input.
 
         Returns:
             Dictionary mapping severity to count.
         """
-        counts: dict[str, int] = {
-            "critical": 0,
-            "high": 0,
-            "medium": 0,
-            "low": 0,
-        }
-
-        for validator_result in result.results:
-            if not validator_result.success and validator_result.severity:
-                severity = validator_result.severity.lower()
-                if severity in counts:
-                    counts[severity] += 1
-
-        return counts
+        return dict(self.present(data).issue_counts_by_severity)
 
     def get_column_issues(
         self,
-        result: "ValidationResult",
+        data: ValidationReporterInput,
     ) -> dict[str, list[dict[str, Any]]]:
         """Get issues grouped by column.
 
         Args:
-            result: The validation result.
+            data: The validation result input.
 
         Returns:
             Dictionary mapping column names to lists of issues.
         """
         column_issues: dict[str, list[dict[str, Any]]] = {}
-
-        for validator_result in result.results:
-            if not validator_result.success:
-                column = validator_result.column or "_table_"
-                if column not in column_issues:
-                    column_issues[column] = []
-                column_issues[column].append({
-                    "validator": validator_result.validator_name,
-                    "issue_type": validator_result.issue_type,
-                    "count": validator_result.count,
-                    "severity": validator_result.severity,
-                    "message": validator_result.message,
-                })
+        for issue in self.present(data).issues:
+            column = issue.column or "_table_"
+            if column not in column_issues:
+                column_issues[column] = []
+            column_issues[column].append({
+                "validator": issue.validator_name,
+                "issue_type": issue.issue_type,
+                "count": issue.count,
+                "severity": issue.severity,
+                "message": issue.message,
+            })
 
         return column_issues
 
@@ -320,5 +347,7 @@ class ReportReporter(BaseReporter[ConfigT, "Report"], Generic[ConfigT]):
 
     Provides compatibility with the existing Report class.
     """
+
+    contract_version: int = 1
 
     pass

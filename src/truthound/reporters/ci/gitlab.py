@@ -17,7 +17,7 @@ import json
 import hashlib
 import os
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from truthound.reporters.ci.base import (
     BaseCIReporter,
@@ -26,10 +26,6 @@ from truthound.reporters.ci.base import (
     CIReporterConfig,
     AnnotationLevel,
 )
-
-if TYPE_CHECKING:
-    from truthound.stores.results import ValidationResult
-
 
 @dataclass
 class GitLabCIConfig(CIReporterConfig):
@@ -356,7 +352,7 @@ class GitLabCIReporter(BaseCIReporter):
     # Output Methods
     # =========================================================================
 
-    def render(self, data: "ValidationResult") -> str:
+    def render(self, data: Any) -> str:
         """Render the primary output format.
 
         Args:
@@ -365,16 +361,17 @@ class GitLabCIReporter(BaseCIReporter):
         Returns:
             Rendered output string.
         """
+        legacy_result = self._to_legacy_view(data)
         format_type = self.gitlab_config.output_format
 
         if format_type == "junit":
-            return self.generate_junit_report(data)
+            return self.generate_junit_report(legacy_result)
         else:
             # Default to Code Quality JSON
-            issues = self.generate_code_quality_report(data)
+            issues = self.generate_code_quality_report(legacy_result)
             return json.dumps(issues, indent=2)
 
-    def report_to_ci(self, result: "ValidationResult") -> int:
+    def report_to_ci(self, result: Any) -> int:
         """Output report to GitLab CI and return exit code.
 
         Handles:
@@ -389,12 +386,14 @@ class GitLabCIReporter(BaseCIReporter):
             Exit code.
         """
         # Print summary and annotations to console
+        legacy_result = self._to_legacy_view(result)
+
         if self._config.summary_enabled:
-            print(self.format_summary(result))
+            print(self.format_summary(legacy_result))
             print()
 
         if self._config.annotations_enabled:
-            annotations = self.render_annotations(result)
+            annotations = self.render_annotations(legacy_result)
             if annotations:
                 print(annotations)
 
@@ -402,12 +401,12 @@ class GitLabCIReporter(BaseCIReporter):
         format_type = self.gitlab_config.output_format
 
         if format_type in ("code_quality", "both"):
-            self._write_code_quality_artifact(result)
+            self._write_code_quality_artifact(legacy_result)
 
         if format_type in ("junit", "both"):
-            self._write_junit_artifact(result)
+            self._write_junit_artifact(legacy_result)
 
-        return self.get_exit_code(result)
+        return self.get_exit_code(legacy_result)
 
     def _write_code_quality_artifact(self, result: "ValidationResult") -> None:
         """Write Code Quality report artifact.

@@ -16,7 +16,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from xml.etree import ElementTree as ET
 
 from truthound.reporters.ci.base import (
@@ -26,10 +26,6 @@ from truthound.reporters.ci.base import (
     CIReporterConfig,
     AnnotationLevel,
 )
-
-if TYPE_CHECKING:
-    from truthound.stores.results import ValidationResult
-
 
 @dataclass
 class JenkinsConfig(CIReporterConfig):
@@ -417,7 +413,7 @@ class JenkinsReporter(BaseCIReporter):
     # Output Methods
     # =========================================================================
 
-    def render(self, data: "ValidationResult") -> str:
+    def render(self, data: Any) -> str:
         """Render the primary output format.
 
         Args:
@@ -426,14 +422,15 @@ class JenkinsReporter(BaseCIReporter):
         Returns:
             Rendered output string.
         """
+        legacy_result = self._to_legacy_view(data)
         format_type = self.jenkins_config.output_format
 
         if format_type == "warnings":
-            return self.generate_warnings_report(data)
+            return self.generate_warnings_report(legacy_result)
         else:
-            return self.generate_junit_report(data)
+            return self.generate_junit_report(legacy_result)
 
-    def report_to_ci(self, result: "ValidationResult") -> int:
+    def report_to_ci(self, result: Any) -> int:
         """Output report to Jenkins and return exit code.
 
         Args:
@@ -443,12 +440,14 @@ class JenkinsReporter(BaseCIReporter):
             Exit code.
         """
         # Print summary to console
+        legacy_result = self._to_legacy_view(result)
+
         if self._config.summary_enabled:
-            print(self.format_summary(result))
+            print(self.format_summary(legacy_result))
 
         # Print annotations
         if self._config.annotations_enabled:
-            annotations = self.render_annotations(result)
+            annotations = self.render_annotations(legacy_result)
             if annotations:
                 print(annotations)
 
@@ -456,12 +455,12 @@ class JenkinsReporter(BaseCIReporter):
         format_type = self.jenkins_config.output_format
 
         if format_type in ("junit", "both"):
-            self._write_junit_artifact(result)
+            self._write_junit_artifact(legacy_result)
 
         if format_type in ("warnings", "both"):
-            self._write_warnings_artifact(result)
+            self._write_warnings_artifact(legacy_result)
 
-        return self.get_exit_code(result)
+        return self.get_exit_code(legacy_result)
 
     def _write_junit_artifact(self, result: "ValidationResult") -> None:
         """Write JUnit XML artifact.

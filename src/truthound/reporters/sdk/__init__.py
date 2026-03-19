@@ -59,6 +59,11 @@ from truthound.reporters.sdk.builder import (
     create_reporter,
     create_validation_reporter,
 )
+from truthound.reporters.sdk.compat import (
+    build_sdk_legacy_view,
+    build_sdk_presentation,
+    to_validation_run_result,
+)
 from truthound.reporters.sdk.templates import (
     CSVReporter,
     YAMLReporter,
@@ -74,6 +79,7 @@ from truthound.reporters.sdk.schema import (
     CSVSchema,
     TextSchema,
     # Validation
+    SchemaValidationOutcome,
     ValidationResult,
     ValidationError,
     SchemaError,
@@ -124,6 +130,9 @@ __all__ = [
     "ReporterBuilder",
     "create_reporter",
     "create_validation_reporter",
+    "to_validation_run_result",
+    "build_sdk_presentation",
+    "build_sdk_legacy_view",
     # Templates
     "CSVReporter",
     "YAMLReporter",
@@ -137,6 +146,7 @@ __all__ = [
     "CSVSchema",
     "TextSchema",
     # Schema - Validation
+    "SchemaValidationOutcome",
     "ValidationResult",
     "ValidationError",
     "SchemaError",

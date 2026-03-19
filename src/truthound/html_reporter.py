@@ -1,8 +1,7 @@
 """HTML report generation bridge module.
 
-This module provides a bridge between the CLI's Report objects and the
-HTMLReporter system. It converts Report objects to ValidationResult
-objects and generates HTML reports.
+This module keeps the legacy helper surface stable while routing rendering
+through the Truthound 2.0 ``ValidationRunResult`` contract.
 
 Example:
     >>> from truthound.html_reporter import generate_html_report
@@ -58,17 +57,14 @@ class HTMLReportConfig:
 
 
 def generate_html_report(
-    report: "Report",
+    report: Any,
     config: HTMLReportConfig | None = None,
     **kwargs: Any,
 ) -> str:
-    """Generate an HTML report from a Report object.
-
-    This function converts the Report object to a ValidationResult and
-    uses the HTMLReporter to generate a styled HTML report.
+    """Generate an HTML report from a supported validation result input.
 
     Args:
-        report: The Report object containing validation issues.
+        report: ``ValidationRunResult`` (preferred) or a legacy compatible input.
         config: Optional configuration for the HTML report.
         **kwargs: Additional keyword arguments passed to HTMLReporter.
 
@@ -89,7 +85,7 @@ def generate_html_report(
     _require_jinja2()
 
     from truthound.reporters.html_reporter import HTMLReporter
-    from truthound.stores.results import ValidationResult
+    from truthound.reporters.adapters import canonicalize_validation_run_result
 
     # Apply config if provided
     if config:
@@ -99,19 +95,15 @@ def generate_html_report(
         kwargs.setdefault("include_metadata", config.include_metadata)
         kwargs.setdefault("include_statistics", config.include_statistics)
 
-    # Convert Report to ValidationResult
-    validation_result = ValidationResult.from_report(
-        report=report,
-        data_asset=report.source,
-    )
+    run_result = canonicalize_validation_run_result(report, warn_legacy=True)
 
     # Create reporter and render
     reporter = HTMLReporter(**kwargs)
-    return reporter.render(validation_result)
+    return reporter.render(run_result)
 
 
 def write_html_report(
-    report: "Report",
+    report: Any,
     output_path: str | Path,
     config: HTMLReportConfig | None = None,
     **kwargs: Any,
@@ -144,18 +136,14 @@ def write_html_report(
 
 
 def generate_html_from_validation_result(
-    result: Any,  # ValidationResult type
+    result: Any,
     config: HTMLReportConfig | None = None,
     **kwargs: Any,
 ) -> str:
-    """Generate an HTML report directly from a ValidationResult.
-
-    This function is useful when you already have a ValidationResult object
-    and want to generate an HTML report without going through the Report
-    intermediate.
+    """Generate an HTML report from a validation result input.
 
     Args:
-        result: The ValidationResult object.
+        result: ``ValidationRunResult`` or a legacy compatible input.
         config: Optional configuration for the HTML report.
         **kwargs: Additional keyword arguments passed to HTMLReporter.
 

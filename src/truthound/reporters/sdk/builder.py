@@ -36,7 +36,8 @@ from truthound.reporters.base import (
 from truthound.reporters.factory import register_reporter
 
 if TYPE_CHECKING:
-    from truthound.stores.results import ValidationResult
+    from truthound.core.results import ValidationRunResult
+    from truthound.reporters.presentation import LegacyValidatorResultView, RunPresentation
 
 
 ConfigT = TypeVar("ConfigT", bound=ReporterConfig)
@@ -128,12 +129,12 @@ def create_validation_reporter(
     config_class: Type[ReporterConfig] | None = None,
     register: bool = True,
 ) -> Callable[
-    [Callable[["ValidationResult", ReporterConfig], str]],
+    [Callable[["ValidationRunResult", ReporterConfig], str]],
     Type[ValidationReporter[Any]],
 ]:
     """Decorator to create a validation reporter from a render function.
 
-    Similar to create_reporter but specialized for ValidationResult input.
+    Similar to create_reporter but specialized for ValidationRunResult input.
 
     Args:
         name: Reporter name.
@@ -156,7 +157,7 @@ def create_validation_reporter(
     """
 
     def decorator(
-        render_func: Callable[["ValidationResult", ReporterConfig], str],
+        render_func: Callable[["ValidationRunResult", ReporterConfig], str],
     ) -> Type[ValidationReporter[Any]]:
         actual_config_class = config_class or ReporterConfig
 
@@ -172,7 +173,7 @@ def create_validation_reporter(
             def _default_config(cls) -> ReporterConfig:
                 return actual_config_class()
 
-            def render(self, data: "ValidationResult") -> str:
+            def render(self, data: "ValidationRunResult") -> str:
                 return render_func(data, self._config)
 
         # Override the name attribute properly
@@ -282,7 +283,7 @@ class ReporterBuilder:
         return self
 
     def for_validation_result(self) -> "ReporterBuilder":
-        """Configure for ValidationResult input.
+        """Configure for ValidationRunResult input.
 
         Returns:
             Self for chaining.
@@ -436,9 +437,9 @@ class ReporterBuilder:
 
 def create_line_based_reporter(
     name: str,
-    line_formatter: Callable[["ValidatorResult", int], str],
-    header: str | Callable[["ValidationResult"], str] | None = None,
-    footer: str | Callable[["ValidationResult"], str] | None = None,
+    line_formatter: Callable[["LegacyValidatorResultView", int], str],
+    header: str | Callable[["RunPresentation"], str] | None = None,
+    footer: str | Callable[["RunPresentation"], str] | None = None,
     separator: str = "\n",
     include_passed: bool = False,
     extension: str = ".txt",
@@ -472,19 +473,27 @@ def create_line_based_reporter(
     """
 
     @create_validation_reporter(name, extension=extension, register=register)
-    def render_lines(result: "ValidationResult", config: ReporterConfig) -> str:
+    def render_lines(result: "ValidationRunResult", config: ReporterConfig) -> str:
+        from truthound.reporters.presentation import build_run_presentation
+
+        presentation = build_run_presentation(
+            result,
+            title=config.title,
+            max_sample_values=config.max_sample_values,
+        )
+        legacy_view = presentation.to_legacy_view()
         lines = []
 
         # Add header
         if header:
             if callable(header):
-                lines.append(header(result))
+                lines.append(header(presentation))
             else:
                 lines.append(header)
 
         # Format each result
         index = 1
-        for validator_result in result.results:
+        for validator_result in legacy_view.results:
             if not include_passed and validator_result.success:
                 continue
             lines.append(line_formatter(validator_result, index))
@@ -493,7 +502,7 @@ def create_line_based_reporter(
         # Add footer
         if footer:
             if callable(footer):
-                lines.append(footer(result))
+                lines.append(footer(presentation))
             else:
                 lines.append(footer)
 
@@ -504,7 +513,7 @@ def create_line_based_reporter(
 
 def create_structured_reporter(
     name: str,
-    structure_builder: Callable[["ValidationResult"], dict[str, Any]],
+    structure_builder: Callable[["RunPresentation"], dict[str, Any]],
     serializer: Callable[[dict[str, Any]], str] = None,  # type: ignore
     extension: str = ".json",
     content_type: str = "application/json",
@@ -551,8 +560,16 @@ def create_structured_reporter(
         content_type=content_type,
         register=register,
     )
-    def render_structured(result: "ValidationResult", config: ReporterConfig) -> str:
-        structure = structure_builder(result)
+    def render_structured(result: "ValidationRunResult", config: ReporterConfig) -> str:
+        from truthound.reporters.presentation import build_run_presentation
+
+        structure = structure_builder(
+            build_run_presentation(
+                result,
+                title=config.title,
+                max_sample_values=config.max_sample_values,
+            )
+        )
         return serializer(structure)
 
     return render_structured  # type: ignore

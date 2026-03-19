@@ -18,7 +18,8 @@ from truthound.reporters.base import (
 )
 
 if TYPE_CHECKING:
-    from truthound.stores.results import ValidationResult
+    from truthound.core.results import ValidationRunResult
+    from truthound.reporters.presentation import RunPresentation
 
 
 @dataclass
@@ -83,11 +84,11 @@ class JSONReporter(ValidationReporter[JSONReporterConfig]):
 
         raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 
-    def _prepare_data(self, result: "ValidationResult") -> dict[str, Any]:
+    def _prepare_data(self, presentation: "RunPresentation") -> dict[str, Any]:
         """Prepare validation result data for JSON serialization.
 
         Args:
-            result: The validation result.
+            presentation: Shared presentation model.
 
         Returns:
             Dictionary ready for JSON serialization.
@@ -100,52 +101,47 @@ class JSONReporter(ValidationReporter[JSONReporterConfig]):
 
         # Core result data
         data["result"] = {
-            "run_id": result.run_id,
-            "run_time": result.run_time.isoformat(),
-            "data_asset": result.data_asset,
-            "status": result.status.value,
-            "success": result.success,
+            "run_id": presentation.run_id,
+            "run_time": presentation.run_time.isoformat(),
+            "data_asset": presentation.source,
+            "status": presentation.status,
+            "success": presentation.success,
         }
 
         # Metadata
         if self._config.include_metadata:
             data["metadata"] = {
-                "tags": result.tags,
-                "suite_name": result.suite_name,
-                "runtime_environment": result.runtime_environment,
-                **result.metadata,
+                "tags": presentation.metadata.get("tags", {}),
+                "suite_name": presentation.suite_name,
+                "runtime_environment": presentation.metadata.get("runtime_environment", {}),
+                **presentation.metadata,
             }
 
         # Statistics
         if self._config.include_statistics:
-            data["statistics"] = result.statistics.to_dict()
+            data["statistics"] = presentation.summary.to_legacy_statistics_dict()
 
         # Issues/Results
         if self._config.include_details:
-            issues: list[dict[str, Any]] = []
-
-            for validator_result in result.results:
-                if not validator_result.success:
-                    issue_data = validator_result.to_dict()
-
-                    # Limit sample values
-                    if "details" in issue_data and "sample_values" in issue_data["details"]:
-                        samples = issue_data["details"]["sample_values"]
-                        if samples and len(samples) > self._config.max_sample_values:
-                            issue_data["details"]["sample_values"] = samples[
-                                : self._config.max_sample_values
-                            ]
-
-                    issues.append(issue_data)
-
+            issues = [issue.to_legacy_issue_dict() for issue in presentation.issues]
             data["issues"] = issues
             data["issue_count"] = len(issues)
 
             # Group by severity
-            data["issues_by_severity"] = self.get_severity_counts(result)
+            data["issues_by_severity"] = dict(presentation.issue_counts_by_severity)
 
             # Group by column
-            data["issues_by_column"] = self.get_column_issues(result)
+            issues_by_column: dict[str, list[dict[str, Any]]] = {}
+            for issue in presentation.issues:
+                column = issue.column or "_table_"
+                issues_by_column.setdefault(column, []).append({
+                    "validator": issue.validator_name,
+                    "issue_type": issue.issue_type,
+                    "count": issue.count,
+                    "severity": issue.severity,
+                    "message": issue.message,
+                })
+            data["issues_by_column"] = issues_by_column
 
         # Remove null values if configured
         if not self._config.include_null_values:
@@ -172,7 +168,7 @@ class JSONReporter(ValidationReporter[JSONReporterConfig]):
             return [self._remove_null_values(item) for item in obj if item is not None]
         return obj
 
-    def render(self, data: "ValidationResult") -> str:
+    def render(self, data: "ValidationRunResult") -> str:
         """Render validation result as JSON.
 
         Args:
@@ -185,7 +181,8 @@ class JSONReporter(ValidationReporter[JSONReporterConfig]):
             RenderError: If rendering fails.
         """
         try:
-            prepared_data = self._prepare_data(data)
+            presentation = self.present(data)
+            prepared_data = self._prepare_data(presentation)
 
             return json.dumps(
                 prepared_data,
@@ -198,7 +195,7 @@ class JSONReporter(ValidationReporter[JSONReporterConfig]):
         except (TypeError, ValueError) as e:
             raise RenderError(f"Failed to render JSON: {e}")
 
-    def render_compact(self, data: "ValidationResult") -> str:
+    def render_compact(self, data: "ValidationRunResult") -> str:
         """Render validation result as compact JSON (no whitespace).
 
         Args:
@@ -214,7 +211,7 @@ class JSONReporter(ValidationReporter[JSONReporterConfig]):
         finally:
             self._config.indent = original_indent
 
-    def render_lines(self, data: "ValidationResult") -> str:
+    def render_lines(self, data: "ValidationRunResult") -> str:
         """Render validation result as JSON Lines (NDJSON) format.
 
         Each issue is output as a separate JSON object on its own line.
@@ -225,31 +222,35 @@ class JSONReporter(ValidationReporter[JSONReporterConfig]):
         Returns:
             JSON Lines string.
         """
+        presentation = self.present(data)
         lines: list[str] = []
 
         # Header line with metadata
         header = {
             "type": "header",
-            "run_id": data.run_id,
-            "data_asset": data.data_asset,
-            "run_time": data.run_time.isoformat(),
-            "status": data.status.value,
+            "run_id": presentation.run_id,
+            "data_asset": presentation.source,
+            "run_time": presentation.run_time.isoformat(),
+            "status": presentation.status,
         }
         lines.append(json.dumps(header, default=self._json_serializer))
 
         # Issue lines
-        for validator_result in data.results:
-            if not validator_result.success:
-                issue = {
-                    "type": "issue",
-                    **validator_result.to_dict(),
-                }
-                lines.append(json.dumps(issue, default=self._json_serializer))
+        for issue in presentation.issues:
+            lines.append(
+                json.dumps(
+                    {
+                        "type": "issue",
+                        **issue.to_legacy_issue_dict(),
+                    },
+                    default=self._json_serializer,
+                )
+            )
 
         # Summary line
         summary = {
             "type": "summary",
-            **data.statistics.to_dict(),
+            **presentation.summary.to_legacy_statistics_dict(),
         }
         lines.append(json.dumps(summary, default=self._json_serializer))
 

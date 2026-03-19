@@ -40,7 +40,12 @@ from truthound.reporters.sdk.mixins import (
 )
 
 if TYPE_CHECKING:
-    from truthound.stores.results import ValidationResult, ValidatorResult
+    from truthound.core.results import ValidationRunResult
+    from truthound.reporters.presentation import (
+        LegacyValidationResultView,
+        LegacyValidatorResultView as ValidatorResult,
+        RunPresentation,
+    )
 
 
 # =============================================================================
@@ -108,7 +113,7 @@ class CSVReporter(
     def _default_config(cls) -> CSVReporterConfig:
         return CSVReporterConfig()
 
-    def render(self, data: "ValidationResult") -> str:
+    def render(self, data: "ValidationRunResult") -> str:
         """Render validation result as CSV.
 
         Args:
@@ -117,8 +122,8 @@ class CSVReporter(
         Returns:
             CSV formatted string.
         """
-        # Filter results
-        results = data.results
+        legacy_view = self.present(data).to_legacy_view()
+        results = list(legacy_view.results)
         if not self._config.include_passed:
             results = self.filter_failed(results)
 
@@ -210,7 +215,7 @@ class YAMLReporter(
     def _default_config(cls) -> YAMLReporterConfig:
         return YAMLReporterConfig()
 
-    def render(self, data: "ValidationResult") -> str:
+    def render(self, data: "ValidationRunResult") -> str:
         """Render validation result as YAML.
 
         Args:
@@ -242,22 +247,23 @@ class YAMLReporter(
             allow_unicode=True,
         )
 
-    def _build_structure(self, data: "ValidationResult") -> dict[str, Any]:
+    def _build_structure(self, data: "ValidationRunResult") -> dict[str, Any]:
         """Build YAML structure from validation result."""
-        # Filter results
-        results = data.results
+        presentation = self.present(data)
+        legacy_view = presentation.to_legacy_view()
+        results = list(legacy_view.results)
         if not self._config.include_passed:
             results = self.filter_failed(results)
 
         # Get summary stats
-        stats = self.get_summary_stats(data)
+        stats = self.get_summary_stats(legacy_view)
 
         return {
             "validation_result": {
-                "run_id": data.run_id,
-                "data_asset": data.data_asset,
-                "status": data.status.value,
-                "run_time": data.run_time.isoformat() if data.run_time else None,
+                "run_id": presentation.run_id,
+                "data_asset": presentation.source,
+                "status": presentation.status,
+                "run_time": presentation.run_time.isoformat() if presentation.run_time else None,
                 "summary": {
                     "total_validators": stats["total_validators"],
                     "passed": stats["passed"],
@@ -326,7 +332,7 @@ class JUnitXMLReporter(
     def _default_config(cls) -> JUnitXMLReporterConfig:
         return JUnitXMLReporterConfig()
 
-    def render(self, data: "ValidationResult") -> str:
+    def render(self, data: "ValidationRunResult") -> str:
         """Render validation result as JUnit XML.
 
         Args:
@@ -335,8 +341,9 @@ class JUnitXMLReporter(
         Returns:
             JUnit XML formatted string.
         """
-        # Gather statistics
-        results = data.results
+        presentation = self.present(data)
+        legacy_view = presentation.to_legacy_view()
+        results = list(legacy_view.results)
         failures = [r for r in results if not r.success]
         errors = 0  # We treat all failures as failures, not errors
 
@@ -353,15 +360,15 @@ class JUnitXMLReporter(
             properties = [
                 self.to_xml_element("property", attributes={
                     "name": "data_asset",
-                    "value": data.data_asset,
+                    "value": presentation.source,
                 }),
                 self.to_xml_element("property", attributes={
                     "name": "run_id",
-                    "value": data.run_id,
+                    "value": presentation.run_id,
                 }),
                 self.to_xml_element("property", attributes={
                     "name": "status",
-                    "value": data.status.value,
+                    "value": presentation.status,
                 }),
             ]
             properties_element = self.to_xml_element(
@@ -372,7 +379,7 @@ class JUnitXMLReporter(
         # Build system-out if enabled
         system_out = ""
         if self._config.include_system_out:
-            stats = self.get_summary_stats(data)
+            stats = self.get_summary_stats(legacy_view)
             out_content = (
                 f"Validation Summary:\n"
                 f"  Total: {stats['total_validators']}\n"
@@ -386,14 +393,14 @@ class JUnitXMLReporter(
         time_seconds = 0.0  # We don't track execution time per validator
 
         # Build testsuite
-        suite_name = self._config.suite_name or f"truthound.{data.data_asset}"
+        suite_name = self._config.suite_name or f"truthound.{presentation.source}"
         suite_attrs = {
             "name": suite_name,
             "tests": str(len(results) if self._config.include_passed else len(failures)),
             "failures": str(len(failures)),
             "errors": str(errors),
             "time": f"{time_seconds:.3f}",
-            "timestamp": data.run_time.isoformat() if data.run_time else datetime.now().isoformat(),
+            "timestamp": presentation.run_time.isoformat() if presentation.run_time else datetime.now().isoformat(),
         }
 
         suite_content = []
@@ -505,7 +512,7 @@ class NDJSONReporter(
     def _default_config(cls) -> NDJSONReporterConfig:
         return NDJSONReporterConfig()
 
-    def render(self, data: "ValidationResult") -> str:
+    def render(self, data: "ValidationRunResult") -> str:
         """Render validation result as NDJSON.
 
         Args:
@@ -514,22 +521,24 @@ class NDJSONReporter(
         Returns:
             NDJSON formatted string (one JSON object per line).
         """
+        presentation = self.present(data)
+        legacy_view = presentation.to_legacy_view()
         lines = []
 
         # Optionally add metadata line
         if self._config.include_metadata:
             metadata = {
                 "type": "metadata",
-                "run_id": data.run_id,
-                "data_asset": data.data_asset,
-                "status": data.status.value,
-                "run_time": data.run_time.isoformat() if data.run_time else None,
-                "total_validators": len(data.results),
+                "run_id": presentation.run_id,
+                "data_asset": presentation.source,
+                "status": presentation.status,
+                "run_time": presentation.run_time.isoformat() if presentation.run_time else None,
+                "total_validators": len(legacy_view.results),
             }
             lines.append(self._to_json_line(metadata))
 
         # Filter and add result lines
-        results = data.results
+        results = list(legacy_view.results)
         if not self._config.include_passed:
             results = self.filter_failed(results)
 
@@ -623,7 +632,7 @@ class TableReporter(
     def _default_config(cls) -> TableReporterConfig:
         return TableReporterConfig()
 
-    def render(self, data: "ValidationResult") -> str:
+    def render(self, data: "ValidationRunResult") -> str:
         """Render validation result as formatted table.
 
         Args:
@@ -632,8 +641,8 @@ class TableReporter(
         Returns:
             Formatted table string.
         """
-        # Filter results
-        results = data.results
+        legacy_view = self.present(data).to_legacy_view()
+        results = list(legacy_view.results)
         if not self._config.include_passed:
             results = self.filter_failed(results)
 

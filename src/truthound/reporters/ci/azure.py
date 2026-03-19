@@ -12,7 +12,7 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from truthound.reporters.ci.base import (
     BaseCIReporter,
@@ -21,10 +21,6 @@ from truthound.reporters.ci.base import (
     CIReporterConfig,
     AnnotationLevel,
 )
-
-if TYPE_CHECKING:
-    from truthound.stores.results import ValidationResult
-
 
 @dataclass
 class AzureDevOpsConfig(CIReporterConfig):
@@ -298,7 +294,7 @@ class AzureDevOpsReporter(BaseCIReporter):
     # Output Methods
     # =========================================================================
 
-    def render(self, data: "ValidationResult") -> str:
+    def render(self, data: Any) -> str:
         """Render the complete Azure DevOps output.
 
         Args:
@@ -307,31 +303,32 @@ class AzureDevOpsReporter(BaseCIReporter):
         Returns:
             Complete output with VSO commands.
         """
+        legacy_result = self._to_legacy_view(data)
         parts: list[str] = []
 
         # Annotations
         if self._config.annotations_enabled:
-            annotations = self.render_annotations(data)
+            annotations = self.render_annotations(legacy_result)
             if annotations:
                 parts.append(annotations)
 
         # Variables
-        variable_commands = self.generate_variable_commands(data)
+        variable_commands = self.generate_variable_commands(legacy_result)
         if variable_commands:
             parts.append("\n".join(variable_commands))
 
         # Task result
-        task_result = self.generate_task_result(data)
+        task_result = self.generate_task_result(legacy_result)
         if task_result:
             parts.append(task_result)
 
         # Summary (as markdown for uploading)
         if self._config.summary_enabled:
-            parts.append(self.format_summary(data))
+            parts.append(self.format_summary(legacy_result))
 
         return "\n\n".join(parts)
 
-    def report_to_ci(self, result: "ValidationResult") -> int:
+    def report_to_ci(self, result: Any) -> int:
         """Output report to Azure DevOps and return exit code.
 
         Args:
@@ -341,20 +338,22 @@ class AzureDevOpsReporter(BaseCIReporter):
             Exit code.
         """
         # Print annotations as VSO commands
+        legacy_result = self._to_legacy_view(result)
+
         if self._config.annotations_enabled:
-            annotations = self.render_annotations(result)
+            annotations = self.render_annotations(legacy_result)
             if annotations:
                 print(annotations)
 
         # Set variables
-        variable_commands = self.generate_variable_commands(result)
+        variable_commands = self.generate_variable_commands(legacy_result)
         for cmd in variable_commands:
             print(cmd)
 
         # Write and upload summary
         if self._config.summary_enabled and self.azure_config.upload_summary:
             summary_path = self.azure_config.summary_path
-            summary = self.format_summary(result)
+            summary = self.format_summary(legacy_result)
 
             with open(summary_path, "w") as f:
                 f.write(summary)
@@ -363,9 +362,9 @@ class AzureDevOpsReporter(BaseCIReporter):
 
         # Task completion
         if self.azure_config.use_task_commands:
-            print(self.generate_task_result(result))
+            print(self.generate_task_result(legacy_result))
 
-        return self.get_exit_code(result)
+        return self.get_exit_code(legacy_result)
 
     # =========================================================================
     # Utility Methods

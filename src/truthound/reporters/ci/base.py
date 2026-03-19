@@ -21,7 +21,7 @@ from truthound.reporters.base import (
 )
 
 if TYPE_CHECKING:
-    from truthound.stores.results import ValidationResult, ValidatorResult
+    from truthound.reporters.presentation import LegacyValidationResultView, LegacyValidatorResultView
 
 
 class CIPlatform(str, Enum):
@@ -211,7 +211,7 @@ class BaseCIReporter(ValidationReporter[CIReporterConfig]):
         pass
 
     @abstractmethod
-    def format_summary(self, result: "ValidationResult") -> str:
+    def format_summary(self, result: "LegacyValidationResultView") -> str:
         """Format a summary report for the target platform.
 
         Args:
@@ -249,7 +249,7 @@ class BaseCIReporter(ValidationReporter[CIReporterConfig]):
         """
         return ""
 
-    def get_exit_code(self, result: "ValidationResult") -> int:
+    def get_exit_code(self, result: "LegacyValidationResultView") -> int:
         """Determine the exit code based on validation results.
 
         Args:
@@ -266,7 +266,7 @@ class BaseCIReporter(ValidationReporter[CIReporterConfig]):
 
         return 0
 
-    def should_emit_annotation(self, validator_result: "ValidatorResult") -> bool:
+    def should_emit_annotation(self, validator_result: "LegacyValidatorResultView") -> bool:
         """Determine if an annotation should be emitted for this result.
 
         Args:
@@ -283,9 +283,14 @@ class BaseCIReporter(ValidationReporter[CIReporterConfig]):
     # Core Implementation
     # =========================================================================
 
+    def _to_legacy_view(self, data: Any) -> "LegacyValidationResultView":
+        if hasattr(data, "statistics") and hasattr(data, "results") and hasattr(data, "data_asset"):
+            return data
+        return self.present(data).to_legacy_view()
+
     def create_annotation(
         self,
-        validator_result: "ValidatorResult",
+        validator_result: "LegacyValidatorResultView",
     ) -> CIAnnotation:
         """Create a CIAnnotation from a validator result.
 
@@ -320,7 +325,7 @@ class BaseCIReporter(ValidationReporter[CIReporterConfig]):
 
     def iter_annotations(
         self,
-        result: "ValidationResult",
+        result: "LegacyValidationResultView",
     ) -> Iterator[CIAnnotation]:
         """Iterate over annotations for a validation result.
 
@@ -343,7 +348,7 @@ class BaseCIReporter(ValidationReporter[CIReporterConfig]):
                 yield self.create_annotation(validator_result)
                 count += 1
 
-    def render_annotations(self, result: "ValidationResult") -> str:
+    def render_annotations(self, result: Any) -> str:
         """Render all annotations as a string.
 
         Args:
@@ -354,13 +359,14 @@ class BaseCIReporter(ValidationReporter[CIReporterConfig]):
         """
         if not self._config.annotations_enabled or not self.supports_annotations:
             return ""
+        legacy_result = self._to_legacy_view(result)
 
         lines: list[str] = []
 
         if self._config.group_by_file:
             # Group annotations by file
             by_file: dict[str | None, list[CIAnnotation]] = {}
-            for annotation in self.iter_annotations(result):
+            for annotation in self.iter_annotations(legacy_result):
                 file_key = annotation.file
                 if file_key not in by_file:
                     by_file[file_key] = []
@@ -379,12 +385,12 @@ class BaseCIReporter(ValidationReporter[CIReporterConfig]):
                 if group_end:
                     lines.append(group_end)
         else:
-            for annotation in self.iter_annotations(result):
+            for annotation in self.iter_annotations(legacy_result):
                 lines.append(self.format_annotation(annotation))
 
         return "\n".join(lines)
 
-    def render(self, data: "ValidationResult") -> str:
+    def render(self, data: Any) -> str:
         """Render the complete CI output.
 
         Args:
@@ -397,17 +403,18 @@ class BaseCIReporter(ValidationReporter[CIReporterConfig]):
             RenderError: If rendering fails.
         """
         try:
+            legacy_result = self._to_legacy_view(data)
             parts: list[str] = []
 
             # Annotations
             if self._config.annotations_enabled and self.supports_annotations:
-                annotations = self.render_annotations(data)
+                annotations = self.render_annotations(legacy_result)
                 if annotations:
                     parts.append(annotations)
 
             # Summary
             if self._config.summary_enabled and self.supports_summary:
-                summary = self.format_summary(data)
+                summary = self.format_summary(legacy_result)
                 if summary:
                     parts.append(summary)
 
@@ -416,7 +423,7 @@ class BaseCIReporter(ValidationReporter[CIReporterConfig]):
         except Exception as e:
             raise RenderError(f"Failed to render CI output: {e}")
 
-    def report_to_ci(self, result: "ValidationResult") -> int:
+    def report_to_ci(self, result: Any) -> int:
         """Output the report directly to CI platform and return exit code.
 
         This method prints directly to stdout (for CI to capture) and
@@ -432,7 +439,7 @@ class BaseCIReporter(ValidationReporter[CIReporterConfig]):
         if output:
             print(output)
 
-        return self.get_exit_code(result)
+        return self.get_exit_code(self._to_legacy_view(result))
 
     # =========================================================================
     # Utility Methods

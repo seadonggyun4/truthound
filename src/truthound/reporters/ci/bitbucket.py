@@ -18,7 +18,7 @@ import os
 import hashlib
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from uuid import uuid4
 
 from truthound.reporters.ci.base import (
@@ -28,10 +28,6 @@ from truthound.reporters.ci.base import (
     CIReporterConfig,
     AnnotationLevel,
 )
-
-if TYPE_CHECKING:
-    from truthound.stores.results import ValidationResult
-
 
 @dataclass
 class BitbucketConfig(CIReporterConfig):
@@ -414,7 +410,7 @@ class BitbucketPipelinesReporter(BaseCIReporter):
     # Output Methods
     # =========================================================================
 
-    def render(self, data: "ValidationResult") -> str:
+    def render(self, data: Any) -> str:
         """Render the complete Bitbucket output.
 
         Args:
@@ -423,25 +419,26 @@ class BitbucketPipelinesReporter(BaseCIReporter):
         Returns:
             Complete output string.
         """
+        legacy_result = self._to_legacy_view(data)
         parts: list[str] = []
 
         # Summary
         if self._config.summary_enabled:
-            parts.append(self.format_summary(data))
+            parts.append(self.format_summary(legacy_result))
 
         # Annotations
         if self._config.annotations_enabled:
-            annotations = self.render_annotations(data)
+            annotations = self.render_annotations(legacy_result)
             if annotations:
                 parts.append(annotations)
 
         # Pipes format
         if self.bitbucket_config.use_pipes_format:
-            parts.append(self.format_pipes_output(data))
+            parts.append(self.format_pipes_output(legacy_result))
 
         return "\n\n".join(parts)
 
-    def report_to_ci(self, result: "ValidationResult") -> int:
+    def report_to_ci(self, result: Any) -> int:
         """Output report to Bitbucket Pipelines and return exit code.
 
         Args:
@@ -451,29 +448,31 @@ class BitbucketPipelinesReporter(BaseCIReporter):
             Exit code.
         """
         # Print summary
+        legacy_result = self._to_legacy_view(result)
+
         if self._config.summary_enabled:
-            print(self.format_summary(result))
+            print(self.format_summary(legacy_result))
             print()
 
         # Print annotations
         if self._config.annotations_enabled:
-            annotations = self.render_annotations(result)
+            annotations = self.render_annotations(legacy_result)
             if annotations:
                 print(annotations)
 
         # Write report file for Reports API
         if self.bitbucket_config.create_report_file:
-            self._write_report_file(result)
+            self._write_report_file(legacy_result)
 
         # Write JSON artifact
-        self._write_json_artifact(result)
+        self._write_json_artifact(legacy_result)
 
         # Print pipes format
         if self.bitbucket_config.use_pipes_format:
             print()
-            print(self.format_pipes_output(result))
+            print(self.format_pipes_output(legacy_result))
 
-        return self.get_exit_code(result)
+        return self.get_exit_code(legacy_result)
 
     def _write_report_file(self, result: "ValidationResult") -> None:
         """Write Code Insights report file.

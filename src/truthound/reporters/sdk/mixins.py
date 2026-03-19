@@ -37,7 +37,10 @@ from typing import (
 )
 
 if TYPE_CHECKING:
-    from truthound.stores.results import ValidationResult, ValidatorResult
+    from truthound.reporters.presentation import (
+        LegacyValidationResultView as ValidationResult,
+        LegacyValidatorResultView as ValidatorResult,
+    )
 
 
 T = TypeVar("T")

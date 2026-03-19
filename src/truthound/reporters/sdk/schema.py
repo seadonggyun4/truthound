@@ -48,6 +48,7 @@ __all__ = [
     "CSVSchema",
     "TextSchema",
     # Validation
+    "SchemaValidationOutcome",
     "ValidationResult",
     "ValidationError",
     "SchemaError",
@@ -96,7 +97,7 @@ class ValidationError(Exception):
 
 
 @dataclass
-class ValidationResult:
+class SchemaValidationOutcome:
     """Result of schema validation."""
 
     valid: bool
@@ -131,6 +132,9 @@ class ValidationResult:
             "schema_name": self.schema_name,
             "checked_at": self.checked_at,
         }
+
+
+ValidationResult = SchemaValidationOutcome
 
 
 class ReportSchema(ABC):

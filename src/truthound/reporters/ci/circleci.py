@@ -17,7 +17,7 @@ import json
 import os
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from xml.etree import ElementTree as ET
 
 from truthound.reporters.ci.base import (
@@ -27,10 +27,6 @@ from truthound.reporters.ci.base import (
     CIReporterConfig,
     AnnotationLevel,
 )
-
-if TYPE_CHECKING:
-    from truthound.stores.results import ValidationResult
-
 
 @dataclass
 class CircleCIConfig(CIReporterConfig):
@@ -418,7 +414,7 @@ class CircleCIReporter(BaseCIReporter):
     # Output Methods
     # =========================================================================
 
-    def render(self, data: "ValidationResult") -> str:
+    def render(self, data: Any) -> str:
         """Render the primary output format.
 
         Args:
@@ -427,14 +423,15 @@ class CircleCIReporter(BaseCIReporter):
         Returns:
             Rendered output string.
         """
+        legacy_result = self._to_legacy_view(data)
         format_type = self.circleci_config.output_format
 
         if format_type == "json":
-            return self.generate_json_report(data)
+            return self.generate_json_report(legacy_result)
         else:
-            return self.generate_junit_report(data)
+            return self.generate_junit_report(legacy_result)
 
-    def report_to_ci(self, result: "ValidationResult") -> int:
+    def report_to_ci(self, result: Any) -> int:
         """Output report to CircleCI and return exit code.
 
         Handles:
@@ -449,13 +446,15 @@ class CircleCIReporter(BaseCIReporter):
             Exit code.
         """
         # Print summary
+        legacy_result = self._to_legacy_view(result)
+
         if self._config.summary_enabled:
-            print(self.format_summary(result))
+            print(self.format_summary(legacy_result))
             print()
 
         # Print annotations
         if self._config.annotations_enabled:
-            annotations = self.render_annotations(result)
+            annotations = self.render_annotations(legacy_result)
             if annotations:
                 print(annotations)
 
@@ -463,12 +462,12 @@ class CircleCIReporter(BaseCIReporter):
         format_type = self.circleci_config.output_format
 
         if format_type in ("junit", "both"):
-            self._write_junit_artifact(result)
+            self._write_junit_artifact(legacy_result)
 
         if format_type in ("json", "both"):
-            self._write_json_artifact(result)
+            self._write_json_artifact(legacy_result)
 
-        return self.get_exit_code(result)
+        return self.get_exit_code(legacy_result)
 
     def _write_junit_artifact(self, result: "ValidationResult") -> None:
         """Write JUnit XML artifact.

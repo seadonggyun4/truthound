@@ -17,7 +17,7 @@ from truthound.reporters.base import (
 )
 
 if TYPE_CHECKING:
-    from truthound.stores.results import ValidationResult
+    from truthound.reporters.presentation import RunPresentation
 
 
 @dataclass
@@ -110,7 +110,7 @@ class MarkdownReporter(ValidationReporter[MarkdownReporterConfig]):
 
         return "\n".join(lines)
 
-    def render(self, data: "ValidationResult") -> str:
+    def render(self, data: Any) -> str:
         """Render validation result as Markdown.
 
         Args:
@@ -123,6 +123,7 @@ class MarkdownReporter(ValidationReporter[MarkdownReporterConfig]):
             RenderError: If rendering fails.
         """
         try:
+            presentation = self.present(data)
             sections: list[str] = []
 
             # Title
@@ -131,13 +132,13 @@ class MarkdownReporter(ValidationReporter[MarkdownReporterConfig]):
 
             # Badges
             if self._config.include_badges:
-                status_color = "success" if data.success else "critical"
-                status_text = "PASSED" if data.success else "FAILED"
+                status_color = "success" if presentation.success else "critical"
+                status_text = "PASSED" if presentation.success else "FAILED"
 
                 badges = [
                     self._badge("Status", status_text, status_color),
-                    self._badge("Issues", str(data.statistics.total_issues), "blue"),
-                    self._badge("Rows", f"{data.statistics.total_rows:,}", "blue"),
+                    self._badge("Issues", str(presentation.summary.total_issues), "blue"),
+                    self._badge("Rows", f"{presentation.summary.total_rows:,}", "blue"),
                 ]
                 sections.append(" ".join(badges))
                 sections.append("")
@@ -148,7 +149,7 @@ class MarkdownReporter(ValidationReporter[MarkdownReporterConfig]):
                 sections.append("")
                 sections.append("- [Overview](#overview)")
                 sections.append("- [Statistics](#statistics)")
-                if data.statistics.total_issues > 0:
+                if presentation.summary.total_issues > 0:
                     sections.append("- [Issues](#issues)")
                 if self._config.include_metadata:
                     sections.append("- [Metadata](#metadata)")
@@ -157,22 +158,22 @@ class MarkdownReporter(ValidationReporter[MarkdownReporterConfig]):
             # Overview
             sections.append(self._heading("Overview", 2))
             sections.append("")
-            sections.append(f"- **Data Asset**: `{data.data_asset}`")
-            sections.append(f"- **Run ID**: `{data.run_id}`")
-            sections.append(f"- **Run Time**: {data.run_time.strftime(self._config.timestamp_format)}")
-            sections.append(f"- **Status**: {'✅ Passed' if data.success else '❌ Failed'}")
+            sections.append(f"- **Data Asset**: `{presentation.source}`")
+            sections.append(f"- **Run ID**: `{presentation.run_id}`")
+            sections.append(f"- **Run Time**: {presentation.run_time.strftime(self._config.timestamp_format)}")
+            sections.append(f"- **Status**: {'✅ Passed' if presentation.success else '❌ Failed'}")
             sections.append("")
 
             # Statistics
             sections.append(self._heading("Statistics", 2))
             sections.append("")
 
-            stats = data.statistics
+            stats = presentation.summary
             stats_rows = [
                 ["Total Rows", f"{stats.total_rows:,}"],
                 ["Total Columns", f"{stats.total_columns:,}"],
                 ["Total Issues", f"{stats.total_issues:,}"],
-                ["Pass Rate", f"{stats.pass_rate:.1%}" if stats.total_validators > 0 else "N/A"],
+                ["Pass Rate", f"{stats.pass_rate:.1%}" if stats.total_checks > 0 else "N/A"],
             ]
 
             if stats.execution_time_ms > 0:
@@ -205,11 +206,11 @@ class MarkdownReporter(ValidationReporter[MarkdownReporterConfig]):
                     sections.append("")
 
             # Issues
-            if data.statistics.total_issues > 0:
+            if presentation.summary.total_issues > 0:
                 sections.append(self._heading("Issues", 2))
                 sections.append("")
 
-                issues = [r for r in data.results if not r.success]
+                issues = list(presentation.issues)
 
                 # Sort by severity
                 severity_order = {"critical": 0, "high": 1, "medium": 2, "low": 3}
@@ -255,15 +256,16 @@ class MarkdownReporter(ValidationReporter[MarkdownReporterConfig]):
                 sections.append(self._heading("Metadata", 2))
                 sections.append("")
 
-                if data.tags:
+                tags = presentation.metadata.get("tags", {})
+                if tags:
                     sections.append(self._heading("Tags", 3))
                     sections.append("")
-                    for key, value in data.tags.items():
+                    for key, value in tags.items():
                         sections.append(f"- **{key}**: {value}")
                     sections.append("")
 
-                if data.suite_name:
-                    sections.append(f"- **Suite Name**: {data.suite_name}")
+                if presentation.suite_name:
+                    sections.append(f"- **Suite Name**: {presentation.suite_name}")
                     sections.append("")
 
                 sections.append(f"*Report generated at {datetime.now().strftime(self._config.timestamp_format)}*")

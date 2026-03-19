@@ -40,9 +40,11 @@ Quality Reporters:
 from truthound.reporters.base import (
     BaseReporter,
     ReporterConfig,
+    ReporterContext,
     ReporterError,
 )
 from truthound.reporters.factory import get_reporter, register_reporter
+from truthound.reporters.presentation import RunPresentation
 
 # Quality reporter lazy imports (avoid circular imports)
 def __getattr__(name: str):
@@ -62,7 +64,9 @@ __all__ = [
     # Base classes
     "BaseReporter",
     "ReporterConfig",
+    "ReporterContext",
     "ReporterError",
+    "RunPresentation",
     # Factory functions
     "get_reporter",
     "register_reporter",

@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from truthound.reporters.ci.base import (
     BaseCIReporter,
@@ -20,10 +20,6 @@ from truthound.reporters.ci.base import (
     CIReporterConfig,
     AnnotationLevel,
 )
-
-if TYPE_CHECKING:
-    from truthound.stores.results import ValidationResult
-
 
 @dataclass
 class GitHubActionsConfig(CIReporterConfig):
@@ -242,7 +238,7 @@ class GitHubActionsReporter(BaseCIReporter):
     # Output Methods
     # =========================================================================
 
-    def render(self, data: "ValidationResult") -> str:
+    def render(self, data: Any) -> str:
         """Render the complete GitHub Actions output.
 
         Args:
@@ -251,22 +247,23 @@ class GitHubActionsReporter(BaseCIReporter):
         Returns:
             Complete output string.
         """
+        legacy_result = self._to_legacy_view(data)
         parts: list[str] = []
 
         # Annotations (printed to stdout)
         if self._config.annotations_enabled:
-            annotations = self.render_annotations(data)
+            annotations = self.render_annotations(legacy_result)
             if annotations:
                 parts.append(annotations)
 
         # Summary is handled separately via file
         if self._config.summary_enabled:
-            summary = self.format_summary(data)
+            summary = self.format_summary(legacy_result)
             parts.append(summary)
 
         return "\n\n".join(parts)
 
-    def report_to_ci(self, result: "ValidationResult") -> int:
+    def report_to_ci(self, result: Any) -> int:
         """Output report to GitHub Actions and return exit code.
 
         Handles:
@@ -281,8 +278,10 @@ class GitHubActionsReporter(BaseCIReporter):
             Exit code.
         """
         # Print annotations
+        legacy_result = self._to_legacy_view(result)
+
         if self._config.annotations_enabled:
-            annotations = self.render_annotations(result)
+            annotations = self.render_annotations(legacy_result)
             if annotations:
                 print(annotations)
 
@@ -290,16 +289,16 @@ class GitHubActionsReporter(BaseCIReporter):
         if self._config.summary_enabled and self.github_config.step_summary:
             summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
             if summary_path:
-                summary = self.format_summary(result)
+                summary = self.format_summary(legacy_result)
                 with open(summary_path, "a") as f:
                     f.write(summary)
                     f.write("\n")
 
         # Set output variables
         if self.github_config.set_output:
-            self._set_output(result)
+            self._set_output(legacy_result)
 
-        return self.get_exit_code(result)
+        return self.get_exit_code(legacy_result)
 
     def _set_output(self, result: "ValidationResult") -> None:
         """Set GitHub Actions output variables.
