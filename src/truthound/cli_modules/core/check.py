@@ -174,13 +174,6 @@ def check_cmd(
             ),
         ),
     ] = None,
-    use_engine: Annotated[
-        bool,
-        typer.Option(
-            "--use-engine/--no-use-engine",
-            help="Use execution engine for validation (experimental).",
-        ),
-    ] = False,
 ) -> None:
     """Validate data quality in a file or database table.
 
@@ -303,7 +296,6 @@ def check_cmd(
         "parallel": parallel,
         "max_workers": max_workers,
         "pushdown": pushdown,
-        "use_engine": use_engine,
     }
 
     try:

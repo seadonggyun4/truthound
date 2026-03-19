@@ -22,10 +22,10 @@ Example:
 from __future__ import annotations
 
 import logging
+import threading
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Iterator
-import threading
+from typing import TYPE_CHECKING, Any
 
 from truthound.plugins.base import (
     Plugin,
@@ -43,21 +43,28 @@ from truthound.plugins.registry import PluginRegistry
 from truthound.plugins.hooks import HookManager, HookType
 from truthound.plugins.discovery import PluginDiscovery
 
+if TYPE_CHECKING:
+    from truthound.core.contracts import CheckSpecFactory, DataAssetProvider
+
+
 
 logger = logging.getLogger(__name__)
+
+
+def _default_host_version() -> str:
+    from truthound import __version__
+
+    return __version__
+
 
 
 @dataclass
 class PluginManagerConfig:
     """Configuration for PluginManager.
 
-    Attributes:
-        plugin_dirs: Directories to scan for plugins.
-        scan_entrypoints: Whether to scan Python entry points.
-        auto_load: Whether to auto-load discovered plugins.
-        auto_activate: Whether to auto-activate loaded plugins.
-        strict_dependencies: Fail if dependencies are missing.
-        check_compatibility: Verify Truthound version compatibility.
+    The 2.0 manager keeps the original lifecycle flags while allowing optional
+    capability services such as security, versioning, hot reload, and stable
+    extension ports.
     """
 
     plugin_dirs: list[Path] = field(default_factory=list)
@@ -66,6 +73,12 @@ class PluginManagerConfig:
     auto_activate: bool = True
     strict_dependencies: bool = True
     check_compatibility: bool = True
+    host_version: str = field(default_factory=_default_host_version)
+    strict_version_check: bool = True
+    allow_missing_optional: bool = True
+    trust_store_path: Path | None = None
+    enable_hot_reload: bool = False
+    watch_for_changes: bool = False
 
 
 class PluginManager:
@@ -114,6 +127,11 @@ class PluginManager:
         )
         self._discovered_classes: dict[str, type[Plugin]] = {}
         self._plugin_configs: dict[str, PluginConfig] = {}
+        self._check_factories: dict[str, Any] = {}
+        self._data_asset_providers: dict[str, Any] = {}
+        self._reporter_bindings: dict[str, Any] = {}
+        self._reporter_contracts: dict[str, int] = {}
+        self._capabilities: dict[str, Any] = {}
         self._lock = threading.RLock()
         self._initialized = False
 
@@ -170,6 +188,105 @@ class PluginManager:
             List of plugin names.
         """
         return list(self._discovered_classes.keys())
+
+    # =========================================================================
+    # Stable extension ports
+    # =========================================================================
+
+    def register_check_factory(self, name: str, factory: "CheckSpecFactory | Any") -> None:
+        """Register a validation check factory exposed by a plugin."""
+        self._check_factories[name] = factory
+
+    def get_check_factory(self, name: str) -> Any | None:
+        """Return a registered validation check factory."""
+        return self._check_factories.get(name)
+
+    def iter_check_factories(self) -> dict[str, Any]:
+        """Return a snapshot of registered validation check factories."""
+        return dict(self._check_factories)
+
+    def register_validator(self, validator_cls: type[Any]) -> None:
+        """Compatibility wrapper for validator-class plugins."""
+        from truthound.validators.registry import registry
+
+        registry.register(validator_cls)
+        validator_name = getattr(validator_cls, "name", validator_cls.__name__.lower())
+        self.register_check_factory(validator_name, validator_cls)
+
+    def register_data_asset_provider(
+        self,
+        name: str,
+        provider: "DataAssetProvider | Any",
+    ) -> None:
+        """Register a data asset provider exposed by a plugin."""
+        self._data_asset_providers[name] = provider
+
+    def get_data_asset_provider(self, name: str) -> Any | None:
+        """Return a registered data asset provider."""
+        return self._data_asset_providers.get(name)
+
+    def list_data_asset_providers(self) -> list[str]:
+        """List registered data asset providers."""
+        return sorted(self._data_asset_providers.keys())
+
+    def register_reporter(self, name: str, reporter: Any) -> None:
+        """Register a reporter through the manager's stable port."""
+        self._reporter_bindings[name] = reporter
+        self._reporter_contracts[name] = int(getattr(reporter, "contract_version", 1))
+        try:
+            from truthound.reporters.factory import register_reporter
+
+            register_reporter(name)(reporter)
+        except Exception:
+            logger.debug("Reporter '%s' could not be added to the global factory.", name)
+
+    def register_reporter_binding(self, name: str, reporter: Any) -> None:
+        """Backward-compatible alias for reporter registration."""
+        self.register_reporter(name, reporter)
+
+    def get_reporter(self, name: str) -> Any | None:
+        """Return a registered reporter binding."""
+        return self._reporter_bindings.get(name)
+
+    def get_reporter_binding(self, name: str) -> Any | None:
+        """Backward-compatible alias for reporter lookup."""
+        return self.get_reporter(name)
+
+    def get_reporter_contract_version(self, name: str) -> int | None:
+        """Return the registered reporter contract version."""
+        return self._reporter_contracts.get(name)
+
+    def list_reporter_contracts(self) -> dict[str, int]:
+        """Return reporter contract versions by reporter name."""
+        return dict(self._reporter_contracts)
+
+    def register_hook(
+        self,
+        hook_type: HookType | str,
+        handler: Any,
+        *,
+        priority: int = 100,
+        source: str = "plugin",
+    ) -> Any:
+        """Register a lifecycle hook through the manager facade."""
+        return self._hooks.register(
+            hook_type,
+            handler,
+            priority=priority,
+            source=source,
+        )
+
+    def register_capability(self, name: str, capability: Any) -> None:
+        """Register an optional capability service."""
+        self._capabilities[name] = capability
+
+    def get_capability(self, name: str) -> Any | None:
+        """Return a registered capability service."""
+        return self._capabilities.get(name)
+
+    def list_capabilities(self) -> list[str]:
+        """List capability services attached to the manager."""
+        return sorted(self._capabilities.keys())
 
     # =========================================================================
     # Loading
@@ -621,15 +738,15 @@ class PluginManager:
         Raises:
             PluginCompatibilityError: If incompatible.
         """
-        from truthound import __version__
+        host_version = self._config.host_version
 
-        if not plugin.info.is_compatible(__version__):
+        if not plugin.info.is_compatible(host_version):
             raise PluginCompatibilityError(
-                f"Plugin '{plugin.name}' is not compatible with Truthound {__version__}. "
+                f"Plugin '{plugin.name}' is not compatible with Truthound {host_version}. "
                 f"Requires: {plugin.info.min_truthound_version} - {plugin.info.max_truthound_version}",
                 plugin_name=plugin.name,
                 required_version=plugin.info.min_truthound_version,
-                current_version=__version__,
+                current_version=host_version,
             )
 
     def resolve_load_order(self) -> list[str]:
@@ -691,6 +808,11 @@ class PluginManager:
         self._hooks.clear()
         self._discovered_classes.clear()
         self._plugin_configs.clear()
+        self._check_factories.clear()
+        self._data_asset_providers.clear()
+        self._reporter_bindings.clear()
+        self._reporter_contracts.clear()
+        self._capabilities.clear()
 
     def __enter__(self) -> "PluginManager":
         """Context manager entry."""

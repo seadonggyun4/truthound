@@ -96,7 +96,7 @@ from truthound.reporters.base import ReporterConfig, ValidationReporter
 from truthound.reporters.factory import register_reporter
 
 if TYPE_CHECKING:
-    from truthound.stores.results import ValidationResult
+    from truthound.core import ValidationRunResult
 
 
 @dataclass
@@ -135,7 +135,7 @@ class {config.class_name}Reporter(ValidationReporter[{config.class_name}Reporter
         """Return default configuration."""
         return {config.class_name}ReporterConfig()
 
-    def render(self, data: "ValidationResult") -> str:
+    def render(self, data: "ValidationRunResult") -> str:
         """Render validation result to string.
 
         Args:
@@ -144,24 +144,26 @@ class {config.class_name}Reporter(ValidationReporter[{config.class_name}Reporter
         Returns:
             Rendered string in custom format.
         """
+        presentation = self.present(data)
+        legacy_view = presentation.to_legacy_view()
         lines: list[str] = []
 
         # Header
-        lines.append(f"Validation Report: {{data.data_asset}}")
-        lines.append(f"Status: {{data.status.value}}")
-        lines.append(f"Run ID: {{data.run_id}}")
-        if data.run_time:
-            lines.append(f"Run Time: {{data.run_time.isoformat()}}")
+        lines.append(f"Validation Report: {{presentation.source}}")
+        lines.append(f"Status: {{presentation.status}}")
+        lines.append(f"Run ID: {{presentation.run_id}}")
+        if presentation.run_time:
+            lines.append(f"Run Time: {{presentation.run_time.isoformat()}}")
         lines.append("")
 
         # Summary
-        total = len(data.results)
-        passed = sum(1 for r in data.results if r.success)
-        failed = total - passed
+        total = presentation.summary.total_checks
+        passed = presentation.summary.passed_checks
+        failed = presentation.summary.failed_checks
 
         lines.append("Summary")
         lines.append("-" * 40)
-        lines.append(f"Total Validators: {{total}}")
+        lines.append(f"Total Checks: {{total}}")
         lines.append(f"Passed: {{passed}}")
         lines.append(f"Failed: {{failed}}")
         if total > 0:
@@ -169,7 +171,7 @@ class {config.class_name}Reporter(ValidationReporter[{config.class_name}Reporter
         lines.append("")
 
         # Filter results
-        results = data.results
+        results = list(legacy_view.results)
         if not self._config.include_passed:
             results = [r for r in results if not r.success]
 
@@ -187,8 +189,9 @@ class {config.class_name}Reporter(ValidationReporter[{config.class_name}Reporter
                 lines.append(f"   Severity: {{result.severity or 'N/A'}}")
                 lines.append(f"   Message: {{result.message or 'N/A'}}")
 
-                if self._config.include_samples and result.sample_values:
-                    samples = result.sample_values[: self._config.max_sample_values]
+                samples = result.details.get("sample_values", [])
+                if self._config.include_samples and samples:
+                    samples = samples[: self._config.max_sample_values]
                     lines.append(f"   Samples: {{samples}}")
 
                 lines.append("")
@@ -221,7 +224,8 @@ from truthound.reporters.sdk.mixins import (
 )
 
 if TYPE_CHECKING:
-    from truthound.stores.results import ValidationResult, ValidatorResult
+    from truthound.core import ValidationRunResult
+    from truthound.reporters.presentation import LegacyValidationResultView, RunPresentation
 
 
 @dataclass
@@ -278,7 +282,7 @@ class {config.class_name}Reporter(
         """Return default configuration."""
         return {config.class_name}ReporterConfig()
 
-    def render(self, data: "ValidationResult") -> str:
+    def render(self, data: "ValidationRunResult") -> str:
         """Render validation result to JSON.
 
         Args:
@@ -290,15 +294,18 @@ class {config.class_name}Reporter(
         output: dict[str, Any] = {{}}
 
         # Metadata section
+        presentation = self.present(data)
+        legacy_view = presentation.to_legacy_view()
+
         if self._config.include_metadata:
-            output["metadata"] = self._build_metadata(data)
+            output["metadata"] = self._build_metadata(presentation)
 
         # Statistics section
         if self._config.include_statistics:
-            output["statistics"] = self._build_statistics(data)
+            output["statistics"] = self._build_statistics(legacy_view)
 
         # Results section
-        output["issues"] = self._build_issues(data)
+        output["issues"] = self._build_issues(legacy_view)
 
         return json.dumps(
             output,
@@ -306,24 +313,24 @@ class {config.class_name}Reporter(
             default=self._json_serializer,
         )
 
-    def _build_metadata(self, data: "ValidationResult") -> dict[str, Any]:
+    def _build_metadata(self, presentation: "RunPresentation") -> dict[str, Any]:
         """Build metadata section."""
         return {{
-            "run_id": data.run_id,
-            "data_asset": data.data_asset,
-            "status": data.status.value,
+            "run_id": presentation.run_id,
+            "data_asset": presentation.source,
+            "status": presentation.status,
             "run_time": (
-                data.run_time.strftime(self._config.date_format)
-                if data.run_time
+                presentation.run_time.strftime(self._config.date_format)
+                if presentation.run_time
                 else None
             ),
             "generated_at": datetime.utcnow().strftime(self._config.date_format),
             "reporter_version": "{config.version}",
         }}
 
-    def _build_statistics(self, data: "ValidationResult") -> dict[str, Any]:
+    def _build_statistics(self, legacy_view: "LegacyValidationResultView") -> dict[str, Any]:
         """Build statistics section."""
-        stats = self.get_summary_stats(data)
+        stats = self.get_summary_stats(legacy_view)
 
         return {{
             "total_validators": stats["total_validators"],
@@ -333,9 +340,9 @@ class {config.class_name}Reporter(
             "by_severity": stats["by_severity"],
         }}
 
-    def _build_issues(self, data: "ValidationResult") -> list[dict[str, Any]]:
+    def _build_issues(self, legacy_view: "LegacyValidationResultView") -> list[dict[str, Any]]:
         """Build issues section."""
-        results = data.results
+        results = list(legacy_view.results)
 
         # Filter
         if not self._config.include_passed:
@@ -405,8 +412,9 @@ class {config.class_name}Reporter(
 import pytest
 from datetime import datetime
 
-from truthound.stores.results import ValidationResult, ValidatorResult
-from truthound.types import ValidationStatus
+from truthound.core import CheckResult, ValidationRunResult
+from truthound.types import ResultFormat, Severity
+from truthound.validators.base import ValidationIssue
 
 from {config.name} import {config.class_name}Reporter, {config.class_name}ReporterConfig
 
@@ -414,32 +422,39 @@ from {config.name} import {config.class_name}Reporter, {config.class_name}Report
 @pytest.fixture
 def sample_validation_result():
     """Create a sample validation result for testing."""
-    return ValidationResult(
+    issue = ValidationIssue(
+        column="email",
+        issue_type="null_values",
+        count=5,
+        severity=Severity.HIGH,
+        details="Found 5 null values",
+        validator_name="not_null",
+        sample_values=[None, None],
+    )
+    return ValidationRunResult(
         run_id="test-run-123",
-        data_asset="test_data.csv",
-        status=ValidationStatus.FAILURE,
+        suite_name="scaffold_suite",
+        source="test_data.csv",
+        row_count=10,
+        column_count=2,
         run_time=datetime(2024, 1, 1, 12, 0, 0),
-        results=[
-            ValidatorResult(
-                validator_name="not_null",
-                column="email",
+        result_format=ResultFormat.SUMMARY,
+        checks=(
+            CheckResult(
+                name="not_null",
+                category="completeness",
                 success=False,
-                severity="high",
-                issue_type="null_values",
-                message="Found 5 null values",
-                count=5,
-                sample_values=[None, None],
+                issue_count=1,
+                issues=(issue,),
             ),
-            ValidatorResult(
-                validator_name="unique",
-                column="id",
+            CheckResult(
+                name="unique",
+                category="uniqueness",
                 success=True,
-                severity=None,
-                issue_type=None,
-                message=None,
-                count=0,
+                issue_count=0,
             ),
-        ],
+        ),
+        issues=(issue,),
     )
 
 
@@ -495,11 +510,12 @@ class Test{config.class_name}Reporter:
 
     def test_empty_results(self):
         """Test with empty results."""
-        result = ValidationResult(
+        result = ValidationRunResult(
             run_id="test-run",
-            data_asset="empty.csv",
-            status=ValidationStatus.SUCCESS,
-            results=[],
+            suite_name="empty_suite",
+            source="empty.csv",
+            row_count=0,
+            column_count=0,
         )
         reporter = {config.class_name}Reporter()
         output = reporter.render(result)
@@ -546,10 +562,10 @@ from {config.name} import {config.class_name}Reporter
 reporter = {config.class_name}Reporter()
 
 # Render to string
-output = reporter.render(validation_result)
+output = reporter.render(run_result)
 
 # Write to file
-reporter.write(validation_result, "report{config.extra.get('file_extension', '.txt')}")
+reporter.write(run_result, "report{config.extra.get('file_extension', '.txt')}")
 ```
 
 ## Configuration
@@ -568,7 +584,7 @@ reporter.write(validation_result, "report{config.extra.get('file_extension', '.t
 from {config.name} import {config.class_name}Reporter
 
 reporter = {config.class_name}Reporter()
-output = reporter.render(validation_result)
+output = reporter.render(run_result)
 print(output)
 ```
 
@@ -582,7 +598,7 @@ config = {config.class_name}ReporterConfig(
     max_issues=10,
 )
 reporter = {config.class_name}Reporter(config=config)
-output = reporter.render(validation_result)
+output = reporter.render(run_result)
 ```
 
 ---

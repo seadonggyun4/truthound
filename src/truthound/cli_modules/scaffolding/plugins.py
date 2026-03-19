@@ -385,7 +385,7 @@ from truthound.plugins import ReporterPlugin, PluginInfo, PluginType
 from truthound.reporters.base import ValidationReporter, ReporterConfig
 
 if TYPE_CHECKING:
-    from truthound.stores.results import ValidationResult
+    from truthound.core import ValidationRunResult
 
 
 @dataclass
@@ -411,7 +411,7 @@ class {config.class_name}Reporter(ValidationReporter[{config.class_name}Reporter
     def _default_config(cls) -> {config.class_name}ReporterConfig:
         return {config.class_name}ReporterConfig()
 
-    def render(self, data: "ValidationResult") -> str:
+    def render(self, data: "ValidationRunResult") -> str:
         """Render validation result to string.
 
         Args:
@@ -420,14 +420,16 @@ class {config.class_name}Reporter(ValidationReporter[{config.class_name}Reporter
         Returns:
             Rendered string.
         """
+        presentation = self.present(data)
+        legacy_view = presentation.to_legacy_view()
         lines = [
-            f"Validation Report: {{data.data_asset}}",
-            f"Status: {{data.status.value}}",
-            f"Total Issues: {{len([r for r in data.results if not r.success])}}",
+            f"Validation Report: {{presentation.source}}",
+            f"Status: {{presentation.status}}",
+            f"Total Issues: {{presentation.summary.total_issues}}",
             "",
         ]
 
-        for result in data.results:
+        for result in legacy_view.results:
             if not result.success or self._config.include_passed:
                 lines.append(
                     f"- {{result.column or 'table'}}: "
@@ -873,7 +875,7 @@ from truthound.types import Severity
 
 if TYPE_CHECKING:
     from truthound.plugins import PluginManager
-    from truthound.stores.results import ValidationResult
+    from truthound.core import ValidationRunResult
 
 logger = logging.getLogger(__name__)
 
@@ -917,9 +919,11 @@ class {config.class_name}Reporter(ValidationReporter[{config.class_name}Reporter
     def _default_config(cls) -> {config.class_name}ReporterConfig:
         return {config.class_name}ReporterConfig()
 
-    def render(self, data: "ValidationResult") -> str:
-        lines = [f"Report: {{data.data_asset}}"]
-        for r in data.results:
+    def render(self, data: "ValidationRunResult") -> str:
+        presentation = self.present(data)
+        legacy_view = presentation.to_legacy_view()
+        lines = [f"Report: {{presentation.source}}"]
+        for r in legacy_view.results:
             if not r.success:
                 lines.append(f"- {{r.column}}: {{r.issue_type}}")
         return "\\n".join(lines)

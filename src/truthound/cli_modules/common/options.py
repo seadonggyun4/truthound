@@ -376,15 +376,6 @@ PushdownOpt = Annotated[
     ),
 ]
 
-# Execution engine (experimental)
-UseEngineOpt = Annotated[
-    bool,
-    typer.Option(
-        "--use-engine/--no-use-engine",
-        help="Use execution engine for validation (experimental).",
-    ),
-]
-
 # Partial unexpected count
 PartialUnexpectedCountOpt = Annotated[
     int,

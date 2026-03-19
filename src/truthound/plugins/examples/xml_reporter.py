@@ -19,8 +19,8 @@ from truthound.plugins import (
     PluginInfo,
     PluginType,
 )
+from truthound.core import ValidationRunResult
 from truthound.reporters.base import ValidationReporter, ReporterConfig
-from truthound.core import ValidationResult
 
 
 @dataclass
@@ -88,7 +88,7 @@ class XMLReporter(ValidationReporter[XMLReporterConfig]):
         super().__init__(config, **kwargs)
         self._config: XMLReporterConfig = config
 
-    def render(self, data: ValidationResult) -> str:
+    def render(self, data: ValidationRunResult) -> str:
         """Render validation result as XML.
 
         Args:
@@ -131,7 +131,7 @@ class XMLReporter(ValidationReporter[XMLReporterConfig]):
 
         return xml_str
 
-    def _add_metadata(self, root: ET.Element, data: ValidationResult) -> None:
+    def _add_metadata(self, root: ET.Element, data: ValidationRunResult) -> None:
         """Add metadata section to XML."""
         metadata = ET.SubElement(root, "metadata")
 
@@ -145,7 +145,7 @@ class XMLReporter(ValidationReporter[XMLReporterConfig]):
             for v in data.validators_used:
                 ET.SubElement(validators, "validator").text = v
 
-    def _add_summary(self, root: ET.Element, data: ValidationResult) -> None:
+    def _add_summary(self, root: ET.Element, data: ValidationRunResult) -> None:
         """Add summary section to XML."""
         summary = ET.SubElement(root, "summary")
 
@@ -179,7 +179,7 @@ class XMLReporter(ValidationReporter[XMLReporterConfig]):
                 type_elem.set("name", issue_type)
                 type_elem.text = str(count)
 
-    def _add_issues(self, root: ET.Element, data: ValidationResult) -> None:
+    def _add_issues(self, root: ET.Element, data: ValidationRunResult) -> None:
         """Add issues section to XML."""
         issues_elem = ET.SubElement(root, "issues")
 
