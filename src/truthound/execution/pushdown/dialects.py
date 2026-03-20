@@ -160,7 +160,7 @@ class DialectConfig:
     supports_top: bool = False
     supports_window_functions: bool = True
     supports_cte: bool = True
-    supports_lateral: bool = False
+    supports_lateral: bool = True
     supports_json: bool = True
     supports_arrays: bool = False
     supports_filter_clause: bool = False
@@ -439,18 +439,22 @@ class BaseDialectGenerator(SQLVisitor, ABC):
         if op == "||" and self.config.concat_operator == "CONCAT":
             return f"CONCAT({left}, {right})"
 
-        return f"({left} {op} {right})"
+        return f"{left} {op} {right}"
 
     def visit_unary_expression(self, node: UnaryExpression) -> str:
         operand = node.operand.accept(self)
 
         if node.operator in (UnaryOp.IS_NULL, UnaryOp.IS_NOT_NULL):
-            return f"({operand} {node.operator.value})"
+            return f"{operand} {node.operator.value}"
 
         if node.operator in (UnaryOp.EXISTS, UnaryOp.NOT_EXISTS):
             return f"{node.operator.value} ({operand})"
 
-        return f"({node.operator.value} {operand})"
+        if node.operator == UnaryOp.NEGATIVE:
+            return f"-{operand}"
+        if node.operator == UnaryOp.POSITIVE:
+            return f"+{operand}"
+        return f"{node.operator.value} {operand}"
 
     def visit_in_expression(self, node: InExpression) -> str:
         expr = node.expression.accept(self)
@@ -605,9 +609,25 @@ class BaseDialectGenerator(SQLVisitor, ABC):
         return expr
 
     def visit_from_clause(self, node: FromClause) -> str:
-        return node.source.accept(self)
+        result = node.source.accept(self)
+        if node.joins:
+            for join in node.joins:
+                if join.left is not None:
+                    result = join.accept(self)
+                    continue
+                right = join.right.accept(self)
+                result = f"{result} {join.join_type.value} {right}"
+                if join.condition:
+                    condition = join.condition.accept(self)
+                    result += f" ON {condition}"
+                elif join.using_columns:
+                    cols = ", ".join(self._quote_identifier(c) for c in join.using_columns)
+                    result += f" USING ({cols})"
+        return result
 
     def visit_join_clause(self, node: JoinClause) -> str:
+        if node.left is None:
+            raise ValueError("JoinClause.left is required when rendering a standalone join")
         left = node.left.accept(self)
         right = node.right.accept(self)
 
@@ -1028,7 +1048,7 @@ class SQLServerGenerator(BaseDialectGenerator):
 # =============================================================================
 
 
-_GENERATOR_REGISTRY: dict[SQLDialect, type[BaseDialectGenerator]] = {
+_GENERATOR_REGISTRY: dict[SQLDialect | str, type[BaseDialectGenerator]] = {
     SQLDialect.POSTGRESQL: PostgreSQLGenerator,
     SQLDialect.MYSQL: MySQLGenerator,
     SQLDialect.SQLITE: SQLiteGenerator,
@@ -1043,7 +1063,7 @@ _GENERATOR_REGISTRY: dict[SQLDialect, type[BaseDialectGenerator]] = {
 
 
 def get_dialect_generator(
-    dialect: SQLDialect,
+    dialect: SQLDialect | str,
     config: DialectConfig | None = None,
 ) -> BaseDialectGenerator:
     """Get a dialect generator instance.
@@ -1055,12 +1075,19 @@ def get_dialect_generator(
     Returns:
         Dialect generator instance.
     """
-    generator_class = _GENERATOR_REGISTRY.get(dialect, BaseDialectGenerator)
+    generator_class = _GENERATOR_REGISTRY.get(dialect)
+    if generator_class is None:
+        raise KeyError(f"Unknown SQL dialect: {dialect}")
+    if config is None:
+        try:
+            return generator_class()
+        except TypeError:
+            return generator_class(config)
     return generator_class(config)
 
 
 def register_dialect_generator(
-    dialect: SQLDialect,
+    dialect: SQLDialect | str,
     generator_class: type[BaseDialectGenerator],
 ) -> None:
     """Register a custom dialect generator.

@@ -166,11 +166,21 @@ class LevenshteinSimilarity(SimilarityCalculator):
         for i in range(1, len1 + 1):
             for j in range(1, len2 + 1):
                 cost = 0 if s1[i - 1].lower() == s2[j - 1].lower() else 1
-                matrix[i][j] = min(
+                distance = min(
                     matrix[i - 1][j] + 1,  # deletion
                     matrix[i][j - 1] + 1,  # insertion
                     matrix[i - 1][j - 1] + cost,  # substitution
                 )
+                if (
+                    i > 1
+                    and j > 1
+                    and s1[i - 1].lower() == s2[j - 2].lower()
+                    and s1[i - 2].lower() == s2[j - 1].lower()
+                ):
+                    # Treat adjacent transpositions as a single edit so common
+                    # rename typos such as "tset" stay meaningfully similar.
+                    distance = min(distance, matrix[i - 2][j - 2] + 1)
+                matrix[i][j] = distance
 
         distance = matrix[len1][len2]
         max_len = max(len1, len2)
@@ -260,7 +270,7 @@ class JaroWinklerSimilarity(SimilarityCalculator):
 
 
 class NgramSimilarity(SimilarityCalculator):
-    """N-gram based similarity using Jaccard coefficient.
+    """N-gram based similarity using Sorensen-Dice overlap.
 
     Good for catching partial matches and abbreviations.
     """
@@ -278,7 +288,7 @@ class NgramSimilarity(SimilarityCalculator):
         return f"ngram_{self._n}"
 
     def calculate(self, s1: str, s2: str) -> float:
-        """Calculate n-gram Jaccard similarity."""
+        """Calculate n-gram overlap similarity."""
         if s1 == s2:
             return 1.0
 
@@ -293,9 +303,9 @@ class NgramSimilarity(SimilarityCalculator):
         ngrams2 = set(s2_lower[i : i + self._n] for i in range(len(s2_lower) - self._n + 1))
 
         intersection = len(ngrams1 & ngrams2)
-        union = len(ngrams1 | ngrams2)
+        total = len(ngrams1) + len(ngrams2)
 
-        return intersection / union if union > 0 else 0.0
+        return (2 * intersection) / total if total > 0 else 0.0
 
 
 class TokenSimilarity(SimilarityCalculator):

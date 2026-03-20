@@ -1440,8 +1440,10 @@ class QueryBuilder:
         Returns:
             SelectStatement.
         """
-        # Handle empty select - default to *
-        select_items = self._select_items if self._select_items else [Star()]
+        if not self._select_items:
+            raise ValueError("QueryBuilder.build() requires at least one selected expression")
+
+        select_items = self._select_items
 
         # Build FROM clause
         from_clause = None

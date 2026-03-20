@@ -676,7 +676,13 @@ class ConcurrentIndex:
         """
         with self.transaction() as txn:
             result = txn.remove(item_id)
-            txn.commit()
+            try:
+                txn.commit()
+            except RuntimeError as exc:
+                if f"Conflict: {item_id} was removed concurrently" not in str(exc):
+                    raise
+                txn.rollback()
+                return False
             return result
 
     def get(self, item_id: str) -> IndexEntry | None:

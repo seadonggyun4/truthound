@@ -170,6 +170,10 @@ class Expression(SQLNode):
         exprs = [_to_expression(v) for v in values]
         return InExpression(self, exprs, negated=False)
 
+    def isin(self, values: Sequence[Any]) -> "InExpression":
+        """Compatibility alias for IN operator."""
+        return self.in_(values)
+
     def not_in(self, values: Sequence[Any]) -> "InExpression":
         """NOT IN operator."""
         exprs = [_to_expression(v) for v in values]
@@ -235,6 +239,8 @@ class ComparisonOp(Enum):
 
     EQ = "="
     NE = "<>"
+    IS = "IS"
+    IS_NOT = "IS NOT"
     LT = "<"
     LE = "<="
     GT = ">"
@@ -269,7 +275,9 @@ class UnaryOp(Enum):
 
     NOT = "NOT"
     MINUS = "-"
+    NEGATIVE = "-"
     PLUS = "+"
+    POSITIVE = "+"
     IS_NULL = "IS NULL"
     IS_NOT_NULL = "IS NOT NULL"
     EXISTS = "EXISTS"
@@ -911,6 +919,11 @@ class FrameBound(SQLNode):
         return self.bound_type.value
 
 
+FrameBound.UNBOUNDED_PRECEDING = FrameBound(FrameBoundType.UNBOUNDED_PRECEDING)
+FrameBound.CURRENT_ROW = FrameBound(FrameBoundType.CURRENT_ROW)
+FrameBound.UNBOUNDED_FOLLOWING = FrameBound(FrameBoundType.UNBOUNDED_FOLLOWING)
+
+
 @dataclass(frozen=True)
 class WindowSpec(SQLNode):
     """Window specification for window functions.
@@ -979,6 +992,28 @@ class WindowFunction(Expression):
     function: AggregateFunction | FunctionCall
     window_spec: WindowSpec | str | None
 
+    def __init__(
+        self,
+        function: AggregateFunction | FunctionCall | None = None,
+        window_spec: WindowSpec | str | None = None,
+        *,
+        name: str | None = None,
+        arguments: Sequence[Expression] | None = None,
+        over: WindowSpec | str | None = None,
+    ):
+        if name is not None:
+            function = FunctionCall(name, arguments or [])
+            if over is not None:
+                window_spec = over
+        elif over is not None and window_spec is None:
+            window_spec = over
+
+        if function is None:
+            raise TypeError("WindowFunction requires either a function or name/arguments")
+
+        object.__setattr__(self, "function", function)
+        object.__setattr__(self, "window_spec", window_spec)
+
     def accept(self, visitor: "SQLVisitor") -> Any:
         return visitor.visit_window_function(self)
 
@@ -1027,12 +1062,24 @@ class FromClause(SQLNode):
     """
 
     source: Table | "SelectStatement" | "JoinClause"
+    joins: tuple["JoinClause", ...] | None = None
+
+    def __init__(
+        self,
+        source: Table | "SelectStatement" | "JoinClause",
+        joins: Sequence["JoinClause"] | None = None,
+    ):
+        object.__setattr__(self, "source", source)
+        object.__setattr__(self, "joins", tuple(joins) if joins else None)
 
     def accept(self, visitor: "SQLVisitor") -> Any:
         return visitor.visit_from_clause(self)
 
     def children(self) -> Sequence[SQLNode]:
-        return [self.source]
+        children: list[SQLNode] = [self.source]
+        if self.joins:
+            children.extend(self.joins)
+        return children
 
 
 @dataclass(frozen=True)
@@ -1047,7 +1094,7 @@ class JoinClause(SQLNode):
         using_columns: Optional USING columns.
     """
 
-    left: Table | "SelectStatement" | "JoinClause"
+    left: Table | "SelectStatement" | "JoinClause" | None
     right: Table | "SelectStatement"
     join_type: JoinType
     condition: Expression | None = None
@@ -1055,12 +1102,19 @@ class JoinClause(SQLNode):
 
     def __init__(
         self,
-        left: Table | "SelectStatement" | "JoinClause",
-        right: Table | "SelectStatement",
-        join_type: JoinType,
+        left: Table | "SelectStatement" | "JoinClause" | None = None,
+        right: Table | "SelectStatement" | None = None,
+        join_type: JoinType = JoinType.INNER,
         condition: Expression | None = None,
         using_columns: Sequence[str] | None = None,
+        table: Table | "SelectStatement" | None = None,
     ):
+        if table is not None:
+            if right is not None:
+                raise TypeError("JoinClause accepts either right or table, not both")
+            right = table
+        if right is None:
+            raise TypeError("JoinClause requires a right/table operand")
         object.__setattr__(self, "left", left)
         object.__setattr__(self, "right", right)
         object.__setattr__(self, "join_type", join_type)
@@ -1073,10 +1127,17 @@ class JoinClause(SQLNode):
         return visitor.visit_join_clause(self)
 
     def children(self) -> Sequence[SQLNode]:
-        children: list[SQLNode] = [self.left, self.right]
+        children: list[SQLNode] = []
+        if self.left is not None:
+            children.append(self.left)
+        children.append(self.right)
         if self.condition:
             children.append(self.condition)
         return children
+
+    @property
+    def table(self) -> Table | "SelectStatement":
+        return self.right
 
 
 @dataclass(frozen=True)
@@ -1279,7 +1340,12 @@ class SelectStatement(Statement):
         offset_clause: OffsetClause | None = None,
         distinct: bool = False,
         ctes: Sequence["CTEClause"] | None = None,
+        cte_clause: "CTEClause | None" = None,
     ):
+        if cte_clause is not None:
+            if ctes is not None:
+                raise TypeError("SelectStatement accepts either ctes or cte_clause, not both")
+            ctes = (cte_clause,)
         object.__setattr__(self, "select_items", tuple(select_items))
         object.__setattr__(self, "from_clause", from_clause)
         object.__setattr__(self, "where_clause", where_clause)
@@ -1333,11 +1399,22 @@ class CTEClause(SQLNode):
 
     def __init__(
         self,
-        name: str,
-        query: SelectStatement,
+        name: str | None = None,
+        query: SelectStatement | None = None,
         columns: Sequence[str] | None = None,
         recursive: bool = False,
+        ctes: Sequence[tuple[Table | str, SelectStatement]] | None = None,
     ):
+        if ctes is not None:
+            if len(ctes) != 1:
+                raise ValueError("CTEClause currently supports exactly one CTE entry")
+            table_ref, query_ref = ctes[0]
+            if name is not None or query is not None:
+                raise TypeError("CTEClause accepts either name/query or ctes, not both")
+            name = table_ref.name if isinstance(table_ref, Table) else table_ref
+            query = query_ref
+        if name is None or query is None:
+            raise TypeError("CTEClause requires either name/query or ctes")
         object.__setattr__(self, "name", name)
         object.__setattr__(self, "query", query)
         object.__setattr__(self, "columns", tuple(columns) if columns else None)
@@ -1363,6 +1440,33 @@ class SetOperationStatement(Statement):
     left: SelectStatement | "SetOperationStatement"
     right: SelectStatement | "SetOperationStatement"
     operation: SetOperation
+
+    def __init__(
+        self,
+        left: SelectStatement | "SetOperationStatement",
+        operation: SetOperation | SelectStatement | "SetOperationStatement",
+        right: SelectStatement | "SetOperationStatement" | SetOperation,
+        all: bool = False,
+    ):
+        if isinstance(operation, SetOperation):
+            resolved_operation = operation
+            resolved_right = right
+        else:
+            resolved_right = operation
+            if not isinstance(right, SetOperation):
+                raise TypeError(
+                    "SetOperationStatement requires (left, operation, right) or (left, right, operation)"
+                )
+            resolved_operation = right
+        if all:
+            resolved_operation = {
+                SetOperation.UNION: SetOperation.UNION_ALL,
+                SetOperation.INTERSECT: SetOperation.INTERSECT_ALL,
+                SetOperation.EXCEPT: SetOperation.EXCEPT_ALL,
+            }.get(resolved_operation, resolved_operation)
+        object.__setattr__(self, "left", left)
+        object.__setattr__(self, "right", resolved_right)
+        object.__setattr__(self, "operation", resolved_operation)
 
     def accept(self, visitor: "SQLVisitor") -> Any:
         return visitor.visit_set_operation(self)

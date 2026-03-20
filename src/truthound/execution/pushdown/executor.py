@@ -45,6 +45,16 @@ if TYPE_CHECKING:
     from truthound.datasources.sql.base import BaseSQLDataSource
 
 
+class _NullSQLDataSource:
+    """Minimal SQL datasource used for planning-only compatibility paths."""
+
+    def __init__(self, source_type: str = "generic") -> None:
+        self.source_type = source_type
+
+    def execute_query(self, query: str) -> list[dict[str, Any]]:
+        return []
+
+
 # =============================================================================
 # Execution Plan
 # =============================================================================
@@ -335,7 +345,7 @@ class ExecutionPlanBuilder:
         root = self._build_plan_node(statement)
 
         # Estimate total cost
-        cost_estimate = self.cost_estimator.estimate(statement)
+        cost_estimate = self.cost_estimator.estimate_details(statement)
 
         return ExecutionPlan(
             root=root,
@@ -344,6 +354,10 @@ class ExecutionPlanBuilder:
             total_cost=cost_estimate.total_cost,
             pushdown_decision=pushdown_decision,
         )
+
+    def build(self, statement: Statement) -> ExecutionPlan:
+        """Compatibility wrapper for the original public builder API."""
+        return self.build_plan(statement)
 
     def _build_plan_node(self, node: SQLNode) -> PlanNode:
         """Build a plan node from an AST node."""
@@ -534,11 +548,12 @@ class PushdownExecutor:
 
     def __init__(
         self,
-        datasource: "BaseSQLDataSource",
+        datasource: "BaseSQLDataSource | None" = None,
         dialect: SQLDialect | None = None,
         optimizer: QueryOptimizer | None = None,
-        enable_optimization: bool = True,
+        enable_optimization: bool | None = None,
         enable_caching: bool = True,
+        optimize: bool | None = None,
     ) -> None:
         """Initialize executor.
 
@@ -548,7 +563,17 @@ class PushdownExecutor:
             optimizer: Query optimizer. If None, creates default.
             enable_optimization: Whether to optimize queries.
             enable_caching: Whether to cache query results.
+            optimize: Backward-compatible alias for enable_optimization.
         """
+        if datasource is None:
+            fallback_source_type = (dialect or SQLDialect.GENERIC).value
+            datasource = _NullSQLDataSource(fallback_source_type)
+
+        if enable_optimization is None:
+            enable_optimization = True if optimize is None else optimize
+        elif optimize is not None:
+            enable_optimization = optimize
+
         self.datasource = datasource
         self.dialect = dialect or self._infer_dialect()
         self.optimizer = optimizer or QueryOptimizer(dialect=self.dialect)
@@ -589,6 +614,14 @@ class PushdownExecutor:
             statement, _ = self.optimizer.analyze_and_optimize(statement)
 
         return self._plan_builder.build_plan(statement)
+
+    def generate_sql(self, statement: Statement) -> str:
+        """Generate SQL for a statement without planning or executing."""
+        return self._plan_builder.generator.generate(statement)
+
+    def analyze(self, statement: Statement) -> PushdownDecision:
+        """Analyze whether a statement can be pushed down."""
+        return self._plan_builder.analyzer.analyze(statement)
 
     def execute(
         self,
@@ -756,7 +789,7 @@ class BatchPushdownExecutor:
 
     def __init__(
         self,
-        datasource: "BaseSQLDataSource",
+        datasource: "BaseSQLDataSource | None" = None,
         dialect: SQLDialect | None = None,
         max_parallel: int = 4,
     ) -> None:
@@ -769,6 +802,19 @@ class BatchPushdownExecutor:
         """
         self.executor = PushdownExecutor(datasource, dialect)
         self.max_parallel = max_parallel
+        self.queries: list[Statement | "QueryBuilder"] = []
+
+    def add(self, query: Statement | "QueryBuilder") -> None:
+        """Add a query to the batch queue."""
+        self.queries.append(query)
+
+    def clear(self) -> None:
+        """Clear the batch queue."""
+        self.queries.clear()
+
+    def plan_all(self) -> list[ExecutionPlan]:
+        """Build plans for all queued queries without executing them."""
+        return [self.executor.plan(query) for query in self.queries]
 
     def execute_batch(
         self,

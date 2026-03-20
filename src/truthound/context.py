@@ -159,6 +159,10 @@ class TruthoundContext:
     plugins_dir: Path = field(init=False)
     metric_repository: FileMetricRepository = field(init=False)
     _plugin_manager: Any | None = field(default=None, init=False, repr=False)
+    _workspace_ready: bool = field(default=False, init=False, repr=False)
+    _catalog_cache: dict[str, Any] | None = field(default=None, init=False, repr=False)
+    _baseline_index_cache: dict[str, Any] | None = field(default=None, init=False, repr=False)
+    _schema_cache: dict[str, Schema] = field(default_factory=dict, init=False, repr=False)
 
     def __post_init__(self) -> None:
         self.root_dir = self.root_dir.resolve()
@@ -188,6 +192,9 @@ class TruthoundContext:
         return self.baselines_dir / "index.json"
 
     def ensure_workspace(self) -> None:
+        if self._workspace_ready:
+            return
+
         for path in (
             self.workspace_dir,
             self.catalog_dir,
@@ -215,6 +222,7 @@ class TruthoundContext:
             self.catalog_index_path.write_text("{}", encoding="utf-8")
         if not self.baseline_index_path.exists():
             self.baseline_index_path.write_text("{}", encoding="utf-8")
+        self._workspace_ready = True
 
     def _read_json_dict(self, path: Path) -> dict[str, Any]:
         if not path.exists():
@@ -231,9 +239,19 @@ class TruthoundContext:
     def _write_json(self, path: Path, payload: dict[str, Any]) -> None:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(
-            json.dumps(payload, indent=2, default=_json_default),
+            json.dumps(payload, separators=(",", ":"), default=_json_default),
             encoding="utf-8",
         )
+
+    def _get_catalog(self) -> dict[str, Any]:
+        if self._catalog_cache is None:
+            self._catalog_cache = self._read_json_dict(self.catalog_index_path)
+        return self._catalog_cache
+
+    def _get_baseline_index(self) -> dict[str, Any]:
+        if self._baseline_index_cache is None:
+            self._baseline_index_cache = self._read_json_dict(self.baseline_index_path)
+        return self._baseline_index_cache
 
     def resolve_source_key(self, data: Any = None, source: Any = None) -> str:
         if source is not None:
@@ -255,8 +273,11 @@ class TruthoundContext:
     def track_asset(self, data: Any = None, source: Any = None) -> dict[str, Any]:
         source_key = self.resolve_source_key(data=data, source=source)
         fingerprint = self.resolve_fingerprint(data=data, source=source)
-        catalog = self._read_json_dict(self.catalog_index_path)
+        catalog = self._get_catalog()
         entry = catalog.get(source_key, {})
+        if entry.get("fingerprint") == fingerprint:
+            return entry
+
         entry.update(
             {
                 "fingerprint": fingerprint,
@@ -279,8 +300,18 @@ class TruthoundContext:
         self.ensure_workspace()
         source_key = self.resolve_source_key(data=data, source=source)
         fingerprint = self.resolve_fingerprint(data=data, source=source)
-        index = self._read_json_dict(self.baseline_index_path)
+        index = self._get_baseline_index()
         entry = index.get(source_key)
+
+        cached_schema = self._schema_cache.get(source_key)
+        if cached_schema is not None and isinstance(entry, dict):
+            if entry.get("last_fingerprint") != fingerprint:
+                entry = dict(entry)
+                entry["last_fingerprint"] = fingerprint
+                entry["last_seen_at"] = datetime.now().isoformat()
+                index[source_key] = entry
+                self._write_json(self.baseline_index_path, index)
+            return cached_schema, False
 
         if isinstance(entry, dict):
             schema_file = entry.get("schema_file")
@@ -289,10 +320,13 @@ class TruthoundContext:
                 if schema_path.exists():
                     try:
                         schema = Schema.load(schema_path)
-                        entry["last_seen_at"] = datetime.now().isoformat()
-                        entry["last_fingerprint"] = fingerprint
-                        index[source_key] = entry
-                        self._write_json(self.baseline_index_path, index)
+                        self._schema_cache[source_key] = schema
+                        if entry.get("last_fingerprint") != fingerprint:
+                            entry = dict(entry)
+                            entry["last_seen_at"] = datetime.now().isoformat()
+                            entry["last_fingerprint"] = fingerprint
+                            index[source_key] = entry
+                            self._write_json(self.baseline_index_path, index)
                         return schema, False
                     except Exception:
                         quarantine = schema_path.with_suffix(".corrupt.yaml")
@@ -308,6 +342,7 @@ class TruthoundContext:
         schema_name = hashlib.sha256(source_key.encode("utf-8")).hexdigest()[:16]
         schema_path = self.baselines_dir / f"{schema_name}.schema.yaml"
         schema.save(schema_path)
+        self._schema_cache[source_key] = schema
         index[source_key] = {
             "schema_file": schema_path.name,
             "created_at": datetime.now().isoformat(),

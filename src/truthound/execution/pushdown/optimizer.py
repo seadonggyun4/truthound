@@ -722,6 +722,12 @@ class OptimizationRule(ABC):
         """
         pass
 
+    def apply(self, node: SQLNode) -> SQLNode:
+        """Compatibility wrapper used by legacy tests and callers."""
+        if self.applies(node):
+            return self.transform(node)
+        return node
+
 
 class PredicatePushdownRule(OptimizationRule):
     """Push predicates closer to data sources.
@@ -858,6 +864,11 @@ class QueryOptimizer:
             ConstantFoldingRule(),
         ]
 
+    @property
+    def rules(self) -> list[OptimizationRule]:
+        """Expose optimization rules for compatibility."""
+        return list(self._rules)
+
     def add_rule(self, rule: OptimizationRule) -> None:
         """Add an optimization rule.
 
@@ -947,6 +958,40 @@ class CostEstimate:
         if self.total_cost == 0.0:
             self.total_cost = self.cpu_cost + self.io_cost + self.network_cost
 
+    def _coerce_other(self, other: object) -> float | None:
+        if isinstance(other, CostEstimate):
+            return other.total_cost
+        if isinstance(other, (int, float)):
+            return float(other)
+        return None
+
+    def __float__(self) -> float:
+        return float(self.total_cost)
+
+    def __ge__(self, other: object) -> bool:
+        coerced = self._coerce_other(other)
+        if coerced is None:
+            return NotImplemented
+        return self.total_cost >= coerced
+
+    def __gt__(self, other: object) -> bool:
+        coerced = self._coerce_other(other)
+        if coerced is None:
+            return NotImplemented
+        return self.total_cost > coerced
+
+    def __le__(self, other: object) -> bool:
+        coerced = self._coerce_other(other)
+        if coerced is None:
+            return NotImplemented
+        return self.total_cost <= coerced
+
+    def __lt__(self, other: object) -> bool:
+        coerced = self._coerce_other(other)
+        if coerced is None:
+            return NotImplemented
+        return self.total_cost < coerced
+
 
 class CostEstimator:
     """Estimates the cost of query execution.
@@ -979,14 +1024,29 @@ class CostEstimator:
         """
         self._table_stats[table] = rows
 
-    def estimate(self, statement: Statement) -> CostEstimate:
-        """Estimate the cost of a statement.
+    def estimate(self, statement: Statement) -> float:
+        """Estimate the total cost of a statement.
+
+        This method preserves the original public contract of returning a
+        numeric cost while the richer structured estimate remains available via
+        ``estimate_details()`` for internal planning code.
 
         Args:
             statement: Statement to estimate.
 
         Returns:
-            CostEstimate.
+            Total estimated cost.
+        """
+        return self.estimate_details(statement).total_cost
+
+    def estimate_details(self, statement: Statement) -> CostEstimate:
+        """Estimate detailed execution cost information for a statement.
+
+        Args:
+            statement: Statement to estimate.
+
+        Returns:
+            Structured cost estimate.
         """
         if isinstance(statement, SelectStatement):
             return self._estimate_select(statement)

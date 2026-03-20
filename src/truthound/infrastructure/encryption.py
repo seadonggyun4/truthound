@@ -81,6 +81,32 @@ from truthound.stores.encryption import (
 )
 
 
+_LOCAL_KEY_NOOP_PREFIX = b"truthound-local-key:none:"
+
+
+def _resolve_encryptor(
+    preferred: EncryptionAlgorithm,
+    *fallbacks: EncryptionAlgorithm,
+) -> Any:
+    """Resolve the best available encryptor for local/development paths."""
+    candidates = (preferred, *fallbacks, EncryptionAlgorithm.NONE)
+    seen: set[EncryptionAlgorithm] = set()
+
+    for algorithm in candidates:
+        if algorithm in seen:
+            continue
+        seen.add(algorithm)
+        try:
+            encryptor = get_base_encryptor(algorithm)
+            if algorithm != EncryptionAlgorithm.NONE:
+                encryptor.encrypt(b"", encryptor.generate_key())
+            return encryptor
+        except (EncryptionError, ImportError):
+            continue
+
+    return get_base_encryptor(EncryptionAlgorithm.NONE)
+
+
 # =============================================================================
 # Key Provider Protocol
 # =============================================================================
@@ -549,13 +575,24 @@ class LocalKeyProvider(KeyProvider):
     def encrypt_data_key(self, data_key: bytes, key_id: str) -> bytes:
         """Encrypt data key with master key."""
         master_key = self.get_key(key_id)
-        encryptor = AesGcmEncryptor()
+        encryptor = _resolve_encryptor(
+            EncryptionAlgorithm.AES_256_GCM,
+            EncryptionAlgorithm.CHACHA20_POLY1305,
+        )
+        if encryptor.algorithm == EncryptionAlgorithm.NONE:
+            return _LOCAL_KEY_NOOP_PREFIX + data_key
         return encryptor.encrypt(data_key, master_key)
 
     def decrypt_data_key(self, encrypted_key: bytes, key_id: str) -> bytes:
         """Decrypt data key with master key."""
+        if encrypted_key.startswith(_LOCAL_KEY_NOOP_PREFIX):
+            return encrypted_key[len(_LOCAL_KEY_NOOP_PREFIX) :]
+
         master_key = self.get_key(key_id)
-        encryptor = AesGcmEncryptor()
+        encryptor = _resolve_encryptor(
+            EncryptionAlgorithm.AES_256_GCM,
+            EncryptionAlgorithm.CHACHA20_POLY1305,
+        )
         return encryptor.decrypt(encrypted_key, master_key)
 
 
@@ -681,15 +718,12 @@ class AtRestEncryption:
         """
         self._provider = provider
         self._key_id = key_id
-        self._algorithm = algorithm
-
-        # Get encryptor for the algorithm
-        if algorithm == EncryptionAlgorithm.AES_256_GCM:
-            self._encryptor = AesGcmEncryptor()
-        elif algorithm == EncryptionAlgorithm.CHACHA20_POLY1305:
-            self._encryptor = ChaCha20Poly1305Encryptor()
-        else:
-            self._encryptor = AesGcmEncryptor()
+        self._encryptor = _resolve_encryptor(
+            algorithm,
+            EncryptionAlgorithm.AES_256_GCM,
+            EncryptionAlgorithm.CHACHA20_POLY1305,
+        )
+        self._algorithm = self._encryptor.algorithm
 
     def encrypt(
         self,
@@ -747,8 +781,13 @@ class AtRestEncryption:
         )
 
         # Decrypt data
+        decryptor = _resolve_encryptor(
+            EncryptionAlgorithm(encrypted.algorithm),
+            EncryptionAlgorithm.AES_256_GCM,
+            EncryptionAlgorithm.CHACHA20_POLY1305,
+        )
         try:
-            return self._encryptor.decrypt(encrypted.ciphertext, plain_key)
+            return decryptor.decrypt(encrypted.ciphertext, plain_key)
         finally:
             # Clear plain key from memory
             plain_key = b"\x00" * len(plain_key)
@@ -851,7 +890,10 @@ class FieldLevelEncryption:
         self._provider = provider
         self._policies = policies or {}
         self._default_key_id = default_key_id
-        self._encryptor = AesGcmEncryptor()
+        self._encryptor = _resolve_encryptor(
+            EncryptionAlgorithm.AES_256_GCM,
+            EncryptionAlgorithm.CHACHA20_POLY1305,
+        )
 
     def add_policy(self, field_name: str, policy: FieldEncryptionPolicy) -> None:
         """Add encryption policy for a field.
@@ -883,9 +925,9 @@ class FieldLevelEncryption:
 
         if policy.deterministic:
             # Use fixed nonce derived from value hash (for searching)
-            nonce = hashlib.sha256(value.encode()).digest()[:12]
+            nonce = hashlib.sha256(value.encode()).digest()[: self._encryptor.nonce_size]
         else:
-            nonce = generate_nonce(EncryptionAlgorithm.AES_256_GCM)
+            nonce = generate_nonce(self._encryptor.algorithm)
 
         # Encrypt
         ciphertext = self._encryptor.encrypt(value.encode("utf-8"), key, nonce)
@@ -911,8 +953,7 @@ class FieldLevelEncryption:
 
         # Decode base64
         data = base64.b64decode(encrypted_value)
-        nonce = data[:12]
-        ciphertext = data[12:]
+        ciphertext = data[self._encryptor.nonce_size :]
 
         # Get key
         key = self._provider.get_key(key_id)

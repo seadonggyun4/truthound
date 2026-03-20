@@ -49,6 +49,7 @@ def render_docs_summary(
         "",
         f"- Suite: `{result.suite_name}`",
         f"- Passed: `{'yes' if not result.has_blocking_failures else 'no'}`",
+        f"- Official claim eligible: `{'yes' if release_claim_ready else 'no'}`",
         f"- Official benchmark artifact set: `{'ready' if release_claim_ready else 'not ready'}`",
     ]
     if primary_blocker:
