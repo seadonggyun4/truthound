@@ -27,7 +27,7 @@ from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -88,8 +88,9 @@ class TrainingConfig:
     verbose: int = 1
 
     def __post_init__(self):
-        # Sync model config with training config
-        self.model_config = ModelConfig(
+        # Preserve caller-supplied model tuning while syncing shared training knobs.
+        self.model_config = replace(
+            self.model_config,
             model_type=self.model_type,
             random_state=self.random_state,
             cross_validation_folds=self.cv_folds,

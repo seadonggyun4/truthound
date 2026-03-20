@@ -16,7 +16,6 @@ from __future__ import annotations
 import signal
 import threading
 import time
-from concurrent.futures import Future, ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import timedelta
@@ -249,38 +248,51 @@ class TimeoutExecutor:
         current_timeout = timeout
 
         while True:
-            with ThreadPoolExecutor(max_workers=1) as executor:
-                future: Future[T] = executor.submit(func)
+            result: dict[str, T] = {}
+            error: dict[str, BaseException] = {}
+            completed = threading.Event()
 
+            def target() -> None:
                 try:
-                    value = future.result(timeout=current_timeout)
-                    elapsed = time.perf_counter() - start
-                    return TimeoutResult.ok(value, elapsed)
+                    result["value"] = func()
+                except BaseException as exc:  # pragma: no cover - defensive path
+                    error["value"] = exc
+                finally:
+                    completed.set()
 
-                except FuturesTimeoutError:
-                    elapsed = time.perf_counter() - start
+            thread = threading.Thread(target=target, daemon=True)
+            thread.start()
 
-                    # Record error
-                    if self.error_collector:
-                        self.error_collector.add(
-                            ProfilerTimeoutError(
-                                f"Operation timed out after {elapsed:.2f}s: {context}",
-                                severity=ErrorSeverity.WARNING,
-                            ),
-                            recovered=True,
-                        )
+            if not completed.wait(timeout=current_timeout):
+                elapsed = time.perf_counter() - start
 
-                    # Check for retry
-                    if action == TimeoutAction.RETRY and retries < self.config.retry_count:
-                        retries += 1
-                        current_timeout *= self.config.retry_multiplier
-                        continue
+                # Record error
+                if self.error_collector:
+                    self.error_collector.add(
+                        ProfilerTimeoutError(
+                            f"Operation timed out after {elapsed:.2f}s: {context}",
+                            severity=ErrorSeverity.WARNING,
+                        ),
+                        recovered=True,
+                    )
 
-                    return TimeoutResult.timeout(elapsed, retries)
+                # Check for retry
+                if action == TimeoutAction.RETRY and retries < self.config.retry_count:
+                    retries += 1
+                    current_timeout *= self.config.retry_multiplier
+                    continue
 
-                except Exception as e:
-                    elapsed = time.perf_counter() - start
-                    return TimeoutResult.failure(e, elapsed)
+                return TimeoutResult.timeout(elapsed, retries)
+
+            if "value" in error:
+                exc = error["value"]
+                elapsed = time.perf_counter() - start
+                if isinstance(exc, Exception):
+                    return TimeoutResult.failure(exc, elapsed)
+                return TimeoutResult.failure(RuntimeError(str(exc)), elapsed)
+
+            elapsed = time.perf_counter() - start
+            return TimeoutResult.ok(result["value"], elapsed)
 
     def run_column(
         self,

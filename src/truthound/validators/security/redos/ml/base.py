@@ -488,6 +488,7 @@ class ModelConfig:
         return cls(
             n_estimators=50,
             max_depth=5,
+            n_jobs=1,
             cross_validation_folds=3,
         )
 

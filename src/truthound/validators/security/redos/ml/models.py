@@ -40,6 +40,50 @@ from truthound.validators.security.redos.ml.base import (
 
 logger = logging.getLogger(__name__)
 
+_SMALL_DATASET_SERIAL_THRESHOLD = 256
+_PARALLEL_BACKEND_ERRORS = (
+    NotImplementedError,
+    OSError,
+    PermissionError,
+    RuntimeError,
+)
+
+
+def _resolve_parallel_jobs(config: ModelConfig, sample_count: int) -> int:
+    """Prefer serial execution for tiny datasets to avoid joblib process churn."""
+    requested_jobs = config.n_jobs
+    if requested_jobs == 0:
+        return 1
+    if requested_jobs != 1 and sample_count < _SMALL_DATASET_SERIAL_THRESHOLD:
+        return 1
+    return requested_jobs
+
+
+def _run_cross_val_score(
+    cross_val_score_fn: Any,
+    estimator: Any,
+    X: Any,
+    y: Any,
+    *,
+    cv: int,
+    n_jobs: int | None = None,
+) -> Any:
+    """Retry serially when the parallel backend is unavailable."""
+    kwargs: dict[str, Any] = {"cv": cv}
+    if n_jobs is not None:
+        kwargs["n_jobs"] = n_jobs
+    try:
+        return cross_val_score_fn(estimator, X, y, **kwargs)
+    except _PARALLEL_BACKEND_ERRORS:
+        if kwargs.get("n_jobs", 1) == 1:
+            raise
+        logger.warning(
+            "Parallel ReDoS CV backend unavailable; retrying serial execution",
+            exc_info=True,
+        )
+        kwargs["n_jobs"] = 1
+        return cross_val_score_fn(estimator, X, y, **kwargs)
+
 
 # =============================================================================
 # Rule-Based Model (No ML Dependencies)
@@ -309,6 +353,7 @@ class RandomForestReDoSModel(BaseReDoSModel):
             X = np.array(data.features)
 
         y = np.array(data.labels)
+        effective_n_jobs = _resolve_parallel_jobs(self._config, len(data))
 
         # Split data
         X_train, X_test, y_train, y_test = train_test_split(
@@ -326,7 +371,7 @@ class RandomForestReDoSModel(BaseReDoSModel):
             min_samples_split=self._config.min_samples_split,
             min_samples_leaf=self._config.min_samples_leaf,
             random_state=self._config.random_state,
-            n_jobs=self._config.n_jobs,
+            n_jobs=effective_n_jobs,
             class_weight=self._config.class_weight,
         )
 
@@ -337,12 +382,13 @@ class RandomForestReDoSModel(BaseReDoSModel):
         y_proba = self._model.predict_proba(X_test)
 
         # Cross-validation
-        cv_scores = cross_val_score(
+        cv_scores = _run_cross_val_score(
+            cross_val_score,
             self._model,
             X,
             y,
             cv=min(self._config.cross_validation_folds, len(set(y))),
-            n_jobs=self._config.n_jobs,
+            n_jobs=effective_n_jobs,
         )
 
         # Calculate metrics
@@ -504,6 +550,7 @@ class GradientBoostingReDoSModel(BaseReDoSModel):
             X = np.array(data.features)
 
         y = np.array(data.labels)
+        effective_n_jobs = _resolve_parallel_jobs(self._config, len(data))
 
         # Split data
         X_train, X_test, y_train, y_test = train_test_split(
@@ -531,11 +578,13 @@ class GradientBoostingReDoSModel(BaseReDoSModel):
         y_proba = self._model.predict_proba(X_test)
 
         # Cross-validation
-        cv_scores = cross_val_score(
+        cv_scores = _run_cross_val_score(
+            cross_val_score,
             self._model,
             X,
             y,
             cv=min(self._config.cross_validation_folds, len(set(y))),
+            n_jobs=effective_n_jobs,
         )
 
         # Calculate metrics
@@ -690,6 +739,7 @@ class LogisticRegressionReDoSModel(BaseReDoSModel):
             X = np.array(data.features)
 
         y = np.array(data.labels)
+        effective_n_jobs = _resolve_parallel_jobs(self._config, len(data))
 
         # Scale features for logistic regression
         self._scaler = StandardScaler()
@@ -709,7 +759,7 @@ class LogisticRegressionReDoSModel(BaseReDoSModel):
             random_state=self._config.random_state,
             class_weight=self._config.class_weight,
             max_iter=1000,
-            n_jobs=self._config.n_jobs,
+            n_jobs=effective_n_jobs,
         )
 
         self._model.fit(X_train, y_train)
@@ -719,11 +769,13 @@ class LogisticRegressionReDoSModel(BaseReDoSModel):
         y_proba = self._model.predict_proba(X_test)
 
         # Cross-validation
-        cv_scores = cross_val_score(
+        cv_scores = _run_cross_val_score(
+            cross_val_score,
             self._model,
             X_scaled,
             y,
             cv=min(self._config.cross_validation_folds, len(set(y))),
+            n_jobs=effective_n_jobs,
         )
 
         # Calculate metrics

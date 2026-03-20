@@ -225,6 +225,7 @@ class TestModelConfig:
         config = ModelConfig.fast_training()
         assert config.n_estimators == 50
         assert config.max_depth == 5
+        assert config.n_jobs == 1
 
     def test_high_accuracy_config(self):
         """Test high accuracy configuration."""
@@ -465,6 +466,14 @@ class TestModelFactory:
 
 class TestTrainingPipeline:
     """Tests for TrainingPipeline."""
+
+    def test_quick_config_preserves_fast_model_settings(self):
+        """Test quick config keeps fast model overrides after sync."""
+        config = TrainingConfig.quick()
+        assert config.model_config.n_estimators == 50
+        assert config.model_config.max_depth == 5
+        assert config.model_config.n_jobs == 1
+        assert config.model_config.cross_validation_folds == 3
 
     def test_basic_training(self, training_data):
         """Test basic training workflow."""

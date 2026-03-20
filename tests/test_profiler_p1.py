@@ -596,6 +596,7 @@ class TestTimeoutExecutor:
             time.sleep(10)
             return 42
 
+        start = time.monotonic()
         result = executor.run(
             slow_func,
             timeout=0.1,
@@ -603,6 +604,7 @@ class TestTimeoutExecutor:
 
         assert not result.success
         assert result.timed_out
+        assert time.monotonic() - start < 1.0
 
     def test_exception_handling(self):
         """Test exception handling."""
