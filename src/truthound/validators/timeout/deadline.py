@@ -379,7 +379,7 @@ class TimeoutBudget:
     created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
     _allocations: dict[str, float] = field(default_factory=dict, init=False)
     _used: dict[str, float] = field(default_factory=dict, init=False)
-    _lock: threading.Lock = field(default_factory=threading.Lock, init=False)
+    _lock: threading.RLock = field(default_factory=threading.RLock, init=False)
 
     @property
     def elapsed_seconds(self) -> float:

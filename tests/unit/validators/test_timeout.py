@@ -9,6 +9,7 @@ This test suite covers:
 """
 
 import asyncio
+import threading
 import time
 import pytest
 
@@ -41,6 +42,27 @@ from truthound.validators.timeout.distributed import (
     CoordinatorBackend,
     InMemoryCoordinator,
 )
+
+
+def _run_in_daemon_thread(func, timeout: float = 1.0):
+    """Run a callable without letting deadlocks stall the suite."""
+    result = {}
+    error = {}
+
+    def target():
+        try:
+            result["value"] = func()
+        except BaseException as exc:  # pragma: no cover - test helper
+            error["value"] = exc
+
+    thread = threading.Thread(target=target, daemon=True)
+    thread.start()
+    thread.join(timeout)
+
+    assert not thread.is_alive(), "operation deadlocked"
+    if "value" in error:
+        raise error["value"]
+    return result.get("value")
 
 
 class TestDeadlineContext:
@@ -125,7 +147,7 @@ class TestTimeoutBudget:
     def test_allocate(self):
         """Test allocation from budget."""
         budget = TimeoutBudget(total_seconds=120)
-        ctx = budget.allocate("validation", 60)
+        ctx = _run_in_daemon_thread(lambda: budget.allocate("validation", 60))
         assert ctx.remaining_seconds <= 60
         assert budget.allocated_seconds == 60
 
@@ -155,7 +177,7 @@ class TestTimeoutBudget:
         """Test summary generation."""
         budget = TimeoutBudget(total_seconds=120)
         budget.allocate("test", 60)
-        summary = budget.get_summary()
+        summary = _run_in_daemon_thread(budget.get_summary)
 
         assert summary["total_seconds"] == 120
         assert "test" in summary["allocated"]
