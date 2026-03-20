@@ -1035,7 +1035,7 @@ class ValidatorDAG:
 
         Example output::
 
-            ValidatorDAG (6 validators, 4 levels):
+            ValidatorDAG: 6 validators, 4 levels
 
             Level 0 [SCHEMA]:
               ├─ column_exists (provides: schema_validated, column_exists)
@@ -1054,7 +1054,7 @@ class ValidatorDAG:
             return "Empty DAG"
 
         plan = self.build_execution_plan()
-        lines = [f"ValidatorDAG ({len(self.nodes)} validators, {len(plan.levels)} levels):"]
+        lines = [f"ValidatorDAG: {len(self.nodes)} validators, {len(plan.levels)} levels"]
 
         for level in plan.levels:
             lines.append(f"\n  Level {level.level_index} [{level.phase.name}]:")

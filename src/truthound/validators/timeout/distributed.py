@@ -528,7 +528,7 @@ class DistributedTimeoutManager:
             self._record_failure()
 
             return DistributedExecutionResult.failure(
-                f"Operation timed out after {timeout_seconds}s",
+                f"Operation timeout exceeded after {timeout_seconds}s",
                 deadline=deadline,
                 node_id=self.config.node_id,
             )
