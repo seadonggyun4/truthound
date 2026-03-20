@@ -12,11 +12,13 @@ This is the base module that other advanced features build upon.
 from __future__ import annotations
 
 import re
+import signal
+import sys
 import time
 import threading
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Any, Callable, Protocol
+from typing import Any, Protocol
 
 
 class ReDoSRisk(Enum):
@@ -122,6 +124,16 @@ class RegexAnalysisResult:
             "is_safe": self.is_safe,
             "recommendation": self.recommendation,
         }
+
+
+def _normalize_regex_pattern(
+    pattern: str | re.Pattern,
+    flags: int = 0,
+) -> tuple[str, int]:
+    """Convert a pattern input into a reusable form."""
+    if isinstance(pattern, str):
+        return pattern, flags
+    return pattern.pattern, pattern.flags
 
 
 class PatternAnalyzerProtocol(Protocol):
@@ -616,12 +628,8 @@ class SafeRegexExecutor:
                 f"Input too long ({len(string)} > {self.max_input_length})"
             )
 
-        if isinstance(pattern, str):
-            compiled = re.compile(pattern, flags)
-        else:
-            compiled = pattern
-
-        return self._execute_with_timeout(compiled.match, string)
+        pattern_text, pattern_flags = _normalize_regex_pattern(pattern, flags)
+        return self._execute_with_timeout("match", pattern_text, string, pattern_flags)
 
     def search(
         self,
@@ -647,12 +655,8 @@ class SafeRegexExecutor:
                 f"Input too long ({len(string)} > {self.max_input_length})"
             )
 
-        if isinstance(pattern, str):
-            compiled = re.compile(pattern, flags)
-        else:
-            compiled = pattern
-
-        return self._execute_with_timeout(compiled.search, string)
+        pattern_text, pattern_flags = _normalize_regex_pattern(pattern, flags)
+        return self._execute_with_timeout("search", pattern_text, string, pattern_flags)
 
     def findall(
         self,
@@ -678,25 +682,27 @@ class SafeRegexExecutor:
                 f"Input too long ({len(string)} > {self.max_input_length})"
             )
 
-        if isinstance(pattern, str):
-            compiled = re.compile(pattern, flags)
-        else:
-            compiled = pattern
-
-        return self._execute_with_timeout(compiled.findall, string)
+        pattern_text, pattern_flags = _normalize_regex_pattern(pattern, flags)
+        return self._execute_with_timeout(
+            "findall", pattern_text, string, pattern_flags
+        )
 
     def _execute_with_timeout(
         self,
-        func: Callable,
-        *args: Any,
+        operation: str,
+        pattern: str,
+        string: str,
+        flags: int,
     ) -> Any:
         """Execute function with timeout.
 
-        Uses threading for cross-platform timeout support.
+        Uses signals on POSIX main threads and threads as a fallback.
 
         Args:
-            func: Function to execute
-            *args: Function arguments
+            operation: Regex method name to execute
+            pattern: Regex pattern string
+            string: Input string
+            flags: Regex compile flags
 
         Returns:
             Function result
@@ -704,15 +710,54 @@ class SafeRegexExecutor:
         Raises:
             TimeoutError: If execution exceeds timeout
         """
-        result: list[Any] = [None]
-        exception: list[Exception | None] = [None]
+        if sys.platform != "win32" and threading.current_thread() is threading.main_thread():
+            return self._execute_with_signal_timeout(
+                operation, pattern, string, flags
+            )
+        return self._execute_with_thread_timeout(operation, pattern, string, flags)
+
+    def _execute_with_signal_timeout(
+        self,
+        operation: str,
+        pattern: str,
+        string: str,
+        flags: int,
+    ) -> Any:
+        """Execute with SIGALRM-based timeout when available."""
+        previous_handler = signal.getsignal(signal.SIGALRM)
+
+        def timeout_handler(signum, frame):  # pragma: no cover - signal callback
+            raise TimeoutError(
+                f"Regex operation timed out after {self.timeout_seconds}s"
+            )
+
+        try:
+            signal.signal(signal.SIGALRM, timeout_handler)
+            signal.setitimer(signal.ITIMER_REAL, self.timeout_seconds)
+            compiled = re.compile(pattern, flags)
+            return getattr(compiled, operation)(string)
+        finally:
+            signal.setitimer(signal.ITIMER_REAL, 0)
+            signal.signal(signal.SIGALRM, previous_handler)
+
+    def _execute_with_thread_timeout(
+        self,
+        operation: str,
+        pattern: str,
+        string: str,
+        flags: int,
+    ) -> Any:
+        """Fallback timeout path for environments without SIGALRM."""
+        result = {}
+        error = {}
         completed = threading.Event()
 
         def target() -> None:
             try:
-                result[0] = func(*args)
-            except Exception as e:
-                exception[0] = e
+                compiled = re.compile(pattern, flags)
+                result["value"] = getattr(compiled, operation)(string)
+            except BaseException as exc:  # pragma: no cover - fallback path
+                error["value"] = exc
             finally:
                 completed.set()
 
@@ -724,10 +769,9 @@ class SafeRegexExecutor:
                 f"Regex operation timed out after {self.timeout_seconds}s"
             )
 
-        if exception[0]:
-            raise exception[0]
-
-        return result[0]
+        if "value" in error:
+            raise error["value"]
+        return result.get("value")
 
 
 # ============================================================================

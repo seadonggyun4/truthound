@@ -8,6 +8,7 @@ This test suite covers:
 """
 
 import re
+import time
 import pytest
 
 from truthound.validators.security.redos import (
@@ -222,15 +223,13 @@ class TestSafeRegexExecutor:
         # Longer input needed to trigger timeout
         dangerous_input = "a" * 30 + "!"
 
-        # This may or may not timeout depending on the system
-        # The important thing is that the executor respects the timeout
+        start = time.monotonic()
         try:
             result = executor.match(dangerous_pattern, dangerous_input)
-            # If it completes, the result should be None (no match)
             assert result is None
         except TimeoutError:
-            # Expected behavior for slow systems
             pass
+        assert time.monotonic() - start < 1.0
 
     def test_compiled_pattern(self):
         """Test using pre-compiled pattern."""
