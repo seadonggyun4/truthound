@@ -16,7 +16,7 @@ truthound plugins enable <NAME>
 
 ## Description
 
-The `plugin enable` command activates a loaded plugin:
+The `plugins enable` command activates a loaded plugin:
 
 1. **Loads** the plugin automatically if not already loaded
 2. **Activates** the plugin for use
@@ -137,9 +137,9 @@ Error enabling plugin: Plugin 'unknown-plugin' not found.
 
 ## Related Commands
 
-- [`plugin disable`](disable.md) - Disable a plugin
-- [`plugin load`](load.md) - Load a plugin
-- [`plugin list`](list.md) - List all plugins
+- [`plugins disable`](disable.md) - Disable a plugin
+- [`plugins load`](load.md) - Load a plugin
+- [`plugins list`](list.md) - List all plugins
 
 ## See Also
 

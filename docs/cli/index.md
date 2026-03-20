@@ -104,6 +104,7 @@ After installation, the `truthound` command is available globally.
 | `benchmark run` | BENCHMARK (optional) | `--suite, -s` (quick/ci/full/profiling/validation), `--size` (tiny/small/medium/large/xlarge), `--rows, -r`, `--iterations, -i` (5), `--warmup, -w` (2), `--output, -o`, `--format, -f` (console/json/html), `--save-baseline`, `--compare-baseline`, `--verbose, -v` |
 | `benchmark list` | - | `--format, -f` (console/json) |
 | `benchmark compare` | BASELINE CURRENT (required) | `--threshold, -t` (10.0%), `--format, -f` (console/json) |
+| `benchmark parity` | - | `--suite` (`pr-fast`/`nightly-core`/`nightly-sql`/`release-ga`), `--frameworks` (`truthound`/`gx`/`both`), `--backend`, `--output`, `--save-baseline`, `--compare-baseline`, `--strict` |
 
 ### Scaffolding Commands Summary
 
@@ -119,13 +120,13 @@ After installation, the `truthound` command is available globally.
 
 | Command | Arguments | Options |
 |---------|-----------|---------|
-| `plugin list` | - | `--type, -t` (validator/reporter/hook/datasource/action/custom), `--state, -s` (discovered/loading/loaded/active/inactive/error/unloading), `--verbose, -v`, `--json` |
-| `plugin info` | NAME (required) | `--json` |
-| `plugin load` | NAME (required) | `--activate/--no-activate` (--activate) |
-| `plugin unload` | NAME (required) | - |
-| `plugin enable` | NAME (required) | - |
-| `plugin disable` | NAME (required) | - |
-| `plugin create` | NAME (required) | `--output, -o` (.), `--type, -t` (validator/reporter/hook/custom), `--author` |
+| `plugins list` | - | `--type, -t` (validator/reporter/hook/datasource/action/custom), `--state, -s` (discovered/loading/loaded/active/inactive/error/unloading), `--verbose, -v`, `--json` |
+| `plugins info` | NAME (required) | `--json` |
+| `plugins load` | NAME (required) | `--activate/--no-activate` (--activate) |
+| `plugins unload` | NAME (required) | - |
+| `plugins enable` | NAME (required) | - |
+| `plugins disable` | NAME (required) | - |
+| `plugins create` | NAME (required) | `--output, -o` (.), `--type, -t` (validator/reporter/hook/custom), `--author` |
 
 ## Global Options
 
@@ -239,6 +240,7 @@ Performance testing:
 | [`benchmark run`](benchmark/run.md) | Run performance benchmarks |
 | [`benchmark list`](benchmark/list.md) | List available benchmarks |
 | [`benchmark compare`](benchmark/compare.md) | Compare benchmark results |
+| [`benchmark parity`](benchmark/parity.md) | Run release-grade Truthound vs GX parity suites |
 
 ### [Scaffolding Commands](scaffolding/index.md)
 
@@ -258,12 +260,12 @@ Plugin management:
 
 | Command | Description |
 |---------|-------------|
-| [`plugin list`](plugin/list.md) | List discovered plugins |
-| [`plugin info`](plugin/info.md) | Show plugin details |
-| [`plugin load`](plugin/load.md) | Load a plugin |
-| [`plugin unload`](plugin/unload.md) | Unload a plugin |
-| [`plugin enable`](plugin/enable.md) | Enable a plugin |
-| [`plugin disable`](plugin/disable.md) | Disable a plugin |
+| [`plugins list`](plugin/list.md) | List discovered plugins |
+| [`plugins info`](plugin/info.md) | Show plugin details |
+| [`plugins load`](plugin/load.md) | Load a plugin |
+| [`plugins unload`](plugin/unload.md) | Unload a plugin |
+| [`plugins enable`](plugin/enable.md) | Enable a plugin |
+| [`plugins disable`](plugin/disable.md) | Disable a plugin |
 | [`plugin create`](plugin/create.md) | Create plugin template |
 
 ## Exit Codes

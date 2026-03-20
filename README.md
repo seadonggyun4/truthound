@@ -32,7 +32,7 @@
   <img width="200" alt="Truthound Icon" src="docs/assets/Truthound_icon_banner.png" />
 </p>
 
-Truthound is a Polars-first data validation framework for modern data engineering systems. Version 3.0 keeps the easy first-run experience, but the runtime is now honest about its architecture: a zero-config project context, a deterministic auto-suite builder, backend-aware planning, exact-by-default execution, a single canonical `ValidationRunResult`, and one plugin/reporting surface shared across checkpoints, docs, and automation.
+Truthound is a Polars-first data validation framework for modern data engineering systems. Version 3.0 keeps the easy first-run experience, but the runtime is now organized around a smaller and more durable kernel: a zero-config project context, deterministic auto-suite selection, backend-aware planning, exact-by-default execution, a single canonical `ValidationRunResult`, and one plugin/reporting surface shared across checkpoints, docs, and automation.
 
 **Documentation**: [truthound.netlify.app](https://truthound.netlify.app/)
 
@@ -57,9 +57,35 @@ projects are sufficiently mature for the public README again.
 - Explicit contracts for contexts, check factories, backends, and artifact generation
 - Failure-first test lanes and migration diagnostics that make framework upgrades safer in production
 
-## What Changed in 3.0
+## Measured Advantages Over Great Expectations
 
-Truthound 3.0 resets the public contract around a smaller and more durable kernel:
+The latest fixed-runner release-grade benchmark artifact set shows Truthound ahead of Great Expectations on every comparable workload in the current comparison catalog while preserving correctness parity.
+
+| Workload | Truthound Warm (s) | GX Warm (s) | Speedup | Memory Ratio |
+| --- | ---: | ---: | ---: | ---: |
+| local-mixed-core-suite | 0.028240 | 0.075232 | 2.66x | 44.29% |
+| local-null | 0.016487 | 0.024964 | 1.51x | 43.62% |
+| local-range | 0.002470 | 0.013219 | 5.35x | 43.84% |
+| local-schema | 0.001479 | 0.017303 | 11.70x | 35.88% |
+| local-unique | 0.002023 | 0.013785 | 6.81x | 42.28% |
+| sqlite-null | 0.007370 | 0.032909 | 4.47x | 48.16% |
+| sqlite-range | 0.006053 | 0.022355 | 3.69x | 43.80% |
+| sqlite-unique | 0.002066 | 0.015655 | 7.58x | 42.12% |
+
+The practical reasons behind that result are straightforward:
+
+- a Polars-first planner/runtime that deduplicates metric work instead of re-scanning through validator loops
+- deterministic auto-suite selection that keeps default work relevant and exact
+- a smaller zero-config context model that persists baselines and artifacts without forcing a heavy project bootstrap
+- one canonical result contract shared by reporters, checkpoints, and validation docs
+
+This comparison is intentionally bounded. It covers comparable deterministic core checks and SQLite pushdown workloads. It is not a blanket claim over every Great Expectations feature area.
+
+Read the published evidence in [Latest Verified Benchmark Summary](docs/releases/latest-benchmark-summary.md).
+
+## What 3.0 Stabilizes
+
+Truthound 3.0 centers the public contract around a smaller and more durable kernel:
 
 | Layer | Responsibility |
 | --- | --- |
@@ -191,11 +217,12 @@ Truthound now uses one lifecycle runtime:
 - Performance and benchmarks: [docs/guides/performance.md](docs/guides/performance.md)
 - Benchmark methodology: [docs/guides/benchmark-methodology.md](docs/guides/benchmark-methodology.md)
 - Workload catalog: [docs/guides/benchmark-workloads.md](docs/guides/benchmark-workloads.md)
-- GX parity gate: [docs/guides/gx-parity.md](docs/guides/gx-parity.md)
+- Great Expectations comparison: [docs/guides/gx-parity.md](docs/guides/gx-parity.md)
+- Docs deployment verification: [docs/guides/docs-deployment-verification.md](docs/guides/docs-deployment-verification.md)
 - Migration guide: [docs/guides/migration-3.0.md](docs/guides/migration-3.0.md)
 - Legacy archive: [docs/legacy/index.md](docs/legacy/index.md)
-- Release notes: [docs/releases/truthound-3.0-rc1.md](docs/releases/truthound-3.0-rc1.md)
-- Latest benchmark summary: [docs/releases/latest-benchmark-summary.md](docs/releases/latest-benchmark-summary.md)
+- Release notes: [docs/releases/truthound-3.0.md](docs/releases/truthound-3.0.md)
+- Latest verified benchmark summary: [docs/releases/latest-benchmark-summary.md](docs/releases/latest-benchmark-summary.md)
 - ADRs: [docs/adr/001-validation-kernel.md](docs/adr/001-validation-kernel.md), [docs/adr/002-plugin-platform.md](docs/adr/002-plugin-platform.md), [docs/adr/003-result-model.md](docs/adr/003-result-model.md), [docs/adr/004-migration-compatibility.md](docs/adr/004-migration-compatibility.md)
 
 ## Development
@@ -215,7 +242,7 @@ uv run --frozen --extra dev --extra docs mkdocs build --strict
 truthound doctor . --migrate-2to3
 ```
 
-Official 3.0 benchmark claims stay blocked until the fixed self-hosted `release-ga` run produces `release-ga.json`, `env-manifest.json`, and `latest-benchmark-summary.md`.
+Official benchmark comparisons should cite the published fixed-runner artifact set: `release-ga.json`, `env-manifest.json`, and `latest-benchmark-summary.md`.
 
 Tests now follow a failure-first lane model:
 
@@ -226,6 +253,6 @@ Tests now follow a failure-first lane model:
 
 The default local run is intentionally fast. Manual verification artifacts live under `verification/phase6` and are intentionally kept out of pytest discovery.
 
-Official performance claims should come only from the release-grade parity artifacts under `.truthound/benchmarks/release/`. Nightly outputs are for trend visibility, not marketing numbers.
+Official performance claims should come only from the verified release-grade parity artifacts under `.truthound/benchmarks/release/`. Nightly outputs are for trend visibility, not public benchmark positioning.
 
 When adding tests, prefer scenarios that protect public contracts or operational failure modes. Avoid adding default-value, getter/setter, enum-literal, `to_dict()` round-trip, or CSS-string existence tests unless they prove a compatibility boundary that has failed before.

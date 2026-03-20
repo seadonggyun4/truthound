@@ -23,7 +23,7 @@ Truthound 3.0 parity workloads are repo-tracked under `benchmarks/workloads/`. E
 
 ## Tier-1 SQL Exact Workloads
 
-SQLite is the canonical SQL backend for the 3.0 release gate.
+SQLite is the canonical SQL backend for the current release-grade comparison.
 
 | Workload | Purpose | Expected Issues |
 | --- | --- | ---: |
@@ -39,7 +39,7 @@ DuckDB shadow workloads are tracked for advisory trend visibility only:
 - `duckdb-unique`
 - `duckdb-range`
 
-These are Truthound-only in the initial 3.0 gate and do not block GA.
+These are Truthound-only in the current comparison set and do not block release-grade verification.
 
 ## Suite Membership
 
@@ -52,7 +52,7 @@ These are Truthound-only in the initial 3.0 gate and do not block GA.
 
 ## Why Repo-Tracked Fixtures
 
-Truthound keeps the release gate on repo-tracked fixtures because it makes the benchmark:
+Truthound keeps the release-grade comparison on repo-tracked fixtures because it makes the benchmark:
 
 - reviewable in pull requests
 - reproducible in CI
@@ -62,4 +62,4 @@ Truthound keeps the release gate on repo-tracked fixtures because it makes the b
 ## Related Reading
 
 - [Benchmark Methodology](benchmark-methodology.md)
-- [GX Parity Gate](gx-parity.md)
+- [Great Expectations Comparison](gx-parity.md)

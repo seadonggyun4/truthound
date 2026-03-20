@@ -56,7 +56,7 @@ def mock_checkpoint_result() -> MagicMock:
     mock_result.run_time = datetime(2025, 12, 27, 10, 30, 0)
     mock_result.duration_ms = 1234.56
     mock_result.data_asset = "customers.csv"
-    mock_result.validation_result = mock_validation
+    mock_result.validation_view = mock_validation
     mock_result.status = MagicMock(value="failure")
 
     return mock_result
@@ -83,7 +83,7 @@ def mock_success_result() -> MagicMock:
     mock_result.run_time = datetime(2025, 12, 27, 10, 30, 0)
     mock_result.duration_ms = 500.0
     mock_result.data_asset = "customers.csv"
-    mock_result.validation_result = mock_validation
+    mock_result.validation_view = mock_validation
     mock_result.status = MagicMock(value="success")
 
     return mock_result

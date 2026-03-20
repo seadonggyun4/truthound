@@ -60,15 +60,15 @@ def mock_checkpoint_result():
 
     stats = MockStatistics()
 
-    validation_result = MagicMock()
-    validation_result.statistics = stats
+    validation_run = MagicMock()
+    validation_run.statistics = stats
 
     return CheckpointResult(
         run_id="test_run_001",
         checkpoint_name="test_checkpoint",
         run_time=datetime.now(),
         status=CheckpointStatus.WARNING,
-        validation_result=validation_result,
+        validation_run=validation_run,
         data_asset="test_data.csv",
         duration_ms=1500.0,
     )

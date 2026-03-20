@@ -2,9 +2,9 @@
 
 ## Purpose
 
-Truthound 3.0 benchmark methodology exists to answer one question honestly:
+Truthound benchmark methodology exists to answer one question honestly:
 
-Can the public zero-config Truthound path beat or at least match Great Expectations on the workloads that matter for release?
+Can the public zero-config Truthound path outperform Great Expectations on comparable release-grade workloads while preserving correctness?
 
 ## Principles
 
@@ -44,11 +44,11 @@ Framework timing and memory are collected in child processes rather than the par
 Truthound uses a hybrid runner policy:
 
 - GitHub-hosted nightly runners provide trend visibility and early warning
-- self-hosted fixed runners provide the official release verdict
+- fixed self-hosted runners provide the authoritative release-grade benchmark verification
 
-Nightly artifacts are informative. Release artifacts are authoritative.
+Nightly artifacts are informative. Fixed-runner release artifacts are authoritative.
 
-For the authoritative release verdict, the fixed runner must record:
+For the authoritative release verdict, the runner must record:
 
 - CPU model
 - logical core count
@@ -66,17 +66,15 @@ The release workflow reads these from the fixed host plus the following environm
 - `TRUTHOUND_BENCHMARK_RAM_BYTES`
 - `TRUTHOUND_BENCHMARK_CPU_PHYSICAL_CORES`
 
-For self-hosted macOS runners, the release workflow avoids `actions/setup-python` and instead uses
-`uv` to install a managed Python 3.11 runtime plus a dedicated `.release-venv`. This sidesteps the
-hosted-toolcache assumptions that often point at `/Users/runner` on macOS.
+For self-hosted macOS runners, the release workflow avoids `actions/setup-python` and instead uses `uv` to install a managed Python 3.11 runtime plus a dedicated `.release-venv`. This sidesteps hosted-toolcache assumptions that often point at `/Users/runner` on macOS.
 
 ## Thresholds
 
-The current 3.0 gate thresholds are:
+The current release-grade thresholds are:
 
-- local exact: `Truthound >= 1.5x GX`
-- SQL exact: `Truthound >= 1.0x GX`, with `1.2x` as the target
-- local memory: `Truthound <= 60% of GX peak RSS`
+- local exact: `Truthound >= 1.5x Great Expectations`
+- SQL exact: `Truthound >= 1.0x Great Expectations`, with `1.2x` as the target
+- local memory: `Truthound <= 60%` of Great Expectations peak RSS
 
 If correctness parity fails, the performance comparison is treated as failed even when timing looks better.
 
@@ -124,5 +122,6 @@ python docs/scripts/publish_benchmark_summary.py \
 ## Related Reading
 
 - [Performance and Benchmarks](performance.md)
+- [Great Expectations Comparison](gx-parity.md)
 - [Workload Catalog](benchmark-workloads.md)
-- [GX Parity Gate](gx-parity.md)
+- [Docs Deployment Verification](docs-deployment-verification.md)

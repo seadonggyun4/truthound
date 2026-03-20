@@ -4,38 +4,53 @@
 
 # Truthound 3.0
 
-Truthound 3.0 is a Polars-first validation framework centered on three promises:
+Truthound is a zero-configuration data quality framework powered by Polars.
+The current release is designed around one practical promise: `th.check(data)` should be enough to get exact validation, reusable project state, and trustworthy artifacts without configuration ceremony.
 
-- zero-configuration is the default user experience
-- correctness and operational stability are first-class kernel responsibilities
-- extension points stay small, explicit, and durable under change
+## Why Truthound
+
+- Zero-config by default through `TruthoundContext` and the local `.truthound/` workspace
+- Polars-first metric planning and backend-aware execution instead of repeated validator-loop scans
+- One canonical runtime result, `ValidationRunResult`, shared across checkpoints, reporters, and validation docs
+- Deterministic auto-suite selection for schema, nullability, type, range, and key-like signals
+- Release-grade benchmark verification against Great Expectations on comparable deterministic workloads
+
+## Verified Benchmark Snapshot
+
+The latest fixed-runner benchmark verification shows:
+
+- Truthound finished ahead of Great Expectations on all eight comparable release-grade workloads
+- local speedups ranged from `1.51x` to `11.70x`
+- SQLite pushdown speedups ranged from `3.69x` to `7.58x`
+- local peak RSS stayed between `35.88%` and `48.16%` of Great Expectations
+- correctness parity was preserved across the full comparable workload set
+
+Read the full evidence in [Latest Verified Benchmark Summary](releases/latest-benchmark-summary.md).
 
 ## Start Here
 
-- [Getting Started](getting-started/index.md)
 - [Quick Start](getting-started/quickstart.md)
 - [Architecture](concepts/architecture.md)
 - [Zero-Config Context](concepts/zero-config.md)
+- [Performance and Benchmarks](guides/performance.md)
+- [Great Expectations Comparison](guides/gx-parity.md)
+- [Latest Verified Benchmark Summary](releases/latest-benchmark-summary.md)
+
+## Core Platform Shape
+
+Truthound 3.0 centers the public platform around:
+
+- `TruthoundContext` for project discovery, baselines, artifacts, and defaults
+- `ValidationSuite`, `CheckSpec`, and `SchemaSpec` for immutable validation intent
+- planner/runtime boundaries that compile checks into metric-oriented execution
+- `ValidationRunResult` and `CheckResult` as the canonical runtime output
+
+The result is a smaller and more maintainable kernel while keeping the public facade approachable for day-one use.
+
+## Documentation Paths
+
+- [Getting Started](getting-started/index.md)
 - [Plugin Platform](concepts/plugins.md)
+- [Benchmark Methodology](guides/benchmark-methodology.md)
+- [Docs Deployment Verification](guides/docs-deployment-verification.md)
 - [Migration to 3.0](guides/migration-3.0.md)
-
-## Core Shift
-
-Truthound 3.0 is a hard contract reset, not a 2.x compatibility extension:
-
-- `th.check()` returns `ValidationRunResult` directly
-- `TruthoundContext` auto-discovers and manages a local `.truthound/` workspace
-- `validators=None` triggers deterministic auto-suite synthesis
-- planning is backend-aware and metric-oriented instead of validator-loop oriented
-- checkpoints, reporters, and validation docs all consume the same canonical result model
-
-## Architectural Lineage
-
-Truthound 3.0 synthesizes several proven ideas:
-
-- Great Expectations: suite, checkpoint, and artifact separation
-- Soda: scan planning and backend-aware metric batching
-- Deequ: analyzer, constraint, verification, and repository decomposition
-- Pandera: schema-centric ergonomics and lazy data interaction
-
-The 3.0 design keeps the friendly facade while making the internals more maintainable, benchmarkable, and predictable at scale.

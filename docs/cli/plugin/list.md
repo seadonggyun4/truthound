@@ -19,7 +19,7 @@ truthound plugins list [OPTIONS]
 
 ## Description
 
-The `plugin list` command displays all discovered plugins:
+The `plugins list` command displays all discovered plugins:
 
 1. **Shows** plugin name, version, type, and state
 2. **Filters** by type or state
@@ -169,9 +169,9 @@ truthound plugins list --json > plugins.json
 
 ## Related Commands
 
-- [`plugin info`](info.md) - Show plugin details
-- [`plugin load`](load.md) - Load a plugin
-- [`plugin enable`](enable.md) - Enable a plugin
+- [`plugins info`](info.md) - Show plugin details
+- [`plugins load`](load.md) - Load a plugin
+- [`plugins enable`](enable.md) - Enable a plugin
 
 ## See Also
 

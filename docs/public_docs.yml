@@ -1,0 +1,72 @@
+docs:
+  - index.md
+  - getting-started/index.md
+  - getting-started/installation.md
+  - getting-started/quickstart.md
+  - concepts/architecture.md
+  - concepts/zero-config.md
+  - concepts/plugins.md
+  - guides/reporter-sdk.md
+  - guides/checkpoints.md
+  - guides/performance.md
+  - guides/benchmark-methodology.md
+  - guides/gx-parity.md
+  - guides/benchmark-workloads.md
+  - guides/docs-deployment-verification.md
+  - guides/migration-3.0.md
+  - adr/001-validation-kernel.md
+  - adr/002-plugin-platform.md
+  - adr/003-result-model.md
+  - adr/004-migration-compatibility.md
+  - releases/latest-benchmark-summary.md
+  - releases/truthound-3.0.md
+  - legacy/index.md
+
+support_files:
+  - _redirects
+
+support_directories:
+  - assets
+  - stylesheets
+  - javascripts
+
+excluded_prefixes:
+  - cli/
+  - tutorials/
+  - python-api/
+  - dashboard/
+  - concepts/API_REFERENCE/
+  - concepts/DATASOURCES/
+  - concepts/EXAMPLES/
+  - concepts/VALIDATORS/
+  - concepts/advanced/
+  - concepts/datasources-architecture/
+  - concepts/index/
+  - concepts/masking/
+  - concepts/openlineage/
+  - concepts/statistical-methods/
+  - concepts/test-coverage/
+  - guides/advanced/
+  - guides/checkpoint/
+  - guides/ci-cd/
+  - guides/cicd/
+  - guides/configuration/
+  - guides/data-masking/
+  - guides/datadocs/
+  - guides/datasources/
+  - guides/html-reports/
+  - guides/index/
+  - guides/migration-2.0/
+  - guides/ml-monitoring/
+  - guides/notifications/
+  - guides/privacy/
+  - guides/profiler/
+  - guides/quality-reporter/
+  - guides/reporters/
+  - guides/statistical-methods/
+  - guides/stores/
+  - guides/validators/
+  - releases/truthound-2.0/
+  - releases/truthound-3.0-rc1/
+
+expected_page_count: 22

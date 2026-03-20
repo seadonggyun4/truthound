@@ -1,0 +1,4 @@
+https://truthound.io/* https://truthound.netlify.app/:splat 301!
+http://truthound.io/* https://truthound.netlify.app/:splat 301!
+https://www.truthound.io/* https://truthound.netlify.app/:splat 301!
+http://www.truthound.io/* https://truthound.netlify.app/:splat 301!

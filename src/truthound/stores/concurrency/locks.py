@@ -185,7 +185,7 @@ class FcntlLockStrategy(LockStrategy):
         import fcntl
 
         self._fcntl = fcntl
-        self._locks: dict[str, tuple[int, Any]] = {}  # path -> (fd, file_obj)
+        self._locks: dict[int, Path] = {}  # fd -> lock path
         self._lock = threading.RLock()
 
     def acquire(
@@ -230,7 +230,7 @@ class FcntlLockStrategy(LockStrategy):
                 self._fcntl.flock(fd, operation)
 
             with self._lock:
-                self._locks[str(path)] = (fd, None)
+                self._locks[fd] = lock_path
 
             return LockHandle(path=path, mode=mode, fd=fd)
 
@@ -245,11 +245,10 @@ class FcntlLockStrategy(LockStrategy):
     def release(self, handle: LockHandle) -> None:
         """Release the fcntl lock."""
         with self._lock:
-            key = str(handle.path)
-            if key not in self._locks:
+            fd = handle.fd
+            if fd is None or fd not in self._locks:
                 raise ValueError(f"Lock not held: {handle.path}")
-
-            fd, _ = self._locks.pop(key)
+            self._locks.pop(fd)
 
         try:
             self._fcntl.flock(fd, self._fcntl.LOCK_UN)

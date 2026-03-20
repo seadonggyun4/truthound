@@ -2,12 +2,26 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
+from importlib import import_module
 import json
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
 from truthound.types import ResultFormat, Severity
 from truthound.validators.base import ValidationIssue
+
+
+def _get_reporter(name: str, **kwargs: Any) -> Any:
+    """Load the reporter registry lazily from the outer adapter layer."""
+
+    return import_module('truthound.reporters').get_reporter(name, **kwargs)
+
+
+def _generate_validation_report(run_result: 'ValidationRunResult', **kwargs: Any) -> str:
+    """Load validation docs generation lazily from the outer adapter layer."""
+
+    return import_module('truthound.datadocs').generate_validation_report(run_result, **kwargs)
 
 
 @dataclass(frozen=True)
@@ -229,9 +243,7 @@ class ValidationRunResult:
         return json.dumps(self.to_dict(), indent=indent, default=str)
 
     def render(self, format: str = 'console', **kwargs: Any) -> str:
-        from truthound.reporters import get_reporter
-
-        reporter = get_reporter(format, **kwargs)
+        reporter = _get_reporter(format, **kwargs)
         return reporter.render(self)
 
     def write(
@@ -241,9 +253,6 @@ class ValidationRunResult:
         format: str | None = None,
         **kwargs: Any,
     ) -> Any:
-        from pathlib import Path
-        from truthound.reporters import get_reporter
-
         resolved_format = format
         if resolved_format is None and path:
             suffix = Path(path).suffix.lower()
@@ -255,13 +264,11 @@ class ValidationRunResult:
                 '.markdown': 'markdown',
                 '.txt': 'console',
             }.get(suffix, 'json')
-        reporter = get_reporter(resolved_format or 'json', **kwargs)
+        reporter = _get_reporter(resolved_format or 'json', **kwargs)
         return reporter.write(self, path)
 
     def build_docs(self, **kwargs: Any) -> str:
-        from truthound.datadocs import generate_validation_report
-
-        return generate_validation_report(self, **kwargs)
+        return _generate_validation_report(self, **kwargs)
 
     def print(self, format: str = 'console', **kwargs: Any) -> None:
         output = self.render(format=format, **kwargs)

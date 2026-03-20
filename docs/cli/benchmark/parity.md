@@ -1,6 +1,6 @@
 # `truthound benchmark parity`
 
-Run the repo-tracked parity suites used for Truthound 3.0 performance and correctness gates.
+Run the repo-tracked parity suites used for Truthound 3.0 performance and correctness verification.
 
 ## Usage
 
@@ -29,9 +29,9 @@ truthound benchmark parity --suite nightly-sql --frameworks both --backend sqlit
 truthound benchmark parity --suite release-ga --frameworks both --strict
 ```
 
-## Release Gate Rules
+## Release-Grade Verification Rules
 
-`release-ga` is the authoritative 3.0 GA gate and has two additional rules:
+`release-ga` is the authoritative fixed-runner verification suite and has two additional rules:
 
 - `--frameworks` must be `both`
 - `--backend` must not be set
@@ -51,3 +51,4 @@ Parity runs write artifacts under `.truthound/benchmarks/` and generate:
 
 - [Performance and Benchmarks](../../guides/performance.md)
 - [Benchmark Methodology](../../guides/benchmark-methodology.md)
+- [Latest Verified Benchmark Summary](../../releases/latest-benchmark-summary.md)

@@ -1,7 +1,7 @@
 """Tests for html_reporter module.
 
-This module tests the HTML report generation bridge functionality
-that connects the CLI's Report objects with the HTMLReporter system.
+This module tests the Truthound 3.0 HTML helpers that render canonical
+``ValidationRunResult`` inputs and persisted validation DTOs.
 """
 
 from datetime import datetime
@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from truthound.core.results import CheckResult, ValidationRunResult
 from truthound.html_reporter import (
     generate_html_report,
     write_html_report,
@@ -19,9 +20,9 @@ from truthound.html_reporter import (
     HTMLReportConfig,
     HAS_JINJA2,
 )
-from truthound.report import Report, PIIReport
+from truthound.report import PIIReport
 from truthound.validators.base import ValidationIssue
-from truthound.types import Severity
+from truthound.types import ResultFormat, Severity
 from truthound.stores.results import (
     ValidationResult,
     ValidatorResult,
@@ -42,9 +43,42 @@ pytestmark = pytest.mark.skipif(
 # =============================================================================
 
 
+def _build_run_result(
+    *,
+    issues: list[ValidationIssue],
+    source: str,
+    row_count: int,
+    column_count: int,
+    suite_name: str = "html_report_suite",
+) -> ValidationRunResult:
+    checks = tuple(
+        CheckResult(
+            name=issue.validator_name or issue.issue_type,
+            category="quality",
+            success=False,
+            issue_count=1,
+            issues=(issue,),
+        )
+        for issue in issues
+    )
+    return ValidationRunResult(
+        run_id="html_run_001",
+        run_time=datetime(2024, 1, 15, 10, 30, 0),
+        suite_name=suite_name,
+        source=source,
+        row_count=row_count,
+        column_count=column_count,
+        result_format=ResultFormat.SUMMARY,
+        execution_mode="sequential",
+        checks=checks,
+        issues=tuple(issues),
+        metadata={"runtime_environment": {"backend": "polars"}},
+    )
+
+
 @pytest.fixture
-def sample_report() -> Report:
-    """Create a sample Report for testing."""
+def sample_run_result() -> ValidationRunResult:
+    """Create a sample ValidationRunResult for testing."""
     issues = [
         ValidationIssue(
             column="email",
@@ -72,7 +106,7 @@ def sample_report() -> Report:
             details="10 values with invalid format",
         ),
     ]
-    return Report(
+    return _build_run_result(
         issues=issues,
         source="test_data.csv",
         row_count=1000,
@@ -81,9 +115,9 @@ def sample_report() -> Report:
 
 
 @pytest.fixture
-def empty_report() -> Report:
-    """Create an empty Report (no issues) for testing."""
-    return Report(
+def empty_run_result() -> ValidationRunResult:
+    """Create an empty ValidationRunResult (no issues) for testing."""
+    return _build_run_result(
         issues=[],
         source="clean_data.csv",
         row_count=500,
@@ -183,9 +217,9 @@ def sample_validation_result() -> ValidationResult:
 class TestGenerateHtmlReport:
     """Tests for generate_html_report function."""
 
-    def test_basic_generation(self, sample_report: Report) -> None:
+    def test_basic_generation(self, sample_run_result: ValidationRunResult) -> None:
         """Test basic HTML report generation."""
-        html = generate_html_report(sample_report)
+        html = generate_html_report(sample_run_result)
 
         # Check basic HTML structure
         assert "<!DOCTYPE html>" in html
@@ -196,43 +230,43 @@ class TestGenerateHtmlReport:
         assert "test_data.csv" in html
         assert "1,000" in html  # row count formatted
 
-    def test_includes_issues(self, sample_report: Report) -> None:
+    def test_includes_issues(self, sample_run_result: ValidationRunResult) -> None:
         """Test that issues are included in the report."""
-        html = generate_html_report(sample_report)
+        html = generate_html_report(sample_run_result)
 
         assert "email" in html
         assert "null_values" in html
         assert "age" in html
         assert "out_of_range" in html
 
-    def test_empty_report(self, empty_report: Report) -> None:
+    def test_empty_report(self, empty_run_result: ValidationRunResult) -> None:
         """Test generation with no issues."""
-        html = generate_html_report(empty_report)
+        html = generate_html_report(empty_run_result)
 
         assert "<!DOCTYPE html>" in html
         assert "clean_data.csv" in html
         # Should show success status
         assert "Passed" in html or "success" in html.lower()
 
-    def test_custom_title(self, sample_report: Report) -> None:
+    def test_custom_title(self, sample_run_result: ValidationRunResult) -> None:
         """Test with custom title."""
-        html = generate_html_report(sample_report, title="My Custom Report")
+        html = generate_html_report(sample_run_result, title="My Custom Report")
 
         assert "My Custom Report" in html
 
-    def test_with_config(self, sample_report: Report) -> None:
+    def test_with_config(self, sample_run_result: ValidationRunResult) -> None:
         """Test with HTMLReportConfig."""
         config = HTMLReportConfig(
             title="Config Report",
             theme="light",
         )
-        html = generate_html_report(sample_report, config=config)
+        html = generate_html_report(sample_run_result, config=config)
 
         assert "Config Report" in html
 
-    def test_severity_ordering(self, sample_report: Report) -> None:
+    def test_severity_ordering(self, sample_run_result: ValidationRunResult) -> None:
         """Test that issues are sorted by severity."""
-        html = generate_html_report(sample_report)
+        html = generate_html_report(sample_run_result)
 
         # HIGH severity should appear before MEDIUM and LOW
         high_pos = html.find("high")
@@ -244,18 +278,18 @@ class TestGenerateHtmlReport:
         assert medium_pos != -1
         assert low_pos != -1
 
-    def test_statistics_included(self, sample_report: Report) -> None:
+    def test_statistics_included(self, sample_run_result: ValidationRunResult) -> None:
         """Test that statistics are included."""
-        html = generate_html_report(sample_report)
+        html = generate_html_report(sample_run_result)
 
         # Row count
         assert "1,000" in html
         # Column count
         assert "15" in html
 
-    def test_footer_present(self, sample_report: Report) -> None:
+    def test_footer_present(self, sample_run_result: ValidationRunResult) -> None:
         """Test that footer with Truthound attribution is present."""
-        html = generate_html_report(sample_report)
+        html = generate_html_report(sample_run_result)
 
         assert "Truthound" in html
         assert "Generated by" in html
@@ -269,34 +303,34 @@ class TestGenerateHtmlReport:
 class TestWriteHtmlReport:
     """Tests for write_html_report function."""
 
-    def test_writes_to_file(self, sample_report: Report) -> None:
+    def test_writes_to_file(self, sample_run_result: ValidationRunResult) -> None:
         """Test writing HTML to a file."""
         with tempfile.TemporaryDirectory() as tmpdir:
             output_path = Path(tmpdir) / "report.html"
 
-            result_path = write_html_report(sample_report, output_path)
+            result_path = write_html_report(sample_run_result, output_path)
 
             assert result_path == output_path
             assert output_path.exists()
             content = output_path.read_text(encoding="utf-8")
             assert "<!DOCTYPE html>" in content
 
-    def test_writes_with_custom_title(self, sample_report: Report) -> None:
+    def test_writes_with_custom_title(self, sample_run_result: ValidationRunResult) -> None:
         """Test writing HTML with custom title."""
         with tempfile.TemporaryDirectory() as tmpdir:
             output_path = Path(tmpdir) / "custom_report.html"
 
-            write_html_report(sample_report, output_path, title="Custom Title")
+            write_html_report(sample_run_result, output_path, title="Custom Title")
 
             content = output_path.read_text(encoding="utf-8")
             assert "Custom Title" in content
 
-    def test_writes_with_string_path(self, sample_report: Report) -> None:
+    def test_writes_with_string_path(self, sample_run_result: ValidationRunResult) -> None:
         """Test writing HTML with string path instead of Path object."""
         with tempfile.TemporaryDirectory() as tmpdir:
             output_path = str(Path(tmpdir) / "report.html")
 
-            result_path = write_html_report(sample_report, output_path)
+            result_path = write_html_report(sample_run_result, output_path)
 
             assert Path(output_path).exists()
             assert isinstance(result_path, Path)
@@ -500,14 +534,14 @@ class TestEdgeCases:
                 details="Test <html> & 'quotes' \"double\"",
             ),
         ]
-        report = Report(
-            issues=issues,
-            source="file<with>special.csv",
-            row_count=100,
-            column_count=5,
+        html = generate_html_report(
+            _build_run_result(
+                issues=issues,
+                source="file<with>special.csv",
+                row_count=100,
+                column_count=5,
+            )
         )
-
-        html = generate_html_report(report)
 
         # HTML should be escaped
         assert "<!DOCTYPE html>" in html
@@ -524,14 +558,14 @@ class TestEdgeCases:
                 severity=Severity.LOW,
             ),
         ]
-        report = Report(
-            issues=issues,
-            source="large.csv",
-            row_count=1_000_000_000,
-            column_count=100,
+        html = generate_html_report(
+            _build_run_result(
+                issues=issues,
+                source="large.csv",
+                row_count=1_000_000_000,
+                column_count=100,
+            )
         )
-
-        html = generate_html_report(report)
 
         assert "<!DOCTYPE html>" in html
         # Numbers should be formatted with commas
@@ -548,14 +582,14 @@ class TestEdgeCases:
                 details="Ümläut and émojis 🎉",
             ),
         ]
-        report = Report(
-            issues=issues,
-            source="데이터.csv",
-            row_count=100,
-            column_count=5,
+        html = generate_html_report(
+            _build_run_result(
+                issues=issues,
+                source="데이터.csv",
+                row_count=100,
+                column_count=5,
+            )
         )
-
-        html = generate_html_report(report)
 
         assert "名前" in html
         assert "유효성_검사" in html
@@ -591,13 +625,13 @@ class TestEdgeCases:
                 details="Plain text password detected",
             ),
         ]
-        report = Report(
-            issues=issues,
-            source="sensitive.csv",
-            row_count=100,
-            column_count=5,
+        html = generate_html_report(
+            _build_run_result(
+                issues=issues,
+                source="sensitive.csv",
+                row_count=100,
+                column_count=5,
+            )
         )
-
-        html = generate_html_report(report)
 
         assert "critical" in html.lower()

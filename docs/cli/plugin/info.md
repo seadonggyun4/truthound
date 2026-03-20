@@ -22,7 +22,7 @@ truthound plugins info <NAME> [OPTIONS]
 
 ## Description
 
-The `plugin info` command displays detailed information about a plugin:
+The `plugins info` command displays detailed information about a plugin:
 
 1. **Shows** name, version, type, and state
 2. **Displays** description, author, and homepage
@@ -136,9 +136,9 @@ truthound plugins info my-validator --json > plugin-info.json
 
 ## Related Commands
 
-- [`plugin list`](list.md) - List all plugins
-- [`plugin load`](load.md) - Load a plugin
-- [`plugin enable`](enable.md) - Enable a plugin
+- [`plugins list`](list.md) - List all plugins
+- [`plugins load`](load.md) - Load a plugin
+- [`plugins enable`](enable.md) - Enable a plugin
 
 ## See Also
 

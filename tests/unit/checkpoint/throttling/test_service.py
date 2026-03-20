@@ -29,7 +29,7 @@ class MockCheckpointResult:
     checkpoint_name: str = "test_checkpoint"
     status: str = "failure"
     data_asset: str | None = "orders"
-    validation_result: MagicMock | None = field(default_factory=lambda: MagicMock(issues=[]))
+    validation_view: MagicMock | None = field(default_factory=lambda: MagicMock(issues=[]))
 
 
 class TestNotificationThrottler:

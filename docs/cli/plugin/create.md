@@ -24,7 +24,7 @@ truthound plugins create <NAME> [OPTIONS]
 
 ## Description
 
-The `plugin create` command generates a new plugin template:
+The `plugins create` command generates a new plugin template:
 
 1. **Creates** package structure with `pyproject.toml`
 2. **Generates** plugin implementation file
@@ -265,8 +265,8 @@ truthound plugins create enterprise-suite \
 
 ## Related Commands
 
-- [`plugin list`](list.md) - List plugins
-- [`plugin load`](load.md) - Load plugin
+- [`plugins list`](list.md) - List plugins
+- [`plugins load`](load.md) - Load plugin
 - [`new plugin`](../scaffolding/new-plugin.md) - Alternative scaffolding command
 
 ## See Also

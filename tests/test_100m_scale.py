@@ -36,6 +36,7 @@ import polars as pl
 import pytest
 
 import truthound as th
+from truthound.drift import compare
 
 
 class TestHundredMillionRows:
@@ -399,7 +400,7 @@ class TestScalableValidators:
         print("\nRunning drift detection...")
         drift_start = time.time()
 
-        drift_result = th.compare(baseline, current)
+        drift_result = compare(baseline, current)
 
         drift_time = time.time() - drift_start
 

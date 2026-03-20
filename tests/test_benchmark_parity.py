@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import builtins
 import json
 from datetime import datetime
 from pathlib import Path
@@ -24,6 +25,7 @@ from truthound.benchmark import (
     write_environment_manifest,
     write_release_summary,
 )
+from truthound.benchmark._parity_worker import _PeakRSSMonitor
 from truthound.benchmark.base import EnvironmentInfo
 from truthound.benchmark.workloads import workload_root
 
@@ -92,6 +94,42 @@ def test_workload_root_prefers_repo_benchmarks_from_cwd(monkeypatch: pytest.Monk
 
     assert root.name == "workloads"
     assert (root / "local-null.json").exists()
+
+
+@pytest.mark.contract
+@pytest.mark.parametrize(
+    ("platform_name", "ru_maxrss", "expected_bytes"),
+    (
+        ("darwin", 4096, 4096),
+        ("linux", 4096, 4096 * 1024),
+    ),
+)
+def test_peak_rss_monitor_resource_fallback_respects_platform_units(
+    monkeypatch: pytest.MonkeyPatch,
+    platform_name: str,
+    ru_maxrss: int,
+    expected_bytes: int,
+):
+    import resource
+
+    original_import = builtins.__import__
+
+    def fake_import(name, globals=None, locals=None, fromlist=(), level=0):
+        if name == "psutil":
+            raise ImportError("psutil intentionally unavailable")
+        return original_import(name, globals, locals, fromlist, level)
+
+    class FakeUsage:
+        def __init__(self, value: int) -> None:
+            self.ru_maxrss = value
+
+    monkeypatch.setattr(builtins, "__import__", fake_import)
+    monkeypatch.setattr(resource, "getrusage", lambda _: FakeUsage(ru_maxrss))
+    monkeypatch.setattr("truthound.benchmark._parity_worker.sys.platform", platform_name)
+
+    monitor = _PeakRSSMonitor()
+
+    assert monitor._rss_bytes() == expected_bytes
 
 
 @pytest.mark.contract

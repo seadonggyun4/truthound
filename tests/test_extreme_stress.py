@@ -17,6 +17,7 @@ import polars as pl
 import pytest
 
 import truthound as th
+from truthound.drift import compare
 
 
 class TestExtremeScale:
@@ -287,13 +288,13 @@ class TestDriftAtScale:
 
         # Without sampling
         start = time.time()
-        drift_full = th.compare(baseline, current)
+        drift_full = compare(baseline, current)
         full_time = time.time() - start
         print(f"Full comparison: {full_time:.2f}s")
 
         # With sampling
         start = time.time()
-        drift_sampled = th.compare(baseline, current, sample_size=50000)
+        drift_sampled = compare(baseline, current, sample_size=50000)
         sampled_time = time.time() - start
         print(f"Sampled comparison (50k): {sampled_time:.2f}s")
 
@@ -327,7 +328,7 @@ class TestDriftAtScale:
         })
 
         start = time.time()
-        drift = th.compare(baseline, current, sample_size=100000)
+        drift = compare(baseline, current, sample_size=100000)
         elapsed = time.time() - start
         print(f"Drift detection: {elapsed:.2f}s")
 

@@ -118,4 +118,4 @@ This is the supported path for long-term compatibility in 3.0.
 
 - [Architecture](../concepts/architecture.md)
 - [Zero-Config Context](../concepts/zero-config.md)
-- [Release Notes: Truthound 3.0 RC1](../releases/truthound-3.0-rc1.md)
+- [Release Notes: Truthound 3.0](../releases/truthound-3.0.md)

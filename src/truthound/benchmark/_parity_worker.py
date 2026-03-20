@@ -8,6 +8,7 @@ import json
 import os
 import sqlite3
 import statistics
+import sys
 import threading
 import time
 from dataclasses import dataclass
@@ -66,7 +67,10 @@ class _PeakRSSMonitor:
                 import resource
 
                 usage = resource.getrusage(resource.RUSAGE_SELF)
-                return int(usage.ru_maxrss) * 1024
+                max_rss = int(usage.ru_maxrss)
+                if sys.platform == "darwin":
+                    return max_rss
+                return max_rss * 1024
             except Exception:
                 return 0
 

@@ -37,19 +37,19 @@ def render_docs_summary(
     primary_blocker = release_blockers.get("primary")
 
     lines = [
-        "# Latest Benchmark Summary",
+        "# Latest Verified Benchmark Summary",
         "",
         "## Status",
         "",
         (
-            "The latest release-grade artifact set cleared the fixed-runner 3.0 GA benchmark gate."
+            "The latest release-grade artifact set passed fixed-runner benchmark verification."
             if release_claim_ready
-            else "The latest recorded artifact set did not clear the full 3.0 GA benchmark gate."
+            else "The latest recorded artifact set did not pass the full fixed-runner benchmark verification."
         ),
         "",
         f"- Suite: `{result.suite_name}`",
         f"- Passed: `{'yes' if not result.has_blocking_failures else 'no'}`",
-        f"- Official claim eligible: `{'yes' if release_claim_ready else 'no'}`",
+        f"- Official benchmark artifact set: `{'ready' if release_claim_ready else 'not ready'}`",
     ]
     if primary_blocker:
         lines.append(f"- Primary blocker: `{primary_blocker}`")
@@ -121,7 +121,7 @@ def render_docs_summary(
             "",
             "- [Performance and Benchmarks](../guides/performance.md)",
             "- [Benchmark Methodology](../guides/benchmark-methodology.md)",
-            "- [GX Parity Gate](../guides/gx-parity.md)",
+            "- [Great Expectations Comparison](../guides/gx-parity.md)",
         ]
     )
     return "\n".join(lines) + "\n"

@@ -16,7 +16,7 @@ truthound plugins disable <NAME>
 
 ## Description
 
-The `plugin disable` command deactivates an active plugin:
+The `plugins disable` command deactivates an active plugin:
 
 1. **Deactivates** the plugin
 2. **Keeps** it loaded but inactive
@@ -156,9 +156,9 @@ Error disabling plugin: Plugin 'unknown-plugin' not found.
 
 ## Related Commands
 
-- [`plugin enable`](enable.md) - Enable a plugin
-- [`plugin unload`](unload.md) - Unload a plugin
-- [`plugin list`](list.md) - List all plugins
+- [`plugins enable`](enable.md) - Enable a plugin
+- [`plugins unload`](unload.md) - Unload a plugin
+- [`plugins list`](list.md) - List all plugins
 
 ## See Also
 

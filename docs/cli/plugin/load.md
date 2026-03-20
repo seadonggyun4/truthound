@@ -22,7 +22,7 @@ truthound plugins load <NAME> [OPTIONS]
 
 ## Description
 
-The `plugin load` command loads a discovered plugin:
+The `plugins load` command loads a discovered plugin:
 
 1. **Loads** the plugin into memory
 2. **Activates** the plugin by default
@@ -153,9 +153,9 @@ Error: Plugin 'my-validator' requires Truthound >=2.0.0 (current: 1.0.0).
 
 ## Related Commands
 
-- [`plugin list`](list.md) - List all plugins
-- [`plugin unload`](unload.md) - Unload a plugin
-- [`plugin enable`](enable.md) - Enable a plugin
+- [`plugins list`](list.md) - List all plugins
+- [`plugins unload`](unload.md) - Unload a plugin
+- [`plugins enable`](enable.md) - Enable a plugin
 
 ## See Also
 

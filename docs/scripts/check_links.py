@@ -34,6 +34,16 @@ def _mkdocs_paths(mkdocs_file: Path) -> list[Path]:
     return [docs_dir / relative for relative in nav_paths]
 
 
+def _resolve_docs_root(mkdocs_file: Path | None, repo_root: Path) -> Path:
+    if mkdocs_file is None:
+        return (repo_root / "docs").resolve()
+
+    raw_text = mkdocs_file.read_text(encoding="utf-8")
+    sanitized = re.sub(r"!!python/name:[^\s]+", "python-ref", raw_text)
+    config = yaml.safe_load(sanitized) or {}
+    return (mkdocs_file.parent / config.get("docs_dir", "docs")).resolve()
+
+
 def _collect_markdown_files(paths: list[Path], mkdocs_file: Path | None) -> list[Path]:
     files: set[Path] = set()
     for path in paths:
@@ -51,10 +61,7 @@ def _candidate_targets(base_dir: Path, target: str, repo_root: Path) -> list[Pat
     if not target:
         return []
 
-    if target.startswith("/"):
-        raw = repo_root / target.lstrip("/")
-    else:
-        raw = base_dir / target
+    raw = repo_root / target.lstrip("/") if target.startswith("/") else base_dir / target
 
     candidates = [raw]
     if raw.suffix == "":
@@ -123,9 +130,9 @@ def main() -> int:
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parents[2]
-    docs_root = (repo_root / "docs").resolve()
-    input_paths = [(repo_root / path).resolve() for path in args.paths]
     mkdocs_file = (repo_root / args.mkdocs).resolve() if args.mkdocs else None
+    docs_root = _resolve_docs_root(mkdocs_file, repo_root)
+    input_paths = [(repo_root / path).resolve() for path in args.paths]
 
     files = _collect_markdown_files(input_paths, mkdocs_file)
     failures: list[str] = []

@@ -55,7 +55,7 @@ def mock_checkpoint_result() -> MagicMock:
     mock_result.run_time = datetime(2025, 12, 27, 10, 30, 0)
     mock_result.duration_ms = 1234.56
     mock_result.data_asset = "customers.csv"
-    mock_result.validation_result = mock_validation
+    mock_result.validation_view = mock_validation
     mock_result.status = MagicMock(value="failure")
 
     return mock_result
@@ -82,7 +82,7 @@ def mock_success_result() -> MagicMock:
     mock_result.run_time = datetime(2025, 12, 27, 10, 30, 0)
     mock_result.duration_ms = 500.0
     mock_result.data_asset = "customers.csv"
-    mock_result.validation_result = mock_validation
+    mock_result.validation_view = mock_validation
     mock_result.status = MagicMock(value="success")
 
     return mock_result
@@ -109,7 +109,7 @@ def mock_warning_result() -> MagicMock:
     mock_result.run_time = datetime(2025, 12, 27, 10, 30, 0)
     mock_result.duration_ms = 600.0
     mock_result.data_asset = "customers.csv"
-    mock_result.validation_result = mock_validation
+    mock_result.validation_view = mock_validation
     mock_result.status = MagicMock(value="warning")
 
     return mock_result
@@ -1199,8 +1199,8 @@ class TestEdgeCases:
 
         assert result.status == ActionStatus.SUCCESS
 
-    def test_no_validation_result(self, mock_http_client):
-        """Test handling of missing validation result."""
+    def test_no_validation_view(self, mock_http_client):
+        """Test handling of missing canonical validation view."""
         from truthound.checkpoint.actions.opsgenie import OpsGenieAction
         from truthound.checkpoint.actions.base import ActionStatus
 
@@ -1209,7 +1209,7 @@ class TestEdgeCases:
         mock_result.run_id = "run123"
         mock_result.run_time = datetime.now()
         mock_result.data_asset = "test.csv"
-        mock_result.validation_result = None
+        mock_result.validation_view = None
         mock_result.status = MagicMock(value="failure")
 
         action = OpsGenieAction(api_key="test-key", client=mock_http_client)
@@ -1231,7 +1231,7 @@ class TestEdgeCases:
         mock_result.run_id = "run123"
         mock_result.run_time = datetime.now()
         mock_result.data_asset = "test.csv"
-        mock_result.validation_result = mock_validation
+        mock_result.validation_view = mock_validation
         mock_result.status = MagicMock(value="failure")
 
         action = OpsGenieAction(api_key="test-key", client=mock_http_client)
@@ -1249,7 +1249,7 @@ class TestEdgeCases:
         mock_result.run_id = "run123"
         mock_result.run_time = datetime.now()
         mock_result.data_asset = "test<file>.csv"
-        mock_result.validation_result = None
+        mock_result.validation_view = None
         mock_result.status = MagicMock(value="failure")
 
         action = OpsGenieAction(api_key="test-key", client=mock_http_client)

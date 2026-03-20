@@ -764,11 +764,12 @@ class TestIntegrationPhase5:
     def test_report_json_serializable(self, sample_df):
         from truthound.api import check
 
-        report = check(sample_df, validators=["null"])
-        j = report.to_json()
+        run_result = check(sample_df, validators=["null"])
+        j = run_result.to_json()
         parsed = json.loads(j)
         assert "issues" in parsed
-        assert "success" in parsed
+        assert "checks" in parsed
+        assert "execution_mode" in parsed
 
     def test_check_result_format_propagation(self, sample_df):
         from truthound.api import check

@@ -112,13 +112,13 @@ class TestRouteContext:
         mock_result.error = None
         mock_result.metadata = {"tags": {"env": "staging"}}
 
-        # Mock validation result
-        mock_result.validation_result.statistics.total_issues = 10
-        mock_result.validation_result.statistics.critical_issues = 0
-        mock_result.validation_result.statistics.high_issues = 3
-        mock_result.validation_result.statistics.medium_issues = 5
-        mock_result.validation_result.statistics.low_issues = 2
-        mock_result.validation_result.statistics.pass_rate = 85.0
+        # Mock validation view
+        mock_result.validation_view.statistics.total_issues = 10
+        mock_result.validation_view.statistics.critical_issues = 0
+        mock_result.validation_view.statistics.high_issues = 3
+        mock_result.validation_view.statistics.medium_issues = 5
+        mock_result.validation_view.statistics.low_issues = 2
+        mock_result.validation_view.statistics.pass_rate = 85.0
 
         ctx = RouteContext.from_checkpoint_result(mock_result)
 
@@ -129,7 +129,7 @@ class TestRouteContext:
         assert ctx.pass_rate == 85.0
 
     def test_from_checkpoint_result_no_validation(self):
-        """Test context creation when validation_result is None."""
+        """Test context creation when validation_view is None."""
         mock_result = MagicMock()
         mock_result.checkpoint_name = "test_cp"
         mock_result.run_id = "run_789"
@@ -139,7 +139,7 @@ class TestRouteContext:
         mock_result.duration_ms = 50.0
         mock_result.error = "Connection failed"
         mock_result.metadata = {}
-        mock_result.validation_result = None
+        mock_result.validation_view = None
 
         ctx = RouteContext.from_checkpoint_result(mock_result)
 
@@ -385,12 +385,12 @@ class TestActionRouter:
         mock_cp_result.duration_ms = 100
         mock_cp_result.error = None
         mock_cp_result.metadata = ctx.metadata
-        mock_cp_result.validation_result.statistics.total_issues = 5
-        mock_cp_result.validation_result.statistics.critical_issues = 1
-        mock_cp_result.validation_result.statistics.high_issues = 2
-        mock_cp_result.validation_result.statistics.medium_issues = 1
-        mock_cp_result.validation_result.statistics.low_issues = 1
-        mock_cp_result.validation_result.statistics.pass_rate = 90.0
+        mock_cp_result.validation_view.statistics.total_issues = 5
+        mock_cp_result.validation_view.statistics.critical_issues = 1
+        mock_cp_result.validation_view.statistics.high_issues = 2
+        mock_cp_result.validation_view.statistics.medium_issues = 1
+        mock_cp_result.validation_view.statistics.low_issues = 1
+        mock_cp_result.validation_view.statistics.pass_rate = 90.0
 
         result = router.route(mock_cp_result)
 
@@ -415,7 +415,7 @@ class TestActionRouter:
         mock_cp_result.duration_ms = 100
         mock_cp_result.error = None
         mock_cp_result.metadata = ctx.metadata
-        mock_cp_result.validation_result = None
+        mock_cp_result.validation_view = None
 
         result = router.route(mock_cp_result)
 
@@ -439,7 +439,7 @@ class TestActionRouter:
         mock_cp_result.duration_ms = 100
         mock_cp_result.error = None
         mock_cp_result.metadata = {}
-        mock_cp_result.validation_result = None
+        mock_cp_result.validation_view = None
 
         result = router.route(mock_cp_result, execute_actions=False)
 

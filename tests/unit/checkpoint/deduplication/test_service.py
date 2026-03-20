@@ -46,7 +46,7 @@ class MockCheckpointResult:
     status: str
     run_id: str = "test-run-id"
     data_asset: str = "test_asset"
-    validation_result: MockValidationResult | None = None
+    validation_view: MockValidationResult | None = None
     metadata: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
@@ -195,7 +195,7 @@ class TestNotificationDeduplicator:
         result = MockCheckpointResult(
             checkpoint_name="test_checkpoint",
             status="failure",
-            validation_result=MockValidationResult(
+            validation_view=MockValidationResult(
                 issues=[MockIssue("NullValidator", "high")]
             ),
         )
@@ -219,14 +219,14 @@ class TestNotificationDeduplicator:
         result_high = MockCheckpointResult(
             checkpoint_name="test_checkpoint",
             status="failure",
-            validation_result=MockValidationResult(
+            validation_view=MockValidationResult(
                 issues=[MockIssue("NullValidator", "high")]
             ),
         )
         result_low = MockCheckpointResult(
             checkpoint_name="test_checkpoint",
             status="failure",
-            validation_result=MockValidationResult(
+            validation_view=MockValidationResult(
                 issues=[MockIssue("NullValidator", "low")]
             ),
         )
@@ -250,14 +250,14 @@ class TestNotificationDeduplicator:
         result_null = MockCheckpointResult(
             checkpoint_name="test_checkpoint",
             status="failure",
-            validation_result=MockValidationResult(
+            validation_view=MockValidationResult(
                 issues=[MockIssue("NullValidator", "high")]
             ),
         )
         result_range = MockCheckpointResult(
             checkpoint_name="test_checkpoint",
             status="failure",
-            validation_result=MockValidationResult(
+            validation_view=MockValidationResult(
                 issues=[MockIssue("RangeValidator", "high")]
             ),
         )

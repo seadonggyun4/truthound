@@ -7,11 +7,10 @@ from truthound.types import ResultFormat, Severity
 from truthound.validators.base import ValidationIssue
 
 
-def test_check_attaches_validation_run_result():
-    report = th.check({'name': ['Alice', None], 'age': [1, 2]}, validators=['null'])
+def test_check_returns_validation_run_result():
+    run = th.check({'name': ['Alice', None], 'age': [1, 2]}, validators=['null'])
 
-    assert hasattr(report, 'validation_run')
-    run = report.validation_run
+    assert isinstance(run, ValidationRunResult)
     assert run.source == 'dict'
     assert run.execution_mode in {'sequential', 'parallel', 'pushdown'}
     assert any(check.name == 'null' for check in run.checks)
@@ -107,10 +106,14 @@ def test_legacy_check_facade_matches_core_runtime():
     )
 
     assert actual == expected
-    attached = report.validation_run.to_dict()
+    attached = report.to_dict()
     expected_run = run_result.to_dict()
     attached.pop('run_id', None)
     attached.pop('run_time', None)
     expected_run.pop('run_id', None)
     expected_run.pop('run_time', None)
+    expected_metadata = expected_run.pop('metadata', {})
+    attached_metadata = attached.pop('metadata', {})
     assert attached == expected_run
+    for key, value in expected_metadata.items():
+        assert attached_metadata.get(key) == value

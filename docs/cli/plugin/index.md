@@ -6,13 +6,13 @@ Plugin management commands for discovering, loading, and managing Truthound plug
 
 | Command | Description | Primary Use Case |
 |---------|-------------|------------------|
-| [`plugin list`](list.md) | List discovered plugins | Discovery |
-| [`plugin info`](info.md) | Show plugin details | Inspection |
-| [`plugin load`](load.md) | Load a plugin | Activation |
-| [`plugin unload`](unload.md) | Unload a plugin | Cleanup |
-| [`plugin enable`](enable.md) | Enable a plugin | Activation |
-| [`plugin disable`](disable.md) | Disable a plugin | Deactivation |
-| [`plugin create`](create.md) | Create plugin template | Development |
+| [`plugins list`](list.md) | List discovered plugins | Discovery |
+| [`plugins info`](info.md) | Show plugin details | Inspection |
+| [`plugins load`](load.md) | Load a plugin | Activation |
+| [`plugins unload`](unload.md) | Unload a plugin | Cleanup |
+| [`plugins enable`](enable.md) | Enable a plugin | Activation |
+| [`plugins disable`](disable.md) | Disable a plugin | Deactivation |
+| [`plugins create`](create.md) | Create plugin template | Development |
 
 ## Plugin Types
 
@@ -176,13 +176,13 @@ truthound plugins create company-validators \
 
 ## Command Reference
 
-- [plugin list](list.md) - List discovered plugins
-- [plugin info](info.md) - Show plugin details
-- [plugin load](load.md) - Load a plugin
-- [plugin unload](unload.md) - Unload a plugin
-- [plugin enable](enable.md) - Enable a plugin
-- [plugin disable](disable.md) - Disable a plugin
-- [plugin create](create.md) - Create plugin template
+- [plugins list](list.md) - List discovered plugins
+- [plugins info](info.md) - Show plugin details
+- [plugins load](load.md) - Load a plugin
+- [plugins unload](unload.md) - Unload a plugin
+- [plugins enable](enable.md) - Enable a plugin
+- [plugins disable](disable.md) - Disable a plugin
+- [plugins create](create.md) - Create plugin template
 
 ## See Also
 

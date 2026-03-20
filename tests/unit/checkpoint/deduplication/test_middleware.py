@@ -51,7 +51,7 @@ class MockCheckpointResult:
     status: str
     run_id: str = "test-run-id"
     data_asset: str = "test_asset"
-    validation_result: MockValidationResult | None = None
+    validation_view: MockValidationResult | None = None
     metadata: dict[str, Any] | None = None
 
     def __post_init__(self) -> None:
@@ -414,7 +414,7 @@ class TestIntegration:
         result = MockCheckpointResult(
             checkpoint_name="production_data_check",
             status="failure",
-            validation_result=MockValidationResult(
+            validation_view=MockValidationResult(
                 issues=[MockIssue("NullValidator", "high")]
             ),
         )
@@ -433,7 +433,7 @@ class TestIntegration:
         different_result = MockCheckpointResult(
             checkpoint_name="staging_data_check",
             status="failure",
-            validation_result=MockValidationResult(
+            validation_view=MockValidationResult(
                 issues=[MockIssue("NullValidator", "high")]
             ),
         )

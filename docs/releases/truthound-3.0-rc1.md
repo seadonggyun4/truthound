@@ -1,8 +1,10 @@
 # Truthound 3.0 RC1 Release Notes
 
+> Historical release candidate. For the current release summary, use [Truthound 3.0 Release Notes](truthound-3.0.md).
+
 ## Highlights
 
-Truthound 3.0 RC1 is the first release candidate for the hard cutoff from the 2.x compatibility era.
+Truthound 3.0 RC1 was the first release candidate for the hard cutoff from the 2.x compatibility era.
 
 Key changes:
 
@@ -45,4 +47,4 @@ Then review the detailed [Migration Guide](../guides/migration-3.0.md).
 
 ## Status
 
-This is a release candidate. The remaining gate before GA is production benchmark and parity validation against the 3.0 cutoff targets.
+This document is kept as release history. The current release line is covered by [Truthound 3.0 Release Notes](truthound-3.0.md) and the [Latest Verified Benchmark Summary](latest-benchmark-summary.md).

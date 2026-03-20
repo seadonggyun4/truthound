@@ -1,18 +1,18 @@
-# Latest Benchmark Summary
+# Latest Verified Benchmark Summary
 
 <div align="center">
   <img width="280" alt="Truthound Icon Banner" src="../../assets/Truthound_icon_banner.png" />
 </div>
 
-> Truthound 3.0 cleared the fixed-runner benchmark gate with measured confidence: it outperformed GX across every comparable release-grade workload in this artifact set while preserving correctness parity.
+> Truthound 3.0 cleared fixed-runner benchmark verification with measured confidence: it outperformed Great Expectations across every comparable release-grade workload in this artifact set while preserving correctness parity.
 
 ## Status
 
-The latest release-grade artifact set cleared the fixed-runner 3.0 GA benchmark gate.
+The latest release-grade artifact set passed fixed-runner benchmark verification and is suitable for official benchmark comparisons.
 
 - Suite: `release-ga`
 - Passed: `yes`
-- Official claim eligible: `yes`
+- Official benchmark artifact set: `ready`
 
 ## Artifact Links
 
@@ -83,4 +83,4 @@ The latest release-grade artifact set cleared the fixed-runner 3.0 GA benchmark 
 
 - [Performance and Benchmarks](../guides/performance.md)
 - [Benchmark Methodology](../guides/benchmark-methodology.md)
-- [GX Parity Gate](../guides/gx-parity.md)
+- [Great Expectations Comparison](../guides/gx-parity.md)

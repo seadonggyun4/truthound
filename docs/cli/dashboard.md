@@ -250,5 +250,5 @@ truthound dashboard \
 
 ## See Also
 
-- [Dashboard Guide](../dashboard/index.md)
+- [Truthound Dashboard project](https://github.com/seadonggyun4/truthound-dashboard)
 - [Data Docs Guide](../guides/datadocs.md)

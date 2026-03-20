@@ -19,6 +19,7 @@ import polars as pl
 import pytest
 
 import truthound as th
+from truthound.drift import compare
 
 
 class TestEdgeCases:
@@ -420,7 +421,7 @@ class TestDriftDetection:
             "value": [random.gauss(105, 10) for _ in range(1000)],
         })
 
-        drift = th.compare(baseline, current)
+        drift = compare(baseline, current)
         assert drift is not None
         # Should detect some drift
 
@@ -435,7 +436,7 @@ class TestDriftDetection:
             "value": [random.gauss(500, 50) for _ in range(1000)],
         })
 
-        drift = th.compare(baseline, current)
+        drift = compare(baseline, current)
         assert drift.has_drift
         assert drift.has_high_drift
 
@@ -450,7 +451,7 @@ class TestDriftDetection:
             "category": random.choices(["A", "B", "C", "D"], weights=[20, 20, 30, 30], k=1000),
         })
 
-        drift = th.compare(baseline, current)
+        drift = compare(baseline, current)
         assert drift.has_drift
 
     def test_new_category_detection(self):
@@ -463,7 +464,7 @@ class TestDriftDetection:
             "status": ["active", "inactive", "pending", "suspended", "deleted"] * 60,
         })
 
-        drift = th.compare(baseline, current)
+        drift = compare(baseline, current)
         assert drift.has_drift
 
     def test_multi_column_drift(self):
@@ -480,7 +481,7 @@ class TestDriftDetection:
             "stable": list(range(1000)),  # No change
         })
 
-        drift = th.compare(baseline, current)
+        drift = compare(baseline, current)
         drifted = drift.get_drifted_columns()
 
         assert "numeric" in drifted
@@ -555,7 +556,7 @@ class TestLargeDatasets:
         })
 
         start = time.time()
-        drift = th.compare(baseline, current, sample_size=10000)
+        drift = compare(baseline, current, sample_size=10000)
         elapsed = time.time() - start
 
         print(f"\nDrift with sampling: {elapsed:.2f}s")

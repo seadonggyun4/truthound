@@ -36,14 +36,14 @@ class MockCheckpointResult:
         self.status = Mock()
         self.status.value = status_value
 
-        self.validation_result = Mock()
-        self.validation_result.statistics = Mock()
-        self.validation_result.statistics.total_issues = total_issues
-        self.validation_result.statistics.critical_issues = 0
-        self.validation_result.statistics.high_issues = 0
-        self.validation_result.statistics.medium_issues = 0
-        self.validation_result.statistics.low_issues = total_issues
-        self.validation_result.statistics.pass_rate = pass_rate
+        self.validation_view = Mock()
+        self.validation_view.statistics = Mock()
+        self.validation_view.statistics.total_issues = total_issues
+        self.validation_view.statistics.critical_issues = 0
+        self.validation_view.statistics.high_issues = 0
+        self.validation_view.statistics.medium_issues = 0
+        self.validation_view.statistics.low_issues = total_issues
+        self.validation_view.statistics.pass_rate = pass_rate
 
 
 class TestDiscordNotification:

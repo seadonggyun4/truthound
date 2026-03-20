@@ -3,7 +3,7 @@
 import polars as pl
 import pytest
 
-import truthound as th
+from truthound.drift import compare
 from truthound.drift.detectors import (
     AndersonDarlingDetector,
     BhattacharyyaDetector,
@@ -140,13 +140,13 @@ class TestJensenShannonDetector:
 
 
 class TestCompare:
-    """Tests for th.compare() function."""
+    """Tests for truthound.drift.compare()."""
 
     def test_compare_identical_data(self):
         """Test comparing identical datasets."""
         data = {"value": [1, 2, 3, 4, 5], "category": ["a", "b", "c", "a", "b"]}
 
-        report = th.compare(data, data)
+        report = compare(data, data)
 
         assert not report.has_drift
         assert len(report.get_drifted_columns()) == 0
@@ -156,7 +156,7 @@ class TestCompare:
         baseline = {"value": list(range(100))}
         current = {"value": list(range(500, 600))}
 
-        report = th.compare(baseline, current)
+        report = compare(baseline, current)
 
         assert report.has_drift
         assert "value" in report.get_drifted_columns()
@@ -166,7 +166,7 @@ class TestCompare:
         baseline = {"status": ["active"] * 50 + ["inactive"] * 50}
         current = {"status": ["active"] * 10 + ["inactive"] * 90}
 
-        report = th.compare(baseline, current)
+        report = compare(baseline, current)
 
         # Should detect the distribution shift
         assert len(report.columns) == 1
@@ -176,7 +176,7 @@ class TestCompare:
         baseline = {"a": [1, 2, 3], "b": [4, 5, 6], "c": [7, 8, 9]}
         current = {"a": [100, 200, 300], "b": [4, 5, 6], "c": [700, 800, 900]}
 
-        report = th.compare(baseline, current, columns=["a", "b"])
+        report = compare(baseline, current, columns=["a", "b"])
 
         assert len(report.columns) == 2
         column_names = [c.column for c in report.columns]
@@ -189,8 +189,8 @@ class TestCompare:
         baseline = {"value": list(range(100))}
         current = {"value": list(range(50, 150))}
 
-        report_ks = th.compare(baseline, current, method="ks")
-        report_psi = th.compare(baseline, current, method="psi")
+        report_ks = compare(baseline, current, method="ks")
+        report_psi = compare(baseline, current, method="psi")
 
         # Both should have analyzed the column
         assert len(report_ks.columns) == 1
@@ -206,9 +206,9 @@ class TestCompare:
         current = {"value": list(range(10, 110))}
 
         # Loose threshold
-        report_loose = th.compare(baseline, current, method="psi", threshold=0.5)
+        report_loose = compare(baseline, current, method="psi", threshold=0.5)
         # Strict threshold
-        report_strict = th.compare(baseline, current, method="psi", threshold=0.01)
+        report_strict = compare(baseline, current, method="psi", threshold=0.01)
 
         # Strict threshold more likely to detect drift
         assert report_strict.columns[0].result.threshold < report_loose.columns[0].result.threshold
@@ -218,7 +218,7 @@ class TestCompare:
         baseline = {"value": [1, 2, 3, 4, 5]}
         current = {"value": [10, 20, 30, 40, 50]}
 
-        report = th.compare(baseline, current)
+        report = compare(baseline, current)
         json_str = report.to_json()
 
         import json
@@ -238,7 +238,7 @@ class TestDriftReport:
         baseline = {"value": list(range(100))}
         current = {"value": list(range(500, 600))}
 
-        report = th.compare(baseline, current)
+        report = compare(baseline, current)
 
         assert report.has_drift is True
 
@@ -253,7 +253,7 @@ class TestDriftReport:
             "drifted": list(range(500, 600)),
         }
 
-        report = th.compare(baseline, current)
+        report = compare(baseline, current)
         drifted = report.get_drifted_columns()
 
         assert "drifted" in drifted
@@ -268,7 +268,7 @@ class TestSampling:
         current = {"value": list(range(5000, 15000))}
 
         # Compare with sampling
-        report = th.compare(baseline, current, sample_size=1000)
+        report = compare(baseline, current, sample_size=1000)
 
         assert len(report.columns) == 1
         # Should still detect drift even with sampling
@@ -279,8 +279,8 @@ class TestSampling:
         baseline = {"value": list(range(10000))}
         current = {"value": list(range(5000, 15000))}
 
-        report1 = th.compare(baseline, current, sample_size=1000)
-        report2 = th.compare(baseline, current, sample_size=1000)
+        report1 = compare(baseline, current, sample_size=1000)
+        report2 = compare(baseline, current, sample_size=1000)
 
         # Same sampling should give same results
         assert report1.columns[0].result.statistic == report2.columns[0].result.statistic
@@ -476,14 +476,14 @@ class TestAndersonDarlingDetector:
 
 
 class TestCompareNewMethods:
-    """Tests for th.compare() with new detection methods."""
+    """Tests for truthound.drift.compare() with new detection methods."""
 
     def test_compare_with_kl_method(self):
         """Test comparison using KL divergence method."""
         baseline = {"value": list(range(100))}
         current = {"value": list(range(50, 150))}
 
-        report = th.compare(baseline, current, method="kl")
+        report = compare(baseline, current, method="kl")
 
         assert len(report.columns) == 1
         assert report.columns[0].result.method == "kl_divergence"
@@ -493,7 +493,7 @@ class TestCompareNewMethods:
         baseline = {"value": list(range(100))}
         current = {"value": list(range(50, 150))}
 
-        report = th.compare(baseline, current, method="wasserstein")
+        report = compare(baseline, current, method="wasserstein")
 
         assert len(report.columns) == 1
         assert report.columns[0].result.method == "wasserstein"
@@ -503,7 +503,7 @@ class TestCompareNewMethods:
         baseline = {"value": list(range(100))}
         current = {"value": list(range(50, 150))}
 
-        report = th.compare(baseline, current, method="cvm")
+        report = compare(baseline, current, method="cvm")
 
         assert len(report.columns) == 1
         assert report.columns[0].result.method == "cramer_von_mises"
@@ -513,7 +513,7 @@ class TestCompareNewMethods:
         baseline = {"value": list(range(100))}
         current = {"value": list(range(50, 150))}
 
-        report = th.compare(baseline, current, method="anderson")
+        report = compare(baseline, current, method="anderson")
 
         assert len(report.columns) == 1
         assert report.columns[0].result.method == "anderson_darling"
@@ -524,7 +524,7 @@ class TestCompareNewMethods:
         current = {"value": [4, 5, 6]}
 
         with pytest.raises(ValueError, match="Unknown comparison method"):
-            th.compare(baseline, current, method="invalid_method")
+            compare(baseline, current, method="invalid_method")
 
     def test_compare_all_methods_on_drifted_data(self):
         """Test all methods can detect significant drift."""
@@ -534,7 +534,7 @@ class TestCompareNewMethods:
         methods = ["ks", "psi", "js", "kl", "wasserstein", "cvm", "anderson"]
 
         for method in methods:
-            report = th.compare(baseline, current, method=method)
+            report = compare(baseline, current, method=method)
             assert report.has_drift, f"Method {method} should detect drift"
 
     def test_compare_all_methods_on_identical_data(self):
@@ -544,7 +544,7 @@ class TestCompareNewMethods:
         methods = ["ks", "psi", "js", "kl", "wasserstein", "cvm", "anderson"]
 
         for method in methods:
-            report = th.compare(data, data, method=method)
+            report = compare(data, data, method=method)
             assert not report.has_drift, f"Method {method} should not detect drift for identical data"
 
 
@@ -864,14 +864,14 @@ class TestMMDDetector:
 
 
 class TestCompareNewDistanceMetrics:
-    """Tests for th.compare() with new distance metrics."""
+    """Tests for truthound.drift.compare() with new distance metrics."""
 
     def test_compare_with_hellinger_method(self):
         """Test comparison using Hellinger distance method."""
         baseline = {"value": list(range(100))}
         current = {"value": list(range(50, 150))}
 
-        report = th.compare(baseline, current, method="hellinger")
+        report = compare(baseline, current, method="hellinger")
 
         assert len(report.columns) == 1
         assert report.columns[0].result.method == "hellinger"
@@ -881,7 +881,7 @@ class TestCompareNewDistanceMetrics:
         baseline = {"value": list(range(100))}
         current = {"value": list(range(50, 150))}
 
-        report = th.compare(baseline, current, method="bhattacharyya")
+        report = compare(baseline, current, method="bhattacharyya")
 
         assert len(report.columns) == 1
         assert report.columns[0].result.method == "bhattacharyya"
@@ -891,7 +891,7 @@ class TestCompareNewDistanceMetrics:
         baseline = {"value": list(range(100))}
         current = {"value": list(range(50, 150))}
 
-        report = th.compare(baseline, current, method="tv")
+        report = compare(baseline, current, method="tv")
 
         assert len(report.columns) == 1
         assert report.columns[0].result.method == "total_variation"
@@ -901,7 +901,7 @@ class TestCompareNewDistanceMetrics:
         baseline = {"value": list(range(100))}
         current = {"value": list(range(50, 150))}
 
-        report = th.compare(baseline, current, method="total_variation")
+        report = compare(baseline, current, method="total_variation")
 
         assert len(report.columns) == 1
         assert report.columns[0].result.method == "total_variation"
@@ -911,7 +911,7 @@ class TestCompareNewDistanceMetrics:
         baseline = {"value": list(range(100))}
         current = {"value": list(range(50, 150))}
 
-        report = th.compare(baseline, current, method="energy")
+        report = compare(baseline, current, method="energy")
 
         assert len(report.columns) == 1
         assert report.columns[0].result.method == "energy"
@@ -921,7 +921,7 @@ class TestCompareNewDistanceMetrics:
         baseline = {"value": list(range(100))}
         current = {"value": list(range(50, 150))}
 
-        report = th.compare(baseline, current, method="mmd")
+        report = compare(baseline, current, method="mmd")
 
         assert len(report.columns) == 1
         assert report.columns[0].result.method == "mmd"
@@ -934,7 +934,7 @@ class TestCompareNewDistanceMetrics:
         methods = ["hellinger", "bhattacharyya", "tv", "energy", "mmd"]
 
         for method in methods:
-            report = th.compare(baseline, current, method=method)
+            report = compare(baseline, current, method=method)
             assert report.has_drift, f"Method {method} should detect drift"
 
     def test_all_new_methods_no_drift_identical_data(self):
@@ -944,7 +944,7 @@ class TestCompareNewDistanceMetrics:
         methods = ["hellinger", "bhattacharyya", "tv", "energy", "mmd"]
 
         for method in methods:
-            report = th.compare(data, data, method=method)
+            report = compare(data, data, method=method)
             assert not report.has_drift, f"Method {method} should not detect drift for identical data"
 
     def test_categorical_methods_on_categorical_data(self):
@@ -956,5 +956,5 @@ class TestCompareNewDistanceMetrics:
         categorical_methods = ["hellinger", "bhattacharyya", "tv"]
 
         for method in categorical_methods:
-            report = th.compare(baseline, current, method=method)
+            report = compare(baseline, current, method=method)
             assert len(report.columns) == 1, f"Method {method} should analyze categorical data"

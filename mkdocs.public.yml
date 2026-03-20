@@ -7,6 +7,8 @@ repo_name: seadonggyun4/Truthound
 repo_url: https://github.com/seadonggyun4/Truthound
 edit_uri: edit/main/docs/
 
+docs_dir: build/public-docs
+
 theme:
   name: material
   language: en
@@ -73,9 +75,6 @@ markdown_extensions:
 
 extra_css:
   - stylesheets/extra.css
-
-exclude_docs: |
-  dashboard/**
 
 nav:
   - Home: index.md

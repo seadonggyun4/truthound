@@ -16,7 +16,7 @@ truthound plugins unload <NAME>
 
 ## Description
 
-The `plugin unload` command unloads a loaded plugin:
+The `plugins unload` command unloads a loaded plugin:
 
 1. **Deactivates** the plugin if active
 2. **Unloads** from memory
@@ -127,9 +127,9 @@ Error unloading plugin: Plugin 'unknown-plugin' not found.
 
 ## Related Commands
 
-- [`plugin load`](load.md) - Load a plugin
-- [`plugin disable`](disable.md) - Disable a plugin
-- [`plugin list`](list.md) - List all plugins
+- [`plugins load`](load.md) - Load a plugin
+- [`plugins disable`](disable.md) - Disable a plugin
+- [`plugins list`](list.md) - List all plugins
 
 ## See Also
 
