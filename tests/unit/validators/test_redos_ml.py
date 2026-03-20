@@ -339,6 +339,7 @@ class TestRuleBasedReDoSModel:
 # =============================================================================
 
 
+@pytest.mark.expensive
 class TestRandomForestReDoSModel:
     """Tests for RandomForestReDoSModel."""
 
@@ -383,6 +384,7 @@ class TestRandomForestReDoSModel:
         assert new_model.is_trained
 
 
+@pytest.mark.expensive
 class TestGradientBoostingReDoSModel:
     """Tests for GradientBoostingReDoSModel."""
 
@@ -395,6 +397,7 @@ class TestGradientBoostingReDoSModel:
         assert isinstance(metrics, ReDoSModelMetrics)
 
 
+@pytest.mark.expensive
 class TestEnsembleReDoSModel:
     """Tests for EnsembleReDoSModel."""
 
@@ -464,6 +467,7 @@ class TestModelFactory:
 # =============================================================================
 
 
+@pytest.mark.expensive
 class TestTrainingPipeline:
     """Tests for TrainingPipeline."""
 
@@ -533,6 +537,7 @@ class TestTrainingPipeline:
 # =============================================================================
 
 
+@pytest.mark.expensive
 class TestModelStorage:
     """Tests for ModelStorage."""
 
@@ -594,6 +599,7 @@ class TestModelStorage:
         assert metadata.version == "2.0.0"
 
 
+@pytest.mark.expensive
 class TestModelMetadata:
     """Tests for ModelMetadata."""
 
@@ -769,6 +775,7 @@ class TestReDoSMLPredictor:
         # Dangerous pattern should be vulnerable
         assert predictor.is_vulnerable(r"(a+)+b", threshold=0.5) is True
 
+    @pytest.mark.expensive
     def test_train(self, sample_patterns):
         """Test training the predictor."""
         predictor = ReDoSMLPredictor()
@@ -781,6 +788,7 @@ class TestReDoSMLPredictor:
         assert predictor.is_trained
         assert result.metrics.accuracy > 0
 
+    @pytest.mark.expensive
     def test_auto_train(self):
         """Test automatic training."""
         predictor = ReDoSMLPredictor()
@@ -789,6 +797,7 @@ class TestReDoSMLPredictor:
         assert predictor.is_trained
         assert result.metrics.accuracy > 0
 
+    @pytest.mark.expensive
     def test_save_and_load(self, sample_patterns, temp_dir):
         """Test predictor persistence."""
         predictor = ReDoSMLPredictor()
@@ -803,6 +812,7 @@ class TestReDoSMLPredictor:
         new_predictor.load(path)
         assert new_predictor.is_trained
 
+    @pytest.mark.expensive
     def test_from_trained(self, sample_patterns, temp_dir):
         """Test loading from class method."""
         predictor = ReDoSMLPredictor()
@@ -816,6 +826,7 @@ class TestReDoSMLPredictor:
         loaded_predictor = ReDoSMLPredictor.from_trained(path)
         assert loaded_predictor.is_trained
 
+    @pytest.mark.expensive
     def test_get_feature_importance(self, sample_patterns):
         """Test feature importance retrieval."""
         predictor = ReDoSMLPredictor()
@@ -828,6 +839,7 @@ class TestReDoSMLPredictor:
         assert "nested_quantifier_count" in importance
 
 
+@pytest.mark.expensive
 class TestPredictorFunctions:
     """Tests for predictor convenience functions."""
 
@@ -860,6 +872,7 @@ class TestPredictorFunctions:
 # =============================================================================
 
 
+@pytest.mark.expensive
 class TestIntegration:
     """Integration tests for the complete ML workflow."""
 
