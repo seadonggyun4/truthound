@@ -299,6 +299,16 @@ def test_tests_pr_workflow_uses_sharded_quality_gate():
     collect_steps = workflow["jobs"]["quality-collect"]["steps"]
     e2e_step = next(step for step in collect_steps if step.get("name") == "Collect e2e nodes")
     assert '[ "$status" -ne 5 ]' in e2e_step["run"]
+    contract_steps = workflow["jobs"]["quality-contract"]["steps"]
+    fault_steps = workflow["jobs"]["quality-fault-e2e"]["steps"]
+    contract_download = next(
+        step for step in contract_steps if step.get("name") == "Download quality shard artifacts"
+    )
+    fault_download = next(
+        step for step in fault_steps if step.get("name") == "Download quality shard artifacts"
+    )
+    assert contract_download["with"]["path"] == "test-artifacts"
+    assert fault_download["with"]["path"] == "test-artifacts"
 
 
 @pytest.mark.contract

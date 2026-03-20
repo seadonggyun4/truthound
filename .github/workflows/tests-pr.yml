@@ -128,7 +128,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: truthound-quality-collect
-          path: .
+          path: test-artifacts
 
       - name: Run contract shard
         run: |
@@ -166,7 +166,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: truthound-quality-collect
-          path: .
+          path: test-artifacts
 
       - name: Run fault and e2e manifest
         run: |
