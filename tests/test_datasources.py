@@ -18,6 +18,7 @@ from truthound.datasources import (
     from_polars,
     from_dict,
     from_file,
+    PandasDataSource,
     PolarsDataSource,
     FileDataSource,
     DictDataSource,
@@ -90,6 +91,31 @@ def temp_json_file(sample_polars_df):
 # =============================================================================
 # PolarsDataSource Tests
 # =============================================================================
+
+
+class TestPandasDataSource:
+    """Tests for PandasDataSource."""
+
+    def test_to_polars_lazyframe_without_pyarrow(self, monkeypatch):
+        """Test PandasDataSource conversion without optional pyarrow."""
+        import pandas as pd
+
+        df = pd.DataFrame({
+            "id": [1, 2, 3],
+            "name": ["Alice", "Bob", "Charlie"],
+        })
+
+        def _raise_pyarrow_import_error(*args, **kwargs):
+            raise ImportError("pyarrow is required for converting a pandas dataframe to Polars")
+
+        monkeypatch.setattr(pl, "from_pandas", _raise_pyarrow_import_error)
+
+        source = PandasDataSource(df)
+        lf = source.to_polars_lazyframe()
+
+        collected = lf.collect()
+        assert collected.shape == (3, 2)
+        assert collected["name"].to_list() == ["Alice", "Bob", "Charlie"]
 
 
 class TestPolarsDataSource:

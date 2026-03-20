@@ -204,6 +204,27 @@ class TestOptimizedPandasDataSource:
         assert len(df) == 5
         assert "id" in df.columns
 
+    def test_to_polars_streaming_without_pyarrow(self, sample_df, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Test streaming conversion falls back when pyarrow is unavailable."""
+        import polars as pl
+
+        original_from_pandas = pl.from_pandas
+
+        def _raise_pyarrow_import_error(*args, **kwargs):
+            raise ImportError("pyarrow is required for converting a pandas dataframe to Polars")
+
+        monkeypatch.setattr(pl, "from_pandas", _raise_pyarrow_import_error)
+        source = OptimizedPandasDataSource(sample_df)
+
+        lf = source.to_polars_streaming()
+        df = lf.collect()
+
+        assert len(df) == 5
+        assert df.columns == ["id", "name", "value"]
+        assert df["name"].to_list() == ["Alice", "Bob", "Charlie", "David", "Eve"]
+
+        monkeypatch.setattr(pl, "from_pandas", original_from_pandas)
+
     def test_to_polars_lazyframe(self, sample_df) -> None:
         """Test standard lazyframe conversion."""
         source = OptimizedPandasDataSource(sample_df)

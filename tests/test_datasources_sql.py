@@ -420,6 +420,24 @@ class TestFromDataFrame:
         assert source.row_count == 3
         assert "id" in source.columns
 
+    def test_from_polars_dataframe_without_pyarrow(self, monkeypatch):
+        """Test creating SQLite from Polars DataFrame without pyarrow."""
+        import polars as pl
+
+        df = pl.DataFrame({
+            "id": [1, 2, 3],
+            "value": ["a", "b", "c"],
+        })
+
+        def _raise_pyarrow_missing(*args, **kwargs):
+            raise ModuleNotFoundError("No module named 'pyarrow'")
+
+        monkeypatch.setattr(pl.DataFrame, "to_pandas", _raise_pyarrow_missing)
+
+        source = SQLiteDataSource.from_dataframe(df, "test_table")
+        assert source.row_count == 3
+        assert source.execute_query("SELECT value FROM test_table ORDER BY id")[0]["value"] == "a"
+
     def test_from_pandas_dataframe(self):
         """Test creating SQLite from Pandas DataFrame."""
         import pandas as pd

@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+from truthound.datasources._polars_compat import polars_to_pandas_frame
 from truthound.datasources.sql.base import (
     BaseSQLDataSource,
     SQLDataSourceConfig,
@@ -266,7 +267,7 @@ class SQLiteDataSource(BaseSQLDataSource):
             import polars as pl
             if isinstance(df, pl.LazyFrame):
                 df = df.collect()
-            pandas_df = df.to_pandas()
+            pandas_df = polars_to_pandas_frame(df)
         elif "pandas" in df_type:
             pandas_df = df
         else:

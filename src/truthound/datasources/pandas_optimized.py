@@ -14,6 +14,7 @@ from truthound.datasources._protocols import (
     ColumnType,
     DataSourceCapability,
 )
+from truthound.datasources._polars_compat import pandas_to_polars_frame
 from truthound.datasources.base import (
     BaseDataSource,
     DataSourceConfig,
@@ -390,8 +391,8 @@ class OptimizedPandasDataSource(BaseDataSource[OptimizedPandasConfig]):
             end = min(start + chunk_size, n_rows)
             chunk = self._df.iloc[start:end]
 
-            # Convert chunk to Polars
-            polars_df = pl.from_pandas(chunk)
+            # Convert chunk to Polars without requiring optional pyarrow.
+            polars_df = pandas_to_polars_frame(chunk)
 
             # Optionally preserve index
             if self._config.preserve_index and chunk.index.name:
@@ -417,7 +418,7 @@ class OptimizedPandasDataSource(BaseDataSource[OptimizedPandasConfig]):
 
         # For small DataFrames, use direct conversion
         if len(self._df) <= self._config.chunk_size:
-            return pl.from_pandas(self._df).lazy()
+            return pandas_to_polars_frame(self._df).lazy()
 
         # Collect chunks and concatenate
         chunks = list(self.iter_polars_chunks())

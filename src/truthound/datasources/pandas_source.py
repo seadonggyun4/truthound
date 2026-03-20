@@ -10,6 +10,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
+from truthound.datasources._polars_compat import pandas_to_polars_frame
 from truthound.datasources._protocols import (
     ColumnType,
     DataSourceCapability,
@@ -169,7 +170,7 @@ class PandasDataSource(BaseDataSource[PandasDataSourceConfig]):
         # Check size limits
         self.check_size_limits()
 
-        return pl.from_pandas(self._df).lazy()
+        return pandas_to_polars_frame(self._df).lazy()
 
     def to_pandas_dataframe(self) -> "pd.DataFrame":
         """Get the underlying DataFrame."""
