@@ -157,6 +157,7 @@ truthound check --connection "sqlite:///warehouse.db" --table users --pushdown
 truthound scan pii.csv
 truthound profile data.csv
 truthound doctor . --migrate-2to3
+truthound doctor . --workspace
 truthound plugins list --json
 ```
 
@@ -194,6 +195,8 @@ If you do nothing except call `th.check(data)`, Truthound will:
 4. synthesize an auto-suite
 5. plan and execute the validation
 6. persist the run and validation docs when persistence is enabled
+
+Use `truthound doctor . --workspace` to verify that the local `.truthound/` layout, indexes, baselines, and persisted run artifacts are still structurally healthy.
 
 ## Plugin Platform
 

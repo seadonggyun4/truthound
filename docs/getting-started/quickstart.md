@@ -87,9 +87,10 @@ The plugin lifecycle is unified behind one `PluginManager`, with `EnterprisePlug
 
 ```bash
 truthound doctor . --migrate-2to3
+truthound doctor . --workspace
 ```
 
-The doctor command finds common 2.x assumptions such as `truthound.compare`, `Report`, `report.validation_run`, and `CheckpointResult.validation_result`.
+The doctor command finds common 2.x assumptions such as `truthound.compare`, `Report`, `report.validation_run`, and `CheckpointResult.validation_result`, and it can also verify that your local `.truthound/` workspace is structurally healthy.
 
 ## Where To Go Next
 

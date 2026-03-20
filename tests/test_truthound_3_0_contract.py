@@ -11,7 +11,6 @@ from truthound.cli import app
 from truthound.context import TruthoundContext
 from truthound.core.results import ValidationRunResult
 
-
 pytestmark = pytest.mark.contract
 
 
@@ -87,3 +86,51 @@ def test_doctor_migrate_2_to_3_reports_removed_surfaces(tmp_path: Path):
     assert "root-compare-import" in result.output
     assert "legacy-report-import" in result.output
     assert "legacy-checkpoint-field" in result.output
+
+
+def test_doctor_workspace_reports_healthy_zero_config_layout(tmp_path: Path):
+    context = TruthoundContext(tmp_path)
+    th.check({"id": [1, 2], "status": ["active", "inactive"]}, context=context)
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["doctor", str(tmp_path), "--workspace"])
+
+    assert result.exit_code == 0
+    assert "found no structural issues" in result.output
+
+
+def test_doctor_workspace_reports_invalid_baseline_index(tmp_path: Path):
+    context = TruthoundContext(tmp_path)
+    context.baseline_index_path.write_text("{not-json", encoding="utf-8")
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["doctor", str(tmp_path), "--workspace"])
+
+    assert result.exit_code == 1
+    assert "baseline-index-invalid" in result.output
+
+
+def test_doctor_workspace_json_reports_missing_schema_file(tmp_path: Path):
+    context = TruthoundContext(tmp_path)
+    context.baseline_index_path.write_text(
+        json.dumps(
+            {
+                "source:dict": {
+                    "schema_file": "missing.schema.yaml",
+                    "created_at": "2026-03-20T00:00:00",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    runner = CliRunner()
+    result = runner.invoke(
+        app,
+        ["doctor", str(tmp_path), "--workspace", "--format", "json"],
+    )
+
+    assert result.exit_code == 1
+    payload = json.loads(result.output)
+    assert payload["workspace_dir"] == str(tmp_path / ".truthound")
+    assert any(issue["rule_id"] == "baseline-entry-missing-schema" for issue in payload["issues"])
