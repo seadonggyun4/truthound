@@ -251,12 +251,12 @@ class BaseDistributedBackend(ABC):
         with self._lock:
             if not self._connected:
                 return
+            self._connected = False
 
-            try:
-                self._do_disconnect()
-            finally:
-                self._connected = False
-                logger.info(f"Disconnected from {self.name} backend")
+        try:
+            self._do_disconnect()
+        finally:
+            logger.info(f"Disconnected from {self.name} backend")
 
     @abstractmethod
     def _do_connect(self, **kwargs: Any) -> None:

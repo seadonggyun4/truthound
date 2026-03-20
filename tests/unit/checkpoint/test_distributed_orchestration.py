@@ -509,6 +509,65 @@ class TestLocalBackend:
         assert backend.capabilities & BackendCapability.BATCH_SUBMIT
         assert backend.capabilities & BackendCapability.RESULT_BACKEND
 
+    def test_disconnect_does_not_deadlock_while_task_callback_completes(
+        self,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Disconnect should not hold the backend lock during executor shutdown."""
+        from truthound.checkpoint.checkpoint import (
+            Checkpoint,
+            CheckpointResult,
+            CheckpointStatus,
+        )
+        from truthound.checkpoint.distributed.backends.local_backend import LocalBackend
+
+        task_started = threading.Event()
+        allow_completion = threading.Event()
+
+        def slow_execute(
+            checkpoint_dict: dict[str, Any],
+            context: dict[str, Any] | None,
+        ) -> dict[str, Any]:
+            task_started.set()
+            assert allow_completion.wait(timeout=1.0)
+            return CheckpointResult(
+                run_id="run-1",
+                checkpoint_name=checkpoint_dict["config"]["name"],
+                run_time=datetime.now(),
+                status=CheckpointStatus.SUCCESS,
+                data_asset=str(checkpoint_dict["config"]["data_source"]),
+                duration_ms=10.0,
+            ).to_dict()
+
+        monkeypatch.setattr(
+            "truthound.checkpoint.distributed.backends.local_backend._execute_checkpoint_task",
+            slow_execute,
+        )
+
+        backend = LocalBackend(max_workers=1)
+        backend.connect()
+
+        backend.submit(
+            Checkpoint(
+                name="disconnect_deadlock",
+                data_source="tests/fixtures/sample.csv",
+                validators=["null"],
+            )
+        )
+
+        assert task_started.wait(timeout=1.0)
+
+        disconnect_thread = threading.Thread(target=backend.disconnect)
+        disconnect_thread.start()
+
+        time.sleep(0.05)
+        allow_completion.set()
+
+        disconnect_thread.join(timeout=2.0)
+
+        assert not disconnect_thread.is_alive()
+        assert not backend.is_connected
+
 
 # =============================================================================
 # Test Orchestrator
