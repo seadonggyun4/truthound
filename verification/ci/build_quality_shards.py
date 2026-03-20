@@ -182,11 +182,12 @@ def main(argv: list[str] | None = None) -> int:
             contract_nodeids,
             shard_count=args.contract_shards,
         )
+        fault_e2e_files = sorted(_group_by_file(fault_e2e_nodeids))
 
         args.output_dir.mkdir(parents=True, exist_ok=True)
         for shard in contract_shards:
-            _write_manifest(args.output_dir / f"contract-{shard.shard_id}.txt", shard.nodeids)
-        _write_manifest(args.output_dir / "fault-e2e.txt", fault_e2e_nodeids)
+            _write_manifest(args.output_dir / f"contract-{shard.shard_id}.txt", shard.files)
+        _write_manifest(args.output_dir / "fault-e2e.txt", fault_e2e_files)
 
         summary = _build_summary(
             contract_nodeids=contract_nodeids,

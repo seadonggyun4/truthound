@@ -93,21 +93,22 @@ def test_build_quality_shards_writes_balanced_manifests(tmp_path: Path):
 
     assigned_contract = set(manifests["contract-0.txt"]) | set(manifests["contract-1.txt"])
     assert assigned_contract == {
-        "tests/unit/checkpoint/test_alpha.py::test_one",
-        "tests/unit/checkpoint/test_alpha.py::test_two",
-        "tests/unit/execution/test_beta.py::test_three",
-        "tests/unit/execution/test_beta.py::test_four",
-        "tests/unit/execution/test_beta.py::test_five",
-        "tests/unit/profiler/test_gamma.py::test_six",
+        "tests/unit/checkpoint/test_alpha.py",
+        "tests/unit/execution/test_beta.py",
+        "tests/unit/profiler/test_gamma.py",
     }
+    assert manifests["fault-e2e.txt"] == [
+        "tests/test_checkpoint.py",
+        "tests/test_process_timeout.py",
+    ]
 
     alpha_shards = [
         name for name, nodeids in manifests.items()
-        if any(nodeid.startswith("tests/unit/checkpoint/test_alpha.py::") for nodeid in nodeids)
+        if "tests/unit/checkpoint/test_alpha.py" in nodeids
     ]
     beta_shards = [
         name for name, nodeids in manifests.items()
-        if any(nodeid.startswith("tests/unit/execution/test_beta.py::") for nodeid in nodeids)
+        if "tests/unit/execution/test_beta.py" in nodeids
     ]
     assert alpha_shards == ["contract-1.txt"] or alpha_shards == ["contract-0.txt"]
     assert beta_shards == ["contract-1.txt"] or beta_shards == ["contract-0.txt"]
@@ -203,11 +204,11 @@ def test_build_quality_shards_dedupes_overlap_into_fault_lane(tmp_path: Path):
     }
     fault_manifest = (output_dir / "fault-e2e.txt").read_text(encoding="utf-8").splitlines()
 
-    assert "tests/unit/security/test_overlap.py::test_shared" in fault_manifest
-    assert all(
-        "tests/unit/security/test_overlap.py::test_shared" not in nodeids
-        for nodeids in contract_manifests.values()
-    )
+    assert fault_manifest == [
+        "tests/unit/security/test_fault.py",
+        "tests/unit/security/test_overlap.py",
+    ]
+    assert any("tests/unit/security/test_overlap.py" in entries for entries in contract_manifests.values())
 
 
 @pytest.mark.contract
@@ -225,20 +226,33 @@ def test_run_pytest_manifest_executes_selected_nodeids(tmp_path: Path, monkeypat
     test_file.write_text(
         "\n".join(
             [
+                "import pytest",
+                "",
+                "@pytest.mark.contract",
                 "def test_selected():",
                 "    assert True",
                 "",
+                "@pytest.mark.fault",
                 "def test_unselected():",
                 "    assert False",
             ]
         ),
         encoding="utf-8",
     )
-    manifest.write_text("test_sample.py::test_selected\n", encoding="utf-8")
+    manifest.write_text("test_sample.py\n", encoding="utf-8")
 
     monkeypatch.chdir(tmp_path)
     result = subprocess.run(
-        [sys.executable, str(script_path), "--manifest", str(manifest), "--junitxml", str(junit_path)],
+        [
+            sys.executable,
+            str(script_path),
+            "--manifest",
+            str(manifest),
+            "--junitxml",
+            str(junit_path),
+            "--pytest-arg=-m",
+            "--pytest-arg=contract and not (fault or e2e)",
+        ],
         capture_output=True,
         text=True,
         check=False,
@@ -246,7 +260,7 @@ def test_run_pytest_manifest_executes_selected_nodeids(tmp_path: Path, monkeypat
 
     assert result.returncode == 0, result.stderr
     assert junit_path.exists()
-    assert "1 tests from 1 files" in result.stdout
+    assert "1 targets from 1 files" in result.stdout
 
 
 @pytest.mark.contract
@@ -275,7 +289,7 @@ def test_run_pytest_manifest_rejects_empty_manifest(tmp_path: Path):
     )
 
     assert result.returncode == 2
-    assert "does not contain any pytest node ids" in result.stderr
+    assert "does not contain any pytest targets" in result.stderr
 
 
 @pytest.mark.contract
@@ -307,8 +321,14 @@ def test_tests_pr_workflow_uses_sharded_quality_gate():
     fault_download = next(
         step for step in fault_steps if step.get("name") == "Download quality shard artifacts"
     )
+    contract_run = next(step for step in contract_steps if step.get("name") == "Run contract shard")
+    fault_run = next(step for step in fault_steps if step.get("name") == "Run fault and e2e manifest")
     assert contract_download["with"]["path"] == "test-artifacts"
     assert fault_download["with"]["path"] == "test-artifacts"
+    assert "--pytest-arg=-m" in contract_run["run"]
+    assert "contract and not (fault or e2e)" in contract_run["run"]
+    assert "--pytest-arg=-m" in fault_run["run"]
+    assert "fault or e2e" in fault_run["run"]
 
 
 @pytest.mark.contract

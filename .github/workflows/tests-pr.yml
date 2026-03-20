@@ -82,6 +82,7 @@ jobs:
           print(f"  contract selected: {summary['contract_selected']}")
           print(f"  fault/e2e selected: {summary['fault_e2e_selected']}")
           print(f"  e2e selected: {summary['e2e_selected']}")
+          print(f"  overlap selected: {summary['overlap_selected']}")
           for shard in summary["contract_shards"]:
               print(
                   f"  contract shard {shard['shard_id']}: "
@@ -134,7 +135,9 @@ jobs:
         run: |
           python verification/ci/run_pytest_manifest.py \
             --manifest test-artifacts/quality-shards/contract-${{ matrix.shard_id }}.txt \
-            --junitxml test-artifacts/junit-contract-${{ matrix.shard_id }}.xml
+            --junitxml test-artifacts/junit-contract-${{ matrix.shard_id }}.xml \
+            --pytest-arg=-m \
+            '--pytest-arg=contract and not (fault or e2e)'
 
       - name: Upload contract shard artifacts
         if: always()
@@ -172,7 +175,9 @@ jobs:
         run: |
           python verification/ci/run_pytest_manifest.py \
             --manifest test-artifacts/quality-shards/fault-e2e.txt \
-            --junitxml test-artifacts/junit-fault-e2e.xml
+            --junitxml test-artifacts/junit-fault-e2e.xml \
+            --pytest-arg=-m \
+            '--pytest-arg=fault or e2e'
 
       - name: Upload fault and e2e artifacts
         if: always()

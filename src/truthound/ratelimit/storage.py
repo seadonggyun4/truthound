@@ -168,9 +168,10 @@ class MemoryStorage(RateLimitStorage[T]):
             self.set(key, state, ttl)
             return True
         finally:
-            if isinstance(lock_token, threading.Lock):
+            release = getattr(lock_token, "release", None)
+            if callable(release):
                 try:
-                    lock_token.release()
+                    release()
                 except RuntimeError:
                     pass  # Already released
 

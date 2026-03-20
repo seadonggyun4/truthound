@@ -32,18 +32,18 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
-    nodeids = _load_manifest(args.manifest)
-    if not nodeids:
+    targets = _load_manifest(args.manifest)
+    if not targets:
         print(
-            f"error: manifest {args.manifest} does not contain any pytest node ids",
+            f"error: manifest {args.manifest} does not contain any pytest targets",
             file=sys.stderr,
         )
         return 2
 
     args.junitxml.parent.mkdir(parents=True, exist_ok=True)
-    files = {nodeid.split('::', 1)[0] for nodeid in nodeids}
+    files = {target.split('::', 1)[0] for target in targets}
     print(
-        f"Running pytest manifest {args.manifest} with {len(nodeids)} tests "
+        f"Running pytest manifest {args.manifest} with {len(targets)} targets "
         f"from {len(files)} files",
     )
 
@@ -53,7 +53,7 @@ def main(argv: list[str] | None = None) -> int:
         "no:cacheprovider",
         f"--junitxml={args.junitxml}",
         *args.pytest_arg,
-        *nodeids,
+        *targets,
     ]
     return int(pytest.main(pytest_args))
 
