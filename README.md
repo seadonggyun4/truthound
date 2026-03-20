@@ -19,7 +19,9 @@
   <a href="https://opensource.org/licenses/Apache-2.0"><img src="https://img.shields.io/badge/License-Apache%202.0-orange.svg" alt="License"></a>
   <a href="https://pola.rs/"><img src="https://img.shields.io/badge/Powered%20by-Polars-2563EB?logo=polars&logoColor=white" alt="Powered by Polars"></a>
   <a href="https://github.com/ddotta/awesome-polars"><img src="https://awesome.re/badge.svg" alt="Awesome Polars"></a>
-  <a href="https://pepy.tech/project/truthound"><img src="https://static.pepy.tech/badge/truthound?color=green" alt="Downloads"></a>
+  <a href="https://pepy.tech/project/truthound">
+    <img src="https://img.shields.io/pepy/dt/truthound?color=brightgreen" alt="Downloads">
+  </a>
 </p>
 
 > Truthound 3.0 turns the familiar `th.check()`, `th.scan()`, `th.mask()`, `th.profile()`, and `th.learn()` facade into a native zero-configuration validation platform built around `TruthoundContext`, `ValidationRunResult`, deterministic auto-suites, and a Polars-first planning/runtime kernel.
