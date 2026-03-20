@@ -35,6 +35,7 @@
 Truthound is a Polars-first data validation framework for modern data engineering systems. Version 3.0 keeps the easy first-run experience, but the runtime is now organized around a smaller and more durable kernel: a zero-config project context, deterministic auto-suite selection, backend-aware planning, exact-by-default execution, a single canonical `ValidationRunResult`, and one plugin/reporting surface shared across checkpoints, docs, and automation.
 
 **Documentation**: [truthound.netlify.app](https://truthound.netlify.app/)
+Orchestration integrations now live inside the main docs site under [`/orchestration/`](https://truthound.netlify.app/orchestration/).
 
 <!--
 Temporary comment-out: keep the related-projects section hidden until these
@@ -210,6 +211,8 @@ Truthound now uses one lifecycle runtime:
 ## Documentation
 
 - Documentation site: [truthound.netlify.app](https://truthound.netlify.app/)
+- Orchestration overview: [truthound.netlify.app/orchestration/](https://truthound.netlify.app/orchestration/)
+- Orchestration getting started: [docs/orchestration/getting-started.md](docs/orchestration/getting-started.md)
 - Getting started: [docs/getting-started/index.md](docs/getting-started/index.md)
 - Quickstart: [docs/getting-started/quickstart.md](docs/getting-started/quickstart.md)
 - Architecture: [docs/concepts/architecture.md](docs/concepts/architecture.md)

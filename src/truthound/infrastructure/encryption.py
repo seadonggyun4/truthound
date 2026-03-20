@@ -1054,7 +1054,7 @@ class EnterpriseEncryptionConfig:
 
 _global_provider: KeyProvider | None = None
 _global_encryptor: AtRestEncryption | None = None
-_lock = threading.Lock()
+_lock = threading.RLock()
 
 
 def configure_encryption(

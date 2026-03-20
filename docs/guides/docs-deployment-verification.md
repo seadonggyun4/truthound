@@ -17,41 +17,53 @@ Use this page as the canonical operator checklist whenever the public docs site 
 - [ ] `netlify.toml` points at the repo-owned docs build script
 - [ ] `docs/public_docs.yml` defines the strict public allowlist
 - [ ] `docs/_redirects` keeps `truthound.io` and `www.truthound.io` in redirect-only mode toward `truthound.netlify.app`
-- [ ] `truthound-orchestration` and `truthound-dashboard` are linked as related projects only and are not injected into the main docs build
+- [ ] `docs/orchestration/` is a checked-in snapshot mirrored from `truthound-orchestration`
+- [ ] `scripts/fetch-external-docs.sh orchestration` is the canonical pre-release sync step for the orchestration snapshot
+- [ ] Netlify builds only from the checked-in snapshot and does not fetch external repositories during deploy
+- [ ] `truthound-dashboard` remains out of scope for the main docs build
 
 ## Generated Site Checklist
 
 After a local or Netlify build, confirm all of the following under `site/`:
 
 - [ ] `site/index.html` contains the 3.0 landing copy and current navigation
+- [ ] `site/orchestration/index.html` exists and renders the Orchestration overview
+- [ ] `site/orchestration/airflow/index.html` exists and renders one platform page under the integrated section
 - [ ] `site/releases/latest-benchmark-summary/index.html` exists and shows the verified benchmark numbers
 - [ ] `site/sitemap.xml` exists
 - [ ] `site/search/search_index.json` exists
 - [ ] the home page banner resolves from `assets/truthound_banner.png`
 - [ ] the benchmark summary icon banner resolves from `assets/Truthound_icon_banner.png`
 - [ ] the staged public docs tree only contains the curated allowlist from `docs/public_docs.yml`
+- [ ] imported orchestration pages render the generated source banner and upstream edit link
 
 ## Search and Sitemap Checklist
 
-- [ ] `sitemap.xml` contains exactly `22` public pages
+- [ ] `sitemap.xml` contains exactly `36` public pages
 - [ ] `sitemap.xml` includes:
   - [ ] home
   - [ ] performance
   - [ ] benchmark methodology
   - [ ] Great Expectations comparison
   - [ ] latest verified benchmark summary
-- [ ] `search_index.json` contains exactly `22` public pages
+  - [ ] orchestration overview
+  - [ ] orchestration airflow
+- [ ] `search_index.json` contains exactly `36` public pages
 - [ ] `search_index.json` contains:
   - [ ] `TruthoundContext`
   - [ ] `ValidationRunResult`
   - [ ] `Great Expectations`
   - [ ] `benchmark`
   - [ ] `release-grade`
+  - [ ] `Truthound Orchestration`
 - [ ] neither `sitemap.xml` nor `search_index.json` expose:
   - [ ] `cli/`
   - [ ] `tutorials/`
   - [ ] `python-api/`
   - [ ] `dashboard/`
+  - [ ] `orchestration/common/`
+  - [ ] `orchestration/enterprise/`
+  - [ ] `orchestration/engines/`
   - [ ] excluded deep `guides/` or `concepts/` families
 
 ## Content Verification Checklist
@@ -60,10 +72,13 @@ After a local or Netlify build, confirm all of the following under `site/`:
 - [ ] primary docs do not treat `RC1` as the current release note
 - [ ] benchmark pages use `release-grade`, `fixed-runner benchmark verification`, or `verified benchmark summary` rather than repeated `GA` wording
 - [ ] README and the docs site agree on the current benchmark positioning against Great Expectations
+- [ ] imported orchestration pages identify `truthound-orchestration` as the upstream source repository
+- [ ] source-banner edit links target `https://github.com/seadonggyun4/truthound-orchestration/edit/main/docs/...`
 
 ## Local Verification Commands
 
 ```bash
+sh scripts/fetch-external-docs.sh orchestration
 python docs/scripts/prepare_public_docs.py --manifest docs/public_docs.yml --output-dir build/public-docs
 python docs/scripts/check_links.py --mkdocs mkdocs.yml README.md CLAUDE.md
 python docs/scripts/check_links.py --mkdocs mkdocs.public.yml build/public-docs
@@ -76,3 +91,4 @@ python docs/scripts/verify_public_surface.py --manifest docs/public_docs.yml --s
 - [Performance and Benchmarks](performance.md)
 - [Benchmark Methodology](benchmark-methodology.md)
 - [Latest Verified Benchmark Summary](../releases/latest-benchmark-summary.md)
+- [Truthound Orchestration Overview](../orchestration/index.md)

@@ -32,6 +32,7 @@ Read the full evidence in [Latest Verified Benchmark Summary](releases/latest-be
 - [Quick Start](getting-started/quickstart.md)
 - [Architecture](concepts/architecture.md)
 - [Zero-Config Context](concepts/zero-config.md)
+- [Orchestration Overview](orchestration/index.md)
 - [Performance and Benchmarks](guides/performance.md)
 - [Great Expectations Comparison](guides/gx-parity.md)
 - [Latest Verified Benchmark Summary](releases/latest-benchmark-summary.md)
@@ -51,6 +52,7 @@ The result is a smaller and more maintainable kernel while keeping the public fa
 
 - [Getting Started](getting-started/index.md)
 - [Plugin Platform](concepts/plugins.md)
+- [Orchestration](orchestration/index.md)
 - [Benchmark Methodology](guides/benchmark-methodology.md)
 - [Docs Deployment Verification](guides/docs-deployment-verification.md)
 - [Migration to 3.0](guides/migration-3.0.md)

@@ -1,72 +1,119 @@
 #!/bin/bash
-# Fetch external docs from truthound-* repositories
+# Sync checked-in external docs snapshots from truthound-* repositories.
+# Netlify builds use the committed snapshot only; this script should be run
+# before commit or release when an external docs mirror needs to be refreshed.
+#
 # Usage: ./scripts/fetch-external-docs.sh [repo-name]
-#        ./scripts/fetch-external-docs.sh              # fetch all
-#        ./scripts/fetch-external-docs.sh orchestration # fetch only orchestration
-#        ./scripts/fetch-external-docs.sh dashboard     # fetch only dashboard
+#        ./scripts/fetch-external-docs.sh               # sync all configured repos
+#        ./scripts/fetch-external-docs.sh orchestration # sync only orchestration
+#        ./scripts/fetch-external-docs.sh dashboard     # sync only dashboard
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+WORKSPACE_ROOT="$(dirname "$PROJECT_ROOT")"
 
 # External repositories configuration
-# Format: "name|repo_url|target_dir"
+# Format: "name|repo_url|target_dir|sync_mode"
 EXTERNAL_REPOS=(
-    "orchestration|https://github.com/seadonggyun4/truthound-orchestration.git|docs/orchestration"
-    "dashboard|https://github.com/seadonggyun4/truthound-dashboard.git|docs/dashboard"
+    "orchestration|https://github.com/seadonggyun4/truthound-orchestration.git|docs/orchestration|public_nav"
+    "dashboard|https://github.com/seadonggyun4/truthound-dashboard.git|docs/dashboard|docs_tree"
     # Add new repos here:
-    # "new-repo|https://github.com/seadonggyun4/truthound-new-repo.git|docs/new-repo"
+    # "new-repo|https://github.com/seadonggyun4/truthound-new-repo.git|docs/new-repo|docs_tree"
 )
+
+resolve_local_checkout() {
+    local repo_url="$1"
+    local repo_name
+    repo_name="$(basename "$repo_url" .git)"
+    local candidate="$WORKSPACE_ROOT/$repo_name"
+
+    if [ -f "$candidate/mkdocs.yml" ] && [ -d "$candidate/docs" ]; then
+        printf '%s\n' "$candidate"
+        return 0
+    fi
+
+    return 1
+}
+
+clone_repo_snapshot() {
+    local repo_url="$1"
+    local temp_dir="$2"
+    local sync_mode="$3"
+
+    rm -rf "$temp_dir"
+
+    echo "Cloning snapshot..."
+    git clone --depth 1 --filter=blob:none --sparse \
+        "$repo_url" "$temp_dir" 2>/dev/null
+
+    cd "$temp_dir"
+    if [ "$sync_mode" = "public_nav" ]; then
+        git sparse-checkout set docs mkdocs.yml 2>/dev/null
+    else
+        git sparse-checkout set docs 2>/dev/null
+    fi
+    printf '%s\n' "$temp_dir"
+}
+
+sync_docs_tree() {
+    local source_root="$1"
+    local target_dir="$2"
+
+    mkdir -p "$target_dir"
+    find "$target_dir" -type f ! -name ".gitkeep" -delete 2>/dev/null || true
+    find "$target_dir" -type d -empty -delete 2>/dev/null || true
+    cp -r "$source_root/docs/"* "$target_dir/"
+}
 
 fetch_repo_docs() {
     local name="$1"
     local repo_url="$2"
     local target_dir="$3"
+    local sync_mode="$4"
 
     local temp_dir="$PROJECT_ROOT/_temp_$name"
     local full_target="$PROJECT_ROOT/$target_dir"
+    local source_root=""
+    local used_temp_checkout="false"
 
     echo ""
-    echo "=== Fetching $name docs ==="
+    echo "=== Syncing $name docs snapshot ==="
     echo "Repository: $repo_url"
     echo "Target: $target_dir"
+    echo "Mode: $sync_mode"
 
-    # Clean up any existing temp directory
-    rm -rf "$temp_dir"
+    if source_root="$(resolve_local_checkout "$repo_url")"; then
+        echo "Using local checkout: $source_root"
+    else
+        source_root="$(clone_repo_snapshot "$repo_url" "$temp_dir" "$sync_mode")"
+        used_temp_checkout="true"
+        echo "Using temporary clone: $source_root"
+    fi
 
-    # Clone with sparse checkout (only docs folder)
-    echo "Cloning (docs only)..."
-    git clone --depth 1 --filter=blob:none --sparse \
-        "$repo_url" "$temp_dir" 2>/dev/null
-
-    cd "$temp_dir"
-    git sparse-checkout set docs 2>/dev/null
-
-    # Check if docs directory exists
-    if [ ! -d "docs" ]; then
+    if [ ! -d "$source_root/docs" ]; then
         echo "Warning: No docs directory found in $name repository"
         cd "$PROJECT_ROOT"
-        rm -rf "$temp_dir"
+        if [ "$used_temp_checkout" = "true" ]; then
+            rm -rf "$temp_dir"
+        fi
         return 1
     fi
 
-    # Copy docs to target directory
-    echo "Copying docs..."
-    mkdir -p "$full_target"
+    if [ "$sync_mode" = "public_nav" ]; then
+        python3 "$PROJECT_ROOT/docs/scripts/sync_external_docs.py" \
+            --source-root "$source_root" \
+            --target-dir "$full_target"
+    else
+        sync_docs_tree "$source_root" "$full_target"
+    fi
 
-    # Remove old files except .gitkeep
-    find "$full_target" -type f ! -name ".gitkeep" -delete 2>/dev/null || true
-    find "$full_target" -type d -empty -delete 2>/dev/null || true
-
-    # Copy new files
-    cp -r docs/* "$full_target/"
-
-    # Clean up temp directory
     cd "$PROJECT_ROOT"
-    rm -rf "$temp_dir"
+    if [ "$used_temp_checkout" = "true" ]; then
+        rm -rf "$temp_dir"
+    fi
 
-    # Show what was copied
     local file_count=$(find "$full_target" -type f -name "*.md" | wc -l | tr -d ' ')
     echo "Copied $file_count markdown files"
 
@@ -83,14 +130,14 @@ main() {
     echo "========================================"
 
     for repo_config in "${EXTERNAL_REPOS[@]}"; do
-        IFS='|' read -r name repo_url target_dir <<< "$repo_config"
+        IFS='|' read -r name repo_url target_dir sync_mode <<< "$repo_config"
 
         # Skip if filter specified and doesn't match
         if [ -n "$filter" ] && [ "$filter" != "$name" ]; then
             continue
         fi
 
-        if fetch_repo_docs "$name" "$repo_url" "$target_dir"; then
+        if fetch_repo_docs "$name" "$repo_url" "$target_dir" "$sync_mode"; then
             ((success_count++))
         else
             ((fail_count++))

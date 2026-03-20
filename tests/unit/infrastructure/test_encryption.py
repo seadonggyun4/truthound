@@ -5,6 +5,7 @@ import os
 import struct
 import sys
 import tempfile
+import threading
 from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -42,6 +43,27 @@ from truthound.stores.encryption import (
     EncryptionError,
     DecryptionError,
 )
+
+
+def _run_in_daemon_thread(func, timeout: float = 1.0):
+    """Run a callable without letting deadlocks stall the suite."""
+    result = {}
+    error = {}
+
+    def target():
+        try:
+            result["value"] = func()
+        except BaseException as exc:  # pragma: no cover - test helper
+            error["value"] = exc
+
+    thread = threading.Thread(target=target, daemon=True)
+    thread.start()
+    thread.join(timeout)
+
+    assert not thread.is_alive(), "operation deadlocked"
+    if "value" in error:
+        raise error["value"]
+    return result.get("value")
 
 
 class TestLocalKeyProvider:
@@ -568,6 +590,17 @@ class TestGlobalEncryption:
 
         # Should return same instance
         assert encryptor1 is encryptor2
+
+    def test_get_encryptor_lazy_init_does_not_deadlock(self, monkeypatch):
+        """Test lazy global encryptor initialization stays reentrant-safe."""
+        import truthound.infrastructure.encryption as encryption_module
+
+        monkeypatch.setattr(encryption_module, "_global_provider", None)
+        monkeypatch.setattr(encryption_module, "_global_encryptor", None)
+
+        encryptor = _run_in_daemon_thread(encryption_module.get_encryptor)
+
+        assert encryptor is not None
 
     def test_configure_encryption_vault(self):
         """Test configuring Vault encryption."""

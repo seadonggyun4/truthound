@@ -96,6 +96,23 @@ nav:
       - Workload Catalog: guides/benchmark-workloads.md
       - Docs Deployment Verification: guides/docs-deployment-verification.md
       - Migration to 3.0: guides/migration-3.0.md
+  - Orchestration:
+      - Orchestration Overview: orchestration/index.md
+      - Getting Started: orchestration/getting-started.md
+      - Architecture: orchestration/architecture.md
+      - Compatibility: orchestration/compatibility.md
+      - Zero-Config: orchestration/zero-config.md
+      - Migration:
+          - 3.0 Upgrade: orchestration/migration/3.0.md
+      - Platforms:
+          - Airflow: orchestration/airflow/index.md
+          - Dagster: orchestration/dagster/index.md
+          - Prefect: orchestration/prefect/index.md
+          - dbt: orchestration/dbt/index.md
+          - Mage: orchestration/mage/index.md
+          - Kestra: orchestration/kestra/index.md
+      - Advanced Engines: orchestration/advanced-engines/index.md
+      - API Reference: orchestration/api-reference/index.md
   - Legacy:
       - Archive Overview: legacy/index.md
   - ADRs:

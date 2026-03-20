@@ -3,6 +3,7 @@
 import json
 import os
 import tempfile
+import threading
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -29,6 +30,27 @@ from truthound.infrastructure.config import (
     load_config,
     reload_config,
 )
+
+
+def _run_in_daemon_thread(func, timeout: float = 1.0):
+    """Run a callable without letting deadlocks stall the suite."""
+    result = {}
+    error = {}
+
+    def target():
+        try:
+            result["value"] = func()
+        except BaseException as exc:  # pragma: no cover - test helper
+            error["value"] = exc
+
+    thread = threading.Thread(target=target, daemon=True)
+    thread.start()
+    thread.join(timeout)
+
+    assert not thread.is_alive(), "operation deadlocked"
+    if "value" in error:
+        raise error["value"]
+    return result.get("value")
 
 
 class TestEnvironment:
@@ -587,3 +609,23 @@ class TestLoadConfig:
             )
 
         assert config.get("key") == "from_env"
+
+    def test_get_config_lazy_init_does_not_deadlock(self, monkeypatch):
+        """Test get_config lazy initialization path stays reentrant-safe."""
+        import truthound.infrastructure.config as config_module
+
+        monkeypatch.setattr(config_module, "_global_manager", None)
+
+        config = _run_in_daemon_thread(config_module.get_config)
+
+        assert config is not None
+
+    def test_reload_config_lazy_init_does_not_deadlock(self, monkeypatch):
+        """Test reload_config lazy initialization path stays reentrant-safe."""
+        import truthound.infrastructure.config as config_module
+
+        monkeypatch.setattr(config_module, "_global_manager", None)
+
+        config = _run_in_daemon_thread(config_module.reload_config)
+
+        assert config is not None

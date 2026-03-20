@@ -15,6 +15,7 @@ import struct
 import threading
 from typing import Any
 
+from truthound.profiler.sketches._locking import acquire_ordered_locks
 from truthound.profiler.sketches.protocols import (
     HyperLogLogConfig,
     SketchMetrics,
@@ -226,7 +227,7 @@ class HyperLogLog:
             )
 
         merged = HyperLogLog(self.config)
-        with self._lock, other._lock:
+        with acquire_ordered_locks(self._lock, other._lock):
             merged._registers = [
                 max(a, b) for a, b in zip(self._registers, other._registers)
             ]
@@ -248,7 +249,7 @@ class HyperLogLog:
                 f"{self.config.precision} vs {other.config.precision}"
             )
 
-        with self._lock, other._lock:
+        with acquire_ordered_locks(self._lock, other._lock):
             for i in range(self.config.num_registers):
                 self._registers[i] = max(self._registers[i], other._registers[i])
             self._elements_added += other._elements_added

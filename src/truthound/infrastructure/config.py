@@ -1012,7 +1012,7 @@ def create_default_schema() -> ConfigSchema:
 # =============================================================================
 
 _global_manager: ConfigManager | None = None
-_lock = threading.Lock()
+_lock = threading.RLock()
 
 
 def load_config(

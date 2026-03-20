@@ -9,6 +9,7 @@ This module tests:
 """
 
 import math
+import threading
 import pytest
 
 from truthound.profiler.sketches import (
@@ -27,6 +28,25 @@ from truthound.profiler.sketches.protocols import (
     BloomFilterConfig,
     SketchMetrics,
 )
+
+
+def _run_in_daemon_thread(func, timeout: float = 1.0):
+    """Run a callable without letting deadlocks stall the suite."""
+    error = {}
+
+    def target():
+        try:
+            func()
+        except BaseException as exc:  # pragma: no cover - test helper
+            error["value"] = exc
+
+    thread = threading.Thread(target=target, daemon=True)
+    thread.start()
+    thread.join(timeout)
+
+    assert not thread.is_alive(), "operation deadlocked"
+    if "value" in error:
+        raise error["value"]
 
 
 # ============================================================================
@@ -78,6 +98,19 @@ class TestHyperLogLog:
 
         # Should produce same result
         assert hll1.estimate() == hll2.estimate()
+
+    def test_merge_inplace_with_self_does_not_deadlock(self):
+        """Test self-merge uses deterministic single-lock acquisition."""
+        hll = HyperLogLog(HyperLogLogConfig(precision=12, seed=42))
+
+        for i in range(100):
+            hll.add(f"val_{i}")
+
+        baseline = hll.estimate()
+
+        _run_in_daemon_thread(lambda: hll.merge_inplace(hll))
+
+        assert hll.estimate() == baseline
 
     def test_merge(self):
         """Test merging two HyperLogLogs."""
@@ -256,6 +289,17 @@ class TestCountMinSketch:
         # Merged should have sum of counts
         assert merged.estimate_frequency("item") >= 150
 
+    def test_merge_inplace_with_self_does_not_deadlock(self):
+        """Test self-merge stays safe with non-reentrant sketch locks."""
+        cms = CountMinSketch(CountMinSketchConfig(width=2000, depth=5))
+
+        for _ in range(25):
+            cms.add("item")
+
+        _run_in_daemon_thread(lambda: cms.merge_inplace(cms))
+
+        assert cms.estimate_frequency("item") >= 50
+
     def test_merge_incompatible(self):
         """Test that merging different dimensions fails."""
         cms1 = CountMinSketch(CountMinSketchConfig(width=1000, depth=5))
@@ -371,6 +415,15 @@ class TestBloomFilter:
         for i in range(500):
             assert merged.contains(f"a_{i}")
             assert merged.contains(f"b_{i}")
+
+    def test_merge_inplace_with_self_does_not_deadlock(self):
+        """Test self-merge acquires the underlying lock only once."""
+        bf = BloomFilter(BloomFilterConfig(capacity=1000, error_rate=0.01, seed=42))
+        bf.add("item")
+
+        _run_in_daemon_thread(lambda: bf.merge_inplace(bf))
+
+        assert bf.contains("item")
 
     def test_in_operator(self):
         """Test 'in' operator support."""

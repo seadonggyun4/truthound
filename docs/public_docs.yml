@@ -14,6 +14,20 @@ docs:
   - guides/benchmark-workloads.md
   - guides/docs-deployment-verification.md
   - guides/migration-3.0.md
+  - orchestration/index.md
+  - orchestration/getting-started.md
+  - orchestration/architecture.md
+  - orchestration/compatibility.md
+  - orchestration/zero-config.md
+  - orchestration/migration/3.0.md
+  - orchestration/airflow/index.md
+  - orchestration/dagster/index.md
+  - orchestration/prefect/index.md
+  - orchestration/dbt/index.md
+  - orchestration/mage/index.md
+  - orchestration/kestra/index.md
+  - orchestration/advanced-engines/index.md
+  - orchestration/api-reference/index.md
   - adr/001-validation-kernel.md
   - adr/002-plugin-platform.md
   - adr/003-result-model.md
@@ -21,6 +35,15 @@ docs:
   - releases/latest-benchmark-summary.md
   - releases/truthound-3.0.md
   - legacy/index.md
+
+external_sources:
+  orchestration:
+    prefix: orchestration
+    label: Truthound Orchestration 3.x
+    repo_url: https://github.com/seadonggyun4/truthound-orchestration
+    repo_name: seadonggyun4/truthound-orchestration
+    branch: main
+    docs_root: docs
 
 support_files:
   - _redirects
@@ -35,6 +58,9 @@ excluded_prefixes:
   - tutorials/
   - python-api/
   - dashboard/
+  - orchestration/common/
+  - orchestration/enterprise/
+  - orchestration/engines/
   - concepts/API_REFERENCE/
   - concepts/DATASOURCES/
   - concepts/EXAMPLES/
@@ -69,4 +95,4 @@ excluded_prefixes:
   - releases/truthound-2.0/
   - releases/truthound-3.0-rc1/
 
-expected_page_count: 22
+expected_page_count: 36

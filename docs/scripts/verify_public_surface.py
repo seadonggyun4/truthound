@@ -9,6 +9,8 @@ from urllib.parse import urlparse
 
 import yaml
 
+from external_docs import load_external_sources, match_external_source, upstream_edit_url
+
 
 def _load_manifest(path: Path) -> dict:
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
@@ -58,6 +60,15 @@ def _read_search_paths(site_dir: Path) -> list[str]:
     ]
 
 
+def _html_path_for_doc(site_dir: Path, doc_path: str) -> Path:
+    path = Path(doc_path)
+    if path.name == "index.md":
+        if path.parent == Path("."):
+            return site_dir / "index.html"
+        return site_dir / path.parent / "index.html"
+    return site_dir / path.parent / path.stem / "index.html"
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Verify that the generated MkDocs site only exposes the strict public docs surface."
@@ -79,6 +90,7 @@ def main() -> int:
     repo_root = Path(__file__).resolve().parents[2]
     manifest = _load_manifest((repo_root / args.manifest).resolve())
     site_dir = (repo_root / args.site_dir).resolve()
+    external_sources = load_external_sources(manifest)
 
     allowlisted_paths = {_doc_to_public_path(doc_path) for doc_path in manifest.get("docs", [])}
     excluded_prefixes = tuple(f"/{prefix}" for prefix in manifest.get("excluded_prefixes", []))
@@ -123,6 +135,29 @@ def main() -> int:
         failures.append(
             f"Expected {expected_page_count} search-index pages, found {len(search_unique)}."
         )
+
+    for doc_path in manifest.get("docs", []):
+        relative_path = Path(doc_path)
+        external_source = match_external_source(relative_path, external_sources)
+        if external_source is None:
+            continue
+
+        html_path = _html_path_for_doc(site_dir, doc_path)
+        if not html_path.exists():
+            failures.append(f"Missing rendered HTML for external docs page: {doc_path}")
+            continue
+
+        html = html_path.read_text(encoding="utf-8")
+        banner_marker = f"This page is part of {external_source.label}"
+        if banner_marker not in html:
+            failures.append(f"Missing source banner on external docs page: {doc_path}")
+
+        if external_source.repo_url not in html:
+            failures.append(f"Missing source repository link on external docs page: {doc_path}")
+
+        edit_url = upstream_edit_url(relative_path, external_source)
+        if edit_url not in html:
+            failures.append(f"Missing upstream edit link on external docs page: {doc_path}")
 
     if failures:
         print("Public docs surface verification failed:")

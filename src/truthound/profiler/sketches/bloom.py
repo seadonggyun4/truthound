@@ -24,6 +24,7 @@ import struct
 import threading
 from typing import Any
 
+from truthound.profiler.sketches._locking import acquire_ordered_locks
 from truthound.profiler.sketches.protocols import (
     BloomFilterConfig,
     SketchMetrics,
@@ -192,7 +193,7 @@ class BloomFilter:
             )
 
         merged = BloomFilter(self.config)
-        with self._lock, other._lock:
+        with acquire_ordered_locks(self._lock, other._lock):
             # OR the bit arrays
             for i in range(len(self._bits)):
                 merged._bits[i] = self._bits[i] | other._bits[i]
@@ -217,7 +218,7 @@ class BloomFilter:
                 f"({other._size}, {other._hash_count})"
             )
 
-        with self._lock, other._lock:
+        with acquire_ordered_locks(self._lock, other._lock):
             for i in range(len(self._bits)):
                 self._bits[i] |= other._bits[i]
             self._elements_added += other._elements_added

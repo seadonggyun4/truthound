@@ -757,7 +757,7 @@ class TracerProviderAdapter:
 
 
 _global_adapter: TracerProviderAdapter | None = None
-_adapter_lock = threading.Lock()
+_adapter_lock = threading.RLock()
 _current_config: AdapterConfig | None = None
 
 

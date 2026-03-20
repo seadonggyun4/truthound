@@ -22,6 +22,7 @@ import struct
 import threading
 from typing import Any
 
+from truthound.profiler.sketches._locking import acquire_ordered_locks
 from truthound.profiler.sketches.protocols import (
     CountMinSketchConfig,
     SketchMetrics,
@@ -221,7 +222,7 @@ class CountMinSketch:
             )
 
         merged = CountMinSketch(self.config)
-        with self._lock, other._lock:
+        with acquire_ordered_locks(self._lock, other._lock):
             for i in range(self.config.depth):
                 for j in range(self.config.width):
                     merged._table[i][j] = self._table[i][j] + other._table[i][j]
@@ -253,7 +254,7 @@ class CountMinSketch:
                 f"({other.config.width}×{other.config.depth})"
             )
 
-        with self._lock, other._lock:
+        with acquire_ordered_locks(self._lock, other._lock):
             for i in range(self.config.depth):
                 for j in range(self.config.width):
                     self._table[i][j] += other._table[i][j]
@@ -261,7 +262,7 @@ class CountMinSketch:
 
             # Merge tracked items
             for item in other._tracked_items:
-                self._tracked_items[item] = self.estimate_frequency(item)
+                self._tracked_items[item] = self._estimate_frequency_unlocked(item)
 
     def memory_bytes(self) -> int:
         """Return memory usage in bytes.

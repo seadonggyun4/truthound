@@ -8,6 +8,8 @@ from typing import Any
 
 import yaml
 
+from external_docs import build_source_banner, inject_source_banner, load_external_sources, match_external_source
+
 
 def _load_manifest(path: Path) -> dict[str, Any]:
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
@@ -63,6 +65,7 @@ def main() -> int:
     support_directories = [
         _validate_relative_path(value) for value in manifest.get("support_directories", [])
     ]
+    external_sources = load_external_sources(manifest)
 
     if output_dir.exists():
         shutil.rmtree(output_dir)
@@ -73,7 +76,15 @@ def main() -> int:
         source_path = docs_root / relative_path
         if not source_path.exists():
             raise FileNotFoundError(f"Public docs entry does not exist: {relative_path}")
-        _copy_file(source_path, output_dir / relative_path)
+        destination_path = output_dir / relative_path
+        external_source = match_external_source(relative_path, external_sources)
+        if external_source is None:
+            _copy_file(source_path, destination_path)
+        else:
+            banner = build_source_banner(relative_path, external_source)
+            rendered = inject_source_banner(source_path.read_text(encoding="utf-8"), banner)
+            destination_path.parent.mkdir(parents=True, exist_ok=True)
+            destination_path.write_text(rendered, encoding="utf-8")
         copied_docs += 1
 
     for relative_path in support_files:
