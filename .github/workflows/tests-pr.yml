@@ -22,9 +22,14 @@ on:
       - "tests/**"
       - "verification/**"
 
+concurrency:
+  group: tests-pr-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  quality-gate:
+  quality-collect:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
 
@@ -37,8 +42,162 @@ jobs:
       - name: Install project with dev extras
         run: uv pip install --system ".[dev]"
 
-      - name: Verify pytest collection
-        run: python -m pytest --collect-only -q tests
+      - name: Prepare quality shard artifacts
+        run: mkdir -p test-artifacts/quality-shards
 
-      - name: Run fast contract and fault lanes
-        run: python -m pytest -q tests -m "contract or fault or e2e" -p no:cacheprovider
+      - name: Collect contract nodes
+        run: python -m pytest --collect-only -q tests -m "contract" -p no:cacheprovider > test-artifacts/quality-contract-collect.txt
+
+      - name: Collect fault and e2e nodes
+        run: python -m pytest --collect-only -q tests -m "fault or e2e" -p no:cacheprovider > test-artifacts/quality-fault-e2e-collect.txt
+
+      - name: Collect e2e nodes
+        run: |
+          set +e
+          python -m pytest --collect-only -q tests -m "e2e" -p no:cacheprovider > test-artifacts/quality-e2e-collect.txt
+          status=$?
+          if [ "$status" -ne 0 ] && [ "$status" -ne 5 ]; then
+            exit "$status"
+          fi
+
+      - name: Build quality shard manifests
+        run: |
+          python verification/ci/build_quality_shards.py \
+            --contract-nodeids test-artifacts/quality-contract-collect.txt \
+            --fault-nodeids test-artifacts/quality-fault-e2e-collect.txt \
+            --e2e-nodeids test-artifacts/quality-e2e-collect.txt \
+            --output-dir test-artifacts/quality-shards \
+            --summary-out test-artifacts/quality-summary.json \
+            --contract-shards 4
+
+      - name: Log quality summary
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          summary = json.loads(Path("test-artifacts/quality-summary.json").read_text(encoding="utf-8"))
+          print("Quality gate selection summary")
+          print(f"  total selected: {summary['total_selected']}")
+          print(f"  contract selected: {summary['contract_selected']}")
+          print(f"  fault/e2e selected: {summary['fault_e2e_selected']}")
+          print(f"  e2e selected: {summary['e2e_selected']}")
+          for shard in summary["contract_shards"]:
+              print(
+                  f"  contract shard {shard['shard_id']}: "
+                  f"{shard['node_count']} tests across {shard['file_count']} files"
+              )
+          if summary["e2e_selected"] == 0:
+              print("  info: e2e selected count is 0 (non-blocking)")
+          PY
+
+      - name: Upload quality collection artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: truthound-quality-collect
+          path: |
+            test-artifacts/quality-shards
+            test-artifacts/quality-summary.json
+            test-artifacts/quality-contract-collect.txt
+            test-artifacts/quality-fault-e2e-collect.txt
+            test-artifacts/quality-e2e-collect.txt
+
+  quality-contract:
+    name: quality-contract / shard ${{ matrix.shard_id }}
+    needs: quality-collect
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        shard_id: [0, 1, 2, 3]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: astral-sh/setup-uv@v4
+
+      - name: Install project with dev extras
+        run: uv pip install --system ".[dev]"
+
+      - name: Download quality shard artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: truthound-quality-collect
+          path: .
+
+      - name: Run contract shard
+        run: |
+          python verification/ci/run_pytest_manifest.py \
+            --manifest test-artifacts/quality-shards/contract-${{ matrix.shard_id }}.txt \
+            --junitxml test-artifacts/junit-contract-${{ matrix.shard_id }}.xml
+
+      - name: Upload contract shard artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: truthound-quality-contract-${{ matrix.shard_id }}
+          path: |
+            test-artifacts/quality-shards/contract-${{ matrix.shard_id }}.txt
+            test-artifacts/quality-summary.json
+            test-artifacts/junit-contract-${{ matrix.shard_id }}.xml
+
+  quality-fault-e2e:
+    needs: quality-collect
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: astral-sh/setup-uv@v4
+
+      - name: Install project with dev extras
+        run: uv pip install --system ".[dev]"
+
+      - name: Download quality shard artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: truthound-quality-collect
+          path: .
+
+      - name: Run fault and e2e manifest
+        run: |
+          python verification/ci/run_pytest_manifest.py \
+            --manifest test-artifacts/quality-shards/fault-e2e.txt \
+            --junitxml test-artifacts/junit-fault-e2e.xml
+
+      - name: Upload fault and e2e artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: truthound-quality-fault-e2e
+          path: |
+            test-artifacts/quality-shards/fault-e2e.txt
+            test-artifacts/quality-summary.json
+            test-artifacts/junit-fault-e2e.xml
+
+  quality-gate:
+    if: ${{ always() }}
+    needs: [quality-contract, quality-fault-e2e]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Aggregate quality gate status
+        env:
+          CONTRACT_RESULT: ${{ needs.quality-contract.result }}
+          FAULT_E2E_RESULT: ${{ needs.quality-fault-e2e.result }}
+        run: |
+          echo "quality-contract result: ${CONTRACT_RESULT}"
+          echo "quality-fault-e2e result: ${FAULT_E2E_RESULT}"
+          if [ "${CONTRACT_RESULT}" != "success" ] || [ "${FAULT_E2E_RESULT}" != "success" ]; then
+            echo "quality-gate failed because one or more shard jobs failed"
+            exit 1
+          fi
+          echo "quality-gate passed"

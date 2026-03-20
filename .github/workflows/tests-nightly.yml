@@ -26,6 +26,36 @@ jobs:
       - name: Prepare nightly artifacts
         run: mkdir -p test-artifacts && printf "fault_seed=42\nrun_mode=nightly\n" > test-artifacts/run-metadata.txt
 
+      - name: Collect nightly lane summary
+        run: python -m pytest --collect-only -q tests -m "contract or fault or integration or soak or stress or scale_100m or e2e" --run-integration --run-expensive --run-soak -p no:cacheprovider > test-artifacts/nightly-collect.txt
+
+      - name: Write nightly selection summary
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          collect_path = Path("test-artifacts/nightly-collect.txt")
+          nodeids = [
+              line.strip()
+              for line in collect_path.read_text(encoding="utf-8").splitlines()
+              if line.startswith("tests/") or line.startswith("tests\\")
+          ]
+          summary = {
+              "selected_total": len(nodeids),
+              "marker_expression": "contract or fault or integration or soak or stress or scale_100m or e2e",
+              "run_integration": True,
+              "run_expensive": True,
+              "run_soak": True,
+          }
+          Path("test-artifacts/nightly-summary.json").write_text(
+              json.dumps(summary, indent=2, sort_keys=True),
+              encoding="utf-8",
+          )
+          print("Nightly selection summary")
+          print(f"  selected total: {summary['selected_total']}")
+          PY
+
       - name: Run nightly contract, fault, integration, and soak lanes
         run: python -m pytest -q tests -m "contract or fault or integration or soak or stress or scale_100m or e2e" --run-integration --run-expensive --run-soak -p no:cacheprovider --junitxml test-artifacts/nightly-junit.xml
 
