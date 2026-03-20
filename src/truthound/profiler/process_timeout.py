@@ -58,10 +58,7 @@ import time
 import traceback
 from abc import ABC, abstractmethod
 from concurrent.futures import (
-    Future,
     ProcessPoolExecutor,
-    ThreadPoolExecutor,
-    TimeoutError as FuturesTimeoutError,
 )
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -656,21 +653,33 @@ class ThreadExecutionStrategy(ExecutionStrategy):
     ) -> ExecutionResult[T]:
         """Execute in thread with timeout."""
         metrics = ExecutionMetrics(backend_used=self.name)
+        result: dict[str, T] = {}
+        error: dict[str, BaseException] = {}
+        completed = threading.Event()
 
-        with ThreadPoolExecutor(max_workers=self.max_workers) as executor:
-            future: Future[T] = executor.submit(func)
-
+        def target() -> None:
             try:
-                value = future.result(timeout=timeout_seconds)
-                return ExecutionResult.ok(value, metrics)
+                result["value"] = func()
+            except BaseException as exc:  # pragma: no cover - defensive path
+                error["value"] = exc
+            finally:
+                completed.set()
 
-            except FuturesTimeoutError:
-                metrics.was_terminated = True
-                # Note: Cannot actually terminate the thread
-                return ExecutionResult.timeout(metrics)
+        thread = threading.Thread(target=target, daemon=True)
+        thread.start()
 
-            except Exception as e:
-                return ExecutionResult.failure(e, metrics)
+        if not completed.wait(timeout=timeout_seconds):
+            metrics.was_terminated = True
+            # Threads cannot be force-terminated, so we detach the daemon worker.
+            return ExecutionResult.timeout(metrics)
+
+        if "value" in error:
+            exc = error["value"]
+            if isinstance(exc, Exception):
+                return ExecutionResult.failure(exc, metrics)
+            return ExecutionResult.failure(RuntimeError(str(exc)), metrics)
+
+        return ExecutionResult.ok(result["value"], metrics)
 
     def is_available(self) -> bool:
         return True

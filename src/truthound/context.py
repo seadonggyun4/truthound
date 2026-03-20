@@ -4,23 +4,33 @@ from __future__ import annotations
 
 import hashlib
 import json
+from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import yaml
 
 from truthound.cache import get_data_fingerprint, get_source_key
 from truthound.core.contracts import MetricRepository
-from truthound.core.results import ValidationRunResult
 from truthound.schema import Schema, learn
+
+if TYPE_CHECKING:
+    from truthound.core.results import ValidationRunResult
 
 
 def _json_default(value: Any) -> Any:
     if isinstance(value, datetime):
         return value.isoformat()
     raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
+
+
+def _coerce_positive_int(value: Any, default: int) -> int:
+    try:
+        return max(1, int(value))
+    except (TypeError, ValueError):
+        return default
 
 
 def _detect_project_root(start_path: Path) -> Path:
@@ -45,9 +55,10 @@ class TruthoundContextConfig:
     auto_create_workspace: bool = True
     default_result_format: str = "summary"
     docs_theme: str = "professional"
+    max_metric_history_entries: int = 100
 
     @classmethod
-    def from_project_file(cls, root: Path) -> "TruthoundContextConfig":
+    def from_project_file(cls, root: Path) -> TruthoundContextConfig:
         config_path = root / "truthound.yaml"
         if not config_path.exists():
             return cls()
@@ -71,6 +82,10 @@ class TruthoundContextConfig:
             auto_create_workspace=bool(context_data.get("auto_create_workspace", True)),
             default_result_format=str(context_data.get("default_result_format", "summary")),
             docs_theme=str(context_data.get("docs_theme", "professional")),
+            max_metric_history_entries=_coerce_positive_int(
+                context_data.get("max_metric_history_entries", 100),
+                100,
+            ),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -81,14 +96,16 @@ class TruthoundContextConfig:
             "auto_create_workspace": self.auto_create_workspace,
             "default_result_format": self.default_result_format,
             "docs_theme": self.docs_theme,
+            "max_metric_history_entries": self.max_metric_history_entries,
         }
 
 
 class FileMetricRepository(MetricRepository):
     """Small file-backed metric repository for zero-config history."""
 
-    def __init__(self, path: Path) -> None:
+    def __init__(self, path: Path, max_history_entries: int = 100) -> None:
         self.path = path
+        self.max_history_entries = max(1, max_history_entries)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         self._data = self._load()
 
@@ -100,15 +117,13 @@ class FileMetricRepository(MetricRepository):
             return payload if isinstance(payload, dict) else {}
         except Exception:
             quarantine = self.path.with_suffix(".corrupt.json")
-            try:
+            with suppress(Exception):
                 self.path.replace(quarantine)
-            except Exception:
-                pass
             return {}
 
     def _save(self) -> None:
         self.path.write_text(
-            json.dumps(self._data, indent=2, default=_json_default),
+            json.dumps(self._data, separators=(",", ":"), default=_json_default),
             encoding="utf-8",
         )
 
@@ -125,6 +140,8 @@ class FileMetricRepository(MetricRepository):
             history = []
             self._data[key] = history
         history.append(value)
+        if len(history) > self.max_history_entries:
+            del history[:-self.max_history_entries]
         self._save()
 
 
@@ -152,7 +169,8 @@ class TruthoundContext:
         self.docs_dir = self.workspace_dir / "docs"
         self.plugins_dir = self.workspace_dir / "plugins"
         self.metric_repository = FileMetricRepository(
-            self.baselines_dir / "metric-history.json"
+            self.baselines_dir / "metric-history.json",
+            max_history_entries=self.config.max_metric_history_entries,
         )
         if self.config.auto_create_workspace:
             self.ensure_workspace()
@@ -206,10 +224,8 @@ class TruthoundContext:
             return payload if isinstance(payload, dict) else {}
         except Exception:
             quarantine = path.with_suffix(f"{path.suffix}.corrupt")
-            try:
+            with suppress(Exception):
                 path.replace(quarantine)
-            except Exception:
-                pass
             return {}
 
     def _write_json(self, path: Path, payload: dict[str, Any]) -> None:
@@ -280,10 +296,8 @@ class TruthoundContext:
                         return schema, False
                     except Exception:
                         quarantine = schema_path.with_suffix(".corrupt.yaml")
-                        try:
+                        with suppress(Exception):
                             schema_path.replace(quarantine)
-                        except Exception:
-                            pass
 
         if not self.config.auto_create_baseline:
             raise FileNotFoundError(
@@ -338,7 +352,7 @@ class TruthoundContext:
         return self._plugin_manager
 
     @classmethod
-    def discover(cls, start_path: str | Path | None = None) -> "TruthoundContext":
+    def discover(cls, start_path: str | Path | None = None) -> TruthoundContext:
         start = Path(start_path or Path.cwd())
         root = _detect_project_root(start if start.is_dir() else start.parent)
         return cls(root_dir=root, config=TruthoundContextConfig.from_project_file(root))
@@ -358,4 +372,3 @@ def get_context(start_path: str | Path | None = None) -> TruthoundContext:
     context = TruthoundContext.discover(root)
     _CONTEXT_CACHE[root] = context
     return context
-

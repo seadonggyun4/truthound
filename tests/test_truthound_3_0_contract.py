@@ -8,7 +8,7 @@ from typer.testing import CliRunner
 
 import truthound as th
 from truthound.cli import app
-from truthound.context import TruthoundContext
+from truthound.context import TruthoundContext, TruthoundContextConfig
 from truthound.core.results import ValidationRunResult
 
 pytestmark = pytest.mark.contract
@@ -47,6 +47,30 @@ def test_check_uses_context_and_persists_zero_config_artifacts(tmp_path: Path):
 
     baseline_index = json.loads(context.baseline_index_path.read_text(encoding="utf-8"))
     assert baseline_index
+
+
+def test_metric_history_is_bounded_for_repeated_zero_config_runs(tmp_path: Path):
+    context = TruthoundContext(
+        tmp_path,
+        config=TruthoundContextConfig(max_metric_history_entries=3),
+    )
+
+    last_run = None
+    for _ in range(5):
+        last_run = th.check(
+            {"customer_id": [1, 2, 2], "email": ["a@example.com", None, "c@example.com"]},
+            context=context,
+        )
+
+    history_payload = json.loads(
+        (context.baselines_dir / "metric-history.json").read_text(encoding="utf-8")
+    )
+    assert last_run is not None
+    assert len(history_payload) == 1
+    source_history = next(iter(history_payload.values()))
+
+    assert len(source_history) == 3
+    assert all("run_id" in entry for entry in source_history)
 
 
 def test_validation_run_result_helpers_write_and_build_docs(tmp_path: Path):

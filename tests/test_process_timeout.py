@@ -428,10 +428,12 @@ class TestThreadExecutionStrategy:
             time.sleep(10)
             return 42
 
+        start = time.monotonic()
         result = strategy.execute(slow_func, timeout_seconds=0.1)
 
         assert not result.success
         assert result.timed_out
+        assert time.monotonic() - start < 1.0
 
     def test_is_available(self):
         """Test availability check."""
@@ -696,10 +698,12 @@ class TestProcessTimeoutExecutor:
             time.sleep(10)
             return 42
 
+        start = time.monotonic()
         result = executor.execute(slow_func, timeout_seconds=0.5)
 
         assert not result.success
         assert result.timed_out
+        assert time.monotonic() - start < 1.5
 
     def test_exception_handling(self, executor):
         """Test exception handling."""
@@ -874,12 +878,14 @@ class TestConvenienceFunctions:
 
     def test_with_process_timeout_failure(self):
         """Test with_process_timeout with failure."""
+        start = time.monotonic()
         result = with_process_timeout(
             lambda: time.sleep(10),
             timeout_seconds=0.1,
             default=-1,
         )
         assert result == -1
+        assert time.monotonic() - start < 1.0
 
     def test_estimate_execution_time(self):
         """Test estimate_execution_time function."""
