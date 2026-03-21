@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from truthound.datasources._polars_compat import pandas_to_polars_frame
 from truthound.execution.base import (
     BaseExecutionEngine,
     ExecutionConfig,
@@ -332,8 +333,7 @@ class PandasExecutionEngine(BaseExecutionEngine[ExecutionConfig]):
     def to_polars_lazyframe(self) -> "pl.LazyFrame":
         """Convert to Polars LazyFrame."""
         if self._cached_polars_lf is None:
-            import polars as pl
-            self._cached_polars_lf = pl.from_pandas(self._df).lazy()
+            self._cached_polars_lf = pandas_to_polars_frame(self._df).lazy()
         return self._cached_polars_lf
 
     def to_pandas_dataframe(self) -> "pd.DataFrame":

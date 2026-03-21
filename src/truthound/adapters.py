@@ -7,6 +7,8 @@ from typing import Any
 
 import polars as pl
 
+from truthound.datasources._polars_compat import pandas_to_polars_frame
+
 
 def to_lazyframe(data: Any) -> pl.LazyFrame:
     """Convert various input formats to a Polars LazyFrame.
@@ -46,7 +48,7 @@ def to_lazyframe(data: Any) -> pl.LazyFrame:
 
     # Try pandas DataFrame
     if _is_pandas_dataframe(data):
-        return pl.from_pandas(data).lazy()
+        return pandas_to_polars_frame(data).lazy()
 
     raise ValueError(
         f"Unsupported input type: {type(data).__name__}. "

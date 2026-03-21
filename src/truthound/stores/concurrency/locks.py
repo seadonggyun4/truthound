@@ -28,6 +28,8 @@ from typing import Any, Iterator, TypeVar
 
 # Thread-local storage for lock tracking
 _thread_local = threading.local()
+_process_lock_states: dict[str, "_ProcessLocalLockState"] = {}
+_process_lock_states_guard = threading.RLock()
 
 
 class LockMode(Enum):
@@ -63,6 +65,108 @@ class LockHandle:
     def __str__(self) -> str:
         mode_str = "SHARED" if self.mode == LockMode.SHARED else "EXCLUSIVE"
         return f"LockHandle({self.path}, {mode_str}, pid={self.process_id})"
+
+
+@dataclass
+class _ProcessLocalLockState:
+    """Process-local coordination for thread-level lock semantics."""
+
+    condition: threading.Condition = field(
+        default_factory=lambda: threading.Condition(threading.RLock())
+    )
+    readers: int = 0
+    writer: bool = False
+    waiting_writers: int = 0
+
+
+def _lock_timeout(path: Path, timeout: float) -> Exception:
+    from truthound.stores.concurrency.manager import LockTimeout
+
+    return LockTimeout(path, timeout)
+
+
+def _get_process_local_state(path: Path) -> _ProcessLocalLockState:
+    key = str(path)
+    with _process_lock_states_guard:
+        state = _process_lock_states.get(key)
+        if state is None:
+            state = _ProcessLocalLockState()
+            _process_lock_states[key] = state
+        return state
+
+
+def _cleanup_process_local_state(path: Path, state: _ProcessLocalLockState) -> None:
+    if state.readers or state.writer or state.waiting_writers:
+        return
+    key = str(path)
+    with _process_lock_states_guard:
+        if _process_lock_states.get(key) is state and not (
+            state.readers or state.writer or state.waiting_writers
+        ):
+            _process_lock_states.pop(key, None)
+
+
+def _acquire_process_local_lock(
+    path: Path,
+    mode: LockMode,
+    timeout: float | None,
+    blocking: bool,
+) -> _ProcessLocalLockState:
+    state = _get_process_local_state(path)
+    deadline = None if timeout is None else time.monotonic() + timeout
+
+    with state.condition:
+        if mode == LockMode.SHARED:
+            while state.writer or state.waiting_writers > 0:
+                if not blocking:
+                    raise _lock_timeout(path, 0)
+                if deadline is None:
+                    state.condition.wait()
+                    continue
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise _lock_timeout(path, timeout or 0)
+                state.condition.wait(timeout=remaining)
+            state.readers += 1
+            return state
+
+        state.waiting_writers += 1
+        try:
+            while state.writer or state.readers > 0:
+                if not blocking:
+                    raise _lock_timeout(path, 0)
+                if deadline is None:
+                    state.condition.wait()
+                    continue
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise _lock_timeout(path, timeout or 0)
+                state.condition.wait(timeout=remaining)
+            state.writer = True
+            return state
+        finally:
+            state.waiting_writers -= 1
+
+
+def _release_process_local_lock(path: Path, mode: LockMode) -> None:
+    state = _get_process_local_state(path)
+    with state.condition:
+        if mode == LockMode.SHARED:
+            if state.readers > 0:
+                state.readers -= 1
+        else:
+            state.writer = False
+        state.condition.notify_all()
+    _cleanup_process_local_state(path, state)
+
+
+def _is_process_local_locked(path: Path) -> bool:
+    with _process_lock_states_guard:
+        state = _process_lock_states.get(str(path))
+        if state is None:
+            return False
+    with state.condition:
+        return state.writer or state.readers > 0
 
 
 class LockStrategy(ABC):
@@ -208,6 +312,8 @@ class FcntlLockStrategy(LockStrategy):
         if not blocking:
             operation |= self._fcntl.LOCK_NB
 
+        local_state = _acquire_process_local_lock(path, mode, timeout, blocking)
+
         # Open lock file
         fd = os.open(str(lock_path), os.O_RDWR | os.O_CREAT, 0o666)
 
@@ -236,10 +342,15 @@ class FcntlLockStrategy(LockStrategy):
 
         except (BlockingIOError, OSError) as e:
             os.close(fd)
+            _release_process_local_lock(path, mode)
             if not blocking:
                 from truthound.stores.concurrency.manager import LockTimeout
 
                 raise LockTimeout(path, 0) from e
+            raise
+        except Exception:
+            os.close(fd)
+            _release_process_local_lock(path, mode)
             raise
 
     def release(self, handle: LockHandle) -> None:
@@ -254,6 +365,7 @@ class FcntlLockStrategy(LockStrategy):
             self._fcntl.flock(fd, self._fcntl.LOCK_UN)
         finally:
             os.close(fd)
+            _release_process_local_lock(handle.path, handle.mode)
 
         # Clean up lock file if it exists and is empty
         lock_path = self._get_lock_path(handle.path)
@@ -272,6 +384,9 @@ class FcntlLockStrategy(LockStrategy):
 
     def is_locked(self, path: Path) -> bool:
         """Check if path is locked."""
+        if _is_process_local_locked(path):
+            return True
+
         lock_path = self._get_lock_path(path)
         if not lock_path.exists():
             return False
@@ -335,6 +450,8 @@ class PortalockerStrategy(LockStrategy):
         else:
             flags = self._portalocker.LOCK_EX
 
+        _acquire_process_local_lock(path, mode, timeout, blocking)
+
         # Open and lock
         lock_file = open(lock_path, "w")
 
@@ -356,11 +473,13 @@ class PortalockerStrategy(LockStrategy):
 
         except self._portalocker.LockException as e:
             lock_file.close()
+            _release_process_local_lock(path, mode)
             from truthound.stores.concurrency.manager import LockTimeout
 
             raise LockTimeout(path, timeout or 0) from e
         except Exception:
             lock_file.close()
+            _release_process_local_lock(path, mode)
             raise
 
     def release(self, handle: LockHandle) -> None:
@@ -376,6 +495,7 @@ class PortalockerStrategy(LockStrategy):
             self._portalocker.unlock(lock_file)
         finally:
             lock_file.close()
+            _release_process_local_lock(handle.path, handle.mode)
 
     def try_acquire(self, path: Path, mode: LockMode) -> LockHandle | None:
         """Try to acquire without blocking."""
@@ -386,6 +506,9 @@ class PortalockerStrategy(LockStrategy):
 
     def is_locked(self, path: Path) -> bool:
         """Check if path is locked."""
+        if _is_process_local_locked(path):
+            return True
+
         lock_path = self._get_lock_path(path)
         if not lock_path.exists():
             return False
@@ -448,6 +571,7 @@ class FileLockStrategy(LockStrategy):
 
         # filelock only supports exclusive locks
         lock = self._filelock.FileLock(lock_path)
+        _acquire_process_local_lock(path, mode, timeout, blocking)
 
         try:
             effective_timeout = timeout if blocking else 0
@@ -459,9 +583,13 @@ class FileLockStrategy(LockStrategy):
             return LockHandle(path=path, mode=mode)
 
         except self._filelock.Timeout as e:
+            _release_process_local_lock(path, mode)
             from truthound.stores.concurrency.manager import LockTimeout
 
             raise LockTimeout(path, timeout or 0) from e
+        except Exception:
+            _release_process_local_lock(path, mode)
+            raise
 
     def release(self, handle: LockHandle) -> None:
         """Release the filelock lock."""
@@ -472,7 +600,10 @@ class FileLockStrategy(LockStrategy):
 
             lock = self._locks.pop(key)
 
-        lock.release()
+        try:
+            lock.release()
+        finally:
+            _release_process_local_lock(handle.path, handle.mode)
 
     def try_acquire(self, path: Path, mode: LockMode) -> LockHandle | None:
         """Try to acquire without blocking."""
@@ -483,6 +614,9 @@ class FileLockStrategy(LockStrategy):
 
     def is_locked(self, path: Path) -> bool:
         """Check if path is locked."""
+        if _is_process_local_locked(path):
+            return True
+
         lock_path = self._get_lock_path(path)
         if not lock_path.exists():
             return False

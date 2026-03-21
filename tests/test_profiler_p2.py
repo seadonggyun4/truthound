@@ -78,6 +78,25 @@ class TestCacheKey:
         assert key.row_count == 3
         assert key.column_count == 2
 
+    def test_dataframe_hash_cache_key_without_pyarrow(self, monkeypatch):
+        """Test DataFrame cache key without optional pyarrow."""
+        from truthound.profiler.caching import DataFrameHashCacheKey
+
+        df = pl.DataFrame({
+            "col1": [1, 2, 3],
+            "col2": ["a", "b", "c"],
+        })
+
+        def _raise_pyarrow_missing(*args, **kwargs):
+            raise ModuleNotFoundError("No module named 'pyarrow'")
+
+        monkeypatch.setattr(pl.DataFrame, "to_pandas", _raise_pyarrow_missing)
+
+        key = DataFrameHashCacheKey.from_dataframe(df)
+
+        assert key.schema_hash
+        assert key.sample_hash
+
 
 class TestMemoryCacheBackend:
     """Tests for in-memory cache backend."""

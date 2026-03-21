@@ -9,6 +9,7 @@ import pytest
 import polars as pl
 import numpy as np
 
+from truthound.datasources._polars_compat import polars_to_pandas_frame
 from truthound.execution import (
     PolarsExecutionEngine,
     PandasExecutionEngine,
@@ -43,7 +44,7 @@ def polars_engine(sample_polars_df):
 @pytest.fixture
 def pandas_engine(sample_polars_df):
     """Create a PandasExecutionEngine for testing."""
-    pandas_df = sample_polars_df.to_pandas()
+    pandas_df = polars_to_pandas_frame(sample_polars_df)
     return PandasExecutionEngine(pandas_df)
 
 
@@ -304,6 +305,19 @@ class TestPandasExecutionEngine:
         lf = pandas_engine.to_polars_lazyframe()
         assert isinstance(lf, pl.LazyFrame)
 
+    def test_to_polars_lazyframe_without_pyarrow(self, sample_polars_df, monkeypatch):
+        """Test pandas engine conversion without optional pyarrow."""
+        pandas_df = polars_to_pandas_frame(sample_polars_df)
+
+        def _raise_pyarrow_missing(*args, **kwargs):
+            raise ModuleNotFoundError("No module named 'pyarrow'")
+
+        monkeypatch.setattr(pl, "from_pandas", _raise_pyarrow_missing)
+
+        lf = PandasExecutionEngine(pandas_df).to_polars_lazyframe()
+
+        assert isinstance(lf, pl.LazyFrame)
+
     def test_to_numpy(self, pandas_engine):
         """Test converting to numpy."""
         arr = pandas_engine.to_numpy(columns=["id", "salary"])
@@ -394,6 +408,6 @@ class TestContextManager:
 
     def test_pandas_engine_context(self, sample_polars_df):
         """Test Pandas engine as context manager."""
-        pandas_df = sample_polars_df.to_pandas()
+        pandas_df = polars_to_pandas_frame(sample_polars_df)
         with PandasExecutionEngine(pandas_df) as engine:
             assert engine.count_rows() == 5

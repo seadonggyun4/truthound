@@ -42,6 +42,7 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Callable, Generic, Protocol, TypeVar
 
+from truthound.datasources._polars_compat import polars_to_pandas_frame
 from truthound.profiler.base import TableProfile
 from truthound.profiler.schema import ProfileSerializer
 
@@ -229,7 +230,7 @@ class DataFrameHashCacheKey(CacheKey):
         schema_hash = hashlib.sha256(schema_str.encode()).hexdigest()[:16]
 
         # Hash sample data
-        sample_bytes = sample_df.to_pandas().to_csv().encode()
+        sample_bytes = polars_to_pandas_frame(sample_df).to_csv(index=False).encode()
         sample_hash = hashlib.sha256(sample_bytes).hexdigest()[:16]
 
         # Combined key
