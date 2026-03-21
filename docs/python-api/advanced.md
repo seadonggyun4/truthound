@@ -15,13 +15,13 @@ import truthound as th
 from truthound.types import ResultFormat, ResultFormatConfig
 
 # Quick pass/fail check (fastest)
-report = th.check("data.csv", result_format="boolean_only")
+run = th.check("data.csv", result_format="boolean_only")
 
 # Default: summary with value counts
-report = th.check("data.csv", result_format="summary")
+run = th.check("data.csv", result_format="summary")
 
 # Full detail with unexpected rows and debug queries
-report = th.check("data.csv", result_format="complete")
+run = th.check("data.csv", result_format="complete")
 
 # Fine-grained control
 config = ResultFormatConfig(
@@ -31,10 +31,10 @@ config = ResultFormatConfig(
     max_unexpected_rows=500,          # Cap at 500 rows
     return_debug_query=True,          # Include Polars query string
 )
-report = th.check("data.csv", result_format=config)
+run = th.check("data.csv", result_format=config)
 
 # Access structured results
-for issue in report.issues:
+for issue in run.issues:
     if issue.result:
         print(f"Elements: {issue.result.element_count}")
         print(f"Missing: {issue.result.missing_count}")
@@ -84,21 +84,26 @@ Gracefully handle validation failures without aborting the entire pipeline.
 import truthound as th
 
 # Enable exception isolation with retries
-report = th.check(
+run = th.check(
     "data.csv",
     catch_exceptions=True,  # Default: True
     max_retries=3,           # Retry transient errors up to 3 times
 )
 
-# Inspect exception summary
-if report.exception_summary:
-    summary = report.exception_summary
-    print(f"Total exceptions: {summary.total_count}")
-    print(f"By category: {summary.by_category}")
-    print(f"Retried: {summary.retried_count}")
+# Inspect execution issues captured at the run level
+if run.execution_issues:
+    print(f"Execution issues: {len(run.execution_issues)}")
+    by_category: dict[str, int] = {}
+    total_retries = 0
+    for execution_issue in run.execution_issues:
+        category = execution_issue.failure_category or "unknown"
+        by_category[category] = by_category.get(category, 0) + 1
+        total_retries += execution_issue.retry_count
+    print(f"By category: {by_category}")
+    print(f"Retried: {total_retries}")
 
 # Per-issue exception detail
-for issue in report.issues:
+for issue in run.issues:
     if issue.exception_info:
         info = issue.exception_info
         print(f"Validator: {info.validator_name}")
@@ -151,10 +156,10 @@ For large datasets with many validators, use parallel execution for better perfo
 import truthound as th
 
 # Enable parallel execution (uses all available cores)
-report = th.check("large_data.csv", parallel=True)
+run = th.check("large_data.csv", parallel=True)
 
 # Control thread count
-report = th.check("large_data.csv", parallel=True, max_workers=4)
+run = th.check("large_data.csv", parallel=True, max_workers=4)
 ```
 
 ### DAG-Based Execution
@@ -196,7 +201,7 @@ source = PostgreSQLDataSource(
 )
 
 # Enable pushdown - validations execute server-side
-report = th.check(source=source, pushdown=True)
+run = th.check(source=source, pushdown=True)
 
 # Example: null_check becomes:
 # SELECT COUNT(*) FROM table WHERE column IS NULL
@@ -852,17 +857,19 @@ Generate HTML reports and documentation.
 ### Basic HTML Report
 
 ```python
+import truthound as th
 from truthound import datadocs
 
-# Generate HTML report from validation result
-html = datadocs.generate_html_report(report)
-with open("report.html", "w") as f:
-    f.write(html)
+# Validation docs from ValidationRunResult
+run = th.check("data.csv")
+validation_html = datadocs.generate_validation_report(run)
+with open("validation-report.html", "w") as f:
+    f.write(validation_html)
 
-# From file
+# Profile docs from a profile JSON file
 datadocs.generate_report_from_file(
-    "validation_result.json",
-    output_path="report.html",
+    "profile.json",
+    output_path="profile-report.html",
 )
 ```
 

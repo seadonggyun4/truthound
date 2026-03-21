@@ -667,7 +667,7 @@ VALIDATOR_IMPORT_MAP: dict[str, str] = {
 CATEGORY_MODULES: dict[str, str] = {
     "completeness": "truthound.validators.completeness",
     "distribution": "truthound.validators.distribution",
-    # ... 28 categories
+# ... 21 runtime categories
 }
 ```
 

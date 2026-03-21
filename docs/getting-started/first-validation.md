@@ -101,7 +101,7 @@ The schema captures:
 
 ## Step 3: Validate Your Data
 
-Run validation with all built-in validators:
+Run validation with Truthound's auto-suite and any schema-backed checks:
 
 === "CLI"
 
@@ -114,16 +114,16 @@ Run validation with all built-in validators:
     ```python
     import truthound as th
 
-    report = th.check(
+    run = th.check(
         "customers.csv",
         schema="customer_schema.yaml"
     )
 
     # Print formatted summary (uses Rich for pretty output)
-    report.print()
+    run.print()
 
     # Or access detailed issues programmatically
-    for issue in report.issues:
+    for issue in run.issues:
         detail = f" - {issue.details}" if issue.details else ""
         print(f"[{issue.severity.value}] {issue.column}: {issue.issue_type}{detail}")
     ```
@@ -190,18 +190,18 @@ Create an HTML report for stakeholders:
     from truthound.html_reporter import write_html_report, HTMLReportConfig
 
     # Run validation
-    report = th.check("customers.csv", schema="customer_schema.yaml")
+    run = th.check("customers.csv", schema="customer_schema.yaml")
 
     # Write HTML report to file (option 1: using config)
     config = HTMLReportConfig(title="Customer Data Quality Report")
-    write_html_report(report, "report.html", config=config)
+    write_html_report(run, "report.html", config=config)
 
     # Or simply (option 2: using kwargs)
-    write_html_report(report, "report.html", title="Customer Data Quality Report")
+    write_html_report(run, "report.html", title="Customer Data Quality Report")
 
     # Generate HTML string without writing to file
     from truthound.html_reporter import generate_html_report
-    html_content = generate_html_report(report, title="Customer Data Quality Report")
+    html_content = generate_html_report(run, title="Customer Data Quality Report")
     ```
 
     !!! note "HTML format requires jinja2"
@@ -249,8 +249,8 @@ df_cleaned = df_cleaned.with_columns(
 df_cleaned.write_csv("customers_cleaned.csv")
 
 # Re-validate
-report = th.check("customers_cleaned.csv", schema="customer_schema.yaml")
-print(f"Issues remaining: {len(report.issues)}")
+run = th.check("customers_cleaned.csv", schema="customer_schema.yaml")
+print(f"Issues remaining: {len(run.issues)}")
 ```
 
 ## Step 7: Set Up Continuous Validation

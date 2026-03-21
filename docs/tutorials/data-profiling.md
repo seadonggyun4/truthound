@@ -285,17 +285,20 @@ report = th.check("data.csv", auto_schema=True)
 
 ## Data Drift Detection
 
-Truthound provides multiple approaches for detecting data drift between datasets. The high-level `th.compare()` API offers simplified access, while the `ProfileComparator` class provides comprehensive control over the comparison process.
+Truthound provides multiple approaches for detecting data drift between
+datasets. The high-level `compare()` helper in `truthound.drift` offers
+simplified access, while the `ProfileComparator` class provides comprehensive
+control over the comparison process.
 
-### High-Level API: th.compare()
+### High-Level API: `truthound.drift.compare()`
 
-The `th.compare()` function provides a streamlined interface for drift detection:
+The `compare()` helper provides a streamlined interface for drift detection:
 
 ```python
-import truthound as th
+from truthound.drift import compare
 
 # Compare baseline and current data
-drift = th.compare("train.csv", "production.csv")
+drift = compare("train.csv", "production.csv")
 print(drift)
 
 if drift.has_drift:
@@ -404,28 +407,28 @@ print(report)
 ### Specifying Detection Method
 
 ```python
-import truthound as th
+from truthound.drift import compare
 
 # Auto-select based on data type (default, recommended)
-drift = th.compare(baseline, current, method="auto")
+drift = compare(baseline, current, method="auto")
 
 # Kolmogorov-Smirnov test (numeric columns only)
-drift = th.compare(baseline, current, method="ks")
+drift = compare(baseline, current, method="ks")
 
 # Population Stability Index (numeric columns only)
-drift = th.compare(baseline, current, method="psi")
+drift = compare(baseline, current, method="psi")
 
 # Chi-square test (categorical columns)
-drift = th.compare(baseline, current, method="chi2")
+drift = compare(baseline, current, method="chi2")
 
 # Jensen-Shannon divergence (works with any column type)
-drift = th.compare(baseline, current, method="js")
+drift = compare(baseline, current, method="js")
 
 # Custom threshold
-drift = th.compare(baseline, current, threshold=0.2)
+drift = compare(baseline, current, threshold=0.2)
 
 # With sampling for large datasets
-drift = th.compare(baseline, current, sample_size=10000)
+drift = compare(baseline, current, sample_size=10000)
 ```
 
 > **Note:** `ks` and `psi` methods only work with numeric columns. If your data contains
@@ -434,7 +437,7 @@ drift = th.compare(baseline, current, sample_size=10000)
 >
 > ```python
 > # Compare only numeric columns with PSI
-> drift = th.compare(baseline, current, method="psi", columns=["age", "salary", "score"])
+> drift = compare(baseline, current, method="psi", columns=["age", "salary", "score"])
 > ```
 
 ## Best Practices
@@ -582,9 +585,9 @@ Base protocol for implementing custom table-level analyzers:
 |-----------|------|-------------|
 | `name` | `str` | Unique identifier for the analyzer |
 
-### DriftReport (from th.compare)
+### DriftReport (from `truthound.drift.compare`)
 
-The drift report returned by `th.compare()`:
+The drift report returned by `compare()`:
 
 | Attribute | Type | Description |
 |-----------|------|-------------|
@@ -667,7 +670,7 @@ The following table summarizes the two complementary approaches for data profili
 | Use Case | High-Level API | Advanced API |
 |----------|----------------|--------------|
 | Basic profiling | `th.profile()` → `ProfileReport` | `DataProfiler.profile()` → `TableProfile` |
-| Drift detection | `th.compare()` → `DriftReport` | `ProfileComparator.compare()` → `ProfileComparison` |
+| Drift detection | `truthound.drift.compare()` → `DriftReport` | `ProfileComparator.compare()` → `ProfileComparison` |
 | Convenience function | - | `compare_profiles()` |
 
 The high-level API is recommended for standard use cases, while the advanced API provides additional capabilities for custom analysis pipelines, threshold configuration, and integration with scheduling systems.

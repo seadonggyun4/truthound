@@ -1,28 +1,28 @@
 # Built-in Validators Reference
 
-Complete parameter reference for all 264 built-in validators organized by category.
+Complete parameter reference for Truthound's built-in validators organized by category.
 
 ---
 
 ## Table of Contents
 
-1. [Schema Validators](#1-schema-validators) (14)
+1. [Schema Validators](#1-schema-validators) (15)
 2. [Completeness Validators](#2-completeness-validators) (12)
 3. [Uniqueness Validators](#3-uniqueness-validators) (17)
 4. [Distribution Validators](#4-distribution-validators) (15)
-5. [String Validators](#5-string-validators) (20)
+5. [String Validators](#5-string-validators) (18)
 6. [Datetime Validators](#6-datetime-validators) (10)
 7. [Aggregate Validators](#7-aggregate-validators) (8)
-8. [Cross-Table Validators](#8-cross-table-validators) (4)
+8. [Cross-Table Validators](#8-cross-table-validators) (5)
 9. [Query Validators](#9-query-validators) (19)
 10. [Multi-Column Validators](#10-multi-column-validators) (20)
 11. [Table Validators](#11-table-validators) (17)
-12. [Geospatial Validators](#12-geospatial-validators) (9)
+12. [Geospatial Validators](#12-geospatial-validators) (13)
 13. [Drift Validators](#13-drift-validators) (14)
-14. [Anomaly Validators](#14-anomaly-validators) (15)
+14. [Anomaly Validators](#14-anomaly-validators) (17)
 15. [Referential Validators](#15-referential-validators) (13)
-16. [Time Series Validators](#16-time-series-validators) (14)
-17. [Business Rule Validators](#17-business-rule-validators) (8)
+16. [Time Series Validators](#16-time-series-validators) (13)
+17. [Business Rule Validators](#17-business-rule-validators) (7)
 18. [Profiling Validators](#18-profiling-validators) (7)
 19. [Localization Validators](#19-localization-validators) (9)
 20. [ML Feature Validators](#20-ml-feature-validators) (5)

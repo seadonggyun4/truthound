@@ -249,83 +249,73 @@ def to_dict(self) -> dict:
 
 ---
 
-## Report
+## ValidationRunResult Integration
 
-Container for validation results.
+Validators feed issues into `ValidationRunResult`, which is the canonical
+runtime output returned by `th.check()`.
 
 ### Definition
 
 ```python
-from truthound.report import Report
+from truthound.core.results import CheckResult, ValidationRunResult
 
-@dataclass
-class Report:
-    """Validation report containing all issues found."""
-
-    issues: list[ValidationIssue]
-    source: str = "unknown"
-    row_count: int = 0
-    column_count: int = 0
+@dataclass(frozen=True)
+class ValidationRunResult:
+    suite_name: str
+    source: str
+    row_count: int
+    column_count: int
+    checks: tuple[CheckResult, ...]
+    issues: tuple[ValidationIssue, ...]
+    execution_issues: tuple[ExecutionIssue, ...]
+    metadata: dict[str, Any]
 ```
 
-### Properties and Methods
+### What Validators Contribute
 
-| Property/Method | Type | Description |
-|-----------------|------|-------------|
-| `issues` | `list[ValidationIssue]` | All found issues |
-| `source` | `str` | Data source name |
-| `row_count` | `int` | Total row count |
-| `column_count` | `int` | Total column count |
+| Field | Description |
+|-------|-------------|
+| `checks` | Per-check execution outcomes grouped by validator/check name |
+| `issues` | Flattened issues emitted by validators |
+| `execution_issues` | Exceptions captured when `catch_exceptions=True` |
+| `metadata` | Planner, context, and artifact information for the run |
 
-### Methods
+### Usage
 
 ```python
-def add_issue(self, issue: ValidationIssue) -> None:
-    """Add an issue maintaining heap property."""
+import truthound as th
+from truthound.types import Severity
 
-def add_issues(self, issues: list[ValidationIssue]) -> None:
-    """Add multiple issues efficiently."""
+run = th.check("data.csv", validators=["null", "duplicate"])
 
-def get_sorted_issues(self) -> list[ValidationIssue]:
-    """Get issues sorted by severity (highest first)."""
+print(run.source)
+print(len(run.checks))
+print(len(run.issues))
 
-def get_top_issues(self, k: int) -> list[ValidationIssue]:
-    """Get top k issues by severity efficiently."""
+for issue in run.issues:
+    print(issue.validator_name, issue.column, issue.issue_type)
 
-def get_most_severe(self) -> ValidationIssue | None:
-    """Get the most severe issue in O(1) time."""
-
-def iter_by_severity(self) -> Iterator[ValidationIssue]:
-    """Iterate through issues in severity order."""
-
-def filter_by_severity(self, min_severity: Severity) -> Report:
-    """Return a new report with only issues at or above the given severity."""
-
-def to_dict(self) -> dict:
-    """Convert report to dictionary for JSON serialization."""
-
-def to_json(self, indent: int = 2) -> str:
-    """Convert report to JSON string."""
-
-def print(self) -> None:
-    """Print the report to stdout."""
+critical_only = run.filter_by_severity(Severity.CRITICAL)
+print(len(critical_only.issues))
 ```
 
-### Properties
+### CheckResult
 
 ```python
-@property
-def has_issues(self) -> bool:
-    """Check if the report contains any issues."""
-
-@property
-def has_critical(self) -> bool:
-    """Check if the report contains critical issues."""
-
-@property
-def has_high(self) -> bool:
-    """Check if the report contains high or critical severity issues."""
+@dataclass(frozen=True)
+class CheckResult:
+    name: str
+    category: str = "general"
+    success: bool = True
+    issue_count: int = 0
+    issues: tuple[ValidationIssue, ...] = ()
+    metadata: dict[str, Any] = field(default_factory=dict)
 ```
+
+This gives you a stable way to answer both of these questions:
+
+- "What did a validator/check produce?"
+- "What issues were emitted across the whole run?"
 
 ---
 

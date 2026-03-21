@@ -29,6 +29,12 @@ Truthound implements a suite of statistical methods for data quality validation:
 
 All methods are optimized for Polars LazyFrame execution, enabling efficient processing of large-scale datasets.
 
+Unless otherwise noted, drift examples below assume:
+
+```python
+from truthound.drift import compare
+```
+
 ---
 
 ## 2. Drift Detection Methods
@@ -49,7 +55,7 @@ Where F₁ and F₂ are the empirical CDFs of the two samples.
 
 ```python
 # KS test requires numeric columns
-drift = th.compare(baseline, current, method="ks", columns=["age", "salary", "score"])
+drift = compare(baseline, current, method="ks", columns=["age", "salary", "score"])
 ```
 
 > **Note:** KS test only works with numeric columns. For mixed data types, use `method="auto"`.
@@ -87,7 +93,7 @@ Where Pᵢ and Qᵢ are the proportions in bin i for baseline and current distri
 
 ```python
 # PSI requires numeric columns
-drift = th.compare(baseline, current, method="psi", columns=["age", "salary", "score"])
+drift = compare(baseline, current, method="psi", columns=["age", "salary", "score"])
 ```
 
 > **Note:** PSI only works with numeric columns. For mixed data types, use `method="auto"`.
@@ -121,7 +127,7 @@ Where Oᵢ is the observed frequency and Eᵢ is the expected frequency.
 **Usage**:
 
 ```python
-drift = th.compare(baseline, current, method="chi2")
+drift = compare(baseline, current, method="chi2")
 ```
 
 **Characteristics**:
@@ -147,7 +153,7 @@ Where M = 0.5 × (P + Q).
 **Usage**:
 
 ```python
-drift = th.compare(baseline, current, method="js")
+drift = compare(baseline, current, method="js")
 ```
 
 **Interpretation**:
@@ -178,7 +184,7 @@ KL(P||Q) = Σ P(x) × log(P(x) / Q(x))
 
 ```python
 # KL divergence requires numeric columns
-drift = th.compare(baseline, current, method="kl", columns=["age", "salary", "score"])
+drift = compare(baseline, current, method="kl", columns=["age", "salary", "score"])
 ```
 
 > **Note:** KL divergence only works with numeric columns. For categorical data or symmetric divergence, use `method="js"` (Jensen-Shannon).
@@ -214,7 +220,7 @@ Where F_P and F_Q are the cumulative distribution functions.
 
 ```python
 # Wasserstein distance requires numeric columns
-drift = th.compare(baseline, current, method="wasserstein", columns=["age", "salary", "score"])
+drift = compare(baseline, current, method="wasserstein", columns=["age", "salary", "score"])
 ```
 
 > **Note:** Wasserstein distance only works with numeric columns. The statistic is normalized by baseline standard deviation for comparability.
@@ -249,7 +255,7 @@ Cramér-von Mises is an alternative to KS that integrates squared differences be
 
 ```python
 # Cramér-von Mises test requires numeric columns
-drift = th.compare(baseline, current, method="cvm", columns=["age", "salary", "score"])
+drift = compare(baseline, current, method="cvm", columns=["age", "salary", "score"])
 ```
 
 > **Note:** Cramér-von Mises test only works with numeric columns and requires at least 2 samples in each dataset.
@@ -278,7 +284,7 @@ A² = -n - (1/n) × Σ (2i-1) × [ln(F(xᵢ)) + ln(1-F(x_{n+1-i}))]
 
 ```python
 # Anderson-Darling test requires numeric columns
-drift = th.compare(baseline, current, method="anderson", columns=["age", "salary", "score"])
+drift = compare(baseline, current, method="anderson", columns=["age", "salary", "score"])
 ```
 
 > **Note:** Anderson-Darling test only works with numeric columns and requires at least 2 samples in each dataset.
@@ -317,7 +323,7 @@ Where pᵢ and qᵢ are probabilities for category/bin i.
 **Usage**:
 
 ```python
-drift = th.compare(baseline, current, method="hellinger")
+drift = compare(baseline, current, method="hellinger")
 ```
 
 **Interpretation**:
@@ -354,7 +360,7 @@ BC(P, Q) = Σ√(pᵢ × qᵢ)  (Bhattacharyya coefficient)
 **Usage**:
 
 ```python
-drift = th.compare(baseline, current, method="bhattacharyya")
+drift = compare(baseline, current, method="bhattacharyya")
 ```
 
 **Interpretation**:
@@ -389,9 +395,9 @@ TV(P, Q) = (1/2) × Σ|pᵢ - qᵢ| = max_A |P(A) - Q(A)|
 **Usage**:
 
 ```python
-drift = th.compare(baseline, current, method="tv")
+drift = compare(baseline, current, method="tv")
 # or
-drift = th.compare(baseline, current, method="total_variation")
+drift = compare(baseline, current, method="total_variation")
 ```
 
 **Interpretation**:
@@ -436,7 +442,7 @@ Where X, X' ~ P and Y, Y' ~ Q are independent samples.
 
 ```python
 # Energy distance requires numeric columns
-drift = th.compare(baseline, current, method="energy", columns=["age", "salary"])
+drift = compare(baseline, current, method="energy", columns=["age", "salary"])
 ```
 
 > **Note:** Energy distance only works with numeric columns.
@@ -476,7 +482,7 @@ Where k is a kernel function (default: Gaussian RBF kernel).
 
 ```python
 # MMD requires numeric columns
-drift = th.compare(baseline, current, method="mmd", columns=["feature1", "feature2"])
+drift = compare(baseline, current, method="mmd", columns=["feature1", "feature2"])
 ```
 
 > **Note:** MMD only works with numeric columns.
@@ -511,7 +517,7 @@ drift = th.compare(baseline, current, method="mmd", columns=["feature1", "featur
 
 ### Currently Available Methods Summary
 
-| Method | `th.compare()` | ML API | Column Type |
+| Method | `truthound.drift.compare()` | ML API | Column Type |
 |--------|:--------------:|:------:|-------------|
 | `auto` | ✅ | - | Any (auto-select) |
 | `ks` | ✅ | - | Numeric only |
@@ -802,7 +808,7 @@ profile = th.profile(df)
 
 ```python
 # Drift detection with custom thresholds
-drift = th.compare(
+drift = compare(
     baseline, current,
     method="psi",
     threshold=0.1  # More sensitive threshold
@@ -917,7 +923,7 @@ When testing multiple columns:
 
 ```python
 # Truthound applies Benjamini-Hochberg by default for multiple columns
-drift = th.compare(baseline, current, correction="bh")
+drift = compare(baseline, current, correction="bh")
 ```
 
 ---

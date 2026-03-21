@@ -10,7 +10,7 @@ Reporters that generate validation reports in HTML and Markdown formats.
 from truthound.reporters import get_reporter
 
 reporter = get_reporter("html")
-html_output = reporter.render(validation_result)
+html_output = reporter.render(run_result)
 ```
 
 ### Configuration Options
@@ -57,10 +57,10 @@ custom_template = """
 <head><title>{{ title }}</title></head>
 <body>
   <h1>{{ result.data_asset }} Validation</h1>
-  <p>Status: {{ result.status.value }}</p>
+  <p>Status: {{ result.status }}</p>
   <ul>
-  {% for r in result.results if not r.success %}
-    <li>{{ r.validator_name }}: {{ r.message }}</li>
+  {% for issue in result.issues %}
+    <li>{{ issue.validator_name }}: {{ issue.message }}</li>
   {% endfor %}
   </ul>
 </body>
@@ -94,7 +94,7 @@ Variables available in custom templates:
 
 | Variable | Type | Description |
 |----------|------|-------------|
-| `result` | `ValidationResult` | Validation result object |
+| `result` | `RunPresentation` | Shared reporter presentation model |
 | `title` | `str` | Report title |
 | `timestamp` | `str` | Generation time |
 | `config` | `HTMLReporterConfig` | Reporter configuration |
@@ -118,7 +118,7 @@ pip install jinja2
 from truthound.reporters import get_reporter
 
 reporter = get_reporter("markdown")
-md_output = reporter.render(validation_result)
+md_output = reporter.render(run_result)
 ```
 
 ### Configuration Options
@@ -235,7 +235,7 @@ An ASCII/Unicode table reporter provided by the SDK.
 from truthound.reporters.sdk import TableReporter
 
 reporter = TableReporter()
-table_output = reporter.render(validation_result)
+table_output = reporter.render(run_result)
 ```
 
 ### Configuration Options
@@ -315,7 +315,7 @@ class HTMLReporter(ValidationReporter[HTMLReporterConfig]):
     file_extension = ".html"
     content_type = "text/html"
 
-    def render(self, data: ValidationResult) -> str:
+    def render(self, data: ValidationRunResult) -> str:
         """Render validation result as HTML."""
         ...
 ```
@@ -330,7 +330,7 @@ class MarkdownReporter(ValidationReporter[MarkdownReporterConfig]):
     file_extension = ".md"
     content_type = "text/markdown"
 
-    def render(self, data: ValidationResult) -> str:
+    def render(self, data: ValidationRunResult) -> str:
         """Render validation result as Markdown."""
         ...
 ```
@@ -345,7 +345,7 @@ class TableReporter(ValidationReporter[TableReporterConfig]):
     file_extension = ".txt"
     content_type = "text/plain"
 
-    def render(self, data: ValidationResult) -> str:
+    def render(self, data: ValidationRunResult) -> str:
         """Render validation result as table."""
         ...
 ```

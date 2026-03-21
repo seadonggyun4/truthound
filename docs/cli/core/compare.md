@@ -509,6 +509,6 @@ jobs:
 
 ## See Also
 
-- [Python API: th.compare()](../../python-api/core-functions.md#thcompare)
+- [Python API: `compare()` in `truthound.drift`](../../python-api/core-functions.md#compare-in-truthounddrift)
 - [Statistical Methods](../../concepts/statistical-methods.md)
 - [ML Drift Detection](../ml/drift.md)

@@ -60,52 +60,52 @@ anomalous_rows = new_df.filter(pl.Series(result.labels) == -1)
 ### Workflow 2: Distribution Drift Detection
 
 ```python
-import truthound as th
+from truthound.drift import compare
 
 # Reference data (baseline)
 baseline = "january_data.csv"
 current = "february_data.csv"
 
-# Quick drift detection with th.compare() - 14 methods available
+# Quick drift detection with truthound.drift.compare() - 14 methods available
 # Statistical: auto, ks, psi, chi2, cvm, anderson
 # Divergence: js, kl
 # Distance: wasserstein, hellinger, bhattacharyya, tv, energy, mmd
 
 # Auto-select method based on column type (recommended)
-drift = th.compare(baseline, current, method="auto")
+drift = compare(baseline, current, method="auto")
 
 # Kolmogorov-Smirnov test (numeric columns)
-drift = th.compare(baseline, current, method="ks")
+drift = compare(baseline, current, method="ks")
 
 # Population Stability Index (ML monitoring)
-drift = th.compare(baseline, current, method="psi")
+drift = compare(baseline, current, method="psi")
 
 # Wasserstein distance (Earth Mover's Distance)
-drift = th.compare(baseline, current, method="wasserstein")
+drift = compare(baseline, current, method="wasserstein")
 
 # KL divergence (information theory)
-drift = th.compare(baseline, current, method="kl")
+drift = compare(baseline, current, method="kl")
 
 # Cramér-von Mises (tail sensitivity)
-drift = th.compare(baseline, current, method="cvm")
+drift = compare(baseline, current, method="cvm")
 
 # Anderson-Darling (most sensitive to tails)
-drift = th.compare(baseline, current, method="anderson")
+drift = compare(baseline, current, method="anderson")
 
 # Hellinger distance (bounded metric)
-drift = th.compare(baseline, current, method="hellinger")
+drift = compare(baseline, current, method="hellinger")
 
 # Bhattacharyya distance (classification bounds)
-drift = th.compare(baseline, current, method="bhattacharyya")
+drift = compare(baseline, current, method="bhattacharyya")
 
 # Total Variation distance (max probability diff)
-drift = th.compare(baseline, current, method="tv")
+drift = compare(baseline, current, method="tv")
 
 # Energy distance (location/scale sensitivity)
-drift = th.compare(baseline, current, method="energy")
+drift = compare(baseline, current, method="energy")
 
 # Maximum Mean Discrepancy (high-dimensional)
-drift = th.compare(baseline, current, method="mmd")
+drift = compare(baseline, current, method="mmd")
 
 # Check results
 if drift.has_drift:
@@ -275,14 +275,14 @@ Truthound provides sophisticated capabilities beyond basic validation:
 - **Model Monitoring**: Performance, drift, quality metrics with alerting
 
 ```python
-import truthound as th
+from truthound.drift import compare
 
-# Quick drift detection with th.compare()
-drift = th.compare("baseline.csv", "current.csv", method="auto")      # Auto-select
-drift = th.compare("baseline.csv", "current.csv", method="wasserstein")  # Earth Mover's
-drift = th.compare("baseline.csv", "current.csv", method="anderson")     # Tail-sensitive
-drift = th.compare("baseline.csv", "current.csv", method="hellinger")    # Bounded metric
-drift = th.compare("baseline.csv", "current.csv", method="mmd")          # High-dimensional
+# Quick drift detection with truthound.drift.compare()
+drift = compare("baseline.csv", "current.csv", method="auto")         # Auto-select
+drift = compare("baseline.csv", "current.csv", method="wasserstein")  # Earth Mover's
+drift = compare("baseline.csv", "current.csv", method="anderson")     # Tail-sensitive
+drift = compare("baseline.csv", "current.csv", method="hellinger")    # Bounded metric
+drift = compare("baseline.csv", "current.csv", method="mmd")          # High-dimensional
 
 # ML-based anomaly detection
 from truthound import ml

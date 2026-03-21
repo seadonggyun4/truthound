@@ -1,8 +1,15 @@
 # Validators Guide
 
-This guide covers data validation with Truthound's Python API. It includes practical usage patterns, error handling, and the complete validator reference.
+This guide covers data validation with Truthound's Python API. It includes
+practical usage patterns, error handling, and the complete validator
+reference.
 
-**Current Implementation: 264 validators across 28 categories (23 validator categories + 5 infrastructure categories).**
+Truthound 3.0 does not run the entire validator registry by default. When you
+call `th.check(...)` without an explicit validator list, Truthound synthesizes
+an auto-suite from the active context, schema signals, and the chosen input.
+
+The runtime validator registry currently exposes **263 loadable validators**
+across **21 validator categories**.
 
 ---
 
@@ -10,15 +17,20 @@ This guide covers data validation with Truthound's Python API. It includes pract
 
 ```python
 import truthound as th
+from truthound.validators import list_categories, list_validators
 
-# Basic validation with all built-in validators
-report = th.check("data.csv")
+# Basic validation with the auto-suite chosen for this input
+run = th.check("data.csv")
+
+# Inspect the registry-backed catalog
+len(list_validators())   # 263
+len(list_categories())   # 21
 
 # Specific validators only
-report = th.check(df, validators=["null", "duplicate", "range"])
+run = th.check(df, validators=["null", "duplicate", "range"])
 
 # With validator configuration
-report = th.check(
+run = th.check(
     df,
     validators=["regex"],
     validator_config={"regex": {"pattern": r"^[A-Z]{3}-\d{4}$"}}
@@ -49,7 +61,7 @@ validators = [
 ]
 
 # Run validation
-report = th.check(df, validators=validators)
+run = th.check(df, validators=validators)
 ```
 
 ### Pattern 2: Conditional Validation
@@ -70,7 +82,7 @@ custom_check = ExpressionValidator(
     description="End date must be after start date"
 )
 
-report = th.check(df, validators=[conditional_null, custom_check])
+run = th.check(df, validators=[conditional_null, custom_check])
 ```
 
 ### Pattern 3: Schema-Based Validation
@@ -82,39 +94,40 @@ import truthound as th
 schema = th.learn("baseline.csv")
 
 # Validate new data against schema
-report = th.check("new_data.csv", schema=schema)
+run = th.check("new_data.csv", schema=schema)
 
 # Filter schema-specific issues
-schema_issues = [i for i in report.issues if i.validator == "schema"]
+schema_issues = [i for i in run.issues if i.validator_name == "schema"]
 ```
 
 ### Pattern 4: Processing Validation Results
 
 ```python
 import truthound as th
+from truthound.types import Severity
 
-report = th.check("data.csv")
+run = th.check("data.csv")
 
 # Filter by severity
-critical_issues = [i for i in report.issues if i.severity == "critical"]
-high_issues = report.filter_by_severity("high").issues
+critical_issues = [i for i in run.issues if i.severity == Severity.CRITICAL]
+high_issues = run.filter_by_severity(Severity.HIGH).issues
 
 # Group by column
 from collections import defaultdict
 by_column = defaultdict(list)
-for issue in report.issues:
+for issue in run.issues:
     by_column[issue.column].append(issue)
 
 # Group by validator
 by_validator = defaultdict(list)
-for issue in report.issues:
-    by_validator[issue.validator].append(issue)
+for issue in run.issues:
+    by_validator[issue.validator_name or issue.issue_type].append(issue)
 
 # Export to different formats
-from truthound.reporters import JSONReporter, JUnitXMLReporter
+from truthound.reporters import JSONReporter, MarkdownReporter
 
-json_output = JSONReporter().render(report)
-junit_output = JUnitXMLReporter().render(report)
+json_output = JSONReporter().render(run)
+markdown_output = MarkdownReporter().render(run)
 ```
 
 ### Pattern 5: Cross-Table Validation
@@ -143,7 +156,7 @@ row_count_validator = CrossTableRowCountValidator(
     tolerance=0.0
 )
 
-report = th.check(employees_df, validators=[fk_validator, row_count_validator])
+run = th.check(employees_df, validators=[fk_validator, row_count_validator])
 ```
 
 ---
@@ -177,7 +190,7 @@ from truthound.validators.base import (
 from truthound.datasources.base import DataSourceError
 
 try:
-    report = th.check("data.csv", validators=["null", "regex"])
+    run = th.check("data.csv", validators=["null", "regex"], catch_exceptions=False)
 except ColumnNotFoundError as e:
     print(f"Column not found: {e.column}")
 except ValidationTimeoutError as e:
@@ -186,18 +199,26 @@ except DataSourceError as e:
     print(f"Could not read data source: {e}")
 ```
 
-### Strict Mode for Missing Columns
+### Fail Fast During Validator Development
 
 ```python
 import truthound as th
-
-# Default: warns and skips missing columns
-report = th.check(df, validators=["null"])  # MaskingWarning if column missing
-
-# Strict mode: raises error for missing columns
 from truthound.validators import NullValidator
-validator = NullValidator(columns=["nonexistent"], strict=True)
-# Raises ColumnNotFoundError
+
+# Default: isolate validator exceptions into execution_issues
+run = th.check(
+    df,
+    validators=[NullValidator(column="missing_column")],
+    catch_exceptions=True,
+)
+print(run.execution_issues)
+
+# Fail fast: surface configuration/data errors directly
+th.check(
+    df,
+    validators=[NullValidator(column="missing_column")],
+    catch_exceptions=False,
+)
 ```
 
 ---
@@ -208,9 +229,9 @@ The documents in this directory cover all aspects of the Truthound validator sys
 
 | Document | Description |
 |----------|-------------|
-| **[index.md](index.md)** (this document) | Overview, quick reference for all 264 validators |
-| **[categories.md](categories.md)** | Detailed descriptions of 28 categories |
-| **[built-in.md](built-in.md)** | Complete reference for 289 built-in validators |
+| **[index.md](index.md)** (this document) | Overview and quick reference for the registry-backed validator catalog |
+| **[categories.md](categories.md)** | Current validator categories exposed by the runtime registry |
+| **[built-in.md](built-in.md)** | Parameter reference for built-in validators by category |
 | **[custom-validators.md](custom-validators.md)** | Developing custom validators with SDK |
 | **[enterprise-sdk.md](enterprise-sdk.md)** | Enterprise SDK (sandbox, signing, licensing) |
 | **[security.md](security.md)** | ReDoS protection, SQL injection prevention |
@@ -2569,7 +2590,7 @@ with handler.cascade() as cascade:
 
 ## Appendix A: Validator Categories Summary
 
-### Validator Classes (23 categories, 264 validators)
+### Validator Categories Exposed By `list_categories()` (21 categories, 263 validators)
 
 | Category | Count | Dependencies | Description |
 |----------|-------|--------------|-------------|
@@ -2577,7 +2598,7 @@ with handler.cascade() as cascade:
 | Completeness | 12 | Core | Missing value detection |
 | Uniqueness | 17 | Core | Duplicate and key validation |
 | Distribution | 15 | Core | Range and statistical checks |
-| String | 20 | Core | Pattern and format validation |
+| String | 18 | Core | Pattern and format validation |
 | Datetime | 10 | Core | Temporal data validation |
 | Aggregate | 8 | Core | Statistical aggregate checks |
 | Cross-Table | 5 | Core | Multi-table relationships |
@@ -2586,19 +2607,17 @@ with handler.cascade() as cascade:
 | Table | 18 | Core | Table metadata validation |
 | Geospatial | 13 | Core | Geographic coordinates |
 | Drift | 14 | scipy | Distribution change detection |
-| Anomaly | 18 | scipy, scikit-learn | Outlier detection |
-| Business Rule | 8 | Core | Domain-specific validation (Luhn, IBAN, VAT) |
+| Anomaly | 17 | scipy, scikit-learn | Outlier detection |
+| Business Rule | 7 | Core | Domain-specific validation (Luhn, IBAN, VAT) |
 | Localization | 9 | Core | Regional identifiers (Korean, Japanese, Chinese) |
 | ML Feature | 5 | Core | Leakage detection, correlation analysis |
 | Profiling | 7 | Core | Cardinality, entropy, frequency analysis |
-| Referential | 14 | Core | Foreign key and orphan record validation |
-| Time Series | 14 | Core | Gap detection, seasonality, trend analysis |
-| Privacy | 16 | Core | GDPR, CCPA, LGPD compliance patterns |
-| Streaming | 7 | Core | Streaming data validation |
-| SDK | 5 | Core | Custom validator development tools |
-| **Subtotal** | **289** | | |
+| Referential | 13 | Core | Foreign key and orphan record validation |
+| Time Series | 13 | Core | Gap detection, seasonality, trend analysis |
+| Privacy | 15 | Core | GDPR, CCPA, LGPD compliance patterns |
+| **Total** | **263** | | **Current loadable validator classes in the registry** |
 
-### Infrastructure Modules (5 categories, 26 modules)
+### Support Modules Outside The Validator Registry
 
 | Category | Modules | Dependencies | Description |
 |----------|---------|--------------|-------------|
@@ -2607,9 +2626,8 @@ with handler.cascade() as cascade:
 | Optimization | 6 | Core | DAG orchestration, profiling |
 | i18n | 10 | Core | Internationalized error messages (7 languages) |
 | Timeout | 4 | Core | Distributed timeout management |
-| **Subtotal** | **26** | | |
-
-| **Total** | **28 categories** | | **264 validators + 26 modules** |
+| SDK / Scaffolding | Various | Core | Custom validator and plugin authoring helpers |
+| Streaming | Various | Core | Streaming-oriented validator helpers |
 
 ---
 

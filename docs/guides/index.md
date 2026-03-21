@@ -18,6 +18,7 @@ Guides are the task-oriented part of the Truthound docs. Use them when you alrea
 
 ```python
 import truthound as th
+from truthound.drift import compare
 
 # Read data from various sources
 df = th.read("data.csv")                                     # File path
@@ -25,28 +26,28 @@ df = th.read({"a": [1, 2, 3], "b": ["x", "y", "z"]})         # Dict data
 df = th.read("large_data.parquet", sample_size=10000)        # With sampling
 
 # Basic validation
-report = th.check("data.csv")
-print(f"Found {len(report.issues)} issues")
+run = th.check("data.csv")
+print(f"Found {len(run.issues)} issues")
 
 # With specific validators
-report = th.check(df, validators=["null", "duplicate", "range"])
+run = th.check(df, validators=["null", "duplicate", "range"])
 
 # Schema-based validation
 schema = th.learn("baseline.csv")
-report = th.check("new_data.csv", schema=schema)
+run = th.check("new_data.csv", schema=schema)
 
 # Database validation
 from truthound.datasources import PostgreSQLDataSource
 source = PostgreSQLDataSource(table="users", host="localhost", database="mydb")
-report = th.check(source=source)
+run = th.check(source=source)
 
 # Data drift detection (14 methods available)
-drift = th.compare("baseline.csv", "current.csv", method="auto")        # Auto-select
-drift = th.compare("baseline.csv", "current.csv", method="ks")          # Kolmogorov-Smirnov
-drift = th.compare("baseline.csv", "current.csv", method="wasserstein") # Earth Mover's Distance
-drift = th.compare("baseline.csv", "current.csv", method="anderson")    # Anderson-Darling
-drift = th.compare("baseline.csv", "current.csv", method="hellinger")   # Hellinger distance
-drift = th.compare("baseline.csv", "current.csv", method="mmd")         # Maximum Mean Discrepancy
+drift = compare("baseline.csv", "current.csv", method="auto")        # Auto-select
+drift = compare("baseline.csv", "current.csv", method="ks")          # Kolmogorov-Smirnov
+drift = compare("baseline.csv", "current.csv", method="wasserstein") # Earth Mover's Distance
+drift = compare("baseline.csv", "current.csv", method="anderson")    # Anderson-Darling
+drift = compare("baseline.csv", "current.csv", method="hellinger")   # Hellinger distance
+drift = compare("baseline.csv", "current.csv", method="mmd")         # Maximum Mean Discrepancy
 ```
 
 ---
@@ -57,7 +58,7 @@ drift = th.compare("baseline.csv", "current.csv", method="mmd")         # Maximu
 
 | Guide | Description | Key Topics |
 |-------|-------------|------------|
-| [Validators](validators/index.md) | Data validation patterns | 289 validators, custom validators, error handling |
+| [Validators](validators/index.md) | Data validation patterns | Runtime registry, custom validators, error handling |
 | [Data Sources](datasources/index.md) | Database and file connections | SQL, Cloud DW, Spark, streaming |
 | [Profiling](profiler/index.md) | Automatic data analysis | Schema inference, rule generation, scheduling |
 
@@ -115,15 +116,15 @@ drift = th.compare("baseline.csv", "current.csv", method="mmd")         # Maximu
 import truthound as th
 
 # 1. Validate data
-report = th.check("data.csv")
+run = th.check("data.csv")
 
 # 2. Filter critical issues
-critical = [i for i in report.issues if i.severity == "critical"]
+critical = [i for i in run.issues if i.severity == "critical"]
 
 # 3. Generate report
 if critical:
     from truthound.datadocs import generate_html_report
-    html = generate_html_report(report)
+    html = generate_html_report(run)
     Path("report.html").write_text(html)
 ```
 
@@ -137,10 +138,10 @@ schema = th.learn("baseline.csv")
 schema.save("schema.yaml")
 
 # 2. Validate new data against schema
-report = th.check("new_data.csv", schema="schema.yaml")
+run = th.check("new_data.csv", schema="schema.yaml")
 
 # 3. Check for schema violations
-schema_issues = [i for i in report.issues if i.validator == "schema"]
+schema_issues = [i for i in run.issues if i.validator_name == "schema"]
 ```
 
 ### Workflow 3: Database Validation with Pushdown
@@ -158,12 +159,12 @@ source = PostgreSQLDataSource(
 )
 
 # 2. Validate with query pushdown (runs on database server)
-report = th.check(source=source, pushdown=True)
+run = th.check(source=source, pushdown=True)
 
 # 3. Save results
 from truthound.stores import S3Store
 store = S3Store(bucket="validation-results", prefix="daily/")
-store.save(report, key=f"transactions_{date.today()}")
+store.save(run, key=f"transactions_{date.today()}")
 ```
 
 ### Workflow 4: Profiling and Rule Generation
@@ -179,7 +180,7 @@ from truthound.profiler import generate_suite
 suite = generate_suite(profile)
 
 # 3. Execute suite on new data
-report = suite.execute(new_data)
+run = suite.execute(new_data)
 ```
 
 ---

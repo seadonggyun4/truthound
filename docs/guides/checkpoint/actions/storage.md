@@ -104,6 +104,13 @@ Stored JSON structure:
   "status": "failure",
   "data_asset": "users.csv",
   "duration_ms": 1523.5,
+  "validation_run": {
+    "run_id": "run_20260321_120000_abcd1234",
+    "suite_name": "daily_data_validation",
+    "source": "users.csv",
+    "checks": [...],
+    "issues": [...]
+  },
   "validation_result": {
     "statistics": {
       "total_issues": 150,
@@ -115,12 +122,16 @@ Stored JSON structure:
       "total_rows": 100000,
       "total_columns": 15
     },
-    "results": [...]  // When include_validation_details=True
+    "results": [...]  // Optional compatibility DTO when include_validation_details=True
   },
   "action_results": [...],
   "metadata": {...}
 }
 ```
+
+`validation_run` is the canonical 3.0 result payload. `validation_result` is an
+additional persistence-oriented compatibility snapshot that is written only when
+`include_validation_details=True`.
 
 ---
 

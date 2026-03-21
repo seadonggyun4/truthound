@@ -69,7 +69,8 @@ df = th.read("data.csv", has_header=False)
 
 ## th.check()
 
-Validates data against rules and returns a validation report.
+Validates data through the Truthound 3.0 kernel and returns
+`ValidationRunResult`.
 
 ### Signature
 
@@ -77,12 +78,12 @@ Validates data against rules and returns a validation report.
 def check(
     data: Any = None,
     source: BaseDataSource | None = None,
+    context: TruthoundContext | None = None,
     validators: list[str | Validator] | None = None,
     validator_config: dict[str, dict[str, Any]] | None = None,
     min_severity: str | Severity | None = None,
     schema: str | Path | Schema | None = None,
     auto_schema: bool = False,
-    use_engine: bool = False,
     parallel: bool = False,
     max_workers: int | None = None,
     pushdown: bool | None = None,
@@ -90,7 +91,7 @@ def check(
     catch_exceptions: bool = True,
     max_retries: int = 0,
     exclude_columns: list[str] | None = None,
-) -> Report:
+) -> ValidationRunResult:
 ```
 
 ### Parameters
@@ -99,12 +100,12 @@ def check(
 |-----------|------|---------|-------------|
 | `data` | `Any` | `None` | Input data (DataFrame, file path, dict) |
 | `source` | `BaseDataSource` | `None` | DataSource for databases (overrides `data`) |
-| `validators` | `list[str \| Validator]` | `None` | Specific validators to run (None = all) |
+| `context` | `TruthoundContext` | `None` | Explicit workspace/context boundary for run artifacts and baselines |
+| `validators` | `list[str \| Validator]` | `None` | Specific validators to run (`None` = auto-suite selection, not the whole registry) |
 | `validator_config` | `dict` | `None` | Per-validator configuration dict |
 | `min_severity` | `str \| Severity` | `None` | Minimum severity to include |
 | `schema` | `Schema \| str \| Path` | `None` | Schema to validate against |
 | `auto_schema` | `bool` | `False` | Auto-learn and cache schema |
-| `use_engine` | `bool` | `False` | Use execution engine (experimental) |
 | `parallel` | `bool` | `False` | Use DAG-based parallel execution |
 | `max_workers` | `int` | `None` | Max threads for parallel execution |
 | `pushdown` | `bool` | `None` | Enable query pushdown for SQL sources |
@@ -115,78 +116,90 @@ def check(
 
 ### Returns
 
-`Report` - Report containing validation issues and statistics.
+`ValidationRunResult` - Immutable runtime result with:
+
+- `checks`: per-check execution outcomes
+- `issues`: flattened validation issues across the run
+- `execution_issues`: validator failures captured by exception isolation
+- `metadata`: context, planner, and artifact metadata
 
 ### Examples
 
 ```python
 import truthound as th
+from truthound.types import ResultFormat, ResultFormatConfig, Severity
 
-# Basic validation
-report = th.check("data.csv")
-print(f"Issues: {len(report.issues)}")
+# Basic validation through the auto-suite
+run = th.check("data.csv")
+print(f"Checks: {len(run.checks)}")
+print(f"Issues: {len(run.issues)}")
 
 # With specific validators
-report = th.check("data.csv", validators=["null", "duplicate", "range"])
+run = th.check("data.csv", validators=["null", "duplicate", "range"])
 
 # With validator configuration
-report = th.check(
+run = th.check(
     "data.csv",
     validators=["regex"],
     validator_config={"regex": {"patterns": {"email": r"^[\w.+-]+@[\w-]+\.[\w.-]+$"}}}
 )
 
 # Exclude columns from all validators
-report = th.check("users.csv", exclude_columns=["first_name", "last_name"])
+run = th.check("users.csv", exclude_columns=["first_name", "last_name"])
 
 # Per-validator column exclusion via validator_config
-report = th.check(
+run = th.check(
     "users.csv",
     validator_config={"unique": {"exclude_columns": ["first_name"]}}
 )
 
 # With schema validation
 schema = th.learn("baseline.csv")
-report = th.check("data.csv", schema=schema)
+run = th.check("data.csv", schema=schema)
 
 # With DataSource
 from truthound.datasources.sql import PostgreSQLDataSource
 source = PostgreSQLDataSource(table="users", host="localhost", database="mydb")
-report = th.check(source=source)
+run = th.check(source=source)
 
 # Filter by severity
-report = th.check("data.csv", min_severity="medium")
+run = th.check("data.csv", min_severity="medium")
+critical_only = run.filter_by_severity(Severity.CRITICAL)
 
 # Parallel execution for large datasets
-report = th.check("data.csv", parallel=True, max_workers=4)
+run = th.check("data.csv", parallel=True, max_workers=4)
 
 # Query pushdown for SQL sources
-report = th.check(source=source, pushdown=True)
+run = th.check(source=source, pushdown=True)
 
 # Result format control (VE-1)
-report = th.check("data.csv", result_format="boolean_only")  # Fastest, pass/fail only
-report = th.check("data.csv", result_format="complete")       # Full detail with debug queries
+run = th.check("data.csv", result_format="boolean_only")  # Fastest, pass/fail only
+run = th.check("data.csv", result_format=ResultFormat.COMPLETE)
 
 # Fine-grained result format configuration
-from truthound.types import ResultFormatConfig
 config = ResultFormatConfig(
     format=ResultFormat.COMPLETE,
     include_unexpected_rows=True,
     max_unexpected_rows=500,
     return_debug_query=True,
 )
-report = th.check("data.csv", result_format=config)
+run = th.check("data.csv", result_format=config)
 
 # Exception isolation with auto-retry (VE-5)
-report = th.check("data.csv", catch_exceptions=True, max_retries=3)
+run = th.check("data.csv", catch_exceptions=True, max_retries=3)
 
-# Access structured results (VE-2)
-for issue in report.issues:
+# Work with structured issue and check results
+for issue in run.issues:
     if issue.result:
         print(f"Elements: {issue.result.element_count}")
         print(f"Unexpected: {issue.result.unexpected_count} ({issue.result.unexpected_percent:.1%})")
     if issue.exception_info:
         print(f"Exception: {issue.exception_info.failure_category}")
+
+# Reporter and docs helpers are available on the run result
+print(run.render(format="json"))
+run.write("validation-run.json")
+html = run.build_docs(title="Validation Overview")
 ```
 
 ---
@@ -425,13 +438,16 @@ json_output = profile.to_json(indent=2)
 
 ---
 
-## th.compare()
+## compare() in truthound.drift
 
-Compares two datasets for data drift.
+Drift comparison lives in `truthound.drift`, not on the thin root `truthound`
+facade.
 
 ### Signature
 
 ```python
+from truthound.drift import compare
+
 def compare(
     baseline: Any,
     current: Any,
@@ -489,15 +505,15 @@ def compare(
 
 ### Returns
 
-`DriftReport` - Report with per-column drift results.
+`DriftReport` - Per-column drift analysis.
 
 ### Examples
 
 ```python
-import truthound as th
+from truthound.drift import compare
 
 # Basic comparison
-drift = th.compare("baseline.csv", "current.csv")
+drift = compare("baseline.csv", "current.csv")
 
 if drift.has_high_drift:
     print("Significant drift detected!")
@@ -506,28 +522,28 @@ if drift.has_high_drift:
             print(f"  {col_drift.column}: {col_drift.result.method} = {col_drift.result.statistic:.4f}")
 
 # Specific method (psi requires numeric columns)
-drift = th.compare("train.csv", "prod.csv", method="psi", columns=["age", "income", "score"])
+drift = compare("train.csv", "prod.csv", method="psi", columns=["age", "income", "score"])
 
 # KL divergence
-drift = th.compare("baseline.csv", "current.csv", method="kl", columns=["age", "income"])
+drift = compare("baseline.csv", "current.csv", method="kl", columns=["age", "income"])
 
 # Wasserstein distance (normalized)
-drift = th.compare("baseline.csv", "current.csv", method="wasserstein", columns=["age", "income"])
+drift = compare("baseline.csv", "current.csv", method="wasserstein", columns=["age", "income"])
 
 # Cramér-von Mises (sensitive to tails)
-drift = th.compare("baseline.csv", "current.csv", method="cvm", columns=["age", "income"])
+drift = compare("baseline.csv", "current.csv", method="cvm", columns=["age", "income"])
 
 # Anderson-Darling (most sensitive to tail differences)
-drift = th.compare("baseline.csv", "current.csv", method="anderson", columns=["age", "income"])
+drift = compare("baseline.csv", "current.csv", method="anderson", columns=["age", "income"])
 
 # With custom threshold
-drift = th.compare("old.csv", "new.csv", threshold=0.1)
+drift = compare("old.csv", "new.csv", threshold=0.1)
 
 # For large datasets, use sampling
-drift = th.compare("big_train.csv", "big_prod.csv", sample_size=10000)
+drift = compare("big_train.csv", "big_prod.csv", sample_size=10000)
 
 # Compare specific columns
-drift = th.compare("baseline.csv", "current.csv", columns=["age", "income", "score"])
+drift = compare("baseline.csv", "current.csv", columns=["age", "income", "score"])
 
 # Get drifted column names
 drifted_cols = drift.get_drifted_columns()
@@ -538,7 +554,7 @@ print(f"Drifted columns: {drifted_cols}")
 
 ## DriftReport
 
-Report returned by `th.compare()` with per-column drift analysis.
+Report returned by `compare()` from `truthound.drift`.
 
 ### Definition
 
@@ -618,9 +634,9 @@ class DriftLevel(str, Enum):
 ### Usage Examples
 
 ```python
-import truthound as th
+from truthound.drift import compare
 
-drift = th.compare("baseline.csv", "current.csv")
+drift = compare("baseline.csv", "current.csv")
 
 # Check overall drift
 print(f"Has drift: {drift.has_drift}")

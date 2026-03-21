@@ -123,22 +123,23 @@ pipeline {
 """Data quality check for CI/CD pipelines."""
 import sys
 import truthound as th
+from truthound.drift import compare
 from truthound.types import Severity
 
 def main():
     # Run validation
-    report = th.check("data/input.csv", min_severity="medium")
+    run = th.check("data/input.csv", min_severity="medium")
 
     # Check for critical issues
-    if report.has_critical:
-        critical_issues = [i for i in report.issues if i.severity == Severity.CRITICAL]
+    if any(issue.severity == Severity.CRITICAL for issue in run.issues):
+        critical_issues = [i for i in run.issues if i.severity == Severity.CRITICAL]
         print(f"CRITICAL: Found {len(critical_issues)} critical issues!")
         for issue in critical_issues:
             print(f"  - {issue.column}: {issue.issue_type}")
         sys.exit(1)
 
     # Check for drift
-    drift = th.compare("data/baseline.csv", "data/current.csv")
+    drift = compare("data/baseline.csv", "data/current.csv")
 
     if drift.has_high_drift:
         print("WARNING: Significant drift detected!")
@@ -147,7 +148,7 @@ def main():
                 print(f"  - {col_drift.column}: statistic={col_drift.result.statistic:.4f}")
         sys.exit(1)
 
-    print(f"SUCCESS: All checks passed ({len(report.issues)} minor issues)")
+    print(f"SUCCESS: All checks passed ({len(run.issues)} minor issues)")
     sys.exit(0)
 
 if __name__ == "__main__":
@@ -289,20 +290,17 @@ from truthound.checkpoint import CheckpointRegistry
 # Create registry
 registry = CheckpointRegistry()
 
-# Register checkpoints from directory
-registry.register_from_directory("checkpoints/")
+# Load checkpoints from YAML
+registry.load_from_yaml("checkpoints/sales_checkpoint.yaml")
 
 # List all checkpoints
-for name in registry.list_checkpoints():
+for name in registry.list_names():
     print(f"  - {name}")
 
-# Run specific checkpoint
-result = registry.run("daily_sales_validation")
-
-# Run all checkpoints
-results = registry.run_all()
-for name, result in results.items():
-    print(f"{name}: {result.status}")
+# Retrieve and run a specific checkpoint
+checkpoint = registry.get("daily_sales_validation")
+result = checkpoint.run()
+print(result.status)
 ```
 
 ## Notification Setup
@@ -331,8 +329,8 @@ email = EmailNotification(
     smtp_port=587,
     smtp_user="alerts@company.com",
     smtp_password="app-specific-password",  # Use env var in production
-    from_addr="Data Quality <alerts@company.com>",
-    to_addrs=["team@company.com", "manager@company.com"],
+    from_address="Data Quality <alerts@company.com>",
+    to_addresses=["team@company.com", "manager@company.com"],
     notify_on=NotifyCondition.FAILURE,
 )
 ```
@@ -490,55 +488,55 @@ from truthound.checkpoint.escalation import (
     EscalationEngine,
     EscalationEngineConfig,
     EscalationPolicy,
-    EscalationPolicyConfig,
     EscalationLevel,
     EscalationTarget,
-    TargetType,
     EscalationTrigger,
-    create_scheduler,
-    create_store,
 )
 
 # Define escalation levels
 level1 = EscalationLevel(
     level=1,
-    delay_seconds=0,
+    delay_minutes=0,
     targets=[
-        EscalationTarget(
-            type=TargetType.SLACK,
-            destination="https://hooks.slack.com/...",
-        ),
+        EscalationTarget.channel("#data-quality", "Slack channel"),
     ],
 )
 
 level2 = EscalationLevel(
     level=2,
-    delay_seconds=900,  # 15 minutes
+    delay_minutes=15,
     targets=[
-        EscalationTarget(
-            type=TargetType.EMAIL,
-            destination="oncall@company.com",
-        ),
+        EscalationTarget.email("oncall@company.com", "On-call email"),
     ],
 )
 
 # Create policy
-policy = EscalationPolicyConfig(
+policy = EscalationPolicy(
     name="critical_escalation",
     levels=[level1, level2],
-    trigger=EscalationTrigger.ON_FAILURE,
+    triggers=[EscalationTrigger.REPEATED_FAILURE],
+    severity_filter=["critical", "high"],
 )
 
 # Create escalation engine
-engine = EscalationEngine(
-    config=EscalationEngineConfig(),
-    scheduler=create_scheduler("asyncio"),
-    store=create_store("memory"),
-)
+engine = EscalationEngine(EscalationEngineConfig(store_type="memory"))
 
 # Register and trigger
 engine.register_policy(policy)
-await engine.trigger("critical_escalation", context={"checkpoint_name": "test"})
+
+async def notification_handler(record, level, targets):
+    for target in targets:
+        print(f"Notify {target.type.value}: {target.identifier}")
+    return True
+
+engine.set_notification_handler(notification_handler)
+await engine.start()
+await engine.trigger(
+    incident_id="checkpoint:daily_sales_validation",
+    policy_name="critical_escalation",
+    context={"checkpoint_name": "daily_sales_validation", "status": "failure"},
+)
+await engine.stop()
 ```
 
 ## Storage Backends
@@ -547,6 +545,7 @@ await engine.trigger("critical_escalation", context={"checkpoint_name": "test"})
 
 ```python
 from truthound.stores.backends.s3 import S3Store
+import truthound as th
 
 store = S3Store(
     bucket="validation-results",
@@ -556,8 +555,9 @@ store = S3Store(
 
 # Save validation result
 from truthound.stores import ValidationResult
-result = ValidationResult.from_report(report, data_asset="customers.csv")
-run_id = store.save(result)
+run_result = th.check("customers.csv")
+stored_result = ValidationResult.from_report(run_result, data_asset="customers.csv")
+run_id = store.save(stored_result)
 
 # Retrieve result
 stored_result = store.get(run_id)
@@ -578,7 +578,7 @@ store = DatabaseStore(
 )
 
 # Save validation result
-run_id = store.save(result)
+run_id = store.save(stored_result)
 ```
 
 ### Using Factory Function
@@ -635,7 +635,7 @@ result = checkpoint.run()
 
 metrics = {
     "validation_passed": result.success,
-    "issue_count": len(result.validation_result.issues) if result.validation_result else 0,
+    "issue_count": len(result.validation_run.issues) if result.validation_run else 0,
     "duration_ms": result.duration_ms,
     "timestamp": result.run_time.isoformat(),
 }
@@ -731,10 +731,10 @@ schema.save("schemas/production_v1.yaml")
 
 ```python
 # Development: see all issues
-report = th.check(data, min_severity="info")
+run = th.check(data, min_severity="low")
 
 # Production: only actionable issues
-report = th.check(data, min_severity="medium", strict=True)
+run = th.check(data, min_severity="medium", catch_exceptions=False)
 ```
 
 ### 3. Version Your Schemas

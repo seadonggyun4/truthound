@@ -1,38 +1,40 @@
 # Validator Categories
 
-Truthound organizes validators into 21 semantic categories plus 7 infrastructure modules. Each category addresses a specific aspect of data quality.
+Truthound organizes 263 validators into 21 categories. Support
+modules such as security, optimization, streaming, and SDK tooling live beside
+the registry, but they are not returned by `truthound.validators.list_categories()`.
 
 ---
 
 ## Category Overview
 
-### Validator Categories (21 categories, 264 validators)
+### Validator Categories (21 categories, 263 loadable validators)
 
 | Category | Validators | Module Path | Description |
 |----------|------------|-------------|-------------|
-| [schema](#schema) | 14 | `truthound.validators.schema` | Table structure, column types |
+| [schema](#schema) | 15 | `truthound.validators.schema` | Table structure, column types |
 | [completeness](#completeness) | 12 | `truthound.validators.completeness` | Null, NaN, empty values |
 | [uniqueness](#uniqueness) | 17 | `truthound.validators.uniqueness` | Duplicates, primary keys |
 | [distribution](#distribution) | 15 | `truthound.validators.distribution` | Range, set, statistical |
-| [string](#string) | 20 | `truthound.validators.string` | Pattern, format validation |
+| [string](#string) | 18 | `truthound.validators.string` | Pattern, format validation |
 | [datetime](#datetime) | 10 | `truthound.validators.datetime` | Date/time validation |
 | [aggregate](#aggregate) | 8 | `truthound.validators.aggregate` | Statistical aggregates |
-| [cross_table](#cross_table) | 4 | `truthound.validators.cross_table` | Multi-table checks |
-| [query](#query) | 18 | `truthound.validators.query` | Expression-based |
-| [multi_column](#multi_column) | 18 | `truthound.validators.multi_column` | Column relationships |
-| [table](#table) | 17 | `truthound.validators.table` | Table metadata |
-| [geospatial](#geospatial) | 12 | `truthound.validators.geospatial` | Geographic coordinates |
+| [cross_table](#cross_table) | 5 | `truthound.validators.cross_table` | Multi-table checks |
+| [query](#query) | 19 | `truthound.validators.query` | Expression-based |
+| [multi_column](#multi_column) | 20 | `truthound.validators.multi_column` | Column relationships |
+| [table](#table) | 18 | `truthound.validators.table` | Table metadata |
+| [geospatial](#geospatial) | 13 | `truthound.validators.geospatial` | Geographic coordinates |
 | [drift](#drift) | 14 | `truthound.validators.drift` | Distribution drift |
 | [anomaly](#anomaly) | 17 | `truthound.validators.anomaly` | Outlier detection |
-| [referential](#referential) | 16 | `truthound.validators.referential` | Foreign keys, orphans |
-| [timeseries](#timeseries) | 18 | `truthound.validators.timeseries` | Time series validation |
-| [business_rule](#business_rule) | 8 | `truthound.validators.business_rule` | Checksums, IBAN, VAT |
-| [profiling](#profiling) | 8 | `truthound.validators.profiling` | Cardinality, entropy |
+| [referential](#referential) | 13 | `truthound.validators.referential` | Foreign keys, orphans |
+| [timeseries](#timeseries) | 13 | `truthound.validators.timeseries` | Time series validation |
+| [business_rule](#business_rule) | 7 | `truthound.validators.business_rule` | Checksums, IBAN, VAT |
+| [profiling](#profiling) | 7 | `truthound.validators.profiling` | Cardinality, entropy |
 | [localization](#localization) | 9 | `truthound.validators.localization` | Regional identifiers |
-| [ml_feature](#ml_feature) | 9 | `truthound.validators.ml_feature` | Feature validation |
-| [privacy](#privacy) | 20+ | `truthound.validators.privacy` | GDPR, CCPA compliance |
+| [ml_feature](#ml_feature) | 5 | `truthound.validators.ml_feature` | Feature validation |
+| [privacy](#privacy) | 15 | `truthound.validators.privacy` | GDPR, CCPA compliance |
 
-### Infrastructure Modules (7 modules)
+### Support Modules (Not Registry Categories)
 
 | Module | Location | Description |
 |--------|----------|-------------|

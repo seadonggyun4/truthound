@@ -1,15 +1,18 @@
 # Python API Reference
 
-The Python API is the canonical programmatic surface for Truthound. Use it when you want notebook-friendly workflows, service integration, explicit validation control, or access to advanced modules that go beyond file-based CLI usage.
+The Python API is Truthound's canonical programmatic surface. Use it when you
+want direct access to the 3.0 validation kernel, `ValidationRunResult`, schema
+learning, reporter integration, or outer-layer subsystems such as drift,
+checkpoint, and DataDocs.
 
 ## When To Use The Python API
 
 Choose Python when you need to:
 
 - validate dataframes, lazyframes, dictionaries, SQL-backed datasources, or cloud warehouse connectors
-- compose Truthound into notebooks, scripts, jobs, services, and applications
-- access `ValidationRunResult` directly for custom reporting or downstream automation
-- work with profiling, drift, lineage, checkpoints, stores, plugins, or orchestration support
+- compose Truthound into notebooks, scripts, services, jobs, or application code
+- inspect `ValidationRunResult` directly for automation, routing, or custom output
+- work with namespace modules such as `truthound.drift`, `truthound.checkpoint`, `truthound.reporters`, and `truthound.profiler`
 
 ## Installation
 
@@ -21,24 +24,72 @@ pip install truthound
 
 ```python
 import truthound as th
+from truthound.drift import compare
 
-# Validate data
-report = th.check("data.csv")
+# Validate data through the 3.0 kernel
+run = th.check("data.csv")
 
-# Learn schema
+# Learn a reusable baseline schema
 schema = th.learn("baseline.csv")
 
 # Scan for PII
 pii_report = th.scan("customers.csv")
 
 # Mask sensitive data
-masked_df = th.mask(df, strategy="hash")
+masked_df = th.mask(run.source, strategy="hash")
 
 # Profile data
 profile = th.profile("data.csv")
 
-# Compare datasets (drift detection)
-drift_report = th.compare("baseline.csv", "current.csv")
+# Compare datasets for drift
+drift = compare("baseline.csv", "current.csv")
+```
+
+## Core 3.0 Mental Model
+
+Truthound 3.0 keeps the root package intentionally small:
+
+- `truthound` exposes the validation facade and core result/context types
+- `th.check()` returns `ValidationRunResult`
+- advanced capabilities live in namespaces such as `truthound.drift`, `truthound.checkpoint`, and `truthound.reporters`
+- reporters, checkpoints, and DataDocs are outer layers built on top of the same canonical result model
+
+Start with [Core Functions](core-functions.md) if you want the most important
+runtime contract first.
+
+## Import Patterns
+
+Use the root package for the thin public facade:
+
+```python
+from truthound import (
+    check,
+    scan,
+    mask,
+    profile,
+    read,
+    learn,
+    Schema,
+    TruthoundContext,
+    ValidationRunResult,
+)
+```
+
+Use namespace imports for outer-layer features:
+
+```python
+from truthound.drift import compare
+from truthound.reporters import get_reporter
+from truthound.checkpoint import Checkpoint, CheckpointConfig
+from truthound.profiler import profile_data
+```
+
+If you need the module object, import the namespace directly:
+
+```python
+import truthound as th
+import truthound.checkpoint as checkpoint
+import truthound.drift as drift
 ```
 
 ## Recommended Reading Path
@@ -50,154 +101,83 @@ drift_report = th.compare("baseline.csv", "current.csv")
 5. [Reporters](reporters.md)
 6. [Advanced Features](advanced.md)
 
-If you are new to Truthound, read [Quick Start](../getting-started/quickstart.md) first and then return here for lookup-oriented detail.
-
-## Import Patterns
-
-Truthound uses lazy loading for optimal import performance:
-
-```python
-# Core API - eagerly loaded (fast imports)
-from truthound import check, scan, mask, profile, learn, Schema
-
-# Advanced features - lazy loaded on first access
-from truthound import compare      # Drift detection
-from truthound import profiler     # Advanced profiling
-from truthound import ml           # ML anomaly/drift detection
-from truthound import lineage      # Data lineage tracking
-from truthound import realtime     # Streaming validation
-from truthound import checkpoint   # CI/CD integration
-from truthound import datadocs     # HTML report generation
-
-# Or access directly via module
-import truthound as th
-th.compare(...)           # Lazy loaded on first use
-th.DataProfiler           # Lazy loaded on first use
-```
+If you are new to Truthound, read [Quick Start](../getting-started/quickstart.md)
+first and then return here for lookup-oriented detail.
 
 ## API Overview
 
-### [Core Functions](core-functions.md)
+### Root Facade
 
-Main entry points for data quality operations:
-
-| Function | Description |
-|----------|-------------|
-| [`th.check()`](core-functions.md#thcheck) | Validate data quality |
-| [`th.learn()`](core-functions.md#thlearn) | Learn schema from data |
-| [`th.scan()`](core-functions.md#thscan) | Scan for PII |
-| [`th.mask()`](core-functions.md#thmask) | Mask sensitive data |
-| [`th.profile()`](core-functions.md#thprofile) | Generate data profile |
-| [`th.compare()`](core-functions.md#thcompare) | Detect data drift |
-
-### [Schema](schema.md)
-
-Schema definition and validation:
-
-| Class | Description |
-|-------|-------------|
-| `Schema` | Schema container with column definitions |
-| `ColumnSchema` | Single column definition with constraints |
-
-### [Validators](validators.md)
-
-Validator interface and registration:
-
-| Class | Description |
-|-------|-------------|
-| `Validator` | Base validator class |
-| `ValidationIssue` | Issue representation |
-| `Report` | Validation report container |
-
-### [Data Sources](datasources.md)
-
-Multi-backend data source support:
-
-| Class | Description |
-|-------|-------------|
-| `BaseDataSource` | Base class for data sources |
-| `PolarsDataSource` | Polars DataFrame source |
-| `FileDataSource` | File-based source |
-| `SQLiteDataSource` | SQLite database |
-| `PostgreSQLDataSource` | PostgreSQL database |
-| `BigQueryDataSource` | Google BigQuery |
-| `SnowflakeDataSource` | Snowflake |
-
-### [Reporters](reporters.md)
-
-Output formatting:
-
-| Class | Description |
-|-------|-------------|
-| `ConsoleReporter` | Terminal output |
-| `JSONReporter` | JSON format |
-| `HTMLReporter` | HTML reports |
-| `JUnitXMLReporter` | CI/CD integration |
-
-### [Advanced Features](advanced.md)
-
-Enterprise features for ML, lineage, and streaming:
-
-| Module | Description |
+| Symbol | Description |
 |--------|-------------|
-| `truthound.ml` | ML anomaly/drift detection, rule learning |
-| `truthound.lineage` | Data lineage tracking and visualization |
+| [`th.check()`](core-functions.md#thcheck) | Validate data and return `ValidationRunResult` |
+| [`th.learn()`](core-functions.md#thlearn) | Learn schema from baseline data |
+| [`th.scan()`](core-functions.md#thscan) | Scan data for PII |
+| [`th.mask()`](core-functions.md#thmask) | Mask sensitive values |
+| [`th.profile()`](core-functions.md#thprofile) | Generate a data profile |
+| [`th.read()`](core-functions.md#thread) | Load supported sources into Polars |
+| `ValidationRunResult` | Canonical validation runtime output |
+| `TruthoundContext` | Zero-config workspace and artifact boundary |
+
+### Namespaces
+
+| Namespace | Description |
+|----------|-------------|
+| `truthound.drift` | Drift comparison via `compare()` and `DriftReport` |
+| `truthound.checkpoint` | Checkpoint orchestration, actions, and CI integration |
+| `truthound.reporters` | Rendering and serialization of validation runs |
+| `truthound.profiler` | Profiling, quality scoring, and comparison workflows |
+| `truthound.datadocs` | HTML docs generation from validation runs |
+| `truthound.lineage` | Lineage and dependency analysis |
 | `truthound.realtime` | Streaming and incremental validation |
-| `truthound.profiler` | Advanced data profiling |
-| `truthound.datadocs` | HTML report generation |
-| `truthound.checkpoint` | CI/CD integration |
+| `truthound.ml` | ML-assisted anomaly and drift tooling |
 
-## Canonical Result Model
+### Core Types
 
-Truthound 3.0 uses `ValidationRunResult` as the canonical runtime output.
-
-That means:
-
-- `th.check()` returns `ValidationRunResult`
-- reporters, docs generation, and checkpoints all build from the same result model
-- migration away from older report containers should start from this type
-
-Start with [Core Functions](core-functions.md) and [Schema](schema.md) if you want the most important 3.0 runtime concepts first.
+| Type | Description |
+|------|-------------|
+| `ValidationRunResult` | Immutable validation run result |
+| `CheckResult` | Per-check execution outcome inside a run |
+| `ValidationIssue` | Individual issue emitted by a validator |
+| `Schema` | Schema container for learned or authored contracts |
 
 ## Supported Input Types
 
-The Python API accepts various input types:
+The Python API accepts the same broad input surface across the root validation
+functions:
 
 ```python
-import truthound as th
-import polars as pl
 import pandas as pd
+import polars as pl
+import truthound as th
 
 # File paths
-report = th.check("data.csv")
-report = th.check("data.parquet")
-report = th.check("data.json")
+run = th.check("data.csv")
+run = th.check("data.parquet")
+run = th.check("data.json")
 
-# Polars DataFrame
+# Polars DataFrame / LazyFrame
 df = pl.read_csv("data.csv")
-report = th.check(df)
-
-# Polars LazyFrame
-lf = pl.scan_csv("data.csv")
-report = th.check(lf)
+run = th.check(df)
+run = th.check(df.lazy())
 
 # Pandas DataFrame
 pdf = pd.read_csv("data.csv")
-report = th.check(pdf)
+run = th.check(pdf)
 
-# Dictionary
-data = {"col1": [1, 2, 3], "col2": ["a", "b", "c"]}
-report = th.check(data)
+# Dictionary input
+run = th.check({"col1": [1, 2, 3], "col2": ["a", "b", "c"]})
 
-# DataSource (for databases)
+# SQL-backed DataSource
 from truthound.datasources.sql import PostgreSQLDataSource
+
 source = PostgreSQLDataSource(
     table="users",
     host="localhost",
     database="mydb",
     user="postgres",
 )
-report = th.check(source=source)
+run = th.check(source=source)
 ```
 
 ## Error Handling
@@ -212,38 +192,32 @@ from truthound.validators.base import (
 )
 
 try:
-    report = th.check("data.csv")
-    if report.issues:
-        print(f"Found {len(report.issues)} issues")
-except DataSourceError as e:
-    print(f"Data source error: {e}")
-except ValidationTimeoutError as e:
-    print(f"Validation timed out: {e}")
-except ColumnNotFoundError as e:
-    print(f"Column not found: {e}")
+    run = th.check("data.csv", catch_exceptions=False)
+    if run.issues:
+        print(f"Found {len(run.issues)} issues")
+except DataSourceError as exc:
+    print(f"Data source error: {exc}")
+except ValidationTimeoutError as exc:
+    print(f"Validation timed out: {exc}")
+except ColumnNotFoundError as exc:
+    print(f"Column not found: {exc}")
+except RegexValidationError as exc:
+    print(f"Invalid regex: {exc}")
 ```
 
 ## Type Hints
 
-Truthound is fully typed. Use with mypy or pyright:
+Truthound is fully typed. For static analysis, import the canonical result and
+namespace types directly:
 
 ```python
-# Core functions (eagerly loaded)
-from truthound import check, learn, scan, mask, profile
-
-# Drift comparison (lazy loaded)
-from truthound import compare  # or: from truthound.drift import compare
-
-# Types and classes
-from truthound.schema import Schema, ColumnSchema
-from truthound.validators.base import Validator, ValidationIssue
-from truthound.report import Report
+from truthound import ValidationRunResult, check, learn, mask, profile, read, scan
+from truthound.core.results import CheckResult
 from truthound.datasources.base import BaseDataSource
+from truthound.drift import ColumnDrift, DriftReport, compare
+from truthound.schema import Schema, ColumnSchema
 from truthound.types import Severity
-
-# Drift types
-from truthound.drift.report import DriftReport, ColumnDrift
-from truthound.drift.detectors import DriftResult, DriftLevel
+from truthound.validators.base import ValidationIssue, Validator
 ```
 
 ## See Also
@@ -252,4 +226,4 @@ from truthound.drift.detectors import DriftResult, DriftLevel
 - [CLI Reference](../cli/index.md) - Command-line interface
 - [Guides](../guides/index.md) - Task-oriented usage guides
 - [Tutorials](../tutorials/index.md) - Step-by-step learning paths
-- [Tutorials](../tutorials/examples.md) - Step-by-step tutorials
+- [Migration to 3.0](../guides/migration-3.0.md) - Removed root imports and legacy result surfaces

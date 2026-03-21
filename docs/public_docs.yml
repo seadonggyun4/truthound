@@ -45,6 +45,13 @@ external_sources:
     repo_name: seadonggyun4/truthound-orchestration
     branch: main
     docs_root: docs
+  dashboard:
+    prefix: dashboard
+    label: Truthound Dashboard 3.x
+    repo_url: https://github.com/seadonggyun4/truthound-dashboard
+    repo_name: seadonggyun4/truthound-dashboard
+    branch: main
+    docs_root: docs
 
 support_files:
   - _redirects
@@ -59,5 +66,5 @@ excluded_prefixes:
   - orchestration/enterprise/
   - orchestration/engines/
 
-expected_page_count: 218
-expected_markdown_count: 227
+expected_page_count: 243
+expected_markdown_count: 252

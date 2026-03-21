@@ -19,16 +19,16 @@ The Reporter SDK provides the following features:
 ### Create Simple Reporter with Decorator
 
 ```python
-from truthound.reporters.sdk import create_reporter
+from truthound.reporters.sdk import create_validation_reporter
 
-@create_reporter("my_format", extension=".myf")
-def render_my_format(result, config):
-    return f"Status: {result.status.value}"
+@create_validation_reporter("my_format", extension=".myf")
+def render_my_format(run_result, config):
+    return f"Status: {'PASS' if run_result.success else 'FAIL'}"
 
 # Usage
 from truthound.reporters import get_reporter
 reporter = get_reporter("my_format")
-output = reporter.render(validation_result)
+output = reporter.render(run_result)
 ```
 
 ### Full Reporter with Mixins
@@ -53,10 +53,14 @@ class MyReporter(FormattingMixin, AggregationMixin, FilteringMixin, ValidationRe
         return MyReporterConfig()
 
     def render(self, data):
-        # Use mixin methods
-        issues = self.filter_by_severity(data, min_severity="medium")
+        legacy_view = self.present(data).to_legacy_view()
+        issues = self.filter_by_severity(legacy_view.results, min_severity="medium")
         grouped = self.group_by_column(issues)
-        return self.format_as_table(grouped)
+        rows = [
+            {"column": column, "issues": len(results)}
+            for column, results in grouped.items()
+        ]
+        return self.format_as_table(rows)
 ```
 
 ---
@@ -74,15 +78,16 @@ from truthound.reporters.sdk import FormattingMixin
 
 class MyReporter(FormattingMixin, ValidationReporter):
     def render(self, data):
+        presentation = self.present(data)
         # Table formatting (ascii, markdown, grid, simple styles)
-        rows = [{"name": r.column, "message": r.message} for r in data.results]
+        rows = [{"name": issue.column, "message": issue.message} for issue in presentation.issues]
         table = self.format_as_table(rows, style="markdown")
 
         # Number formatting
-        rate = self.format_percentage(data.statistics.pass_rate)
+        rate = self.format_percentage(presentation.summary.pass_rate)
 
         # Date formatting
-        date = self.format_datetime(data.run_time)
+        date = self.format_datetime(presentation.run_time)
 
         # Byte size formatting
         size = self.format_bytes(1024000)  # "1000.0 KB"
@@ -114,17 +119,18 @@ from truthound.reporters.sdk import AggregationMixin
 
 class MyReporter(AggregationMixin, ValidationReporter):
     def render(self, data):
+        legacy_view = self.present(data).to_legacy_view()
         # Group by column
-        by_column = self.group_by_column(data.results)
+        by_column = self.group_by_column(legacy_view.results)
 
         # Group by severity
-        by_severity = self.group_by_severity(data.results)
+        by_severity = self.group_by_severity(legacy_view.results)
 
         # Group by validator
-        by_validator = self.group_by_validator(data.results)
+        by_validator = self.group_by_validator(legacy_view.results)
 
         # Calculate statistics
-        stats = self.get_summary_stats(data)
+        stats = self.get_summary_stats(legacy_view)
 
         return self.format_groups(by_severity)
 ```
@@ -150,17 +156,18 @@ from truthound.reporters.sdk import FilteringMixin
 
 class MyReporter(FilteringMixin, ValidationReporter):
     def render(self, data):
+        legacy_view = self.present(data).to_legacy_view()
         # Filter by severity
-        critical = self.filter_by_severity(data.results, min_severity="critical")
+        critical = self.filter_by_severity(legacy_view.results, min_severity="critical")
 
         # Failed items only
-        failed = self.filter_failed(data.results)
+        failed = self.filter_failed(legacy_view.results)
 
         # Specific columns only
-        email_issues = self.filter_by_column(data.results, include_columns=["email"])
+        email_issues = self.filter_by_column(legacy_view.results, include_columns=["email"])
 
         # Specific validators only
-        null_issues = self.filter_by_validator(data.results, include_validators=["NullValidator"])
+        null_issues = self.filter_by_validator(legacy_view.results, include_validators=["NullValidator"])
 
         # Sort by severity
         sorted_results = self.sort_by_severity(failed)
@@ -224,15 +231,16 @@ from truthound.reporters.sdk import TemplatingMixin
 
 class MyReporter(TemplatingMixin, ValidationReporter):
     template_string = """
-    Report: {{ data.data_asset }}
-    Status: {{ data.status.value }}
-    {% for issue in data.issues %}
+    Report: {{ presentation.source }}
+    Status: {{ presentation.status }}
+    {% for issue in presentation.issues %}
     - {{ issue.message }}
     {% endfor %}
     """
 
     def render(self, data):
-        return self.render_template(self.template_string, data=data)
+        presentation = self.present(data)
+        return self.render_template(self.template_string, presentation=presentation)
 ```
 
 **Key Methods:**
@@ -252,14 +260,16 @@ from truthound.reporters.sdk import StreamingMixin
 
 class MyReporter(StreamingMixin, ValidationReporter):
     def render(self, data):
+        legacy_view = self.present(data).to_legacy_view()
         # Generate in chunks
-        for chunk in self.stream_results(data.results, chunk_size=100):
+        for chunk in self.stream_results(legacy_view.results, chunk_size=100):
             yield self.format_chunk(chunk)
 
     def render_lines(self, data):
+        legacy_view = self.present(data).to_legacy_view()
         # Line-by-line streaming
         formatter = lambda r: f"{r.validator_name}: {r.message}"
-        return self.render_streaming(data.results, formatter)
+        return self.render_streaming(legacy_view.results, formatter)
 ```
 
 **Key Methods:**
@@ -289,9 +299,9 @@ from truthound.reporters.sdk import create_reporter
 def render_simple(result, config):
     """Simple text reporter."""
     lines = [
-        f"Data Asset: {result.data_asset}",
-        f"Status: {result.status.value}",
-        f"Pass Rate: {result.pass_rate * 100:.1f}%",
+        f"Source: {result.source}",
+        f"Status: {'PASS' if result.success else 'FAIL'}",
+        f"Issues: {len(result.issues)}",
     ]
     return "\n".join(lines)
 
@@ -318,10 +328,11 @@ class MyConfig(ReporterConfig):
     config_class=MyConfig
 )
 def render_prefixed(result, config):
+    status = "PASS" if result.success else "FAIL"
     lines = []
     if config.include_timestamp:
         lines.append(f"{config.prefix} Time: {result.run_time}")
-    lines.append(f"{config.prefix} Status: {result.status.value}")
+    lines.append(f"{config.prefix} Status: {status}")
     return "\n".join(lines)
 ```
 
@@ -339,13 +350,13 @@ reporter_class = (
     .with_content_type("text/plain")
     .with_mixin(FormattingMixin)
     .with_mixin(FilteringMixin)
-    .with_renderer(lambda self, data: f"Status: {data.status.value}")
+    .with_renderer(lambda self, data: f"Status: {'PASS' if data.success else 'FAIL'}")
     .build()
 )
 
 # Create instance
 instance = reporter_class()
-output = instance.render(validation_result)
+output = instance.render(run_result)
 ```
 
 **Builder Methods:**
@@ -940,8 +951,9 @@ class MyCustomReporter(ValidationReporter[ReporterConfig]):
     name = "my_custom"
     file_extension = ".custom"
 
-    def render(self, data):
-        return f"Custom: {data.status.value}"
+    def render(self, run_result):
+        presentation = self.present(run_result)
+        return f"Custom: {presentation.status}"
 ```
 
 ### Manual Registration

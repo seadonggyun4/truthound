@@ -25,29 +25,36 @@ with open("report.html", "w") as f:
 
 ## Common Workflows
 
-### Workflow 1: Full Validation Report Pipeline
+### Workflow 1: Validation Run + Profile Docs
 
 ```python
 import truthound as th
-from truthound.datadocs import generate_html_report
+from truthound.datadocs import generate_html_report, generate_validation_report
 from pathlib import Path
 
 # Step 1: Validate data
-report = th.check("data.csv")
+run = th.check("data.csv")
 
-# Step 2: Profile data for detailed statistics
+# Step 2: Profile data for profile-focused docs
 profile = th.profile("data.csv")
 
-# Step 3: Generate HTML report with validation results
-html = generate_html_report(
+# Step 3a: Generate profile docs
+profile_html = generate_html_report(
     profile=profile.to_dict(),
-    validation_report=report,
     title="Daily Data Quality Report",
     theme="professional",
 )
 
-# Step 4: Save report
-Path("report.html").write_text(html)
+# Step 3b: Generate validation docs from the canonical ValidationRunResult
+validation_html = generate_validation_report(
+    run,
+    title="Daily Validation Run",
+    theme="professional",
+)
+
+# Step 4: Save both artifacts
+Path("profile-report.html").write_text(profile_html)
+Path("validation-report.html").write_text(validation_html)
 ```
 
 ### Workflow 2: Custom Themed Report

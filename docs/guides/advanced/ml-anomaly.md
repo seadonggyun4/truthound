@@ -233,38 +233,39 @@ for score in result:
 
 ## Drift Detection
 
-### Quick Drift Detection with th.compare()
+### Quick Drift Detection with `truthound.drift.compare()`
 
-For simple drift detection between two datasets, use `th.compare()` with 14 available methods:
+For simple drift detection between two datasets, use `compare()` from
+`truthound.drift` with 14 available methods:
 
 ```python
-import truthound as th
+from truthound.drift import compare
 
 # Auto-select best method based on column type
-drift = th.compare("baseline.csv", "current.csv", method="auto")
+drift = compare("baseline.csv", "current.csv", method="auto")
 
 # Statistical tests (numeric columns)
-drift = th.compare("baseline.csv", "current.csv", method="ks")          # Kolmogorov-Smirnov
-drift = th.compare("baseline.csv", "current.csv", method="psi")         # Population Stability Index
-drift = th.compare("baseline.csv", "current.csv", method="cvm")         # Cramér-von Mises
-drift = th.compare("baseline.csv", "current.csv", method="anderson")    # Anderson-Darling
+drift = compare("baseline.csv", "current.csv", method="ks")          # Kolmogorov-Smirnov
+drift = compare("baseline.csv", "current.csv", method="psi")         # Population Stability Index
+drift = compare("baseline.csv", "current.csv", method="cvm")         # Cramér-von Mises
+drift = compare("baseline.csv", "current.csv", method="anderson")    # Anderson-Darling
 
 # Divergence metrics
-drift = th.compare("baseline.csv", "current.csv", method="kl")          # Kullback-Leibler divergence
-drift = th.compare("baseline.csv", "current.csv", method="js")          # Jensen-Shannon divergence
+drift = compare("baseline.csv", "current.csv", method="kl")          # Kullback-Leibler divergence
+drift = compare("baseline.csv", "current.csv", method="js")          # Jensen-Shannon divergence
 
 # Distance metrics (any column type)
-drift = th.compare("baseline.csv", "current.csv", method="wasserstein") # Earth Mover's Distance
-drift = th.compare("baseline.csv", "current.csv", method="hellinger")   # Hellinger distance (bounded)
-drift = th.compare("baseline.csv", "current.csv", method="bhattacharyya") # Bhattacharyya distance
-drift = th.compare("baseline.csv", "current.csv", method="tv")          # Total Variation distance
+drift = compare("baseline.csv", "current.csv", method="wasserstein")   # Earth Mover's Distance
+drift = compare("baseline.csv", "current.csv", method="hellinger")     # Hellinger distance (bounded)
+drift = compare("baseline.csv", "current.csv", method="bhattacharyya") # Bhattacharyya distance
+drift = compare("baseline.csv", "current.csv", method="tv")            # Total Variation distance
 
 # Distance metrics (numeric only)
-drift = th.compare("baseline.csv", "current.csv", method="energy")      # Energy distance
-drift = th.compare("baseline.csv", "current.csv", method="mmd")         # Maximum Mean Discrepancy
+drift = compare("baseline.csv", "current.csv", method="energy")      # Energy distance
+drift = compare("baseline.csv", "current.csv", method="mmd")         # Maximum Mean Discrepancy
 
 # For categorical columns
-drift = th.compare("baseline.csv", "current.csv", method="chi2")        # Chi-squared
+drift = compare("baseline.csv", "current.csv", method="chi2")        # Chi-squared
 
 # Check results
 if drift.has_drift:
@@ -273,7 +274,7 @@ if drift.has_drift:
             print(f"{col.column}: {col.result.method} = {col.result.statistic:.4f}")
 ```
 
-See [Python API: th.compare()](../../python-api/core-functions.md#thcompare) for full documentation.
+See [Python API: `compare()` in `truthound.drift`](../../python-api/core-functions.md#compare-in-truthounddrift) for full documentation.
 
 ### ML-Based Drift Detection
 
@@ -337,7 +338,9 @@ drifted = result.get_drifted_columns(threshold=0.1)
 | `energy` | Energy distance | Location/scale sensitivity |
 | `mmd` | Maximum Mean Discrepancy | High-dimensional kernel-based |
 
-> **Note:** For quick drift checks, use `th.compare()` instead. The ML module is better suited for continuous monitoring and model training workflows.
+> **Note:** For quick drift checks, use `compare()` from `truthound.drift`
+> instead. The ML module is better suited for continuous monitoring and model
+> training workflows.
 
 ### Feature Drift Detection
 

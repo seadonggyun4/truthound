@@ -9,7 +9,9 @@ The `FileSystemStore` persists validation results as JSON files on the local fil
 ### Basic Usage
 
 ```python
+import truthound as th
 from truthound.stores.backends.filesystem import FileSystemStore
+from truthound.stores.results import ValidationResult
 
 # Default configuration
 store = FileSystemStore()
@@ -22,8 +24,9 @@ store = FileSystemStore(
 )
 
 # Save a result
-result = ValidationResult.from_report(report, "customers.csv")
-run_id = store.save(result)
+run = th.check("customers.csv")
+stored_result = ValidationResult.from_report(run, "customers.csv")
+run_id = store.save(stored_result)
 
 # Retrieve
 result = store.get(run_id)

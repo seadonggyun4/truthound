@@ -11,9 +11,10 @@ Use this section when you need exact interfaces, option tables, or canonical lin
 Use the [Python API reference](../python-api/index.md) when you want to:
 
 - call `truthound` from scripts, notebooks, or services
-- understand the root facade such as `th.check()`, `th.profile()`, or `th.compare()`
+- understand the root facade such as `th.check()`, `th.profile()`, or `th.read()`
 - work with `ValidationRunResult`, schemas, reporters, and datasource integrations
 - jump from workflow docs into function-level or class-level reference material
+- find namespace APIs such as `truthound.drift.compare()` and checkpoint orchestration
 
 Recommended entry points:
 

@@ -7,15 +7,17 @@ This guide covers persisting validation results with Truthound's Python API. It 
 ## Quick Start
 
 ```python
+import truthound as th
 from truthound.stores import get_store
 from truthound.stores.results import ValidationResult
 
 # Create store
 store = get_store("filesystem", base_path=".truthound/store")
 
-# Save validation result
-result = ValidationResult.from_report(report, "customers.csv")
-run_id = store.save(result)
+# Run validation and persist the storage DTO
+run = th.check("customers.csv")
+stored_result = ValidationResult.from_report(run, "customers.csv")
+run_id = store.save(stored_result)
 
 # Retrieve result
 loaded = store.get(run_id)
@@ -41,15 +43,15 @@ store = get_store(
 )
 
 # Run validation
-report = th.check("data.csv")
+run = th.check("data.csv")
 
 # Save with metadata
-result = ValidationResult.from_report(
-    report,
+stored_result = ValidationResult.from_report(
+    run,
     data_asset="data.csv",
     tags={"environment": "production", "team": "data-eng"},
 )
-run_id = store.save(result)
+run_id = store.save(stored_result)
 print(f"Saved as: {run_id}")
 ```
 
@@ -66,6 +68,8 @@ from truthound.stores.observability.config import (
     AuditConfig,
     MetricsConfig,
 )
+from truthound.stores.results import ValidationResult
+import truthound as th
 
 # Layer 1: Base storage
 base = get_store("s3", bucket="validation-results", prefix="prod/")
@@ -86,8 +90,10 @@ store = ObservableStore(
     ),
 )
 
-# Use the fully-featured store
-result = store.save(validation_result)
+# Run validation and persist the storage DTO
+run = th.check("data.csv")
+stored_result = ValidationResult.from_report(run, data_asset="data.csv")
+run_id = store.save(stored_result)
 
 # Version operations
 history = versioned.get_history(run_id, limit=5)
@@ -233,13 +239,15 @@ All stores implement the `ValidationStore` protocol:
 ```python
 from truthound.stores.results import ValidationResult
 from truthound.stores.base import StoreQuery
+import truthound as th
 
 # Initialize store (lazy initialization)
 store.initialize()
 
 # Save a result
-result = ValidationResult.from_report(report, "customers.csv")
-run_id = store.save(result)
+run = th.check("customers.csv")
+stored_result = ValidationResult.from_report(run, "customers.csv")
+run_id = store.save(stored_result)
 
 # Retrieve a result
 result = store.get(run_id)

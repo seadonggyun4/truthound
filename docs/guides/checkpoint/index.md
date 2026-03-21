@@ -1350,7 +1350,8 @@ result.run_id              # Unique run identifier
 result.checkpoint_name     # Checkpoint name
 result.run_time           # When the checkpoint ran
 result.status             # CheckpointStatus (success/failure/error/warning)
-result.validation_result  # ValidationResult from check()
+result.validation_run     # ValidationRunResult from check()
+result.validation_view    # Compatibility statistics/results projection
 result.action_results     # List of ActionResult
 result.duration_ms        # Execution duration in milliseconds
 result.error              # Error message if failed

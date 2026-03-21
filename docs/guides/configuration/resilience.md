@@ -448,16 +448,20 @@ The `catch_exceptions` and `max_retries` parameters on `th.check()` are propagat
 import truthound as th
 
 # All validators wrapped with exception isolation and retry
-report = th.check(
+run = th.check(
     "data.csv",
     catch_exceptions=True,   # Default: True
     max_retries=3,            # Retry transient errors
 )
 
-# Access exception summary on the report
-if report.exception_summary:
-    print(f"Exceptions: {report.exception_summary.total_count}")
-    print(f"By category: {report.exception_summary.by_category}")
+# Access execution issues captured on the ValidationRunResult
+if run.execution_issues:
+    print(f"Exceptions: {len(run.execution_issues)}")
+    categories: dict[str, int] = {}
+    for execution_issue in run.execution_issues:
+        category = execution_issue.failure_category or "unknown"
+        categories[category] = categories.get(category, 0) + 1
+    print(f"By category: {categories}")
 ```
 
 ---

@@ -658,7 +658,7 @@ async def main():
             context={
                 "severity": "critical",
                 "checkpoint_name": result.checkpoint_name,
-                "issues": result.validation_result.statistics.total_issues,
+                "issues": result.validation_view.statistics.total_issues if result.validation_view else 0,
             },
             policy_name="production_critical",
         )

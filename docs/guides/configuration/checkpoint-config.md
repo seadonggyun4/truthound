@@ -628,7 +628,8 @@ checkpoint.set_router(router)
 result = checkpoint.run()
 
 print(f"Status: {result.status}")
-print(f"Issues: {result.validation_result.issue_count}")
+if result.validation_view is not None:
+    print(f"Issues: {result.validation_view.statistics.total_issues}")
 ```
 
 ## Environment Variables

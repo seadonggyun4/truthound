@@ -232,7 +232,7 @@ validators = [
     ),
 ]
 
-def validate(data_path: str) -> th.ValidationReport:
+def validate(data_path: str) -> th.ValidationRunResult:
     """Validate data file."""
     return th.check(data_path, validators=validators)
 

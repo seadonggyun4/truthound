@@ -38,7 +38,7 @@ Truthound maintains comprehensive test coverage to ensure reliability and correc
 | Unit Tests | Core functionality | Pass |
 | Stress Tests | Edge cases, data types | Pass |
 | Extreme Stress Tests | 10M+ rows, concurrency | Pass |
-| Validator Tests | 28 categories, 400+ validators | Pass |
+| Validator Tests | Runtime registry coverage across 21 categories / 263 validators | Pass |
 | Stores Tests | Filesystem, S3, GCS, Azure, DB | Pass |
 | Reporters Tests | Console, JSON, HTML, Markdown, JUnit | Pass |
 | Data Sources Tests | Polars, Pandas, Spark, SQL | Pass |
@@ -127,7 +127,7 @@ End-to-end tests covering complete validation workflows:
 ```
 tests/
 ├── test_check_api.py          # th.check() integration
-├── test_compare_api.py        # th.compare() integration
+├── test_compare_api.py        # truthound.drift.compare() integration
 ├── test_scan_api.py           # th.scan() integration
 ├── test_profile_api.py        # th.profile() integration
 ├── test_cli.py                # CLI integration
@@ -251,7 +251,7 @@ class TestNullCheckValidator:
 | `th.check()` | 10M rows | < 5s | 2.83M rows/sec |
 | `th.profile()` | 10M rows | < 0.2s | 66.7M rows/sec |
 | `th.learn()` | 10M rows | < 0.3s | 37.0M rows/sec |
-| `th.compare()` (sampled) | 5M rows | < 1s | N/A |
+| `truthound.drift.compare()` (sampled) | 5M rows | < 1s | N/A |
 
 ### 6.2 Benchmark Tests
 
@@ -273,7 +273,7 @@ class TestPerformance:
     def test_drift_5m_rows_sampled(self, baseline_5m, current_5m):
         """Benchmark drift detection with sampling."""
         start = time.time()
-        drift = th.compare(baseline_5m, current_5m, sample_size=10000)
+        drift = compare(baseline_5m, current_5m, sample_size=10000)
         elapsed = time.time() - start
 
         assert elapsed < 1.0  # 92x speedup with sampling

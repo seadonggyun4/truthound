@@ -54,7 +54,7 @@ print(f"Build URL: {env.build_url}")
 from truthound.reporters.ci import GitHubActionsReporter
 
 reporter = GitHubActionsReporter()
-exit_code = reporter.report_to_ci(validation_result)
+exit_code = reporter.report_to_ci(run_result)
 ```
 
 ### Configuration Options
@@ -141,7 +141,7 @@ reporter = GitLabCIReporter(
     code_quality_path="gl-code-quality-report.json",
     output_format="both"  # code_quality + junit
 )
-exit_code = reporter.report_to_ci(validation_result)
+exit_code = reporter.report_to_ci(run_result)
 ```
 
 ### Configuration Options
@@ -208,7 +208,7 @@ reporter = JenkinsReporter(
     junit_path="junit-report.xml",
     output_format="junit"
 )
-exit_code = reporter.report_to_ci(validation_result)
+exit_code = reporter.report_to_ci(run_result)
 ```
 
 ### Configuration Options
@@ -288,7 +288,7 @@ reporter = AzureDevOpsReporter(
     variable_prefix="TRUTHOUND",
     upload_summary=True
 )
-exit_code = reporter.report_to_ci(validation_result)
+exit_code = reporter.report_to_ci(run_result)
 ```
 
 ### Configuration Options
@@ -357,7 +357,7 @@ steps:
 from truthound.reporters.ci import CircleCIReporter
 
 reporter = CircleCIReporter()
-exit_code = reporter.report_to_ci(validation_result)
+exit_code = reporter.report_to_ci(run_result)
 ```
 
 ### config.yml Example
@@ -400,7 +400,7 @@ jobs:
 from truthound.reporters.ci import BitbucketPipelinesReporter
 
 reporter = BitbucketPipelinesReporter()
-exit_code = reporter.report_to_ci(validation_result)
+exit_code = reporter.report_to_ci(run_result)
 ```
 
 ### bitbucket-pipelines.yml Example
@@ -526,15 +526,15 @@ class BaseCIReporter(ValidationReporter[CIReporterConfig]):
         ...
 
     @abstractmethod
-    def format_summary(self, result: ValidationResult) -> str:
+    def format_summary(self, result: LegacyValidationResultView) -> str:
         """Platform-specific summary format."""
         ...
 
-    def report_to_ci(self, result: ValidationResult) -> int:
+    def report_to_ci(self, result: Any) -> int:
         """Output to CI and return exit code."""
         ...
 
-    def get_exit_code(self, result: ValidationResult) -> int:
+    def get_exit_code(self, result: LegacyValidationResultView) -> int:
         """Determine exit code based on result."""
         ...
 ```

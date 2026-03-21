@@ -25,10 +25,13 @@ from truthound.checkpoint.actions import CustomAction
 def my_callback(checkpoint_result):
     """Custom logic for processing validation results."""
     status = checkpoint_result.status.value
-    stats = checkpoint_result.validation_result.statistics
+    validation_run = checkpoint_result.validation_run
+    validation = checkpoint_result.validation_view
+    stats = validation.statistics if validation else None
 
     print(f"Checkpoint {checkpoint_result.checkpoint_name}: {status}")
-    print(f"Total issues: {stats.total_issues}")
+    print(f"Total issues: {stats.total_issues if stats else 0}")
+    print(f"Checks executed: {len(validation_run.checks) if validation_run else 0}")
 
     if status == "failure":
         # Custom notification logic
@@ -94,10 +97,10 @@ When `pass_result_as_json=True`, the result is passed to stdin:
 # Read JSON from stdin
 result=$(cat)
 
-# Parse with jq
+# Parse with jq and exported environment variables
 status=$(echo $result | jq -r '.status')
-issues=$(echo $result | jq -r '.validation_result.statistics.total_issues')
 checkpoint=$(echo $result | jq -r '.checkpoint_name')
+issues="${TRUTHOUND_TOTAL_ISSUES:-0}"
 
 echo "Checkpoint: $checkpoint"
 echo "Status: $status"
@@ -125,23 +128,38 @@ result = json.load(sys.stdin)
 
 checkpoint = result["checkpoint_name"]
 status = result["status"]
-stats = result["validation_result"]["statistics"]
+issue_count = len(result["validation_run"]["issues"]) if result.get("validation_run") else 0
+pass_rate = result.get("validation_view", {}).get("statistics", {}).get("pass_rate")
 
 print(f"Processing {checkpoint}: {status}")
-print(f"Issues: {stats['total_issues']}")
+print(f"Issues: {issue_count}")
+print(f"Pass rate: {pass_rate}")
 
 # Custom logic...
 ```
+
+When `pass_result_as_json=True`, Truthound also exports convenience environment
+variables for shell commands:
+
+- `TRUTHOUND_STATUS`
+- `TRUTHOUND_RUN_ID`
+- `TRUTHOUND_CHECKPOINT`
+- `TRUTHOUND_DATA_ASSET`
+- `TRUTHOUND_TOTAL_ISSUES`
+- `TRUTHOUND_CRITICAL_ISSUES`
+- `TRUTHOUND_HIGH_ISSUES`
+- `TRUTHOUND_PASS_RATE`
 
 ### Conditional Execution
 
 ```python
 def conditional_callback(checkpoint_result):
     """Logic that executes only under specific conditions."""
-    stats = checkpoint_result.validation_result.statistics
+    validation = checkpoint_result.validation_view
+    stats = validation.statistics if validation else None
 
     # Page only when 10+ critical issues
-    if stats.critical_issues >= 10:
+    if stats and stats.critical_issues >= 10:
         page_on_call_engineer(checkpoint_result)
         return {"paged": True}
 

@@ -103,10 +103,16 @@ print(result.run_id)           # Unique execution ID
 print(result.duration_ms)      # Execution time (ms)
 print(result.summary())        # Summary string
 
-# Access validation results
-validation = result.validation_result
-print(validation.statistics.total_issues)
-print(validation.statistics.pass_rate)
+# Access canonical validation results
+validation_run = result.validation_run
+if validation_run is not None:
+    print(len(validation_run.checks))
+    print(len(validation_run.issues))
+
+# Access compatibility statistics via validation_view
+if result.validation_view is not None:
+    print(result.validation_view.statistics.total_issues)
+    print(result.validation_view.statistics.pass_rate)
 
 # Check action results
 for action_result in result.action_results:
@@ -154,12 +160,15 @@ class CheckpointStatus(str, Enum):
 
 ```python
 # CheckpointResult status is determined by the following logic
-def determine_status(validation_result, config):
-    stats = validation_result.statistics
-
-    # ERROR if execution error occurred
-    if validation_result.error:
+def determine_status(result, config):
+    if result.error:
         return CheckpointStatus.ERROR
+
+    validation = result.validation_view
+    if validation is None:
+        return CheckpointStatus.ERROR
+
+    stats = validation.statistics
 
     # FAILURE if critical issues + fail_on_critical=True
     if config.fail_on_critical and stats.critical_issues > 0:
@@ -187,12 +196,16 @@ class CheckpointResult:
     checkpoint_name: str                     # Checkpoint name
     run_time: datetime                       # Execution start time
     status: CheckpointStatus                 # Result status
-    validation_result: ValidationResult      # Validation result object
+    validation_run: ValidationRunResult | None  # Canonical result from th.check()
     action_results: list[ActionResult]       # List of action execution results
     data_asset: str                          # Validated data asset name
     duration_ms: float                       # Total duration (milliseconds)
     error: str | None                        # Error message (on error)
     metadata: dict[str, Any]                 # User metadata
+
+    @property
+    def validation_view(self) -> CheckpointValidationView | None:
+        """Compatibility view derived from validation_run."""
 ```
 
 ### Result Serialization

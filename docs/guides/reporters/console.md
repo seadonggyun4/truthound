@@ -8,11 +8,11 @@ Console Reporter outputs beautifully colored validation results to the terminal 
 from truthound.reporters import get_reporter
 
 reporter = get_reporter("console")
-output = reporter.render(validation_result)
+output = reporter.render(run_result)
 print(output)
 
 # Or print directly
-reporter.print(validation_result)
+reporter.print(run_result)
 ```
 
 ## Configuration Options
@@ -94,7 +94,7 @@ The `print()` method outputs directly to the terminal via Rich Console:
 
 ```python
 reporter = get_reporter("console")
-reporter.print(validation_result)  # Direct terminal output
+reporter.print(run_result)  # Direct terminal output
 ```
 
 ## Output Format
@@ -152,15 +152,15 @@ class ConsoleReporter:
 class ConsoleReporter(ValidationReporter[ConsoleReporterConfig]):
     """Rich-based console reporter."""
 
-    def render(self, data: ValidationResult) -> str:
-        """Render validation result as string."""
+    def render(self, data: ValidationRunResult) -> str:
+        """Render the canonical validation run result as string."""
         ...
 
-    def print(self, data: ValidationResult) -> None:
-        """Print validation result directly to terminal."""
+    def print(self, data: ValidationRunResult) -> None:
+        """Print the canonical validation run result directly to terminal."""
         ...
 
-    def render_compact(self, data: ValidationResult) -> str:
+    def render_compact(self, data: ValidationRunResult) -> str:
         """Render compact single-line summary."""
         ...
 ```

@@ -32,6 +32,7 @@ Comprehensive examples for Truthound data quality validation scenarios.
 
 ```python
 import truthound as th
+from truthound.drift import compare
 
 # Validate a CSV file
 report = th.check("data.csv")
@@ -161,10 +162,10 @@ report = th.check(df, schema=schema)
 ### Basic Comparison
 
 ```python
-import truthound as th
+from truthound.drift import compare
 
 # Compare baseline and current data
-drift = th.compare("train.csv", "production.csv")
+drift = compare("train.csv", "production.csv")
 print(drift)
 
 if drift.has_drift:
@@ -185,25 +186,25 @@ print(f"Drifted columns: {drifted_cols}")
 ### Specifying Detection Method
 
 ```python
-import truthound as th
+from truthound.drift import compare
 
 # Auto-select based on data type (default, recommended)
-drift = th.compare(baseline, current, method="auto")
+drift = compare(baseline, current, method="auto")
 
 # Kolmogorov-Smirnov test (numeric columns only)
-drift = th.compare(baseline, current, method="ks")
+drift = compare(baseline, current, method="ks")
 
 # Population Stability Index (numeric columns only)
-drift = th.compare(baseline, current, method="psi")
+drift = compare(baseline, current, method="psi")
 
 # Chi-square test (categorical columns)
-drift = th.compare(baseline, current, method="chi2")
+drift = compare(baseline, current, method="chi2")
 
 # Jensen-Shannon divergence (works with any column type)
-drift = th.compare(baseline, current, method="js")
+drift = compare(baseline, current, method="js")
 
 # Custom threshold
-drift = th.compare(baseline, current, threshold=0.2)
+drift = compare(baseline, current, threshold=0.2)
 ```
 
 > **Note:** `ks` and `psi` methods only work with numeric columns. Use `columns` parameter
@@ -211,16 +212,16 @@ drift = th.compare(baseline, current, threshold=0.2)
 >
 > ```python
 > # Compare only numeric columns with PSI
-> drift = th.compare(baseline, current, method="psi", columns=["age", "salary"])
+> drift = compare(baseline, current, method="psi", columns=["age", "salary"])
 > ```
 
 ### Large Dataset Optimization
 
 ```python
-import truthound as th
+from truthound.drift import compare
 
 # Use sampling for faster comparison
-drift = th.compare(
+drift = compare(
     "historical.parquet",
     "current.parquet",
     sample_size=10000,
@@ -524,7 +525,7 @@ class ValidationPipeline:
 
         # Drift detection
         if self.drift_baseline:
-            results["drift"] = th.compare(self.drift_baseline, data_path)
+            results["drift"] = compare(self.drift_baseline, data_path)
 
         # PII scan
         if self.pii_check:
@@ -552,6 +553,7 @@ results = pipeline.run("new_data.csv")
 
 ```python
 import truthound as th
+from truthound.drift import compare
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 
@@ -609,7 +611,7 @@ class EnvironmentValidator:
         """Compare two environments for drift."""
         baseline = self.environments[baseline_env]
         target = self.environments[target_env]
-        drift = th.compare(baseline, target)
+        drift = compare(baseline, target)
 
         return {
             "has_drift": drift.has_drift,
