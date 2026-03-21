@@ -460,6 +460,46 @@ class AsyncioScheduler(BaseEscalationScheduler):
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._check_task: asyncio.Task[None] | None = None
         self._cleanup_task: asyncio.Task[None] | None = None
+        self._loop: asyncio.AbstractEventLoop | None = None
+        self._owns_loop = False
+
+    def _get_or_create_event_loop(self) -> asyncio.AbstractEventLoop:
+        """Return an event loop, creating one when Python has no current loop."""
+        if self._loop and not self._loop.is_closed():
+            return self._loop
+
+        try:
+            loop = asyncio.get_running_loop()
+            self._owns_loop = False
+        except RuntimeError:
+            try:
+                loop = asyncio.get_event_loop()
+                self._owns_loop = False
+            except RuntimeError:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                self._owns_loop = True
+
+        self._loop = loop
+        return loop
+
+    def _close_owned_loop(self) -> None:
+        """Close an internally-created loop after cancelling outstanding tasks."""
+        if not self._owns_loop or not self._loop or self._loop.is_closed():
+            return
+
+        loop = self._loop
+        pending = list(asyncio.all_tasks(loop))
+
+        if pending and not loop.is_running():
+            loop.run_until_complete(
+                asyncio.gather(*pending, return_exceptions=True)
+            )
+
+        asyncio.set_event_loop(None)
+        loop.close()
+        self._loop = None
+        self._owns_loop = False
 
     def start(self) -> None:
         """Start the scheduler."""
@@ -469,7 +509,7 @@ class AsyncioScheduler(BaseEscalationScheduler):
         self._is_running = True
 
         # Schedule periodic check for due jobs
-        loop = asyncio.get_event_loop()
+        loop = self._get_or_create_event_loop()
         self._check_task = loop.create_task(self._periodic_check())
         self._cleanup_task = loop.create_task(self._periodic_cleanup())
 
@@ -489,6 +529,9 @@ class AsyncioScheduler(BaseEscalationScheduler):
         if self._cleanup_task:
             self._cleanup_task.cancel()
 
+        self._close_owned_loop()
+        self._check_task = None
+        self._cleanup_task = None
         logger.info("AsyncioScheduler stopped")
 
     def _schedule_job(self, job: ScheduledJob) -> None:
@@ -502,7 +545,7 @@ class AsyncioScheduler(BaseEscalationScheduler):
             if job.status == JobStatus.PENDING:
                 await self._execute_job(job)
 
-        loop = asyncio.get_event_loop()
+        loop = self._get_or_create_event_loop()
         task = loop.create_task(delayed_execute())
         self._tasks[job.id] = task
 

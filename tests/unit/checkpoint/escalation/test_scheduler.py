@@ -282,6 +282,23 @@ class TestInMemoryScheduler:
 class TestAsyncioScheduler:
     """Tests for AsyncioScheduler."""
 
+    @staticmethod
+    def _clear_current_loop() -> asyncio.AbstractEventLoop | None:
+        """Clear and return the current event loop for Python 3.11 regression tests."""
+        policy = asyncio.get_event_loop_policy()
+        try:
+            previous_loop = policy.get_event_loop()
+        except RuntimeError:
+            previous_loop = None
+
+        asyncio.set_event_loop(None)
+        return previous_loop
+
+    @staticmethod
+    def _restore_current_loop(loop: asyncio.AbstractEventLoop | None) -> None:
+        """Restore a previously-active event loop."""
+        asyncio.set_event_loop(loop)
+
     def test_start_stop(self) -> None:
         """Test starting and stopping scheduler."""
         scheduler = AsyncioScheduler()
@@ -294,31 +311,45 @@ class TestAsyncioScheduler:
 
     def test_schedule_escalation_basic(self) -> None:
         """Test basic escalation scheduling."""
-        scheduler = AsyncioScheduler()
-        scheduler._is_running = True
+        previous_loop = self._clear_current_loop()
+        scheduler: AsyncioScheduler | None = None
+        try:
+            scheduler = AsyncioScheduler()
+            scheduler._is_running = True
 
-        # Manual job tracking (without event loop)
-        job = scheduler.schedule_escalation(
-            record_id="record-1",
-            policy_name="policy-1",
-            target_level=2,
-            delay=timedelta(minutes=15),
-        )
+            job = scheduler.schedule_escalation(
+                record_id="record-1",
+                policy_name="policy-1",
+                target_level=2,
+                delay=timedelta(minutes=15),
+            )
 
-        assert job.record_id == "record-1"
-        assert job in scheduler._jobs.values()
+            assert job.record_id == "record-1"
+            assert job in scheduler._jobs.values()
+            assert scheduler._loop is not None
+        finally:
+            if scheduler is not None:
+                scheduler.stop()
+            self._restore_current_loop(previous_loop)
 
     def test_cancel_escalation_basic(self) -> None:
         """Test basic escalation cancellation."""
-        scheduler = AsyncioScheduler()
-        scheduler._is_running = True
+        previous_loop = self._clear_current_loop()
+        scheduler: AsyncioScheduler | None = None
+        try:
+            scheduler = AsyncioScheduler()
+            scheduler._is_running = True
 
-        scheduler.schedule_escalation(
-            "record-1", "policy-1", 2, timedelta(minutes=15)
-        )
+            scheduler.schedule_escalation(
+                "record-1", "policy-1", 2, timedelta(minutes=15)
+            )
 
-        cancelled = scheduler.cancel_escalation("record-1")
-        assert cancelled == 1
+            cancelled = scheduler.cancel_escalation("record-1")
+            assert cancelled == 1
+        finally:
+            if scheduler is not None:
+                scheduler.stop()
+            self._restore_current_loop(previous_loop)
 
 
 class TestCreateScheduler:
