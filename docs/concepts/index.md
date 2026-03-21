@@ -1,6 +1,13 @@
 # Concepts
 
-Deep dive into Truthound's architecture, design principles, and technical foundations.
+Concepts and Architecture explains why Truthound 3.0 works the way it does. Read this section when you want the system model behind zero-config behavior, the result model, planner/runtime boundaries, or extension architecture.
+
+## Start Here If You Need To Understand
+
+- why `ValidationRunResult` is the canonical output model
+- how zero-config local state is managed through `TruthoundContext`
+- how planners, validators, datasources, and reporters fit together
+- where advanced modules such as lineage, realtime, and orchestration attach to the core platform
 
 ## Architecture
 
@@ -108,8 +115,17 @@ Quality assurance practices:
 
 | Concept | Document |
 |---------|----------|
+| Concepts overview | [Concepts](index.md) |
 | System design | [Architecture](architecture.md) |
 | Data backends | [DataSources Architecture](datasources-architecture.md) |
 | ML & Lineage | [Advanced Features](advanced.md) |
 | Extensibility | [Plugin Architecture](plugins.md) |
 | Statistics | [Statistical Methods](statistical-methods.md) |
+
+## Recommended Reading Path
+
+1. [Architecture](architecture.md)
+2. [Zero-Config Context](zero-config.md)
+3. [Plugin Architecture](plugins.md)
+4. [Advanced Features](advanced.md)
+5. [OpenLineage](openlineage.md) or [Statistical Methods](statistical-methods.md), depending on your use case

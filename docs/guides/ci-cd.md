@@ -1,7 +1,7 @@
 # CI/CD Guide Redirect
 
-This compatibility page points to the maintained 2.0 checkpoint orchestration guide.
+This compatibility page points to the canonical CI/CD guide for Truthound 3.0.
 
-- [Checkpoints](checkpoints.md)
-- [Migration to 2.0](migration-2.0.md)
-- [Legacy Archive](../legacy/index.md)
+- [CI/CD Validation Guide](ci-cd/index.md)
+- [Checkpoint Guide](checkpoints.md)
+- [Checkpoint CI Platforms](checkpoint/ci-platforms.md)

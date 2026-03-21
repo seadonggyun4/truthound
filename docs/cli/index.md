@@ -1,6 +1,6 @@
 # CLI Reference
 
-Complete reference for the Truthound command-line interface.
+The CLI is the fastest way to run Truthound from a terminal, shell script, or CI job. Use it when you want file-based validation, profiling, docs generation, checkpoints, benchmark flows, or scaffolding without embedding Truthound in Python code.
 
 ## Installation
 
@@ -10,8 +10,26 @@ pip install truthound
 
 After installation, the `truthound` command is available globally.
 
+## When To Use The CLI
+
+Choose the CLI when you want:
+
+- a shell-first validation workflow
+- simple CI or cron execution with explicit commands
+- team-friendly reproducibility without asking everyone to write Python
+- quick access to profiling, docs generation, plugin scaffolding, and benchmark commands
+
 !!! note "CLI vs Python API"
     The CLI only supports file-based inputs. For SQL databases (PostgreSQL, MySQL, SQLite), Spark DataFrames, or Cloud Data Warehouses (BigQuery, Snowflake, Redshift, Databricks), use the [Python API](../python-api/index.md) with the `source=` parameter.
+
+## Recommended Reading Path
+
+1. `truthound check` for a first validation
+2. profiler commands for profile-driven suite generation
+3. checkpoint commands for automation
+4. plugin and scaffolding commands for extension work
+
+If you are still learning the platform, start with [Getting Started](../getting-started/index.md). If you already know the feature area, jump directly to the command-group pages below.
 
 ## Supported Input Formats
 
@@ -112,7 +130,7 @@ After installation, the `truthound` command is available globally.
 |---------|-----------|---------|
 | `new validator` | NAME (required) | `--output, -o` (.), `--template, -t` (basic/column/pattern/range/comparison/composite/full), `--author, -a`, `--description, -d`, `--category, -c` (custom), `--tests/--no-tests` (--tests), `--docs/--no-docs` (--no-docs), `--severity, -s` (MEDIUM), `--pattern`, `--min`, `--max` |
 | `new reporter` | NAME (required) | `--output, -o` (.), `--template, -t` (basic/full), `--author, -a`, `--description, -d`, `--tests/--no-tests` (--tests), `--docs/--no-docs` (--no-docs), `--extension, -e` (.txt), `--content-type` (text/plain) |
-| `new plugin` | NAME (required) | `--output, -o` (.), `--type, -t` (validator/reporter/hook/datasource/action/full), `--author, -a`, `--description, -d`, `--tests/--no-tests` (--tests), `--min-version` (0.1.0), `--python` (3.10) |
+| `new plugin` | NAME (required) | `--output, -o` (.), `--type, -t` (validator/reporter/hook/datasource/action/full), `--author, -a`, `--description, -d`, `--tests/--no-tests` (--tests), `--min-version` (defaults to current Truthound release), `--python` (3.10) |
 | `new list` | - | `--verbose, -v` |
 | `new templates` | SCAFFOLD_TYPE (required) | - |
 

@@ -24,7 +24,7 @@ truthound new plugin <name> [OPTIONS]
 | `--description` | `-d` | None | Plugin description |
 | `--tests/--no-tests` | | `--tests` | Generate test code |
 | `--install/--no-install` | `-i` | `--no-install` | Auto-install plugin after generation |
-| `--min-version` | | `0.1.0` | Minimum Truthound version |
+| `--min-version` | | `3.0.0` | Minimum Truthound version (defaults to the current Truthound release) |
 | `--python` | | `3.10` | Minimum Python version |
 
 ## Description
@@ -110,7 +110,10 @@ version = "0.1.0"
 description = "Custom validators for Truthound"
 requires-python = ">=3.10"
 dependencies = [
-    "truthound>=0.1.0",
+    "truthound>=3.0.0",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
 ]
 
 [project.entry-points."truthound.plugins"]

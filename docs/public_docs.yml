@@ -1,40 +1,41 @@
 docs:
   - index.md
-  - getting-started/index.md
-  - getting-started/installation.md
-  - getting-started/quickstart.md
-  - concepts/architecture.md
-  - concepts/zero-config.md
-  - concepts/plugins.md
-  - guides/reporter-sdk.md
-  - guides/checkpoints.md
-  - guides/performance.md
-  - guides/benchmark-methodology.md
-  - guides/gx-parity.md
-  - guides/benchmark-workloads.md
-  - guides/docs-deployment-verification.md
-  - guides/migration-3.0.md
-  - orchestration/index.md
-  - orchestration/getting-started.md
-  - orchestration/architecture.md
-  - orchestration/compatibility.md
-  - orchestration/zero-config.md
-  - orchestration/migration/3.0.md
-  - orchestration/airflow/index.md
-  - orchestration/dagster/index.md
-  - orchestration/prefect/index.md
-  - orchestration/dbt/index.md
-  - orchestration/mage/index.md
-  - orchestration/kestra/index.md
-  - orchestration/advanced-engines/index.md
-  - orchestration/api-reference/index.md
-  - adr/001-validation-kernel.md
-  - adr/002-plugin-platform.md
-  - adr/003-result-model.md
-  - adr/004-migration-compatibility.md
-  - releases/latest-benchmark-summary.md
-  - releases/truthound-3.0.md
+  - reference/index.md
   - legacy/index.md
+
+include_prefixes:
+  - getting-started/
+  - tutorials/
+  - concepts/
+  - guides/
+  - cli/
+  - python-api/
+  - orchestration/
+  - releases/
+  - adr/
+  - dashboard/
+
+excluded_docs:
+  - concepts/API_REFERENCE.md
+  - concepts/DATASOURCES.md
+  - concepts/EXAMPLES.md
+  - concepts/VALIDATORS.md
+  - guides/advanced/ADVANCED.md
+  - guides/advanced/ARCHITECTURE.md
+  - guides/advanced/DATASOURCES.md
+  - guides/advanced/VALIDATORS.md
+  - guides/checkpoint/DATASOURCES.md
+  - guides/checkpoint/EXAMPLES.md
+  - guides/checkpoint/REPORTERS.md
+  - guides/checkpoint/STORES.md
+  - guides/checkpoint/VALIDATORS.md
+  - guides/datasources/ARCHITECTURE.md
+  - guides/datasources/DATASOURCES_ARCHITECTURE.md
+  - guides/profiler/CHECKPOINT.md
+  - guides/profiler/EXAMPLES.md
+  - guides/profiler/STATISTICAL_METHODS.md
+  - guides/profiler/STORES.md
+  - guides/profiler/VALIDATORS.md
 
 external_sources:
   orchestration:
@@ -54,45 +55,9 @@ support_directories:
   - javascripts
 
 excluded_prefixes:
-  - cli/
-  - tutorials/
-  - python-api/
-  - dashboard/
   - orchestration/common/
   - orchestration/enterprise/
   - orchestration/engines/
-  - concepts/API_REFERENCE/
-  - concepts/DATASOURCES/
-  - concepts/EXAMPLES/
-  - concepts/VALIDATORS/
-  - concepts/advanced/
-  - concepts/datasources-architecture/
-  - concepts/index/
-  - concepts/masking/
-  - concepts/openlineage/
-  - concepts/statistical-methods/
-  - concepts/test-coverage/
-  - guides/advanced/
-  - guides/checkpoint/
-  - guides/ci-cd/
-  - guides/cicd/
-  - guides/configuration/
-  - guides/data-masking/
-  - guides/datadocs/
-  - guides/datasources/
-  - guides/html-reports/
-  - guides/index/
-  - guides/migration-2.0/
-  - guides/ml-monitoring/
-  - guides/notifications/
-  - guides/privacy/
-  - guides/profiler/
-  - guides/quality-reporter/
-  - guides/reporters/
-  - guides/statistical-methods/
-  - guides/stores/
-  - guides/validators/
-  - releases/truthound-2.0/
-  - releases/truthound-3.0-rc1/
 
-expected_page_count: 36
+expected_page_count: 218
+expected_markdown_count: 227

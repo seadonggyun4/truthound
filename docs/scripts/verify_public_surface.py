@@ -7,16 +7,8 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from urllib.parse import urlparse
 
-import yaml
-
 from external_docs import load_external_sources, match_external_source, upstream_edit_url
-
-
-def _load_manifest(path: Path) -> dict:
-    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    if not isinstance(data, dict):
-        raise ValueError(f"Manifest must be a mapping: {path}")
-    return data
+from public_manifest import load_manifest, resolve_public_docs
 
 
 def _doc_to_public_path(doc_path: str) -> str:
@@ -88,12 +80,15 @@ def main() -> int:
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parents[2]
-    manifest = _load_manifest((repo_root / args.manifest).resolve())
+    manifest = load_manifest((repo_root / args.manifest).resolve())
     site_dir = (repo_root / args.site_dir).resolve()
     external_sources = load_external_sources(manifest)
+    public_docs = resolve_public_docs(manifest, repo_root / "docs")
 
-    allowlisted_paths = {_doc_to_public_path(doc_path) for doc_path in manifest.get("docs", [])}
-    excluded_prefixes = tuple(f"/{prefix}" for prefix in manifest.get("excluded_prefixes", []))
+    allowlisted_paths = {_doc_to_public_path(doc_path) for doc_path in public_docs}
+    excluded_prefixes = tuple(
+        f"/{prefix.strip('/')}/" for prefix in manifest.get("excluded_prefixes", [])
+    )
     expected_page_count = int(manifest.get("expected_page_count", len(allowlisted_paths)))
 
     sitemap_paths = _read_sitemap_paths(site_dir)
@@ -136,7 +131,7 @@ def main() -> int:
             f"Expected {expected_page_count} search-index pages, found {len(search_unique)}."
         )
 
-    for doc_path in manifest.get("docs", []):
+    for doc_path in public_docs:
         relative_path = Path(doc_path)
         external_source = match_external_source(relative_path, external_sources)
         if external_source is None:

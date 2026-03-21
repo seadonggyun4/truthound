@@ -1,6 +1,15 @@
 # Python API Reference
 
-Complete reference for the Truthound Python API.
+The Python API is the canonical programmatic surface for Truthound. Use it when you want notebook-friendly workflows, service integration, explicit validation control, or access to advanced modules that go beyond file-based CLI usage.
+
+## When To Use The Python API
+
+Choose Python when you need to:
+
+- validate dataframes, lazyframes, dictionaries, SQL-backed datasources, or cloud warehouse connectors
+- compose Truthound into notebooks, scripts, jobs, services, and applications
+- access `ValidationRunResult` directly for custom reporting or downstream automation
+- work with profiling, drift, lineage, checkpoints, stores, plugins, or orchestration support
 
 ## Installation
 
@@ -31,6 +40,17 @@ profile = th.profile("data.csv")
 # Compare datasets (drift detection)
 drift_report = th.compare("baseline.csv", "current.csv")
 ```
+
+## Recommended Reading Path
+
+1. [Core Functions](core-functions.md)
+2. [Schema](schema.md)
+3. [Validators](validators.md)
+4. [Datasources](datasources.md)
+5. [Reporters](reporters.md)
+6. [Advanced Features](advanced.md)
+
+If you are new to Truthound, read [Quick Start](../getting-started/quickstart.md) first and then return here for lookup-oriented detail.
 
 ## Import Patterns
 
@@ -127,6 +147,18 @@ Enterprise features for ML, lineage, and streaming:
 | `truthound.datadocs` | HTML report generation |
 | `truthound.checkpoint` | CI/CD integration |
 
+## Canonical Result Model
+
+Truthound 3.0 uses `ValidationRunResult` as the canonical runtime output.
+
+That means:
+
+- `th.check()` returns `ValidationRunResult`
+- reporters, docs generation, and checkpoints all build from the same result model
+- migration away from older report containers should start from this type
+
+Start with [Core Functions](core-functions.md) and [Schema](schema.md) if you want the most important 3.0 runtime concepts first.
+
 ## Supported Input Types
 
 The Python API accepts various input types:
@@ -216,6 +248,8 @@ from truthound.drift.detectors import DriftResult, DriftLevel
 
 ## See Also
 
+- [Reference Overview](../reference/index.md) - Python API and CLI lookup hub
 - [CLI Reference](../cli/index.md) - Command-line interface
-- [Guides](../guides/index.md) - Usage guides
+- [Guides](../guides/index.md) - Task-oriented usage guides
+- [Tutorials](../tutorials/index.md) - Step-by-step learning paths
 - [Tutorials](../tutorials/examples.md) - Step-by-step tutorials

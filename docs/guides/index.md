@@ -1,6 +1,6 @@
-# Python API Guides
+# Guides
 
-This section provides comprehensive guides for using Truthound through the Python API. Each guide includes practical examples, common patterns, and best practices for production environments.
+Guides are the task-oriented part of the Truthound docs. Use them when you already know the feature area you care about and want practical implementation guidance, patterns, and operational advice.
 
 > **Looking for CLI documentation?** See [CLI Reference](../cli/index.md) for command-line usage.
 >
@@ -8,7 +8,13 @@ This section provides comprehensive guides for using Truthound through the Pytho
 
 ---
 
-## Quick Start
+## How To Use This Section
+
+- Start with a family overview page when you know the domain but not the exact feature.
+- Jump into a sub-guide when you have a concrete task such as routing checkpoint failures or configuring observability.
+- Return to [Tutorials](../tutorials/index.md) if you want sequential, end-to-end examples instead of task-based reading.
+
+## Common Entry Points
 
 ```python
 import truthound as th
@@ -78,6 +84,28 @@ drift = th.compare("baseline.csv", "current.csv", method="mmd")         # Maximu
 | [Advanced](advanced/index.md) | Enterprise capabilities | ML anomaly, lineage, realtime streaming |
 
 ---
+
+## Suggested Reading Paths
+
+### New adopter path
+
+1. [Validators](validators/index.md)
+2. [Datasources](datasources/index.md)
+3. [Reporters](reporters/index.md)
+4. [Checkpoints](checkpoints.md)
+
+### Platform team path
+
+1. [Configuration](configuration/index.md)
+2. [Checkpoint family](checkpoint/index.md)
+3. [Stores](stores/index.md)
+4. [Performance](advanced/performance.md)
+
+### Analytics / profiling path
+
+1. [Profiling](profiler/index.md)
+2. [Data Docs](datadocs/index.md)
+3. [Great Expectations comparison](gx-parity.md)
 
 ## Common Workflows
 
@@ -156,9 +184,9 @@ report = suite.execute(new_data)
 
 ---
 
-## Document Structure
+## What To Expect From A Guide
 
-Each guide follows a consistent structure:
+Most family guides follow this pattern:
 
 1. **Overview** - Purpose and scope
 2. **Quick Start** - Minimal working example

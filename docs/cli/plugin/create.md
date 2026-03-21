@@ -95,7 +95,10 @@ version = "0.1.0"
 description = "Custom validator plugin for Truthound"
 requires-python = ">=3.10"
 dependencies = [
-    "truthound>=0.1.0",
+    "truthound>=3.0.0",
+]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
 ]
 
 [project.entry-points."truthound.plugins"]

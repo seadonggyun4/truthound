@@ -4,18 +4,14 @@ import argparse
 import shutil
 import sys
 from pathlib import Path
-from typing import Any
 
-import yaml
-
-from external_docs import build_source_banner, inject_source_banner, load_external_sources, match_external_source
-
-
-def _load_manifest(path: Path) -> dict[str, Any]:
-    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    if not isinstance(data, dict):
-        raise ValueError(f"Manifest must be a mapping: {path}")
-    return data
+from external_docs import (
+    build_source_banner,
+    inject_source_banner,
+    load_external_sources,
+    match_external_source,
+)
+from public_manifest import load_manifest, resolve_public_docs
 
 
 def _copy_file(src: Path, dst: Path) -> None:
@@ -27,13 +23,6 @@ def _copy_directory(src: Path, dst: Path) -> None:
     if not src.exists():
         return
     shutil.copytree(src, dst, dirs_exist_ok=True)
-
-
-def _validate_relative_path(value: str) -> Path:
-    path = Path(value)
-    if path.is_absolute():
-        raise ValueError(f"Manifest paths must be relative: {value}")
-    return path
 
 
 def main() -> int:
@@ -59,11 +48,11 @@ def main() -> int:
     manifest_path = (repo_root / args.manifest).resolve()
     output_dir = (repo_root / args.output_dir).resolve()
 
-    manifest = _load_manifest(manifest_path)
-    doc_paths = [_validate_relative_path(value) for value in manifest.get("docs", [])]
-    support_files = [_validate_relative_path(value) for value in manifest.get("support_files", [])]
+    manifest = load_manifest(manifest_path)
+    doc_paths = [Path(value) for value in resolve_public_docs(manifest, docs_root)]
+    support_files = [Path(value) for value in manifest.get("support_files", [])]
     support_directories = [
-        _validate_relative_path(value) for value in manifest.get("support_directories", [])
+        Path(value) for value in manifest.get("support_directories", [])
     ]
     external_sources = load_external_sources(manifest)
 
@@ -95,6 +84,13 @@ def main() -> int:
 
     for relative_path in support_directories:
         _copy_directory(docs_root / relative_path, output_dir / relative_path)
+
+    expected_markdown_count = manifest.get("expected_markdown_count")
+    if expected_markdown_count is not None and copied_docs != int(expected_markdown_count):
+        raise ValueError(
+            "Public docs manifest expected "
+            f"{expected_markdown_count} staged markdown pages, found {copied_docs}."
+        )
 
     print(
         f"Staged {copied_docs} public markdown pages into {output_dir.relative_to(repo_root)} "

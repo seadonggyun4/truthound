@@ -1,14 +1,15 @@
 # Tutorials
 
-Step-by-step tutorials for common Truthound use cases. Start from the basics and progress to enterprise-grade configurations.
+Tutorials are the sequential, outcome-driven part of the Truthound docs. Use them when you want to build something real from start to finish instead of reading reference material first.
 
 ## Learning Path
 
 ```mermaid
 graph LR
-    A[Data Profiling] --> B[Custom Validator]
-    B --> C[Enterprise Setup]
-    C --> D[Examples]
+    A[First Validation] --> B[Data Profiling]
+    B --> C[Custom Validator]
+    C --> D[Enterprise Setup]
+    D --> E[Examples]
 ```
 
 ## Available Tutorials
@@ -22,6 +23,14 @@ graph LR
     Learn to profile data, generate statistics, and auto-create validation rules
 
     [:octicons-arrow-right-24: Data Profiling](data-profiling.md)
+
+-   :material-play-circle: **First Validation**
+
+    ---
+
+    Validate your first dataset, inspect `ValidationRunResult`, and understand `.truthound/`
+
+    [:octicons-arrow-right-24: First Validation](first-validation.md)
 
 -   :material-puzzle: **Custom Validator**
 
@@ -53,6 +62,7 @@ graph LR
 
 | Tutorial | Level | Time | Topics |
 |----------|-------|------|--------|
+| First Validation | Beginner | 15 min | Zero-config flow, context, canonical result model |
 | Data Profiling | Beginner | 20 min | Profile API, Schema learning, Rule generation |
 | Custom Validator | Intermediate | 30 min | Decorators, Builder pattern, Testing utilities |
 | Enterprise Setup | Advanced | 45 min | CI/CD, Checkpoints, Notifications, Monitoring |
@@ -62,10 +72,11 @@ graph LR
 
 If you're new to Truthound, we recommend this order:
 
-1. **[Data Profiling](data-profiling.md)** - Understand your data first
-2. **[Custom Validator](custom-validator.md)** - Build domain-specific validation
-3. **[Enterprise Setup](enterprise-setup.md)** - Deploy to production
-4. **[Examples](examples.md)** - Reference for specific use cases
+1. **[First Validation](first-validation.md)** for the smallest end-to-end win
+2. **[Data Profiling](data-profiling.md)** to understand your data and bootstrap suites
+3. **[Custom Validator](custom-validator.md)** to add domain-specific logic
+4. **[Enterprise Setup](enterprise-setup.md)** to move into automation and operations
+5. **[Examples](examples.md)** to branch into specific workloads
 
 ## Related Documentation
 
