@@ -4,6 +4,7 @@ import importlib.util
 import json
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -346,3 +347,21 @@ def test_tests_nightly_workflow_publishes_collect_summary():
     assert "Collect nightly lane summary" in step_names
     assert "Write nightly selection summary" in step_names
     assert "Upload nightly test artifacts" in step_names
+
+
+@pytest.mark.contract
+def test_dev_and_streaming_extras_cover_quality_gate_dependencies():
+    pyproject_path = Path(__file__).resolve().parents[1] / "pyproject.toml"
+    pyproject = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
+    optional = pyproject["project"]["optional-dependencies"]
+
+    dev = optional["dev"]
+    streaming = optional["streaming"]
+    all_extra = optional["all"]
+    reports = optional["reports"]
+
+    assert any(dep.startswith("jinja2") for dep in reports)
+    assert any(dep.startswith("jinja2") for dep in dev)
+    assert any(dep.startswith("pyarrow") for dep in streaming)
+    assert any(dep.startswith("pyarrow") for dep in dev)
+    assert any(dep.startswith("pyarrow") for dep in all_extra)
