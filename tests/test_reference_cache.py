@@ -11,23 +11,23 @@ Tests cover:
 """
 
 import time
-import pytest
-import polars as pl
+
 import numpy as np
+import polars as pl
+import pytest
 
 from truthound.validators.cache import (
     CacheConfig,
-    NumericStatistics,
     CategoricalStatistics,
     MultiColumnStatistics,
+    NumericStatistics,
     ReferenceCache,
-    get_global_cache,
     clear_global_cache,
-    reset_global_cache,
-    make_cache_key,
+    get_global_cache,
     hash_dataframe,
+    make_cache_key,
+    reset_global_cache,
 )
-
 
 # ============================================================================
 # Test Fixtures
@@ -449,6 +449,19 @@ class TestCacheKeyUtilities:
         assert hash1 == hash2
         assert len(hash1) == 16  # MD5 prefix
 
+    def test_hash_dataframe_without_pyarrow(self, sample_dataframe, monkeypatch):
+        """Test dataframe hashing without optional pyarrow."""
+        lf = sample_dataframe.lazy()
+
+        def _raise_pyarrow_missing(*args, **kwargs):
+            raise ModuleNotFoundError("No module named 'pyarrow'")
+
+        monkeypatch.setattr(pl.DataFrame, "to_pandas", _raise_pyarrow_missing)
+
+        digest = hash_dataframe(lf)
+
+        assert len(digest) == 16
+
 
 # ============================================================================
 # Integration Tests
@@ -481,7 +494,7 @@ class TestCacheIntegration:
             "col1": np.random.normal(55, 10, 500),  # Slight drift
         }).lazy()
 
-        issues = validator.validate(current_data)
+        validator.validate(current_data)
         # Should be able to calculate PSI using cached histogram
 
     def test_memory_savings(self, large_dataframe):

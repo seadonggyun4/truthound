@@ -13,6 +13,7 @@ Example:
 from __future__ import annotations
 
 from dataclasses import dataclass
+from html import escape
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -35,6 +36,89 @@ def _require_jinja2() -> None:
             "HTML reports require jinja2. "
             "Install with: pip install truthound[reports] or pip install jinja2"
         )
+
+
+def _render_fallback_html(
+    report: Any,
+    *,
+    title: str,
+    custom_css: str = "",
+) -> str:
+    """Render a minimal HTML report when jinja2 is unavailable."""
+    from truthound.reporters.adapters import canonicalize_validation_run_result
+    from truthound.reporters.markdown_reporter import MarkdownReporter
+
+    run_result = canonicalize_validation_run_result(report, warn_legacy=True)
+    markdown = MarkdownReporter().render(run_result)
+    status = "Passed" if run_result.success else "Failed"
+    custom_style = f"\n        {custom_css}\n" if custom_css else ""
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{escape(title)}</title>
+    <style>
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+            background: #f8fafc;
+            color: #0f172a;
+            margin: 0;
+            padding: 2rem;
+        }}
+        .container {{
+            max-width: 960px;
+            margin: 0 auto;
+        }}
+        .card {{
+            background: #ffffff;
+            border: 1px solid #e2e8f0;
+            border-radius: 12px;
+            padding: 1.25rem;
+            margin-bottom: 1rem;
+        }}
+        .meta {{
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 0.75rem;
+        }}
+        .label {{
+            font-size: 0.85rem;
+            color: #64748b;
+        }}
+        .value {{
+            font-weight: 600;
+        }}
+        pre {{
+            white-space: pre-wrap;
+            word-break: break-word;
+            margin: 0;
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            font-size: 0.9rem;
+            line-height: 1.5;
+        }}{custom_style}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="card">
+            <h1>{escape(title)}</h1>
+            <div class="meta">
+                <div><div class="label">Status</div><div class="value">{escape(status)}</div></div>
+                <div><div class="label">Suite</div><div class="value">{escape(run_result.suite_name)}</div></div>
+                <div><div class="label">Source</div><div class="value">{escape(run_result.source)}</div></div>
+                <div><div class="label">Run ID</div><div class="value">{escape(run_result.run_id)}</div></div>
+                <div><div class="label">Rows</div><div class="value">{run_result.row_count:,}</div></div>
+                <div><div class="label">Columns</div><div class="value">{run_result.column_count:,}</div></div>
+            </div>
+        </div>
+        <div class="card">
+            <pre>{escape(markdown)}</pre>
+        </div>
+    </div>
+</body>
+</html>"""
 
 
 @dataclass
@@ -82,9 +166,6 @@ def generate_html_report(
         >>> with open("report.html", "w") as f:
         ...     f.write(html)
     """
-    _require_jinja2()
-
-    from truthound.reporters.html_reporter import HTMLReporter
     from truthound.reporters.adapters import canonicalize_validation_run_result
 
     # Apply config if provided
@@ -96,6 +177,15 @@ def generate_html_report(
         kwargs.setdefault("include_statistics", config.include_statistics)
 
     run_result = canonicalize_validation_run_result(report, warn_legacy=True)
+
+    if not HAS_JINJA2:
+        return _render_fallback_html(
+            run_result,
+            title=str(kwargs.get("title", "Truthound Validation Report")),
+            custom_css=str(kwargs.get("custom_css", "")),
+        )
+
+    from truthound.reporters.html_reporter import HTMLReporter
 
     # Create reporter and render
     reporter = HTMLReporter(**kwargs)
@@ -153,10 +243,6 @@ def generate_html_from_validation_result(
     Raises:
         ImportError: If jinja2 is not installed.
     """
-    _require_jinja2()
-
-    from truthound.reporters.html_reporter import HTMLReporter
-
     # Apply config if provided
     if config:
         kwargs.setdefault("title", config.title)
@@ -164,6 +250,15 @@ def generate_html_from_validation_result(
         kwargs.setdefault("custom_css", config.custom_css)
         kwargs.setdefault("include_metadata", config.include_metadata)
         kwargs.setdefault("include_statistics", config.include_statistics)
+
+    if not HAS_JINJA2:
+        return _render_fallback_html(
+            result,
+            title=str(kwargs.get("title", "Truthound Validation Report")),
+            custom_css=str(kwargs.get("custom_css", "")),
+        )
+
+    from truthound.reporters.html_reporter import HTMLReporter
 
     reporter = HTMLReporter(**kwargs)
     return reporter.render(result)
@@ -433,7 +528,7 @@ PII_REPORT_TEMPLATE = """
 
 
 def generate_pii_html_report(
-    pii_report: "PIIReport",
+    pii_report: PIIReport,
     title: str = "Truthound PII Scan Report",
     **kwargs: Any,
 ) -> str:
@@ -494,7 +589,7 @@ def generate_pii_html_report(
 
 
 def write_pii_html_report(
-    pii_report: "PIIReport",
+    pii_report: PIIReport,
     output_path: str | Path,
     title: str = "Truthound PII Scan Report",
     **kwargs: Any,

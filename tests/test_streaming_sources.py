@@ -1,40 +1,32 @@
 """Tests for streaming data sources and streaming validation."""
 
-import tempfile
-from pathlib import Path
-
-import pytest
-import polars as pl
 import numpy as np
+import polars as pl
+import pytest
 
-try:
-    import pyarrow as pa
-    import pyarrow.parquet as pq
-    PYARROW_AVAILABLE = True
-except ImportError:
-    PYARROW_AVAILABLE = False
-
-from truthound.validators.streaming import (
-    # Sources
-    ParquetStreamingSource,
-    CSVStreamingSource,
-    JSONLStreamingSource,
-    ArrowIPCStreamingSource,
-    LazyFrameStreamingSource,
-    create_streaming_source,
-    # Mixin and utilities
-    StreamingValidatorMixin,
-    StreamingValidatorAdapter,
-    CountingAccumulator,
-    SamplingAccumulator,
-    stream_validate,
-    stream_validate_many,
-    # Validators
-    StreamingNullValidator,
-    StreamingRangeValidator,
-)
+import truthound.validators.streaming.sources as streaming_sources
 from truthound.validators.completeness import NullValidator
 from truthound.validators.distribution.range import RangeValidator
+from truthound.validators.streaming import (
+    ArrowIPCStreamingSource,
+    CountingAccumulator,
+    CSVStreamingSource,
+    JSONLStreamingSource,
+    LazyFrameStreamingSource,
+    ParquetStreamingSource,
+    SamplingAccumulator,
+    StreamingValidatorAdapter,
+    create_streaming_source,
+    stream_validate,
+    stream_validate_many,
+)
+
+try:
+    import pyarrow  # noqa: F401
+except ImportError:
+    PYARROW_AVAILABLE = False
+else:
+    PYARROW_AVAILABLE = True
 
 
 # =============================================================================
@@ -355,6 +347,22 @@ class TestStreamingValidatorMixin:
         for i, (chunk_idx, _) in enumerate(progress_calls):
             assert chunk_idx == i
 
+    def test_validate_streaming_from_file_without_pyarrow(
+        self,
+        parquet_file,
+        monkeypatch: pytest.MonkeyPatch,
+    ):
+        """Test parquet streaming fallback when pyarrow is unavailable."""
+        monkeypatch.setattr(streaming_sources, "HAS_PYARROW", False)
+        monkeypatch.setattr(streaming_sources, "pq", None)
+
+        validator = NullValidator(column="id")
+        adapter = StreamingValidatorAdapter(validator)
+
+        issues = adapter.validate_streaming(parquet_file, chunk_size=200)
+
+        assert isinstance(issues, list)
+
 
 # =============================================================================
 # Accumulator Tests
@@ -366,14 +374,14 @@ class TestAccumulators:
 
     def test_counting_accumulator(self):
         """Test CountingAccumulator."""
-        from truthound.validators.base import ValidationIssue
         from truthound.types import Severity
+        from truthound.validators.base import ValidationIssue
 
         acc = CountingAccumulator()
         state = acc.initialize()
 
         # Simulate multiple chunks with issues
-        for i in range(3):
+        for _ in range(3):
             issues = [
                 ValidationIssue(
                     column="id",
@@ -394,8 +402,8 @@ class TestAccumulators:
 
     def test_sampling_accumulator(self):
         """Test SamplingAccumulator."""
-        from truthound.validators.base import ValidationIssue
         from truthound.types import Severity
+        from truthound.validators.base import ValidationIssue
 
         acc = SamplingAccumulator(max_samples=5)
         state = acc.initialize()
@@ -567,3 +575,18 @@ class TestEdgeCases:
 
         with pytest.raises(RuntimeError, match="not open"):
             list(source)
+
+    def test_parquet_source_without_pyarrow(self, parquet_file, monkeypatch: pytest.MonkeyPatch):
+        """Test pyarrow-free parquet source iteration and sizing."""
+        monkeypatch.setattr(streaming_sources, "HAS_PYARROW", False)
+        monkeypatch.setattr(streaming_sources, "pq", None)
+
+        source = ParquetStreamingSource(parquet_file, chunk_size=128, columns=["id"])
+
+        assert len(source) == 1000
+
+        with source:
+            chunks = list(source)
+
+        assert sum(len(chunk) for chunk in chunks) == 1000
+        assert all(chunk.columns == ["id"] for chunk in chunks)

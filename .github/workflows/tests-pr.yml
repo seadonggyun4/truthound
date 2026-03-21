@@ -39,22 +39,22 @@ jobs:
 
       - uses: astral-sh/setup-uv@v4
 
-      - name: Install project with dev extras
-        run: uv pip install --system ".[dev]"
+      - name: Sync locked dev environment
+        run: uv sync --frozen --extra dev
 
       - name: Prepare quality shard artifacts
         run: mkdir -p test-artifacts/quality-shards
 
       - name: Collect contract nodes
-        run: python -m pytest --collect-only -q tests -m "contract" -p no:cacheprovider > test-artifacts/quality-contract-collect.txt
+        run: uv run --frozen --extra dev python -m pytest --collect-only -q tests -m "contract" -p no:cacheprovider > test-artifacts/quality-contract-collect.txt
 
       - name: Collect fault and e2e nodes
-        run: python -m pytest --collect-only -q tests -m "fault or e2e" -p no:cacheprovider > test-artifacts/quality-fault-e2e-collect.txt
+        run: uv run --frozen --extra dev python -m pytest --collect-only -q tests -m "fault or e2e" -p no:cacheprovider > test-artifacts/quality-fault-e2e-collect.txt
 
       - name: Collect e2e nodes
         run: |
           set +e
-          python -m pytest --collect-only -q tests -m "e2e" -p no:cacheprovider > test-artifacts/quality-e2e-collect.txt
+          uv run --frozen --extra dev python -m pytest --collect-only -q tests -m "e2e" -p no:cacheprovider > test-artifacts/quality-e2e-collect.txt
           status=$?
           if [ "$status" -ne 0 ] && [ "$status" -ne 5 ]; then
             exit "$status"
@@ -62,7 +62,7 @@ jobs:
 
       - name: Build quality shard manifests
         run: |
-          python verification/ci/build_quality_shards.py \
+          uv run --frozen --extra dev python verification/ci/build_quality_shards.py \
             --contract-nodeids test-artifacts/quality-contract-collect.txt \
             --fault-nodeids test-artifacts/quality-fault-e2e-collect.txt \
             --e2e-nodeids test-artifacts/quality-e2e-collect.txt \
@@ -72,7 +72,7 @@ jobs:
 
       - name: Log quality summary
         run: |
-          python - <<'PY'
+          uv run --frozen --extra dev python - <<'PY'
           import json
           from pathlib import Path
 
@@ -122,8 +122,8 @@ jobs:
 
       - uses: astral-sh/setup-uv@v4
 
-      - name: Install project with dev extras
-        run: uv pip install --system ".[dev]"
+      - name: Sync locked dev environment
+        run: uv sync --frozen --extra dev
 
       - name: Download quality shard artifacts
         uses: actions/download-artifact@v4
@@ -133,9 +133,10 @@ jobs:
 
       - name: Run contract shard
         run: |
-          python verification/ci/run_pytest_manifest.py \
+          uv run --frozen --extra dev python verification/ci/run_pytest_manifest.py \
             --manifest test-artifacts/quality-shards/contract-${{ matrix.shard_id }}.txt \
             --junitxml test-artifacts/junit-contract-${{ matrix.shard_id }}.xml \
+            --pytest-arg=--tb=line \
             --pytest-arg=-m \
             '--pytest-arg=contract and not (fault or e2e)'
 
@@ -162,8 +163,8 @@ jobs:
 
       - uses: astral-sh/setup-uv@v4
 
-      - name: Install project with dev extras
-        run: uv pip install --system ".[dev]"
+      - name: Sync locked dev environment
+        run: uv sync --frozen --extra dev
 
       - name: Download quality shard artifacts
         uses: actions/download-artifact@v4
@@ -173,9 +174,10 @@ jobs:
 
       - name: Run fault and e2e manifest
         run: |
-          python verification/ci/run_pytest_manifest.py \
+          uv run --frozen --extra dev python verification/ci/run_pytest_manifest.py \
             --manifest test-artifacts/quality-shards/fault-e2e.txt \
             --junitxml test-artifacts/junit-fault-e2e.xml \
+            --pytest-arg=--tb=line \
             --pytest-arg=-m \
             '--pytest-arg=fault or e2e'
 

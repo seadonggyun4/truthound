@@ -29,18 +29,17 @@ Usage:
     cached_stats = cache.get("model_v1:price")
 """
 
-from dataclasses import dataclass, field
-from typing import Any
-from collections import OrderedDict
-from threading import RLock
-from functools import lru_cache
 import hashlib
-import time
+import json
 import sys
+import time
+from collections import OrderedDict
+from dataclasses import dataclass, field
+from threading import RLock
+from typing import Any
 
-import polars as pl
 import numpy as np
-
+import polars as pl
 
 # ============================================================================
 # Configuration
@@ -697,10 +696,7 @@ def make_cache_key(
     Returns:
         Cache key string
     """
-    if isinstance(column, list):
-        col_str = ":".join(sorted(column))
-    else:
-        col_str = column
+    col_str = ":".join(sorted(column)) if isinstance(column, list) else column
 
     parts = [validator_name, col_str, version]
     if extra:
@@ -727,7 +723,12 @@ def hash_dataframe(lf: pl.LazyFrame, sample_size: int = 1000) -> str:
 
     # Sample data hash
     sample = lf.head(sample_size).collect()
-    data_str = sample.to_pandas().to_json()
+    data_str = json.dumps(
+        sample.to_dict(as_series=False),
+        default=str,
+        sort_keys=True,
+        separators=(",", ":"),
+    )
 
     combined = f"{schema_str}:{data_str}"
     return hashlib.md5(combined.encode()).hexdigest()[:16]

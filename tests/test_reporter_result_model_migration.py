@@ -1,6 +1,7 @@
 import json
 from datetime import datetime
 
+import truthound.html_reporter as html_reporter_module
 from truthound.core.results import CheckResult, ExecutionIssue, ValidationRunResult
 from truthound.datadocs import ValidationDocsBuilder, generate_validation_report
 from truthound.html_reporter import generate_html_from_validation_result
@@ -101,6 +102,18 @@ def test_markdown_and_html_helpers_support_direct_result_model():
 
     assert "customers.csv" in markdown
     assert "null_values" in markdown
+    assert "customers.csv" in html
+    assert "out_of_range" in html
+
+
+def test_html_helper_falls_back_without_jinja2(monkeypatch):
+    run_result = _sample_run_result()
+
+    monkeypatch.setattr(html_reporter_module, "HAS_JINJA2", False)
+
+    html = generate_html_from_validation_result(run_result)
+
+    assert "<!DOCTYPE html>" in html
     assert "customers.csv" in html
     assert "out_of_range" in html
 

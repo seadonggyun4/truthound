@@ -187,77 +187,118 @@ class ParquetStreamingSource(StreamingSource):
         super().__init__(config)
         self._file_path = Path(file_path)
         self._parquet_file: pq.ParquetFile | None = None
-        self._total_rows: int = 0
+        self._lazy_frame: pl.LazyFrame | None = None
+        self._total_rows: int | None = None
+
+    def _build_lazy_frame(self) -> pl.LazyFrame:
+        """Build a Polars scan for pyarrow-free parquet access."""
+        lazy_frame = pl.scan_parquet(self._file_path)
+        if self.config.columns:
+            lazy_frame = lazy_frame.select(self.config.columns)
+        return lazy_frame
 
     def open(self) -> None:
         """Open the Parquet file for streaming."""
-        _require_pyarrow("Parquet streaming")
         super().open()
-        self._parquet_file = pq.ParquetFile(
-            self._file_path,
-            memory_map=self.config.use_mmap,
-        )
-        self._total_rows = self._parquet_file.metadata.num_rows
+        if HAS_PYARROW:
+            self._parquet_file = pq.ParquetFile(
+                self._file_path,
+                memory_map=self.config.use_mmap,
+            )
+            self._total_rows = self._parquet_file.metadata.num_rows
+            return
+
+        self._lazy_frame = self._build_lazy_frame()
+        self._total_rows = pl.scan_parquet(self._file_path).select(pl.len()).collect().item()
 
     def close(self) -> None:
         """Close the Parquet file."""
-        if self._parquet_file:
-            self._parquet_file = None
+        self._parquet_file = None
+        self._lazy_frame = None
+        self._total_rows = None
         super().close()
 
     def __len__(self) -> int:
-        _require_pyarrow("Parquet streaming")
-        if self._parquet_file:
+        if self._parquet_file is not None and self._total_rows is not None:
             return self._total_rows
-        # Open temporarily to get count
-        with pq.ParquetFile(self._file_path) as pf:
-            return pf.metadata.num_rows
+        if self._total_rows is not None:
+            return self._total_rows
+        if HAS_PYARROW:
+            # Open temporarily to get count
+            with pq.ParquetFile(self._file_path) as pf:
+                return pf.metadata.num_rows
+        self._total_rows = pl.scan_parquet(self._file_path).select(pl.len()).collect().item()
+        return self._total_rows
 
     def __iter__(self) -> Iterator[pl.DataFrame]:
-        if not self._is_open or not self._parquet_file:
+        if not self._is_open:
             raise RuntimeError("Source not open. Use 'with' statement or call open().")
 
-        # Stream by row groups
-        num_row_groups = self._parquet_file.metadata.num_row_groups
-        rows_yielded = 0
-        max_rows = self.config.max_rows
+        if self._parquet_file is not None:
+            # Stream by row groups when pyarrow is available.
+            num_row_groups = self._parquet_file.metadata.num_row_groups
+            rows_yielded = 0
+            max_rows = self.config.max_rows
 
-        for rg_idx in range(num_row_groups):
-            # Skip if we've hit max_rows
-            if max_rows is not None and rows_yielded >= max_rows:
-                break
-
-            # Read row group
-            table = self._parquet_file.read_row_group(
-                rg_idx,
-                columns=self.config.columns,
-            )
-
-            # Convert to Polars
-            df = pl.from_arrow(table)
-
-            # Apply max_rows limit within row group
-            if max_rows is not None:
-                remaining = max_rows - rows_yielded
-                if len(df) > remaining:
-                    df = df.head(remaining)
-
-            # Skip rows if needed
-            if self.config.skip_rows > 0 and rows_yielded == 0:
-                if len(df) <= self.config.skip_rows:
-                    rows_yielded += len(df)
-                    continue
-                df = df.slice(self.config.skip_rows)
-
-            # Yield in chunk_size batches
-            for offset in range(0, len(df), self.config.chunk_size):
-                chunk = df.slice(offset, self.config.chunk_size)
-                self._rows_read += len(chunk)
-                rows_yielded += len(chunk)
-                yield chunk
-
+            for rg_idx in range(num_row_groups):
+                # Skip if we've hit max_rows
                 if max_rows is not None and rows_yielded >= max_rows:
                     break
+
+                # Read row group
+                table = self._parquet_file.read_row_group(
+                    rg_idx,
+                    columns=self.config.columns,
+                )
+
+                # Convert to Polars
+                df = pl.from_arrow(table)
+
+                # Apply max_rows limit within row group
+                if max_rows is not None:
+                    remaining = max_rows - rows_yielded
+                    if len(df) > remaining:
+                        df = df.head(remaining)
+
+                # Skip rows if needed
+                if self.config.skip_rows > 0 and rows_yielded == 0:
+                    if len(df) <= self.config.skip_rows:
+                        rows_yielded += len(df)
+                        continue
+                    df = df.slice(self.config.skip_rows)
+
+                # Yield in chunk_size batches
+                for offset in range(0, len(df), self.config.chunk_size):
+                    chunk = df.slice(offset, self.config.chunk_size)
+                    self._rows_read += len(chunk)
+                    rows_yielded += len(chunk)
+                    yield chunk
+
+                    if max_rows is not None and rows_yielded >= max_rows:
+                        break
+            return
+
+        if self._lazy_frame is None:
+            raise RuntimeError("Source not open. Use 'with' statement or call open().")
+
+        total_rows = len(self)
+        start_offset = self.config.skip_rows
+        if start_offset >= total_rows:
+            return
+
+        rows_available = total_rows - start_offset
+        if self.config.max_rows is not None:
+            rows_available = min(rows_available, self.config.max_rows)
+
+        rows_yielded = 0
+        while rows_yielded < rows_available:
+            chunk_len = min(self.config.chunk_size, rows_available - rows_yielded)
+            chunk = self._lazy_frame.slice(start_offset + rows_yielded, chunk_len).collect()
+            if len(chunk) == 0:
+                break
+            self._rows_read += len(chunk)
+            rows_yielded += len(chunk)
+            yield chunk
 
 
 class CSVStreamingSource(StreamingSource):
