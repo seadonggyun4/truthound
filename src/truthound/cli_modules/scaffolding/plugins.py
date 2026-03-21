@@ -12,6 +12,7 @@ various template variants:
 
 from __future__ import annotations
 
+from importlib.metadata import PackageNotFoundError, version
 from typing import Any, ClassVar
 
 from truthound.cli_modules.scaffolding.base import (
@@ -20,6 +21,13 @@ from truthound.cli_modules.scaffolding.base import (
     ScaffoldResult,
     register_scaffold,
 )
+
+PLUGIN_PACKAGE_DEVELOPMENT_STATUS = "Development Status :: 5 - Production/Stable"
+
+try:
+    DEFAULT_TRUTHOUND_PLUGIN_MIN_VERSION = version("truthound")
+except PackageNotFoundError:
+    DEFAULT_TRUTHOUND_PLUGIN_MIN_VERSION = "3.0.0"
 
 
 @register_scaffold(
@@ -57,7 +65,7 @@ class PluginScaffold(BaseScaffold):
             },
             "min_truthound_version": {
                 "type": "str",
-                "default": "0.1.0",
+                "default": DEFAULT_TRUTHOUND_PLUGIN_MIN_VERSION,
                 "description": "Minimum Truthound version required",
             },
             "python_version": {
@@ -101,7 +109,10 @@ class PluginScaffold(BaseScaffold):
         """Generate pyproject.toml."""
         pkg_name = config.name.replace("-", "_")
         min_python = config.extra.get("python_version", "3.10")
-        min_truthound = config.extra.get("min_truthound_version", "0.1.0")
+        min_truthound = config.extra.get(
+            "min_truthound_version",
+            DEFAULT_TRUTHOUND_PLUGIN_MIN_VERSION,
+        )
 
         content = f'''[build-system]
 requires = ["setuptools>=61.0", "wheel"]
@@ -121,7 +132,7 @@ dependencies = [
     "truthound>={min_truthound}",
 ]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "{PLUGIN_PACKAGE_DEVELOPMENT_STATUS}",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",

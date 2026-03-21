@@ -27,6 +27,11 @@ from truthound.cli_modules.scaffolding import (
     snake_to_kebab,
     pascal_to_snake,
 )
+from truthound.cli_modules.scaffolding.plugins import (
+    DEFAULT_TRUTHOUND_PLUGIN_MIN_VERSION,
+    PLUGIN_PACKAGE_DEVELOPMENT_STATUS,
+)
+from truthound.plugins.cli import _generate_pyproject as generate_plugin_cli_pyproject
 
 
 class TestUtilityFunctions:
@@ -453,11 +458,26 @@ class TestPluginScaffold:
         pyproject = next(f for f in result.files if "pyproject.toml" in str(f.path))
         assert "truthound-plugin-my_validators" in pyproject.content
         assert "truthound.plugins" in pyproject.content
+        assert PLUGIN_PACKAGE_DEVELOPMENT_STATUS in pyproject.content
+        assert f'truthound>={DEFAULT_TRUTHOUND_PLUGIN_MIN_VERSION}' in pyproject.content
+        assert "Development Status :: 3 - Alpha" not in pyproject.content
 
         # Check plugin.py
         plugin_file = next(f for f in result.files if "plugin.py" in str(f.path))
         assert "ValidatorPlugin" in plugin_file.content
         assert "get_validators" in plugin_file.content
+
+    def test_legacy_plugin_cli_template_uses_stable_metadata(self):
+        """Test legacy plugin CLI template aligns with GA package metadata."""
+        pyproject = generate_plugin_cli_pyproject(
+            name="ga_plugin",
+            plugin_type="validator",
+            author="Test Author",
+        )
+
+        assert PLUGIN_PACKAGE_DEVELOPMENT_STATUS in pyproject
+        assert f'truthound>={DEFAULT_TRUTHOUND_PLUGIN_MIN_VERSION}' in pyproject
+        assert "Development Status :: 3 - Alpha" not in pyproject
 
     def test_generate_reporter_plugin(self):
         """Test generating a reporter plugin."""

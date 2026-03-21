@@ -14,9 +14,10 @@ Commands:
 
 from __future__ import annotations
 
+import json
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Annotated, Optional
-import json
 
 import typer
 
@@ -26,6 +27,13 @@ from truthound.plugins import (
     PluginState,
     get_plugin_manager,
 )
+
+PLUGIN_PACKAGE_DEVELOPMENT_STATUS = "Development Status :: 5 - Production/Stable"
+
+try:
+    DEFAULT_TRUTHOUND_PLUGIN_MIN_VERSION = version("truthound")
+except PackageNotFoundError:
+    DEFAULT_TRUTHOUND_PLUGIN_MIN_VERSION = "3.0.0"
 
 
 # Create Typer app for plugin commands
@@ -671,10 +679,10 @@ authors = [
 ]
 requires-python = ">=3.10"
 dependencies = [
-    "truthound>=0.1.0",
+    "truthound>={DEFAULT_TRUTHOUND_PLUGIN_MIN_VERSION}",
 ]
 classifiers = [
-    "Development Status :: 3 - Alpha",
+    "{PLUGIN_PACKAGE_DEVELOPMENT_STATUS}",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",

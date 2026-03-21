@@ -24,6 +24,9 @@ from truthound.cli_modules.scaffolding import (
     ScaffoldType,
     get_registry,
 )
+from truthound.cli_modules.scaffolding.plugins import (
+    DEFAULT_TRUTHOUND_PLUGIN_MIN_VERSION,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -423,7 +426,7 @@ def new_plugin(
     min_truthound_version: Annotated[
         str,
         typer.Option("--min-version", help="Minimum Truthound version"),
-    ] = "0.1.0",
+    ] = DEFAULT_TRUTHOUND_PLUGIN_MIN_VERSION,
     python_version: Annotated[
         str,
         typer.Option("--python", help="Minimum Python version"),
