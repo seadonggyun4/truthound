@@ -159,7 +159,20 @@ def build_source_banner(relative_path: Path, source: ExternalSource) -> str:
     upstream_path = upstream_doc_path(relative_path, source)
     source_url = upstream_source_url(relative_path, source)
     edit_url = upstream_edit_url(relative_path, source)
-    return "\n".join(
+    parts: list[str] = []
+    if source.name == "dashboard":
+        is_homepage = relative_path.as_posix().lstrip("/") == "dashboard/index.md"
+        variant = "hero" if is_homepage else "compact"
+        parts.extend(
+            [
+                f'<div class="dashboard-external-banner dashboard-external-banner--{variant}">',
+                '  <img src="/assets/dashboard/truthound-dashboard-banner.png" alt="Truthound Dashboard banner" />',
+                "</div>",
+                "",
+            ]
+        )
+    parts.append(
+        "\n".join(
         [
             '!!! note "Upstream Source"',
             f"    This page is part of {source.label}.",
@@ -168,7 +181,9 @@ def build_source_banner(relative_path: Path, source: ExternalSource) -> str:
             f"    Upstream docs path: [`{upstream_path}`]({source_url})",
             f"    Edit upstream page: [Edit in {source.name}]({edit_url})",
         ]
+        )
     )
+    return "\n".join(parts)
 
 
 def inject_source_banner(markdown: str, banner: str) -> str:

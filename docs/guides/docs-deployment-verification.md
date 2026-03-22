@@ -41,6 +41,8 @@ After a local or Netlify build, confirm all of the following under `site/`:
 - [ ] `site/dashboard/quickstart/install-and-run/index.html` exists and renders a quickstart page
 - [ ] `site/dashboard/guides/reports-and-datadocs/index.html` exists and renders the artifact guide
 - [ ] `site/dashboard/api-reference/artifacts/index.html` exists and renders the artifact API reference
+- [ ] `assets/dashboard/truthound-dashboard-banner.png` exists in the staged docs tree
+- [ ] staged dashboard pages render the injected dashboard hero/compact banner plus the upstream source note
 - [ ] `site/orchestration/airflow/index.html` exists and renders one platform page under the integrated section
 - [ ] `site/orchestration/airflow/observability-alerting/index.html` exists and renders an expanded platform subguide
 - [ ] `site/orchestration/common/index.html` exists and renders the shared runtime overview

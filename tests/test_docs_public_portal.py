@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import re
+import sys
 from pathlib import Path
 
 import yaml
@@ -15,6 +16,18 @@ def _load_public_manifest_module():
     assert spec is not None
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_external_docs_module():
+    module_path = REPO_ROOT / "docs" / "scripts" / "external_docs.py"
+    spec = importlib.util.spec_from_file_location("truthound_docs_external_docs", module_path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
     spec.loader.exec_module(module)
     return module
 
@@ -137,3 +150,22 @@ def test_mkdocs_brand_assets_are_preserved():
         assert theme["favicon"] == "assets/truthound_icon.png"
         assert theme["palette"][0]["primary"] == "custom"
         assert theme["palette"][1]["primary"] == "custom"
+
+
+def test_dashboard_external_banner_markup_and_asset_contract() -> None:
+    manifest_module = _load_public_manifest_module()
+    external_module = _load_external_docs_module()
+    manifest = manifest_module.load_manifest(REPO_ROOT / "docs" / "public_docs.yml")
+    sources = external_module.load_external_sources(manifest)
+    dashboard = next(source for source in sources if source.name == "dashboard")
+
+    homepage_banner = external_module.build_source_banner(Path("dashboard/index.md"), dashboard)
+    inner_banner = external_module.build_source_banner(
+        Path("dashboard/guides/reports-and-datadocs.md"),
+        dashboard,
+    )
+
+    assert '/assets/dashboard/truthound-dashboard-banner.png' in homepage_banner
+    assert "dashboard-external-banner--hero" in homepage_banner
+    assert "dashboard-external-banner--compact" in inner_banner
+    assert '!!! note "Upstream Source"' in homepage_banner

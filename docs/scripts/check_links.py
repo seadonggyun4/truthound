@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import re
 import sys
 from pathlib import Path
 from typing import Any
 
-import yaml
+yaml = importlib.import_module("yaml")
 
 LINK_PATTERN = re.compile(r'!?\[[^\]]*\]\(([^)\s]+)(?:\s+"[^"]*")?\)')
 SKIP_PREFIXES = ("http://", "https://", "mailto:", "tel:", "data:")
@@ -25,11 +26,19 @@ def _iter_nav_paths(node: Any) -> list[str]:
     return paths
 
 
+def _docs_dir_name(config: Any) -> str:
+    if isinstance(config, dict):
+        docs_dir = config.get("docs_dir", "docs")
+        if isinstance(docs_dir, str):
+            return docs_dir
+    return "docs"
+
+
 def _mkdocs_paths(mkdocs_file: Path) -> list[Path]:
     raw_text = mkdocs_file.read_text(encoding="utf-8")
     sanitized = re.sub(r"!!python/name:[^\s]+", "python-ref", raw_text)
     config = yaml.safe_load(sanitized) or {}
-    docs_dir = (mkdocs_file.parent / config.get("docs_dir", "docs")).resolve()
+    docs_dir = (mkdocs_file.parent / _docs_dir_name(config)).resolve()
     nav_paths = _iter_nav_paths(config.get("nav", []))
     return [docs_dir / relative for relative in nav_paths]
 
@@ -41,7 +50,7 @@ def _resolve_docs_root(mkdocs_file: Path | None, repo_root: Path) -> Path:
     raw_text = mkdocs_file.read_text(encoding="utf-8")
     sanitized = re.sub(r"!!python/name:[^\s]+", "python-ref", raw_text)
     config = yaml.safe_load(sanitized) or {}
-    return (mkdocs_file.parent / config.get("docs_dir", "docs")).resolve()
+    return (mkdocs_file.parent / _docs_dir_name(config)).resolve()
 
 
 def _collect_markdown_files(paths: list[Path], mkdocs_file: Path | None) -> list[Path]:
