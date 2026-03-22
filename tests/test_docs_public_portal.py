@@ -93,6 +93,35 @@ def test_public_docs_expected_page_count_matches_manifest():
     assert len(docs) > 36
 
 
+def test_public_docs_manifest_keeps_orchestration_counts_without_external_checkout():
+    manifest_module = _load_public_manifest_module()
+    manifest = manifest_module.load_manifest(REPO_ROOT / "docs" / "public_docs.yml")
+
+    original = manifest_module._optional_external_nav_doc_paths
+    try:
+        manifest_module._optional_external_nav_doc_paths = (
+            lambda repo_root, source: []
+            if source.name == "orchestration"
+            else original(repo_root, source)
+        )
+        docs = manifest_module.resolve_public_docs(manifest, REPO_ROOT / "docs")
+    finally:
+        manifest_module._optional_external_nav_doc_paths = original
+
+    public_urls = {f"/{Path(path).with_suffix('').as_posix()}/" for path in docs if not path.endswith("index.md")}
+    public_urls.update(
+        "/"
+        if path == "index.md"
+        else f"/{Path(path).parent.as_posix()}/"
+        for path in docs
+        if path.endswith("index.md")
+    )
+
+    assert "orchestration/testing-ci-ownership.md" in docs
+    assert manifest["expected_markdown_count"] == len(docs)
+    assert manifest["expected_page_count"] == len(public_urls)
+
+
 def test_mkdocs_nav_exposes_major_hubs_in_main_and_public_configs():
     expected_labels = [
         "Getting Started",
