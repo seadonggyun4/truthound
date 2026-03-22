@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -25,6 +26,17 @@ def _load_public_manifest_module():
 def _load_external_docs_module():
     module_path = REPO_ROOT / "docs" / "scripts" / "external_docs.py"
     spec = importlib.util.spec_from_file_location("truthound_docs_external_docs", module_path)
+    assert spec is not None
+    assert spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def _load_fetch_external_docs_module():
+    module_path = REPO_ROOT / "docs" / "scripts" / "fetch_external_docs.py"
+    spec = importlib.util.spec_from_file_location("truthound_docs_fetch_external_docs", module_path)
     assert spec is not None
     assert spec.loader is not None
     module = importlib.util.module_from_spec(spec)
@@ -227,3 +239,49 @@ def test_docs_deployment_verification_distinguishes_dashboard_docs_from_preview_
     assert "https://truthound.netlify.app/" in verification_doc
     assert "https://truthound-dashboard.onrender.com/" in verification_doc
     assert "does not assume the dashboard runtime is hosted on Netlify" in verification_doc
+
+
+def _init_git_repo(repo_path: Path, *, branch: str = "main") -> None:
+    subprocess.run(["git", "init", "-b", branch, str(repo_path)], check=True)
+    subprocess.run(
+        ["git", "-C", str(repo_path), "config", "user.email", "docs@example.com"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", str(repo_path), "config", "user.name", "Docs Test"],
+        check=True,
+    )
+    subprocess.run(["git", "-C", str(repo_path), "add", "."], check=True)
+    subprocess.run(["git", "-C", str(repo_path), "commit", "-m", "init"], check=True)
+
+
+def test_fetch_external_docs_clones_missing_sources_into_dot_external(tmp_path: Path) -> None:
+    fetch_module = _load_fetch_external_docs_module()
+
+    repo_root = tmp_path / "workspace" / "repo"
+    repo_root.mkdir(parents=True)
+
+    source_repo = tmp_path / "sources" / "truthound-dashboard-source"
+    (source_repo / "docs").mkdir(parents=True)
+    (source_repo / "docs" / "index.md").write_text("# Dashboard\n", encoding="utf-8")
+    _init_git_repo(source_repo)
+
+    manifest = {
+        "external_sources": {
+            "dashboard": {
+                "prefix": "dashboard",
+                "label": "Truthound Dashboard 3.x",
+                "repo_url": source_repo.resolve().as_posix(),
+                "repo_name": "local/truthound-dashboard-source",
+                "branch": "main",
+                "docs_root": "docs",
+            }
+        }
+    }
+
+    fetched = fetch_module.ensure_external_sources(repo_root=repo_root, manifest=manifest)
+    assert fetched == 1
+    assert (repo_root / ".external" / "truthound-dashboard-source" / "docs" / "index.md").exists()
+
+    fetched_again = fetch_module.ensure_external_sources(repo_root=repo_root, manifest=manifest)
+    assert fetched_again == 0
