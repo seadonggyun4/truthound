@@ -13,6 +13,13 @@ if str(SCRIPT_DIR) not in sys.path:
 from external_docs import external_nav_doc_paths, load_external_sources
 
 
+def _optional_external_nav_doc_paths(repo_root: Path, source: Any) -> list[Path]:
+    try:
+        return external_nav_doc_paths(repo_root, source)
+    except FileNotFoundError:
+        return []
+
+
 def load_manifest(path: Path) -> dict[str, Any]:
     data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     if not isinstance(data, dict):
@@ -90,7 +97,7 @@ def resolve_public_docs(manifest: dict[str, Any], docs_root: Path) -> list[str]:
                     continue
 
             if source is not None:
-                for child in external_nav_doc_paths(repo_root, source):
+                for child in _optional_external_nav_doc_paths(repo_root, source):
                     docs.add(Path(prefix, child).as_posix())
                 continue
 
