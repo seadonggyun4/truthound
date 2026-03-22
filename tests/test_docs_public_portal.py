@@ -217,3 +217,13 @@ def test_dashboard_external_banner_markup_and_asset_contract() -> None:
     assert "dashboard-external-banner--hero" in homepage_banner
     assert "dashboard-external-banner--compact" in inner_banner
     assert '!!! note "Upstream Source"' in homepage_banner
+
+
+def test_docs_deployment_verification_distinguishes_dashboard_docs_from_preview_app() -> None:
+    verification_doc = (
+        REPO_ROOT / "docs" / "guides" / "docs-deployment-verification.md"
+    ).read_text(encoding="utf-8")
+
+    assert "https://truthound.netlify.app/" in verification_doc
+    assert "https://truthound-dashboard.onrender.com/" in verification_doc
+    assert "does not assume the dashboard runtime is hosted on Netlify" in verification_doc

@@ -9,6 +9,8 @@ Use this page as the canonical operator checklist whenever the public Truthound 
 - [ ] the build command is `sh docs/scripts/build_site.sh`
 - [ ] the publish directory is `site`
 - [ ] the deployed site uses `https://truthound.netlify.app/` as the canonical docs URL
+- [ ] the docs operator runbook distinguishes the docs host from the live dashboard app
+  preview at `https://truthound-dashboard.onrender.com/`
 
 ## Repo Configuration Checklist
 
@@ -20,6 +22,7 @@ Use this page as the canonical operator checklist whenever the public Truthound 
 - [ ] `docs/_redirects` keeps `truthound.io` and `www.truthound.io` in redirect-only mode toward `truthound.netlify.app`
 - [ ] `docs/orchestration/` is a checked-in snapshot mirrored from `truthound-orchestration`
 - [ ] `docs/dashboard/` is not a maintained checked-in mirror; dashboard docs are staged from `truthound-dashboard`
+- [ ] docs verification does not assume the dashboard runtime is hosted on Netlify
 - [ ] `scripts/fetch-external-docs.sh orchestration` is the canonical pre-release sync step for the orchestration snapshot
 - [ ] full and public docs staging run before the respective MkDocs builds
 - [ ] brand assets remain unchanged:
@@ -43,6 +46,8 @@ After a local or Netlify build, confirm all of the following under `site/`:
 - [ ] `site/dashboard/api-reference/artifacts/index.html` exists and renders the artifact API reference
 - [ ] `assets/dashboard/truthound-dashboard-banner.png` exists in the staged docs tree
 - [ ] staged dashboard pages render the injected dashboard hero/compact banner plus the upstream source note
+- [ ] docs verification treats `https://truthound-dashboard.onrender.com/` as the live
+  dashboard preview host and does not expect the runtime app inside the Netlify build
 - [ ] `site/orchestration/airflow/index.html` exists and renders one platform page under the integrated section
 - [ ] `site/orchestration/airflow/observability-alerting/index.html` exists and renders an expanded platform subguide
 - [ ] `site/orchestration/common/index.html` exists and renders the shared runtime overview
@@ -104,6 +109,9 @@ After a local or Netlify build, confirm all of the following under `site/`:
 - [ ] benchmark pages use `release-grade`, `fixed-runner benchmark verification`, or `verified benchmark summary` rather than repeated `GA` wording
 - [ ] README and the docs site agree on the current benchmark positioning against Great Expectations
 - [ ] Tutorials, Guides, Reference, Orchestration, Concepts, and Release Notes are all discoverable from the public nav
+- [ ] dashboard docs consistently describe `https://truthound.netlify.app/dashboard/`
+  as documentation and `https://truthound-dashboard.onrender.com/` as the reviewer-facing
+  application preview
 - [ ] imported orchestration pages identify `truthound-orchestration` as the upstream source repository
 - [ ] source-banner edit links target `https://github.com/seadonggyun4/truthound-orchestration/edit/main/docs/...`
 
