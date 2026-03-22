@@ -8,8 +8,10 @@ on:
       - "CLAUDE.md"
       - "docs/**"
       - "mkdocs.yml"
+      - "mkdocs.public.yml"
       - "pyproject.toml"
       - "tests/cli_modules/test_plugins_cli.py"
+      - "tests/test_docs_public_portal.py"
   push:
     paths:
       - ".github/workflows/docs.yml"
@@ -17,14 +19,22 @@ on:
       - "CLAUDE.md"
       - "docs/**"
       - "mkdocs.yml"
+      - "mkdocs.public.yml"
       - "pyproject.toml"
       - "tests/cli_modules/test_plugins_cli.py"
+      - "tests/test_docs_public_portal.py"
 
 jobs:
   docs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Checkout truthound-dashboard docs source
+        uses: actions/checkout@v4
+        with:
+          repository: seadonggyun4/truthound-dashboard
+          path: .external/truthound-dashboard
 
       - uses: actions/setup-python@v5
         with:
@@ -35,11 +45,26 @@ jobs:
       - name: Install project with docs and dev extras
         run: uv pip install --system ".[docs,dev]"
 
-      - name: Check markdown links
-        run: python docs/scripts/check_links.py --mkdocs mkdocs.yml README.md CLAUDE.md docs
+      - name: Stage full docs
+        run: python docs/scripts/prepare_public_docs.py --mode full
 
-      - name: Build docs
+      - name: Stage public docs
+        run: python docs/scripts/prepare_public_docs.py --mode public
+
+      - name: Check markdown links
+        run: python docs/scripts/check_links.py --mkdocs mkdocs.yml README.md CLAUDE.md build/full-docs
+
+      - name: Check public markdown links
+        run: python docs/scripts/check_links.py --mkdocs mkdocs.public.yml build/public-docs
+
+      - name: Build full docs
         run: mkdocs build --strict
+
+      - name: Build public docs
+        run: mkdocs build --strict -f mkdocs.public.yml
+
+      - name: Verify docs public portal
+        run: python -m pytest -q tests/test_docs_public_portal.py -p no:cacheprovider
 
       - name: Verify plugins CLI snapshot
         run: python -m pytest -q tests/cli_modules/test_plugins_cli.py -p no:cacheprovider

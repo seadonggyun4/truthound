@@ -13,13 +13,15 @@ Use this page as the canonical operator checklist whenever the public Truthound 
 ## Repo Configuration Checklist
 
 - [ ] `mkdocs.yml` sets `site_url: https://truthound.netlify.app/`
-- [ ] `mkdocs.public.yml` is the only config used for the staged public build
+- [ ] `mkdocs.yml` builds from the staged full docs tree
+- [ ] `mkdocs.public.yml` builds from the staged public docs tree
 - [ ] `netlify.toml` points at the repo-owned docs build script
 - [ ] `docs/public_docs.yml` defines the public docs manifest, including section prefixes and exclusions
 - [ ] `docs/_redirects` keeps `truthound.io` and `www.truthound.io` in redirect-only mode toward `truthound.netlify.app`
 - [ ] `docs/orchestration/` is a checked-in snapshot mirrored from `truthound-orchestration`
+- [ ] `docs/dashboard/` is not a maintained checked-in mirror; dashboard docs are staged from `truthound-dashboard`
 - [ ] `scripts/fetch-external-docs.sh orchestration` is the canonical pre-release sync step for the orchestration snapshot
-- [ ] Netlify builds only from the checked-in snapshot and does not fetch external repositories during deploy
+- [ ] full and public docs staging run before the respective MkDocs builds
 - [ ] brand assets remain unchanged:
   - [ ] `assets/truthound_banner.png`
   - [ ] `assets/truthound_icon.png`
@@ -35,6 +37,10 @@ After a local or Netlify build, confirm all of the following under `site/`:
 - [ ] `site/python-api/index.html` exists
 - [ ] `site/reference/index.html` exists
 - [ ] `site/orchestration/index.html` exists and renders the Orchestration overview
+- [ ] `site/dashboard/index.html` exists and renders the Dashboard overview
+- [ ] `site/dashboard/quickstart/install-and-run/index.html` exists and renders a quickstart page
+- [ ] `site/dashboard/guides/reports-and-datadocs/index.html` exists and renders the artifact guide
+- [ ] `site/dashboard/api-reference/artifacts/index.html` exists and renders the artifact API reference
 - [ ] `site/orchestration/airflow/index.html` exists and renders one platform page under the integrated section
 - [ ] `site/orchestration/airflow/observability-alerting/index.html` exists and renders an expanded platform subguide
 - [ ] `site/orchestration/common/index.html` exists and renders the shared runtime overview
@@ -50,6 +56,7 @@ After a local or Netlify build, confirm all of the following under `site/`:
 - [ ] the benchmark summary icon banner resolves from `assets/Truthound_icon_banner.png`
 - [ ] the staged public docs tree reflects the public manifest expansion from `docs/public_docs.yml`
 - [ ] imported orchestration pages render the generated source banner and upstream edit link
+- [ ] imported dashboard pages render the generated source banner and upstream edit link
 
 ## Search and Sitemap Checklist
 
@@ -102,9 +109,11 @@ After a local or Netlify build, confirm all of the following under `site/`:
 
 ```bash
 sh scripts/fetch-external-docs.sh orchestration
-python docs/scripts/prepare_public_docs.py --manifest docs/public_docs.yml --output-dir build/public-docs
-python docs/scripts/check_links.py --mkdocs mkdocs.yml README.md CLAUDE.md
+python docs/scripts/prepare_public_docs.py --mode full
+python docs/scripts/prepare_public_docs.py --mode public
+python docs/scripts/check_links.py --mkdocs mkdocs.yml README.md CLAUDE.md build/full-docs
 python docs/scripts/check_links.py --mkdocs mkdocs.public.yml build/public-docs
+python -m mkdocs build --strict
 python -m mkdocs build --strict -f mkdocs.public.yml
 python docs/scripts/verify_public_surface.py --manifest docs/public_docs.yml --site-dir site
 ```

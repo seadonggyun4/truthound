@@ -245,8 +245,11 @@ uv run --frozen --extra benchmarks python -m truthound.cli benchmark parity --su
 uv run --frozen --extra benchmarks python -m truthound.cli benchmark parity --suite nightly-core --frameworks both --backend local --strict
 uv run --frozen --extra benchmarks python -m truthound.cli benchmark parity --suite nightly-sql --frameworks both --backend sqlite --strict
 uv run --frozen --extra benchmarks python -m truthound.cli benchmark parity --suite release-ga --frameworks both --strict
-uv run --frozen --extra dev python docs/scripts/check_links.py --mkdocs mkdocs.yml README.md CLAUDE.md
+python docs/scripts/prepare_public_docs.py --mode full
+python docs/scripts/prepare_public_docs.py --mode public
+uv run --frozen --extra dev python docs/scripts/check_links.py --mkdocs mkdocs.yml README.md CLAUDE.md build/full-docs
 uv run --frozen --extra dev --extra docs mkdocs build --strict
+uv run --frozen --extra dev --extra docs mkdocs build --strict -f mkdocs.public.yml
 truthound doctor . --migrate-2to3
 ```
 

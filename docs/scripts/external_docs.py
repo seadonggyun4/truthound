@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -81,6 +82,51 @@ def load_external_sources(manifest: dict[str, Any]) -> list[ExternalSource]:
             )
         )
     return sources
+
+
+def discover_external_source_root(
+    repo_root: Path,
+    source: ExternalSource,
+    overrides: dict[str, Path] | None = None,
+) -> Path | None:
+    override = (overrides or {}).get(source.name)
+    candidates: list[Path] = []
+    if override is not None:
+        candidates.append(override)
+
+    env_key = f"TRUTHOUND_EXTERNAL_SOURCE_{source.name.upper()}"
+    env_value = os.environ.get(env_key)
+    if env_value:
+        candidates.append(Path(env_value))
+
+    repo_basename = Path(source.repo_name).name
+    candidates.extend(
+        [
+            repo_root.parent / repo_basename,
+            repo_root / ".external" / repo_basename,
+            repo_root / ".external" / source.name,
+        ]
+    )
+
+    for candidate in candidates:
+        resolved = candidate.resolve()
+        if (resolved / source.normalized_docs_root).exists():
+            return resolved
+    return None
+
+
+def external_nav_doc_paths(
+    repo_root: Path,
+    source: ExternalSource,
+    overrides: dict[str, Path] | None = None,
+) -> list[Path]:
+    source_root = discover_external_source_root(repo_root, source, overrides)
+    if source_root is None:
+        raise FileNotFoundError(
+            f"Unable to locate external source checkout for {source.name!r}. "
+            f"Set TRUTHOUND_EXTERNAL_SOURCE_{source.name.upper()} or provide an override."
+        )
+    return load_nav_doc_paths(source_root / "mkdocs.yml")
 
 
 def match_external_source(relative_path: Path, external_sources: list[ExternalSource]) -> ExternalSource | None:

@@ -48,10 +48,17 @@ def test_public_docs_manifest_exposes_full_portal():
     assert "python-api/index.md" in docs
     assert "reference/index.md" in docs
     assert "dashboard/index.md" in docs
+    assert "dashboard/quickstart/install-and-run.md" in docs
+    assert "dashboard/concepts/architecture.md" in docs
+    assert "dashboard/guides/reports-and-datadocs.md" in docs
+    assert "dashboard/operations/ci-and-quality-gates.md" in docs
+    assert "dashboard/api-reference/artifacts.md" in docs
+    assert "dashboard/reference/saved-view-scope-matrix.md" in docs
     assert "guides/checkpoint/index.md" in docs
     assert "guides/validators/index.md" in docs
     assert "concepts/API_REFERENCE.md" not in docs
     assert "guides/datasources/ARCHITECTURE.md" not in docs
+    assert not any((REPO_ROOT / "docs" / "dashboard").rglob("*.md"))
 
 
 def test_public_docs_expected_page_count_matches_manifest():
@@ -78,19 +85,45 @@ def test_mkdocs_nav_exposes_major_hubs_in_main_and_public_configs():
         "Getting Started",
         "Tutorials",
         "Guides",
+        "Dashboard",
         "Reference",
         "Orchestration",
         "Concepts & Architecture",
         "Release Notes",
         "ADRs",
         "Legacy / Archive",
-        "Experimental",
     ]
 
     for config_path in [REPO_ROOT / "mkdocs.yml", REPO_ROOT / "mkdocs.public.yml"]:
         config = _load_mkdocs(config_path)
         labels = _nav_labels(config.get("nav", []))
         for label in expected_labels:
+            assert label in labels
+        assert "Experimental" not in labels
+
+
+def test_mkdocs_dashboard_nav_exposes_major_subsections() -> None:
+    expected_dashboard_labels = [
+        "Overview",
+        "Quickstart",
+        "Concepts",
+        "Guides",
+        "Operations",
+        "API Reference",
+        "Reference",
+        "Migration",
+    ]
+
+    for config_path in [REPO_ROOT / "mkdocs.yml", REPO_ROOT / "mkdocs.public.yml"]:
+        config = _load_mkdocs(config_path)
+        nav = config.get("nav", [])
+        dashboard_entry = next(
+            (entry["Dashboard"] for entry in nav if isinstance(entry, dict) and "Dashboard" in entry),
+            None,
+        )
+        assert dashboard_entry is not None
+        labels = _nav_labels(dashboard_entry)
+        for label in expected_dashboard_labels:
             assert label in labels
 
 
