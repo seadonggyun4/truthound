@@ -8,8 +8,9 @@ Truthound 3.0 does not run the entire validator registry by default. When you
 call `th.check(...)` without an explicit validator list, Truthound synthesizes
 an auto-suite from the active context, schema signals, and the chosen input.
 
-The runtime validator registry currently exposes **263 loadable validators**
-across **21 validator categories**.
+The runtime validator registry exposes environment-dependent validator
+availability across registry-backed categories. Use the registry helpers to
+inspect the current installation instead of relying on hardcoded counts.
 
 ---
 
@@ -22,9 +23,9 @@ from truthound.validators import list_categories, list_validators
 # Basic validation with the auto-suite chosen for this input
 run = th.check("data.csv")
 
-# Inspect the registry-backed catalog
-len(list_validators())   # 263
-len(list_categories())   # 21
+# Inspect the registry-backed catalog for this environment
+len(list_validators())   # Runtime validator count for this installation
+len(list_categories())   # Registry-backed categories for this installation
 
 # Specific validators only
 run = th.check(df, validators=["null", "duplicate", "range"])
@@ -2590,32 +2591,34 @@ with handler.cascade() as cascade:
 
 ## Appendix A: Validator Categories Summary
 
-### Validator Categories Exposed By `list_categories()` (21 categories, 263 validators)
+### Registry-Backed Categories Exposed By `list_categories()`
 
-| Category | Count | Dependencies | Description |
-|----------|-------|--------------|-------------|
-| Schema | 15 | Core | Structural validation |
-| Completeness | 12 | Core | Missing value detection |
-| Uniqueness | 17 | Core | Duplicate and key validation |
-| Distribution | 15 | Core | Range and statistical checks |
-| String | 18 | Core | Pattern and format validation |
-| Datetime | 10 | Core | Temporal data validation |
-| Aggregate | 8 | Core | Statistical aggregate checks |
-| Cross-Table | 5 | Core | Multi-table relationships |
-| Query | 19 | Core | Expression-based validation |
-| Multi-Column | 20 | Core | Column relationships |
-| Table | 18 | Core | Table metadata validation |
-| Geospatial | 13 | Core | Geographic coordinates |
-| Drift | 14 | scipy | Distribution change detection |
-| Anomaly | 17 | scipy, scikit-learn | Outlier detection |
-| Business Rule | 7 | Core | Domain-specific validation (Luhn, IBAN, VAT) |
-| Localization | 9 | Core | Regional identifiers (Korean, Japanese, Chinese) |
-| ML Feature | 5 | Core | Leakage detection, correlation analysis |
-| Profiling | 7 | Core | Cardinality, entropy, frequency analysis |
-| Referential | 13 | Core | Foreign key and orphan record validation |
-| Time Series | 13 | Core | Gap detection, seasonality, trend analysis |
-| Privacy | 15 | Core | GDPR, CCPA, LGPD compliance patterns |
-| **Total** | **263** | | **Current loadable validator classes in the registry** |
+Use `list_validators(category=...)` at runtime when you need exact counts for
+the currently installed environment.
+
+| Category | Dependencies | Description |
+|----------|--------------|-------------|
+| Schema | Core | Structural validation |
+| Completeness | Core | Missing value detection |
+| Uniqueness | Core | Duplicate and key validation |
+| Distribution | Core | Range and statistical checks |
+| String | Core | Pattern and format validation |
+| Datetime | Core | Temporal data validation |
+| Aggregate | Core | Statistical aggregate checks |
+| Cross-Table | Core | Multi-table relationships |
+| Query | Core | Expression-based validation |
+| Multi-Column | Core | Column relationships |
+| Table | Core | Table metadata validation |
+| Geospatial | Core | Geographic coordinates |
+| Drift | scipy | Distribution change detection |
+| Anomaly | scipy, scikit-learn | Outlier detection |
+| Business Rule | Core | Domain-specific validation (Luhn, IBAN, VAT) |
+| Localization | Core | Regional identifiers (Korean, Japanese, Chinese) |
+| ML Feature | Core | Leakage detection, correlation analysis |
+| Profiling | Core | Cardinality, entropy, frequency analysis |
+| Referential | Core | Foreign key and orphan record validation |
+| Time Series | Core | Gap detection, seasonality, trend analysis |
+| Privacy | Core | GDPR, CCPA, LGPD compliance patterns |
 
 ### Support Modules Outside The Validator Registry
 

@@ -105,7 +105,7 @@ def resolve_public_docs(manifest: dict[str, Any], docs_root: Path) -> list[str]:
 
         if source is None:
             raise FileNotFoundError(f"Public docs prefix does not exist: {relative}")
-        for child in external_nav_doc_paths(repo_root, source):
+        for child in _optional_external_nav_doc_paths(repo_root, source):
             docs.add(Path(prefix, child).as_posix())
 
     excluded_docs = {

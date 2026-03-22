@@ -3,8 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 import re
 
-from truthound.validators import list_categories, list_validators
-
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DOCS_ROOT = REPO_ROOT / "docs"
@@ -91,20 +89,16 @@ def test_no_stale_validator_catalog_claims_in_current_docs() -> None:
     )
 
 
-def test_validators_docs_publish_current_registry_counts() -> None:
-    validator_count = len(list_validators())
-    category_count = len(list_categories())
-
-    expected_validator_text = f"{validator_count} validators"
-    expected_category_text = f"{category_count} categories"
-
+def test_validators_docs_use_registry_backed_wording_instead_of_hardcoded_totals() -> None:
     for rel_path in (
         "docs/guides/validators/index.md",
         "docs/guides/validators/categories.md",
     ):
         text = _read(rel_path)
-        assert expected_validator_text in text, rel_path
-        assert expected_category_text in text, rel_path
+        assert "list_validators" in text, rel_path
+        assert "list_categories" in text, rel_path
+        assert re.search(r"\b\d+\s+(loadable\s+)?validators\b", text) is None, rel_path
+        assert re.search(r"\b\d+\s+(validator\s+)?categories\b", text) is None, rel_path
 
 
 def test_no_issue_validator_field_in_current_docs() -> None:
