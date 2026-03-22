@@ -242,11 +242,14 @@ truthound docs generate <profile_file> [OPTIONS]
 truthound docs themes  # List available themes
 ```
 
-### `truthound dashboard`
+### `truthound dashboard` (Data Docs dashboard UI)
 
 ```bash
 truthound dashboard --profile profile.json --port 8080
 ```
+
+This launches the local Data Docs dashboard UI. It is separate from the
+[Truthound Dashboard](../../dashboard/index.md) control-plane product.
 
 ---
 
@@ -293,7 +296,7 @@ src/truthound/datadocs/
 │   ├── plurals.py       # CLDR plural rules
 │   └── formatting.py    # Number/date formatting
 │
-└── dashboard/           # Stage 2: Dashboard
+└── dashboard/           # Data Docs dashboard UI
     ├── app.py           # DashboardApp
     ├── state.py         # Reflex state
     └── components.py    # UI components

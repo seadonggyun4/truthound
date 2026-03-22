@@ -1,90 +1,88 @@
 # Guides
 
-Guides are the task-oriented part of the Truthound docs. Use them when you already know the feature area you care about and want practical implementation guidance, patterns, and operational advice.
+Guides are the task-oriented part of the **Truthound Core** docs. Use them when
+you already know the job to be done and want implementation guidance,
+operational patterns, and troubleshooting for the main `truthound` repository.
 
-> **Looking for CLI documentation?** See [CLI Reference](../cli/index.md) for command-line usage.
+If your task is primarily about scheduler-native execution or workflow-host
+integration, jump to [Truthound Orchestration](../orchestration/index.md). If
+your task is primarily about sessions, ownership, incidents, secrets, or
+artifact operations in a web UI, jump to [Truthound Dashboard](../dashboard/index.md).
+
+> **Looking for CLI documentation?** See [CLI Reference](../cli/index.md).
 >
-> **Looking for API Reference?** See [Python API Reference](../python-api/index.md) for function signatures and parameters.
+> **Looking for Python API lookup?** See [Python API Reference](../python-api/index.md).
 
----
+## What Belongs Here
 
-## How To Use This Section
+| If you need to... | Use these guides |
+|------|--------------|
+| validate data and design suites | [Validators](validators/index.md) |
+| connect files, SQL systems, or warehouses | [Datasources](datasources/index.md) |
+| automate runs and policies inside the core repo | [Checkpoint family](checkpoint/index.md) and [Checkpoints overview](checkpoints.md) |
+| render output or persist artifacts | [Reporters](reporters/index.md), [Data Docs](datadocs/index.md), [Stores](stores/index.md) |
+| profile data and generate rules | [Profiler](profiler/index.md) |
+| tune execution and benchmark behavior | [Performance](performance.md), [Benchmark Methodology](benchmark-methodology.md), [Benchmark Workloads](benchmark-workloads.md) |
 
-- Start with a family overview page when you know the domain but not the exact feature.
-- Jump into a sub-guide when you have a concrete task such as routing checkpoint failures or configuring observability.
-- Return to [Tutorials](../tutorials/index.md) if you want sequential, end-to-end examples instead of task-based reading.
+## What Does Not Belong Here
 
-## Common Entry Points
+- **Host-native execution layers**: use [Truthound Orchestration](../orchestration/index.md)
+- **Operational control-plane workflows**: use [Truthound Dashboard](../dashboard/index.md)
+- **Command lookup**: use [Reference](../reference/index.md)
+- **Sequential first-run learning**: use [Tutorials](../tutorials/index.md)
+
+## Common Core Entry Points
 
 ```python
 import truthound as th
 from truthound.drift import compare
 
-# Read data from various sources
-df = th.read("data.csv")                                     # File path
-df = th.read({"a": [1, 2, 3], "b": ["x", "y", "z"]})         # Dict data
-df = th.read("large_data.parquet", sample_size=10000)        # With sampling
-
-# Basic validation
+# Basic validation through the core kernel
 run = th.check("data.csv")
 print(f"Found {len(run.issues)} issues")
 
-# With specific validators
-run = th.check(df, validators=["null", "duplicate", "range"])
+# Explicit validators when you need them
+run = th.check("data.csv", validators=["null", "duplicate", "range"])
 
-# Schema-based validation
+# Learn a baseline schema from trusted data
 schema = th.learn("baseline.csv")
-run = th.check("new_data.csv", schema=schema)
 
-# Database validation
-from truthound.datasources import PostgreSQLDataSource
-source = PostgreSQLDataSource(table="users", host="localhost", database="mydb")
-run = th.check(source=source)
-
-# Data drift detection (14 methods available)
-drift = compare("baseline.csv", "current.csv", method="auto")        # Auto-select
-drift = compare("baseline.csv", "current.csv", method="ks")          # Kolmogorov-Smirnov
-drift = compare("baseline.csv", "current.csv", method="wasserstein") # Earth Mover's Distance
-drift = compare("baseline.csv", "current.csv", method="anderson")    # Anderson-Darling
-drift = compare("baseline.csv", "current.csv", method="hellinger")   # Hellinger distance
-drift = compare("baseline.csv", "current.csv", method="mmd")         # Maximum Mean Discrepancy
+# Compare two datasets for drift
+drift = compare("baseline.csv", "current.csv", method="auto")
 ```
 
----
+## Guide Families
 
-## Guide Categories
+### Validation and Data Access
 
-### Core Functionality
+- [Validators](validators/index.md)
+- [Datasources](datasources/index.md)
+- [Data Masking](data-masking.md)
+- [Privacy](privacy.md)
 
-| Guide | Description | Key Topics |
-|-------|-------------|------------|
-| [Validators](validators/index.md) | Data validation patterns | Runtime registry, custom validators, error handling |
-| [Data Sources](datasources/index.md) | Database and file connections | SQL, Cloud DW, Spark, streaming |
-| [Profiling](profiler/index.md) | Automatic data analysis | Schema inference, rule generation, scheduling |
+### Automation and Operations Inside Core
 
-### Output and Reporting
+- [Checkpoints Overview](checkpoints.md)
+- [Checkpoint Family](checkpoint/index.md)
+- [Configuration](configuration/index.md)
+- [CI/CD](ci-cd/index.md)
+- [Notifications](notifications.md)
 
-| Guide | Description | Key Topics |
-|-------|-------------|------------|
-| [Data Docs](datadocs/index.md) | HTML report generation | Themes, charts, PDF export, templates |
-| [Reporters](reporters/index.md) | Output formats | JSON, Console, JUnit, custom reporters |
-| [Storage](stores/index.md) | Result persistence | S3, GCS, Azure, versioning, caching |
+### Reporting, Artifacts, and Persistence
 
-### Operations
+- [Reporters](reporters/index.md)
+- [Data Docs](datadocs/index.md)
+- [Reporter SDK](reporter-sdk.md)
+- [Stores](stores/index.md)
 
-| Guide | Description | Key Topics |
-|-------|-------------|------------|
-| [Configuration](configuration/index.md) | Environment setup | Logging, metrics, encryption, resilience |
-| [CI/CD](checkpoint/index.md) | Pipeline integration | Checkpoints, notifications, routing |
-| [Performance](advanced/performance.md) | Optimization | Parallel execution, pushdown, memory |
+### Profiling and Extended Core Workflows
 
-### Enterprise Features
-
-| Guide | Description | Key Topics |
-|-------|-------------|------------|
-| [Advanced](advanced/index.md) | Enterprise capabilities | ML anomaly, lineage, realtime streaming |
-
----
+- [Profiler](profiler/index.md)
+- [Performance](performance.md)
+- [Benchmark Methodology](benchmark-methodology.md)
+- [Benchmark Workloads](benchmark-workloads.md)
+- [Great Expectations Comparison](gx-parity.md)
+- [Migration to 3.0](migration-3.0.md)
 
 ## Suggested Reading Paths
 
@@ -93,115 +91,27 @@ drift = compare("baseline.csv", "current.csv", method="mmd")         # Maximum M
 1. [Validators](validators/index.md)
 2. [Datasources](datasources/index.md)
 3. [Reporters](reporters/index.md)
-4. [Checkpoints](checkpoints.md)
+4. [Checkpoints Overview](checkpoints.md)
 
 ### Platform team path
 
 1. [Configuration](configuration/index.md)
-2. [Checkpoint family](checkpoint/index.md)
+2. [Checkpoint Family](checkpoint/index.md)
 3. [Stores](stores/index.md)
-4. [Performance](advanced/performance.md)
+4. [Performance](performance.md)
 
-### Analytics / profiling path
+### Extended workflow path
 
-1. [Profiling](profiler/index.md)
+1. [Profiler](profiler/index.md)
 2. [Data Docs](datadocs/index.md)
-3. [Great Expectations comparison](gx-parity.md)
+3. [Great Expectations Comparison](gx-parity.md)
+4. [Truthound Orchestration](../orchestration/index.md) if the next step is scheduler-native rollout
 
-## Common Workflows
+## Related Reading
 
-### Workflow 1: Basic Data Validation
-
-```python
-import truthound as th
-
-# 1. Validate data
-run = th.check("data.csv")
-
-# 2. Filter critical issues
-critical = [i for i in run.issues if i.severity == "critical"]
-
-# 3. Generate report
-if critical:
-    from truthound.datadocs import generate_html_report
-    html = generate_html_report(run)
-    Path("report.html").write_text(html)
-```
-
-### Workflow 2: Schema-Based Validation
-
-```python
-import truthound as th
-
-# 1. Learn schema from baseline data
-schema = th.learn("baseline.csv")
-schema.save("schema.yaml")
-
-# 2. Validate new data against schema
-run = th.check("new_data.csv", schema="schema.yaml")
-
-# 3. Check for schema violations
-schema_issues = [i for i in run.issues if i.validator_name == "schema"]
-```
-
-### Workflow 3: Database Validation with Pushdown
-
-```python
-import truthound as th
-from truthound.datasources import PostgreSQLDataSource
-
-# 1. Connect to database
-source = PostgreSQLDataSource(
-    table="transactions",
-    host="db.example.com",
-    database="analytics",
-    user="readonly",
-)
-
-# 2. Validate with query pushdown (runs on database server)
-run = th.check(source=source, pushdown=True)
-
-# 3. Save results
-from truthound.stores import S3Store
-store = S3Store(bucket="validation-results", prefix="daily/")
-store.save(run, key=f"transactions_{date.today()}")
-```
-
-### Workflow 4: Profiling and Rule Generation
-
-```python
-import truthound as th
-
-# 1. Profile data
-profile = th.profile("data.csv")
-
-# 2. Generate validation suite from profile
-from truthound.profiler import generate_suite
-suite = generate_suite(profile)
-
-# 3. Execute suite on new data
-run = suite.execute(new_data)
-```
-
----
-
-## What To Expect From A Guide
-
-Most family guides follow this pattern:
-
-1. **Overview** - Purpose and scope
-2. **Quick Start** - Minimal working example
-3. **Core Concepts** - Key classes and patterns
-4. **Practical Examples** - Real-world use cases
-5. **Configuration Options** - Available settings
-6. **Best Practices** - Production recommendations
-7. **Troubleshooting** - Common issues and solutions
-
----
-
-## See Also
-
-- [Getting Started](../getting-started/index.md) - Installation and first steps
-- [Tutorials](../tutorials/index.md) - Step-by-step learning paths
-- [Python API Reference](../python-api/index.md) - Complete API documentation
-- [CLI Reference](../cli/index.md) - Command-line interface
+- [Getting Started](../getting-started/index.md)
+- [Tutorials](../tutorials/index.md)
+- [Reference](../reference/index.md)
+- [Concepts & Architecture](../concepts/index.md)
+- [Truthound Orchestration](../orchestration/index.md)
+- [Truthound Dashboard](../dashboard/index.md)

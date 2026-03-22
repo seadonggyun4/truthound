@@ -1,16 +1,21 @@
 # Python API Reference
 
-The Python API is Truthound's canonical programmatic surface. Use it when you
-want direct access to the 3.0 validation kernel, `ValidationRunResult`, schema
-learning, reporter integration, or outer-layer subsystems such as drift,
-checkpoint, and DataDocs.
+The Python API is the canonical programmatic surface for **Truthound Core**.
+Use it when you want direct access to the 3.0 validation kernel,
+`ValidationRunResult`, schema learning, checkpoint orchestration inside the core
+repo, or core-adjoining namespaces such as drift, reporters, profiler, and
+Data Docs.
+
+This page is intentionally scoped to the `truthound` repository. Host-native
+adapter APIs live in [Truthound Orchestration](../orchestration/index.md), and
+control-plane APIs live in [Truthound Dashboard](../dashboard/index.md).
 
 ## When To Use The Python API
 
 Choose Python when you need to:
 
 - validate dataframes, lazyframes, dictionaries, SQL-backed datasources, or cloud warehouse connectors
-- compose Truthound into notebooks, scripts, services, jobs, or application code
+- compose Truthound Core into notebooks, scripts, services, jobs, or application code
 - inspect `ValidationRunResult` directly for automation, routing, or custom output
 - work with namespace modules such as `truthound.drift`, `truthound.checkpoint`, `truthound.reporters`, and `truthound.profiler`
 
@@ -49,10 +54,10 @@ drift = compare("baseline.csv", "current.csv")
 
 Truthound 3.0 keeps the root package intentionally small:
 
-- `truthound` exposes the validation facade and core result/context types
+- `truthound` exposes the thin validation facade and core result/context types
 - `th.check()` returns `ValidationRunResult`
-- advanced capabilities live in namespaces such as `truthound.drift`, `truthound.checkpoint`, and `truthound.reporters`
-- reporters, checkpoints, and DataDocs are outer layers built on top of the same canonical result model
+- advanced core-adjoining capabilities live in namespaces such as `truthound.drift`, `truthound.checkpoint`, and `truthound.reporters`
+- reporters, checkpoints, and Data Docs are outer services built on the same canonical core result model
 
 Start with [Core Functions](core-functions.md) if you want the most important
 runtime contract first.
@@ -75,7 +80,7 @@ from truthound import (
 )
 ```
 
-Use namespace imports for outer-layer features:
+Use namespace imports for core-adjoining features:
 
 ```python
 from truthound.drift import compare
@@ -119,7 +124,7 @@ first and then return here for lookup-oriented detail.
 | `ValidationRunResult` | Canonical validation runtime output |
 | `TruthoundContext` | Zero-config workspace and artifact boundary |
 
-### Namespaces
+### Core-Adjacent Namespaces
 
 | Namespace | Description |
 |----------|-------------|

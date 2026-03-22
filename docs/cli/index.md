@@ -94,11 +94,14 @@ If you are still learning the platform, start with [Getting Started](../getting-
 | `docs generate` | PROFILE_FILE (required) | `--output, -o`, `--title, -t` ("Data Profile Report"), `--subtitle, -s`, `--theme` (light/dark/professional/minimal/modern), `--format, -f` (html/pdf) |
 | `docs themes` | - | - |
 
-### Dashboard Command Summary
+### Data Docs Dashboard UI Command Summary
 
 | Command | Arguments | Options |
 |---------|-----------|---------|
 | `dashboard` | - | `--profile, -p`, `--port` (8080), `--host` (localhost), `--title, -t` ("Truthound Dashboard"), `--debug` |
+
+This command launches the local Data Docs dashboard UI. For the first-party
+control-plane product, see [Truthound Dashboard](../dashboard/index.md).
 
 ### Realtime Commands Summary
 
@@ -231,7 +234,7 @@ Documentation generation:
 | [`docs generate`](docs/generate.md) | Generate HTML/PDF report |
 | [`docs themes`](docs/themes.md) | List available themes |
 
-### [Dashboard Command](dashboard.md)
+### [Data Docs Dashboard UI Command](dashboard.md)
 
 Interactive data exploration:
 

@@ -1,6 +1,10 @@
 # truthound dashboard
 
-Launch an interactive dashboard for data exploration.
+Launch the local Data Docs dashboard UI for interactive profile exploration.
+
+This command is part of the core `truthound` package. It is **not** the same as
+[Truthound Dashboard](../dashboard/index.md), which is the first-party
+control-plane product documented under `/dashboard/`.
 
 ## Synopsis
 
@@ -24,14 +28,14 @@ None.
 
 ## Description
 
-The `dashboard` command launches an interactive web dashboard:
+The `dashboard` command launches an interactive web UI for Data Docs and profile review:
 
 1. **Starts** local web server
 2. **Loads** profile data (if provided)
 3. **Serves** interactive UI
 4. **Enables** real-time data exploration
 
-### Dashboard Features
+### Data Docs Dashboard UI Features
 
 - **Interactive data exploration** - Browse columns, filter data
 - **Column filtering and search** - Find specific fields quickly
@@ -200,7 +204,7 @@ truthound dashboard \
     The `--profile` option is required for the dashboard to display data.
     Running without a profile will result in an error.
 
-## Comparison: Dashboard vs. Static Reports
+## Comparison: Data Docs Dashboard UI vs. Static Reports
 
 | Feature | Dashboard | docs generate |
 |---------|-----------|---------------|
@@ -211,7 +215,7 @@ truthound dashboard \
 | Sharing | URL | File |
 | Best for | Exploration | Documentation |
 
-### When to Use Dashboard
+### When to Use The Data Docs Dashboard UI
 
 - Interactive data exploration
 - Team collaboration

@@ -72,6 +72,14 @@ def _nav_labels(node) -> list[str]:
     return labels
 
 
+def _top_level_nav_labels(config: dict) -> list[str]:
+    labels: list[str] = []
+    for entry in config.get("nav", []):
+        if isinstance(entry, dict):
+            labels.extend(entry.keys())
+    return labels
+
+
 def test_public_docs_manifest_exposes_full_portal():
     if not _external_source_available("dashboard"):
         pytest.skip("dashboard external docs checkout is not available in this environment")
@@ -155,13 +163,9 @@ def test_public_docs_manifest_keeps_orchestration_counts_without_external_checko
 
 def test_mkdocs_nav_exposes_major_hubs_in_main_and_public_configs():
     expected_labels = [
-        "Getting Started",
-        "Tutorials",
-        "Guides",
+        "Core",
         "Dashboard",
-        "Reference",
         "Orchestration",
-        "Concepts & Architecture",
         "Release Notes",
         "ADRs",
         "Legacy / Archive",
@@ -169,10 +173,34 @@ def test_mkdocs_nav_exposes_major_hubs_in_main_and_public_configs():
 
     for config_path in [REPO_ROOT / "mkdocs.yml", REPO_ROOT / "mkdocs.public.yml"]:
         config = _load_mkdocs(config_path)
-        labels = _nav_labels(config.get("nav", []))
+        labels = _top_level_nav_labels(config)
         for label in expected_labels:
             assert label in labels
         assert "Experimental" not in labels
+
+
+def test_mkdocs_core_nav_exposes_major_subsections() -> None:
+    expected_core_labels = [
+        "Core Overview",
+        "Getting Started",
+        "Tutorials",
+        "Guides",
+        "Reference",
+        "Concepts & Architecture",
+    ]
+
+    for config_path in [REPO_ROOT / "mkdocs.yml", REPO_ROOT / "mkdocs.public.yml"]:
+        config = _load_mkdocs(config_path)
+        nav = config.get("nav", [])
+        core_entry = next(
+            (entry["Core"] for entry in nav if isinstance(entry, dict) and "Core" in entry),
+            None,
+        )
+        assert core_entry is not None
+        labels = _nav_labels(core_entry)
+        for label in expected_core_labels:
+            assert label in labels
+        assert "Data Docs Dashboard UI" in labels
 
 
 def test_mkdocs_dashboard_nav_exposes_major_subsections() -> None:

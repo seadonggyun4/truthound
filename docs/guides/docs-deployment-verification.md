@@ -108,7 +108,8 @@ After a local or Netlify build, confirm all of the following under `site/`:
 - [ ] primary docs do not treat `RC1` as the current release note
 - [ ] benchmark pages use `release-grade`, `fixed-runner benchmark verification`, or `verified benchmark summary` rather than repeated `GA` wording
 - [ ] README and the docs site agree on the current benchmark positioning against Great Expectations
-- [ ] Tutorials, Guides, Reference, Orchestration, Concepts, and Release Notes are all discoverable from the public nav
+- [ ] Home, Core, Orchestration, Dashboard, Release Notes, ADRs, and Legacy / Archive are all discoverable from the public nav
+- [ ] the Core nav exposes Getting Started, Tutorials, Guides, Reference, and Concepts & Architecture
 - [ ] dashboard docs consistently describe `https://truthound.netlify.app/dashboard/`
   as documentation and `https://truthound-dashboard.onrender.com/` as the reviewer-facing
   application preview

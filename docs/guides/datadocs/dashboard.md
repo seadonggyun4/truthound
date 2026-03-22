@@ -1,6 +1,13 @@
-# Dashboard (Stage 2)
+# Data Docs Dashboard UI
 
-Truthound Data Docs provides a Reflex-based interactive dashboard.
+Truthound Data Docs provides a Reflex-based interactive dashboard UI for local
+profile exploration and report review.
+
+This page documents the **Data Docs dashboard UI** that ships with the main
+`truthound` package. It is **not** the same product as
+[Truthound Dashboard](../../dashboard/index.md), which is the first-party
+control-plane for sessions, RBAC, sources, artifacts, incidents, and
+observability.
 
 ## Installation
 

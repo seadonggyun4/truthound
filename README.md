@@ -24,7 +24,7 @@
   </a>
 </p>
 
-> Truthound 3.0 turns the familiar `th.check()`, `th.scan()`, `th.mask()`, `th.profile()`, and `th.learn()` facade into a native zero-configuration validation platform built around `TruthoundContext`, `ValidationRunResult`, deterministic auto-suites, and a Polars-first planning/runtime kernel.
+> Truthound 3.0 is a layered data quality system built around a Polars-first validation kernel, with first-party orchestration adapters and a first-party control-plane dashboard on top of the same core runtime contract.
 
 ---
 
@@ -34,24 +34,23 @@
   <img width="200" alt="Truthound Icon" src="docs/assets/Truthound_icon_banner.png" />
 </p>
 
-Truthound is a Polars-first data validation framework for modern data engineering systems. Version 3.0 keeps the easy first-run experience, but the runtime is now organized around a smaller and more durable kernel: a zero-config project context, deterministic auto-suite selection, backend-aware planning, exact-by-default execution, a single canonical `ValidationRunResult`, and one plugin/reporting surface shared across checkpoints, docs, and automation.
+Truthound 3.0 is a layered data quality system. At the center is a small, durable, Polars-first validation kernel. Around that core sit two first-party layers: Truthound Orchestration for host-native execution inside schedulers and workflow systems, and Truthound Dashboard for operating Truthound through a control-plane UI.
+
+The point of the 3.0 reset is not to hide the broader product line. It is to make the system boundary honest. The core validation kernel is the most rigorously validated contract in the ecosystem, while orchestration adapters and the dashboard build on top of that contract instead of redefining it.
 
 **Documentation**: [truthound.netlify.app](https://truthound.netlify.app/)
-Orchestration integrations now live inside the main docs site under [`/orchestration/`](https://truthound.netlify.app/orchestration/).
 
-<!--
-Temporary comment-out: keep the related-projects section hidden until these
-projects are sufficiently mature for the public README again.
+## Truthound Product Line
 
-**Related Projects**
+| Layer | Repository | Responsibility | Start Here |
+| --- | --- | --- | --- |
+| `Truthound Core` | [`truthound`](https://github.com/seadonggyun4/Truthound) | Validation kernel and data-plane: `th.check()`, `ValidationRunResult`, planner/runtime, zero-config workspace, reporters, checkpoints, Data Docs | [Core docs](https://truthound.netlify.app/) |
+| `Truthound Orchestration` | [`truthound-orchestration`](https://github.com/seadonggyun4/truthound-orchestration) | First-party execution integration layer for Airflow, Dagster, Prefect, dbt, Mage, and Kestra | [`/orchestration/`](https://truthound.netlify.app/orchestration/) |
+| `Truthound Dashboard` | [`truthound-dashboard`](https://github.com/seadonggyun4/truthound-dashboard) | First-party control-plane for RBAC, sources, artifacts, incidents, secrets, and operational observability | [`/dashboard/`](https://truthound.netlify.app/dashboard/) |
 
-| Project | Description | Status |
-| --- | --- | --- |
-| [truthound-orchestration](https://github.com/seadonggyun4/truthound-orchestration) | Workflow integration for Airflow, Dagster, Prefect, and dbt | Alpha |
-| [truthound-dashboard](https://github.com/seadonggyun4/truthound-dashboard) | Web-based data quality monitoring dashboard | Alpha |
--->
+Truthound is therefore not a monolithic platform with one flat feature surface. It is a layered system in which the core validation contract stays central, while orchestration adapters and the dashboard expose first-party operational layers on top of it.
 
-## Why Truthound
+## Why Start With Truthound Core
 
 - Polars-first execution and planner-driven aggregation instead of repeated validator-side scans
 - Extreme zero-configuration by default: `th.check(data)` creates and reuses a local `.truthound/` workspace automatically
@@ -60,7 +59,7 @@ projects are sufficiently mature for the public README again.
 - Explicit contracts for contexts, check factories, backends, and artifact generation
 - Failure-first test lanes and migration diagnostics that make framework upgrades safer in production
 
-## Measured Advantages Over Great Expectations
+## Measured Advantages Of Truthound Core Over Great Expectations
 
 The latest fixed-runner release-grade benchmark artifact set shows Truthound ahead of Great Expectations on every comparable workload in the current comparison catalog while preserving correctness parity.
 
@@ -75,20 +74,20 @@ The latest fixed-runner release-grade benchmark artifact set shows Truthound ahe
 | sqlite-range | 0.006053 | 0.022355 | 3.69x | 43.80% |
 | sqlite-unique | 0.002066 | 0.015655 | 7.58x | 42.12% |
 
-The practical reasons behind that result are straightforward:
+The practical reasons behind that result are straightforward and core-specific:
 
 - a Polars-first planner/runtime that deduplicates metric work instead of re-scanning through validator loops
 - deterministic auto-suite selection that keeps default work relevant and exact
 - a smaller zero-config context model that persists baselines and artifacts without forcing a heavy project bootstrap
 - one canonical result contract shared by reporters, checkpoints, and validation docs
 
-This comparison is intentionally bounded. It covers comparable deterministic core checks and SQLite pushdown workloads. It is not a blanket claim over every Great Expectations feature area.
+This comparison is intentionally bounded. It covers comparable deterministic core checks and SQLite pushdown workloads. It is not a blanket claim about orchestration layers, dashboard operations, or every Great Expectations feature area.
 
 Read the published evidence in [Latest Verified Benchmark Summary](docs/releases/latest-benchmark-summary.md).
 
-## What 3.0 Stabilizes
+## What Truthound Core Stabilizes
 
-Truthound 3.0 centers the public contract around a smaller and more durable kernel:
+Truthound Core 3.0 centers the public contract around a smaller and more durable kernel:
 
 | Layer | Responsibility |
 | --- | --- |
@@ -98,6 +97,8 @@ Truthound 3.0 centers the public contract around a smaller and more durable kern
 | `planning` | Scan planning, backend routing, metric deduplication, and pushdown eligibility |
 | `runtime` | Session lifecycle, retries, timeout-safe execution, exception isolation, and evidence capture |
 | `results` | `CheckResult`, `ValidationRunResult`, and `ExecutionIssue` as the canonical output model |
+
+Truthound Orchestration and Truthound Dashboard build on these contracts instead of replacing them. That is the key layered-system boundary.
 
 The design is grounded in proven ideas from Great Expectations, Soda, Deequ, and Pandera, but optimized for a simpler zero-config starting point and a Polars-first execution path.
 
@@ -212,25 +213,20 @@ Truthound now uses one lifecycle runtime:
 
 ## Documentation
 
-- Documentation site: [truthound.netlify.app](https://truthound.netlify.app/)
-- Orchestration overview: [truthound.netlify.app/orchestration/](https://truthound.netlify.app/orchestration/)
+- Main docs portal: [truthound.netlify.app](https://truthound.netlify.app/)
+- Core overview: [docs/index.md](docs/index.md)
+- Core getting started: [docs/getting-started/index.md](docs/getting-started/index.md)
+- Core architecture: [docs/concepts/architecture.md](docs/concepts/architecture.md)
+- Core zero-config context: [docs/concepts/zero-config.md](docs/concepts/zero-config.md)
+- Core guides: [docs/guides/index.md](docs/guides/index.md)
+- Core reference: [docs/reference/index.md](docs/reference/index.md)
+- Orchestration layer: [truthound.netlify.app/orchestration/](https://truthound.netlify.app/orchestration/)
 - Orchestration getting started: [docs/orchestration/getting-started.md](docs/orchestration/getting-started.md)
-- Getting started: [docs/getting-started/index.md](docs/getting-started/index.md)
-- Quickstart: [docs/getting-started/quickstart.md](docs/getting-started/quickstart.md)
-- Architecture: [docs/concepts/architecture.md](docs/concepts/architecture.md)
-- Zero-config context: [docs/concepts/zero-config.md](docs/concepts/zero-config.md)
-- Plugin platform: [docs/concepts/plugins.md](docs/concepts/plugins.md)
-- Reporter SDK: [docs/guides/reporter-sdk.md](docs/guides/reporter-sdk.md)
-- Checkpoints: [docs/guides/checkpoints.md](docs/guides/checkpoints.md)
-- Performance and benchmarks: [docs/guides/performance.md](docs/guides/performance.md)
-- Benchmark methodology: [docs/guides/benchmark-methodology.md](docs/guides/benchmark-methodology.md)
-- Workload catalog: [docs/guides/benchmark-workloads.md](docs/guides/benchmark-workloads.md)
-- Great Expectations comparison: [docs/guides/gx-parity.md](docs/guides/gx-parity.md)
-- Docs deployment verification: [docs/guides/docs-deployment-verification.md](docs/guides/docs-deployment-verification.md)
-- Migration guide: [docs/guides/migration-3.0.md](docs/guides/migration-3.0.md)
-- Legacy archive: [docs/legacy/index.md](docs/legacy/index.md)
+- Dashboard layer: [truthound.netlify.app/dashboard/](https://truthound.netlify.app/dashboard/)
 - Release notes: [docs/releases/truthound-3.0.md](docs/releases/truthound-3.0.md)
 - Latest verified benchmark summary: [docs/releases/latest-benchmark-summary.md](docs/releases/latest-benchmark-summary.md)
+- Migration guide: [docs/guides/migration-3.0.md](docs/guides/migration-3.0.md)
+- Legacy archive: [docs/legacy/index.md](docs/legacy/index.md)
 - ADRs: [docs/adr/001-validation-kernel.md](docs/adr/001-validation-kernel.md), [docs/adr/002-plugin-platform.md](docs/adr/002-plugin-platform.md), [docs/adr/003-result-model.md](docs/adr/003-result-model.md), [docs/adr/004-migration-compatibility.md](docs/adr/004-migration-compatibility.md)
 
 ## Development

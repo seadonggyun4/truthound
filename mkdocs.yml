@@ -1,5 +1,5 @@
 site_name: Truthound
-site_description: Truthound 3.0 release-grade zero-config validation platform powered by Polars
+site_description: Truthound 3.0 layered validation system with a Polars-first core
 site_author: SEO DONG GYUN
 site_url: https://truthound.netlify.app/
 docs_dir: build/full-docs
@@ -82,197 +82,209 @@ extra_css:
 
 nav:
   - Home: index.md
-  - Getting Started:
-      - Overview: getting-started/index.md
-      - Installation: getting-started/installation.md
-      - Quick Start: getting-started/quickstart.md
-      - First Validation: getting-started/first-validation.md
-  - Tutorials:
-      - Overview: tutorials/index.md
-      - First Validation: tutorials/first-validation.md
-      - Data Profiling: tutorials/data-profiling.md
-      - Custom Validator: tutorials/custom-validator.md
-      - Enterprise Setup: tutorials/enterprise-setup.md
-      - Usage Examples: tutorials/examples.md
-  - Guides:
-      - Overview: guides/index.md
-      - Validation Workflows:
-          - Checkpoints Overview: guides/checkpoints.md
-          - Validators:
-              - Overview: guides/validators/index.md
-              - Categories: guides/validators/categories.md
-              - Built-in Validators: guides/validators/built-in.md
-              - Custom Validators: guides/validators/custom-validators.md
-              - Security Validators: guides/validators/security.md
-              - Optimization: guides/validators/optimization.md
-              - Enterprise SDK: guides/validators/enterprise-sdk.md
-              - Internationalization: guides/validators/i18n.md
-          - Datasources:
-              - Overview: guides/datasources/index.md
-              - Files: guides/datasources/files.md
-              - Databases: guides/datasources/databases.md
-              - Cloud Warehouses: guides/datasources/cloud-warehouses.md
-              - Streaming: guides/datasources/streaming.md
-              - Custom Sources: guides/datasources/custom-sources.md
-              - CLI Datasource Guide: guides/datasources/cli-datasource-guide.md
-      - Operations & Automation:
-          - Checkpoint Family:
-              - Overview: guides/checkpoint/index.md
-              - Basics: guides/checkpoint/basics.md
-              - Async Execution: guides/checkpoint/async.md
-              - Triggers: guides/checkpoint/triggers.md
-              - Routing: guides/checkpoint/routing.md
-              - Escalation: guides/checkpoint/escalation.md
-              - Throttling: guides/checkpoint/throttling.md
-              - Deduplication: guides/checkpoint/deduplication.md
-              - CI Platforms: guides/checkpoint/ci-platforms.md
-          - Configuration:
-              - Overview: guides/configuration/index.md
-              - Environment Variables: guides/configuration/environment-vars.md
-              - Datasource Config: guides/configuration/datasource-config.md
-              - Checkpoint Config: guides/configuration/checkpoint-config.md
-              - Store Config: guides/configuration/store-config.md
-              - Profiler Config: guides/configuration/profiler-config.md
-              - Logging: guides/configuration/logging.md
-              - Metrics: guides/configuration/metrics.md
-              - Encryption: guides/configuration/encryption.md
-              - Audit: guides/configuration/audit.md
-              - Resilience: guides/configuration/resilience.md
-              - Config Sources: guides/configuration/sources.md
-          - CI/CD: guides/ci-cd/index.md
-          - Notifications: guides/notifications.md
-      - Reporting & Docs:
-          - Reporters:
-              - Overview: guides/reporters/index.md
-              - Console Reporter: guides/reporters/console.md
-              - JSON & YAML: guides/reporters/json-yaml.md
-              - HTML & Markdown: guides/reporters/html-markdown.md
-              - CI Reporters: guides/reporters/ci-reporters.md
-              - Custom SDK: guides/reporters/custom-sdk.md
-          - Data Docs:
-              - Overview: guides/datadocs/index.md
-              - HTML Reports: guides/datadocs/html-reports.md
-              - Themes: guides/datadocs/themes.md
-              - Charts: guides/datadocs/charts.md
-              - Sections: guides/datadocs/sections.md
-              - Dashboard: guides/datadocs/dashboard.md
-              - PDF Export: guides/datadocs/pdf-export.md
-              - Versioning: guides/datadocs/versioning.md
-              - Custom Renderers: guides/datadocs/custom-renderers.md
-          - Reporter SDK: guides/reporter-sdk.md
-      - Profiling, Storage, and Governance:
-          - Profiler:
-              - Overview: guides/profiler/index.md
-              - Basics: guides/profiler/basics.md
-              - Caching: guides/profiler/caching.md
-              - Drift Detection: guides/profiler/drift-detection.md
-              - Rule Generation: guides/profiler/rule-generation.md
-              - Sampling: guides/profiler/sampling.md
-              - Quality Scoring: guides/profiler/quality-scoring.md
-              - Schema Evolution: guides/profiler/schema-evolution.md
-              - Threshold Tuning: guides/profiler/threshold-tuning.md
-              - Distributed Profiling: guides/profiler/distributed.md
-              - ML Inference: guides/profiler/ml-inference.md
-              - Enterprise Sampling: guides/profiler/enterprise-sampling.md
-              - Visualization: guides/profiler/visualization.md
-              - Internationalization: guides/profiler/i18n.md
-              - Patterns: guides/profiler/patterns.md
-          - Stores:
-              - Overview: guides/stores/index.md
-              - Filesystem: guides/stores/filesystem.md
-              - Cloud Storage: guides/stores/cloud-storage.md
-              - Caching: guides/stores/caching.md
-              - Versioning: guides/stores/versioning.md
-              - Retention: guides/stores/retention.md
-              - Tiering: guides/stores/tiering.md
-              - Replication: guides/stores/replication.md
-              - Observability: guides/stores/observability.md
-          - Performance: guides/performance.md
-          - Benchmark Methodology: guides/benchmark-methodology.md
-          - Benchmark Workloads: guides/benchmark-workloads.md
-          - Great Expectations Comparison: guides/gx-parity.md
-          - Data Masking: guides/data-masking.md
-          - Privacy: guides/privacy.md
-          - ML Monitoring: guides/ml-monitoring.md
-          - Migration to 3.0: guides/migration-3.0.md
-          - Docs Deployment Verification: guides/docs-deployment-verification.md
-  - Reference:
-      - Overview: reference/index.md
-      - Python API:
-          - Overview: python-api/index.md
-          - Core Functions: python-api/core-functions.md
-          - Schema: python-api/schema.md
-          - Validators: python-api/validators.md
-          - Datasources: python-api/datasources.md
-          - Reporters: python-api/reporters.md
-          - Advanced Features: python-api/advanced.md
-      - CLI:
-          - Overview: cli/index.md
-          - Common Output Formats: cli/common/output-formats.md
-          - Core Commands:
-              - Overview: cli/core/index.md
-              - check: cli/core/check.md
-              - compare: cli/core/compare.md
-              - learn: cli/core/learn.md
-              - mask: cli/core/mask.md
-              - profile: cli/core/profile.md
-              - read: cli/core/read.md
-              - scan: cli/core/scan.md
-          - Profiler Commands:
-              - Overview: cli/profiler/index.md
-              - auto-profile: cli/profiler/auto-profile.md
-              - generate-suite: cli/profiler/generate-suite.md
-              - quick-suite: cli/profiler/quick-suite.md
-              - list-categories: cli/profiler/list-categories.md
-              - list-formats: cli/profiler/list-formats.md
-              - list-presets: cli/profiler/list-presets.md
-          - Checkpoint Commands:
-              - Overview: cli/checkpoint/index.md
-              - init: cli/checkpoint/init.md
-              - list: cli/checkpoint/list.md
-              - run: cli/checkpoint/run.md
-              - validate: cli/checkpoint/validate.md
-          - ML Commands:
-              - Overview: cli/ml/index.md
-              - anomaly: cli/ml/anomaly.md
-              - drift: cli/ml/drift.md
-              - learn-rules: cli/ml/learn-rules.md
-          - Lineage Commands:
-              - Overview: cli/lineage/index.md
-              - impact: cli/lineage/impact.md
-              - show: cli/lineage/show.md
-              - visualize: cli/lineage/visualize.md
-          - Realtime Commands:
-              - Overview: cli/realtime/index.md
-              - checkpoint: cli/realtime/checkpoint.md
-              - monitor: cli/realtime/monitor.md
-              - validate: cli/realtime/validate.md
-          - Docs Commands:
-              - Overview: cli/docs/index.md
-              - generate: cli/docs/generate.md
-              - themes: cli/docs/themes.md
-          - Benchmark Commands:
-              - Overview: cli/benchmark/index.md
-              - compare: cli/benchmark/compare.md
-              - list: cli/benchmark/list.md
-              - parity: cli/benchmark/parity.md
-              - run: cli/benchmark/run.md
-          - Plugin Commands:
-              - Overview: cli/plugin/index.md
-              - create: cli/plugin/create.md
-              - disable: cli/plugin/disable.md
-              - enable: cli/plugin/enable.md
-              - info: cli/plugin/info.md
-              - list: cli/plugin/list.md
-              - load: cli/plugin/load.md
-              - unload: cli/plugin/unload.md
-          - Scaffolding Commands:
-              - Overview: cli/scaffolding/index.md
-              - new list: cli/scaffolding/new-list.md
-              - new plugin: cli/scaffolding/new-plugin.md
-              - new reporter: cli/scaffolding/new-reporter.md
-              - new templates: cli/scaffolding/new-templates.md
-              - new validator: cli/scaffolding/new-validator.md
+  - Core:
+      - Core Overview: concepts/index.md
+      - Getting Started:
+          - Overview: getting-started/index.md
+          - Installation: getting-started/installation.md
+          - Quick Start: getting-started/quickstart.md
+          - First Validation: getting-started/first-validation.md
+      - Tutorials:
+          - Overview: tutorials/index.md
+          - First Validation: tutorials/first-validation.md
+          - Data Profiling: tutorials/data-profiling.md
+          - Custom Validator: tutorials/custom-validator.md
+          - Enterprise Setup: tutorials/enterprise-setup.md
+          - Usage Examples: tutorials/examples.md
+      - Guides:
+          - Overview: guides/index.md
+          - Validation Workflows:
+              - Checkpoints Overview: guides/checkpoints.md
+              - Validators:
+                  - Overview: guides/validators/index.md
+                  - Categories: guides/validators/categories.md
+                  - Built-in Validators: guides/validators/built-in.md
+                  - Custom Validators: guides/validators/custom-validators.md
+                  - Security Validators: guides/validators/security.md
+                  - Optimization: guides/validators/optimization.md
+                  - Enterprise SDK: guides/validators/enterprise-sdk.md
+                  - Internationalization: guides/validators/i18n.md
+              - Datasources:
+                  - Overview: guides/datasources/index.md
+                  - Files: guides/datasources/files.md
+                  - Databases: guides/datasources/databases.md
+                  - Cloud Warehouses: guides/datasources/cloud-warehouses.md
+                  - Streaming: guides/datasources/streaming.md
+                  - Custom Sources: guides/datasources/custom-sources.md
+                  - CLI Datasource Guide: guides/datasources/cli-datasource-guide.md
+          - Operations & Automation:
+              - Checkpoint Family:
+                  - Overview: guides/checkpoint/index.md
+                  - Basics: guides/checkpoint/basics.md
+                  - Async Execution: guides/checkpoint/async.md
+                  - Triggers: guides/checkpoint/triggers.md
+                  - Routing: guides/checkpoint/routing.md
+                  - Escalation: guides/checkpoint/escalation.md
+                  - Throttling: guides/checkpoint/throttling.md
+                  - Deduplication: guides/checkpoint/deduplication.md
+                  - CI Platforms: guides/checkpoint/ci-platforms.md
+              - Configuration:
+                  - Overview: guides/configuration/index.md
+                  - Environment Variables: guides/configuration/environment-vars.md
+                  - Datasource Config: guides/configuration/datasource-config.md
+                  - Checkpoint Config: guides/configuration/checkpoint-config.md
+                  - Store Config: guides/configuration/store-config.md
+                  - Profiler Config: guides/configuration/profiler-config.md
+                  - Logging: guides/configuration/logging.md
+                  - Metrics: guides/configuration/metrics.md
+                  - Encryption: guides/configuration/encryption.md
+                  - Audit: guides/configuration/audit.md
+                  - Resilience: guides/configuration/resilience.md
+                  - Config Sources: guides/configuration/sources.md
+              - CI/CD: guides/ci-cd/index.md
+              - Notifications: guides/notifications.md
+          - Reporting & Docs:
+              - Reporters:
+                  - Overview: guides/reporters/index.md
+                  - Console Reporter: guides/reporters/console.md
+                  - JSON & YAML: guides/reporters/json-yaml.md
+                  - HTML & Markdown: guides/reporters/html-markdown.md
+                  - CI Reporters: guides/reporters/ci-reporters.md
+                  - Custom SDK: guides/reporters/custom-sdk.md
+              - Data Docs:
+                  - Overview: guides/datadocs/index.md
+                  - HTML Reports: guides/datadocs/html-reports.md
+                  - Themes: guides/datadocs/themes.md
+                  - Charts: guides/datadocs/charts.md
+                  - Sections: guides/datadocs/sections.md
+                  - Data Docs Dashboard UI: guides/datadocs/dashboard.md
+                  - PDF Export: guides/datadocs/pdf-export.md
+                  - Versioning: guides/datadocs/versioning.md
+                  - Custom Renderers: guides/datadocs/custom-renderers.md
+              - Reporter SDK: guides/reporter-sdk.md
+          - Profiling, Storage, and Governance:
+              - Profiler:
+                  - Overview: guides/profiler/index.md
+                  - Basics: guides/profiler/basics.md
+                  - Caching: guides/profiler/caching.md
+                  - Drift Detection: guides/profiler/drift-detection.md
+                  - Rule Generation: guides/profiler/rule-generation.md
+                  - Sampling: guides/profiler/sampling.md
+                  - Quality Scoring: guides/profiler/quality-scoring.md
+                  - Schema Evolution: guides/profiler/schema-evolution.md
+                  - Threshold Tuning: guides/profiler/threshold-tuning.md
+                  - Distributed Profiling: guides/profiler/distributed.md
+                  - ML Inference: guides/profiler/ml-inference.md
+                  - Enterprise Sampling: guides/profiler/enterprise-sampling.md
+                  - Visualization: guides/profiler/visualization.md
+                  - Internationalization: guides/profiler/i18n.md
+                  - Patterns: guides/profiler/patterns.md
+              - Stores:
+                  - Overview: guides/stores/index.md
+                  - Filesystem: guides/stores/filesystem.md
+                  - Cloud Storage: guides/stores/cloud-storage.md
+                  - Caching: guides/stores/caching.md
+                  - Versioning: guides/stores/versioning.md
+                  - Retention: guides/stores/retention.md
+                  - Tiering: guides/stores/tiering.md
+                  - Replication: guides/stores/replication.md
+                  - Observability: guides/stores/observability.md
+              - Performance: guides/performance.md
+              - Benchmark Methodology: guides/benchmark-methodology.md
+              - Benchmark Workloads: guides/benchmark-workloads.md
+              - Great Expectations Comparison: guides/gx-parity.md
+              - Data Masking: guides/data-masking.md
+              - Privacy: guides/privacy.md
+              - ML Monitoring: guides/ml-monitoring.md
+              - Migration to 3.0: guides/migration-3.0.md
+              - Docs Deployment Verification: guides/docs-deployment-verification.md
+      - Reference:
+          - Overview: reference/index.md
+          - Python API:
+              - Overview: python-api/index.md
+              - Core Functions: python-api/core-functions.md
+              - Schema: python-api/schema.md
+              - Validators: python-api/validators.md
+              - Datasources: python-api/datasources.md
+              - Reporters: python-api/reporters.md
+              - Advanced Features: python-api/advanced.md
+          - CLI:
+              - Overview: cli/index.md
+              - Common Output Formats: cli/common/output-formats.md
+              - Core Commands:
+                  - Overview: cli/core/index.md
+                  - check: cli/core/check.md
+                  - compare: cli/core/compare.md
+                  - learn: cli/core/learn.md
+                  - mask: cli/core/mask.md
+                  - profile: cli/core/profile.md
+                  - read: cli/core/read.md
+                  - scan: cli/core/scan.md
+              - Profiler Commands:
+                  - Overview: cli/profiler/index.md
+                  - auto-profile: cli/profiler/auto-profile.md
+                  - generate-suite: cli/profiler/generate-suite.md
+                  - quick-suite: cli/profiler/quick-suite.md
+                  - list-categories: cli/profiler/list-categories.md
+                  - list-formats: cli/profiler/list-formats.md
+                  - list-presets: cli/profiler/list-presets.md
+              - Checkpoint Commands:
+                  - Overview: cli/checkpoint/index.md
+                  - init: cli/checkpoint/init.md
+                  - list: cli/checkpoint/list.md
+                  - run: cli/checkpoint/run.md
+                  - validate: cli/checkpoint/validate.md
+              - ML Commands:
+                  - Overview: cli/ml/index.md
+                  - anomaly: cli/ml/anomaly.md
+                  - drift: cli/ml/drift.md
+                  - learn-rules: cli/ml/learn-rules.md
+              - Lineage Commands:
+                  - Overview: cli/lineage/index.md
+                  - impact: cli/lineage/impact.md
+                  - show: cli/lineage/show.md
+                  - visualize: cli/lineage/visualize.md
+              - Realtime Commands:
+                  - Overview: cli/realtime/index.md
+                  - checkpoint: cli/realtime/checkpoint.md
+                  - monitor: cli/realtime/monitor.md
+                  - validate: cli/realtime/validate.md
+              - Docs Commands:
+                  - Overview: cli/docs/index.md
+                  - generate: cli/docs/generate.md
+                  - themes: cli/docs/themes.md
+              - Benchmark Commands:
+                  - Overview: cli/benchmark/index.md
+                  - compare: cli/benchmark/compare.md
+                  - list: cli/benchmark/list.md
+                  - parity: cli/benchmark/parity.md
+                  - run: cli/benchmark/run.md
+              - Plugin Commands:
+                  - Overview: cli/plugin/index.md
+                  - create: cli/plugin/create.md
+                  - disable: cli/plugin/disable.md
+                  - enable: cli/plugin/enable.md
+                  - info: cli/plugin/info.md
+                  - list: cli/plugin/list.md
+                  - load: cli/plugin/load.md
+                  - unload: cli/plugin/unload.md
+              - Scaffolding Commands:
+                  - Overview: cli/scaffolding/index.md
+                  - new list: cli/scaffolding/new-list.md
+                  - new plugin: cli/scaffolding/new-plugin.md
+                  - new reporter: cli/scaffolding/new-reporter.md
+                  - new templates: cli/scaffolding/new-templates.md
+                  - new validator: cli/scaffolding/new-validator.md
+      - Concepts & Architecture:
+          - Architecture: concepts/architecture.md
+          - Zero-Config Context: concepts/zero-config.md
+          - Plugin Platform: concepts/plugins.md
+          - Advanced Features: concepts/advanced.md
+          - Datasources Architecture: concepts/datasources-architecture.md
+          - OpenLineage: concepts/openlineage.md
+          - Statistical Methods: concepts/statistical-methods.md
+          - Data Masking: concepts/masking.md
+          - Test Coverage: concepts/test-coverage.md
   - Orchestration:
       - Overview: orchestration/index.md
       - Getting Started: orchestration/getting-started.md
@@ -401,17 +413,6 @@ nav:
           - Common Runtime APIs: orchestration/api-reference/common.md
           - Engine APIs: orchestration/api-reference/engines.md
       - Releasing: orchestration/releasing.md
-  - Concepts & Architecture:
-      - Overview: concepts/index.md
-      - Architecture: concepts/architecture.md
-      - Zero-Config Context: concepts/zero-config.md
-      - Plugin Platform: concepts/plugins.md
-      - Advanced Features: concepts/advanced.md
-      - Datasources Architecture: concepts/datasources-architecture.md
-      - OpenLineage: concepts/openlineage.md
-      - Statistical Methods: concepts/statistical-methods.md
-      - Data Masking: concepts/masking.md
-      - Test Coverage: concepts/test-coverage.md
   - Dashboard:
       - Overview: dashboard/index.md
       - Quickstart:

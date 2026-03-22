@@ -1,8 +1,12 @@
 # Reference
 
-Truthound's reference section is the fastest way to look up commands, APIs, and operational entry points once you already know what you want to do.
+Reference is the lookup layer for **Truthound Core**. Use it when you already
+know which command, function, type, or option you need and want the canonical
+details without walking through a tutorial.
 
-Use this section when you need exact interfaces, option tables, or canonical links to the deeper command and API pages. If you are still learning the workflow, start with [Getting Started](../getting-started/index.md), [Tutorials](../tutorials/index.md), or [Guides](../guides/index.md) first.
+This section does **not** try to document the whole product line in one place.
+For host-native adapters, go to [Truthound Orchestration](../orchestration/index.md).
+For control-plane APIs and operations, go to [Truthound Dashboard](../dashboard/index.md).
 
 ## What Lives Here
 
@@ -10,11 +14,10 @@ Use this section when you need exact interfaces, option tables, or canonical lin
 
 Use the [Python API reference](../python-api/index.md) when you want to:
 
-- call `truthound` from scripts, notebooks, or services
-- understand the root facade such as `th.check()`, `th.profile()`, or `th.read()`
-- work with `ValidationRunResult`, schemas, reporters, and datasource integrations
-- jump from workflow docs into function-level or class-level reference material
-- find namespace APIs such as `truthound.drift.compare()` and checkpoint orchestration
+- call the core `truthound` package from notebooks, scripts, services, or jobs
+- inspect `ValidationRunResult` and related result types directly
+- work with `truthound.drift`, `truthound.checkpoint`, `truthound.reporters`, or `truthound.profiler`
+- jump from guides into function-level or class-level documentation
 
 Recommended entry points:
 
@@ -29,9 +32,9 @@ Recommended entry points:
 
 Use the [CLI reference](../cli/index.md) when you want to:
 
-- run validations without writing Python
-- generate suites, docs, and benchmark reports from the terminal
-- operate checkpoints and orchestration-related workflows from shell scripts or CI
+- run core validations without writing Python
+- generate suites, docs, and benchmark artifacts from the terminal
+- operate checkpoints from shell scripts or CI
 - scaffold validators, reporters, and plugins
 
 Recommended entry points:
@@ -43,15 +46,16 @@ Recommended entry points:
 - [Plugin Commands](../cli/plugin/index.md)
 - [Scaffolding Commands](../cli/scaffolding/index.md)
 
-## Choose The Right Doc Type
+## Layer Boundaries
 
 | Need | Best section |
 |------|--------------|
 | Install Truthound and run your first validation | [Getting Started](../getting-started/index.md) |
 | Learn with end-to-end runnable examples | [Tutorials](../tutorials/index.md) |
-| Solve a feature-specific task | [Guides](../guides/index.md) |
-| Understand architecture and system boundaries | [Concepts & Architecture](../concepts/index.md) |
-| Look up command or API details | `Reference` |
+| Solve a feature-specific core task | [Guides](../guides/index.md) |
+| Understand the layered system and kernel boundaries | [Concepts & Architecture](../concepts/index.md) |
+| Run Truthound inside Airflow, Dagster, Prefect, dbt, Mage, or Kestra | [Truthound Orchestration](../orchestration/index.md) |
+| Operate a UI, RBAC, artifacts, incidents, and observability | [Truthound Dashboard](../dashboard/index.md) |
 
 ## Common Lookup Paths
 
@@ -59,8 +63,10 @@ Recommended entry points:
   Start with [CLI Overview](../cli/index.md), then go to [truthound check](../cli/core/check.md).
 - I want to validate a dataframe in Python:
   Start with [Python API Overview](../python-api/index.md), then go to [Core Functions](../python-api/core-functions.md).
-- I want to build a plugin:
-  Use [Plugin Commands](../cli/plugin/index.md) and [truthound new plugin](../cli/scaffolding/new-plugin.md), then continue to [Plugin Platform](../concepts/plugins.md).
+- I want host-native execution in a scheduler:
+  Go directly to [Truthound Orchestration](../orchestration/index.md).
+- I want control-plane REST contracts:
+  Go directly to [Truthound Dashboard API Reference](../dashboard/api-reference/overview-and-conventions.md).
 - I want to compare Truthound with GX-style workflows:
   Read [Great Expectations Comparison](../guides/gx-parity.md) and [Migration to 3.0](../guides/migration-3.0.md).
 
@@ -70,3 +76,5 @@ Recommended entry points:
 - [Tutorials](../tutorials/index.md)
 - [Guides](../guides/index.md)
 - [Concepts & Architecture](../concepts/index.md)
+- [Truthound Orchestration](../orchestration/index.md)
+- [Truthound Dashboard](../dashboard/index.md)

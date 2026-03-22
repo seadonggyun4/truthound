@@ -122,3 +122,48 @@ def test_no_removed_exception_summary_or_validation_report_kwargs_in_current_doc
             "docs/guides/migration-3.0.md",
         },
     )
+
+
+def test_readme_preserves_brand_assets_and_slogan() -> None:
+    text = _read("README.md")
+    assert "docs/assets/truthound_banner.png" in text
+    assert "docs/assets/Truthound_icon_banner.png" in text
+    assert "Sniffs out bad data." in text
+    assert "awesome.re/badge.svg" in text
+    assert "Powered%20by-Polars" in text
+
+
+def test_home_surfaces_define_truthound_as_a_layered_system() -> None:
+    readme = _read("README.md")
+    home = _read("docs/index.md")
+
+    assert "layered data quality system" in readme
+    assert "Truthound Product Line" in readme
+    assert "Truthound Core" in readme
+    assert "Truthound Orchestration" in readme
+    assert "Truthound Dashboard" in readme
+
+    assert "layered data quality system" in home
+    assert "Truthound By Layer" in home
+    assert "Truthound Core" in home
+    assert "Truthound Orchestration" in home
+    assert "Truthound Dashboard" in home
+
+
+def test_concepts_docs_define_explicit_layer_boundaries() -> None:
+    text = _read("docs/concepts/index.md").lower()
+    assert "data-plane / validation kernel" in text
+    assert "execution integration layer" in text
+    assert "control-plane" in text
+
+
+def test_dashboard_term_is_disambiguated_for_datadocs_ui() -> None:
+    for rel_path in (
+        "docs/guides/datadocs/dashboard.md",
+        "docs/guides/datadocs/index.md",
+        "docs/cli/index.md",
+        "docs/cli/dashboard.md",
+    ):
+        text = _read(rel_path)
+        assert "Truthound Dashboard" in text, rel_path
+        assert "Data Docs dashboard" in text or "Data Docs Dashboard UI" in text, rel_path

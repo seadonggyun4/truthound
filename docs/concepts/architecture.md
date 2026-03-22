@@ -21,6 +21,20 @@ Truthound 3.0 is organized around:
 - exact-by-default validation semantics
 - optional namespaces for non-core systems
 
+The public documentation portal also exposes two first-party layers around that
+kernel:
+
+| Layer | Repository | Responsibility |
+| --- | --- | --- |
+| `Truthound Core` | `truthound` | data-plane validation kernel, zero-config workspace, result model, reporters, checkpoint runtime, profiling |
+| `Truthound Orchestration` | `truthound-orchestration` | execution integration layer for Airflow, Dagster, Prefect, dbt, Mage, and Kestra |
+| `Truthound Dashboard` | `truthound-dashboard` | control-plane for sessions, RBAC, sources, artifacts, incidents, secrets, and observability |
+
+The main docs site aggregates all three, but aggregation is not the same as
+flattening them into one undifferentiated platform. The kernel remains the
+source of truth for execution semantics, while orchestration and dashboard
+consume or operate around those semantics.
+
 ## Kernel Boundaries
 
 Truthound now fixes the internal standard boundary at five packages:
@@ -37,6 +51,11 @@ The context and checkpoint layers sit beside the kernel rather than inside it:
 
 - `truthound.context` owns `.truthound/`, baselines, run artifacts, docs artifacts, and plugin-manager access
 - `truthound.checkpoint` orchestrates validation around the canonical `ValidationRunResult`
+
+The first-party external layers sit outside the kernel as well:
+
+- `truthound-orchestration` adapts the kernel into host-native execution environments without redefining `ValidationRunResult`
+- `truthound-dashboard` consumes validation artifacts and operational state without re-implementing validation execution
 
 ## Runtime Flow
 
@@ -88,12 +107,14 @@ The fixed workspace layout is:
 
 ## Peripheral Boundaries
 
-Peripheral subsystems are intentionally kept outside the kernel while still consuming the same canonical contracts:
+Peripheral subsystems and first-party layers are intentionally kept outside the kernel while still consuming the same canonical contracts:
 
 - checkpoint orchestration uses `CheckpointResult.validation_run` as its in-memory result model
 - checkpoint formatting helpers use `CheckpointResult.validation_view` rather than reintroducing a second result model
 - profiler integrations consume suite and result contracts without importing report rendering layers directly
 - realtime, ML, and lineage integrations are expected to depend on `truthound.core` contracts or subsystem-local adapters rather than presentation or CLI layers
+- orchestration layers should preserve the kernel result semantics while translating them into host-native payloads
+- dashboard layers should operate on artifacts, ownership, and observability state rather than inventing a second execution model
 
 This keeps outer subsystems extensible without letting them become alternate sources of truth for results or presentation.
 
