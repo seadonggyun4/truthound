@@ -277,20 +277,96 @@ nav:
   - Orchestration:
       - Overview: orchestration/index.md
       - Getting Started: orchestration/getting-started.md
+      - Choose a Platform: orchestration/choose-a-platform.md
       - Architecture: orchestration/architecture.md
-      - Compatibility: orchestration/compatibility.md
       - Zero-Config: orchestration/zero-config.md
+      - Compatibility: orchestration/compatibility.md
+      - Troubleshooting: orchestration/troubleshooting.md
       - Migration:
           - 3.0 Upgrade: orchestration/migration/3.0.md
+      - Shared Runtime:
+          - Overview: orchestration/common/index.md
+          - Source Resolution: orchestration/common/source-resolution.md
+          - Preflight and Compatibility: orchestration/common/preflight-compatibility.md
+          - Result Serialization: orchestration/common/result-serialization.md
+          - Observability and Resilience: orchestration/common/observability-resilience.md
+          - Logging: orchestration/common/logging.md
+          - Retry: orchestration/common/retry.md
+          - Circuit Breaker: orchestration/common/circuit-breaker.md
+          - Health Checks: orchestration/common/health.md
+      - Metrics: orchestration/common/metrics.md
+      - Rate Limiting: orchestration/common/rate-limiter.md
+      - Caching: orchestration/common/cache.md
+      - Drift and Anomaly Config: orchestration/common/drift-config.md
       - Platforms:
-          - Airflow: orchestration/airflow/index.md
-          - Dagster: orchestration/dagster/index.md
-          - Prefect: orchestration/prefect/index.md
-          - dbt: orchestration/dbt/index.md
-          - Mage: orchestration/mage/index.md
-          - Kestra: orchestration/kestra/index.md
-      - Advanced Engines: orchestration/advanced-engines/index.md
-      - API Reference: orchestration/api-reference/index.md
+          - Airflow:
+              - Overview: orchestration/airflow/index.md
+              - Install and Compatibility: orchestration/airflow/install-compatibility.md
+              - Operators: orchestration/airflow/operators.md
+              - Hooks: orchestration/airflow/hooks.md
+              - Sensors and Triggers: orchestration/airflow/sensors.md
+              - SLA and Callbacks: orchestration/airflow/sla.md
+              - Recipes: orchestration/airflow/recipes.md
+              - Troubleshooting: orchestration/airflow/troubleshooting.md
+          - Dagster:
+              - Overview: orchestration/dagster/index.md
+              - Install and Compatibility: orchestration/dagster/install-compatibility.md
+              - Resources: orchestration/dagster/resources.md
+              - Ops: orchestration/dagster/ops.md
+              - Assets and Asset Checks: orchestration/dagster/assets.md
+              - SLA and Hooks: orchestration/dagster/sla-hooks.md
+              - Recipes: orchestration/dagster/recipes.md
+              - Troubleshooting: orchestration/dagster/troubleshooting.md
+          - Prefect:
+              - Overview: orchestration/prefect/index.md
+              - Install and Compatibility: orchestration/prefect/install-compatibility.md
+              - Blocks: orchestration/prefect/blocks.md
+              - Tasks: orchestration/prefect/tasks.md
+              - Flows: orchestration/prefect/flows.md
+              - SLA and Hooks: orchestration/prefect/sla.md
+              - Deployment Patterns: orchestration/prefect/deployment-patterns.md
+              - Troubleshooting: orchestration/prefect/troubleshooting.md
+          - dbt:
+              - Overview: orchestration/dbt/index.md
+              - Package Setup and Profiles: orchestration/dbt/package-setup.md
+              - Generic Tests: orchestration/dbt/generic-tests.md
+              - Macros and Operations: orchestration/dbt/macros.md
+              - Adapter Behavior: orchestration/dbt/adapter-behavior.md
+              - CI and First-Party Suite: orchestration/dbt/ci-first-party-suite.md
+              - Troubleshooting: orchestration/dbt/troubleshooting.md
+          - Mage:
+              - Overview: orchestration/mage/index.md
+              - Project Layout and Blocks: orchestration/mage/project-layout.md
+              - io_config Discovery: orchestration/mage/io-config.md
+              - Recipes: orchestration/mage/recipes.md
+              - Troubleshooting: orchestration/mage/troubleshooting.md
+          - Kestra:
+              - Overview: orchestration/kestra/index.md
+              - Scripts and Flow Templates: orchestration/kestra/scripts-templates.md
+              - Recipes: orchestration/kestra/recipes.md
+              - Troubleshooting: orchestration/kestra/troubleshooting.md
+      - Engines:
+          - Overview: orchestration/engines/index.md
+          - Truthound Engine: orchestration/engines/truthound.md
+          - Great Expectations: orchestration/engines/great-expectations.md
+          - Pandera: orchestration/engines/pandera.md
+          - Batch Processing: orchestration/engines/batch.md
+          - Streaming Validation: orchestration/engines/streaming.md
+          - Engine Chain: orchestration/engines/chain.md
+          - Lifecycle: orchestration/engines/lifecycle.md
+          - Drift Detection: orchestration/engines/drift-detection.md
+          - Anomaly Detection: orchestration/engines/anomaly-detection.md
+      - Enterprise and Operations:
+          - Overview: orchestration/enterprise/index.md
+          - Multi-Tenant: orchestration/enterprise/multi-tenant.md
+          - Secrets: orchestration/enterprise/secrets.md
+          - Notifications: orchestration/enterprise/notifications.md
+          - CI/CD and Production Rollout: orchestration/enterprise/ci-cd-production.md
+      - API Reference:
+          - Overview: orchestration/api-reference/index.md
+          - Common Runtime APIs: orchestration/api-reference/common.md
+          - Engine APIs: orchestration/api-reference/engines.md
+      - Releasing: orchestration/releasing.md
   - Concepts & Architecture:
       - Overview: concepts/index.md
       - Architecture: concepts/architecture.md

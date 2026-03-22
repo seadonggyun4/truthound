@@ -36,6 +36,9 @@ After a local or Netlify build, confirm all of the following under `site/`:
 - [ ] `site/reference/index.html` exists
 - [ ] `site/orchestration/index.html` exists and renders the Orchestration overview
 - [ ] `site/orchestration/airflow/index.html` exists and renders one platform page under the integrated section
+- [ ] `site/orchestration/common/index.html` exists and renders the shared runtime overview
+- [ ] `site/orchestration/engines/index.html` exists and renders the engine overview
+- [ ] `site/orchestration/enterprise/index.html` exists and renders the enterprise operations overview
 - [ ] `site/releases/latest-benchmark-summary/index.html` exists and shows the verified benchmark numbers
 - [ ] `site/sitemap.xml` exists
 - [ ] `site/search/search_index.json` exists
@@ -58,6 +61,9 @@ After a local or Netlify build, confirm all of the following under `site/`:
   - [ ] latest verified benchmark summary
   - [ ] orchestration overview
   - [ ] orchestration airflow
+  - [ ] orchestration shared runtime
+  - [ ] orchestration engines
+  - [ ] orchestration enterprise
 - [ ] `search_index.json` contains exactly the number of pages declared by `expected_page_count` in `docs/public_docs.yml`
 - [ ] `search_index.json` contains:
   - [ ] `TruthoundContext`
@@ -66,11 +72,11 @@ After a local or Netlify build, confirm all of the following under `site/`:
   - [ ] `benchmark`
   - [ ] `release-grade`
   - [ ] `Truthound Orchestration`
-- [ ] neither `sitemap.xml` nor `search_index.json` expose excluded families such as:
-  - [ ] `orchestration/common/`
-  - [ ] `orchestration/enterprise/`
-  - [ ] `orchestration/engines/`
-  - [ ] explicitly excluded duplicate legacy markdown files
+- [ ] `search_index.json` contains imported orchestration families such as:
+  - [ ] `shared runtime`
+  - [ ] `engine`
+  - [ ] `enterprise`
+- [ ] neither `sitemap.xml` nor `search_index.json` expose explicitly excluded duplicate legacy markdown files
 
 ## Content Verification Checklist
 

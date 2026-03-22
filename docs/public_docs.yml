@@ -61,10 +61,5 @@ support_directories:
   - stylesheets
   - javascripts
 
-excluded_prefixes:
-  - orchestration/common/
-  - orchestration/enterprise/
-  - orchestration/engines/
-
-expected_page_count: 243
-expected_markdown_count: 252
+expected_page_count: 309
+expected_markdown_count: 318
