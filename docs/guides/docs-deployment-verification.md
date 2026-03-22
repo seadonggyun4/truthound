@@ -36,9 +36,13 @@ After a local or Netlify build, confirm all of the following under `site/`:
 - [ ] `site/reference/index.html` exists
 - [ ] `site/orchestration/index.html` exists and renders the Orchestration overview
 - [ ] `site/orchestration/airflow/index.html` exists and renders one platform page under the integrated section
+- [ ] `site/orchestration/airflow/observability-alerting/index.html` exists and renders an expanded platform subguide
 - [ ] `site/orchestration/common/index.html` exists and renders the shared runtime overview
+- [ ] `site/orchestration/common/engine-resolution-selection/index.html` exists and renders a shared runtime deep dive
 - [ ] `site/orchestration/engines/index.html` exists and renders the engine overview
+- [ ] `site/orchestration/engines/capability-matrix/index.html` exists and renders an advanced engine guide
 - [ ] `site/orchestration/enterprise/index.html` exists and renders the enterprise operations overview
+- [ ] `site/orchestration/enterprise/rollout-topologies/index.html` exists and renders an enterprise operations subguide
 - [ ] `site/releases/latest-benchmark-summary/index.html` exists and shows the verified benchmark numbers
 - [ ] `site/sitemap.xml` exists
 - [ ] `site/search/search_index.json` exists
@@ -62,8 +66,11 @@ After a local or Netlify build, confirm all of the following under `site/`:
   - [ ] orchestration overview
   - [ ] orchestration airflow
   - [ ] orchestration shared runtime
+  - [ ] orchestration shared runtime deep dive
   - [ ] orchestration engines
+  - [ ] orchestration engines capability matrix
   - [ ] orchestration enterprise
+  - [ ] orchestration enterprise rollout topologies
 - [ ] `search_index.json` contains exactly the number of pages declared by `expected_page_count` in `docs/public_docs.yml`
 - [ ] `search_index.json` contains:
   - [ ] `TruthoundContext`
@@ -76,6 +83,9 @@ After a local or Netlify build, confirm all of the following under `site/`:
   - [ ] `shared runtime`
   - [ ] `engine`
   - [ ] `enterprise`
+  - [ ] `airflow`
+  - [ ] `prefect`
+  - [ ] `dbt`
 - [ ] neither `sitemap.xml` nor `search_index.json` expose explicitly excluded duplicate legacy markdown files
 
 ## Content Verification Checklist

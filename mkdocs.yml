@@ -279,40 +279,53 @@ nav:
       - Architecture: orchestration/architecture.md
       - Zero-Config: orchestration/zero-config.md
       - Compatibility: orchestration/compatibility.md
+      - Adoption Playbook: orchestration/adoption-playbook.md
+      - Production Readiness: orchestration/production-readiness.md
       - Troubleshooting: orchestration/troubleshooting.md
       - Migration:
           - 3.0 Upgrade: orchestration/migration/3.0.md
       - Shared Runtime:
           - Overview: orchestration/common/index.md
+          - Engine Resolution and Selection: orchestration/common/engine-resolution-selection.md
           - Source Resolution: orchestration/common/source-resolution.md
+          - Source Resolution Cookbook: orchestration/common/source-resolution-cookbook.md
           - Preflight and Compatibility: orchestration/common/preflight-compatibility.md
+          - Failure Catalog: orchestration/common/failure-catalog.md
           - Result Serialization: orchestration/common/result-serialization.md
           - Observability and Resilience: orchestration/common/observability-resilience.md
           - Logging: orchestration/common/logging.md
           - Retry: orchestration/common/retry.md
           - Circuit Breaker: orchestration/common/circuit-breaker.md
           - Health Checks: orchestration/common/health.md
-      - Metrics: orchestration/common/metrics.md
-      - Rate Limiting: orchestration/common/rate-limiter.md
-      - Caching: orchestration/common/cache.md
-      - Drift and Anomaly Config: orchestration/common/drift-config.md
+          - Metrics: orchestration/common/metrics.md
+          - Rate Limiting: orchestration/common/rate-limiter.md
+          - Caching: orchestration/common/cache.md
+          - Drift and Anomaly Config: orchestration/common/drift-config.md
       - Platforms:
           - Airflow:
               - Overview: orchestration/airflow/index.md
               - Install and Compatibility: orchestration/airflow/install-compatibility.md
+              - Connections and Secrets: orchestration/airflow/connections-secrets.md
+              - DAG Patterns: orchestration/airflow/dag-patterns.md
               - Operators: orchestration/airflow/operators.md
               - Hooks: orchestration/airflow/hooks.md
               - Sensors and Triggers: orchestration/airflow/sensors.md
+              - XCom and Result Payloads: orchestration/airflow/xcom-result-payloads.md
               - SLA and Callbacks: orchestration/airflow/sla.md
+              - Observability and Alerting: orchestration/airflow/observability-alerting.md
               - Recipes: orchestration/airflow/recipes.md
               - Troubleshooting: orchestration/airflow/troubleshooting.md
           - Dagster:
               - Overview: orchestration/dagster/index.md
               - Install and Compatibility: orchestration/dagster/install-compatibility.md
+              - Jobs and Schedules: orchestration/dagster/jobs-schedules.md
+              - Partitions and Automation: orchestration/dagster/partitions-automation.md
               - Resources: orchestration/dagster/resources.md
               - Ops: orchestration/dagster/ops.md
               - Assets and Asset Checks: orchestration/dagster/assets.md
+              - Metadata and Result Payloads: orchestration/dagster/metadata-results.md
               - SLA and Hooks: orchestration/dagster/sla-hooks.md
+              - Alerting and Automation: orchestration/dagster/alerting-automation.md
               - Recipes: orchestration/dagster/recipes.md
               - Troubleshooting: orchestration/dagster/troubleshooting.md
           - Prefect:
@@ -321,45 +334,67 @@ nav:
               - Blocks: orchestration/prefect/blocks.md
               - Tasks: orchestration/prefect/tasks.md
               - Flows: orchestration/prefect/flows.md
+              - Artifacts and Result Payloads: orchestration/prefect/artifacts-results.md
+              - Retries, Caching, and Concurrency: orchestration/prefect/retries-caching-concurrency.md
               - SLA and Hooks: orchestration/prefect/sla.md
+              - Work Pools and Workers: orchestration/prefect/work-pools-workers.md
               - Deployment Patterns: orchestration/prefect/deployment-patterns.md
+              - Rollout Playbooks: orchestration/prefect/rollout-playbooks.md
               - Troubleshooting: orchestration/prefect/troubleshooting.md
           - dbt:
               - Overview: orchestration/dbt/index.md
               - Package Setup and Profiles: orchestration/dbt/package-setup.md
+              - Singular vs Generic Tests: orchestration/dbt/singular-vs-generic-tests.md
               - Generic Tests: orchestration/dbt/generic-tests.md
               - Macros and Operations: orchestration/dbt/macros.md
               - Adapter Behavior: orchestration/dbt/adapter-behavior.md
+              - Warehouse Runtime Behavior: orchestration/dbt/warehouse-runtime-behavior.md
+              - Result Materialization: orchestration/dbt/result-materialization.md
               - CI and First-Party Suite: orchestration/dbt/ci-first-party-suite.md
+              - Package Upgrade Guidance: orchestration/dbt/package-upgrades.md
               - Troubleshooting: orchestration/dbt/troubleshooting.md
           - Mage:
               - Overview: orchestration/mage/index.md
               - Project Layout and Blocks: orchestration/mage/project-layout.md
+              - Block Types and Runtime Context: orchestration/mage/block-runtime-context.md
               - io_config Discovery: orchestration/mage/io-config.md
+              - Variables, Secrets, and Profiles: orchestration/mage/variables-secrets.md
               - Recipes: orchestration/mage/recipes.md
+              - Production Rollout: orchestration/mage/production-rollout.md
               - Troubleshooting: orchestration/mage/troubleshooting.md
           - Kestra:
               - Overview: orchestration/kestra/index.md
               - Scripts and Flow Templates: orchestration/kestra/scripts-templates.md
+              - Outputs and Metrics: orchestration/kestra/outputs-metrics.md
+              - Input and Output Files: orchestration/kestra/input-output-files.md
+              - Task Runners and Retries: orchestration/kestra/task-runner-retries.md
+              - Namespaces and Secrets: orchestration/kestra/namespace-secrets.md
               - Recipes: orchestration/kestra/recipes.md
               - Troubleshooting: orchestration/kestra/troubleshooting.md
       - Engines:
           - Overview: orchestration/engines/index.md
+          - Capability Matrix: orchestration/engines/capability-matrix.md
+          - Engine Selection Guide: orchestration/engines/selection-guide.md
           - Truthound Engine: orchestration/engines/truthound.md
           - Great Expectations: orchestration/engines/great-expectations.md
           - Pandera: orchestration/engines/pandera.md
+          - Custom Engine Authoring: orchestration/engines/custom-engines.md
           - Batch Processing: orchestration/engines/batch.md
           - Streaming Validation: orchestration/engines/streaming.md
           - Engine Chain: orchestration/engines/chain.md
           - Lifecycle: orchestration/engines/lifecycle.md
           - Drift Detection: orchestration/engines/drift-detection.md
           - Anomaly Detection: orchestration/engines/anomaly-detection.md
+          - Error Reporting: orchestration/engines/error-reporting.md
       - Enterprise and Operations:
           - Overview: orchestration/enterprise/index.md
+          - Rollout Topologies: orchestration/enterprise/rollout-topologies.md
           - Multi-Tenant: orchestration/enterprise/multi-tenant.md
           - Secrets: orchestration/enterprise/secrets.md
           - Notifications: orchestration/enterprise/notifications.md
+          - Governance and Audit: orchestration/enterprise/governance-audit.md
           - CI/CD and Production Rollout: orchestration/enterprise/ci-cd-production.md
+          - Rollback Playbooks: orchestration/enterprise/rollback-playbooks.md
       - API Reference:
           - Overview: orchestration/api-reference/index.md
           - Common Runtime APIs: orchestration/api-reference/common.md

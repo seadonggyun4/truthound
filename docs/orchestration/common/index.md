@@ -19,8 +19,11 @@ The shared runtime provides:
 
 ## Start Here
 
+- [Engine Resolution and Selection](engine-resolution-selection.md) explains how engine names become real runtimes.
 - [Source Resolution](source-resolution.md) explains how host inputs are normalized.
+- [Source Resolution Cookbook](source-resolution-cookbook.md) shows host-by-host patterns and concrete source shapes.
 - [Preflight and Compatibility](preflight-compatibility.md) explains capability checks and failure reporting.
+- [Failure Catalog](failure-catalog.md) maps common operational failures to the shared runtime layer that owns them.
 - [Result Serialization](result-serialization.md) explains the shared result contract.
 - [Observability and Resilience](observability-resilience.md) explains how retries, health checks, metrics, rate limiting, and cache fit together.
 
@@ -84,8 +87,9 @@ These modules are shared because the same production concerns show up in every h
 
 Read the overview pages first, then the specific helper or primitive you need:
 
-1. source resolution
-2. preflight and compatibility
-3. serialization
-4. observability and resilience
-5. helper-level detail pages
+1. engine resolution and selection
+2. source resolution and cookbook patterns
+3. preflight and compatibility, including the failure catalog
+4. serialization
+5. observability and resilience
+6. helper-level detail pages

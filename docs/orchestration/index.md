@@ -4,7 +4,7 @@ title: Truthound Orchestration
 
 # Truthound Orchestration
 
-Truthound Orchestration is the official first-party orchestration line for Truthound 3.x. It gives Airflow, Dagster, Prefect, dbt, Mage, and Kestra users a native host experience while keeping Truthound-first defaults, shared runtime contracts, and release-grade compatibility testing.
+Truthound Orchestration is the official first-party orchestration line for Truthound 3.x. It gives Airflow, Dagster, Prefect, dbt, Mage, and Kestra users a native host experience while keeping Truthound-first defaults, shared runtime contracts, and release-grade compatibility testing. It is the official first-party orchestration compatibility line for teams that want supported Truthound releases inside host-native workflow systems.
 
 This site is written for engineers who need more than a package install command. It explains how the shared runtime works, what each host adapter owns, how zero-config behaves in production, and where to look when a workflow fails in CI or at runtime.
 
@@ -54,6 +54,8 @@ Use this path if you are new to the repository:
 3. [Architecture](architecture.md) to understand the adapter/runtime split.
 4. [Zero-Config](zero-config.md) to learn what is automatic and what still requires explicit configuration.
 5. [Compatibility](compatibility.md) before planning upgrades, release gates, or host-version support.
+6. [Adoption Playbook](adoption-playbook.md) when multiple teams or hosts need the same rollout pattern.
+7. [Production Readiness](production-readiness.md) when you are turning a working prototype into an operator-owned service.
 
 Then go deeper into:
 

@@ -48,6 +48,16 @@ if preflight.compatible:
     engine = create_engine(request)
 ```
 
+## Decision Table
+
+| Need | Recommended Page |
+|------|------------------|
+| compare supported capabilities | [Capability Matrix](capability-matrix.md) |
+| choose one engine for a workload | [Selection Guide](selection-guide.md) |
+| preserve a non-Truthound investment | [Pandera](pandera.md) or [Great Expectations](great-expectations.md) |
+| author a new engine | [Custom Engine Authoring](custom-engines.md) |
+| understand error behavior | [Error Reporting](error-reporting.md) |
+
 ## When To Change Engines
 
 Most teams should stay on the default Truthound engine unless they already have a
@@ -61,15 +71,19 @@ strong Pandera or Great Expectations investment. Switching engines is valuable w
 
 The engine layer also includes:
 
+- [Capability Matrix](capability-matrix.md)
+- [Selection Guide](selection-guide.md)
 - [Truthound Engine](truthound.md)
 - [Pandera](pandera.md)
 - [Great Expectations](great-expectations.md)
+- [Custom Engine Authoring](custom-engines.md)
 - [Batch Processing](batch.md)
 - [Streaming Validation](streaming.md)
 - [Engine Chains](chain.md)
 - [Lifecycle Management](lifecycle.md)
 - [Drift Detection](drift-detection.md)
 - [Anomaly Detection](anomaly-detection.md)
+- [Error Reporting](error-reporting.md)
 
 ## Production Guidance
 

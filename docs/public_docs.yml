@@ -61,5 +61,5 @@ support_directories:
   - stylesheets
   - javascripts
 
-expected_page_count: 309
-expected_markdown_count: 318
+expected_page_count: 344
+expected_markdown_count: 353

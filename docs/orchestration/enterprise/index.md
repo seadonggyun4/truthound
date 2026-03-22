@@ -15,10 +15,13 @@ isolation, secret management, notification routing, and production rollout pract
 
 ## What Lives Here
 
+- [Rollout Topologies](rollout-topologies.md)
 - [Multi-Tenant](multi-tenant.md)
 - [Secrets](secrets.md)
 - [Notifications](notifications.md)
+- [Governance and Audit](governance-audit.md)
 - [CI/CD and Production Rollout](ci-cd-production.md)
+- [Rollback Playbooks](rollback-playbooks.md)
 
 ## How To Use These Pages
 
@@ -29,6 +32,7 @@ question is operational:
 - where do secrets come from?
 - how are incidents routed?
 - how do we roll out orchestration changes safely?
+- how do we prove governance or recover from a bad rollout?
 
 ## Scope Note
 
