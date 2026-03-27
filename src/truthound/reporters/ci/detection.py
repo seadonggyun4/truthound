@@ -8,9 +8,12 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from typing import Callable
+from typing import TYPE_CHECKING
 
 from truthound.reporters.ci.base import CIPlatform
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 @dataclass

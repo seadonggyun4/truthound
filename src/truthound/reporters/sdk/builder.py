@@ -26,7 +26,7 @@ Example:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Callable, Type, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
 
 from truthound.reporters.base import (
     BaseReporter,
@@ -36,6 +36,8 @@ from truthound.reporters.base import (
 from truthound.reporters.factory import register_reporter
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from truthound.core.results import ValidationRunResult
     from truthound.reporters.presentation import LegacyValidatorResultView, RunPresentation
 
@@ -54,9 +56,9 @@ def create_reporter(
     *,
     extension: str = ".txt",
     content_type: str = "text/plain",
-    config_class: Type[ReporterConfig] | None = None,
+    config_class: type[ReporterConfig] | None = None,
     register: bool = True,
-) -> Callable[[Callable[[Any, ReporterConfig], str]], Type[BaseReporter[Any, Any]]]:
+) -> Callable[[Callable[[Any, ReporterConfig], str]], type[BaseReporter[Any, Any]]]:
     """Decorator to create a reporter from a render function.
 
     This is the simplest way to create a custom reporter. Just define
@@ -88,7 +90,7 @@ def create_reporter(
 
     def decorator(
         render_func: Callable[[Any, ReporterConfig], str],
-    ) -> Type[BaseReporter[Any, Any]]:
+    ) -> type[BaseReporter[Any, Any]]:
         # Determine config class
         actual_config_class = config_class or ReporterConfig
 
@@ -126,11 +128,11 @@ def create_validation_reporter(
     *,
     extension: str = ".txt",
     content_type: str = "text/plain",
-    config_class: Type[ReporterConfig] | None = None,
+    config_class: type[ReporterConfig] | None = None,
     register: bool = True,
 ) -> Callable[
-    [Callable[["ValidationRunResult", ReporterConfig], str]],
-    Type[ValidationReporter[Any]],
+    [Callable[[ValidationRunResult, ReporterConfig], str]],
+    type[ValidationReporter[Any]],
 ]:
     """Decorator to create a validation reporter from a render function.
 
@@ -157,8 +159,8 @@ def create_validation_reporter(
     """
 
     def decorator(
-        render_func: Callable[["ValidationRunResult", ReporterConfig], str],
-    ) -> Type[ValidationReporter[Any]]:
+        render_func: Callable[[ValidationRunResult, ReporterConfig], str],
+    ) -> type[ValidationReporter[Any]]:
         actual_config_class = config_class or ReporterConfig
 
         class GeneratedValidationReporter(ValidationReporter[ReporterConfig]):
@@ -173,7 +175,7 @@ def create_validation_reporter(
             def _default_config(cls) -> ReporterConfig:
                 return actual_config_class()
 
-            def render(self, data: "ValidationRunResult") -> str:
+            def render(self, data: ValidationRunResult) -> str:
                 return render_func(data, self._config)
 
         # Override the name attribute properly
@@ -223,15 +225,15 @@ class ReporterBuilder:
     name: str
     extension: str = ".txt"
     content_type: str = "text/plain"
-    config_class: Type[ReporterConfig] = field(default=ReporterConfig)
-    base_class: Type[BaseReporter[Any, Any]] = field(default=BaseReporter)  # type: ignore
+    config_class: type[ReporterConfig] = field(default=ReporterConfig)
+    base_class: type[BaseReporter[Any, Any]] = field(default=BaseReporter)  # type: ignore
     mixins: list[type] = field(default_factory=list)
     renderer: Callable[[Any, Any], str] | None = None
     post_processors: list[Callable[[str], str]] = field(default_factory=list)
     register_name: str | None = None
     class_attributes: dict[str, Any] = field(default_factory=dict)
 
-    def with_extension(self, extension: str) -> "ReporterBuilder":
+    def with_extension(self, extension: str) -> ReporterBuilder:
         """Set the file extension.
 
         Args:
@@ -243,7 +245,7 @@ class ReporterBuilder:
         self.extension = extension
         return self
 
-    def with_content_type(self, content_type: str) -> "ReporterBuilder":
+    def with_content_type(self, content_type: str) -> ReporterBuilder:
         """Set the MIME content type.
 
         Args:
@@ -255,7 +257,7 @@ class ReporterBuilder:
         self.content_type = content_type
         return self
 
-    def with_config_class(self, config_class: Type[ReporterConfig]) -> "ReporterBuilder":
+    def with_config_class(self, config_class: type[ReporterConfig]) -> ReporterBuilder:
         """Set the configuration class.
 
         Args:
@@ -269,8 +271,8 @@ class ReporterBuilder:
 
     def with_base_class(
         self,
-        base_class: Type[BaseReporter[Any, Any]],
-    ) -> "ReporterBuilder":
+        base_class: type[BaseReporter[Any, Any]],
+    ) -> ReporterBuilder:
         """Set the base class.
 
         Args:
@@ -282,7 +284,7 @@ class ReporterBuilder:
         self.base_class = base_class
         return self
 
-    def for_validation_result(self) -> "ReporterBuilder":
+    def for_validation_result(self) -> ReporterBuilder:
         """Configure for ValidationRunResult input.
 
         Returns:
@@ -291,7 +293,7 @@ class ReporterBuilder:
         self.base_class = ValidationReporter  # type: ignore
         return self
 
-    def with_mixin(self, mixin: type) -> "ReporterBuilder":
+    def with_mixin(self, mixin: type) -> ReporterBuilder:
         """Add a mixin class.
 
         Args:
@@ -303,7 +305,7 @@ class ReporterBuilder:
         self.mixins.append(mixin)
         return self
 
-    def with_mixins(self, *mixins: type) -> "ReporterBuilder":
+    def with_mixins(self, *mixins: type) -> ReporterBuilder:
         """Add multiple mixin classes.
 
         Args:
@@ -318,7 +320,7 @@ class ReporterBuilder:
     def with_renderer(
         self,
         renderer: Callable[[Any, Any], str],
-    ) -> "ReporterBuilder":
+    ) -> ReporterBuilder:
         """Set the render function.
 
         The function receives (self, data) where self is the reporter instance.
@@ -335,7 +337,7 @@ class ReporterBuilder:
     def with_post_processor(
         self,
         processor: Callable[[str], str],
-    ) -> "ReporterBuilder":
+    ) -> ReporterBuilder:
         """Add a post-processor for the rendered output.
 
         Args:
@@ -347,7 +349,7 @@ class ReporterBuilder:
         self.post_processors.append(processor)
         return self
 
-    def with_attribute(self, name: str, value: Any) -> "ReporterBuilder":
+    def with_attribute(self, name: str, value: Any) -> ReporterBuilder:
         """Add a class attribute.
 
         Args:
@@ -360,7 +362,7 @@ class ReporterBuilder:
         self.class_attributes[name] = value
         return self
 
-    def register_as(self, name: str) -> "ReporterBuilder":
+    def register_as(self, name: str) -> ReporterBuilder:
         """Set name for factory registration.
 
         Args:
@@ -372,7 +374,7 @@ class ReporterBuilder:
         self.register_name = name
         return self
 
-    def build(self) -> Type[BaseReporter[Any, Any]]:
+    def build(self) -> type[BaseReporter[Any, Any]]:
         """Build the reporter class.
 
         Returns:
@@ -437,14 +439,14 @@ class ReporterBuilder:
 
 def create_line_based_reporter(
     name: str,
-    line_formatter: Callable[["LegacyValidatorResultView", int], str],
-    header: str | Callable[["RunPresentation"], str] | None = None,
-    footer: str | Callable[["RunPresentation"], str] | None = None,
+    line_formatter: Callable[[LegacyValidatorResultView, int], str],
+    header: str | Callable[[RunPresentation], str] | None = None,
+    footer: str | Callable[[RunPresentation], str] | None = None,
     separator: str = "\n",
     include_passed: bool = False,
     extension: str = ".txt",
     register: bool = True,
-) -> Type[ValidationReporter[Any]]:
+) -> type[ValidationReporter[Any]]:
     """Create a reporter that formats each result as a line.
 
     Args:
@@ -473,7 +475,7 @@ def create_line_based_reporter(
     """
 
     @create_validation_reporter(name, extension=extension, register=register)
-    def render_lines(result: "ValidationRunResult", config: ReporterConfig) -> str:
+    def render_lines(result: ValidationRunResult, config: ReporterConfig) -> str:
         from truthound.reporters.presentation import build_run_presentation
 
         presentation = build_run_presentation(
@@ -513,12 +515,12 @@ def create_line_based_reporter(
 
 def create_structured_reporter(
     name: str,
-    structure_builder: Callable[["RunPresentation"], dict[str, Any]],
+    structure_builder: Callable[[RunPresentation], dict[str, Any]],
     serializer: Callable[[dict[str, Any]], str] = None,  # type: ignore
     extension: str = ".json",
     content_type: str = "application/json",
     register: bool = True,
-) -> Type[ValidationReporter[Any]]:
+) -> type[ValidationReporter[Any]]:
     """Create a reporter that builds a structured output.
 
     Args:
@@ -560,7 +562,7 @@ def create_structured_reporter(
         content_type=content_type,
         register=register,
     )
-    def render_structured(result: "ValidationRunResult", config: ReporterConfig) -> str:
+    def render_structured(result: ValidationRunResult, config: ReporterConfig) -> str:
         from truthound.reporters.presentation import build_run_presentation
 
         structure = structure_builder(

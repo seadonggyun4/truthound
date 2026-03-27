@@ -14,12 +14,18 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
-from truthound.core.results import ValidationRunResult
+
+from truthound.checkpoint._result_helpers import (
+    build_checkpoint_validation_run,
+    derive_checkpoint_outcome,
+)
+from truthound.checkpoint._validation import validate_checkpoint_config
 
 if TYPE_CHECKING:
-    from truthound.checkpoint.actions.base import BaseAction, ActionResult
+    from truthound.checkpoint.actions.base import ActionResult, BaseAction
     from truthound.checkpoint.routing.base import ActionRouter
     from truthound.checkpoint.triggers.base import BaseTrigger
+    from truthound.core.results import ValidationRunResult
     from truthound.datasources.base import BaseDataSource
     from truthound.validators.base import Validator
 
@@ -63,7 +69,7 @@ class CheckpointConfig:
 
     name: str = "default_checkpoint"
     data_source: str | Any = ""
-    validators: list[str | "Validator"] | None = None
+    validators: list[str | Validator] | None = None
     validator_config: dict[str, dict[str, Any]] = field(default_factory=dict)
     min_severity: str | None = None
     schema: str | Path | Any = None
@@ -99,7 +105,7 @@ class CheckpointResult:
     run_time: datetime
     status: CheckpointStatus
     validation_run: ValidationRunResult | None = None
-    action_results: list["ActionResult"] = field(default_factory=list)
+    action_results: list[ActionResult] = field(default_factory=list)
     data_asset: str = ""
     duration_ms: float = 0.0
     error: str | None = None
@@ -112,7 +118,7 @@ class CheckpointResult:
         run_time: datetime,
         status: CheckpointStatus,
         validation_run: ValidationRunResult | None = None,
-        action_results: list["ActionResult"] | None = None,
+        action_results: list[ActionResult] | None = None,
         data_asset: str = "",
         duration_ms: float = 0.0,
         error: str | None = None,
@@ -160,7 +166,7 @@ class CheckpointResult:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "CheckpointResult":
+    def from_dict(cls, data: dict[str, Any]) -> CheckpointResult:
         """Create from dictionary."""
         from truthound.checkpoint.actions.base import ActionResult
         from truthound.checkpoint.adapters import validation_run_from_checkpoint_dict
@@ -246,11 +252,11 @@ class Checkpoint:
         self,
         name: str | None = None,
         config: CheckpointConfig | None = None,
-        data_source: str | "BaseDataSource" | None = None,
-        validators: list[str | "Validator"] | None = None,
-        actions: list["BaseAction[Any]"] | None = None,
-        triggers: list["BaseTrigger[Any]"] | None = None,
-        router: "ActionRouter | None" = None,
+        data_source: str | BaseDataSource | None = None,
+        validators: list[str | Validator] | None = None,
+        actions: list[BaseAction[Any]] | None = None,
+        triggers: list[BaseTrigger[Any]] | None = None,
+        router: ActionRouter | None = None,
         **kwargs: Any,
     ) -> None:
         """Initialize a checkpoint.
@@ -310,26 +316,26 @@ class Checkpoint:
         return self._config
 
     @property
-    def actions(self) -> list["BaseAction[Any]"]:
+    def actions(self) -> list[BaseAction[Any]]:
         """Get configured actions."""
         return self._actions
 
     @property
-    def triggers(self) -> list["BaseTrigger[Any]"]:
+    def triggers(self) -> list[BaseTrigger[Any]]:
         """Get configured triggers."""
         return self._triggers
 
     @property
-    def router(self) -> "ActionRouter | None":
+    def router(self) -> ActionRouter | None:
         """Get the action router."""
         return self._router
 
     @router.setter
-    def router(self, value: "ActionRouter | None") -> None:
+    def router(self, value: ActionRouter | None) -> None:
         """Set the action router."""
         self._router = value
 
-    def set_router(self, router: "ActionRouter") -> "Checkpoint":
+    def set_router(self, router: ActionRouter) -> Checkpoint:
         """Set the action router.
 
         Args:
@@ -341,7 +347,7 @@ class Checkpoint:
         self._router = router
         return self
 
-    def add_action(self, action: "BaseAction[Any]") -> "Checkpoint":
+    def add_action(self, action: BaseAction[Any]) -> Checkpoint:
         """Add an action to the checkpoint.
 
         Args:
@@ -353,7 +359,7 @@ class Checkpoint:
         self._actions.append(action)
         return self
 
-    def add_trigger(self, trigger: "BaseTrigger[Any]") -> "Checkpoint":
+    def add_trigger(self, trigger: BaseTrigger[Any]) -> Checkpoint:
         """Add a trigger to the checkpoint.
 
         Args:
@@ -414,9 +420,7 @@ class Checkpoint:
             CheckpointResult with validation and action results.
         """
         from truthound.api import check
-        from truthound.checkpoint.adapters import (
-            checkpoint_validation_view,
-        )
+        from truthound.checkpoint.adapters import ensure_validation_run_result
 
         run_id = run_id or self._generate_run_id()
         run_time = datetime.now()
@@ -446,7 +450,7 @@ class Checkpoint:
                 if self._config.sample_size and data_source.needs_sampling():
                     data_source = data_source.sample(n=self._config.sample_size)
 
-                validation_run = check(
+                validation_report = check(
                     source=data_source,
                     validators=self._config.validators,
                     validator_config=self._config.validator_config,
@@ -455,7 +459,7 @@ class Checkpoint:
                     auto_schema=self._config.auto_schema,
                 )
             else:
-                validation_run = check(
+                validation_report = check(
                     data=data_source,
                     validators=self._config.validators,
                     validator_config=self._config.validator_config,
@@ -464,36 +468,21 @@ class Checkpoint:
                     auto_schema=self._config.auto_schema,
                 )
 
-            validation_run = ValidationRunResult(
+            validation_run = build_checkpoint_validation_run(
+                ensure_validation_run_result(validation_report),
                 run_id=run_id,
-                run_time=validation_run.run_time,
-                suite_name=validation_run.suite_name,
-                source=data_asset,
-                row_count=validation_run.row_count,
-                column_count=validation_run.column_count,
-                result_format=validation_run.result_format,
-                execution_mode=validation_run.execution_mode,
-                checks=validation_run.checks,
-                issues=validation_run.issues,
-                execution_issues=validation_run.execution_issues,
-                metadata={
-                    **validation_run.metadata,
-                    **self._config.metadata,
-                    "tags": dict(self._config.tags),
-                    "execution_time_ms": (time.time() - start_time) * 1000,
-                },
+                data_asset=data_asset,
+                checkpoint_metadata=self._config.metadata,
+                tags=self._config.tags,
+                duration_ms=(time.time() - start_time) * 1000,
             )
-            validation_view = checkpoint_validation_view(validation_run)
-
-            # Determine status
-            if validation_view.statistics.critical_issues > 0 and self._config.fail_on_critical:
-                status = CheckpointStatus.FAILURE
-            elif validation_view.statistics.high_issues > 0 and self._config.fail_on_high:
-                status = CheckpointStatus.FAILURE
-            elif validation_view.statistics.total_issues > 0:
-                status = CheckpointStatus.WARNING
-            else:
-                status = CheckpointStatus.SUCCESS
+            status = CheckpointStatus(
+                derive_checkpoint_outcome(
+                    validation_run,
+                    fail_on_critical=self._config.fail_on_critical,
+                    fail_on_high=self._config.fail_on_high,
+                )
+            )
 
         except Exception as e:
             # Validation failed
@@ -613,100 +602,11 @@ class Checkpoint:
         Returns:
             List of validation error messages (empty if valid).
         """
-        errors = []
-
-        # Required fields
-        if not self._config.name:
-            errors.append("Checkpoint name is required")
-
-        if not self._config.data_source:
-            errors.append("Data source is required")
-
-        # Validate data source exists (for file paths)
-        if self._config.data_source:
-            source = self._config.data_source
-            if isinstance(source, (str, Path)):
-                source_path = Path(source)
-                # Only validate if it looks like a file path (has extension like .csv, .parquet)
-                # Skip connection strings (postgresql://, mysql://, etc.)
-                source_str = str(source)
-                is_connection_string = "://" in source_str
-                has_file_extension = source_path.suffix in (
-                    ".csv", ".parquet", ".json", ".jsonl", ".xlsx", ".xls",
-                    ".tsv", ".feather", ".arrow", ".avro", ".orc",
-                )
-                if has_file_extension and not is_connection_string:
-                    if not source_path.exists():
-                        errors.append(f"Data source file not found: {source}")
-
-        # Validate validators exist
-        if self._config.validators:
-            from truthound.validators import get_validator
-
-            for v in self._config.validators:
-                if isinstance(v, str):
-                    try:
-                        get_validator(v)
-                    except (KeyError, ValueError) as e:
-                        errors.append(f"Unknown validator: '{v}'")
-
-        # Validate validator_config structure
-        if self._config.validator_config:
-            for validator_name, config in self._config.validator_config.items():
-                if not isinstance(config, dict):
-                    errors.append(
-                        f"validator_config['{validator_name}'] must be a dict, "
-                        f"got {type(config).__name__}"
-                    )
-                # Check if the validator exists
-                if self._config.validators:
-                    if validator_name not in self._config.validators:
-                        errors.append(
-                            f"validator_config references '{validator_name}' "
-                            f"but it's not in validators list"
-                        )
-
-        # Validate regex validator requires pattern parameter
-        if self._config.validators:
-            for v in self._config.validators:
-                if isinstance(v, str) and v.lower() == "regex":
-                    regex_config = (self._config.validator_config or {}).get("regex", {})
-                    if not regex_config.get("pattern"):
-                        errors.append(
-                            "RegexValidator requires 'pattern' parameter. "
-                            "Add to validator_config: regex: {pattern: '^your-pattern$'}"
-                        )
-
-        # Validate min_severity
-        valid_severities = {"low", "medium", "high", "critical"}
-        if self._config.min_severity:
-            if self._config.min_severity.lower() not in valid_severities:
-                errors.append(
-                    f"Invalid min_severity: '{self._config.min_severity}'. "
-                    f"Must be one of: {', '.join(sorted(valid_severities))}"
-                )
-
-        # Validate schema file exists (for file paths)
-        if self._config.schema:
-            schema = self._config.schema
-            if isinstance(schema, (str, Path)):
-                schema_path = Path(schema)
-                if schema_path.suffix in (".yaml", ".yml", ".json") and not schema_path.exists():
-                    errors.append(f"Schema file not found: {schema}")
-
-        # Validate actions
-        for action in self._actions:
-            action_errors = action.validate_config()
-            for err in action_errors:
-                errors.append(f"Action '{action.name}': {err}")
-
-        # Validate triggers
-        for trigger in self._triggers:
-            trigger_errors = trigger.validate_config()
-            for err in trigger_errors:
-                errors.append(f"Trigger '{trigger.name}': {err}")
-
-        return errors
+        return validate_checkpoint_config(
+            self._config,
+            actions=self._actions,
+            triggers=self._triggers,
+        )
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize checkpoint configuration to dictionary."""

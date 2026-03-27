@@ -71,7 +71,7 @@ class ValidatorResult:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "ValidatorResult":
+    def from_dict(cls, data: dict[str, Any]) -> ValidatorResult:
         """Create from dictionary."""
         return cls(
             validator_name=data["validator_name"],
@@ -86,7 +86,7 @@ class ValidatorResult:
         )
 
     @classmethod
-    def from_issue(cls, issue: "ValidationIssue") -> "ValidatorResult":
+    def from_issue(cls, issue: ValidationIssue) -> ValidatorResult:
         """Create from a ValidationIssue."""
         return cls(
             validator_name=issue.issue_type,
@@ -170,7 +170,7 @@ class ResultStatistics:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "ResultStatistics":
+    def from_dict(cls, data: dict[str, Any]) -> ResultStatistics:
         """Create from dictionary."""
         return cls(
             total_validators=data.get("total_validators", 0),
@@ -246,7 +246,7 @@ class ValidationResult:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "ValidationResult":
+    def from_dict(cls, data: dict[str, Any]) -> ValidationResult:
         """Create from dictionary."""
         return cls(
             run_id=data["run_id"],
@@ -264,13 +264,13 @@ class ValidationResult:
     @classmethod
     def from_report(
         cls,
-        report: "Report",
+        report: Report,
         data_asset: str,
         run_id: str | None = None,
         tags: dict[str, str] | None = None,
         metadata: dict[str, Any] | None = None,
         execution_time_ms: float = 0.0,
-    ) -> "ValidationResult":
+    ) -> ValidationResult:
         """Create a ValidationResult from a Report.
 
         Args:
@@ -332,8 +332,8 @@ class ValidationResult:
     @classmethod
     def from_validation_run_result(
         cls,
-        run_result: "ValidationRunResult",
-    ) -> "ValidationResult":
+        run_result: ValidationRunResult,
+    ) -> ValidationResult:
         """Create a persisted ValidationResult from ValidationRunResult."""
         from truthound.reporters.presentation import build_run_presentation
 
@@ -385,6 +385,7 @@ class ValidationResult:
             "execution_issues": [issue.to_dict() for issue in run_result.execution_issues],
         }
         metadata.setdefault("_execution_mode", run_result.execution_mode)
+        metadata.setdefault("_planned_execution_mode", run_result.planned_execution_mode)
         metadata.setdefault("_result_format", run_result.result_format.value)
 
         return cls(
@@ -400,7 +401,7 @@ class ValidationResult:
             runtime_environment=dict(metadata.get("runtime_environment", {})),
         )
 
-    def to_validation_run_result(self) -> "ValidationRunResult":
+    def to_validation_run_result(self) -> ValidationRunResult:
         """Convert the persisted DTO into ValidationRunResult."""
         from truthound.reporters.adapters import stored_validation_result_to_validation_run_result
 

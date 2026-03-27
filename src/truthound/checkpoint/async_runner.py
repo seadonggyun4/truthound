@@ -14,18 +14,17 @@ Key Features:
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, field
+from collections.abc import AsyncIterator, Awaitable, Callable
+from dataclasses import dataclass
 from datetime import datetime
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    AsyncIterator,
-    Awaitable,
-    Callable,
-)
+from typing import TYPE_CHECKING, Any
 
 from truthound.checkpoint.async_checkpoint import AsyncCheckpoint, to_async_checkpoint
-from truthound.checkpoint.checkpoint import Checkpoint, CheckpointResult
+from truthound.checkpoint.checkpoint import (
+    Checkpoint,
+    CheckpointResult,
+    CheckpointStatus,
+)
 
 if TYPE_CHECKING:
     from truthound.checkpoint.triggers.base import BaseTrigger
@@ -39,6 +38,23 @@ ResultCallback = AsyncResultCallback | SyncResultCallback
 AsyncErrorCallback = Callable[[Exception], Awaitable[None]]
 SyncErrorCallback = Callable[[Exception], None]
 ErrorCallback = AsyncErrorCallback | SyncErrorCallback
+
+
+async def _invoke_callback(
+    callback: ResultCallback | ErrorCallback | None,
+    value: CheckpointResult | Exception,
+) -> None:
+    """Invoke an optional sync/async callback without leaking callback failures."""
+    if callback is None:
+        return
+
+    try:
+        if asyncio.iscoroutinefunction(callback):
+            await callback(value)  # type: ignore[arg-type]
+        else:
+            callback(value)  # type: ignore[arg-type]
+    except Exception:
+        return
 
 
 @dataclass
@@ -132,7 +148,7 @@ class AsyncCheckpointRunner:
 
     def add_checkpoint(
         self, checkpoint: AsyncCheckpoint | Checkpoint
-    ) -> "AsyncCheckpointRunner":
+    ) -> AsyncCheckpointRunner:
         """Register a checkpoint.
 
         Args:
@@ -217,7 +233,7 @@ class AsyncCheckpointRunner:
                     run_id=f"{cp_name}_error",
                     checkpoint_name=cp_name,
                     run_time=datetime.now(),
-                    status="error",
+                    status=CheckpointStatus.ERROR,
                     error=str(result),
                 )
                 final_results.append(error_result)
@@ -270,7 +286,7 @@ class AsyncCheckpointRunner:
                     asyncio.gather(*self._tasks, return_exceptions=True),
                     timeout=self._config.graceful_shutdown_timeout,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 # Cancel remaining tasks
                 for task in self._tasks:
                     task.cancel()
@@ -323,7 +339,7 @@ class AsyncCheckpointRunner:
     async def _run_triggered_checkpoint(
         self,
         checkpoint: AsyncCheckpoint,
-        trigger: "BaseTrigger[Any]",
+        trigger: BaseTrigger[Any],
         trigger_context: dict[str, Any],
     ) -> None:
         """Run a checkpoint triggered by a trigger."""
@@ -356,25 +372,11 @@ class AsyncCheckpointRunner:
                 pass
 
         # Call callback
-        if self._result_callback:
-            try:
-                if asyncio.iscoroutinefunction(self._result_callback):
-                    await self._result_callback(result)
-                else:
-                    self._result_callback(result)
-            except Exception:
-                pass  # Don't let callback errors affect runner
+        await _invoke_callback(self._result_callback, result)
 
     async def _handle_error(self, error: Exception) -> None:
         """Handle errors."""
-        if self._error_callback:
-            try:
-                if asyncio.iscoroutinefunction(self._error_callback):
-                    await self._error_callback(error)
-                else:
-                    self._error_callback(error)
-            except Exception:
-                pass
+        await _invoke_callback(self._error_callback, error)
 
     async def get_results_async(
         self,
@@ -399,7 +401,7 @@ class AsyncCheckpointRunner:
                     timeout=timeout or 0.1,
                 )
                 results.append(result)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             pass
 
         return results
@@ -423,7 +425,7 @@ class AsyncCheckpointRunner:
                     timeout=timeout,
                 )
                 yield result
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 continue
             except asyncio.CancelledError:
                 break
@@ -449,7 +451,7 @@ class AsyncCheckpointRunner:
                 timeout=timeout,
             )
             return True
-        except asyncio.TimeoutError:
+        except TimeoutError:
             return False
 
     def get_stats(self) -> dict[str, Any]:
@@ -519,11 +521,7 @@ async def run_checkpoints_parallel(
                 cp = to_async_checkpoint(cp)
             result = await cp.run_async(context=context)
 
-            if on_complete:
-                if asyncio.iscoroutinefunction(on_complete):
-                    await on_complete(result)
-                else:
-                    on_complete(result)
+            await _invoke_callback(on_complete, result)
 
             return result
 
@@ -555,7 +553,7 @@ class CheckpointPool:
         self._worker_tasks: list[asyncio.Task[None]] = []
         self._running = False
 
-    async def __aenter__(self) -> "CheckpointPool":
+    async def __aenter__(self) -> CheckpointPool:
         await self.start()
         return self
 
@@ -593,11 +591,7 @@ class CheckpointPool:
                 result = await checkpoint.run_async()
                 future.set_result(result)
 
-                if self._result_callback:
-                    if asyncio.iscoroutinefunction(self._result_callback):
-                        await self._result_callback(result)
-                    else:
-                        self._result_callback(result)
+                await _invoke_callback(self._result_callback, result)
 
             except Exception as e:
                 future.set_exception(e)

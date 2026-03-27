@@ -22,23 +22,23 @@ from __future__ import annotations
 import csv
 import io
 import json
-from abc import ABC
 from collections import defaultdict
 from dataclasses import asdict, is_dataclass
-from datetime import datetime, date
+from datetime import date, datetime
 from enum import Enum
 from typing import (
     TYPE_CHECKING,
     Any,
-    Callable,
-    Iterator,
-    Sequence,
     TypeVar,
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Iterator, Sequence
+
     from truthound.reporters.presentation import (
         LegacyValidationResultView as ValidationResult,
+    )
+    from truthound.reporters.presentation import (
         LegacyValidatorResultView as ValidatorResult,
     )
 
@@ -72,7 +72,7 @@ def _get_severity_level(severity: str | None) -> int:
 # =============================================================================
 
 
-class FormattingMixin(ABC):
+class FormattingMixin:
     """Mixin providing text formatting utilities.
 
     Provides methods for:
@@ -239,7 +239,7 @@ class FormattingMixin(ABC):
         lines.append(sep)
 
         # Data rows
-        for i, row in enumerate(rows):
+        for row in rows:
             cells = []
             for col in columns:
                 value = str(row.get(col, ""))
@@ -353,10 +353,7 @@ class FormattingMixin(ABC):
         Returns:
             Formatted number string.
         """
-        if isinstance(value, float):
-            formatted = f"{value:,.{precision}f}"
-        else:
-            formatted = f"{value:,}"
+        formatted = f"{value:,.{precision}f}" if isinstance(value, float) else f"{value:,}"
         return formatted.replace(",", thousands_sep)
 
     def format_percentage(
@@ -482,7 +479,7 @@ class FormattingMixin(ABC):
 # =============================================================================
 
 
-class AggregationMixin(ABC):
+class AggregationMixin:
     """Mixin providing data aggregation utilities.
 
     Provides methods for:
@@ -493,8 +490,8 @@ class AggregationMixin(ABC):
 
     def group_by_column(
         self,
-        results: list["ValidatorResult"],
-    ) -> dict[str, list["ValidatorResult"]]:
+        results: list[ValidatorResult],
+    ) -> dict[str, list[ValidatorResult]]:
         """Group validator results by column.
 
         Args:
@@ -511,8 +508,8 @@ class AggregationMixin(ABC):
 
     def group_by_severity(
         self,
-        results: list["ValidatorResult"],
-    ) -> dict[str, list["ValidatorResult"]]:
+        results: list[ValidatorResult],
+    ) -> dict[str, list[ValidatorResult]]:
         """Group validator results by severity.
 
         Args:
@@ -529,8 +526,8 @@ class AggregationMixin(ABC):
 
     def group_by_validator(
         self,
-        results: list["ValidatorResult"],
-    ) -> dict[str, list["ValidatorResult"]]:
+        results: list[ValidatorResult],
+    ) -> dict[str, list[ValidatorResult]]:
         """Group validator results by validator name.
 
         Args:
@@ -546,9 +543,9 @@ class AggregationMixin(ABC):
 
     def group_by(
         self,
-        results: list["ValidatorResult"],
-        key: Callable[["ValidatorResult"], str],
-    ) -> dict[str, list["ValidatorResult"]]:
+        results: list[ValidatorResult],
+        key: Callable[[ValidatorResult], str],
+    ) -> dict[str, list[ValidatorResult]]:
         """Group validator results by custom key function.
 
         Args:
@@ -565,7 +562,7 @@ class AggregationMixin(ABC):
 
     def count_by_severity(
         self,
-        results: list["ValidatorResult"],
+        results: list[ValidatorResult],
     ) -> dict[str, int]:
         """Count results by severity.
 
@@ -583,7 +580,7 @@ class AggregationMixin(ABC):
 
     def count_by_column(
         self,
-        results: list["ValidatorResult"],
+        results: list[ValidatorResult],
     ) -> dict[str, int]:
         """Count results by column.
 
@@ -601,7 +598,7 @@ class AggregationMixin(ABC):
 
     def get_summary_stats(
         self,
-        result: "ValidationResult",
+        result: ValidationResult,
     ) -> dict[str, Any]:
         """Get summary statistics from validation result.
 
@@ -637,7 +634,7 @@ class AggregationMixin(ABC):
 # =============================================================================
 
 
-class FilteringMixin(ABC):
+class FilteringMixin:
     """Mixin providing data filtering utilities.
 
     Provides methods for:
@@ -648,12 +645,12 @@ class FilteringMixin(ABC):
 
     def filter_by_severity(
         self,
-        results: list["ValidatorResult"],
+        results: list[ValidatorResult],
         min_severity: str | None = None,
         max_severity: str | None = None,
         include_severities: list[str] | None = None,
         exclude_severities: list[str] | None = None,
-    ) -> list["ValidatorResult"]:
+    ) -> list[ValidatorResult]:
         """Filter results by severity.
 
         Args:
@@ -690,9 +687,8 @@ class FilteringMixin(ABC):
                         continue
 
             # Check exclude list
-            if exclude_severities:
-                if severity in [s.lower() for s in exclude_severities]:
-                    continue
+            if exclude_severities and severity in [s.lower() for s in exclude_severities]:
+                continue
 
             filtered.append(result)
 
@@ -700,10 +696,10 @@ class FilteringMixin(ABC):
 
     def filter_by_column(
         self,
-        results: list["ValidatorResult"],
+        results: list[ValidatorResult],
         include_columns: list[str] | None = None,
         exclude_columns: list[str] | None = None,
-    ) -> list["ValidatorResult"]:
+    ) -> list[ValidatorResult]:
         """Filter results by column.
 
         Args:
@@ -730,10 +726,10 @@ class FilteringMixin(ABC):
 
     def filter_by_validator(
         self,
-        results: list["ValidatorResult"],
+        results: list[ValidatorResult],
         include_validators: list[str] | None = None,
         exclude_validators: list[str] | None = None,
-    ) -> list["ValidatorResult"]:
+    ) -> list[ValidatorResult]:
         """Filter results by validator name.
 
         Args:
@@ -758,8 +754,8 @@ class FilteringMixin(ABC):
 
     def filter_failed(
         self,
-        results: list["ValidatorResult"],
-    ) -> list["ValidatorResult"]:
+        results: list[ValidatorResult],
+    ) -> list[ValidatorResult]:
         """Filter to only failed results.
 
         Args:
@@ -772,8 +768,8 @@ class FilteringMixin(ABC):
 
     def filter_passed(
         self,
-        results: list["ValidatorResult"],
-    ) -> list["ValidatorResult"]:
+        results: list[ValidatorResult],
+    ) -> list[ValidatorResult]:
         """Filter to only passed results.
 
         Args:
@@ -786,9 +782,9 @@ class FilteringMixin(ABC):
 
     def sort_by_severity(
         self,
-        results: list["ValidatorResult"],
+        results: list[ValidatorResult],
         ascending: bool = False,
-    ) -> list["ValidatorResult"]:
+    ) -> list[ValidatorResult]:
         """Sort results by severity.
 
         Args:
@@ -806,9 +802,9 @@ class FilteringMixin(ABC):
 
     def sort_by_column(
         self,
-        results: list["ValidatorResult"],
+        results: list[ValidatorResult],
         ascending: bool = True,
-    ) -> list["ValidatorResult"]:
+    ) -> list[ValidatorResult]:
         """Sort results by column name.
 
         Args:
@@ -826,10 +822,10 @@ class FilteringMixin(ABC):
 
     def limit(
         self,
-        results: list["ValidatorResult"],
+        results: list[ValidatorResult],
         count: int,
         offset: int = 0,
-    ) -> list["ValidatorResult"]:
+    ) -> list[ValidatorResult]:
         """Limit results with optional offset.
 
         Args:
@@ -848,7 +844,7 @@ class FilteringMixin(ABC):
 # =============================================================================
 
 
-class SerializationMixin(ABC):
+class SerializationMixin:
     """Mixin providing serialization utilities.
 
     Provides methods for:
@@ -995,7 +991,7 @@ class SerializationMixin(ABC):
 # =============================================================================
 
 
-class TemplatingMixin(ABC):
+class TemplatingMixin:
     """Mixin providing template rendering utilities.
 
     Provides methods for:
@@ -1024,7 +1020,7 @@ class TemplatingMixin(ABC):
             ImportError: If jinja2 is not installed.
         """
         try:
-            from jinja2 import Environment, BaseLoader
+            from jinja2 import BaseLoader, Environment
 
             if self._jinja_env is None:
                 self._jinja_env = Environment(loader=BaseLoader())
@@ -1032,11 +1028,11 @@ class TemplatingMixin(ABC):
             tmpl = self._jinja_env.from_string(template)
             return tmpl.render(**context)
 
-        except ImportError:
+        except ImportError as exc:
             raise ImportError(
                 "jinja2 is required for template rendering. "
                 "Install with: pip install jinja2"
-            )
+            ) from exc
 
     def render_template_file(
         self,
@@ -1053,8 +1049,9 @@ class TemplatingMixin(ABC):
             Rendered template.
         """
         try:
-            from jinja2 import Environment, FileSystemLoader
             import os
+
+            from jinja2 import Environment, FileSystemLoader
 
             template_dir = os.path.dirname(template_path)
             template_name = os.path.basename(template_path)
@@ -1063,11 +1060,11 @@ class TemplatingMixin(ABC):
             tmpl = env.get_template(template_name)
             return tmpl.render(**context)
 
-        except ImportError:
+        except ImportError as exc:
             raise ImportError(
                 "jinja2 is required for template rendering. "
                 "Install with: pip install jinja2"
-            )
+            ) from exc
 
     def interpolate(
         self,
@@ -1091,7 +1088,7 @@ class TemplatingMixin(ABC):
 # =============================================================================
 
 
-class StreamingMixin(ABC):
+class StreamingMixin:
     """Mixin providing streaming output utilities.
 
     Provides methods for:
@@ -1102,9 +1099,9 @@ class StreamingMixin(ABC):
 
     def stream_results(
         self,
-        results: list["ValidatorResult"],
+        results: list[ValidatorResult],
         chunk_size: int = 100,
-    ) -> Iterator[list["ValidatorResult"]]:
+    ) -> Iterator[list[ValidatorResult]]:
         """Stream results in chunks.
 
         Args:
@@ -1119,8 +1116,8 @@ class StreamingMixin(ABC):
 
     def stream_lines(
         self,
-        results: list["ValidatorResult"],
-        formatter: Callable[["ValidatorResult"], str],
+        results: list[ValidatorResult],
+        formatter: Callable[[ValidatorResult], str],
     ) -> Iterator[str]:
         """Stream formatted lines for each result.
 
@@ -1136,8 +1133,8 @@ class StreamingMixin(ABC):
 
     def render_streaming(
         self,
-        results: list["ValidatorResult"],
-        formatter: Callable[["ValidatorResult"], str],
+        results: list[ValidatorResult],
+        formatter: Callable[[ValidatorResult], str],
         separator: str = "\n",
     ) -> str:
         """Render all results using streaming formatter.

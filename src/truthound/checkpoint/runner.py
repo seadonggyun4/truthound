@@ -8,14 +8,15 @@ from __future__ import annotations
 
 import threading
 import time
-from dataclasses import dataclass, field
-from datetime import datetime
-from typing import TYPE_CHECKING, Any, Callable, Iterator
-from queue import Queue, Empty
+from contextlib import suppress
+from dataclasses import dataclass
+from queue import Empty, Full, Queue
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Iterator
+
     from truthound.checkpoint.checkpoint import Checkpoint, CheckpointResult
-    from truthound.checkpoint.triggers.base import BaseTrigger
 
 
 @dataclass
@@ -34,7 +35,7 @@ class RunnerConfig:
 
     max_workers: int = 4
     poll_interval_seconds: float = 1.0
-    result_callback: Callable[["CheckpointResult"], None] | None = None
+    result_callback: Callable[[CheckpointResult], None] | None = None
     error_callback: Callable[[Exception], None] | None = None
     stop_on_error: bool = False
     max_failures: int = 10
@@ -80,10 +81,10 @@ class CheckpointRunner:
             if hasattr(self._config, key):
                 setattr(self._config, key, value)
 
-        self._checkpoints: dict[str, "Checkpoint"] = {}
+        self._checkpoints: dict[str, Checkpoint] = {}
         self._running = False
         self._thread: threading.Thread | None = None
-        self._result_queue: Queue["CheckpointResult"] = Queue(
+        self._result_queue: Queue[CheckpointResult] = Queue(
             maxsize=self._config.result_queue_size
         )
         self._lock = threading.RLock()
@@ -95,11 +96,11 @@ class CheckpointRunner:
         return self._running
 
     @property
-    def checkpoints(self) -> dict[str, "Checkpoint"]:
+    def checkpoints(self) -> dict[str, Checkpoint]:
         """Get registered checkpoints."""
         return self._checkpoints.copy()
 
-    def add_checkpoint(self, checkpoint: "Checkpoint") -> "CheckpointRunner":
+    def add_checkpoint(self, checkpoint: Checkpoint) -> CheckpointRunner:
         """Register a checkpoint with the runner.
 
         Args:
@@ -129,9 +130,9 @@ class CheckpointRunner:
 
     def run_once(
         self,
-        checkpoint: "Checkpoint | str",
+        checkpoint: Checkpoint | str,
         context: dict[str, Any] | None = None,
-    ) -> "CheckpointResult":
+    ) -> CheckpointResult:
         """Run a checkpoint once synchronously.
 
         Args:
@@ -150,15 +151,14 @@ class CheckpointRunner:
         result = checkpoint.run(context=context)
 
         # Call callback
-        if self._config.result_callback:
-            self._config.result_callback(result)
+        self._dispatch_result_callback(result)
 
         return result
 
     def run_all(
         self,
         context: dict[str, Any] | None = None,
-    ) -> list["CheckpointResult"]:
+    ) -> list[CheckpointResult]:
         """Run all registered checkpoints once.
 
         Args:
@@ -175,8 +175,7 @@ class CheckpointRunner:
             result = checkpoint.run(context=context)
             results.append(result)
 
-            if self._config.result_callback:
-                self._config.result_callback(result)
+            self._dispatch_result_callback(result)
 
         return results
 
@@ -230,8 +229,7 @@ class CheckpointRunner:
             except Exception as e:
                 self._consecutive_failures += 1
 
-                if self._config.error_callback:
-                    self._config.error_callback(e)
+                self._dispatch_error_callback(e, suppress_errors=True)
 
                 if self._config.stop_on_error:
                     self._running = False
@@ -262,25 +260,57 @@ class CheckpointRunner:
                         self._consecutive_failures = 0
 
                         # Queue result
-                        try:
-                            self._result_queue.put_nowait(cp_result)
-                        except Exception:
-                            pass  # Queue full
+                        self._enqueue_result(cp_result)
 
                         # Callback
-                        if self._config.result_callback:
-                            self._config.result_callback(cp_result)
+                        self._dispatch_result_callback(cp_result, suppress_errors=True)
 
                     except Exception as e:
                         self._consecutive_failures += 1
-                        if self._config.error_callback:
-                            self._config.error_callback(e)
+                        self._dispatch_error_callback(e, suppress_errors=True)
+
+    def _enqueue_result(self, result: CheckpointResult) -> None:
+        """Queue a completed result when capacity is available."""
+        with suppress(Full):
+            self._result_queue.put_nowait(result)
+
+    def _dispatch_result_callback(
+        self,
+        result: CheckpointResult,
+        *,
+        suppress_errors: bool = False,
+    ) -> None:
+        """Invoke result callback with optional non-fatal suppression."""
+        callback = self._config.result_callback
+        if callback is None:
+            return
+        if suppress_errors:
+            with suppress(Exception):
+                callback(result)
+            return
+        callback(result)
+
+    def _dispatch_error_callback(
+        self,
+        error: Exception,
+        *,
+        suppress_errors: bool = False,
+    ) -> None:
+        """Invoke error callback with optional non-fatal suppression."""
+        callback = self._config.error_callback
+        if callback is None:
+            return
+        if suppress_errors:
+            with suppress(Exception):
+                callback(error)
+            return
+        callback(error)
 
     def get_results(
         self,
         timeout: float | None = None,
         max_results: int = 100,
-    ) -> list["CheckpointResult"]:
+    ) -> list[CheckpointResult]:
         """Get completed results from the queue.
 
         Args:
@@ -304,7 +334,7 @@ class CheckpointRunner:
     def iter_results(
         self,
         timeout: float = 1.0,
-    ) -> Iterator["CheckpointResult"]:
+    ) -> Iterator[CheckpointResult]:
         """Iterate over results as they complete.
 
         Args:
@@ -336,9 +366,9 @@ class CheckpointRunner:
 
 
 def run_checkpoint(
-    checkpoint: "Checkpoint | str",
+    checkpoint: Checkpoint | str,
     context: dict[str, Any] | None = None,
-) -> "CheckpointResult":
+) -> CheckpointResult:
     """Convenience function to run a checkpoint once.
 
     Args:

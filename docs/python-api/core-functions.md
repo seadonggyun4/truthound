@@ -121,6 +121,8 @@ def check(
 - `checks`: per-check execution outcomes
 - `issues`: flattened validation issues across the run
 - `execution_issues`: validator failures captured by exception isolation
+- `execution_mode`: the actual runtime mode that executed the checks
+- `planned_execution_mode`: the coarse planner strategy selected before execution
 - `metadata`: context, planner, and artifact metadata
 
 ### Examples
@@ -133,6 +135,8 @@ from truthound.types import ResultFormat, ResultFormatConfig, Severity
 run = th.check("data.csv")
 print(f"Checks: {len(run.checks)}")
 print(f"Issues: {len(run.issues)}")
+print(f"Planned mode: {run.planned_execution_mode}")
+print(f"Actual mode: {run.execution_mode}")
 
 # With specific validators
 run = th.check("data.csv", validators=["null", "duplicate", "range"])
@@ -197,6 +201,7 @@ for issue in run.issues:
         print(f"Exception: {issue.exception_info.failure_category}")
 
 # Reporter and docs helpers are available on the run result
+# They are convenience facades that lazy-import outer reporter/datadocs services.
 print(run.render(format="json"))
 run.write("validation-run.json")
 html = run.build_docs(title="Validation Overview")

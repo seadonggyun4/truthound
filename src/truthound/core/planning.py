@@ -2,10 +2,16 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from truthound.core.contracts import DataAsset
-from truthound.core.suite import CheckSpec, ValidationSuite
+from truthound.core.execution_modes import (
+    PlannedExecutionMode,
+    normalize_planned_execution_mode,
+)
+
+if TYPE_CHECKING:
+    from truthound.core.contracts import DataAsset
+    from truthound.core.suite import CheckSpec, ValidationSuite
 
 
 @dataclass(frozen=True)
@@ -17,11 +23,24 @@ class PlanStep:
 class ScanPlan:
     suite: ValidationSuite
     steps: tuple[PlanStep, ...]
-    execution_mode: str = 'sequential'
+    planned_execution_mode: str = PlannedExecutionMode.SEQUENTIAL.value
     max_workers: int | None = None
     pushdown_enabled: bool = False
     duplicate_check_count: int = 0
     metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        object.__setattr__(
+            self,
+            "planned_execution_mode",
+            normalize_planned_execution_mode(self.planned_execution_mode),
+        )
+
+    @property
+    def execution_mode(self) -> str:
+        """Compatibility alias for older planner consumers."""
+
+        return self.planned_execution_mode
 
 
 class ScanPlanner:
@@ -41,16 +60,16 @@ class ScanPlanner:
             pushdown and asset.capabilities.pushdown
         )
         if pushdown_enabled and getattr(asset, 'sql_source', None) is not None:
-            execution_mode = 'pushdown'
+            planned_execution_mode = PlannedExecutionMode.PUSHDOWN.value
         elif parallel and len(steps) > 1 and asset.capabilities.parallel:
-            execution_mode = 'parallel'
+            planned_execution_mode = PlannedExecutionMode.PARALLEL.value
         else:
-            execution_mode = 'sequential'
+            planned_execution_mode = PlannedExecutionMode.SEQUENTIAL.value
 
         return ScanPlan(
             suite=suite,
             steps=steps,
-            execution_mode=execution_mode,
+            planned_execution_mode=planned_execution_mode,
             max_workers=max_workers,
             pushdown_enabled=bool(pushdown_enabled),
             duplicate_check_count=duplicate_check_count,

@@ -2,6 +2,20 @@
 
 Truthound provides reporters optimized for major CI/CD platforms.
 
+CI reporters still start from the canonical `ValidationRunResult` contract used
+across Truthound 3.0. Internally, they build the shared `RunPresentation` and
+then format against a `LegacyValidationResultView` compatibility projection so
+provider-specific emitters can keep using flattened rows and summary helpers.
+
+That split is intentional:
+
+- external caller input: `ValidationRunResult`
+- shared render projection: `RunPresentation`
+- CI formatting layer: `LegacyValidationResultView`
+
+If you only need generic JSON, Markdown, or HTML artifacts, use the built-in
+validation reporters instead of the CI family.
+
 ## Supported Platforms
 
 | Platform | Reporter | Key Features |

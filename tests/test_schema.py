@@ -4,10 +4,9 @@ import tempfile
 from pathlib import Path
 
 import polars as pl
-import pytest
 
 import truthound as th
-from truthound.schema import ColumnSchema, Schema, learn
+from truthound.schema import ColumnSchema, Schema
 from truthound.validators.schema_validator import SchemaValidator
 
 
@@ -182,6 +181,85 @@ class TestSchemaValidator:
         issues = validator.validate(pl.DataFrame(data).lazy())
 
         assert any(i.issue_type == "invalid_value" for i in issues)
+
+    def test_detects_duplicate_and_string_length_issues(self):
+        """Test aggregate-path duplicate and string length validation."""
+        schema = Schema(
+            columns={
+                "id": ColumnSchema(name="id", dtype="Int64", unique=True),
+                "code": ColumnSchema(name="code", dtype="String", min_length=2, max_length=4),
+            }
+        )
+
+        data = {
+            "id": [1, 1, 2],
+            "code": ["A", "ABCD", "ABCDE"],
+        }
+        validator = SchemaValidator(schema)
+        issues = validator.validate(pl.DataFrame(data).lazy())
+
+        issue_counts = {issue.issue_type: issue.count for issue in issues}
+        assert issue_counts["duplicate_values"] == 1
+        assert issue_counts["string_too_short"] == 1
+        assert issue_counts["string_too_long"] == 1
+
+    def test_detects_pattern_mismatch(self):
+        """Test targeted regex validation without materializing the whole frame."""
+        schema = Schema(
+            columns={
+                "email": ColumnSchema(
+                    name="email",
+                    dtype="String",
+                    pattern=r"^[\w.+-]+@[\w-]+\.[\w.-]+$",
+                )
+            }
+        )
+
+        data = {"email": ["a@example.com", "not-an-email", None]}
+        validator = SchemaValidator(schema)
+        issues = validator.validate(pl.DataFrame(data).lazy())
+
+        pattern_issue = next(issue for issue in issues if issue.issue_type == "pattern_mismatch")
+        assert pattern_issue.count == 1
+
+    def test_only_targeted_checks_materialize_non_null_columns(self, monkeypatch):
+        """Test that targeted value checks only materialize the columns that need them."""
+        schema = Schema(
+            columns={
+                "id": ColumnSchema(name="id", dtype="Int64", unique=True),
+                "status": ColumnSchema(
+                    name="status",
+                    dtype="String",
+                    allowed_values=["active", "inactive"],
+                ),
+                "email": ColumnSchema(
+                    name="email",
+                    dtype="String",
+                    pattern=r"^[\w.+-]+@[\w-]+\.[\w.-]+$",
+                ),
+            }
+        )
+        validator = SchemaValidator(schema)
+        calls: list[str] = []
+        original = validator._collect_non_null_column
+
+        def tracked_collect(lf: pl.LazyFrame, col_name: str) -> pl.Series:
+            calls.append(col_name)
+            return original(lf, col_name)
+
+        monkeypatch.setattr(validator, "_collect_non_null_column", tracked_collect)
+
+        validator.validate(
+            pl.DataFrame(
+                {
+                    "id": [1, 1, 2],
+                    "status": ["active", "unknown", "inactive"],
+                    "email": ["a@example.com", "broken", None],
+                }
+            ).lazy()
+        )
+
+        assert calls == ["status", "email"]
 
 
 class TestCheckWithSchema:

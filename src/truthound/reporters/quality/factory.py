@@ -7,28 +7,29 @@ at runtime.
 
 from __future__ import annotations
 
-from typing import Any, Callable, Type
+from typing import TYPE_CHECKING, Any
 
 from truthound.reporters.quality.base import (
     BaseQualityReporter,
     QualityReporterError,
 )
-from truthound.reporters.quality.config import QualityReporterConfig
 from truthound.reporters.quality.reporters import (
     ConsoleQualityReporter,
-    JsonQualityReporter,
-    MarkdownQualityReporter,
     HtmlQualityReporter,
+    JsonQualityReporter,
     JUnitQualityReporter,
+    MarkdownQualityReporter,
 )
 
+if TYPE_CHECKING:
+    from truthound.reporters.quality.config import QualityReporterConfig
 
 # =============================================================================
 # Registry
 # =============================================================================
 
 # Type for reporter constructor
-QualityReporterConstructor = Callable[..., BaseQualityReporter[Any]]
+QualityReporterConstructor = type[BaseQualityReporter[Any]]
 
 # Registry of reporter constructors
 _quality_reporter_registry: dict[str, QualityReporterConstructor] = {}
@@ -47,7 +48,7 @@ _FORMAT_ALIASES: dict[str, str] = {
 # =============================================================================
 
 
-def register_quality_reporter(name: str) -> Callable[[QualityReporterConstructor], QualityReporterConstructor]:
+def register_quality_reporter(name: str):
     """Decorator to register a quality reporter type.
 
     Args:
@@ -192,10 +193,7 @@ def is_quality_format_available(format: str) -> bool:
     if format in _quality_reporter_registry:
         return True
 
-    if format in ("console", "json", "html", "markdown", "junit"):
-        return True
-
-    return False
+    return format in ("console", "json", "html", "markdown", "junit")
 
 
 # =============================================================================

@@ -27,25 +27,44 @@ markdown_output = get_reporter("markdown").render(run_result)
 get_reporter("html").write(run_result, "reports/data-quality.html")
 ```
 
+## Reporter Families
+
+Truthound has several reporter-related families. They are connected, but they
+are not all the same registry.
+
+| Family | Start here | Primary input | Notes |
+|--------|------------|---------------|-------|
+| Built-in validation reporters | `get_reporter(...)` | `ValidationRunResult` | Thin default registry for `console`, `json`, `markdown`, `html`, and CI aliases |
+| CI-native reporters | `truthound.reporters.ci` | `ValidationRunResult` | Provider-specific annotations, summaries, and CI artifacts |
+| SDK templates and custom authoring | `truthound.reporters.sdk` | `ValidationRunResult` | YAML/CSV/NDJSON/JUnit/table templates plus reporter authoring helpers |
+| Quality reporters | `truthound.reporters.quality` | quality score/reportable objects | Separate rule-quality score reporting subsystem |
+
+Use `get_quality_reporter(...)`, not `get_reporter(...)`, for quality score
+reports.
+
 ## Choose A Path
 
-### Use built-in factory reporters
+### Use built-in validation reporters
 
-Use `get_reporter(...)` when you want the standard Truthound formats:
+Use `get_reporter(...)` when you want the standard validation-run formats:
 
 - `console`
 - `json`
 - `markdown`
 - `html`
 - `ci`
-- `github`
-- `gitlab`
-- `jenkins`
-- `azure`
-- `circleci`
-- `bitbucket`
+- provider aliases such as `github`, `gitlab`, or `jenkins`
 
-### Use SDK template reporters
+### Use CI-native reporters
+
+Use `truthound.reporters.ci` when you need platform-native annotations, build
+summaries, or code-quality artifacts instead of generic JSON/Markdown files.
+
+Public input still starts from `ValidationRunResult`. The provider emitters
+internally convert that run into a `LegacyValidationResultView` compatibility
+projection for formatting.
+
+### Use SDK templates
 
 Use the SDK templates when you need extra export formats such as:
 
@@ -56,16 +75,25 @@ Use the SDK templates when you need extra export formats such as:
 - `TableReporter`
 
 These live under `truthound.reporters.sdk.templates` and are not part of the
-thin default factory surface.
+thin built-in `get_reporter(...)` surface.
 
 ### Build a custom reporter
 
 Use `ValidationReporter` or the reporter SDK when you want:
 
 - custom formatting rules
-- extra filtering/grouping
+- extra filtering or grouping
 - organization-specific exports
-- a reporter plugin that can be reused across projects
+- a reusable reporter plugin
+
+Start from `RunPresentation` first. Call `to_legacy_view()` only when a helper
+or mixin truly needs legacy-shaped rows.
+
+### Use quality reporters
+
+Use `truthound.reporters.quality` when you are reporting rule-quality scores
+from profiler workflows. This is a separate subsystem with its own factory,
+filters, engine, and CLI path.
 
 ## Input Model
 
@@ -123,6 +151,10 @@ from truthound.reporters import get_reporter
 github_reporter = get_reporter("github")
 exit_code = github_reporter.report_to_ci(run_result)
 ```
+
+The built-in factory exposes CI aliases, but the richer CI family lives under
+`truthound.reporters.ci` when you need direct control over provider-specific
+options.
 
 ## SDK Template Reporters
 
@@ -216,7 +248,8 @@ class SeveritySummaryReporter(ValidationReporter[ReporterConfig]):
 | JSON/YAML | machine-readable structured output | [JSON & YAML](json-yaml.md) |
 | HTML/Markdown | docs, artifacts, static publishing | [HTML & Markdown](html-markdown.md) |
 | CI/CD | platform annotations and summaries | [CI/CD Reporters](ci-reporters.md) |
-| SDK | custom reporter construction | [Reporter SDK](custom-sdk.md) |
+| SDK | custom reporter construction | [Reporter SDK](../reporter-sdk.md) |
+| Quality | rule-quality score reports and filters | [Quality Reporter Guide](../quality-reporter.md) |
 
 ## Troubleshooting
 
@@ -227,6 +260,9 @@ Use the SDK templates directly:
 ```python
 from truthound.reporters.sdk.templates import YAMLReporter, JUnitXMLReporter
 ```
+
+Those formats are part of the SDK template family, not the built-in validation
+reporter registry.
 
 ### I have a legacy report-like object
 
@@ -254,4 +290,5 @@ result rows.
 - [JSON & YAML](json-yaml.md)
 - [HTML & Markdown](html-markdown.md)
 - [CI/CD Reporters](ci-reporters.md)
-- [Reporter SDK](custom-sdk.md)
+- [Reporter SDK](../reporter-sdk.md)
+- [Quality Reporter Guide](../quality-reporter.md)

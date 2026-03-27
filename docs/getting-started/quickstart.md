@@ -20,6 +20,7 @@ run = th.check(
 )
 
 print(run.execution_mode)
+print(run.planned_execution_mode)
 print([issue.issue_type for issue in run.issues])
 print(run.metadata["context_root"])
 ```
@@ -31,12 +32,13 @@ print(run.metadata["context_root"])
 ```python
 print(run.source)
 print(run.execution_mode)
+print(run.planned_execution_mode)
 print([check.name for check in run.checks])
 print([issue.issue_type for issue in run.issues])
 print(run.metadata.get("context_run_artifact"))
 ```
 
-`ValidationRunResult` is the canonical runtime output for checkpoints, reporters, validation docs, and plugins.
+`ValidationRunResult` is the canonical runtime output for checkpoints, reporters, validation docs, and plugins. `execution_mode` reports what actually ran, while `planned_execution_mode` preserves the planner's coarse strategy. On larger sequential plans you may see `planned_execution_mode="sequential"` alongside `execution_mode="threadpool"`.
 
 ### Step 3: Inspect the project context
 

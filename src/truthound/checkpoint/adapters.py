@@ -3,17 +3,22 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from truthound.core.results import ValidationRunResult
 from truthound.reporters.presentation import (
-    LegacyStatisticsView,
-    LegacyStatusView,
-    LegacyValidatorResultView,
     build_run_presentation,
 )
-from truthound.validators.base import ValidationIssue
+
+if TYPE_CHECKING:
+    from datetime import datetime
+
+    from truthound.reporters.presentation import (
+        LegacyStatisticsView,
+        LegacyStatusView,
+        LegacyValidatorResultView,
+    )
+    from truthound.validators.base import ValidationIssue
 
 
 @dataclass(frozen=True)

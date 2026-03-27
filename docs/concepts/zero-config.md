@@ -66,6 +66,8 @@ When a caller runs `th.check(data)` without explicitly providing validators:
 
 `validators=None` does not mean "run every validator." The auto-suite path is rule-based and deterministic.
 
+Think of it as a safe starter path rather than a full production policy generator.
+
 Current selection rules are:
 
 - always include schema validation when a baseline or explicit schema exists
@@ -74,7 +76,7 @@ Current selection rules are:
 - add range checks for numeric columns
 - add uniqueness only for columns that look key-like from profile and naming heuristics
 
-The builder intentionally avoids expensive or probabilistic checks unless they are explicitly eligible.
+By default this means the zero-config path stays centered on schema, nullability, type, range, and uniqueness coverage. It intentionally does not auto-enable drift, anomaly detection, referential integrity, or domain-specific rules. Once you move from first-run onboarding to operating a stable data contract, switch to explicit suites or the relevant advanced namespaces.
 
 ## Exact-By-Default Behavior
 

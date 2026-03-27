@@ -141,13 +141,13 @@ When `validators=None`, Truthound does not run every validator. It invokes a det
 `ScanPlanner` then owns the execution planning concerns that previously leaked through the API or validator base layer:
 
 - duplicate check accounting
+- coarse execution mode selection
 - parallel eligibility
 - pushdown eligibility
 - backend routing metadata
-- metric deduplication
-- aggregate query fusion opportunities
+- execution metadata handed off to validator optimization utilities
 
-The planner is intentionally narrow. It should decide *how* a suite should run, not *perform* the validation itself.
+Metric deduplication and aggregate fusion live below the planner in validator execution utilities and optimization helpers. The planner is intentionally narrow: it should decide *how* a suite should run, not *perform* the validation itself.
 
 ## Runtime Responsibilities
 
@@ -180,8 +180,10 @@ Core deterministic checks are exact by default. Sampling or sketches are allowed
 - aggregate verdicts through `CheckResult`
 - issue evidence through `ValidationIssue`
 - runtime failures through `ExecutionIssue`
+- actual runtime behavior through `execution_mode`
+- planner-selected coarse strategy through `planned_execution_mode`
 
-Convenience methods such as `render()`, `write()`, and `build_docs()` live on the result object, but they are facades over reporter and datadocs services rather than alternate result models.
+Convenience methods such as `render()`, `write()`, and `build_docs()` live on the result object, but they are lazy-import facades over reporter and datadocs services rather than alternate result models or pure core primitives.
 
 ## Presentation Boundary
 

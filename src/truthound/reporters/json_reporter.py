@@ -12,8 +12,8 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from truthound.reporters.base import (
-    ReporterConfig,
     RenderError,
+    ReporterConfig,
     ValidationReporter,
 )
 
@@ -84,7 +84,7 @@ class JSONReporter(ValidationReporter[JSONReporterConfig]):
 
         raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 
-    def _prepare_data(self, presentation: "RunPresentation") -> dict[str, Any]:
+    def _prepare_data(self, presentation: RunPresentation) -> dict[str, Any]:
         """Prepare validation result data for JSON serialization.
 
         Args:
@@ -106,6 +106,8 @@ class JSONReporter(ValidationReporter[JSONReporterConfig]):
             "data_asset": presentation.source,
             "status": presentation.status,
             "success": presentation.success,
+            "execution_mode": presentation.execution_mode,
+            "planned_execution_mode": presentation.planned_execution_mode,
         }
 
         # Metadata
@@ -168,7 +170,7 @@ class JSONReporter(ValidationReporter[JSONReporterConfig]):
             return [self._remove_null_values(item) for item in obj if item is not None]
         return obj
 
-    def render(self, data: "ValidationRunResult") -> str:
+    def render(self, data: ValidationRunResult) -> str:
         """Render validation result as JSON.
 
         Args:
@@ -193,9 +195,9 @@ class JSONReporter(ValidationReporter[JSONReporterConfig]):
             )
 
         except (TypeError, ValueError) as e:
-            raise RenderError(f"Failed to render JSON: {e}")
+            raise RenderError(f"Failed to render JSON: {e}") from e
 
-    def render_compact(self, data: "ValidationRunResult") -> str:
+    def render_compact(self, data: ValidationRunResult) -> str:
         """Render validation result as compact JSON (no whitespace).
 
         Args:
@@ -211,7 +213,7 @@ class JSONReporter(ValidationReporter[JSONReporterConfig]):
         finally:
             self._config.indent = original_indent
 
-    def render_lines(self, data: "ValidationRunResult") -> str:
+    def render_lines(self, data: ValidationRunResult) -> str:
         """Render validation result as JSON Lines (NDJSON) format.
 
         Each issue is output as a separate JSON object on its own line.
@@ -232,6 +234,8 @@ class JSONReporter(ValidationReporter[JSONReporterConfig]):
             "data_asset": presentation.source,
             "run_time": presentation.run_time.isoformat(),
             "status": presentation.status,
+            "execution_mode": presentation.execution_mode,
+            "planned_execution_mode": presentation.planned_execution_mode,
         }
         lines.append(json.dumps(header, default=self._json_serializer))
 

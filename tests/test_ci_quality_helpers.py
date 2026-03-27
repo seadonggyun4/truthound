@@ -27,6 +27,17 @@ def _load_module(script_name: str):
     return module
 
 
+def _load_ruff_ratchet_manifest() -> list[dict[str, object]]:
+    manifest_path = (
+        Path(__file__).resolve().parents[1]
+        / "verification"
+        / "ci"
+        / "ruff_ratchet_targets.toml"
+    )
+    manifest = tomllib.loads(manifest_path.read_text(encoding="utf-8"))
+    return manifest["target"]
+
+
 @pytest.mark.contract
 def test_build_quality_shards_writes_balanced_manifests(tmp_path: Path):
     module = _load_module("build_quality_shards.py")
@@ -302,20 +313,28 @@ def test_tests_pr_workflow_uses_sharded_quality_gate():
         / "tests-pr.yml"
     )
     workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    ratchet_targets = [target["name"] for target in _load_ruff_ratchet_manifest()]
 
     assert workflow["name"] == "Tests PR"
     assert workflow["concurrency"]["cancel-in-progress"] is True
     assert "quality-collect" in workflow["jobs"]
     assert "quality-contract" in workflow["jobs"]
     assert "quality-fault-e2e" in workflow["jobs"]
+    assert "quality-ruff-ratchet" in workflow["jobs"]
     assert "quality-gate" in workflow["jobs"]
     assert workflow["jobs"]["quality-contract"]["strategy"]["matrix"]["shard_id"] == [0, 1, 2, 3]
-    assert workflow["jobs"]["quality-gate"]["needs"] == ["quality-contract", "quality-fault-e2e"]
+    assert workflow["jobs"]["quality-ruff-ratchet"]["strategy"]["matrix"]["target"] == ratchet_targets
+    assert workflow["jobs"]["quality-gate"]["needs"] == [
+        "quality-contract",
+        "quality-fault-e2e",
+        "quality-ruff-ratchet",
+    ]
     collect_steps = workflow["jobs"]["quality-collect"]["steps"]
     e2e_step = next(step for step in collect_steps if step.get("name") == "Collect e2e nodes")
     assert '[ "$status" -ne 5 ]' in e2e_step["run"]
     contract_steps = workflow["jobs"]["quality-contract"]["steps"]
     fault_steps = workflow["jobs"]["quality-fault-e2e"]["steps"]
+    ratchet_steps = workflow["jobs"]["quality-ruff-ratchet"]["steps"]
     contract_download = next(
         step for step in contract_steps if step.get("name") == "Download quality shard artifacts"
     )
@@ -324,12 +343,75 @@ def test_tests_pr_workflow_uses_sharded_quality_gate():
     )
     contract_run = next(step for step in contract_steps if step.get("name") == "Run contract shard")
     fault_run = next(step for step in fault_steps if step.get("name") == "Run fault and e2e manifest")
+    ratchet_run = next(
+        step for step in ratchet_steps if step.get("name") == "Run ruff ratchet target"
+    )
     assert contract_download["with"]["path"] == "test-artifacts"
     assert fault_download["with"]["path"] == "test-artifacts"
     assert "--pytest-arg=-m" in contract_run["run"]
     assert "contract and not (fault or e2e)" in contract_run["run"]
     assert "--pytest-arg=-m" in fault_run["run"]
     assert "fault or e2e" in fault_run["run"]
+    assert "run_ruff_ratchet.py" in ratchet_run["run"]
+    assert "--target ${{ matrix.target }}" in ratchet_run["run"]
+
+
+@pytest.mark.contract
+def test_ruff_ratchet_manifest_tracks_clean_boundaries():
+    targets = _load_ruff_ratchet_manifest()
+
+    assert [target["name"] for target in targets] == ["reporters", "checkpoint-top-level"]
+    assert targets[0]["paths"] == ["src/truthound/reporters"]
+    assert targets[1]["paths"] == [
+        "src/truthound/checkpoint/__init__.py",
+        "src/truthound/checkpoint/adapters.py",
+        "src/truthound/checkpoint/checkpoint.py",
+        "src/truthound/checkpoint/runner.py",
+        "src/truthound/checkpoint/async_checkpoint.py",
+        "src/truthound/checkpoint/async_runner.py",
+        "src/truthound/checkpoint/_result_helpers.py",
+        "src/truthound/checkpoint/_validation.py",
+    ]
+
+
+@pytest.mark.contract
+def test_run_ruff_ratchet_lists_manifest_targets():
+    script_path = (
+        Path(__file__).resolve().parents[1]
+        / "verification"
+        / "ci"
+        / "run_ruff_ratchet.py"
+    )
+    result = subprocess.run(
+        [sys.executable, str(script_path), "--list"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "reporters" in result.stdout
+    assert "checkpoint-top-level" in result.stdout
+
+
+@pytest.mark.contract
+@pytest.mark.parametrize("target_name", ["reporters", "checkpoint-top-level"])
+def test_run_ruff_ratchet_smoke(target_name: str):
+    script_path = (
+        Path(__file__).resolve().parents[1]
+        / "verification"
+        / "ci"
+        / "run_ruff_ratchet.py"
+    )
+    result = subprocess.run(
+        [sys.executable, str(script_path), "--target", target_name],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert f"Running ruff ratchet target '{target_name}'" in result.stdout
 
 
 @pytest.mark.contract
@@ -343,10 +425,13 @@ def test_tests_nightly_workflow_publishes_collect_summary():
     workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
     steps = workflow["jobs"]["nightly-chaos"]["steps"]
     step_names = [step.get("name", "") for step in steps]
+    ratchet_step = next(step for step in steps if step.get("name") == "Run ruff ratchets")
 
+    assert "Run ruff ratchets" in step_names
     assert "Collect nightly lane summary" in step_names
     assert "Write nightly selection summary" in step_names
     assert "Upload nightly test artifacts" in step_names
+    assert "run_ruff_ratchet.py --all" in ratchet_step["run"]
 
 
 @pytest.mark.contract

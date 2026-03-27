@@ -116,7 +116,8 @@ Scaffolded reporters are built on these current 3.0 concepts:
 - `ReporterConfig`
 - `ValidationRunResult`
 - `RunPresentation`
-- compatibility rows via `presentation.to_legacy_view()`
+- compatibility rows via `presentation.to_legacy_view()` only when a helper or
+  formatter truly needs legacy-shaped rows
 
 When you need issue metadata in generated or custom code, use fields like:
 
@@ -138,5 +139,5 @@ After generating the scaffold:
 ## See Also
 
 - [Reporters Guide](../../guides/reporters/index.md)
-- [Reporter SDK](../../guides/reporters/custom-sdk.md)
+- [Reporter SDK](../../guides/reporter-sdk.md)
 - [Python API: Reporters](../../python-api/reporters.md)

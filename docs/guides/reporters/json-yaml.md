@@ -3,6 +3,9 @@
 Use JSON when machines consume the output. Use YAML when humans need a
 structured export that is still easy to read and diff.
 
+JSON belongs to the built-in validation reporter registry. YAML and NDJSON are
+SDK template reporters and are not part of `get_reporter(...)`.
+
 ## JSON Reporter
 
 `json` is part of the built-in reporter factory surface.
@@ -38,7 +41,7 @@ The JSON payload is presentation-oriented and built from the canonical
 
 ## YAML Reporter
 
-YAML output is provided by the SDK template reporter:
+YAML output is provided by the SDK template reporter family:
 
 ```python
 from truthound.reporters.sdk.templates import YAMLReporter
@@ -111,6 +114,8 @@ YAMLReporter().write(run_result, "validation.yaml")
 - `YAMLReporter` requires `PyYAML`.
 - `NDJSONReporter` ships with the reporter SDK templates and has no extra
   external dependency beyond the SDK surface.
+- `YAMLReporter` and `NDJSONReporter` are not part of the built-in
+  `get_reporter(...)` registry.
 
 ## Choose The Right Format
 

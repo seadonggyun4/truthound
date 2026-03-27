@@ -24,18 +24,14 @@ Example:
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Callable, Generic, Sequence, TypeVar
+from typing import TYPE_CHECKING, Generic, TypeVar
 
-from truthound.reporters.quality.protocols import (
-    QualityFilterProtocol,
-    QualityReportable,
-)
-from truthound.reporters.quality.config import QualityFilterConfig
+from truthound.reporters.quality.protocols import QualityReportable
 
 if TYPE_CHECKING:
-    from truthound.profiler.quality import QualityLevel, RuleQualityScore
+    from collections.abc import Callable, Sequence
 
+    from truthound.reporters.quality.config import QualityFilterConfig
 
 # =============================================================================
 # Type Variables
@@ -111,7 +107,7 @@ class BaseQualityFilter(ABC, Generic[ScoreT]):
         """
         return [s for s in scores if self.matches(s)]
 
-    def and_(self, other: "BaseQualityFilter[ScoreT]") -> "CompositeFilter[ScoreT]":
+    def and_(self, other: BaseQualityFilter[ScoreT]) -> CompositeFilter[ScoreT]:
         """Combine with another filter using AND.
 
         Args:
@@ -126,7 +122,7 @@ class BaseQualityFilter(ABC, Generic[ScoreT]):
             name=f"({self.name} AND {other.name})",
         )
 
-    def or_(self, other: "BaseQualityFilter[ScoreT]") -> "CompositeFilter[ScoreT]":
+    def or_(self, other: BaseQualityFilter[ScoreT]) -> CompositeFilter[ScoreT]:
         """Combine with another filter using OR.
 
         Args:
@@ -141,7 +137,7 @@ class BaseQualityFilter(ABC, Generic[ScoreT]):
             name=f"({self.name} OR {other.name})",
         )
 
-    def not_(self) -> "NotFilter[ScoreT]":
+    def not_(self) -> NotFilter[ScoreT]:
         """Negate this filter.
 
         Returns:
@@ -149,15 +145,15 @@ class BaseQualityFilter(ABC, Generic[ScoreT]):
         """
         return NotFilter(self)
 
-    def __and__(self, other: "BaseQualityFilter[ScoreT]") -> "CompositeFilter[ScoreT]":
+    def __and__(self, other: BaseQualityFilter[ScoreT]) -> CompositeFilter[ScoreT]:
         """Support & operator."""
         return self.and_(other)
 
-    def __or__(self, other: "BaseQualityFilter[ScoreT]") -> "CompositeFilter[ScoreT]":
+    def __or__(self, other: BaseQualityFilter[ScoreT]) -> CompositeFilter[ScoreT]:
         """Support | operator."""
         return self.or_(other)
 
-    def __invert__(self) -> "NotFilter[ScoreT]":
+    def __invert__(self) -> NotFilter[ScoreT]:
         """Support ~ operator."""
         return self.not_()
 
@@ -391,10 +387,7 @@ class ConfidenceFilter(BaseQualityFilter[ScoreT]):
 
         if self._min_value is not None and confidence < self._min_value:
             return False
-        if self._max_value is not None and confidence > self._max_value:
-            return False
-
-        return True
+        return self._max_value is None or confidence <= self._max_value
 
 
 class ColumnFilter(BaseQualityFilter[ScoreT]):
@@ -437,10 +430,7 @@ class ColumnFilter(BaseQualityFilter[ScoreT]):
         if self._include and column not in self._include:
             return False
 
-        if self._pattern and not self._pattern.match(column):
-            return False
-
-        return True
+        return not self._pattern or bool(self._pattern.match(column))
 
 
 class RuleTypeFilter(BaseQualityFilter[ScoreT]):
@@ -477,10 +467,7 @@ class RuleTypeFilter(BaseQualityFilter[ScoreT]):
         if self._exclude and type_str in self._exclude:
             return False
 
-        if self._include and type_str not in self._include:
-            return False
-
-        return True
+        return not self._include or type_str in self._include
 
 
 class RecommendationFilter(BaseQualityFilter[ScoreT]):
@@ -507,15 +494,10 @@ class RecommendationFilter(BaseQualityFilter[ScoreT]):
 
     def matches(self, score: ScoreT) -> bool:
         """Check if recommendation matches criteria."""
-        if self._should_use is not None:
-            if score.should_use != self._should_use:
-                return False
+        if self._should_use is not None and score.should_use != self._should_use:
+            return False
 
-        if self._contains:
-            if self._contains not in score.recommendation.lower():
-                return False
-
-        return True
+        return not self._contains or self._contains in score.recommendation.lower()
 
 
 class CustomFilter(BaseQualityFilter[ScoreT]):

@@ -20,6 +20,7 @@ def _sample_validation_run() -> ValidationRunResult:
         column_count=3,
         result_format=ResultFormat.SUMMARY,
         execution_mode="sequential",
+        planned_execution_mode="sequential",
         checks=(
             CheckResult(
                 name="unique_check",
@@ -69,3 +70,25 @@ def test_checkpoint_result_exposes_validation_run_and_view_only():
     restored = CheckpointResult.from_dict(checkpoint_result.to_dict())
     assert restored.validation_run is not None
     assert restored.validation_run.to_dict() == run_result.to_dict()
+
+
+def test_validation_run_result_from_dict_recovers_planned_mode_for_legacy_payload() -> None:
+    legacy_payload = {
+        "run_id": "legacy_run",
+        "run_time": "2026-03-19T13:00:00",
+        "suite_name": "legacy_suite",
+        "source": "legacy.csv",
+        "row_count": 10,
+        "column_count": 2,
+        "result_format": "summary",
+        "execution_mode": "parallel",
+        "checks": [],
+        "issues": [],
+        "execution_issues": [],
+        "metadata": {},
+    }
+
+    restored = ValidationRunResult.from_dict(legacy_payload)
+
+    assert restored.execution_mode == "parallel"
+    assert restored.planned_execution_mode == "parallel"

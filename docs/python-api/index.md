@@ -58,6 +58,7 @@ Truthound 3.0 keeps the root package intentionally small:
 - `th.check()` returns `ValidationRunResult`
 - advanced core-adjoining capabilities live in namespaces such as `truthound.drift`, `truthound.checkpoint`, and `truthound.reporters`
 - reporters, checkpoints, and Data Docs are outer services built on the same canonical core result model
+- result helpers such as `render()`, `write()`, and `build_docs()` are convenience facades that lazy-import those outer services
 
 Start with [Core Functions](core-functions.md) if you want the most important
 runtime contract first.

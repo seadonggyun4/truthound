@@ -38,7 +38,8 @@ def _sample_run_result() -> ValidationRunResult:
         row_count=100,
         column_count=4,
         result_format=ResultFormat.SUMMARY,
-        execution_mode="parallel",
+        execution_mode="threadpool",
+        planned_execution_mode="sequential",
         checks=(
             CheckResult(
                 name="null_check",
@@ -81,6 +82,8 @@ def test_json_reporter_accepts_validation_run_result_directly():
 
     assert rendered["result"]["run_id"] == run_result.run_id
     assert rendered["result"]["data_asset"] == "customers.csv"
+    assert rendered["result"]["execution_mode"] == "threadpool"
+    assert rendered["result"]["planned_execution_mode"] == "sequential"
     assert rendered["statistics"]["total_validators"] == 2
     assert rendered["issues"][0]["validator_name"] == "null_check"
 

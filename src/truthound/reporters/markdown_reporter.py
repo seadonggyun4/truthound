@@ -8,16 +8,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from truthound.reporters.base import (
-    ReporterConfig,
     RenderError,
+    ReporterConfig,
     ValidationReporter,
 )
-
-if TYPE_CHECKING:
-    from truthound.reporters.presentation import RunPresentation
 
 
 @dataclass
@@ -162,6 +159,8 @@ class MarkdownReporter(ValidationReporter[MarkdownReporterConfig]):
             sections.append(f"- **Run ID**: `{presentation.run_id}`")
             sections.append(f"- **Run Time**: {presentation.run_time.strftime(self._config.timestamp_format)}")
             sections.append(f"- **Status**: {'✅ Passed' if presentation.success else '❌ Failed'}")
+            sections.append(f"- **Execution Mode**: `{presentation.execution_mode}`")
+            sections.append(f"- **Planned Execution Mode**: `{presentation.planned_execution_mode}`")
             sections.append("")
 
             # Statistics
@@ -279,4 +278,4 @@ class MarkdownReporter(ValidationReporter[MarkdownReporterConfig]):
             return "\n".join(sections)
 
         except Exception as e:
-            raise RenderError(f"Failed to render Markdown: {e}")
+            raise RenderError(f"Failed to render Markdown: {e}") from e

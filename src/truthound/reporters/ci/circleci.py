@@ -17,16 +17,20 @@ import json
 import os
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from xml.etree import ElementTree as ET
 
 from truthound.reporters.ci.base import (
+    AnnotationLevel,
     BaseCIReporter,
     CIAnnotation,
     CIPlatform,
     CIReporterConfig,
-    AnnotationLevel,
 )
+
+if TYPE_CHECKING:
+    from truthound.reporters.presentation import LegacyValidationResultView
+
 
 @dataclass
 class CircleCIConfig(CIReporterConfig):
@@ -151,7 +155,7 @@ class CircleCIReporter(BaseCIReporter):
     # JUnit XML Format
     # =========================================================================
 
-    def generate_junit_report(self, result: "ValidationResult") -> str:
+    def generate_junit_report(self, result: LegacyValidationResultView) -> str:
         """Generate JUnit XML for CircleCI test results.
 
         Creates JUnit XML optimized for CircleCI's test metadata features
@@ -208,7 +212,7 @@ class CircleCIReporter(BaseCIReporter):
 
         return self._to_xml_string(testsuites)
 
-    def _group_validators(self, result: "ValidationResult") -> dict[str, list[Any]]:
+    def _group_validators(self, result: LegacyValidationResultView) -> dict[str, list[Any]]:
         """Group validators by category/column.
 
         Args:
@@ -284,7 +288,7 @@ class CircleCIReporter(BaseCIReporter):
     # JSON Report Format
     # =========================================================================
 
-    def generate_json_report(self, result: "ValidationResult") -> str:
+    def generate_json_report(self, result: LegacyValidationResultView) -> str:
         """Generate JSON report for artifacts.
 
         Args:
@@ -326,7 +330,7 @@ class CircleCIReporter(BaseCIReporter):
     # Insights Format
     # =========================================================================
 
-    def generate_insights_data(self, result: "ValidationResult") -> dict[str, Any]:
+    def generate_insights_data(self, result: LegacyValidationResultView) -> dict[str, Any]:
         """Generate data for CircleCI Insights.
 
         This format is useful for tracking validation metrics over time.
@@ -355,7 +359,7 @@ class CircleCIReporter(BaseCIReporter):
     # Summary Format
     # =========================================================================
 
-    def format_summary(self, result: "ValidationResult") -> str:
+    def format_summary(self, result: LegacyValidationResultView) -> str:
         """Format a summary for CircleCI console.
 
         Args:
@@ -469,7 +473,7 @@ class CircleCIReporter(BaseCIReporter):
 
         return self.get_exit_code(legacy_result)
 
-    def _write_junit_artifact(self, result: "ValidationResult") -> None:
+    def _write_junit_artifact(self, result: LegacyValidationResultView) -> None:
         """Write JUnit XML artifact.
 
         Args:
@@ -489,7 +493,7 @@ class CircleCIReporter(BaseCIReporter):
         print(f"\n\033[0;90mTest results written to: {path}\033[0m")
         print(f"\033[0;90mAdd 'store_test_results' step with path: {test_results_dir}\033[0m")
 
-    def _write_json_artifact(self, result: "ValidationResult") -> None:
+    def _write_json_artifact(self, result: LegacyValidationResultView) -> None:
         """Write JSON artifact.
 
         Args:

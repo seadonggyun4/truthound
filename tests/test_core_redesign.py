@@ -1,5 +1,3 @@
-import polars as pl
-
 import truthound as th
 from truthound.core import ScanPlanner, ValidationRuntime, ValidationSuite, build_validation_asset
 from truthound.core.results import CheckResult, ValidationRunResult
@@ -12,7 +10,8 @@ def test_check_returns_validation_run_result():
 
     assert isinstance(run, ValidationRunResult)
     assert run.source == 'dict'
-    assert run.execution_mode in {'sequential', 'parallel', 'pushdown'}
+    assert run.execution_mode in {'sequential', 'threadpool', 'parallel', 'pushdown'}
+    assert run.planned_execution_mode in {'sequential', 'parallel', 'pushdown'}
     assert any(check.name == 'null' for check in run.checks)
 
 
@@ -117,3 +116,27 @@ def test_legacy_check_facade_matches_core_runtime():
     assert attached == expected_run
     for key, value in expected_metadata.items():
         assert attached_metadata.get(key) == value
+
+
+def test_validation_runtime_reports_threadpool_as_actual_mode():
+    suite = ValidationSuite.from_legacy(validators=["null", "null", "null", "null", "null"])
+    asset = build_validation_asset({"id": [1, 2, 3], "email": [None, "a@example.com", "b@example.com"]})
+    plan = ScanPlanner().plan(suite=suite, asset=asset)
+
+    run_result = ValidationRuntime().execute(asset=asset, plan=plan)
+
+    assert plan.planned_execution_mode == "sequential"
+    assert run_result.planned_execution_mode == "sequential"
+    assert run_result.execution_mode == "threadpool"
+
+
+def test_validation_runtime_reports_parallel_mode_when_requested():
+    suite = ValidationSuite.from_legacy(validators=["null", "unique"])
+    asset = build_validation_asset({"id": [1, 2], "email": [None, "a@example.com"]})
+    plan = ScanPlanner().plan(suite=suite, asset=asset, parallel=True)
+
+    run_result = ValidationRuntime().execute(asset=asset, plan=plan)
+
+    assert plan.planned_execution_mode == "parallel"
+    assert run_result.planned_execution_mode == "parallel"
+    assert run_result.execution_mode == "parallel"

@@ -7,13 +7,14 @@ around these protocols to ensure extensibility and testability.
 
 from __future__ import annotations
 
-from abc import abstractmethod
 from dataclasses import dataclass
-from datetime import datetime
-from typing import TYPE_CHECKING, Any, Protocol, Sequence, TypeVar, runtime_checkable
+from typing import TYPE_CHECKING, Any, Protocol, TypeVar, runtime_checkable
 
 if TYPE_CHECKING:
-    from truthound.profiler.quality import QualityLevel, QualityMetrics, RuleQualityScore
+    from collections.abc import Sequence
+    from datetime import datetime
+
+    from truthound.profiler.quality import QualityLevel, QualityMetrics
 
 
 # =============================================================================
@@ -44,7 +45,7 @@ class QualityReportable(Protocol):
         ...
 
     @property
-    def metrics(self) -> "QualityMetrics":
+    def metrics(self) -> QualityMetrics:
         """Quality metrics for the rule."""
         ...
 
@@ -93,7 +94,7 @@ class QualityMetricsProtocol(Protocol):
         ...
 
     @property
-    def quality_level(self) -> "QualityLevel":
+    def quality_level(self) -> QualityLevel:
         """Quality level classification."""
         ...
 
@@ -144,15 +145,15 @@ class QualityFilterProtocol(Protocol[ScoreT]):
         """
         ...
 
-    def and_(self, other: "QualityFilterProtocol[ScoreT]") -> "QualityFilterProtocol[ScoreT]":
+    def and_(self, other: QualityFilterProtocol[ScoreT]) -> QualityFilterProtocol[ScoreT]:
         """Combine with another filter using AND logic."""
         ...
 
-    def or_(self, other: "QualityFilterProtocol[ScoreT]") -> "QualityFilterProtocol[ScoreT]":
+    def or_(self, other: QualityFilterProtocol[ScoreT]) -> QualityFilterProtocol[ScoreT]:
         """Combine with another filter using OR logic."""
         ...
 
-    def not_(self) -> "QualityFilterProtocol[ScoreT]":
+    def not_(self) -> QualityFilterProtocol[ScoreT]:
         """Negate this filter."""
         ...
 

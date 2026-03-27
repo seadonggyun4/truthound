@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from pathlib import Path
 import re
-
+from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 DOCS_ROOT = REPO_ROOT / "docs"
@@ -167,3 +166,84 @@ def test_dashboard_term_is_disambiguated_for_datadocs_ui() -> None:
         text = _read(rel_path)
         assert "Truthound Dashboard" in text, rel_path
         assert "Data Docs dashboard" in text or "Data Docs Dashboard UI" in text, rel_path
+
+
+def test_architecture_docs_keep_planner_scope_honest() -> None:
+    text = _read("docs/concepts/architecture.md").lower()
+
+    assert "duplicate check accounting" in text
+    assert "parallel eligibility" in text
+    assert "pushdown eligibility" in text
+    assert "- metric deduplication" not in text
+    assert "- aggregate query fusion" not in text
+    assert "validator execution utilities" in text or "optimization helpers" in text
+
+
+def test_zero_config_docs_describe_auto_suite_as_safe_starter_path() -> None:
+    text = _read("docs/concepts/zero-config.md").lower()
+
+    assert "safe starter path" in text
+    assert "schema, nullability, type, range, and uniqueness" in text
+    assert "drift, anomaly detection, referential integrity, or domain-specific rules" in text
+    assert "explicit suites" in text
+
+
+def test_core_function_docs_explain_result_facade_and_execution_modes() -> None:
+    text = _read("docs/python-api/core-functions.md").lower()
+
+    assert "execution_mode`: the actual runtime mode" in text
+    assert "planned_execution_mode`: the coarse planner strategy" in text
+    assert "lazy-import outer reporter/datadocs services" in text
+
+
+def test_reporter_api_docs_define_reporter_families() -> None:
+    text = _read("docs/python-api/reporters.md")
+
+    assert "ValidationRunResult" in text
+    assert "get_reporter(...)" in text
+    assert "built-in registry" in text
+    assert "SDK templates" in text
+    assert "truthound.reporters.quality" in text
+    assert "not part of the built-in `get_reporter(...)` registry" in text
+
+
+def test_reporters_guide_distinguishes_registry_ci_sdk_and_quality_families() -> None:
+    text = _read("docs/guides/reporters/index.md")
+
+    assert "Built-in validation reporters" in text
+    assert "CI-native reporters" in text
+    assert "SDK templates and custom authoring" in text
+    assert "Quality reporters" in text
+    assert "Use `get_quality_reporter(...)`, not `get_reporter(...)`" in text
+
+
+def test_ci_reporter_docs_explain_public_input_and_internal_projection() -> None:
+    text = _read("docs/guides/reporters/ci-reporters.md")
+
+    assert "ValidationRunResult" in text
+    assert "LegacyValidationResultView" in text
+    assert "compatibility projection" in text
+    assert "external caller input" in text
+
+
+def test_reporter_sdk_docs_have_one_canonical_page_and_one_bridge() -> None:
+    canonical = _read("docs/guides/reporter-sdk.md")
+    bridge = _read("docs/guides/reporters/custom-sdk.md")
+
+    assert "canonical SDK contract page" in canonical
+    assert "RunPresentation" in canonical
+    assert "to_legacy_view()" in canonical
+    assert "only when" in canonical
+
+    assert "compatibility bridge" in bridge
+    assert "[Reporter SDK](../reporter-sdk.md)" in bridge
+    assert "If you arrived here from the reporters guide" in bridge
+
+
+def test_quality_reporter_docs_are_disambiguated_from_validation_run_reporters() -> None:
+    text = _read("docs/guides/quality-reporter.md")
+
+    assert "rule quality score reporting subsystem" in text
+    assert "get_quality_reporter(...)" in text
+    assert "ValidationRunResult" in text
+    assert "not part of the main `truthound.reporters`" in text

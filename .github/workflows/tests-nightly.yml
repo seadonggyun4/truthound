@@ -20,6 +20,9 @@ jobs:
       - name: Install project with dev extras
         run: uv pip install --system ".[dev]"
 
+      - name: Run ruff ratchets
+        run: python verification/ci/run_ruff_ratchet.py --all
+
       - name: Verify pytest collection
         run: python -m pytest --collect-only -q tests
 

@@ -1,14 +1,20 @@
 from __future__ import annotations
 
-from concurrent.futures import ThreadPoolExecutor
-from typing import Any
 import logging
+from concurrent.futures import ThreadPoolExecutor
+from typing import TYPE_CHECKING, Any
 
-from truthound.core.contracts import DataAsset
-from truthound.core.planning import ScanPlan
+from truthound.core.execution_modes import (
+    PlannedExecutionMode,
+    RuntimeExecutionMode,
+)
 from truthound.core.results import ExecutionIssue, ValidationRunResult
 from truthound.types import Severity
 from truthound.validators.base import ValidationIssue, _validate_safe
+
+if TYPE_CHECKING:
+    from truthound.core.contracts import DataAsset
+    from truthound.core.planning import ScanPlan
 
 logger = logging.getLogger(__name__)
 
@@ -17,23 +23,34 @@ class ValidationRuntime:
     def execute(self, *, asset: DataAsset, plan: ScanPlan) -> ValidationRunResult:
         validator_instances = [step.check.build_validator() for step in plan.steps]
         execution_issues: list[ExecutionIssue] = []
+        actual_execution_mode = RuntimeExecutionMode.SEQUENTIAL.value
 
-        if plan.execution_mode == 'pushdown' and getattr(asset, 'sql_source', None) is not None:
+        if (
+            plan.planned_execution_mode == PlannedExecutionMode.PUSHDOWN.value
+            and getattr(asset, 'sql_source', None) is not None
+        ):
             from truthound.validators.pushdown_support import PushdownValidationEngine
 
             issues = PushdownValidationEngine(asset.sql_source).validate(validator_instances)
-        elif plan.execution_mode == 'parallel' and len(validator_instances) > 1:
+            actual_execution_mode = RuntimeExecutionMode.PUSHDOWN.value
+        elif (
+            plan.planned_execution_mode == PlannedExecutionMode.PARALLEL.value
+            and len(validator_instances) > 1
+        ):
             issues = self._execute_parallel(
                 asset=asset,
                 validator_instances=validator_instances,
                 max_workers=plan.max_workers,
             )
+            actual_execution_mode = RuntimeExecutionMode.PARALLEL.value
         else:
-            issues, execution_issues = self._execute_sequential(
+            issues, execution_issues, used_threadpool = self._execute_sequential(
                 asset=asset,
                 validator_instances=validator_instances,
                 max_workers=plan.max_workers,
             )
+            if used_threadpool:
+                actual_execution_mode = RuntimeExecutionMode.THREADPOOL.value
 
         return ValidationRunResult.from_suite(
             suite=plan.suite,
@@ -41,7 +58,8 @@ class ValidationRuntime:
             source=asset.name,
             row_count=asset.row_count,
             column_count=asset.column_count,
-            execution_mode=plan.execution_mode,
+            execution_mode=actual_execution_mode,
+            planned_execution_mode=plan.planned_execution_mode,
             execution_issues=execution_issues,
             metadata={
                 **plan.metadata,
@@ -81,10 +99,11 @@ class ValidationRuntime:
         asset: DataAsset,
         validator_instances: list[Any],
         max_workers: int | None = None,
-    ) -> tuple[list[ValidationIssue], list[ExecutionIssue]]:
+    ) -> tuple[list[ValidationIssue], list[ExecutionIssue], bool]:
         lf = asset.to_lazyframe()
         all_issues: list[ValidationIssue] = []
         execution_issues: list[ExecutionIssue] = []
+        used_threadpool = False
 
         def run_single(validator: Any) -> tuple[list[ValidationIssue], list[ExecutionIssue]]:
             retries = getattr(getattr(validator, 'config', None), 'max_retries', 0)
@@ -128,9 +147,10 @@ class ValidationRuntime:
                 all_issues.extend(issues)
                 execution_issues.extend(exec_issues)
         else:
+            used_threadpool = True
             with ThreadPoolExecutor(max_workers=max_workers or 4) as executor:
                 for issues, exec_issues in executor.map(run_single, validator_instances):
                     all_issues.extend(issues)
                     execution_issues.extend(exec_issues)
 
-        return all_issues, execution_issues
+        return all_issues, execution_issues, used_threadpool

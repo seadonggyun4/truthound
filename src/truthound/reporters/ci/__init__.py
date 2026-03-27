@@ -25,13 +25,16 @@ Example:
     >>> reporter.report(validation_result)
 """
 
+from truthound.reporters.ci.azure import AzureDevOpsReporter
 from truthound.reporters.ci.base import (
-    BaseCIReporter,
-    CIReporterConfig,
-    CIPlatform,
-    CIAnnotation,
     AnnotationLevel,
+    BaseCIReporter,
+    CIAnnotation,
+    CIPlatform,
+    CIReporterConfig,
 )
+from truthound.reporters.ci.bitbucket import BitbucketPipelinesReporter
+from truthound.reporters.ci.circleci import CircleCIReporter
 from truthound.reporters.ci.detection import detect_ci_platform, get_ci_environment
 from truthound.reporters.ci.factory import get_ci_reporter, register_ci_reporter
 
@@ -39,9 +42,6 @@ from truthound.reporters.ci.factory import get_ci_reporter, register_ci_reporter
 from truthound.reporters.ci.github import GitHubActionsReporter
 from truthound.reporters.ci.gitlab import GitLabCIReporter
 from truthound.reporters.ci.jenkins import JenkinsReporter
-from truthound.reporters.ci.azure import AzureDevOpsReporter
-from truthound.reporters.ci.circleci import CircleCIReporter
-from truthound.reporters.ci.bitbucket import BitbucketPipelinesReporter
 
 __all__ = [
     # Base classes

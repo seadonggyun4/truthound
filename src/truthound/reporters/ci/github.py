@@ -10,16 +10,20 @@ Reference:
 from __future__ import annotations
 
 import os
-from dataclasses import dataclass, field
-from typing import Any
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
 from truthound.reporters.ci.base import (
+    AnnotationLevel,
     BaseCIReporter,
     CIAnnotation,
     CIPlatform,
     CIReporterConfig,
-    AnnotationLevel,
 )
+
+if TYPE_CHECKING:
+    from truthound.reporters.presentation import LegacyValidationResultView
+
 
 @dataclass
 class GitHubActionsConfig(CIReporterConfig):
@@ -150,7 +154,7 @@ class GitHubActionsReporter(BaseCIReporter):
     # Summary Formatting
     # =========================================================================
 
-    def format_summary(self, result: "ValidationResult") -> str:
+    def format_summary(self, result: LegacyValidationResultView) -> str:
         """Format a job summary in Markdown.
 
         Args:
@@ -175,8 +179,8 @@ class GitHubActionsReporter(BaseCIReporter):
         # Quick stats
         lines.append("### Summary")
         lines.append("")
-        lines.append(f"| Metric | Value |")
-        lines.append(f"|--------|-------|")
+        lines.append("| Metric | Value |")
+        lines.append("|--------|-------|")
         lines.append(f"| **Status** | {result.status.value.upper()} |")
         lines.append(f"| **Data Asset** | `{result.data_asset}` |")
         lines.append(f"| **Total Validators** | {stats.total_validators} |")
@@ -192,15 +196,15 @@ class GitHubActionsReporter(BaseCIReporter):
             lines.append("")
 
             if config.emoji_enabled:
-                lines.append(f"| Severity | Count |")
-                lines.append(f"|----------|-------|")
+                lines.append("| Severity | Count |")
+                lines.append("|----------|-------|")
                 lines.append(f"| 🔴 Critical | {stats.critical_issues} |")
                 lines.append(f"| 🟠 High | {stats.high_issues} |")
                 lines.append(f"| 🟡 Medium | {stats.medium_issues} |")
                 lines.append(f"| 🟢 Low | {stats.low_issues} |")
             else:
-                lines.append(f"| Severity | Count |")
-                lines.append(f"|----------|-------|")
+                lines.append("| Severity | Count |")
+                lines.append("|----------|-------|")
                 lines.append(f"| Critical | {stats.critical_issues} |")
                 lines.append(f"| High | {stats.high_issues} |")
                 lines.append(f"| Medium | {stats.medium_issues} |")
@@ -300,7 +304,7 @@ class GitHubActionsReporter(BaseCIReporter):
 
         return self.get_exit_code(legacy_result)
 
-    def _set_output(self, result: "ValidationResult") -> None:
+    def _set_output(self, result: LegacyValidationResultView) -> None:
         """Set GitHub Actions output variables.
 
         Args:

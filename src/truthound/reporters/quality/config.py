@@ -12,7 +12,6 @@ from enum import Enum
 from pathlib import Path
 from typing import Any
 
-
 # =============================================================================
 # Enums
 # =============================================================================
@@ -293,7 +292,7 @@ class QualityReporterConfig:
         return Path(self.output_path)
 
     @classmethod
-    def compact(cls) -> "QualityReporterConfig":
+    def compact(cls) -> QualityReporterConfig:
         """Create compact configuration."""
         return cls(
             display_mode=QualityDisplayMode.COMPACT,
@@ -304,7 +303,7 @@ class QualityReporterConfig:
         )
 
     @classmethod
-    def detailed(cls) -> "QualityReporterConfig":
+    def detailed(cls) -> QualityReporterConfig:
         """Create detailed configuration."""
         return cls(
             display_mode=QualityDisplayMode.DETAILED,
@@ -315,7 +314,7 @@ class QualityReporterConfig:
         )
 
     @classmethod
-    def full(cls) -> "QualityReporterConfig":
+    def full(cls) -> QualityReporterConfig:
         """Create full configuration with all options."""
         return cls(
             display_mode=QualityDisplayMode.FULL,

@@ -13,21 +13,24 @@ Reference:
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
-import hashlib
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
-from uuid import uuid4
+from typing import TYPE_CHECKING, Any
 
 from truthound.reporters.ci.base import (
+    AnnotationLevel,
     BaseCIReporter,
     CIAnnotation,
     CIPlatform,
     CIReporterConfig,
-    AnnotationLevel,
 )
+
+if TYPE_CHECKING:
+    from truthound.reporters.presentation import LegacyValidationResultView
+
 
 @dataclass
 class BitbucketConfig(CIReporterConfig):
@@ -157,7 +160,7 @@ class BitbucketPipelinesReporter(BaseCIReporter):
     # Code Insights Report Format
     # =========================================================================
 
-    def generate_report(self, result: "ValidationResult") -> dict[str, Any]:
+    def generate_report(self, result: LegacyValidationResultView) -> dict[str, Any]:
         """Generate Bitbucket Code Insights report format.
 
         This format can be used with the Bitbucket Reports API
@@ -193,7 +196,7 @@ class BitbucketPipelinesReporter(BaseCIReporter):
 
         return report
 
-    def _generate_report_details(self, result: "ValidationResult") -> str:
+    def _generate_report_details(self, result: LegacyValidationResultView) -> str:
         """Generate report details summary.
 
         Args:
@@ -210,7 +213,7 @@ class BitbucketPipelinesReporter(BaseCIReporter):
             f"Medium: {stats.medium_issues}, Low: {stats.low_issues}"
         )
 
-    def _generate_report_data(self, result: "ValidationResult") -> list[dict[str, Any]]:
+    def _generate_report_data(self, result: LegacyValidationResultView) -> list[dict[str, Any]]:
         """Generate report data items for summary display.
 
         Args:
@@ -244,7 +247,7 @@ class BitbucketPipelinesReporter(BaseCIReporter):
             },
         ]
 
-    def generate_annotations(self, result: "ValidationResult") -> list[dict[str, Any]]:
+    def generate_annotations(self, result: LegacyValidationResultView) -> list[dict[str, Any]]:
         """Generate Bitbucket Code Insights annotations.
 
         Args:
@@ -316,7 +319,7 @@ class BitbucketPipelinesReporter(BaseCIReporter):
     # Pipes Format
     # =========================================================================
 
-    def format_pipes_output(self, result: "ValidationResult") -> str:
+    def format_pipes_output(self, result: LegacyValidationResultView) -> str:
         """Format output compatible with Bitbucket Pipes.
 
         Uses special markers that Bitbucket Pipes recognize.
@@ -350,7 +353,7 @@ class BitbucketPipelinesReporter(BaseCIReporter):
     # Summary Format
     # =========================================================================
 
-    def format_summary(self, result: "ValidationResult") -> str:
+    def format_summary(self, result: LegacyValidationResultView) -> str:
         """Format a summary for Bitbucket Pipelines console.
 
         Args:
@@ -474,7 +477,7 @@ class BitbucketPipelinesReporter(BaseCIReporter):
 
         return self.get_exit_code(legacy_result)
 
-    def _write_report_file(self, result: "ValidationResult") -> None:
+    def _write_report_file(self, result: LegacyValidationResultView) -> None:
         """Write Code Insights report file.
 
         This file can be used with the Bitbucket Reports API
@@ -495,7 +498,7 @@ class BitbucketPipelinesReporter(BaseCIReporter):
 
         print(f"\nCode Insights report written to: {path}")
 
-    def _write_json_artifact(self, result: "ValidationResult") -> None:
+    def _write_json_artifact(self, result: LegacyValidationResultView) -> None:
         """Write JSON artifact.
 
         Args:

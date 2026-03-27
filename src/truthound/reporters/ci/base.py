@@ -9,19 +9,22 @@ from __future__ import annotations
 import os
 from abc import abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime
 from enum import Enum
-from pathlib import Path
-from typing import TYPE_CHECKING, Any, Iterator
+from typing import TYPE_CHECKING, Any
 
 from truthound.reporters.base import (
+    RenderError,
     ReporterConfig,
     ValidationReporter,
-    RenderError,
 )
 
 if TYPE_CHECKING:
-    from truthound.reporters.presentation import LegacyValidationResultView, LegacyValidatorResultView
+    from collections.abc import Iterator
+
+    from truthound.reporters.presentation import (
+        LegacyValidationResultView,
+        LegacyValidatorResultView,
+    )
 
 
 class CIPlatform(str, Enum):
@@ -48,7 +51,7 @@ class AnnotationLevel(str, Enum):
     INFO = "info"
 
     @classmethod
-    def from_severity(cls, severity: str | None) -> "AnnotationLevel":
+    def from_severity(cls, severity: str | None) -> AnnotationLevel:
         """Convert validation severity to annotation level.
 
         Args:
@@ -105,7 +108,7 @@ class CIAnnotation:
         file: str | None = None,
         line: int | None = None,
         column: int | None = None,
-    ) -> "CIAnnotation":
+    ) -> CIAnnotation:
         """Create a new annotation with updated file context.
 
         Args:
@@ -177,7 +180,7 @@ class BaseCIReporter(ValidationReporter[CIReporterConfig]):
         ...     def format_annotation(self, annotation: CIAnnotation) -> str:
         ...         return f"[{annotation.level}] {annotation.message}"
         ...
-        ...     def format_summary(self, result: ValidationResult) -> str:
+        ...     def format_summary(self, result: LegacyValidationResultView) -> str:
         ...         return f"Validation: {result.status}"
     """
 
@@ -211,7 +214,7 @@ class BaseCIReporter(ValidationReporter[CIReporterConfig]):
         pass
 
     @abstractmethod
-    def format_summary(self, result: "LegacyValidationResultView") -> str:
+    def format_summary(self, result: LegacyValidationResultView) -> str:
         """Format a summary report for the target platform.
 
         Args:
@@ -249,7 +252,7 @@ class BaseCIReporter(ValidationReporter[CIReporterConfig]):
         """
         return ""
 
-    def get_exit_code(self, result: "LegacyValidationResultView") -> int:
+    def get_exit_code(self, result: LegacyValidationResultView) -> int:
         """Determine the exit code based on validation results.
 
         Args:
@@ -266,7 +269,7 @@ class BaseCIReporter(ValidationReporter[CIReporterConfig]):
 
         return 0
 
-    def should_emit_annotation(self, validator_result: "LegacyValidatorResultView") -> bool:
+    def should_emit_annotation(self, validator_result: LegacyValidatorResultView) -> bool:
         """Determine if an annotation should be emitted for this result.
 
         Args:
@@ -283,14 +286,14 @@ class BaseCIReporter(ValidationReporter[CIReporterConfig]):
     # Core Implementation
     # =========================================================================
 
-    def _to_legacy_view(self, data: Any) -> "LegacyValidationResultView":
+    def _to_legacy_view(self, data: Any) -> LegacyValidationResultView:
         if hasattr(data, "statistics") and hasattr(data, "results") and hasattr(data, "data_asset"):
             return data
         return self.present(data).to_legacy_view()
 
     def create_annotation(
         self,
-        validator_result: "LegacyValidatorResultView",
+        validator_result: LegacyValidatorResultView,
     ) -> CIAnnotation:
         """Create a CIAnnotation from a validator result.
 
@@ -325,7 +328,7 @@ class BaseCIReporter(ValidationReporter[CIReporterConfig]):
 
     def iter_annotations(
         self,
-        result: "LegacyValidationResultView",
+        result: LegacyValidationResultView,
     ) -> Iterator[CIAnnotation]:
         """Iterate over annotations for a validation result.
 
@@ -421,7 +424,7 @@ class BaseCIReporter(ValidationReporter[CIReporterConfig]):
             return "\n\n".join(parts)
 
         except Exception as e:
-            raise RenderError(f"Failed to render CI output: {e}")
+            raise RenderError(f"Failed to render CI output: {e}") from e
 
     def report_to_ci(self, result: Any) -> int:
         """Output the report directly to CI platform and return exit code.

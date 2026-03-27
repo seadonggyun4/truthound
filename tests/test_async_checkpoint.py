@@ -516,6 +516,61 @@ class TestAsyncCheckpoint:
 
         assert result.checkpoint_name == "sync_to_async"
 
+    def test_validate_matches_sync_checkpoint_errors(self):
+        """Async checkpoint config validation should match sync core errors."""
+        from truthound.checkpoint import AsyncCheckpoint, Checkpoint
+
+        checkpoint_kwargs = {
+            "name": "",
+            "data_source": "missing.csv",
+            "validators": ["regex", "missing_validator"],
+            "validator_config": {
+                "regex": {},
+                "orphan": {},
+            },
+            "min_severity": "info",
+            "schema": "missing.yaml",
+        }
+
+        sync_errors = Checkpoint(**checkpoint_kwargs).validate()
+        async_errors = AsyncCheckpoint(**checkpoint_kwargs).validate()
+
+        assert sorted(sync_errors) == sorted(async_errors)
+
+    def test_pipeline_strategy_validation_alias(self, sample_data_file):
+        """The legacy pipeline strategy name remains valid for config validation."""
+        from truthound.checkpoint import AsyncCheckpoint
+
+        checkpoint = AsyncCheckpoint(
+            name="pipeline_alias",
+            data_source=str(sample_data_file),
+            validators=["null"],
+            execution_strategy="pipeline",
+        )
+
+        assert checkpoint.validate() == []
+
+    def test_to_async_checkpoint_preserves_config_fields(self, sample_data_file):
+        """Conversion to async should preserve shared config state."""
+        from truthound.checkpoint import Checkpoint, to_async_checkpoint
+
+        sync_checkpoint = Checkpoint(
+            name="sync_to_async_config",
+            data_source=str(sample_data_file),
+            validators=["null"],
+            validator_config={"null": {}},
+            tags={"env": "test"},
+            metadata={"owner": "platform"},
+        )
+
+        async_checkpoint = to_async_checkpoint(sync_checkpoint)
+
+        assert async_checkpoint.config.validator_config == {
+            "null": {}
+        }
+        assert async_checkpoint.config.tags == {"env": "test"}
+        assert async_checkpoint.config.metadata == {"owner": "platform"}
+
 
 # =============================================================================
 # AsyncCheckpointRunner Tests
@@ -581,6 +636,25 @@ class TestAsyncCheckpointRunner:
         await runner.run_once_async("callback_test")
 
         assert len(results_received) == 1
+
+    @pytest.mark.asyncio
+    async def test_runner_result_callback_error_is_non_fatal(self, sample_data_file):
+        """Callback failures should not break async runner execution."""
+        from truthound.checkpoint import AsyncCheckpoint, AsyncCheckpointRunner
+
+        async def on_result(result):
+            raise RuntimeError(f"callback failed for {result.checkpoint_name}")
+
+        runner = AsyncCheckpointRunner(result_callback=on_result)
+        runner.add_checkpoint(AsyncCheckpoint(
+            name="callback_error_test",
+            data_source=str(sample_data_file),
+            validators=["null"],
+        ))
+
+        result = await runner.run_once_async("callback_error_test")
+
+        assert result.checkpoint_name == "callback_error_test"
 
 
 # =============================================================================

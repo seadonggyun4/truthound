@@ -43,6 +43,7 @@ print(report.validation_run.execution_mode)
 ```python
 # 3.0
 run = th.check(data, validators=["null", "unique"])
+print(run.planned_execution_mode)
 print(run.execution_mode)
 ```
 
@@ -92,6 +93,7 @@ Reporter plugins and direct rendering code should use:
 - canonical input: `ValidationRunResult`
 - render contract: `render(run_result, *, context)`
 - shared projection: `RunPresentation`
+- `execution_mode` for actual runtime behavior and `planned_execution_mode` for planner intent
 
 Do not rely on `Report` or `truthound.stores.results.ValidationResult` as canonical runtime inputs.
 

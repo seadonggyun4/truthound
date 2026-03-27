@@ -8,32 +8,30 @@ from __future__ import annotations
 
 import hashlib
 import threading
+from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Sequence
+from typing import TYPE_CHECKING, Any
 
-from truthound.reporters.quality.protocols import (
-    QualityReportable,
-    QualityReportEvent,
-    QualityReportListener,
-    TransformStageProtocol,
-    RenderStageProtocol,
-)
-from truthound.reporters.quality.config import (
-    QualityReporterConfig,
-    QualityReportEngineConfig,
-    QualityFilterConfig,
-    ReportSortOrder,
-)
 from truthound.reporters.quality.base import (
     QualityReportResult,
     QualityStatistics,
-    QualityReporterError,
 )
-from truthound.reporters.quality.filters import QualityFilter, BaseQualityFilter
+from truthound.reporters.quality.config import (
+    QualityFilterConfig,
+    QualityReportEngineConfig,
+    QualityReporterConfig,
+    ReportSortOrder,
+)
 from truthound.reporters.quality.factory import get_quality_reporter
+from truthound.reporters.quality.filters import BaseQualityFilter, QualityFilter
+from truthound.reporters.quality.protocols import QualityReportEvent
 
+if TYPE_CHECKING:
+    from collections.abc import Sequence
+
+    from truthound.reporters.quality.protocols import QualityReportable, QualityReportListener
 
 # =============================================================================
 # Pipeline Context
@@ -68,7 +66,7 @@ class QualityReportContext:
     stage_times: dict[str, float] = field(default_factory=dict)
     metadata: dict[str, Any] = field(default_factory=dict)
 
-    def clone(self) -> "QualityReportContext":
+    def clone(self) -> QualityReportContext:
         """Create a shallow copy of the context."""
         return QualityReportContext(
             scores=list(self.scores),
@@ -287,7 +285,7 @@ class QualityReportPipeline:
         self._stages: list[Any] = []
         self._listeners: list[QualityReportListener] = []
 
-    def add_stage(self, stage: Any) -> "QualityReportPipeline":
+    def add_stage(self, stage: Any) -> QualityReportPipeline:
         """Add a stage to the pipeline.
 
         Args:
@@ -303,7 +301,7 @@ class QualityReportPipeline:
         self,
         filter_obj: BaseQualityFilter[QualityReportable] | None = None,
         config: QualityFilterConfig | None = None,
-    ) -> "QualityReportPipeline":
+    ) -> QualityReportPipeline:
         """Add filter stage.
 
         Args:
@@ -315,7 +313,7 @@ class QualityReportPipeline:
         """
         return self.add_stage(FilterStage(filter_obj, config))
 
-    def sort(self, order: ReportSortOrder | None = None) -> "QualityReportPipeline":
+    def sort(self, order: ReportSortOrder | None = None) -> QualityReportPipeline:
         """Add sort stage.
 
         Args:
@@ -326,7 +324,7 @@ class QualityReportPipeline:
         """
         return self.add_stage(SortStage(order))
 
-    def limit(self, max_scores: int | None = None) -> "QualityReportPipeline":
+    def limit(self, max_scores: int | None = None) -> QualityReportPipeline:
         """Add limit stage.
 
         Args:
@@ -337,7 +335,7 @@ class QualityReportPipeline:
         """
         return self.add_stage(LimitStage(max_scores))
 
-    def statistics(self) -> "QualityReportPipeline":
+    def statistics(self) -> QualityReportPipeline:
         """Add statistics stage.
 
         Returns:
@@ -345,7 +343,7 @@ class QualityReportPipeline:
         """
         return self.add_stage(StatisticsStage())
 
-    def render(self, format: str = "console", **kwargs: Any) -> "QualityReportPipeline":
+    def render(self, format: str = "console", **kwargs: Any) -> QualityReportPipeline:
         """Add render stage.
 
         Args:
@@ -357,7 +355,7 @@ class QualityReportPipeline:
         """
         return self.add_stage(RenderStage(format, **kwargs))
 
-    def write(self, path: str | Path | None = None) -> "QualityReportPipeline":
+    def write(self, path: str | Path | None = None) -> QualityReportPipeline:
         """Add write stage.
 
         Args:
@@ -368,7 +366,7 @@ class QualityReportPipeline:
         """
         return self.add_stage(WriteStage(path))
 
-    def add_listener(self, listener: QualityReportListener) -> "QualityReportPipeline":
+    def add_listener(self, listener: QualityReportListener) -> QualityReportPipeline:
         """Add event listener.
 
         Args:
@@ -388,10 +386,8 @@ class QualityReportPipeline:
             data=data,
         )
         for listener in self._listeners:
-            try:
+            with suppress(Exception):
                 listener.on_event(event)
-            except Exception:
-                pass  # Don't let listener errors break pipeline
 
     def execute(
         self,

@@ -1,6 +1,14 @@
 # Quality Reporter Guide
 
-The Quality Reporter system provides comprehensive reporting and filtering capabilities for rule quality scores in Truthound. It enables you to generate detailed reports, filter scores by various criteria, and compare rules by quality metrics.
+The Quality Reporter system is a rule quality score reporting subsystem in
+Truthound. It is related to the main reporter surface, but it is not the same
+thing as the validation-run reporters used for `ValidationRunResult`.
+
+Use this guide when you are working with profiler-generated quality scores,
+quality filters, and rule-comparison workflows.
+
+`truthound.reporters.quality` is not part of the main `truthound.reporters`
+`get_reporter(...)` registry.
 
 ## Overview
 
@@ -12,6 +20,19 @@ The Quality Reporter module consists of several components:
 | **Filters** | Composable filter system for selecting scores based on criteria |
 | **Engine** | Pipeline-based report generation with caching and parallel processing |
 | **CLI Commands** | Command-line tools for reporting, filtering, and comparing |
+
+## Contract Boundary
+
+This subsystem uses:
+
+- input: quality score/reportable objects
+- factory: `get_quality_reporter(...)`
+- pipeline: `QualityReportEngine` and `QualityReportPipeline`
+
+This subsystem does not use:
+
+- `ValidationRunResult` as its primary input
+- the built-in validation reporter registry from `truthound.reporters.get_reporter(...)`
 
 ## Quick Start
 

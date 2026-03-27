@@ -10,6 +10,7 @@ from truthound.core.contracts import (
     PluginCapability,
     build_validation_asset,
 )
+from truthound.core.execution_modes import PlannedExecutionMode, RuntimeExecutionMode
 from truthound.core.planning import PlanStep, ScanPlan, ScanPlanner
 from truthound.core.results import CheckResult, ExecutionIssue, ValidationRunResult
 from truthound.core.runtime import ValidationRuntime
@@ -36,7 +37,9 @@ __all__ = [
     'LazyFrameDataAsset',
     'MetricRepository',
     'PlanStep',
+    'PlannedExecutionMode',
     'PluginCapability',
+    'RuntimeExecutionMode',
     'ScanPlan',
     'ScanPlanner',
     'SchemaSpec',

@@ -8,28 +8,27 @@ Install with: pip install truthound[all]
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 # Lazy import to avoid ImportError when jinja2 is not installed
 try:
-    from jinja2 import Environment, PackageLoader, FileSystemLoader, select_autoescape
+    from jinja2 import Environment, FileSystemLoader, select_autoescape
 
     HAS_JINJA2 = True
 except ImportError:
     HAS_JINJA2 = False
 
 from truthound.reporters.base import (
-    ReporterConfig,
     RenderError,
+    ReporterConfig,
     ValidationReporter,
 )
 
 if TYPE_CHECKING:
     from truthound.reporters._protocols import Jinja2EnvironmentProtocol
-    from truthound.reporters.presentation import RunPresentation
 
 
 def _require_jinja2() -> None:
@@ -439,7 +438,7 @@ class HTMLReporter(ValidationReporter[HTMLReporterConfig]):
         """Create default configuration."""
         return HTMLReporterConfig()
 
-    def _get_environment(self) -> "Jinja2EnvironmentProtocol":
+    def _get_environment(self) -> Jinja2EnvironmentProtocol:
         """Get or create the Jinja2 environment.
 
         Returns:
@@ -522,4 +521,4 @@ class HTMLReporter(ValidationReporter[HTMLReporterConfig]):
             return html
 
         except Exception as e:
-            raise RenderError(f"Failed to render HTML: {e}")
+            raise RenderError(f"Failed to render HTML: {e}") from e

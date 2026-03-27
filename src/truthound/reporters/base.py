@@ -206,8 +206,8 @@ class BaseReporter(ABC, Generic[ConfigT, InputT]):
 
             return output_path
 
-        except (OSError, IOError) as e:
-            raise WriteError(f"Failed to write report to {output_path}: {e}")
+        except OSError as e:
+            raise WriteError(f"Failed to write report to {output_path}: {e}") from e
 
     def report(self, data: InputT, path: str | Path | None = None) -> str:
         """Generate a report, optionally writing to file.
@@ -276,7 +276,7 @@ class ValidationReporter(BaseReporter[ConfigT, ValidationReporterInput], Generic
 
     contract_version: int = 3
 
-    def to_run_result(self, data: ValidationReporterInput) -> "ValidationRunResult":
+    def to_run_result(self, data: ValidationReporterInput) -> ValidationRunResult:
         """Canonicalize supported reporter inputs into ValidationRunResult."""
         from truthound.reporters.adapters import canonicalize_validation_run_result
 
@@ -289,7 +289,7 @@ class ValidationReporter(BaseReporter[ConfigT, ValidationReporterInput], Generic
             output_path=self._config.output_path,
         )
 
-    def present(self, data: ValidationReporterInput) -> "RunPresentation":
+    def present(self, data: ValidationReporterInput) -> RunPresentation:
         """Build the shared RunPresentation model for renderers."""
         from truthound.reporters.presentation import build_run_presentation
 

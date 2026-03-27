@@ -46,6 +46,7 @@ from truthound.reporters.base import (
 from truthound.reporters.factory import get_reporter, register_reporter
 from truthound.reporters.presentation import RunPresentation
 
+
 # Quality reporter lazy imports (avoid circular imports)
 def __getattr__(name: str):
     """Lazy load quality reporter components."""

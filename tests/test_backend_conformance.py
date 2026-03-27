@@ -27,5 +27,7 @@ def test_sql_pushdown_backend_conformance_executes(tmp_path):
 
     assert asset.backend_name == 'sql'
     assert plan.execution_mode == 'pushdown'
+    assert plan.planned_execution_mode == 'pushdown'
+    assert run_result.planned_execution_mode == 'pushdown'
     assert run_result.execution_mode == 'pushdown'
     assert any(issue.issue_type == 'null' for issue in run_result.issues)

@@ -16,8 +16,8 @@ from rich.table import Table
 from rich.text import Text
 
 from truthound.reporters.base import (
-    ReporterConfig,
     RenderError,
+    ReporterConfig,
     ValidationReporter,
 )
 
@@ -100,7 +100,7 @@ class ConsoleReporter(ValidationReporter[ConsoleReporterConfig]):
             file=StringIO() if capture else None,
         )
 
-    def _render_header(self, console: Console, result: "RunPresentation") -> None:
+    def _render_header(self, console: Console, result: RunPresentation) -> None:
         """Render the report header.
 
         Args:
@@ -112,16 +112,20 @@ class ConsoleReporter(ValidationReporter[ConsoleReporterConfig]):
 
         header_text = Text()
         header_text.append(f"{self._config.title}\n", style="bold")
-        header_text.append(f"Data Asset: ", style="dim")
+        header_text.append("Data Asset: ", style="dim")
         header_text.append(f"{result.source}\n", style="cyan")
-        header_text.append(f"Run ID: ", style="dim")
+        header_text.append("Run ID: ", style="dim")
         header_text.append(f"{result.run_id}\n", style="cyan")
-        header_text.append(f"Status: ", style="dim")
-        header_text.append(status_text, style=f"bold {status_style}")
+        header_text.append("Status: ", style="dim")
+        header_text.append(f"{status_text}\n", style=f"bold {status_style}")
+        header_text.append("Execution Mode: ", style="dim")
+        header_text.append(f"{result.execution_mode}\n", style="cyan")
+        header_text.append("Planned Execution Mode: ", style="dim")
+        header_text.append(result.planned_execution_mode, style="cyan")
 
         console.print(Panel(header_text, title="Truthound Report", border_style="blue"))
 
-    def _render_summary(self, console: Console, result: "RunPresentation") -> None:
+    def _render_summary(self, console: Console, result: RunPresentation) -> None:
         """Render the summary section.
 
         Args:
@@ -170,7 +174,7 @@ class ConsoleReporter(ValidationReporter[ConsoleReporterConfig]):
             console.print()
             console.print(f"Issues by Severity: {', '.join(parts)}")
 
-    def _render_issues_table(self, console: Console, result: "RunPresentation") -> None:
+    def _render_issues_table(self, console: Console, result: RunPresentation) -> None:
         """Render the issues table.
 
         Args:
@@ -213,7 +217,7 @@ class ConsoleReporter(ValidationReporter[ConsoleReporterConfig]):
         console.print()
         console.print(table)
 
-    def _render_compact(self, console: Console, result: "RunPresentation") -> None:
+    def _render_compact(self, console: Console, result: RunPresentation) -> None:
         """Render a compact version of the report.
 
         Args:
@@ -271,7 +275,7 @@ class ConsoleReporter(ValidationReporter[ConsoleReporterConfig]):
             return console.export_text(clear=True)
 
         except Exception as e:
-            raise RenderError(f"Failed to render console output: {e}")
+            raise RenderError(f"Failed to render console output: {e}") from e
 
     def print(self, data: Any) -> None:
         """Print validation result directly to the console.

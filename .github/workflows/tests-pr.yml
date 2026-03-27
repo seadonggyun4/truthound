@@ -191,19 +191,46 @@ jobs:
             test-artifacts/quality-summary.json
             test-artifacts/junit-fault-e2e.xml
 
+  quality-ruff-ratchet:
+    name: quality-ruff-ratchet / ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [reporters, checkpoint-top-level]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: astral-sh/setup-uv@v4
+
+      - name: Sync locked dev environment
+        run: uv sync --frozen --extra dev
+
+      - name: Run ruff ratchet target
+        run: |
+          uv run --frozen --extra dev python verification/ci/run_ruff_ratchet.py \
+            --target ${{ matrix.target }}
+
   quality-gate:
     if: ${{ always() }}
-    needs: [quality-contract, quality-fault-e2e]
+    needs: [quality-contract, quality-fault-e2e, quality-ruff-ratchet]
     runs-on: ubuntu-latest
     steps:
       - name: Aggregate quality gate status
         env:
           CONTRACT_RESULT: ${{ needs.quality-contract.result }}
           FAULT_E2E_RESULT: ${{ needs.quality-fault-e2e.result }}
+          RUFF_RATCHET_RESULT: ${{ needs.quality-ruff-ratchet.result }}
         run: |
           echo "quality-contract result: ${CONTRACT_RESULT}"
           echo "quality-fault-e2e result: ${FAULT_E2E_RESULT}"
-          if [ "${CONTRACT_RESULT}" != "success" ] || [ "${FAULT_E2E_RESULT}" != "success" ]; then
+          echo "quality-ruff-ratchet result: ${RUFF_RATCHET_RESULT}"
+          if [ "${CONTRACT_RESULT}" != "success" ] || [ "${FAULT_E2E_RESULT}" != "success" ] || [ "${RUFF_RATCHET_RESULT}" != "success" ]; then
             echo "quality-gate failed because one or more shard jobs failed"
             exit 1
           fi

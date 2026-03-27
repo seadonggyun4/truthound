@@ -118,6 +118,7 @@ class ValidationDataConverter:
                 ("Suite", self.presentation.suite_name),
                 ("Source", self.presentation.source),
                 ("Execution Mode", self.presentation.execution_mode),
+                ("Planned Execution Mode", self.presentation.planned_execution_mode),
                 ("Result Format", self.presentation.result_format),
                 ("Execution Issues", str(self.presentation.summary.total_execution_issues)),
                 ("Runtime Environment", ", ".join(f"{k}={v}" for k, v in runtime_environment.items()) or "-"),

@@ -14,19 +14,23 @@ from __future__ import annotations
 
 import asyncio
 import time
+from collections.abc import Awaitable, Callable
 from concurrent.futures import ThreadPoolExecutor
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Awaitable
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
-from truthound.core.results import ValidationRunResult
-from truthound.checkpoint.checkpoint import (
-    Checkpoint,
-    CheckpointConfig,
-    CheckpointResult,
-    CheckpointStatus,
+from truthound.checkpoint._result_helpers import (
+    build_checkpoint_validation_run,
+    derive_checkpoint_outcome,
+)
+from truthound.checkpoint._validation import validate_checkpoint_config
+from truthound.checkpoint.actions.base import (
+    ActionResult,
+    ActionStatus,
+    BaseAction,
 )
 from truthound.checkpoint.async_base import (
     AsyncBaseAction,
@@ -34,17 +38,18 @@ from truthound.checkpoint.async_base import (
     ConcurrentStrategy,
     ExecutionStrategy,
     SequentialStrategy,
-    SyncActionAdapter,
     adapt_to_async,
 )
-from truthound.checkpoint.actions.base import (
-    ActionResult,
-    ActionStatus,
-    BaseAction,
+from truthound.checkpoint.checkpoint import (
+    Checkpoint,
+    CheckpointConfig,
+    CheckpointResult,
+    CheckpointStatus,
 )
 
 if TYPE_CHECKING:
     from truthound.checkpoint.triggers.base import BaseTrigger
+    from truthound.core.results import ValidationRunResult
     from truthound.datasources.base import BaseDataSource
     from truthound.validators.base import Validator
 
@@ -117,10 +122,10 @@ class AsyncCheckpoint:
         self,
         name: str | None = None,
         config: AsyncCheckpointConfig | None = None,
-        data_source: str | "BaseDataSource" | None = None,
-        validators: list[str | "Validator"] | None = None,
+        data_source: str | BaseDataSource | None = None,
+        validators: list[str | Validator] | None = None,
         actions: list[ActionType] | None = None,
-        triggers: list["BaseTrigger[Any]"] | None = None,
+        triggers: list[BaseTrigger[Any]] | None = None,
         execution_strategy: ExecutionStrategy | None = None,
         on_complete: CallbackType | None = None,
         on_error: CallbackType | None = None,
@@ -192,15 +197,15 @@ class AsyncCheckpoint:
         return self._actions
 
     @property
-    def triggers(self) -> list["BaseTrigger[Any]"]:
+    def triggers(self) -> list[BaseTrigger[Any]]:
         return self._triggers
 
-    def add_action(self, action: ActionType) -> "AsyncCheckpoint":
+    def add_action(self, action: ActionType) -> AsyncCheckpoint:
         """Add an action."""
         self._actions.append(action)
         return self
 
-    def add_trigger(self, trigger: "BaseTrigger[Any]") -> "AsyncCheckpoint":
+    def add_trigger(self, trigger: BaseTrigger[Any]) -> AsyncCheckpoint:
         """Add a trigger."""
         trigger.attach(self)
         self._triggers.append(trigger)
@@ -270,27 +275,18 @@ class AsyncCheckpoint:
             validation_run = await self._run_validation_async(
                 data_source, data_asset, run_id, start_time
             )
-            from truthound.checkpoint.adapters import checkpoint_validation_view
-
-            validation_view = checkpoint_validation_view(validation_run)
 
             # Determine status
             if validation_run is None:
                 status = CheckpointStatus.ERROR
-            elif (
-                validation_view.statistics.critical_issues > 0
-                and self._config.fail_on_critical
-            ):
-                status = CheckpointStatus.FAILURE
-            elif (
-                validation_view.statistics.high_issues > 0
-                and self._config.fail_on_high
-            ):
-                status = CheckpointStatus.FAILURE
-            elif validation_view.statistics.total_issues > 0:
-                status = CheckpointStatus.WARNING
             else:
-                status = CheckpointStatus.SUCCESS
+                status = CheckpointStatus(
+                    derive_checkpoint_outcome(
+                        validation_run,
+                        fail_on_critical=self._config.fail_on_critical,
+                        fail_on_high=self._config.fail_on_high,
+                    )
+                )
 
         except Exception as e:
             validation_run = None
@@ -361,6 +357,7 @@ class AsyncCheckpoint:
                     report = check(
                         source=sampled,
                         validators=self._config.validators,
+                        validator_config=self._config.validator_config,
                         min_severity=self._config.min_severity,
                         schema=self._config.schema,
                         auto_schema=self._config.auto_schema,
@@ -369,6 +366,7 @@ class AsyncCheckpoint:
                     report = check(
                         source=data_source,
                         validators=self._config.validators,
+                        validator_config=self._config.validator_config,
                         min_severity=self._config.min_severity,
                         schema=self._config.schema,
                         auto_schema=self._config.auto_schema,
@@ -377,30 +375,20 @@ class AsyncCheckpoint:
                 report = check(
                     data=data_source,
                     validators=self._config.validators,
+                    validator_config=self._config.validator_config,
                     min_severity=self._config.min_severity,
                     schema=self._config.schema,
                     auto_schema=self._config.auto_schema,
                 )
 
             validation_run = ensure_validation_run_result(report)
-            return ValidationRunResult(
+            return build_checkpoint_validation_run(
+                validation_run,
                 run_id=run_id,
-                run_time=validation_run.run_time,
-                suite_name=validation_run.suite_name,
-                source=data_asset,
-                row_count=validation_run.row_count,
-                column_count=validation_run.column_count,
-                result_format=validation_run.result_format,
-                execution_mode=validation_run.execution_mode,
-                checks=validation_run.checks,
-                issues=validation_run.issues,
-                execution_issues=validation_run.execution_issues,
-                metadata={
-                    **validation_run.metadata,
-                    **self._config.metadata,
-                    "tags": dict(self._config.tags),
-                    "execution_time_ms": (time.time() - start_time) * 1000,
-                },
+                data_asset=data_asset,
+                checkpoint_metadata=self._config.metadata,
+                tags=self._config.tags,
+                duration_ms=(time.time() - start_time) * 1000,
             )
 
         # Run in executor to avoid blocking
@@ -476,10 +464,11 @@ class AsyncCheckpoint:
 
         if strategy_name == "sequential":
             return SequentialStrategy()
-        elif strategy_name == "concurrent":
+        if strategy_name == "pipeline":
             return ConcurrentStrategy(self._config.max_concurrent_actions)
-        else:
+        if strategy_name == "concurrent":
             return ConcurrentStrategy(self._config.max_concurrent_actions)
+        return ConcurrentStrategy(self._config.max_concurrent_actions)
 
     async def _call_complete_callback(
         self, result: CheckpointResult
@@ -514,25 +503,12 @@ class AsyncCheckpoint:
 
     def validate(self) -> list[str]:
         """Validate checkpoint configuration."""
-        errors = []
-
-        if not self._config.name:
-            errors.append("Checkpoint name is required")
-
-        if not self._config.data_source:
-            errors.append("Data source is required")
-
-        for action in self._actions:
-            action_errors = action.validate_config()
-            for err in action_errors:
-                errors.append(f"Action '{action.name}': {err}")
-
-        for trigger in self._triggers:
-            trigger_errors = trigger.validate_config()
-            for err in trigger_errors:
-                errors.append(f"Trigger '{trigger.name}': {err}")
-
-        return errors
+        return validate_checkpoint_config(
+            self._config,
+            actions=self._actions,
+            triggers=self._triggers,
+            validate_async=True,
+        )
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary."""
@@ -547,7 +523,7 @@ class AsyncCheckpoint:
             "triggers": [t.trigger_type for t in self._triggers],
         }
 
-    async def __aenter__(self) -> "AsyncCheckpoint":
+    async def __aenter__(self) -> AsyncCheckpoint:
         """Async context manager entry."""
         return self
 
@@ -585,6 +561,7 @@ def to_async_checkpoint(checkpoint: Checkpoint) -> AsyncCheckpoint:
             name=checkpoint.config.name,
             data_source=checkpoint.config.data_source,
             validators=checkpoint.config.validators,
+            validator_config=checkpoint.config.validator_config,
             min_severity=checkpoint.config.min_severity,
             schema=checkpoint.config.schema,
             auto_schema=checkpoint.config.auto_schema,

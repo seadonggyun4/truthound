@@ -1,61 +1,74 @@
 # Reporters
 
-Output formatters for validation runs.
+Output surfaces for `ValidationRunResult`.
 
 ## Canonical Contract
 
-Truthound 3.0 reporters are built around `ValidationRunResult`.
+Truthound 3.0 reporter APIs are built around `ValidationRunResult`.
 
 - `th.check()` returns `ValidationRunResult`
 - `truthound.reporters` canonicalizes supported inputs into that model
-- persisted `truthound.stores.results.ValidationResult` objects are still accepted through a compatibility adapter, but they are no longer the preferred runtime contract
-- legacy `Report` objects are not the canonical reporter input in 3.0
+- built-in validation reporters render from a shared `RunPresentation`
+- persisted `truthound.stores.results.ValidationResult` objects are still accepted through an adapter boundary, but they are not the preferred runtime contract
 
 If you are starting new code, pass `ValidationRunResult` directly.
+
+## Choose The Right Reporter Family
+
+Reporter surfaces in Truthound are related, but they are not all the same
+registry or subsystem.
+
+| Family | Entry point | Primary input | What it is for |
+|--------|-------------|---------------|----------------|
+| Built-in validation reporters | `truthound.reporters.get_reporter(...)` | `ValidationRunResult` | JSON, Markdown, HTML, console, and CI aliases |
+| CI-native reporters | `truthound.reporters.ci` | `ValidationRunResult` | Platform-specific annotations, summaries, and artifacts |
+| SDK templates | `truthound.reporters.sdk.templates` | `ValidationRunResult` | YAML, CSV, NDJSON, JUnit XML, table output |
+| Quality reporting subsystem | `truthound.reporters.quality` | quality score/reportable objects | Rule quality score reports, filters, and pipelines |
+
+`truthound.reporters.quality` is not part of the built-in `get_reporter(...)` registry.
 
 ## Quick Start
 
 ```python
 import truthound as th
 from truthound.reporters import get_reporter
+from truthound.reporters.sdk.templates import YAMLReporter
 
 run_result = th.check("data.csv")
 
 json_output = get_reporter("json").render(run_result)
 markdown_output = get_reporter("markdown").render(run_result)
+yaml_output = YAMLReporter().render(run_result)
 
 get_reporter("html").write(run_result, "report.html")
 ```
 
-## Built-in Reporter Registry
+## Built-in `get_reporter(...)` Registry
 
-The default reporter factory currently exposes these formats:
+The built-in registry is intentionally thin. It covers the standard validation
+run formats and CI aliases, not every reporter-related subsystem in the repo.
 
 | Format | Reporter | Notes |
 |--------|----------|-------|
 | `console` | `ConsoleReporter` | Rich terminal output |
-| `json` | `JSONReporter` | Machine-readable API/export format |
+| `json` | `JSONReporter` | Machine-readable validation payload |
 | `markdown` | `MarkdownReporter` | Docs, PR comments, wiki output |
-| `html` | `HTMLReporter` | Browser-friendly report pages |
+| `html` | `HTMLReporter` | Browser-friendly validation report pages |
 | `ci` | platform auto-detect | Selects the active CI reporter |
 | `github` | `GitHubActionsReporter` | GitHub annotations and summaries |
 | `gitlab` | `GitLabCIReporter` | GitLab CI/code-quality output |
-| `jenkins` | `JenkinsReporter` | Jenkins-friendly report output |
+| `jenkins` | `JenkinsReporter` | Jenkins-oriented CI output |
 | `azure` | `AzureDevOpsReporter` | Azure DevOps logging commands |
 | `circleci` | `CircleCIReporter` | CircleCI metadata output |
 | `bitbucket` | `BitbucketPipelinesReporter` | Bitbucket pipeline summaries |
 
-```python
-from truthound.reporters import get_reporter
+Use direct imports for families that are outside this registry:
 
-reporter = get_reporter("json", indent=2)
-payload = reporter.render(run_result)
+- SDK templates: `truthound.reporters.sdk.templates`
+- custom reporter authoring: `truthound.reporters.sdk`
+- quality subsystem: `truthound.reporters.quality`
 
-ci_reporter = get_reporter("github")
-ci_payload = ci_reporter.render(run_result)
-```
-
-## Reporter Input Model
+## Shared Input Model
 
 Use `ValidationRunResult` terminology throughout your code and docs:
 
@@ -74,10 +87,9 @@ print(reporter.render(run_result))
 ```
 
 Under the hood, validation reporters build a shared `RunPresentation` model from
-the run result, which is what keeps JSON, HTML, Markdown, and CI outputs
-consistent.
+the run result. That is what keeps JSON, HTML, Markdown, and CI output aligned.
 
-## Core Reporter Classes
+## Built-in Validation Reporters
 
 ### `ConsoleReporter`
 
@@ -148,28 +160,30 @@ reporter.write(run_result, "report.html")
 `HTMLReporter` requires `jinja2`. Install the reporting extras if you want HTML
 output in production docs or CI.
 
-## CI Reporters
+## CI-native Reporters
 
-The CI reporters live under `truthound.reporters.ci`.
+The CI family lives under `truthound.reporters.ci`.
 
 ```python
 from truthound.reporters.ci import GitHubActionsReporter
 
 reporter = GitHubActionsReporter()
-payload = reporter.render(run_result)
 exit_code = reporter.report_to_ci(run_result)
 ```
 
-Use these when you need native CI annotations, job summaries, or code-quality
-artifacts instead of generic JSON/Markdown files.
+The public input remains `ValidationRunResult`, but CI reporters internally
+format against a `LegacyValidationResultView` compatibility projection after
+building the shared presentation model. That split is intentional: external code
+passes the canonical run result, while CI emitters get the flattened shape they
+need for provider-specific annotations and summaries.
 
-## SDK Template Reporters
+## SDK Templates And Custom Reporters
 
-Truthound also ships optional reporter templates under
-`truthound.reporters.sdk.templates`. These are not the default registry formats
-returned by `get_reporter(...)`, but they are available for direct import:
+Truthound also ships optional template reporters under
+`truthound.reporters.sdk.templates`. These are not part of the built-in
+`get_reporter(...)` registry, but they are available for direct import:
 
-| Class | Import Path | Typical Use |
+| Class | Import path | Typical use |
 |------|-------------|-------------|
 | `YAMLReporter` | `truthound.reporters.sdk.templates` | Human-readable structured export |
 | `CSVReporter` | `truthound.reporters.sdk.templates` | Spreadsheet workflows |
@@ -184,9 +198,7 @@ yaml_output = YAMLReporter().render(run_result)
 xml_output = JUnitXMLReporter().render(run_result)
 ```
 
-## Custom Reporters
-
-For new reporters, subclass `ValidationReporter` so you inherit the 3.0
+For new custom reporters, subclass `ValidationReporter` so you inherit the 3.0
 canonicalization and presentation flow.
 
 ```python
@@ -213,7 +225,7 @@ class CSVReporter(ValidationReporter[ReporterConfig]):
         return "\n".join(lines)
 ```
 
-Register it at runtime if you want it available through the factory:
+Register it at runtime if you want it available through the built-in registry:
 
 ```python
 from truthound.reporters import register_reporter
@@ -221,16 +233,33 @@ from truthound.reporters import register_reporter
 register_reporter("csv", CSVReporter)
 ```
 
+## Related But Separate: Quality Reporting
+
+`truthound.reporters.quality` is a separate quality-score reporting subsystem.
+It uses `get_quality_reporter(...)` and quality score/reportable objects, not
+`ValidationRunResult`, as its primary input.
+
+```python
+from truthound.reporters.quality import get_quality_reporter
+
+reporter = get_quality_reporter("console")
+```
+
+Use it when you are reporting rule-quality scores from the profiler, not when
+you are rendering a validation run returned by `th.check()`.
+
 ## Compatibility Notes
 
 - Passing `truthound.stores.results.ValidationResult` directly to a reporter is a compatibility path, not the preferred 3.0 contract.
 - If you are migrating old docs or plugins, treat `ValidationRunResult` as the source of truth and adapt older DTOs at the boundary.
+- Legacy `Report` objects are not the canonical reporter input in 3.0.
 - For upgrade guidance on removed runtime `Report` assumptions, see [Migration to 3.0](../guides/migration-3.0.md).
 
 ## Related Reading
 
 - [Core Functions](core-functions.md)
-- [Validators](validators.md)
 - [Guides: Reporters](../guides/reporters/index.md)
+- [Guides: Reporter SDK](../guides/reporter-sdk.md)
+- [Guides: Quality Reporter](../guides/quality-reporter.md)
 - [Guides: DataDocs](../guides/datadocs/index.md)
 - [Migration to 3.0](../guides/migration-3.0.md)

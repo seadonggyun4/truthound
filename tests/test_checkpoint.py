@@ -556,6 +556,42 @@ class TestCheckpoint:
         assert restored.checkpoint_name == result.checkpoint_name
         assert restored.run_id == result.run_id
 
+    def test_checkpoint_result_restores_legacy_validation_result(self, sample_data_file: Path):
+        """Test CheckpointResult legacy fallback during deserialization."""
+        from truthound.checkpoint import Checkpoint
+        from truthound.checkpoint.checkpoint import CheckpointResult
+        from truthound.stores.results import ValidationResult
+
+        checkpoint = Checkpoint(
+            name="legacy_serialization_test",
+            data_source=str(sample_data_file),
+            validators=["null"],
+        )
+
+        result = checkpoint.run()
+        assert result.validation_run is not None
+
+        legacy_payload = result.to_dict()
+        legacy_payload["validation_result"] = (
+            ValidationResult.from_validation_run_result(
+                result.validation_run
+            ).to_dict()
+        )
+        legacy_payload["validation_run"] = None
+
+        restored = CheckpointResult.from_dict(legacy_payload)
+
+        assert restored.validation_run is not None
+        assert restored.validation_run.run_id == result.validation_run.run_id
+        assert restored.validation_run.suite_name == result.validation_run.suite_name
+        assert restored.validation_run.source == result.validation_run.source
+        assert restored.validation_run.execution_mode == result.validation_run.execution_mode
+        assert (
+            restored.validation_run.planned_execution_mode
+            == result.validation_run.planned_execution_mode
+        )
+        assert len(restored.validation_run.issues) == len(result.validation_run.issues)
+
 
 # =============================================================================
 # Registry Tests

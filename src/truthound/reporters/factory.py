@@ -8,7 +8,9 @@ Includes support for CI/CD platform-specific reporters.
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from importlib.util import find_spec
+from typing import Any
 
 from truthound.reporters.base import BaseReporter, ReporterError
 
@@ -28,6 +30,11 @@ _CI_PLATFORMS = frozenset({
     "bitbucket", "bitbucket_pipelines", "bitbucket-pipelines",
     "ci", "ci-auto", "auto-ci",
 })
+
+
+def _has_html_reporter_dependency() -> bool:
+    """Return whether the optional HTML reporter dependency is available."""
+    return find_spec("jinja2") is not None
 
 
 def register_reporter(name: str) -> Callable[[ReporterConstructor], ReporterConstructor]:
@@ -121,7 +128,7 @@ def get_reporter(format: str, **kwargs: Any) -> BaseReporter[Any, Any]:
             raise ReporterError(
                 f"HTML reporter requires jinja2. Install with: pip install truthound[all]\n"
                 f"Original error: {e}"
-            )
+            ) from e
 
     elif format in ("console", "terminal", "rich"):
         from truthound.reporters.console_reporter import ConsoleReporter
@@ -163,12 +170,8 @@ def list_available_formats() -> list[str]:
     formats = ["json", "console", "markdown"]
 
     # Check optional formats
-    try:
-        import jinja2
-
+    if _has_html_reporter_dependency():
         formats.append("html")
-    except ImportError:
-        pass
 
     # CI platforms
     formats.extend(["ci", "github", "gitlab", "jenkins", "azure", "circleci", "bitbucket"])
@@ -197,15 +200,7 @@ def is_format_available(format: str) -> bool:
         return True
 
     if format == "html":
-        try:
-            import jinja2
-
-            return True
-        except ImportError:
-            return False
+        return _has_html_reporter_dependency()
 
     # CI platforms are always available
-    if format in _CI_PLATFORMS:
-        return True
-
-    return False
+    return format in _CI_PLATFORMS

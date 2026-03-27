@@ -10,17 +10,17 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Generic, Sequence, TypeVar
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 from truthound.reporters.quality.config import (
     QualityReporterConfig,
     ReportSortOrder,
 )
-from truthound.reporters.quality.protocols import QualityReportable
 
 if TYPE_CHECKING:
-    from truthound.profiler.quality import RuleQualityScore
+    from collections.abc import Sequence
 
+    from truthound.reporters.quality.protocols import QualityReportable
 
 # =============================================================================
 # Type Variables
@@ -155,7 +155,7 @@ class QualityStatistics:
     by_column: dict[str, int] = field(default_factory=dict)
 
     @classmethod
-    def from_scores(cls, scores: Sequence[QualityReportable]) -> "QualityStatistics":
+    def from_scores(cls, scores: Sequence[QualityReportable]) -> QualityStatistics:
         """Calculate statistics from scores.
 
         Args:
@@ -393,8 +393,6 @@ class BaseQualityReporter(ABC, Generic[ConfigT]):
         }
 
         key_fn = sort_key_map.get(order, lambda s: -s.metrics.f1_score)
-        reverse = order.value.endswith("_desc") if order.value.endswith(("_desc", "_asc")) else False
-
         if order in (ReportSortOrder.NAME_DESC,):
             return sorted(scores, key=key_fn, reverse=True)
 
@@ -461,8 +459,8 @@ class BaseQualityReporter(ABC, Generic[ConfigT]):
             output_path.write_text(content, encoding="utf-8")
             return output_path
 
-        except (OSError, IOError) as e:
-            raise QualityWriteError(f"Failed to write report to {output_path}: {e}")
+        except OSError as e:
+            raise QualityWriteError(f"Failed to write report to {output_path}: {e}") from e
 
     def report(
         self,

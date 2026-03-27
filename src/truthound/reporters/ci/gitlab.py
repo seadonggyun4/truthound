@@ -13,19 +13,23 @@ Reference:
 
 from __future__ import annotations
 
-import json
 import hashlib
+import json
 import os
-from dataclasses import dataclass, field
-from typing import Any
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
 from truthound.reporters.ci.base import (
+    AnnotationLevel,
     BaseCIReporter,
     CIAnnotation,
     CIPlatform,
     CIReporterConfig,
-    AnnotationLevel,
 )
+
+if TYPE_CHECKING:
+    from truthound.reporters.presentation import LegacyValidationResultView
+
 
 @dataclass
 class GitLabCIConfig(CIReporterConfig):
@@ -162,7 +166,7 @@ class GitLabCIReporter(BaseCIReporter):
     # Code Quality JSON Format
     # =========================================================================
 
-    def generate_code_quality_report(self, result: "ValidationResult") -> list[dict[str, Any]]:
+    def generate_code_quality_report(self, result: LegacyValidationResultView) -> list[dict[str, Any]]:
         """Generate GitLab Code Quality report format.
 
         The Code Quality report is a JSON array of issues that GitLab
@@ -235,7 +239,7 @@ class GitLabCIReporter(BaseCIReporter):
     # JUnit XML Format
     # =========================================================================
 
-    def generate_junit_report(self, result: "ValidationResult") -> str:
+    def generate_junit_report(self, result: LegacyValidationResultView) -> str:
         """Generate JUnit XML report format.
 
         Args:
@@ -307,7 +311,7 @@ class GitLabCIReporter(BaseCIReporter):
     # Summary Format
     # =========================================================================
 
-    def format_summary(self, result: "ValidationResult") -> str:
+    def format_summary(self, result: LegacyValidationResultView) -> str:
         """Format a summary for GitLab CI logs.
 
         Args:
@@ -408,7 +412,7 @@ class GitLabCIReporter(BaseCIReporter):
 
         return self.get_exit_code(legacy_result)
 
-    def _write_code_quality_artifact(self, result: "ValidationResult") -> None:
+    def _write_code_quality_artifact(self, result: LegacyValidationResultView) -> None:
         """Write Code Quality report artifact.
 
         Args:
@@ -422,7 +426,7 @@ class GitLabCIReporter(BaseCIReporter):
 
         print(f"Code Quality report written to: {path}")
 
-    def _write_junit_artifact(self, result: "ValidationResult") -> None:
+    def _write_junit_artifact(self, result: LegacyValidationResultView) -> None:
         """Write JUnit report artifact.
 
         Args:

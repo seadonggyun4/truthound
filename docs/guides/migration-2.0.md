@@ -33,6 +33,7 @@ This is still the recommended default.
 
 ```python
 run = report.validation_run
+print(run.planned_execution_mode)
 print(run.execution_mode)
 print(run.to_dict())
 ```

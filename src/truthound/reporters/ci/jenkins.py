@@ -15,17 +15,20 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 from xml.etree import ElementTree as ET
 
 from truthound.reporters.ci.base import (
+    AnnotationLevel,
     BaseCIReporter,
     CIAnnotation,
     CIPlatform,
     CIReporterConfig,
-    AnnotationLevel,
 )
+
+if TYPE_CHECKING:
+    from truthound.reporters.presentation import LegacyValidationResultView
+
 
 @dataclass
 class JenkinsConfig(CIReporterConfig):
@@ -151,7 +154,7 @@ class JenkinsReporter(BaseCIReporter):
     # JUnit XML Format
     # =========================================================================
 
-    def generate_junit_report(self, result: "ValidationResult") -> str:
+    def generate_junit_report(self, result: LegacyValidationResultView) -> str:
         """Generate JUnit XML report.
 
         Creates a detailed JUnit report that Jenkins can parse for
@@ -305,7 +308,7 @@ class JenkinsReporter(BaseCIReporter):
     # Warnings-NG Format
     # =========================================================================
 
-    def generate_warnings_report(self, result: "ValidationResult") -> str:
+    def generate_warnings_report(self, result: LegacyValidationResultView) -> str:
         """Generate warnings-ng compatible JSON report.
 
         Args:
@@ -358,7 +361,7 @@ class JenkinsReporter(BaseCIReporter):
     # Summary Format
     # =========================================================================
 
-    def format_summary(self, result: "ValidationResult") -> str:
+    def format_summary(self, result: LegacyValidationResultView) -> str:
         """Format a summary for Jenkins console output.
 
         Args:
@@ -462,7 +465,7 @@ class JenkinsReporter(BaseCIReporter):
 
         return self.get_exit_code(legacy_result)
 
-    def _write_junit_artifact(self, result: "ValidationResult") -> None:
+    def _write_junit_artifact(self, result: LegacyValidationResultView) -> None:
         """Write JUnit XML artifact.
 
         Args:
@@ -476,7 +479,7 @@ class JenkinsReporter(BaseCIReporter):
 
         print(f"JUnit report written to: {path}")
 
-    def _write_warnings_artifact(self, result: "ValidationResult") -> None:
+    def _write_warnings_artifact(self, result: LegacyValidationResultView) -> None:
         """Write warnings-ng artifact.
 
         Args:

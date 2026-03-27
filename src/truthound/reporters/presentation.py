@@ -4,12 +4,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from truthound.core.results import CheckResult, ExecutionIssue, ValidationRunResult
 from truthound.types import Severity
-from truthound.validators.base import ValidationIssue
 
+if TYPE_CHECKING:
+    from truthound.core.results import CheckResult, ExecutionIssue, ValidationRunResult
+    from truthound.validators.base import ValidationIssue
 
 _SEVERITY_ORDER = {
     Severity.CRITICAL: 0,
@@ -215,6 +216,7 @@ class RunPresentation:
     status: str
     result_format: str
     execution_mode: str
+    planned_execution_mode: str
     summary: RunSummary
     checks: tuple[CheckPresentation, ...]
     issues: tuple[IssuePresentation, ...]
@@ -326,6 +328,7 @@ def build_run_presentation(
         status="success" if not run_result.has_failures else "failure",
         result_format=run_result.result_format.value,
         execution_mode=run_result.execution_mode,
+        planned_execution_mode=run_result.planned_execution_mode or run_result.execution_mode,
         summary=summary,
         checks=checks,
         issues=issues,

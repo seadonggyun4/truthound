@@ -8,9 +8,8 @@ storage-only result types.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from truthound.core.results import ValidationRunResult
 from truthound.reporters.adapters import canonicalize_validation_run_result
 from truthound.reporters.base import ReporterContext
 from truthound.reporters.presentation import (
@@ -18,6 +17,9 @@ from truthound.reporters.presentation import (
     RunPresentation,
     build_run_presentation,
 )
+
+if TYPE_CHECKING:
+    from truthound.core.results import ValidationRunResult
 
 
 def to_validation_run_result(data: Any) -> ValidationRunResult:

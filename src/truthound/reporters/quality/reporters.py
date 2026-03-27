@@ -7,29 +7,28 @@ Each reporter combines a formatter with the base reporter functionality.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Sequence
+from typing import TYPE_CHECKING
 
 from truthound.reporters.quality.base import (
     BaseQualityReporter,
-    QualityReporterError,
     QualityRenderError,
 )
 from truthound.reporters.quality.config import (
-    QualityReporterConfig,
     QualityDisplayMode,
-)
-from truthound.reporters.quality.protocols import QualityReportable
-from truthound.reporters.quality.formatters import (
-    ConsoleFormatter,
-    JsonFormatter,
-    MarkdownFormatter,
-    HtmlFormatter,
+    QualityReporterConfig,
 )
 from truthound.reporters.quality.filters import QualityFilter
+from truthound.reporters.quality.formatters import (
+    ConsoleFormatter,
+    HtmlFormatter,
+    JsonFormatter,
+    MarkdownFormatter,
+)
 
 if TYPE_CHECKING:
-    from truthound.profiler.quality import RuleQualityScore
+    from collections.abc import Sequence
 
+    from truthound.reporters.quality.protocols import QualityReportable
 
 # =============================================================================
 # Console Quality Reporter
@@ -127,7 +126,7 @@ class ConsoleQualityReporter(BaseQualityReporter[QualityReporterConfig]):
             return "\n".join(lines)
 
         except Exception as e:
-            raise QualityRenderError(f"Failed to render console output: {e}")
+            raise QualityRenderError(f"Failed to render console output: {e}") from e
 
 
 # =============================================================================
@@ -191,7 +190,7 @@ class JsonQualityReporter(BaseQualityReporter[QualityReporterConfig]):
             return self._formatter.format_scores(scores)
 
         except Exception as e:
-            raise QualityRenderError(f"Failed to render JSON output: {e}")
+            raise QualityRenderError(f"Failed to render JSON output: {e}") from e
 
 
 # =============================================================================
@@ -251,7 +250,7 @@ class MarkdownQualityReporter(BaseQualityReporter[QualityReporterConfig]):
             return self._formatter.format_scores(scores)
 
         except Exception as e:
-            raise QualityRenderError(f"Failed to render Markdown output: {e}")
+            raise QualityRenderError(f"Failed to render Markdown output: {e}") from e
 
 
 # =============================================================================
@@ -311,7 +310,7 @@ class HtmlQualityReporter(BaseQualityReporter[QualityReporterConfig]):
             return self._formatter.format_scores(scores)
 
         except Exception as e:
-            raise QualityRenderError(f"Failed to render HTML output: {e}")
+            raise QualityRenderError(f"Failed to render HTML output: {e}") from e
 
 
 # =============================================================================
@@ -365,8 +364,6 @@ class JUnitQualityReporter(BaseQualityReporter[QualityReporterConfig]):
             # Calculate test stats
             total = len(scores)
             failures = sum(1 for s in scores if s.metrics.f1_score < self._min_f1)
-            passed = total - failures
-
             # Build XML
             testsuite = ET.Element("testsuite")
             testsuite.set("name", "Quality Scores")
@@ -392,4 +389,4 @@ class JUnitQualityReporter(BaseQualityReporter[QualityReporterConfig]):
             return ET.tostring(testsuite, encoding="unicode", method="xml")
 
         except Exception as e:
-            raise QualityRenderError(f"Failed to render JUnit XML output: {e}")
+            raise QualityRenderError(f"Failed to render JUnit XML output: {e}") from e

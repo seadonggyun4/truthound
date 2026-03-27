@@ -9,23 +9,19 @@ from __future__ import annotations
 
 import json
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Sequence
+from typing import TYPE_CHECKING, Any
 
-from truthound.reporters.quality.protocols import (
-    QualityFormatterProtocol,
-    QualityReportable,
-)
-from truthound.reporters.quality.config import (
-    QualityReporterConfig,
-    QualityDisplayMode,
-)
 from truthound.reporters.quality.base import QualityStatistics
+from truthound.reporters.quality.config import (
+    QualityDisplayMode,
+    QualityReporterConfig,
+)
 
 if TYPE_CHECKING:
-    from truthound.profiler.quality import RuleQualityScore
+    from collections.abc import Sequence
 
+    from truthound.reporters.quality.protocols import QualityReportable
 
 # =============================================================================
 # Base Formatter

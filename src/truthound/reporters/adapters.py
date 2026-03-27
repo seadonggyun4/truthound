@@ -10,6 +10,7 @@ from __future__ import annotations
 from typing import Any
 from warnings import warn
 
+from truthound.core.execution_modes import coarse_planned_execution_mode
 from truthound.core.results import CheckResult, ExecutionIssue, ValidationRunResult
 from truthound.types import ResultFormat, Severity
 from truthound.validators.base import ValidationIssue
@@ -118,6 +119,8 @@ def stored_validation_result_to_validation_run_result(
             )
             for issue in validation_run_meta.get("execution_issues", [])
         )
+    execution_mode = str(metadata.pop("_execution_mode", "sequential"))
+    planned_execution_mode = metadata.pop("_planned_execution_mode", None)
 
     return ValidationRunResult(
         run_id=result.run_id,
@@ -127,7 +130,8 @@ def stored_validation_result_to_validation_run_result(
         row_count=result.statistics.total_rows,
         column_count=result.statistics.total_columns,
         result_format=ResultFormat(str(metadata.pop("_result_format", ResultFormat.SUMMARY.value))),
-        execution_mode=str(metadata.pop("_execution_mode", "stored")),
+        execution_mode=execution_mode,
+        planned_execution_mode=planned_execution_mode or coarse_planned_execution_mode(execution_mode),
         checks=tuple(checks),
         issues=tuple(issues),
         execution_issues=execution_issues,

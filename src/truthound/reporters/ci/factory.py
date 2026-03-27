@@ -6,13 +6,15 @@ including auto-detection of the current CI platform.
 
 from __future__ import annotations
 
-from typing import Any, Callable, Type
+from typing import TYPE_CHECKING, Any
 
 from truthound.reporters.ci.base import BaseCIReporter, CIPlatform
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 # Type alias for reporter class
-CIReporterClass = Type[BaseCIReporter]
+CIReporterClass = type[BaseCIReporter]
 
 # Registry of CI reporter classes
 _ci_reporter_registry: dict[str, CIReporterClass] = {}

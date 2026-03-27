@@ -1,13 +1,20 @@
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from datetime import datetime
 from importlib import import_module
-import json
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from truthound.core.execution_modes import (
+    PlannedExecutionMode,
+    RuntimeExecutionMode,
+    coarse_planned_execution_mode,
+    normalize_planned_execution_mode,
+    normalize_runtime_execution_mode,
+)
 from truthound.types import ResultFormat, Severity
 from truthound.validators.base import ValidationIssue
 
@@ -18,7 +25,7 @@ def _get_reporter(name: str, **kwargs: Any) -> Any:
     return import_module('truthound.reporters').get_reporter(name, **kwargs)
 
 
-def _generate_validation_report(run_result: 'ValidationRunResult', **kwargs: Any) -> str:
+def _generate_validation_report(run_result: ValidationRunResult, **kwargs: Any) -> str:
     """Load validation docs generation lazily from the outer adapter layer."""
 
     return import_module('truthound.datadocs').generate_validation_report(run_result, **kwargs)
@@ -42,7 +49,7 @@ class ExecutionIssue:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> 'ExecutionIssue':
+    def from_dict(cls, data: dict[str, Any]) -> ExecutionIssue:
         return cls(
             check_name=str(data.get('check_name', '')),
             message=str(data.get('message', '')),
@@ -72,7 +79,7 @@ class CheckResult:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> 'CheckResult':
+    def from_dict(cls, data: dict[str, Any]) -> CheckResult:
         issues = tuple(_validation_issue_from_dict(issue) for issue in data.get('issues', []))
         return cls(
             name=str(data.get('name', '')),
@@ -93,11 +100,20 @@ class ValidationRunResult:
     run_id: str = field(default_factory=lambda: f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid4().hex[:8]}")
     run_time: datetime = field(default_factory=datetime.now)
     result_format: ResultFormat = ResultFormat.SUMMARY
-    execution_mode: str = 'sequential'
+    execution_mode: str = RuntimeExecutionMode.SEQUENTIAL.value
+    planned_execution_mode: str | None = PlannedExecutionMode.SEQUENTIAL.value
     checks: tuple[CheckResult, ...] = field(default_factory=tuple)
     issues: tuple[ValidationIssue, ...] = field(default_factory=tuple)
     execution_issues: tuple[ExecutionIssue, ...] = field(default_factory=tuple)
     metadata: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        runtime_mode = normalize_runtime_execution_mode(self.execution_mode)
+        planned_mode = normalize_planned_execution_mode(
+            self.planned_execution_mode or coarse_planned_execution_mode(runtime_mode)
+        )
+        object.__setattr__(self, "execution_mode", runtime_mode)
+        object.__setattr__(self, "planned_execution_mode", planned_mode)
 
     @classmethod
     def from_suite(
@@ -109,9 +125,10 @@ class ValidationRunResult:
         row_count: int,
         column_count: int,
         execution_mode: str,
+        planned_execution_mode: str | None = None,
         execution_issues: list[ExecutionIssue] | None = None,
         metadata: dict[str, Any] | None = None,
-    ) -> 'ValidationRunResult':
+    ) -> ValidationRunResult:
         by_check: dict[str, list[ValidationIssue]] = {}
         for issue in issues:
             check_name = issue.validator_name or issue.issue_type
@@ -154,6 +171,7 @@ class ValidationRunResult:
             column_count=column_count,
             result_format=suite.evidence_policy.result_format.format,
             execution_mode=execution_mode,
+            planned_execution_mode=planned_execution_mode,
             checks=tuple(checks),
             issues=tuple(issues),
             execution_issues=tuple(execution_issues or ()),
@@ -172,7 +190,7 @@ class ValidationRunResult:
     def success(self) -> bool:
         return not self.has_failures
 
-    def filter_by_severity(self, min_severity: Severity) -> 'ValidationRunResult':
+    def filter_by_severity(self, min_severity: Severity) -> ValidationRunResult:
         filtered_issues = tuple(
             issue for issue in self.issues if issue.severity >= min_severity
         )
@@ -198,13 +216,14 @@ class ValidationRunResult:
             column_count=self.column_count,
             result_format=self.result_format,
             execution_mode=self.execution_mode,
+            planned_execution_mode=self.planned_execution_mode,
             checks=filtered_checks,
             issues=filtered_issues,
             execution_issues=self.execution_issues,
             metadata=dict(self.metadata),
         )
 
-    def with_metadata(self, **metadata: Any) -> 'ValidationRunResult':
+    def with_metadata(self, **metadata: Any) -> ValidationRunResult:
         return ValidationRunResult(
             run_id=self.run_id,
             run_time=self.run_time,
@@ -214,6 +233,7 @@ class ValidationRunResult:
             column_count=self.column_count,
             result_format=self.result_format,
             execution_mode=self.execution_mode,
+            planned_execution_mode=self.planned_execution_mode,
             checks=self.checks,
             issues=self.issues,
             execution_issues=self.execution_issues,
@@ -233,6 +253,7 @@ class ValidationRunResult:
             'column_count': self.column_count,
             'result_format': self.result_format.value,
             'execution_mode': self.execution_mode,
+            'planned_execution_mode': self.planned_execution_mode,
             'checks': [check.to_dict() for check in self.checks],
             'issues': [issue.to_dict() for issue in self.issues],
             'execution_issues': [issue.to_dict() for issue in self.execution_issues],
@@ -275,7 +296,7 @@ class ValidationRunResult:
         print(output)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> 'ValidationRunResult':
+    def from_dict(cls, data: dict[str, Any]) -> ValidationRunResult:
         return cls(
             run_id=str(data.get('run_id', '')),
             run_time=datetime.fromisoformat(data['run_time']) if data.get('run_time') else datetime.now(),
@@ -285,6 +306,7 @@ class ValidationRunResult:
             column_count=int(data.get('column_count', 0)),
             result_format=ResultFormat(str(data.get('result_format', ResultFormat.SUMMARY.value))),
             execution_mode=str(data.get('execution_mode', 'sequential')),
+            planned_execution_mode=data.get('planned_execution_mode'),
             checks=tuple(CheckResult.from_dict(check) for check in data.get('checks', [])),
             issues=tuple(_validation_issue_from_dict(issue) for issue in data.get('issues', [])),
             execution_issues=tuple(

@@ -36,9 +36,11 @@ import json
 import re
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from enum import Enum
-from typing import Any, Callable, Dict, List, Optional, Type, Union
+from typing import TYPE_CHECKING, Any
 from xml.etree import ElementTree
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 __all__ = [
     # Core classes
@@ -77,9 +79,9 @@ class ValidationError(Exception):
     def __init__(
         self,
         message: str,
-        path: Optional[str] = None,
+        path: str | None = None,
         value: Any = None,
-        expected: Optional[str] = None,
+        expected: str | None = None,
     ) -> None:
         self.message = message
         self.path = path
@@ -101,10 +103,10 @@ class SchemaValidationOutcome:
     """Result of schema validation."""
 
     valid: bool
-    errors: List[ValidationError] = field(default_factory=list)
-    warnings: List[str] = field(default_factory=list)
-    schema_name: Optional[str] = None
-    checked_at: Optional[str] = None
+    errors: list[ValidationError] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    schema_name: str | None = None
+    checked_at: str | None = None
 
     def raise_if_invalid(self) -> None:
         """Raise SchemaError if validation failed."""
@@ -115,7 +117,7 @@ class SchemaValidationOutcome:
                 + "; ".join(error_messages)
             )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary representation."""
         return {
             "valid": self.valid,
@@ -155,7 +157,7 @@ class ReportSchema(ABC):
         ...         return {"type": "custom"}
     """
 
-    def __init__(self, name: Optional[str] = None) -> None:
+    def __init__(self, name: str | None = None) -> None:
         self.name = name or self.__class__.__name__
 
     @abstractmethod
@@ -171,7 +173,7 @@ class ReportSchema(ABC):
         pass
 
     @abstractmethod
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert schema to dictionary representation."""
         pass
 
@@ -200,8 +202,8 @@ class JSONSchema(ReportSchema):
 
     def __init__(
         self,
-        schema: Dict[str, Any],
-        name: Optional[str] = None,
+        schema: dict[str, Any],
+        name: str | None = None,
         strict: bool = False,
     ) -> None:
         """Initialize JSON Schema validator.
@@ -214,7 +216,7 @@ class JSONSchema(ReportSchema):
         super().__init__(name)
         self.schema = schema
         self.strict = strict
-        self._type_validators: Dict[str, Callable] = {
+        self._type_validators: dict[str, Callable] = {
             "string": lambda v: isinstance(v, str),
             "integer": lambda v: isinstance(v, int) and not isinstance(v, bool),
             "number": lambda v: isinstance(v, (int, float)) and not isinstance(v, bool),
@@ -228,8 +230,8 @@ class JSONSchema(ReportSchema):
         """Validate output against JSON Schema."""
         from datetime import datetime
 
-        errors: List[ValidationError] = []
-        warnings: List[str] = []
+        errors: list[ValidationError] = []
+        warnings: list[str] = []
 
         self._validate_value(output, self.schema, "", errors, warnings)
 
@@ -244,10 +246,10 @@ class JSONSchema(ReportSchema):
     def _validate_value(
         self,
         value: Any,
-        schema: Dict[str, Any],
+        schema: dict[str, Any],
         path: str,
-        errors: List[ValidationError],
-        warnings: List[str],
+        errors: list[ValidationError],
+        warnings: list[str],
     ) -> None:
         """Recursively validate a value against schema."""
         # Handle type validation
@@ -273,28 +275,26 @@ class JSONSchema(ReportSchema):
                 return
 
         # Handle enum validation
-        if "enum" in schema:
-            if value not in schema["enum"]:
-                errors.append(
-                    ValidationError(
-                        f"Value not in enum",
-                        path=path or "$",
-                        value=value,
-                        expected=str(schema["enum"]),
-                    )
+        if "enum" in schema and value not in schema["enum"]:
+            errors.append(
+                ValidationError(
+                    "Value not in enum",
+                    path=path or "$",
+                    value=value,
+                    expected=str(schema["enum"]),
                 )
+            )
 
         # Handle const validation
-        if "const" in schema:
-            if value != schema["const"]:
-                errors.append(
-                    ValidationError(
-                        f"Value does not match const",
-                        path=path or "$",
-                        value=value,
-                        expected=repr(schema["const"]),
-                    )
+        if "const" in schema and value != schema["const"]:
+            errors.append(
+                ValidationError(
+                    "Value does not match const",
+                    path=path or "$",
+                    value=value,
+                    expected=repr(schema["const"]),
                 )
+            )
 
         # Handle string-specific validations
         if isinstance(value, str):
@@ -315,9 +315,9 @@ class JSONSchema(ReportSchema):
     def _validate_string(
         self,
         value: str,
-        schema: Dict[str, Any],
+        schema: dict[str, Any],
         path: str,
-        errors: List[ValidationError],
+        errors: list[ValidationError],
     ) -> None:
         """Validate string-specific constraints."""
         if "minLength" in schema and len(value) < schema["minLength"]:
@@ -340,16 +340,15 @@ class JSONSchema(ReportSchema):
                 )
             )
 
-        if "pattern" in schema:
-            if not re.match(schema["pattern"], value):
-                errors.append(
-                    ValidationError(
-                        f"String does not match pattern",
-                        path=path,
-                        value=value,
-                        expected=f"pattern: {schema['pattern']}",
-                    )
+        if "pattern" in schema and not re.match(schema["pattern"], value):
+            errors.append(
+                ValidationError(
+                    "String does not match pattern",
+                    path=path,
+                    value=value,
+                    expected=f"pattern: {schema['pattern']}",
                 )
+            )
 
         if "format" in schema:
             self._validate_format(value, schema["format"], path, errors)
@@ -359,7 +358,7 @@ class JSONSchema(ReportSchema):
         value: str,
         format_type: str,
         path: str,
-        errors: List[ValidationError],
+        errors: list[ValidationError],
     ) -> None:
         """Validate string format."""
         format_patterns = {
@@ -372,29 +371,28 @@ class JSONSchema(ReportSchema):
             "ipv4": r"^(\d{1,3}\.){3}\d{1,3}$",
         }
 
-        if format_type in format_patterns:
-            if not re.match(format_patterns[format_type], value):
-                errors.append(
-                    ValidationError(
-                        f"String does not match format",
-                        path=path,
-                        value=value,
-                        expected=f"format: {format_type}",
-                    )
+        if format_type in format_patterns and not re.match(format_patterns[format_type], value):
+            errors.append(
+                ValidationError(
+                    "String does not match format",
+                    path=path,
+                    value=value,
+                    expected=f"format: {format_type}",
                 )
+            )
 
     def _validate_number(
         self,
-        value: Union[int, float],
-        schema: Dict[str, Any],
+        value: int | float,
+        schema: dict[str, Any],
         path: str,
-        errors: List[ValidationError],
+        errors: list[ValidationError],
     ) -> None:
         """Validate number-specific constraints."""
         if "minimum" in schema and value < schema["minimum"]:
             errors.append(
                 ValidationError(
-                    f"Number below minimum",
+                    "Number below minimum",
                     path=path,
                     value=value,
                     expected=f"minimum: {schema['minimum']}",
@@ -404,7 +402,7 @@ class JSONSchema(ReportSchema):
         if "maximum" in schema and value > schema["maximum"]:
             errors.append(
                 ValidationError(
-                    f"Number above maximum",
+                    "Number above maximum",
                     path=path,
                     value=value,
                     expected=f"maximum: {schema['maximum']}",
@@ -414,7 +412,7 @@ class JSONSchema(ReportSchema):
         if "exclusiveMinimum" in schema and value <= schema["exclusiveMinimum"]:
             errors.append(
                 ValidationError(
-                    f"Number not greater than exclusive minimum",
+                    "Number not greater than exclusive minimum",
                     path=path,
                     value=value,
                     expected=f"exclusiveMinimum: {schema['exclusiveMinimum']}",
@@ -424,7 +422,7 @@ class JSONSchema(ReportSchema):
         if "exclusiveMaximum" in schema and value >= schema["exclusiveMaximum"]:
             errors.append(
                 ValidationError(
-                    f"Number not less than exclusive maximum",
+                    "Number not less than exclusive maximum",
                     path=path,
                     value=value,
                     expected=f"exclusiveMaximum: {schema['exclusiveMaximum']}",
@@ -434,7 +432,7 @@ class JSONSchema(ReportSchema):
         if "multipleOf" in schema and value % schema["multipleOf"] != 0:
             errors.append(
                 ValidationError(
-                    f"Number is not a multiple",
+                    "Number is not a multiple",
                     path=path,
                     value=value,
                     expected=f"multipleOf: {schema['multipleOf']}",
@@ -443,11 +441,11 @@ class JSONSchema(ReportSchema):
 
     def _validate_array(
         self,
-        value: List[Any],
-        schema: Dict[str, Any],
+        value: list[Any],
+        schema: dict[str, Any],
         path: str,
-        errors: List[ValidationError],
-        warnings: List[str],
+        errors: list[ValidationError],
+        warnings: list[str],
     ) -> None:
         """Validate array-specific constraints."""
         if "minItems" in schema and len(value) < schema["minItems"]:
@@ -479,7 +477,7 @@ class JSONSchema(ReportSchema):
                     if key in seen:
                         errors.append(
                             ValidationError(
-                                f"Array contains duplicate items",
+                                "Array contains duplicate items",
                                 path=path,
                                 value=item,
                             )
@@ -498,11 +496,11 @@ class JSONSchema(ReportSchema):
 
     def _validate_object(
         self,
-        value: Dict[str, Any],
-        schema: Dict[str, Any],
+        value: dict[str, Any],
+        schema: dict[str, Any],
         path: str,
-        errors: List[ValidationError],
-        warnings: List[str],
+        errors: list[ValidationError],
+        warnings: list[str],
     ) -> None:
         """Validate object-specific constraints."""
         # Check required properties
@@ -548,7 +546,7 @@ class JSONSchema(ReportSchema):
         if "minProperties" in schema and len(value) < schema["minProperties"]:
             errors.append(
                 ValidationError(
-                    f"Object has too few properties",
+                    "Object has too few properties",
                     path=path or "$",
                     value=f"{len(value)} properties",
                     expected=f"minProperties: {schema['minProperties']}",
@@ -558,14 +556,14 @@ class JSONSchema(ReportSchema):
         if "maxProperties" in schema and len(value) > schema["maxProperties"]:
             errors.append(
                 ValidationError(
-                    f"Object has too many properties",
+                    "Object has too many properties",
                     path=path or "$",
                     value=f"{len(value)} properties",
                     expected=f"maxProperties: {schema['maxProperties']}",
                 )
             )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary representation."""
         return {
             "type": "json_schema",
@@ -593,10 +591,10 @@ class XMLSchema(ReportSchema):
     def __init__(
         self,
         root_element: str,
-        required_elements: Optional[List[str]] = None,
-        required_attributes: Optional[Dict[str, List[str]]] = None,
-        element_schemas: Optional[Dict[str, Dict[str, Any]]] = None,
-        name: Optional[str] = None,
+        required_elements: list[str] | None = None,
+        required_attributes: dict[str, list[str]] | None = None,
+        element_schemas: dict[str, dict[str, Any]] | None = None,
+        name: str | None = None,
     ) -> None:
         """Initialize XML Schema validator.
 
@@ -613,12 +611,12 @@ class XMLSchema(ReportSchema):
         self.required_attributes = required_attributes or {}
         self.element_schemas = element_schemas or {}
 
-    def validate(self, output: Union[str, bytes, ElementTree.Element]) -> ValidationResult:
+    def validate(self, output: str | bytes | ElementTree.Element) -> ValidationResult:
         """Validate XML output."""
         from datetime import datetime
 
-        errors: List[ValidationError] = []
-        warnings: List[str] = []
+        errors: list[ValidationError] = []
+        warnings: list[str] = []
 
         # Parse XML if string/bytes
         try:
@@ -657,7 +655,7 @@ class XMLSchema(ReportSchema):
         if root.tag != self.root_element:
             errors.append(
                 ValidationError(
-                    f"Invalid root element",
+                    "Invalid root element",
                     path="$",
                     value=root.tag,
                     expected=self.root_element,
@@ -705,9 +703,9 @@ class XMLSchema(ReportSchema):
     def _validate_element(
         self,
         element: ElementTree.Element,
-        schema: Dict[str, Any],
+        schema: dict[str, Any],
         path: str,
-        errors: List[ValidationError],
+        errors: list[ValidationError],
     ) -> None:
         """Validate element against schema."""
         # Validate text content
@@ -715,21 +713,20 @@ class XMLSchema(ReportSchema):
             text_schema = schema["text"]
             text = element.text or ""
 
-            if "pattern" in text_schema:
-                if not re.match(text_schema["pattern"], text):
-                    errors.append(
-                        ValidationError(
-                            f"Element text does not match pattern",
-                            path=path,
-                            value=text,
-                            expected=f"pattern: {text_schema['pattern']}",
-                        )
+            if "pattern" in text_schema and not re.match(text_schema["pattern"], text):
+                errors.append(
+                    ValidationError(
+                        "Element text does not match pattern",
+                        path=path,
+                        value=text,
+                        expected=f"pattern: {text_schema['pattern']}",
                     )
+                )
 
             if "minLength" in text_schema and len(text) < text_schema["minLength"]:
                 errors.append(
                     ValidationError(
-                        f"Element text too short",
+                        "Element text too short",
                         path=path,
                         value=text,
                         expected=f"minLength: {text_schema['minLength']}",
@@ -737,29 +734,27 @@ class XMLSchema(ReportSchema):
                 )
 
         # Validate child count
-        if "minChildren" in schema:
-            if len(element) < schema["minChildren"]:
-                errors.append(
-                    ValidationError(
-                        f"Element has too few children",
-                        path=path,
-                        value=f"{len(element)} children",
-                        expected=f"minChildren: {schema['minChildren']}",
-                    )
+        if "minChildren" in schema and len(element) < schema["minChildren"]:
+            errors.append(
+                ValidationError(
+                    "Element has too few children",
+                    path=path,
+                    value=f"{len(element)} children",
+                    expected=f"minChildren: {schema['minChildren']}",
                 )
+            )
 
-        if "maxChildren" in schema:
-            if len(element) > schema["maxChildren"]:
-                errors.append(
-                    ValidationError(
-                        f"Element has too many children",
-                        path=path,
-                        value=f"{len(element)} children",
-                        expected=f"maxChildren: {schema['maxChildren']}",
-                    )
+        if "maxChildren" in schema and len(element) > schema["maxChildren"]:
+            errors.append(
+                ValidationError(
+                    "Element has too many children",
+                    path=path,
+                    value=f"{len(element)} children",
+                    expected=f"maxChildren: {schema['maxChildren']}",
                 )
+            )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary representation."""
         return {
             "type": "xml_schema",
@@ -788,13 +783,13 @@ class CSVSchema(ReportSchema):
 
     def __init__(
         self,
-        required_columns: Optional[List[str]] = None,
-        column_types: Optional[Dict[str, str]] = None,
+        required_columns: list[str] | None = None,
+        column_types: dict[str, str] | None = None,
         delimiter: str = ",",
         has_header: bool = True,
-        min_rows: Optional[int] = None,
-        max_rows: Optional[int] = None,
-        name: Optional[str] = None,
+        min_rows: int | None = None,
+        max_rows: int | None = None,
+        name: str | None = None,
     ) -> None:
         """Initialize CSV Schema validator.
 
@@ -821,8 +816,8 @@ class CSVSchema(ReportSchema):
         from datetime import datetime
         from io import StringIO
 
-        errors: List[ValidationError] = []
-        warnings: List[str] = []
+        errors: list[ValidationError] = []
+        warnings: list[str] = []
 
         if not isinstance(output, str):
             errors.append(
@@ -894,7 +889,7 @@ class CSVSchema(ReportSchema):
         if self.min_rows is not None and len(data_rows) < self.min_rows:
             errors.append(
                 ValidationError(
-                    f"Too few data rows",
+                    "Too few data rows",
                     path="$",
                     value=f"{len(data_rows)} rows",
                     expected=f"minRows: {self.min_rows}",
@@ -904,7 +899,7 @@ class CSVSchema(ReportSchema):
         if self.max_rows is not None and len(data_rows) > self.max_rows:
             errors.append(
                 ValidationError(
-                    f"Too many data rows",
+                    "Too many data rows",
                     path="$",
                     value=f"{len(data_rows)} rows",
                     expected=f"maxRows: {self.max_rows}",
@@ -936,7 +931,7 @@ class CSVSchema(ReportSchema):
         value: str,
         type_constraint: str,
         path: str,
-        errors: List[ValidationError],
+        errors: list[ValidationError],
     ) -> None:
         """Validate column value against type constraint."""
         if type_constraint == "integer":
@@ -945,7 +940,7 @@ class CSVSchema(ReportSchema):
             except ValueError:
                 errors.append(
                     ValidationError(
-                        f"Value is not an integer",
+                        "Value is not an integer",
                         path=path,
                         value=value,
                         expected="integer",
@@ -958,7 +953,7 @@ class CSVSchema(ReportSchema):
             except ValueError:
                 errors.append(
                     ValidationError(
-                        f"Value is not a number",
+                        "Value is not a number",
                         path=path,
                         value=value,
                         expected="number",
@@ -969,7 +964,7 @@ class CSVSchema(ReportSchema):
             if value.lower() not in ("true", "false", "1", "0", "yes", "no"):
                 errors.append(
                     ValidationError(
-                        f"Value is not a boolean",
+                        "Value is not a boolean",
                         path=path,
                         value=value,
                         expected="boolean",
@@ -981,7 +976,7 @@ class CSVSchema(ReportSchema):
             if value not in allowed:
                 errors.append(
                     ValidationError(
-                        f"Value not in enum",
+                        "Value not in enum",
                         path=path,
                         value=value,
                         expected=f"one of: {allowed}",
@@ -993,14 +988,14 @@ class CSVSchema(ReportSchema):
             if not re.match(pattern, value):
                 errors.append(
                     ValidationError(
-                        f"Value does not match pattern",
+                        "Value does not match pattern",
                         path=path,
                         value=value,
                         expected=f"pattern: {pattern}",
                     )
                 )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary representation."""
         return {
             "type": "csv_schema",
@@ -1015,7 +1010,7 @@ class CSVSchema(ReportSchema):
 
 
 class TextSchema(ReportSchema):
-    """Text/plain format validator for reporter output.
+    r"""Text/plain format validator for reporter output.
 
     Validates text output using patterns, line constraints,
     and content requirements.
@@ -1031,14 +1026,14 @@ class TextSchema(ReportSchema):
 
     def __init__(
         self,
-        required_patterns: Optional[List[str]] = None,
-        forbidden_patterns: Optional[List[str]] = None,
-        min_lines: Optional[int] = None,
-        max_lines: Optional[int] = None,
-        min_length: Optional[int] = None,
-        max_length: Optional[int] = None,
+        required_patterns: list[str] | None = None,
+        forbidden_patterns: list[str] | None = None,
+        min_lines: int | None = None,
+        max_lines: int | None = None,
+        min_length: int | None = None,
+        max_length: int | None = None,
         encoding: str = "utf-8",
-        name: Optional[str] = None,
+        name: str | None = None,
     ) -> None:
         """Initialize Text Schema validator.
 
@@ -1061,12 +1056,12 @@ class TextSchema(ReportSchema):
         self.max_length = max_length
         self.encoding = encoding
 
-    def validate(self, output: Union[str, bytes]) -> ValidationResult:
+    def validate(self, output: str | bytes) -> ValidationResult:
         """Validate text output."""
         from datetime import datetime
 
-        errors: List[ValidationError] = []
-        warnings: List[str] = []
+        errors: list[ValidationError] = []
+        warnings: list[str] = []
 
         # Convert bytes to string
         if isinstance(output, bytes):
@@ -1105,7 +1100,7 @@ class TextSchema(ReportSchema):
         if self.min_length is not None and len(output) < self.min_length:
             errors.append(
                 ValidationError(
-                    f"Text too short",
+                    "Text too short",
                     path="$",
                     value=f"{len(output)} chars",
                     expected=f"minLength: {self.min_length}",
@@ -1115,7 +1110,7 @@ class TextSchema(ReportSchema):
         if self.max_length is not None and len(output) > self.max_length:
             errors.append(
                 ValidationError(
-                    f"Text too long",
+                    "Text too long",
                     path="$",
                     value=f"{len(output)} chars",
                     expected=f"maxLength: {self.max_length}",
@@ -1127,7 +1122,7 @@ class TextSchema(ReportSchema):
         if self.min_lines is not None and len(lines) < self.min_lines:
             errors.append(
                 ValidationError(
-                    f"Too few lines",
+                    "Too few lines",
                     path="$",
                     value=f"{len(lines)} lines",
                     expected=f"minLines: {self.min_lines}",
@@ -1137,7 +1132,7 @@ class TextSchema(ReportSchema):
         if self.max_lines is not None and len(lines) > self.max_lines:
             errors.append(
                 ValidationError(
-                    f"Too many lines",
+                    "Too many lines",
                     path="$",
                     value=f"{len(lines)} lines",
                     expected=f"maxLines: {self.max_lines}",
@@ -1149,7 +1144,7 @@ class TextSchema(ReportSchema):
             if not re.search(pattern, output):
                 errors.append(
                     ValidationError(
-                        f"Required pattern not found",
+                        "Required pattern not found",
                         path="$",
                         expected=f"pattern: {pattern}",
                     )
@@ -1161,7 +1156,7 @@ class TextSchema(ReportSchema):
             if match:
                 errors.append(
                     ValidationError(
-                        f"Forbidden pattern found",
+                        "Forbidden pattern found",
                         path="$",
                         value=match.group(),
                         expected=f"not: {pattern}",
@@ -1176,7 +1171,7 @@ class TextSchema(ReportSchema):
             checked_at=datetime.now().isoformat(),
         )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary representation."""
         return {
             "type": "text_schema",
@@ -1192,7 +1187,7 @@ class TextSchema(ReportSchema):
 
 
 # Schema registry
-_schema_registry: Dict[str, ReportSchema] = {}
+_schema_registry: dict[str, ReportSchema] = {}
 
 
 def register_schema(name: str, schema: ReportSchema) -> None:
@@ -1209,7 +1204,7 @@ def register_schema(name: str, schema: ReportSchema) -> None:
     _schema_registry[name] = schema
 
 
-def get_schema(name: str) -> Optional[ReportSchema]:
+def get_schema(name: str) -> ReportSchema | None:
     """Get a registered schema by name.
 
     Args:
@@ -1238,8 +1233,8 @@ def unregister_schema(name: str) -> bool:
 
 def validate_output(
     output: Any,
-    schema: Optional[ReportSchema] = None,
-    schema_name: Optional[str] = None,
+    schema: ReportSchema | None = None,
+    schema_name: str | None = None,
 ) -> ValidationResult:
     """Validate output against a schema.
 
@@ -1266,8 +1261,8 @@ def validate_output(
 
 
 def validate_reporter_output(
-    schema: Optional[ReportSchema] = None,
-    schema_name: Optional[str] = None,
+    schema: ReportSchema | None = None,
+    schema_name: str | None = None,
     raise_on_error: bool = False,
 ) -> Callable:
     """Decorator to validate reporter output.
@@ -1347,10 +1342,10 @@ def _python_to_json_type(python_type: type) -> str:
     return type_map.get(python_type, "string")
 
 
-def _infer_json_schema(obj: Dict[str, Any]) -> JSONSchema:
+def _infer_json_schema(obj: dict[str, Any]) -> JSONSchema:
     """Infer JSON Schema from dictionary."""
 
-    def infer_property_schema(value: Any) -> Dict[str, Any]:
+    def infer_property_schema(value: Any) -> dict[str, Any]:
         if value is None:
             return {"type": "null"}
         elif isinstance(value, bool):
@@ -1443,8 +1438,8 @@ def _infer_text_schema(text: str) -> TextSchema:
 
 
 def merge_schemas(
-    schemas: List[ReportSchema],
-    name: Optional[str] = None,
+    schemas: list[ReportSchema],
+    name: str | None = None,
 ) -> ReportSchema:
     """Merge multiple schemas into a composite schema.
 
@@ -1464,15 +1459,15 @@ def merge_schemas(
     """
 
     class CompositeSchema(ReportSchema):
-        def __init__(self, schemas: List[ReportSchema], name: Optional[str]) -> None:
+        def __init__(self, schemas: list[ReportSchema], name: str | None) -> None:
             super().__init__(name or "composite")
             self.schemas = schemas
 
         def validate(self, output: Any) -> ValidationResult:
             from datetime import datetime
 
-            all_errors: List[ValidationError] = []
-            all_warnings: List[str] = []
+            all_errors: list[ValidationError] = []
+            all_warnings: list[str] = []
 
             for schema in self.schemas:
                 result = schema.validate(output)
@@ -1487,7 +1482,7 @@ def merge_schemas(
                 checked_at=datetime.now().isoformat(),
             )
 
-        def to_dict(self) -> Dict[str, Any]:
+        def to_dict(self) -> dict[str, Any]:
             return {
                 "type": "composite",
                 "name": self.name,

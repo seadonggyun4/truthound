@@ -23,8 +23,6 @@ Example:
 
 from __future__ import annotations
 
-import csv
-import io
 import json
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -42,9 +40,7 @@ from truthound.reporters.sdk.mixins import (
 if TYPE_CHECKING:
     from truthound.core.results import ValidationRunResult
     from truthound.reporters.presentation import (
-        LegacyValidationResultView,
         LegacyValidatorResultView as ValidatorResult,
-        RunPresentation,
     )
 
 
@@ -113,7 +109,7 @@ class CSVReporter(
     def _default_config(cls) -> CSVReporterConfig:
         return CSVReporterConfig()
 
-    def render(self, data: "ValidationRunResult") -> str:
+    def render(self, data: ValidationRunResult) -> str:
         """Render validation result as CSV.
 
         Args:
@@ -144,7 +140,7 @@ class CSVReporter(
             include_header=self._config.include_header,
         )
 
-    def _result_to_row(self, result: "ValidatorResult") -> dict[str, Any]:
+    def _result_to_row(self, result: ValidatorResult) -> dict[str, Any]:
         """Convert ValidatorResult to row dictionary."""
         return {
             "validator_name": result.validator_name,
@@ -215,7 +211,7 @@ class YAMLReporter(
     def _default_config(cls) -> YAMLReporterConfig:
         return YAMLReporterConfig()
 
-    def render(self, data: "ValidationRunResult") -> str:
+    def render(self, data: ValidationRunResult) -> str:
         """Render validation result as YAML.
 
         Args:
@@ -229,11 +225,11 @@ class YAMLReporter(
         """
         try:
             import yaml
-        except ImportError:
+        except ImportError as exc:
             raise ImportError(
                 "PyYAML is required for YAML output. "
                 "Install with: pip install pyyaml"
-            )
+            ) from exc
 
         # Build structure
         structure = self._build_structure(data)
@@ -247,7 +243,7 @@ class YAMLReporter(
             allow_unicode=True,
         )
 
-    def _build_structure(self, data: "ValidationRunResult") -> dict[str, Any]:
+    def _build_structure(self, data: ValidationRunResult) -> dict[str, Any]:
         """Build YAML structure from validation result."""
         presentation = self.present(data)
         legacy_view = presentation.to_legacy_view()
@@ -332,7 +328,7 @@ class JUnitXMLReporter(
     def _default_config(cls) -> JUnitXMLReporterConfig:
         return JUnitXMLReporterConfig()
 
-    def render(self, data: "ValidationRunResult") -> str:
+    def render(self, data: ValidationRunResult) -> str:
         """Render validation result as JUnit XML.
 
         Args:
@@ -424,7 +420,7 @@ class JUnitXMLReporter(
 
         return f'<?xml version="1.0" encoding="UTF-8"?>\n{testsuites}'
 
-    def _render_test_case(self, result: "ValidatorResult") -> str:
+    def _render_test_case(self, result: ValidatorResult) -> str:
         """Render a single test case."""
         class_name = f"truthound.validators.{result.validator_name}"
         name = result.column or "table_level"
@@ -512,7 +508,7 @@ class NDJSONReporter(
     def _default_config(cls) -> NDJSONReporterConfig:
         return NDJSONReporterConfig()
 
-    def render(self, data: "ValidationRunResult") -> str:
+    def render(self, data: ValidationRunResult) -> str:
         """Render validation result as NDJSON.
 
         Args:
@@ -632,7 +628,7 @@ class TableReporter(
     def _default_config(cls) -> TableReporterConfig:
         return TableReporterConfig()
 
-    def render(self, data: "ValidationRunResult") -> str:
+    def render(self, data: ValidationRunResult) -> str:
         """Render validation result as formatted table.
 
         Args:
