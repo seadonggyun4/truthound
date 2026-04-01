@@ -357,6 +357,26 @@ def test_tests_pr_workflow_uses_sharded_quality_gate():
 
 
 @pytest.mark.contract
+def test_docs_workflow_does_not_checkout_dashboard_repo() -> None:
+    workflow_path = (
+        Path(__file__).resolve().parents[1]
+        / ".github"
+        / "workflows"
+        / "docs.yml"
+    )
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+
+    assert workflow["name"] == "Docs"
+    steps = workflow["jobs"]["docs"]["steps"]
+    rendered = yaml.safe_dump(steps, sort_keys=False)
+
+    assert "seadonggyun4/truthound-dashboard" not in rendered
+    assert ".external/truthound-dashboard" not in rendered
+    assert "prepare_public_docs.py --mode full" in rendered
+    assert "prepare_public_docs.py --mode public" in rendered
+
+
+@pytest.mark.contract
 def test_ruff_ratchet_manifest_tracks_clean_boundaries():
     targets = _load_ruff_ratchet_manifest()
 

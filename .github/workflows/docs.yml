@@ -30,12 +30,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Checkout truthound-dashboard docs source
-        uses: actions/checkout@v4
-        with:
-          repository: seadonggyun4/truthound-dashboard
-          path: .external/truthound-dashboard
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"

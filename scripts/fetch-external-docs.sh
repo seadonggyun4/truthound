@@ -6,7 +6,6 @@
 # Usage: ./scripts/fetch-external-docs.sh [repo-name]
 #        ./scripts/fetch-external-docs.sh               # sync all configured repos
 #        ./scripts/fetch-external-docs.sh orchestration # sync only orchestration
-#        ./scripts/fetch-external-docs.sh dashboard     # sync only dashboard
 
 set -e
 
@@ -18,7 +17,6 @@ WORKSPACE_ROOT="$(dirname "$PROJECT_ROOT")"
 # Format: "name|repo_url|target_dir|sync_mode"
 EXTERNAL_REPOS=(
     "orchestration|https://github.com/seadonggyun4/truthound-orchestration.git|docs/orchestration|public_nav"
-    "dashboard|https://github.com/seadonggyun4/truthound-dashboard.git|docs/dashboard|docs_tree"
     # Add new repos here:
     # "new-repo|https://github.com/seadonggyun4/truthound-new-repo.git|docs/new-repo|docs_tree"
 )
