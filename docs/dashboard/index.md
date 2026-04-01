@@ -1,5 +1,5 @@
 <div align="center">
-  <img width="560" alt="Truthound Banner" src="../assets/truthound_banner.png" />
+  <img width="720" alt="Truthound Dashboard Banner" src="../assets/truthound-dashboard-banner.png" />
 </div>
 
 # Truthound Dashboard
