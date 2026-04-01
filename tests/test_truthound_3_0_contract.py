@@ -24,6 +24,7 @@ def test_get_context_creates_zero_config_workspace(tmp_path: Path):
     assert context.runs_dir.exists()
     assert context.docs_dir.exists()
     assert context.plugins_dir.exists()
+    assert not (context.workspace_dir / "ai").exists()
 
 
 def test_check_uses_context_and_persists_zero_config_artifacts(tmp_path: Path):
@@ -36,6 +37,9 @@ def test_check_uses_context_and_persists_zero_config_artifacts(tmp_path: Path):
 
     assert isinstance(run_result, ValidationRunResult)
     assert run_result.metadata["context_root"] == str(tmp_path)
+    assert run_result.metadata["context_source_key"] == "dict:customer_id:email"
+    assert run_result.metadata["context_history_key"] == "dict:customer_id:email"
+    assert isinstance(run_result.metadata["context_source_fingerprint"], str)
 
     run_artifact = Path(run_result.metadata["context_run_artifact"])
     docs_artifact = Path(run_result.metadata["context_docs_artifact"])
@@ -44,6 +48,7 @@ def test_check_uses_context_and_persists_zero_config_artifacts(tmp_path: Path):
     assert docs_artifact.exists()
     assert run_artifact.parent == context.runs_dir
     assert docs_artifact.parent == context.docs_dir
+    assert not (context.workspace_dir / "ai").exists()
 
     baseline_index = json.loads(context.baseline_index_path.read_text(encoding="utf-8"))
     assert baseline_index
@@ -67,8 +72,9 @@ def test_metric_history_is_bounded_for_repeated_zero_config_runs(tmp_path: Path)
     )
     assert last_run is not None
     assert len(history_payload) == 1
-    source_history = next(iter(history_payload.values()))
+    history_key, source_history = next(iter(history_payload.items()))
 
+    assert history_key == "dict:customer_id:email"
     assert len(source_history) == 3
     assert all("run_id" in entry for entry in source_history)
 

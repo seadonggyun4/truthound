@@ -12,6 +12,12 @@ from typing import TYPE_CHECKING, Any
 
 import yaml
 
+from truthound._applied_suite import (
+    APPLIED_SUITES_DIRNAME,
+    APPLIED_SUITES_INDEX_FILENAME,
+    AppliedSuiteRecord,
+    applied_suite_filename,
+)
 from truthound.cache import get_data_fingerprint, get_source_key
 from truthound.core.contracts import MetricRepository
 from truthound.schema import Schema, learn
@@ -157,11 +163,13 @@ class TruthoundContext:
     runs_dir: Path = field(init=False)
     docs_dir: Path = field(init=False)
     plugins_dir: Path = field(init=False)
+    suites_dir: Path = field(init=False)
     metric_repository: FileMetricRepository = field(init=False)
     _plugin_manager: Any | None = field(default=None, init=False, repr=False)
     _workspace_ready: bool = field(default=False, init=False, repr=False)
     _catalog_cache: dict[str, Any] | None = field(default=None, init=False, repr=False)
     _baseline_index_cache: dict[str, Any] | None = field(default=None, init=False, repr=False)
+    _suites_index_cache: dict[str, Any] | None = field(default=None, init=False, repr=False)
     _schema_cache: dict[str, Schema] = field(default_factory=dict, init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -172,6 +180,7 @@ class TruthoundContext:
         self.runs_dir = self.workspace_dir / "runs"
         self.docs_dir = self.workspace_dir / "docs"
         self.plugins_dir = self.workspace_dir / "plugins"
+        self.suites_dir = self.workspace_dir / APPLIED_SUITES_DIRNAME
         self.metric_repository = FileMetricRepository(
             self.baselines_dir / "metric-history.json",
             max_history_entries=self.config.max_metric_history_entries,
@@ -190,6 +199,10 @@ class TruthoundContext:
     @property
     def baseline_index_path(self) -> Path:
         return self.baselines_dir / "index.json"
+
+    @property
+    def suites_index_path(self) -> Path:
+        return self.suites_dir / APPLIED_SUITES_INDEX_FILENAME
 
     def ensure_workspace(self) -> None:
         if self._workspace_ready:
@@ -224,6 +237,12 @@ class TruthoundContext:
             self.baseline_index_path.write_text("{}", encoding="utf-8")
         self._workspace_ready = True
 
+    def ensure_suites_workspace(self) -> None:
+        self.ensure_workspace()
+        self.suites_dir.mkdir(parents=True, exist_ok=True)
+        if not self.suites_index_path.exists():
+            self.suites_index_path.write_text("{}", encoding="utf-8")
+
     def _read_json_dict(self, path: Path) -> dict[str, Any]:
         if not path.exists():
             return {}
@@ -252,6 +271,11 @@ class TruthoundContext:
         if self._baseline_index_cache is None:
             self._baseline_index_cache = self._read_json_dict(self.baseline_index_path)
         return self._baseline_index_cache
+
+    def _get_suites_index(self) -> dict[str, Any]:
+        if self._suites_index_cache is None:
+            self._suites_index_cache = self._read_json_dict(self.suites_index_path)
+        return self._suites_index_cache
 
     def resolve_source_key(self, data: Any = None, source: Any = None) -> str:
         if source is not None:
@@ -355,12 +379,65 @@ class TruthoundContext:
         self.track_asset(data=data, source=source)
         return schema, True
 
+    def read_applied_suite(
+        self,
+        *,
+        source_key: str | None = None,
+        data: Any = None,
+        source: Any = None,
+    ) -> AppliedSuiteRecord | None:
+        resolved_source_key = source_key or self.resolve_source_key(data=data, source=source)
+        if not self.suites_index_path.exists():
+            return None
+        index = self._get_suites_index()
+        entry = index.get(resolved_source_key)
+        if not isinstance(entry, dict):
+            return None
+        suite_file = entry.get("suite_file")
+        if not isinstance(suite_file, str) or not suite_file:
+            return None
+        suite_path = self.suites_dir / suite_file
+        payload = self._read_json_dict(suite_path)
+        if not payload:
+            return None
+        try:
+            record = AppliedSuiteRecord.from_dict(payload)
+        except ValueError:
+            return None
+        if record.source_key != resolved_source_key:
+            return None
+        return record
+
+    def write_applied_suite(self, record: AppliedSuiteRecord) -> Path:
+        self.ensure_suites_workspace()
+        suite_file = applied_suite_filename(record.source_key)
+        output = self.suites_dir / suite_file
+        self._write_json(output, record.to_dict())
+
+        index = self._get_suites_index()
+        index[record.source_key] = {
+            "source_key": record.source_key,
+            "suite_file": suite_file,
+            "proposal_id": record.proposal_id,
+            "diff_hash": record.diff_hash,
+            "updated_at": record.applied_at,
+        }
+        self._write_json(self.suites_index_path, index)
+        return output
+
     def persist_run(self, run_result: ValidationRunResult) -> Path:
         self.ensure_workspace()
         output = self.runs_dir / f"{run_result.run_id}.json"
         output.write_text(run_result.to_json(), encoding="utf-8")
+        metadata = dict(run_result.metadata)
+        history_key = (
+            metadata.get("context_history_key")
+            or metadata.get("context_source_key")
+        )
+        if not isinstance(history_key, str) or not history_key.strip():
+            history_key = self.resolve_source_key(run_result.source)
         self.metric_repository.append_history(
-            self.resolve_source_key(run_result.source),
+            history_key,
             {
                 "run_id": run_result.run_id,
                 "run_time": run_result.run_time.isoformat(),

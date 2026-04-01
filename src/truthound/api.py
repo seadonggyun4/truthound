@@ -96,6 +96,8 @@ def check(
 
     active_context = context or get_context()
     asset = build_validation_asset(data=data, source=source, pushdown=pushdown)
+    source_key = active_context.resolve_source_key(data=data, source=source)
+    source_fingerprint = active_context.resolve_fingerprint(data=data, source=source)
     active_context.track_asset(data=data, source=source)
     suite = ValidationSuite.from_legacy(
         context=active_context,
@@ -121,6 +123,9 @@ def check(
     run_result = ValidationRuntime().execute(asset=asset, plan=plan)
     run_result = run_result.with_metadata(
         context_root=str(active_context.root_dir),
+        context_source_key=source_key,
+        context_history_key=source_key,
+        context_source_fingerprint=source_fingerprint,
     )
 
     if min_severity is not None:

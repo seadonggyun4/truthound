@@ -80,33 +80,6 @@ def _copy_external_doc(
     destination_path.write_text(rendered, encoding="utf-8")
 
 
-def _stage_external_assets(
-    repo_root: Path,
-    output_dir: Path,
-    *,
-    source,
-    overrides: dict[str, Path],
-) -> None:
-    source_root = discover_external_source_root(repo_root, source, overrides)
-    if source_root is None or source.name != "dashboard":
-        return
-
-    banner_source = (
-        source_root
-        / source.normalized_docs_root
-        / "assets"
-        / "brand"
-        / "truthound-dashboard-banner.png"
-    )
-    if not banner_source.exists():
-        raise FileNotFoundError(
-            f"Dashboard banner asset is missing from the external source checkout: {banner_source}"
-        )
-
-    banner_destination = output_dir / "assets" / "dashboard" / "truthound-dashboard-banner.png"
-    _copy_file(banner_source, banner_destination)
-
-
 def _stage_full_docs(
     *,
     repo_root: Path,
@@ -136,7 +109,6 @@ def _stage_full_docs(
                 overrides=overrides,
             )
         copied_docs = len(list(output_dir.rglob("*.md")))
-        _stage_external_assets(repo_root, output_dir, source=source, overrides=overrides)
 
     return copied_docs
 
@@ -188,9 +160,6 @@ def _stage_public_docs(
 
     for relative_path in support_directories:
         _copy_directory(docs_root / relative_path, output_dir / relative_path)
-
-    for external_source in external_sources:
-        _stage_external_assets(repo_root, output_dir, source=external_source, overrides=overrides)
 
     expected_markdown_count = manifest.get("expected_markdown_count")
     if expected_markdown_count is not None and copied_docs != int(expected_markdown_count):

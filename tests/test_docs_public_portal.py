@@ -81,36 +81,26 @@ def _top_level_nav_labels(config: dict) -> list[str]:
 
 
 def test_public_docs_manifest_exposes_full_portal():
-    if not _external_source_available("dashboard"):
-        pytest.skip("dashboard external docs checkout is not available in this environment")
-
     manifest_module = _load_public_manifest_module()
     manifest = manifest_module.load_manifest(REPO_ROOT / "docs" / "public_docs.yml")
     docs = manifest_module.resolve_public_docs(manifest, REPO_ROOT / "docs")
 
     assert "index.md" in docs
+    assert "ai/index.md" in docs
+    assert "ai/system-boundary.md" in docs
     assert "tutorials/index.md" in docs
     assert "cli/index.md" in docs
     assert "python-api/index.md" in docs
     assert "reference/index.md" in docs
     assert "dashboard/index.md" in docs
-    assert "dashboard/quickstart/install-and-run.md" in docs
-    assert "dashboard/concepts/architecture.md" in docs
-    assert "dashboard/guides/reports-and-datadocs.md" in docs
-    assert "dashboard/operations/ci-and-quality-gates.md" in docs
-    assert "dashboard/api-reference/artifacts.md" in docs
-    assert "dashboard/reference/saved-view-scope-matrix.md" in docs
     assert "guides/checkpoint/index.md" in docs
     assert "guides/validators/index.md" in docs
     assert "concepts/API_REFERENCE.md" not in docs
     assert "guides/datasources/ARCHITECTURE.md" not in docs
-    assert not any((REPO_ROOT / "docs" / "dashboard").rglob("*.md"))
+    assert (REPO_ROOT / "docs" / "dashboard" / "index.md").exists()
 
 
 def test_public_docs_expected_page_count_matches_manifest():
-    if not _external_source_available("dashboard"):
-        pytest.skip("dashboard external docs checkout is not available in this environment")
-
     manifest_module = _load_public_manifest_module()
     manifest = manifest_module.load_manifest(REPO_ROOT / "docs" / "public_docs.yml")
     docs = manifest_module.resolve_public_docs(manifest, REPO_ROOT / "docs")
@@ -130,9 +120,6 @@ def test_public_docs_expected_page_count_matches_manifest():
 
 
 def test_public_docs_manifest_keeps_orchestration_counts_without_external_checkout():
-    if not _external_source_available("dashboard"):
-        pytest.skip("dashboard external docs checkout is not available in this environment")
-
     manifest_module = _load_public_manifest_module()
     manifest = manifest_module.load_manifest(REPO_ROOT / "docs" / "public_docs.yml")
 
@@ -164,6 +151,7 @@ def test_public_docs_manifest_keeps_orchestration_counts_without_external_checko
 def test_mkdocs_nav_exposes_major_hubs_in_main_and_public_configs():
     expected_labels = [
         "Core",
+        "AI",
         "Dashboard",
         "Orchestration",
         "Release Notes",
@@ -204,17 +192,6 @@ def test_mkdocs_core_nav_exposes_major_subsections() -> None:
 
 
 def test_mkdocs_dashboard_nav_exposes_major_subsections() -> None:
-    expected_dashboard_labels = [
-        "Overview",
-        "Quickstart",
-        "Concepts",
-        "Guides",
-        "Operations",
-        "API Reference",
-        "Reference",
-        "Migration",
-    ]
-
     for config_path in [REPO_ROOT / "mkdocs.yml", REPO_ROOT / "mkdocs.public.yml"]:
         config = _load_mkdocs(config_path)
         nav = config.get("nav", [])
@@ -224,7 +201,32 @@ def test_mkdocs_dashboard_nav_exposes_major_subsections() -> None:
         )
         assert dashboard_entry is not None
         labels = _nav_labels(dashboard_entry)
-        for label in expected_dashboard_labels:
+        assert labels == ["Overview"]
+
+
+def test_mkdocs_ai_nav_exposes_major_subsections() -> None:
+    expected_ai_labels = [
+        "Overview",
+        "System Boundary",
+        "Proposal Compiler",
+        "Run Analysis Evidence Model",
+        "Artifact Schema",
+        "Approval and Apply Semantics",
+        "Privacy and Redaction",
+        "Provider Contract",
+        "Smoke and Release Gates",
+    ]
+
+    for config_path in [REPO_ROOT / "mkdocs.yml", REPO_ROOT / "mkdocs.public.yml"]:
+        config = _load_mkdocs(config_path)
+        nav = config.get("nav", [])
+        ai_entry = next(
+            (entry["AI"] for entry in nav if isinstance(entry, dict) and "AI" in entry),
+            None,
+        )
+        assert ai_entry is not None
+        labels = _nav_labels(ai_entry)
+        for label in expected_ai_labels:
             assert label in labels
 
 
@@ -240,33 +242,32 @@ def test_mkdocs_brand_assets_are_preserved():
         assert theme["palette"][1]["primary"] == "custom"
 
 
-def test_dashboard_external_banner_markup_and_asset_contract() -> None:
+def test_external_source_banner_markup_uses_generic_upstream_contract() -> None:
     manifest_module = _load_public_manifest_module()
     external_module = _load_external_docs_module()
     manifest = manifest_module.load_manifest(REPO_ROOT / "docs" / "public_docs.yml")
     sources = external_module.load_external_sources(manifest)
-    dashboard = next(source for source in sources if source.name == "dashboard")
+    orchestration = next(source for source in sources if source.name == "orchestration")
 
-    homepage_banner = external_module.build_source_banner(Path("dashboard/index.md"), dashboard)
-    inner_banner = external_module.build_source_banner(
-        Path("dashboard/guides/reports-and-datadocs.md"),
-        dashboard,
+    banner = external_module.build_source_banner(
+        Path("orchestration/index.md"),
+        orchestration,
     )
 
-    assert '/assets/dashboard/truthound-dashboard-banner.png' in homepage_banner
-    assert "dashboard-external-banner--hero" in homepage_banner
-    assert "dashboard-external-banner--compact" in inner_banner
-    assert '!!! note "Upstream Source"' in homepage_banner
+    assert "dashboard-external-banner" not in banner
+    assert "/assets/dashboard/" not in banner
+    assert '!!! note "Upstream Source"' in banner
 
 
-def test_docs_deployment_verification_distinguishes_dashboard_docs_from_preview_app() -> None:
+def test_docs_deployment_verification_tracks_dashboard_as_overview_only() -> None:
     verification_doc = (
         REPO_ROOT / "docs" / "guides" / "docs-deployment-verification.md"
     ).read_text(encoding="utf-8")
 
     assert "https://truthound.netlify.app/" in verification_doc
-    assert "https://truthound-dashboard.onrender.com/" in verification_doc
-    assert "does not assume the dashboard runtime is hosted on Netlify" in verification_doc
+    assert "dashboard runtime is hosted inside the Netlify site" in verification_doc
+    assert "docs/dashboard/index.md" in verification_doc
+    assert "docs/ai/" in verification_doc
 
 
 def _init_git_repo(repo_path: Path, *, branch: str = "main") -> None:
@@ -289,18 +290,18 @@ def test_fetch_external_docs_clones_missing_sources_into_dot_external(tmp_path: 
     repo_root = tmp_path / "workspace" / "repo"
     repo_root.mkdir(parents=True)
 
-    source_repo = tmp_path / "sources" / "truthound-dashboard-source"
+    source_repo = tmp_path / "sources" / "truthound-orchestration-source"
     (source_repo / "docs").mkdir(parents=True)
-    (source_repo / "docs" / "index.md").write_text("# Dashboard\n", encoding="utf-8")
+    (source_repo / "docs" / "index.md").write_text("# Orchestration\n", encoding="utf-8")
     _init_git_repo(source_repo)
 
     manifest = {
         "external_sources": {
-            "dashboard": {
-                "prefix": "dashboard",
-                "label": "Truthound Dashboard 3.x",
+            "orchestration": {
+                "prefix": "orchestration",
+                "label": "Truthound Orchestration 3.x",
                 "repo_url": source_repo.resolve().as_posix(),
-                "repo_name": "local/truthound-dashboard-source",
+                "repo_name": "local/truthound-orchestration-source",
                 "branch": "main",
                 "docs_root": "docs",
             }
@@ -309,7 +310,7 @@ def test_fetch_external_docs_clones_missing_sources_into_dot_external(tmp_path: 
 
     fetched = fetch_module.ensure_external_sources(repo_root=repo_root, manifest=manifest)
     assert fetched == 1
-    assert (repo_root / ".external" / "truthound-dashboard-source" / "docs" / "index.md").exists()
+    assert (repo_root / ".external" / "truthound-orchestration-source" / "docs" / "index.md").exists()
 
     fetched_again = fetch_module.ensure_external_sources(repo_root=repo_root, manifest=manifest)
     assert fetched_again == 0

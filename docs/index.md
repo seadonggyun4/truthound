@@ -2,26 +2,29 @@
   <img width="560" alt="Truthound Banner" src="assets/truthound_banner.png" />
 </div>
 
-# Truthound 3.0
+# Truthound 3.x
 
 Truthound is a layered data quality system. The center of that system is
 Truthound Core: a validation-first, Polars-first kernel built around
 `TruthoundContext`, `ValidationRunResult`, deterministic auto-suites, and a
 planner/runtime execution boundary. Around that core sit two first-party
 layers: Truthound Orchestration for host-native execution in schedulers and
-workflow systems, and Truthound Dashboard for operating Truthound through a
-control-plane UI.
+workflow systems, an additive `truthound.ai` namespace for reviewable AI
+proposal and analysis workflows, and Truthound Dashboard for operating
+Truthound through an installation-managed control-plane UI.
 
-This portal combines those layers in one documentation site without flattening
-them into one undifferentiated platform.
+This portal keeps the core and orchestration surfaces fully documented, adds
+the public `truthound.ai` contract, and keeps the dashboard surface visible at
+the boundary level without reproducing the full console implementation here.
 
 ## Truthound By Layer
 
 | Layer | Owns | Start here when you need to... |
 |--------------|------------|--------------------------------|
 | **Truthound Core** | Validation kernel, zero-config workspace, result model, reporters, Data Docs, checkpoint runtime, profiling, benchmarked execution path | run your first validation, use the Python API or CLI, understand `ValidationRunResult`, or evaluate the core contract |
+| **Truthound AI** | Optional review-layer APIs for proposal generation, run analysis, approval logs, and controlled apply flows | understand the AI boundary, compile prompt-driven suite proposals, or analyze run evidence without mutating core state by default |
 | **Truthound Orchestration** | First-party execution integration layer for Airflow, Dagster, Prefect, dbt, Mage, and Kestra | run Truthound inside a scheduler, asset graph, flow system, or warehouse-native orchestration surface |
-| **Truthound Dashboard** | First-party control-plane for sessions, RBAC, sources, artifacts, incidents, secrets, and observability | operate Truthound deployments, manage teams and ownership, or review runs through a web UI |
+| **Truthound Dashboard** | Installation-managed operational console for sessions, RBAC, sources, artifacts, incidents, AI review, and observability | operate Truthound deployments, manage teams and ownership, or review proposals and run analysis through a web UI |
 
 ## Choose Your Entry Point
 
@@ -31,6 +34,7 @@ them into one undifferentiated platform.
 | Learn the core workflow end to end | [Core Tutorials](tutorials/index.md) |
 | Use Truthound from scripts or services | [Core Python API](python-api/index.md) |
 | Use Truthound from a terminal or CI job | [Core CLI Reference](cli/index.md) |
+| Learn the optional AI proposal and analysis contract | [Truthound AI](ai/index.md) |
 | Design scheduler-native execution | [Truthound Orchestration](orchestration/index.md) |
 | Operate a control-plane UI for Truthound | [Truthound Dashboard](dashboard/index.md) |
 | Understand how the layers fit together | [Concepts & Architecture](concepts/index.md) |
@@ -80,18 +84,31 @@ Prefect, dbt, Mage, or Kestra:
 - [Choose a Platform](orchestration/choose-a-platform.md)
 - [Shared Runtime](orchestration/common/index.md)
 
+### AI
+
+Use `AI` when you need a reviewable, artifact-driven AI layer on top of the
+core validation contract:
+
+- [AI Overview](ai/index.md)
+- [System Boundary](ai/system-boundary.md)
+- [Proposal Compiler](ai/proposal-compiler.md)
+- [Run Analysis Evidence Model](ai/run-analysis-evidence.md)
+- [Approval and Apply Semantics](ai/approval-apply.md)
+
 ### Dashboard
 
 Use `Dashboard` when you need the operational control-plane:
 
 - [Dashboard Overview](dashboard/index.md)
-- [Quickstart](dashboard/quickstart/install-and-run.md)
-- [Operations](dashboard/operations/ci-and-quality-gates.md)
+- installation-managed operational console guidance
+- deployment-aligned review and approval surface
+- AI review, proposal, and run-analysis workflows built on `truthound.ai`
 
 ## Keep Reading
 
 - [Core Getting Started](getting-started/index.md)
+- [Truthound AI](ai/index.md)
 - [Truthound Orchestration](orchestration/index.md)
 - [Truthound Dashboard](dashboard/index.md)
-- [Release Notes](releases/truthound-3.0.md)
+- [Release Notes](releases/truthound-3.1.md)
 - [Migration to 3.0](guides/migration-3.0.md)

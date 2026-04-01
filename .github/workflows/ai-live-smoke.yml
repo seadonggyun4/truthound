@@ -1,0 +1,150 @@
+name: AI Live Smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: Optional OpenAI model override for the live smoke run
+        required: false
+        type: string
+      keep_workspace:
+        description: Retain the smoke workspace even when the smoke succeeds
+        required: false
+        default: false
+        type: boolean
+
+jobs:
+  ai-live-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: astral-sh/setup-uv@v4
+
+      - name: Sync locked dev environment
+        run: uv sync --frozen --extra dev
+
+      - name: Prepare smoke artifacts
+        run: mkdir -p test-artifacts
+
+      - name: Validate live smoke configuration
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          INPUT_MODEL: ${{ inputs.model }}
+          DEFAULT_MODEL: ${{ vars.TRUTHOUND_AI_MODEL }}
+        run: |
+          if [ -z "${OPENAI_API_KEY}" ]; then
+            echo "OPENAI_API_KEY secret is required for AI Live Smoke."
+            exit 1
+          fi
+          if [ -z "${INPUT_MODEL}" ] && [ -z "${DEFAULT_MODEL}" ]; then
+            echo "Provide workflow input 'model' or define repository variable TRUTHOUND_AI_MODEL."
+            exit 1
+          fi
+
+      - name: Run live OpenAI proposal smoke
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          TRUTHOUND_AI_RUN_LIVE_SMOKE: "1"
+          TRUTHOUND_AI_SMOKE_MODEL: ${{ inputs.model }}
+          TRUTHOUND_AI_MODEL: ${{ vars.TRUTHOUND_AI_MODEL }}
+          TRUTHOUND_AI_SMOKE_KEEP_WORKSPACE: ${{ inputs.keep_workspace && '1' || '0' }}
+          TRUTHOUND_AI_SMOKE_RESULT_PATH: test-artifacts/ai-live-smoke-proposal.json
+        run: |
+          uv run --frozen --extra dev python -m pytest -q tests/integration/ai/test_openai_live_smoke.py --run-integration --tb=line
+
+      - name: Run live OpenAI explain-run smoke
+        if: always()
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          TRUTHOUND_AI_RUN_LIVE_SMOKE: "1"
+          TRUTHOUND_AI_SMOKE_MODEL: ${{ inputs.model }}
+          TRUTHOUND_AI_MODEL: ${{ vars.TRUTHOUND_AI_MODEL }}
+          TRUTHOUND_AI_SMOKE_KEEP_WORKSPACE: ${{ inputs.keep_workspace && '1' || '0' }}
+          TRUTHOUND_AI_SMOKE_RESULT_PATH: test-artifacts/ai-live-smoke-analysis.json
+        run: |
+          uv run --frozen --extra dev python -m pytest -q tests/integration/ai/test_openai_live_explain_run_smoke.py --run-integration --tb=line
+
+      - name: Collect retained proposal smoke workspace
+        if: always()
+        env:
+          RESULT_PATH: test-artifacts/ai-live-smoke-proposal.json
+          DESTINATION: test-artifacts/retained-proposal-workspace
+        run: |
+          python - <<'PY'
+          import json
+          import shutil
+          import os
+          from pathlib import Path
+
+          result_path = Path(os.environ["RESULT_PATH"])
+          if not result_path.exists():
+              print("No smoke result JSON found.")
+              raise SystemExit(0)
+
+          payload = json.loads(result_path.read_text(encoding="utf-8"))
+          workspace = payload.get("workspace_dir")
+          retained = bool(payload.get("workspace_retained"))
+          if not retained or not workspace:
+              print("No retained smoke workspace to collect.")
+              raise SystemExit(0)
+
+          source = Path(workspace)
+          if not source.exists():
+              print(f"Retained smoke workspace path does not exist: {source}")
+              raise SystemExit(0)
+
+          destination = Path(os.environ["DESTINATION"])
+          if destination.exists():
+              shutil.rmtree(destination)
+          shutil.copytree(source, destination)
+          print(f"Collected retained smoke workspace into {destination}")
+          PY
+
+      - name: Collect retained explain-run smoke workspace
+        if: always()
+        env:
+          RESULT_PATH: test-artifacts/ai-live-smoke-analysis.json
+          DESTINATION: test-artifacts/retained-analysis-workspace
+        run: |
+          python - <<'PY'
+          import json
+          import shutil
+          import os
+          from pathlib import Path
+
+          result_path = Path(os.environ["RESULT_PATH"])
+          if not result_path.exists():
+              print("No smoke result JSON found.")
+              raise SystemExit(0)
+
+          payload = json.loads(result_path.read_text(encoding="utf-8"))
+          workspace = payload.get("workspace_dir")
+          retained = bool(payload.get("workspace_retained"))
+          if not retained or not workspace:
+              print("No retained smoke workspace to collect.")
+              raise SystemExit(0)
+
+          source = Path(workspace)
+          if not source.exists():
+              print(f"Retained smoke workspace path does not exist: {source}")
+              raise SystemExit(0)
+
+          destination = Path(os.environ["DESTINATION"])
+          if destination.exists():
+              shutil.rmtree(destination)
+          shutil.copytree(source, destination)
+          print(f"Collected retained smoke workspace into {destination}")
+          PY
+
+      - name: Upload live smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: truthound-ai-live-smoke
+          path: test-artifacts

@@ -8,7 +8,8 @@ Data Docs.
 
 This page is intentionally scoped to the `truthound` repository. Host-native
 adapter APIs live in [Truthound Orchestration](../orchestration/index.md), and
-control-plane APIs live in [Truthound Dashboard](../dashboard/index.md).
+the additive AI review namespace lives in [Truthound AI](../ai/index.md).
+Control-plane APIs and deployment guidance live in [Truthound Dashboard](../dashboard/index.md).
 
 ## When To Use The Python API
 
@@ -23,6 +24,12 @@ Choose Python when you need to:
 
 ```bash
 pip install truthound
+```
+
+Optional AI capabilities are additive:
+
+```bash
+pip install truthound[ai]
 ```
 
 ## Quick Start
@@ -57,6 +64,7 @@ Truthound 3.0 keeps the root package intentionally small:
 - `truthound` exposes the thin validation facade and core result/context types
 - `th.check()` returns `ValidationRunResult`
 - advanced core-adjoining capabilities live in namespaces such as `truthound.drift`, `truthound.checkpoint`, and `truthound.reporters`
+- the additive `truthound.ai` namespace exposes proposal compilation, run analysis, approval logs, and controlled apply flows
 - reporters, checkpoints, and Data Docs are outer services built on the same canonical core result model
 - result helpers such as `render()`, `write()`, and `build_docs()` are convenience facades that lazy-import those outer services
 
@@ -88,6 +96,7 @@ from truthound.drift import compare
 from truthound.reporters import get_reporter
 from truthound.checkpoint import Checkpoint, CheckpointConfig
 from truthound.profiler import profile_data
+import truthound.ai as thai
 ```
 
 If you need the module object, import the namespace directly:
@@ -134,6 +143,7 @@ first and then return here for lookup-oriented detail.
 | `truthound.reporters` | Rendering and serialization of validation runs |
 | `truthound.profiler` | Profiling, quality scoring, and comparison workflows |
 | `truthound.datadocs` | HTML docs generation from validation runs |
+| `truthound.ai` | Optional AI review surface for proposals, run analysis, approval, and apply |
 | `truthound.lineage` | Lineage and dependency analysis |
 | `truthound.realtime` | Streaming and incremental validation |
 | `truthound.ml` | ML-assisted anomaly and drift tooling |

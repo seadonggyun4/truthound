@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "truthound"
-version = "3.0.1"
+version = "3.1.0"
 description = "Zero-Configuration Data Quality Framework Powered by Polars"
 readme = "README.md"
 license = "Apache-2.0"
@@ -40,6 +40,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Optional AI artifact and provider contract surface
+ai = [
+    "pydantic>=2.0.0,<3.0.0",
+    "openai>=1.35.0,<2.0.0",
+]
+
 # Report generation
 reports = [
     "jinja2>=3.0.0",
@@ -139,6 +145,8 @@ perf = [
 
 # Full installation with all optional dependencies
 all = [
+    "pydantic>=2.0.0,<3.0.0",
+    "openai>=1.35.0,<2.0.0",
     "jinja2>=3.0.0",
     "pyarrow>=14.0.0",
     "pandas>=2.0.0,<3.0.0",
@@ -162,6 +170,8 @@ all = [
 
 # Development dependencies
 dev = [
+    "pydantic>=2.0.0,<3.0.0",
+    "openai>=1.35.0,<2.0.0",
     "pytest>=8.0.0",
     "pytest-cov>=4.0.0",
     "pytest-asyncio>=0.23.0",

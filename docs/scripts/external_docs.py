@@ -160,17 +160,6 @@ def build_source_banner(relative_path: Path, source: ExternalSource) -> str:
     source_url = upstream_source_url(relative_path, source)
     edit_url = upstream_edit_url(relative_path, source)
     parts: list[str] = []
-    if source.name == "dashboard":
-        is_homepage = relative_path.as_posix().lstrip("/") == "dashboard/index.md"
-        variant = "hero" if is_homepage else "compact"
-        parts.extend(
-            [
-                f'<div class="dashboard-external-banner dashboard-external-banner--{variant}">',
-                '  <img src="/assets/dashboard/truthound-dashboard-banner.png" alt="Truthound Dashboard banner" />',
-                "</div>",
-                "",
-            ]
-        )
     parts.append(
         "\n".join(
         [

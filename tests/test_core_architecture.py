@@ -2,7 +2,13 @@ import ast
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1] / 'src' / 'truthound' / 'core'
-FORBIDDEN = ('truthound.reporters', 'truthound.plugins', 'truthound.datadocs', 'truthound.cli_modules')
+FORBIDDEN = (
+    'truthound.reporters',
+    'truthound.plugins',
+    'truthound.datadocs',
+    'truthound.cli_modules',
+    'truthound.ai',
+)
 
 
 def test_core_modules_do_not_depend_on_outer_layers():

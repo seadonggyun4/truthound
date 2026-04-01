@@ -10,6 +10,7 @@ include_prefixes:
   - guides/
   - cli/
   - python-api/
+  - ai/
   - orchestration/
   - releases/
   - adr/
@@ -45,13 +46,6 @@ external_sources:
     repo_name: seadonggyun4/truthound-orchestration
     branch: main
     docs_root: docs
-  dashboard:
-    prefix: dashboard
-    label: Truthound Dashboard 3.x
-    repo_url: https://github.com/seadonggyun4/truthound-dashboard
-    repo_name: seadonggyun4/truthound-dashboard
-    branch: main
-    docs_root: docs
 
 support_files:
   - _redirects
@@ -61,5 +55,5 @@ support_directories:
   - stylesheets
   - javascripts
 
-expected_page_count: 380
-expected_markdown_count: 389
+expected_page_count: 330
+expected_markdown_count: 339

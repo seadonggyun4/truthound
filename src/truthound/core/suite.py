@@ -5,6 +5,12 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
+from truthound._applied_suite import (
+    AppliedSuiteRecord,
+    canonical_check_key,
+    canonical_validator_signature,
+    normalize_json_value,
+)
 from truthound.types import ResultFormat, ResultFormatConfig, Severity
 
 if TYPE_CHECKING:
@@ -127,6 +133,17 @@ class ValidationSuite:
                 validator_config=validator_config,
             ).build(schema_spec=schema_spec)
             specs.extend(auto_specs)
+            if context is not None:
+                applied_suite = context.read_applied_suite(data=data, source=source)
+                if applied_suite is not None:
+                    specs = _merge_applied_suite_specs(
+                        current_specs=specs,
+                        applied_suite=applied_suite,
+                        evidence_policy=evidence_policy,
+                        catch_exceptions=catch_exceptions,
+                        max_retries=max_retries,
+                        exclude_columns=exclude_columns_tuple,
+                    )
         else:
             if schema_spec is not None:
                 schema_check = schema_spec.to_check_spec(evidence_policy=evidence_policy)
@@ -248,6 +265,7 @@ def _configure_validator(
 
 def _build_check_spec(
     *,
+    check_id: str | None = None,
     name: str,
     validator_factory: ValidatorFactory,
     category: str,
@@ -268,12 +286,145 @@ def _build_check_spec(
         )
 
     return CheckSpec(
-        id=name,
+        id=check_id or name,
         name=name,
         category=category,
         factory=factory,
         tags=(category,),
         metadata=metadata,
+    )
+
+
+def _merge_applied_suite_specs(
+    *,
+    current_specs: list[CheckSpec],
+    applied_suite: AppliedSuiteRecord,
+    evidence_policy: EvidencePolicy,
+    catch_exceptions: bool,
+    max_retries: int,
+    exclude_columns: tuple[str, ...],
+) -> list[CheckSpec]:
+    merged_specs = list(current_specs)
+    current_by_key = {
+        _spec_check_key(spec): index
+        for index, spec in enumerate(merged_specs)
+    }
+    current_by_signature = {
+        _spec_validator_signature(spec): index
+        for index, spec in enumerate(merged_specs)
+    }
+
+    for payload in applied_suite.checks:
+        applied_spec = _build_applied_check_spec(
+            payload=payload,
+            proposal_id=applied_suite.proposal_id,
+            evidence_policy=evidence_policy,
+            catch_exceptions=catch_exceptions,
+            max_retries=max_retries,
+            exclude_columns=exclude_columns,
+        )
+        applied_key = _spec_check_key(applied_spec)
+        if applied_key in current_by_key:
+            continue
+
+        signature = _spec_validator_signature(applied_spec)
+        if signature in current_by_signature:
+            conflict_index = current_by_signature[signature]
+            merged_specs.pop(conflict_index)
+            current_by_key = {
+                _spec_check_key(spec): index
+                for index, spec in enumerate(merged_specs)
+            }
+            current_by_signature = {
+                _spec_validator_signature(spec): index
+                for index, spec in enumerate(merged_specs)
+            }
+
+        merged_specs.append(applied_spec)
+        current_by_key[_spec_check_key(applied_spec)] = len(merged_specs) - 1
+        current_by_signature[_spec_validator_signature(applied_spec)] = len(merged_specs) - 1
+
+    return merged_specs
+
+
+def _build_applied_check_spec(
+    *,
+    payload: dict[str, Any],
+    proposal_id: str,
+    evidence_policy: EvidencePolicy,
+    catch_exceptions: bool,
+    max_retries: int,
+    exclude_columns: tuple[str, ...],
+) -> CheckSpec:
+    from truthound.validators import get_validator
+
+    validator_name = str(payload.get("validator_name", "")).strip()
+    category = str(payload.get("category", "general"))
+    columns = tuple(
+        str(item)
+        for item in payload.get("columns", [])
+        if str(item)
+    )
+    params = dict(payload.get("params", {}) or {})
+    if columns:
+        params.setdefault("columns", list(columns))
+    rationale = str(payload.get("rationale", ""))
+    check_key = str(payload.get("check_key", "")).strip() or canonical_check_key(
+        validator_name=validator_name,
+        columns=list(columns),
+        params={
+            str(key): value
+            for key, value in normalize_json_value(params).items()
+            if key != "columns"
+        },
+    )
+
+    validator_cls = get_validator(validator_name)
+    return _build_check_spec(
+        check_id=check_key,
+        name=validator_name,
+        validator_factory=lambda cls=validator_cls, cfg=dict(params): cls(**cfg) if cfg else cls(),
+        category=category,
+        evidence_policy=evidence_policy,
+        catch_exceptions=catch_exceptions,
+        max_retries=max_retries,
+        exclude_columns=exclude_columns,
+        metadata={
+            "config": params,
+            "rationale": rationale,
+            "proposal_id": proposal_id,
+            "applied_suite": True,
+            "origin": "applied",
+            "proposal_check_key": check_key,
+        },
+    )
+
+
+def _spec_check_key(spec: CheckSpec) -> str:
+    metadata = spec.metadata if isinstance(spec.metadata, dict) else {}
+    raw_config = metadata.get("config", {}) if isinstance(metadata.get("config", {}), dict) else {}
+    normalized_config = normalize_json_value(raw_config)
+    columns = [str(item) for item in normalized_config.get("columns", ()) or ()]
+    params = {
+        str(key): value
+        for key, value in normalized_config.items()
+        if key != "columns"
+    }
+    return canonical_check_key(
+        validator_name=spec.name,
+        columns=columns,
+        params=params,
+    )
+
+
+def _spec_validator_signature(spec: CheckSpec) -> str:
+    metadata = spec.metadata if isinstance(spec.metadata, dict) else {}
+    raw_config = metadata.get("config", {}) if isinstance(metadata.get("config", {}), dict) else {}
+    normalized_config = normalize_json_value(raw_config)
+    columns = [str(item) for item in normalized_config.get("columns", ()) or ()]
+    return canonical_validator_signature(
+        validator_name=spec.name,
+        columns=columns,
     )
 
 

@@ -4,7 +4,7 @@ Launch the local Data Docs dashboard UI for interactive profile exploration.
 
 This command is part of the core `truthound` package. It is **not** the same as
 [Truthound Dashboard](../dashboard/index.md), which is the first-party
-control-plane product documented under `/dashboard/`.
+control-plane product surfaced here through an overview page only.
 
 ## Synopsis
 
@@ -254,5 +254,5 @@ truthound dashboard \
 
 ## See Also
 
-- [Truthound Dashboard project](https://github.com/seadonggyun4/truthound-dashboard)
+- [Truthound Dashboard overview](../dashboard/index.md)
 - [Data Docs Guide](../guides/datadocs.md)

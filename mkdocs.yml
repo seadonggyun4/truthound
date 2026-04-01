@@ -413,77 +413,21 @@ nav:
           - Common Runtime APIs: orchestration/api-reference/common.md
           - Engine APIs: orchestration/api-reference/engines.md
       - Releasing: orchestration/releasing.md
+  - AI:
+      - Overview: ai/index.md
+      - System Boundary: ai/system-boundary.md
+      - Proposal Compiler: ai/proposal-compiler.md
+      - Run Analysis Evidence Model: ai/run-analysis-evidence.md
+      - Artifact Schema: ai/artifact-schema.md
+      - Approval and Apply Semantics: ai/approval-apply.md
+      - Privacy and Redaction: ai/privacy-redaction.md
+      - Provider Contract: ai/provider-contract.md
+      - Smoke and Release Gates: ai/release-gate.md
   - Dashboard:
       - Overview: dashboard/index.md
-      - Quickstart:
-          - Install and Run: dashboard/quickstart/install-and-run.md
-          - Start a Session and Choose a Workspace: dashboard/quickstart/start-a-session.md
-          - Add Your First Source: dashboard/quickstart/add-your-first-source.md
-          - Run Your First Validation: dashboard/quickstart/run-your-first-validation.md
-          - Generate Your First Artifact and Data Docs: dashboard/quickstart/generate-your-first-artifact.md
-          - Triage Your First Incident: dashboard/quickstart/triage-your-first-incident.md
-      - Concepts:
-          - Architecture: dashboard/concepts/architecture.md
-          - Core Object Model: dashboard/concepts/core-object-model.md
-          - Workspaces and Sessions: dashboard/concepts/workspaces-and-sessions.md
-          - RBAC and Permissions: dashboard/concepts/rbac-and-permissions.md
-          - Artifact Model: dashboard/concepts/artifact-model.md
-          - Secrets and Credential Rotation: dashboard/concepts/secrets-and-credential-rotation.md
-          - Ownership Model: dashboard/concepts/ownership-model.md
-          - Incident and Queue Model: dashboard/concepts/incident-and-queue-model.md
-      - Guides:
-          - Source Onboarding: dashboard/guides/source-onboarding.md
-          - Source Types: dashboard/guides/source-types.md
-          - Source Credentials: dashboard/guides/source-credentials.md
-          - Source Ownership: dashboard/guides/source-ownership.md
-          - Validation Run Model: dashboard/guides/validation-run-model.md
-          - Rule Management: dashboard/guides/rule-management.md
-          - Validation Result Details: dashboard/guides/validation-result-details.md
-          - History and Trends: dashboard/guides/history-and-trends.md
-          - Profiling and Comparison: dashboard/guides/profiling-and-comparison.md
-          - Rule Suggestions: dashboard/guides/rule-suggestions.md
-          - Drift: dashboard/guides/drift.md
-          - Privacy Scan and Mask: dashboard/guides/privacy-scan-and-mask.md
-          - Lineage: dashboard/guides/lineage.md
-          - Schema Evolution: dashboard/guides/schema-evolution.md
-          - Checkpoints and Notifications: dashboard/guides/checkpoints-and-notifications.md
-          - Incident Workbench: dashboard/guides/incident-workbench.md
-          - Reports and Data Docs: dashboard/guides/reports-and-datadocs.md
-          - Plugins: dashboard/guides/plugins.md
-          - Observability: dashboard/guides/observability.md
-          - Storage Tiering: dashboard/guides/storage-tiering.md
-          - Enterprise Sampling: dashboard/guides/enterprise-sampling.md
-          - Realtime: dashboard/guides/realtime.md
-          - ML: dashboard/guides/ml.md
-      - Operations:
-          - Deployment: dashboard/operations/deployment.md
-          - Configuration: dashboard/operations/configuration.md
-          - CI and Quality Gates: dashboard/operations/ci-and-quality-gates.md
-          - Security and Secrets: dashboard/operations/security-and-secrets.md
-          - State Storage and Migrations: dashboard/operations/state-storage-and-migrations.md
-          - Troubleshooting Overview: dashboard/operations/troubleshooting-overview.md
-          - Troubleshooting Source Connectivity: dashboard/operations/troubleshooting-source-connectivity.md
-          - Troubleshooting Artifacts, Alerts, and Incidents: dashboard/operations/troubleshooting-artifacts-alerts-incidents.md
-      - API Reference:
-          - Overview and Conventions: dashboard/api-reference/overview-and-conventions.md
-          - Auth and Control Plane: dashboard/api-reference/auth-and-control-plane.md
-          - Sources and Ownership: dashboard/api-reference/sources-and-ownership.md
-          - Validations, Profiles, and History: dashboard/api-reference/validations-profiles-history.md
-          - Drift and Privacy: dashboard/api-reference/drift-and-privacy.md
-          - Notifications, Alerts, and Queues: dashboard/api-reference/notifications-alerts-queues.md
-          - Artifacts: dashboard/api-reference/artifacts.md
-          - Plugins, Lineage, Anomaly, and Observability: dashboard/api-reference/platform-and-observability.md
-      - Reference:
-          - Source Support Matrix: dashboard/reference/source-support-matrix.md
-          - Permission Matrix: dashboard/reference/permission-matrix.md
-          - Saved View Scope Matrix: dashboard/reference/saved-view-scope-matrix.md
-          - Artifact Capabilities Matrix: dashboard/reference/artifact-capabilities-matrix.md
-          - Environment Variables and Ports: dashboard/reference/environment-variables-and-ports.md
-          - CLI Reference: dashboard/reference/cli-reference.md
-      - Migration:
-          - 3.0 Upgrade: dashboard/migration/3.0.md
   - Release Notes:
       - Latest Verified Benchmark Summary: releases/latest-benchmark-summary.md
+      - Truthound 3.1: releases/truthound-3.1.md
       - Truthound 3.0: releases/truthound-3.0.md
       - Historical Releases:
           - Truthound 3.0 RC1: releases/truthound-3.0-rc1.md

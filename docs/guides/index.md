@@ -6,8 +6,10 @@ operational patterns, and troubleshooting for the main `truthound` repository.
 
 If your task is primarily about scheduler-native execution or workflow-host
 integration, jump to [Truthound Orchestration](../orchestration/index.md). If
-your task is primarily about sessions, ownership, incidents, secrets, or
-artifact operations in a web UI, jump to [Truthound Dashboard](../dashboard/index.md).
+your task is primarily about reviewable AI proposals or run analysis, jump to
+[Truthound AI](../ai/index.md). If your task is primarily about sessions,
+ownership, incidents, secrets, or artifact operations in a web UI, jump to
+[Truthound Dashboard](../dashboard/index.md).
 
 > **Looking for CLI documentation?** See [CLI Reference](../cli/index.md).
 >
@@ -27,6 +29,7 @@ artifact operations in a web UI, jump to [Truthound Dashboard](../dashboard/inde
 ## What Does Not Belong Here
 
 - **Host-native execution layers**: use [Truthound Orchestration](../orchestration/index.md)
+- **AI review-layer workflows**: use [Truthound AI](../ai/index.md)
 - **Operational control-plane workflows**: use [Truthound Dashboard](../dashboard/index.md)
 - **Command lookup**: use [Reference](../reference/index.md)
 - **Sequential first-run learning**: use [Tutorials](../tutorials/index.md)
@@ -105,7 +108,8 @@ drift = compare("baseline.csv", "current.csv", method="auto")
 1. [Profiler](profiler/index.md)
 2. [Data Docs](datadocs/index.md)
 3. [Great Expectations Comparison](gx-parity.md)
-4. [Truthound Orchestration](../orchestration/index.md) if the next step is scheduler-native rollout
+4. [Truthound AI](../ai/index.md) if the next step is human-reviewed proposals or run analysis
+5. [Truthound Orchestration](../orchestration/index.md) if the next step is scheduler-native rollout
 
 ## Related Reading
 
@@ -113,5 +117,6 @@ drift = compare("baseline.csv", "current.csv", method="auto")
 - [Tutorials](../tutorials/index.md)
 - [Reference](../reference/index.md)
 - [Concepts & Architecture](../concepts/index.md)
+- [Truthound AI](../ai/index.md)
 - [Truthound Orchestration](../orchestration/index.md)
 - [Truthound Dashboard](../dashboard/index.md)

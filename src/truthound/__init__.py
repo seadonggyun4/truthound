@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from truthound._ai_support import AISupportStatus, get_ai_support_status, has_ai_support
 from truthound.api import check, mask, profile, read, scan
 from truthound.context import TruthoundContext, get_context
 from truthound.core import CheckResult, CheckSpec, SchemaSpec, ValidationRunResult, ValidationSuite
@@ -53,6 +54,9 @@ def __dir__() -> list[str]:
         'CheckResult',
         '__version__',
         'get_truthound_import_metrics',
+        'has_ai_support',
+        'get_ai_support_status',
+        'AISupportStatus',
     ])
 
 
@@ -85,4 +89,7 @@ __all__ = [
     'CheckResult',
     '__version__',
     'get_truthound_import_metrics',
+    'has_ai_support',
+    'get_ai_support_status',
+    'AISupportStatus',
 ]

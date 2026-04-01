@@ -1,4 +1,4 @@
-# Truthound 3.0 Architecture
+# Truthound 3.x Architecture
 
 ## Design Goal
 
@@ -22,18 +22,19 @@ Truthound 3.0 is organized around:
 - optional namespaces for non-core systems
 
 The public documentation portal also exposes two first-party layers around that
-kernel:
+kernel plus one additive review namespace:
 
 | Layer | Repository | Responsibility |
 | --- | --- | --- |
 | `Truthound Core` | `truthound` | data-plane validation kernel, zero-config workspace, result model, reporters, checkpoint runtime, profiling |
+| `Truthound AI` | `truthound.ai` | review-layer APIs for proposal compilation, run analysis, approval logs, and controlled apply |
 | `Truthound Orchestration` | `truthound-orchestration` | execution integration layer for Airflow, Dagster, Prefect, dbt, Mage, and Kestra |
-| `Truthound Dashboard` | `truthound-dashboard` | control-plane for sessions, RBAC, sources, artifacts, incidents, secrets, and observability |
+| `Truthound Dashboard` | separately distributed console | control-plane for sessions, RBAC, sources, artifacts, incidents, secrets, AI review, and observability |
 
-The main docs site aggregates all three, but aggregation is not the same as
-flattening them into one undifferentiated platform. The kernel remains the
-source of truth for execution semantics, while orchestration and dashboard
-consume or operate around those semantics.
+The main docs site aggregates these boundaries, but aggregation is not the same
+as flattening them into one undifferentiated platform. The kernel remains the
+source of truth for execution semantics, while the AI namespace, orchestration
+layer, and dashboard operate around those semantics instead of replacing them.
 
 ## Kernel Boundaries
 
@@ -54,8 +55,9 @@ The context and checkpoint layers sit beside the kernel rather than inside it:
 
 The first-party external layers sit outside the kernel as well:
 
+- `truthound.ai` compiles prompts and run evidence into reviewable artifacts while keeping provider/redaction logic outside the kernel hot path
 - `truthound-orchestration` adapts the kernel into host-native execution environments without redefining `ValidationRunResult`
-- `truthound-dashboard` consumes validation artifacts and operational state without re-implementing validation execution
+- the dashboard control-plane consumes validation artifacts and operational state without re-implementing validation execution
 
 ## Runtime Flow
 
@@ -114,6 +116,7 @@ Peripheral subsystems and first-party layers are intentionally kept outside the 
 - profiler integrations consume suite and result contracts without importing report rendering layers directly
 - realtime, ML, and lineage integrations are expected to depend on `truthound.core` contracts or subsystem-local adapters rather than presentation or CLI layers
 - orchestration layers should preserve the kernel result semantics while translating them into host-native payloads
+- AI layers should produce proposals, analyses, approval events, and applied suite records without back-importing `truthound.ai` into `truthound.core`
 - dashboard layers should operate on artifacts, ownership, and observability state rather than inventing a second execution model
 
 This keeps outer subsystems extensible without letting them become alternate sources of truth for results or presentation.

@@ -326,4 +326,4 @@ def create_app(
 
 - [HTML Reports](html-reports.md) - Static HTML reports
 - [Themes](themes.md) - Theme customization
-- [truthound-dashboard](https://github.com/seadonggyun4/truthound-dashboard) - Separate dashboard repository
+- [Truthound Dashboard overview](../../dashboard/index.md) - Boundary-level operational console overview

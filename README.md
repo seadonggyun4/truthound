@@ -24,7 +24,7 @@
   </a>
 </p>
 
-> Truthound 3.0 is a layered data quality system built around a Polars-first validation kernel, with first-party orchestration adapters and a first-party control-plane dashboard on top of the same core runtime contract.
+> Truthound 3.1.0 is a layered data quality system built around a Polars-first validation kernel, with first-party orchestration adapters, an additive AI review surface, and an operational console built on top of the same core runtime contract.
 
 ---
 
@@ -34,21 +34,37 @@
   <img width="200" alt="Truthound Icon" src="docs/assets/Truthound_icon_banner.png" />
 </p>
 
-Truthound 3.0 is a layered data quality system. At the center is a small, durable, Polars-first validation kernel. Around that core sit two first-party layers: Truthound Orchestration for host-native execution inside schedulers and workflow systems, and Truthound Dashboard for operating Truthound through a control-plane UI.
+Truthound 3.1.0 is a layered data quality system. At the center is a small, durable, Polars-first validation kernel. Around that core sit an additive `truthound.ai` review surface, Truthound Orchestration for host-native execution inside schedulers and workflow systems, and Truthound Dashboard for operating Truthound through an installation-managed control-plane UI.
 
-The point of the 3.0 reset is not to hide the broader product line. It is to make the system boundary honest. The core validation kernel is the most rigorously validated contract in the ecosystem, while orchestration adapters and the dashboard build on top of that contract instead of redefining it.
+The point of the 3.x reset is not to hide the broader product line. It is to make the system boundary honest. The core validation kernel is the most rigorously validated contract in the ecosystem, while the AI review layer, orchestration adapters, and dashboard build on top of that contract instead of redefining it.
 
 **Documentation**: [truthound.netlify.app](https://truthound.netlify.app/)
+
+## What's New In 3.1.0
+
+Truthound 3.1.0 keeps the 3.0 kernel boundary and adds the first complete
+public AI review surface.
+
+- `truthound.ai` is now the canonical optional namespace for proposal
+  generation, run analysis, approval history, and controlled apply
+- root feature probes `has_ai_support()` and `get_ai_support_status()` make it
+  safe for downstream integrations to feature-gate AI functionality
+- the AI lifecycle is explicit: `suggest_suite(...)`, `explain_run(...)`,
+  `approve_proposal(...)`, `reject_proposal(...)`, `apply_proposal(...)`
+- live smoke runners now exist for both proposal generation and run analysis
+- the public docs portal now documents `Truthound AI` directly and keeps the
+  dashboard at a boundary-level overview instead of a mirrored manual
 
 ## Truthound Product Line
 
 | Layer | Repository | Responsibility | Start Here |
 | --- | --- | --- | --- |
 | `Truthound Core` | [`truthound`](https://github.com/seadonggyun4/Truthound) | Validation kernel and data-plane: `th.check()`, `ValidationRunResult`, planner/runtime, zero-config workspace, reporters, checkpoints, Data Docs | [Core docs](https://truthound.netlify.app/) |
+| `Truthound AI` | `truthound.ai` | Optional review-layer APIs for prompt-to-proposal compilation, run analysis, approval history, and controlled apply | [`/ai/`](https://truthound.netlify.app/ai/) |
 | `Truthound Orchestration` | [`truthound-orchestration`](https://github.com/seadonggyun4/truthound-orchestration) | First-party execution integration layer for Airflow, Dagster, Prefect, dbt, Mage, and Kestra | [`/orchestration/`](https://truthound.netlify.app/orchestration/) |
-| `Truthound Dashboard` | [`truthound-dashboard`](https://github.com/seadonggyun4/truthound-dashboard) | First-party control-plane for RBAC, sources, artifacts, incidents, secrets, and operational observability | [`/dashboard/`](https://truthound.netlify.app/dashboard/) |
+| `Truthound Dashboard` | separately distributed operational console | First-party control-plane for RBAC, sources, artifacts, incidents, secrets, observability, and AI review workflows | [`/dashboard/`](https://truthound.netlify.app/dashboard/) |
 
-Truthound is therefore not a monolithic platform with one flat feature surface. It is a layered system in which the core validation contract stays central, while orchestration adapters and the dashboard expose first-party operational layers on top of it.
+Truthound is therefore not a monolithic platform with one flat feature surface. It is a layered system in which the core validation contract stays central, while the AI namespace, orchestration adapters, and dashboard expose first-party operational layers on top of it.
 
 ## Why Start With Truthound Core
 
@@ -87,7 +103,7 @@ Read the published evidence in [Latest Verified Benchmark Summary](docs/releases
 
 ## What Truthound Core Stabilizes
 
-Truthound Core 3.0 centers the public contract around a smaller and more durable kernel:
+Truthound Core 3.x centers the public contract around a smaller and more durable kernel:
 
 | Layer | Responsibility |
 | --- | --- |
@@ -102,7 +118,7 @@ Truthound Orchestration and Truthound Dashboard build on these contracts instead
 
 The design is grounded in proven ideas from Great Expectations, Soda, Deequ, and Pandera, but optimized for a simpler zero-config starting point and a Polars-first execution path.
 
-The practical 3.0 changes are:
+The practical 3.x kernel changes are:
 
 - `th.check()` returns `ValidationRunResult` directly
 - the local `.truthound/` workspace is auto-created and reused
@@ -111,12 +127,24 @@ The practical 3.0 changes are:
 - checkpoints standardize on `CheckpointResult.validation_run` and `CheckpointResult.validation_view`
 - reporters and validation docs consume `ValidationRunResult` directly through reporter contract v3
 
+The practical 3.1.0 additions on top of that kernel are:
+
+- optional AI dependency bundle: `truthound[ai]`
+- public AI review APIs and CLI commands
+- persisted suite proposal, run analysis, and approval/apply artifacts
+- root AI support probes for downstream services and dashboards
+
 ## Quick Start
 
 ### Installation
 
 ```bash
 pip install truthound
+```
+
+```bash
+# Optional AI review surface
+pip install truthound[ai]
 ```
 
 ```bash
@@ -165,6 +193,13 @@ truthound doctor . --workspace
 truthound plugins list --json
 ```
 
+```bash
+# Optional AI review workflow
+truthound ai suggest-suite data.csv --prompt "Require customer_id to be unique"
+truthound ai proposals list
+truthound ai explain-run --run-id <run_id>
+```
+
 ## Public Surface
 
 The root package intentionally exports a smaller API:
@@ -177,6 +212,28 @@ The root package intentionally exports a smaller API:
 - Validation docs entry points: `truthound.datadocs.ValidationDocsBuilder`, `truthound.datadocs.generate_validation_report`
 - Drift comparison: import from `truthound.drift.compare`
 - Advanced systems: import by namespace, for example `truthound.ml`, `truthound.lineage`, `truthound.realtime`, or `truthound.datadocs`
+- Optional AI review surface: import `truthound.ai` after installing `truthound[ai]`
+
+## Optional AI Surface
+
+Truthound now ships an additive `truthound.ai` namespace that preserves the
+core hot path and zero-config workflow while exposing a reviewable AI layer.
+
+- `suggest_suite(...)` compiles prompts into persisted suite proposal artifacts
+- `explain_run(...)` compiles run evidence into persisted analysis artifacts
+- `approve_proposal(...)`, `reject_proposal(...)`, and `apply_proposal(...)` keep approval and mutation in explicit human-reviewed steps
+- `has_ai_support()` and `get_ai_support_status()` let downstream integrations feature-gate the AI surface cleanly
+
+Read the technical docs in [docs/ai/index.md](docs/ai/index.md).
+
+The public CLI surface is additive as well:
+
+- `truthound ai suggest-suite`
+- `truthound ai explain-run`
+- `truthound ai proposals list/show/approve/reject/apply/history`
+- `truthound ai analyses list/show`
+- `truthound ai smoke openai`
+- `truthound ai smoke openai-explain-run`
 
 The experimental `use_engine` and `--use-engine` switches remain removed.
 
@@ -220,10 +277,11 @@ Truthound now uses one lifecycle runtime:
 - Core zero-config context: [docs/concepts/zero-config.md](docs/concepts/zero-config.md)
 - Core guides: [docs/guides/index.md](docs/guides/index.md)
 - Core reference: [docs/reference/index.md](docs/reference/index.md)
+- AI docs: [docs/ai/index.md](docs/ai/index.md)
 - Orchestration layer: [truthound.netlify.app/orchestration/](https://truthound.netlify.app/orchestration/)
 - Orchestration getting started: [docs/orchestration/getting-started.md](docs/orchestration/getting-started.md)
 - Dashboard layer: [truthound.netlify.app/dashboard/](https://truthound.netlify.app/dashboard/)
-- Release notes: [docs/releases/truthound-3.0.md](docs/releases/truthound-3.0.md)
+- Release notes: [docs/releases/truthound-3.1.md](docs/releases/truthound-3.1.md)
 - Latest verified benchmark summary: [docs/releases/latest-benchmark-summary.md](docs/releases/latest-benchmark-summary.md)
 - Migration guide: [docs/guides/migration-3.0.md](docs/guides/migration-3.0.md)
 - Legacy archive: [docs/legacy/index.md](docs/legacy/index.md)

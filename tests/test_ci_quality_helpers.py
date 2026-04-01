@@ -435,16 +435,63 @@ def test_tests_nightly_workflow_publishes_collect_summary():
 
 
 @pytest.mark.contract
+def test_ai_live_smoke_workflow_is_manual_and_collects_artifacts():
+    workflow_path = (
+        Path(__file__).resolve().parents[1]
+        / ".github"
+        / "workflows"
+        / "ai-live-smoke.yml"
+    )
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    trigger_block = workflow.get("on", workflow.get(True))
+    steps = workflow["jobs"]["ai-live-smoke"]["steps"]
+    step_names = [step.get("name", "") for step in steps]
+    proposal_step = next(step for step in steps if step.get("name") == "Run live OpenAI proposal smoke")
+    analysis_step = next(step for step in steps if step.get("name") == "Run live OpenAI explain-run smoke")
+    upload_step = next(step for step in steps if step.get("name") == "Upload live smoke artifacts")
+
+    assert workflow["name"] == "AI Live Smoke"
+    assert "workflow_dispatch" in trigger_block
+    inputs = trigger_block["workflow_dispatch"]["inputs"]
+    assert "model" in inputs
+    assert "keep_workspace" in inputs
+    assert inputs["keep_workspace"]["type"] == "boolean"
+    assert "Sync locked dev environment" in step_names
+    assert "Validate live smoke configuration" in step_names
+    assert "Collect retained proposal smoke workspace" in step_names
+    assert "Collect retained explain-run smoke workspace" in step_names
+    assert "--run-integration" in proposal_step["run"]
+    assert "tests/integration/ai/test_openai_live_smoke.py" in proposal_step["run"]
+    assert proposal_step["env"]["TRUTHOUND_AI_RUN_LIVE_SMOKE"] == "1"
+    assert proposal_step["env"]["TRUTHOUND_AI_SMOKE_RESULT_PATH"] == "test-artifacts/ai-live-smoke-proposal.json"
+    assert analysis_step["if"] == "always()"
+    assert "--run-integration" in analysis_step["run"]
+    assert "tests/integration/ai/test_openai_live_explain_run_smoke.py" in analysis_step["run"]
+    assert analysis_step["env"]["TRUTHOUND_AI_RUN_LIVE_SMOKE"] == "1"
+    assert analysis_step["env"]["TRUTHOUND_AI_SMOKE_RESULT_PATH"] == "test-artifacts/ai-live-smoke-analysis.json"
+    assert upload_step["if"] == "always()"
+    assert upload_step["with"]["name"] == "truthound-ai-live-smoke"
+    assert upload_step["with"]["path"] == "test-artifacts"
+
+
+@pytest.mark.contract
 def test_dev_and_streaming_extras_cover_quality_gate_dependencies():
     pyproject_path = Path(__file__).resolve().parents[1] / "pyproject.toml"
     pyproject = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))
     optional = pyproject["project"]["optional-dependencies"]
 
+    ai_extra = optional["ai"]
     dev = optional["dev"]
     streaming = optional["streaming"]
     all_extra = optional["all"]
     reports = optional["reports"]
 
+    assert any(dep.startswith("pydantic") for dep in ai_extra)
+    assert any(dep.startswith("openai") for dep in ai_extra)
+    assert any(dep.startswith("pydantic") for dep in dev)
+    assert any(dep.startswith("openai") for dep in dev)
+    assert any(dep.startswith("pydantic") for dep in all_extra)
+    assert any(dep.startswith("openai") for dep in all_extra)
     assert any(dep.startswith("jinja2") for dep in reports)
     assert any(dep.startswith("jinja2") for dep in dev)
     assert any(dep.startswith("pyarrow") for dep in streaming)

@@ -111,6 +111,12 @@ class CLIModuleRegistry:
             priority=40,
         ),
         ModuleMetadata(
+            name="ai",
+            description="AI-assisted proposal review commands",
+            module_path="truthound.cli_modules.ai",
+            priority=45,
+        ),
+        ModuleMetadata(
             name="scaffolding",
             description="Code scaffolding (th new ...)",
             module_path="truthound.cli_modules.scaffolding.commands",
