@@ -62,4 +62,4 @@ Key public entry points:
 
 - [Python API Reference](../python-api/index.md)
 - [Truthound Dashboard](../dashboard/index.md)
-- [Truthound 3.1 Release Notes](../releases/truthound-3.1.md)
+- [Truthound 3.1.1 Release Notes](../releases/truthound-3.1.1.md)

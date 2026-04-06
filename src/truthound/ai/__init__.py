@@ -64,6 +64,7 @@ from truthound.ai.providers import (
     ProviderResponseError,
     ProviderTransportError,
 )
+from truthound.ai.resolution import resolve_source_key
 from truthound.ai.redaction import (
     RedactionViolation,
     RedactionViolationError,
@@ -126,6 +127,7 @@ __all__ = [
     "run_openai_explain_run_smoke",
     "run_openai_smoke",
     "reject_proposal",
+    "resolve_source_key",
     "show_analysis",
     "show_proposal",
     "suggest_suite",

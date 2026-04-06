@@ -164,9 +164,21 @@ def test_truthound_root_probe_and_ai_root_exports_are_available():
     assert callable(ai_namespace.reject_proposal)
     assert callable(ai_namespace.apply_proposal)
     assert callable(ai_namespace.list_proposal_approval_events)
+    assert callable(ai_namespace.resolve_source_key)
     assert issubclass(ai_namespace.ProviderConfigurationError, Exception)
     assert issubclass(ai_namespace.ProviderTransportError, Exception)
     assert issubclass(ai_namespace.ProviderResponseError, Exception)
+
+
+def test_root_ai_resolve_source_key_matches_truthound_context(tmp_path: Path):
+    import truthound.ai as ai_namespace
+
+    context = TruthoundContext(tmp_path)
+    data = {"order_id": [1, 2, 3], "status": ["pending", "approved", "pending"]}
+
+    assert ai_namespace.resolve_source_key(data=data, context=context) == context.resolve_source_key(
+        data=data
+    )
 
 
 def test_proposal_lifecycle_transitions_and_history_are_recorded(tmp_path: Path):

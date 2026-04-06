@@ -24,7 +24,7 @@
   </a>
 </p>
 
-> Truthound 3.1.0 is a layered data quality system built around a Polars-first validation kernel, with first-party orchestration adapters, an additive AI review surface, and an operational console built on top of the same core runtime contract.
+> Truthound 3.1.1 is a layered data quality system built around a Polars-first validation kernel, with first-party orchestration adapters, an additive AI review surface, and an operational console built on top of the same core runtime contract.
 
 ---
 
@@ -34,26 +34,23 @@
   <img width="200" alt="Truthound Icon" src="docs/assets/Truthound_icon_banner.png" />
 </p>
 
-Truthound 3.1.0 is a layered data quality system. At the center is a small, durable, Polars-first validation kernel. Around that core sit an additive `truthound.ai` review surface, Truthound Orchestration for host-native execution inside schedulers and workflow systems, and Truthound Dashboard for operating Truthound through an installation-managed control-plane UI.
+Truthound 3.1.1 is a layered data quality system. At the center is a small, durable, Polars-first validation kernel. Around that core sit an additive `truthound.ai` review surface, Truthound Orchestration for host-native execution inside schedulers and workflow systems, and Truthound Dashboard for operating Truthound through an installation-managed control-plane UI.
 
 The point of the 3.x reset is not to hide the broader product line. It is to make the system boundary honest. The core validation kernel is the most rigorously validated contract in the ecosystem, while the AI review layer, orchestration adapters, and dashboard build on top of that contract instead of redefining it.
 
 **Documentation**: [truthound.netlify.app](https://truthound.netlify.app/)
 
-## What's New In 3.1.0
+## What's New In 3.1.1
 
-Truthound 3.1.0 keeps the 3.0 kernel boundary and adds the first complete
-public AI review surface.
+Truthound 3.1.1 keeps the 3.1 review surface intact and tightens one small but
+important public integration edge for downstream consumers.
 
-- `truthound.ai` is now the canonical optional namespace for proposal
-  generation, run analysis, approval history, and controlled apply
-- root feature probes `has_ai_support()` and `get_ai_support_status()` make it
-  safe for downstream integrations to feature-gate AI functionality
-- the AI lifecycle is explicit: `suggest_suite(...)`, `explain_run(...)`,
-  `approve_proposal(...)`, `reject_proposal(...)`, `apply_proposal(...)`
-- live smoke runners now exist for both proposal generation and run analysis
-- the public docs portal now documents `Truthound AI` directly and keeps the
-  dashboard at a boundary-level overview instead of a mirrored manual
+- `truthound.ai.resolve_source_key(...)` is now a root-level public helper for
+  dashboard and review-surface consumers
+- downstream integrations can resolve canonical source identity without
+  reaching into `TruthoundContext` implementation details
+- the additive AI boundary remains unchanged: optional install, explicit review
+  lifecycle, persisted proposal and analysis artifacts, and controlled apply
 
 ## Truthound Product Line
 
@@ -127,7 +124,7 @@ The practical 3.x kernel changes are:
 - checkpoints standardize on `CheckpointResult.validation_run` and `CheckpointResult.validation_view`
 - reporters and validation docs consume `ValidationRunResult` directly through reporter contract v3
 
-The practical 3.1.0 additions on top of that kernel are:
+The practical 3.1 additions on top of that kernel are:
 
 - optional AI dependency bundle: `truthound[ai]`
 - public AI review APIs and CLI commands
@@ -281,7 +278,7 @@ Truthound now uses one lifecycle runtime:
 - Orchestration layer: [truthound.netlify.app/orchestration/](https://truthound.netlify.app/orchestration/)
 - Orchestration getting started: [docs/orchestration/getting-started.md](docs/orchestration/getting-started.md)
 - Dashboard layer: [truthound.netlify.app/dashboard/](https://truthound.netlify.app/dashboard/)
-- Release notes: [docs/releases/truthound-3.1.md](docs/releases/truthound-3.1.md)
+- Release notes: [docs/releases/truthound-3.1.1.md](docs/releases/truthound-3.1.1.md)
 - Latest verified benchmark summary: [docs/releases/latest-benchmark-summary.md](docs/releases/latest-benchmark-summary.md)
 - Migration guide: [docs/guides/migration-3.0.md](docs/guides/migration-3.0.md)
 - Legacy archive: [docs/legacy/index.md](docs/legacy/index.md)

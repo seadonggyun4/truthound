@@ -110,5 +110,5 @@ Use `Dashboard` when you need the operational control-plane:
 - [Truthound AI](ai/index.md)
 - [Truthound Orchestration](orchestration/index.md)
 - [Truthound Dashboard](dashboard/index.md)
-- [Release Notes](releases/truthound-3.1.md)
+- [Release Notes](releases/truthound-3.1.1.md)
 - [Migration to 3.0](guides/migration-3.0.md)
