@@ -1,0 +1,129 @@
+{
+  "summary": "Compile aggregate controls for order identifiers, refund signals, and basic string quality.",
+  "rationale": "The operator asked for identifier stability, aggregate bounds, and business-status guardrails.",
+  "proposed_checks": [
+    {
+      "intent": "null",
+      "columns": [],
+      "params": {},
+      "rationale": "Retain global null coverage."
+    },
+    {
+      "intent": "not_null",
+      "columns": [
+        "customer_email"
+      ],
+      "params": {},
+      "rationale": "Customer email should be present."
+    },
+    {
+      "intent": "completeness_ratio",
+      "columns": [
+        "status"
+      ],
+      "params": {
+        "min_ratio": 0.95
+      },
+      "rationale": "Status should stay mostly populated."
+    },
+    {
+      "intent": "unique",
+      "columns": [
+        "order_id"
+      ],
+      "params": {},
+      "rationale": "Order ids should remain unique."
+    },
+    {
+      "intent": "unique_ratio",
+      "columns": [
+        "customer_email"
+      ],
+      "params": {
+        "min_ratio": 0.95
+      },
+      "rationale": "Customer email should stay almost unique."
+    },
+    {
+      "intent": "between",
+      "columns": [
+        "refund_rate"
+      ],
+      "params": {
+        "min_value": 0,
+        "max_value": 1
+      },
+      "rationale": "Refund rate should stay between zero and one."
+    },
+    {
+      "intent": "in_set",
+      "columns": [
+        "status"
+      ],
+      "params": {
+        "allowed_values": [
+          "pending",
+          "approved"
+        ]
+      },
+      "rationale": "Status should stay in the approved business states."
+    },
+    {
+      "intent": "length",
+      "columns": [
+        "sku_code"
+      ],
+      "params": {
+        "min_length": 7,
+        "max_length": 7
+      },
+      "rationale": "Sku codes follow a fixed-width token."
+    },
+    {
+      "intent": "format",
+      "columns": [
+        "customer_email"
+      ],
+      "params": {
+        "format": "email"
+      },
+      "rationale": "Customer email should follow email format."
+    },
+    {
+      "intent": "regex",
+      "columns": [
+        "sku_code"
+      ],
+      "params": {
+        "pattern": "^SKU-[0-9]{3}$"
+      },
+      "rationale": "Sku codes should follow the SKU-000 pattern."
+    },
+    {
+      "intent": "mean_between",
+      "columns": [
+        "refund_rate"
+      ],
+      "params": {
+        "min_value": 0,
+        "max_value": 1
+      },
+      "rationale": "Mean refund rate should stay bounded."
+    },
+    {
+      "intent": "sum_between",
+      "columns": [
+        "refund_rate"
+      ],
+      "params": {
+        "min_value": 0,
+        "max_value": 3
+      },
+      "rationale": "Aggregate refund rate should stay within a conservative bound."
+    }
+  ],
+  "risks": [
+    "Thresholds may need tuning when traffic patterns change."
+  ],
+  "rejected_requests": []
+}

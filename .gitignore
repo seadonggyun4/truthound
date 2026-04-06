@@ -83,6 +83,8 @@ Thumbs.db
 *.parquet
 *.json
 !pyproject.toml
+!tests/fixtures/
+!tests/fixtures/**
 !benchmarks/
 !benchmarks/constraints/
 !benchmarks/constraints/*.txt

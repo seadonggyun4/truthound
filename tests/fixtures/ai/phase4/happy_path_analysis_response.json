@@ -1,0 +1,11 @@
+{
+  "summary": "Customer identifier uniqueness failed and email completeness regressed relative to recent runs.",
+  "recommended_next_actions": [
+    "Confirm whether customer_id is a stable business key.",
+    "Investigate why email nullability increased in the latest extract."
+  ],
+  "evidence_refs": [
+    "runs:placeholder",
+    "history-window:placeholder"
+  ]
+}

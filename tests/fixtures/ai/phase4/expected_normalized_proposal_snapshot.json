@@ -1,0 +1,245 @@
+{
+  "schema_version": "1",
+  "artifact_type": "suite_proposal",
+  "source_key": "orders-demo.csv",
+  "input_refs": [
+    {
+      "kind": "schema_summary",
+      "ref": "schema-summary:orders-demo.csv",
+      "redacted": true,
+      "metadata": {
+        "column_count": 8,
+        "observed_count": 3
+      }
+    },
+    {
+      "kind": "suite_summary",
+      "ref": "suite-summary:orders-demo.csv",
+      "redacted": true,
+      "metadata": {
+        "check_count": 5
+      }
+    }
+  ],
+  "model_provider": "fake-openai",
+  "model_name": "gpt-fake",
+  "compiler_version": "phase1-suggest-suite-v2",
+  "approval_status": "pending",
+  "target_type": "validation_suite",
+  "summary": "Compile aggregate controls for order identifiers, refund signals, and basic string quality.",
+  "rationale": "The operator asked for identifier stability, aggregate bounds, and business-status guardrails.",
+  "compile_status": "ready",
+  "compiled_check_count": 12,
+  "rejected_check_count": 0,
+  "compiled_checks": [
+    {
+      "validator_name": "null",
+      "category": "completeness",
+      "columns": [],
+      "params": {}
+    },
+    {
+      "validator_name": "not_null",
+      "category": "completeness",
+      "columns": [
+        "customer_email"
+      ],
+      "params": {}
+    },
+    {
+      "validator_name": "completeness_ratio",
+      "category": "completeness",
+      "columns": [
+        "status"
+      ],
+      "params": {
+        "min_ratio": 0.95
+      }
+    },
+    {
+      "validator_name": "unique",
+      "category": "uniqueness",
+      "columns": [
+        "order_id"
+      ],
+      "params": {}
+    },
+    {
+      "validator_name": "unique_ratio",
+      "category": "uniqueness",
+      "columns": [
+        "customer_email"
+      ],
+      "params": {
+        "min_ratio": 0.95
+      }
+    },
+    {
+      "validator_name": "between",
+      "category": "distribution",
+      "columns": [
+        "refund_rate"
+      ],
+      "params": {
+        "inclusive": true,
+        "min_value": 0.0,
+        "max_value": 1.0
+      }
+    },
+    {
+      "validator_name": "in_set",
+      "category": "distribution",
+      "columns": [
+        "status"
+      ],
+      "params": {
+        "allowed_values": [
+          "pending",
+          "approved"
+        ]
+      }
+    },
+    {
+      "validator_name": "length",
+      "category": "string",
+      "columns": [
+        "sku_code"
+      ],
+      "params": {
+        "min_length": 7,
+        "max_length": 7
+      }
+    },
+    {
+      "validator_name": "email",
+      "category": "string",
+      "columns": [
+        "customer_email"
+      ],
+      "params": {}
+    },
+    {
+      "validator_name": "regex",
+      "category": "string",
+      "columns": [
+        "sku_code"
+      ],
+      "params": {
+        "pattern": "^SKU-[0-9]{3}$",
+        "match_full": true,
+        "dotall": true,
+        "case_insensitive": false
+      }
+    },
+    {
+      "validator_name": "mean_between",
+      "category": "aggregate",
+      "columns": [
+        "refund_rate"
+      ],
+      "params": {
+        "min_value": 0.0,
+        "max_value": 1.0
+      }
+    },
+    {
+      "validator_name": "sum_between",
+      "category": "aggregate",
+      "columns": [
+        "refund_rate"
+      ],
+      "params": {
+        "min_value": 0.0,
+        "max_value": 3.0
+      }
+    }
+  ],
+  "diff_counts": {
+    "added": 11,
+    "already_present": 1,
+    "conflicts": 0,
+    "rejected": 0
+  },
+  "added_checks": [
+    {
+      "validator_name": "not_null",
+      "columns": [
+        "customer_email"
+      ]
+    },
+    {
+      "validator_name": "completeness_ratio",
+      "columns": [
+        "status"
+      ]
+    },
+    {
+      "validator_name": "unique",
+      "columns": [
+        "order_id"
+      ]
+    },
+    {
+      "validator_name": "unique_ratio",
+      "columns": [
+        "customer_email"
+      ]
+    },
+    {
+      "validator_name": "between",
+      "columns": [
+        "refund_rate"
+      ]
+    },
+    {
+      "validator_name": "in_set",
+      "columns": [
+        "status"
+      ]
+    },
+    {
+      "validator_name": "length",
+      "columns": [
+        "sku_code"
+      ]
+    },
+    {
+      "validator_name": "email",
+      "columns": [
+        "customer_email"
+      ]
+    },
+    {
+      "validator_name": "regex",
+      "columns": [
+        "sku_code"
+      ]
+    },
+    {
+      "validator_name": "mean_between",
+      "columns": [
+        "refund_rate"
+      ]
+    },
+    {
+      "validator_name": "sum_between",
+      "columns": [
+        "refund_rate"
+      ]
+    }
+  ],
+  "already_present_validators": [
+    "null"
+  ],
+  "existing_suite_validator_names": [
+    "schema",
+    "null",
+    "type",
+    "range",
+    "unique"
+  ],
+  "risks": [
+    "Thresholds may need tuning when traffic patterns change."
+  ],
+  "compiler_errors": []
+}

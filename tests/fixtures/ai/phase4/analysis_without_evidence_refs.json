@@ -1,0 +1,6 @@
+{
+  "summary": "This analysis should be rejected because it has no evidence references.",
+  "recommended_next_actions": [
+    "Do not persist this analysis artifact."
+  ]
+}

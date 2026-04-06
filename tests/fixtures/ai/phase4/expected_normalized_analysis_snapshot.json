@@ -1,0 +1,76 @@
+{
+  "schema_version": "1",
+  "artifact_type": "run_analysis",
+  "source_key": "dict:customer_id:email",
+  "input_refs": [
+    {
+      "kind": "run_result",
+      "ref": "runs:<run_id>",
+      "redacted": true,
+      "metadata": {
+        "status": "failure",
+        "issue_count": 2,
+        "failed_check_count": 2
+      }
+    },
+    {
+      "kind": "docs_artifact",
+      "ref": "docs:<run_id>",
+      "redacted": true,
+      "metadata": {
+        "available": true
+      }
+    },
+    {
+      "kind": "baseline_summary",
+      "ref": "baseline-summary:dict:customer_id:email",
+      "redacted": true,
+      "metadata": {
+        "column_count": 2
+      }
+    },
+    {
+      "kind": "history_window",
+      "ref": "history-window:dict:customer_id:email",
+      "redacted": true,
+      "metadata": {
+        "included": true,
+        "run_count": 1,
+        "failure_count": 1
+      }
+    }
+  ],
+  "model_provider": "fake-openai",
+  "model_name": "gpt-fake",
+  "compiler_version": "phase2-explain-run-v1",
+  "approval_status": "not_required",
+  "summary": "Customer identifier uniqueness failed and email completeness regressed relative to recent runs.",
+  "evidence_refs": [
+    "runs:<run_id>",
+    "history-window:dict:customer_id:email"
+  ],
+  "failed_checks": [
+    "unique",
+    "null"
+  ],
+  "top_columns": [
+    "customer_id",
+    "email"
+  ],
+  "recommended_next_actions": [
+    "Confirm whether customer_id is a stable business key.",
+    "Investigate why email nullability increased in the latest extract."
+  ],
+  "history_window": {
+    "included": true,
+    "history_key": "dict:customer_id:email",
+    "window_size": 10,
+    "run_count": 1,
+    "failure_count": 1,
+    "success_count": 0,
+    "latest_run_id": "<run_id>",
+    "recent_statuses": [
+      "failure"
+    ]
+  }
+}

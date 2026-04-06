@@ -314,6 +314,7 @@ def test_tests_pr_workflow_uses_sharded_quality_gate():
     )
     workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
     ratchet_targets = [target["name"] for target in _load_ruff_ratchet_manifest()]
+    on_section = workflow.get("on") or workflow.get(True) or {}
 
     assert workflow["name"] == "Tests PR"
     assert workflow["concurrency"]["cancel-in-progress"] is True
@@ -322,6 +323,12 @@ def test_tests_pr_workflow_uses_sharded_quality_gate():
     assert "quality-fault-e2e" in workflow["jobs"]
     assert "quality-ruff-ratchet" in workflow["jobs"]
     assert "quality-gate" in workflow["jobs"]
+    assert ".github/workflows/docs.yml" in on_section["pull_request"]["paths"]
+    assert "docs/**" in on_section["pull_request"]["paths"]
+    assert "mkdocs.public.yml" in on_section["pull_request"]["paths"]
+    assert ".github/workflows/docs.yml" in on_section["push"]["paths"]
+    assert "docs/**" in on_section["push"]["paths"]
+    assert "mkdocs.public.yml" in on_section["push"]["paths"]
     assert workflow["jobs"]["quality-contract"]["strategy"]["matrix"]["shard_id"] == [0, 1, 2, 3]
     assert workflow["jobs"]["quality-ruff-ratchet"]["strategy"]["matrix"]["target"] == ratchet_targets
     assert workflow["jobs"]["quality-gate"]["needs"] == [

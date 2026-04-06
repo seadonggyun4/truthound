@@ -1,0 +1,4 @@
+order_id,refund_rate,status,customer_email,sku_code,order_url,support_phone,uuid_value
+1,0.10,pending,alice@example.com,SKU-001,https://example.com/a,+82-10-1111-2222,550e8400-e29b-41d4-a716-446655440000
+2,0.25,approved,bob@example.com,SKU-002,https://example.com/b,+82-10-3333-4444,550e8400-e29b-41d4-a716-446655440001
+3,0.00,pending,charlie@example.com,SKU-003,https://example.com/c,+82-10-5555-6666,550e8400-e29b-41d4-a716-446655440002

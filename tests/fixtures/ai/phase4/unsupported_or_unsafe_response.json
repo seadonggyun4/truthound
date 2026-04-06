@@ -1,0 +1,36 @@
+{
+  "summary": "Compile a conservative reviewable proposal.",
+  "rationale": "One request is supported and two should be rejected safely.",
+  "proposed_checks": [
+    {
+      "intent": "unique",
+      "columns": [
+        "order_id"
+      ],
+      "params": {},
+      "rationale": "Order ids should remain unique."
+    },
+    {
+      "intent": "unsupported_magic",
+      "columns": [
+        "order_id"
+      ],
+      "params": {},
+      "rationale": "This intent does not exist."
+    },
+    {
+      "intent": "regex",
+      "columns": [
+        "sku_code"
+      ],
+      "params": {
+        "pattern": "(a+)+"
+      },
+      "rationale": "Unsafe regex should be rejected."
+    }
+  ],
+  "risks": [],
+  "rejected_requests": [
+    "Skip automatic apply"
+  ]
+}
