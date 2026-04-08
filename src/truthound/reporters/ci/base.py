@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 from abc import abstractmethod
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from typing import TYPE_CHECKING, Any
 
 from truthound.reporters.base import (
@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     )
 
 
-class CIPlatform(str, Enum):
+class CIPlatform(StrEnum):
     """Supported CI/CD platforms."""
 
     GITHUB_ACTIONS = "github"
@@ -42,7 +42,7 @@ class CIPlatform(str, Enum):
         return self.value
 
 
-class AnnotationLevel(str, Enum):
+class AnnotationLevel(StrEnum):
     """Annotation severity levels (normalized across platforms)."""
 
     ERROR = "error"

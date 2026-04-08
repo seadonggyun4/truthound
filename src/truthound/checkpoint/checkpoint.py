@@ -10,7 +10,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from uuid import uuid4
@@ -30,7 +30,7 @@ if TYPE_CHECKING:
     from truthound.validators.base import Validator
 
 
-class CheckpointStatus(str, Enum):
+class CheckpointStatus(StrEnum):
     """Status of a checkpoint run."""
 
     SUCCESS = "success"

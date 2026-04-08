@@ -2,29 +2,24 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Any
-from unittest.mock import Mock, MagicMock
+from unittest.mock import Mock
 
 import pytest
 
+from truthound.types import Severity
 from truthound.validators.base import ValidationIssue, Validator
+from truthound.validators.completeness.null import NotNullValidator, NullValidator
 from truthound.validators.pushdown_support import (
+    DuplicateCheckPushdownMixin,
+    NullCheckPushdownMixin,
     PushdownLevel,
     PushdownQuery,
     PushdownResult,
-    PushdownCapable,
     PushdownValidationEngine,
-    NullCheckPushdownMixin,
-    DuplicateCheckPushdownMixin,
-    RangeCheckPushdownMixin,
-    StatsPushdownMixin,
-    supports_pushdown,
-    get_pushdown_level,
     estimate_pushdown_savings,
+    get_pushdown_level,
+    supports_pushdown,
 )
-from truthound.types import Severity
-
 
 # =============================================================================
 # Fixtures
@@ -224,6 +219,75 @@ class TestNullCheckPushdownMixin:
         validator = MockPushdownValidator()
         quoted = validator._quote_identifier("column", SQLDialect.MYSQL)
         assert quoted == "`column`"
+
+    def test_not_null_validator_respects_configured_columns(self):
+        """Configured columns should constrain pushdown queries."""
+        from truthound.execution.pushdown import SQLDialect
+
+        validator = NotNullValidator(columns=("email",))
+        queries = validator.get_pushdown_queries(
+            table="users",
+            columns=["email", "age"],
+            dialect=SQLDialect.SQLITE,
+        )
+
+        assert [query.column for query in queries] == ["email"]
+
+    def test_null_validator_processes_pushdown_results(self):
+        """Pushdown results should preserve the NullValidator issue contract."""
+        validator = NullValidator(columns=("email",))
+        issues = validator.process_pushdown_results(
+            [
+                PushdownResult(
+                    column="email",
+                    check_type="null_count",
+                    value=2,
+                    total_rows=10,
+                )
+            ]
+        )
+
+        assert len(issues) == 1
+        assert issues[0].column == "email"
+        assert issues[0].issue_type == "null"
+        assert issues[0].count == 2
+
+    def test_not_null_validator_pushdown_matches_issue_contract(self):
+        """Pushdown results should preserve the NotNullValidator issue contract."""
+        validator = NotNullValidator(columns=("email",))
+        issues = validator.process_pushdown_results(
+            [
+                PushdownResult(
+                    column="email",
+                    check_type="null_count",
+                    value=2,
+                    total_rows=10,
+                )
+            ]
+        )
+
+        assert len(issues) == 1
+        assert issues[0].column == "email"
+        assert issues[0].issue_type == "not_null_violation"
+        assert issues[0].count == 2
+
+    def test_validation_engine_uses_not_null_pushdown_for_sql_datasource(self):
+        """NotNullValidator should execute through the SQL pushdown path."""
+        datasource = Mock()
+        datasource.source_type = "sqlite"
+        datasource.full_table_name = "customer_quality"
+        datasource.columns = ["email", "age"]
+        datasource.row_count = 10
+        datasource.execute_query = Mock(return_value=[{"count": 2}])
+
+        issues = PushdownValidationEngine(datasource).validate(
+            [NotNullValidator(columns=("email",))]
+        )
+
+        assert len(issues) == 1
+        assert issues[0].column == "email"
+        assert issues[0].issue_type == "not_null_violation"
+        datasource.execute_query.assert_called_once()
 
 
 class TestDuplicateCheckPushdownMixin:

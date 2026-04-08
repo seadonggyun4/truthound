@@ -8,7 +8,7 @@ enabling easy customization.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from typing import Any
 
@@ -17,7 +17,7 @@ from typing import Any
 # =============================================================================
 
 
-class ReportSortOrder(str, Enum):
+class ReportSortOrder(StrEnum):
     """Sort order for quality reports."""
 
     F1_DESC = "f1_desc"
@@ -32,7 +32,7 @@ class ReportSortOrder(str, Enum):
     NAME_DESC = "name_desc"
 
 
-class QualityDisplayMode(str, Enum):
+class QualityDisplayMode(StrEnum):
     """Display mode for quality information."""
 
     COMPACT = "compact"
@@ -41,7 +41,7 @@ class QualityDisplayMode(str, Enum):
     FULL = "full"
 
 
-class ChartType(str, Enum):
+class ChartType(StrEnum):
     """Available chart types for HTML reports."""
 
     BAR = "bar"

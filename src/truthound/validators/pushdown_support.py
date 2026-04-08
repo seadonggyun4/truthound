@@ -25,17 +25,14 @@ Example:
 
 from __future__ import annotations
 
-from abc import abstractmethod
 from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
 
-from truthound.validators.base import ValidationIssue, Validator
-
 if TYPE_CHECKING:
-    import polars as pl
     from truthound.datasources.sql.base import BaseSQLDataSource
-    from truthound.execution.pushdown import QueryBuilder, SQLDialect
+    from truthound.execution.pushdown import SQLDialect
+    from truthound.validators.base import ValidationIssue, Validator
 
 
 # =============================================================================
@@ -139,7 +136,7 @@ class PushdownCapable(Protocol):
         self,
         table: str,
         columns: list[str],
-        dialect: "SQLDialect",
+        dialect: SQLDialect,
     ) -> list[PushdownQuery]:
         """Generate pushdown queries for this validator.
 
@@ -192,7 +189,7 @@ class PushdownValidationEngine:
 
     def __init__(
         self,
-        datasource: "BaseSQLDataSource",
+        datasource: BaseSQLDataSource,
         enable_batching: bool = True,
         max_batch_size: int = 10,
     ) -> None:
@@ -208,7 +205,7 @@ class PushdownValidationEngine:
         self.max_batch_size = max_batch_size
         self._dialect = self._infer_dialect()
 
-    def _infer_dialect(self) -> "SQLDialect":
+    def _infer_dialect(self) -> SQLDialect:
         """Infer SQL dialect from data source."""
         from truthound.execution.pushdown import SQLDialect
 
@@ -389,7 +386,7 @@ class PushdownValidationEngine:
             groups[key].append(q)
 
         # Execute each group
-        for check_type, group_queries in groups.items():
+        for _check_type, group_queries in groups.items():
             # For simplicity, execute individually if complex
             # A more sophisticated version would build UNION ALL
             for query in group_queries:
@@ -436,15 +433,27 @@ class NullCheckPushdownMixin:
 
     pushdown_level = PushdownLevel.FULL
 
+    def _resolve_pushdown_columns(self, columns: list[str]) -> list[str]:
+        """Apply validator column scoping to datasource columns."""
+        config = getattr(self, "config", None)
+        requested = set(config.columns) if config and config.columns else None
+        excluded = set(config.exclude_columns) if config and config.exclude_columns else set()
+        resolved = [
+            column
+            for column in columns
+            if (requested is None or column in requested) and column not in excluded
+        ]
+        return resolved
+
     def get_pushdown_queries(
         self,
         table: str,
         columns: list[str],
-        dialect: "SQLDialect",
+        dialect: SQLDialect,
     ) -> list[PushdownQuery]:
         """Generate NULL count queries for each column."""
         queries = []
-        for col in columns:
+        for col in self._resolve_pushdown_columns(columns):
             quoted_col = self._quote_identifier(col, dialect)
             queries.append(
                 PushdownQuery(
@@ -455,7 +464,7 @@ class NullCheckPushdownMixin:
             )
         return queries
 
-    def _quote_identifier(self, identifier: str, dialect: "SQLDialect") -> str:
+    def _quote_identifier(self, identifier: str, dialect: SQLDialect) -> str:
         """Quote an identifier for the given dialect."""
         from truthound.execution.pushdown import SQLDialect
 
@@ -479,7 +488,7 @@ class DuplicateCheckPushdownMixin:
         self,
         table: str,
         columns: list[str],
-        dialect: "SQLDialect",
+        dialect: SQLDialect,
     ) -> list[PushdownQuery]:
         """Generate duplicate count queries for each column."""
         queries = []
@@ -498,7 +507,7 @@ class DuplicateCheckPushdownMixin:
             )
         return queries
 
-    def _quote_identifier(self, identifier: str, dialect: "SQLDialect") -> str:
+    def _quote_identifier(self, identifier: str, dialect: SQLDialect) -> str:
         """Quote an identifier for the given dialect."""
         from truthound.execution.pushdown import SQLDialect
 
@@ -522,7 +531,7 @@ class RangeCheckPushdownMixin:
         self,
         table: str,
         columns: list[str],
-        dialect: "SQLDialect",
+        dialect: SQLDialect,
     ) -> list[PushdownQuery]:
         """Generate min/max queries for numeric columns."""
         queries = []
@@ -537,7 +546,7 @@ class RangeCheckPushdownMixin:
             )
         return queries
 
-    def _quote_identifier(self, identifier: str, dialect: "SQLDialect") -> str:
+    def _quote_identifier(self, identifier: str, dialect: SQLDialect) -> str:
         """Quote an identifier for the given dialect."""
         from truthound.execution.pushdown import SQLDialect
 
@@ -561,7 +570,7 @@ class StatsPushdownMixin:
         self,
         table: str,
         columns: list[str],
-        dialect: "SQLDialect",
+        dialect: SQLDialect,
     ) -> list[PushdownQuery]:
         """Generate statistics queries for numeric columns."""
         queries = []
@@ -584,7 +593,7 @@ class StatsPushdownMixin:
             )
         return queries
 
-    def _quote_identifier(self, identifier: str, dialect: "SQLDialect") -> str:
+    def _quote_identifier(self, identifier: str, dialect: SQLDialect) -> str:
         """Quote an identifier for the given dialect."""
         from truthound.execution.pushdown import SQLDialect
 

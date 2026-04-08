@@ -2,26 +2,26 @@
 
 from __future__ import annotations
 
-from typing import Any, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
-from truthound.types import Severity
 from truthound.validators.base import (
-    ValidationIssue,
-    ValidationExpressionSpec,
-    Validator,
-    ValidatorConfig,
     ExpressionValidatorMixin,
+    ValidationExpressionSpec,
+    ValidationIssue,
+    Validator,
 )
+from truthound.validators.pushdown_support import NullCheckPushdownMixin
 from truthound.validators.registry import register_validator
 
 if TYPE_CHECKING:
     from truthound.validators.metrics import MetricKey
+    from truthound.validators.pushdown_support import PushdownResult
 
 
 @register_validator
-class NullValidator(Validator, ExpressionValidatorMixin):
+class NullValidator(Validator, ExpressionValidatorMixin, NullCheckPushdownMixin):
     """Detects null/missing values in columns.
 
     This validator uses the expression-based architecture for optimal
@@ -67,20 +67,41 @@ class NullValidator(Validator, ExpressionValidatorMixin):
         Returns:
             List of ValidationExpressionSpec for batched execution
         """
-        specs = []
-        for col in columns:
-            specs.append(
-                ValidationExpressionSpec(
-                    column=col,
-                    validator_name=self.name,
-                    issue_type="null",
-                    count_expr=pl.col(col).null_count(),
-                    non_null_expr=pl.len(),  # Use total rows as denominator
-                    details_template="{ratio:.1%} of values are null",
-                    filter_expr=pl.col(col).is_null(),
-                )
-            )
-        return specs
+        return [self._build_null_spec(col) for col in columns]
+
+    def _build_null_spec(self, column: str) -> ValidationExpressionSpec:
+        return ValidationExpressionSpec(
+            column=column,
+            validator_name=self.name,
+            issue_type="null",
+            count_expr=pl.col(column).null_count(),
+            non_null_expr=pl.len(),
+            details_template="{ratio:.1%} of values are null",
+            filter_expr=pl.col(column).is_null(),
+        )
+
+    def process_pushdown_results(
+        self,
+        results: list[PushdownResult],
+    ) -> list[ValidationIssue]:
+        prefix_map = {
+            f"_v{index}": self._build_null_spec(result.column)
+            for index, result in enumerate(results)
+        }
+        result_map = {
+            prefix: {
+                "count": int(result.value or 0),
+                "non_null": int(result.total_rows),
+            }
+            for prefix, result in zip(prefix_map, results, strict=False)
+        }
+        total_rows = max((int(result.total_rows) for result in results), default=0)
+        return self.build_issues_from_results(
+            specs=list(prefix_map.values()),
+            results=result_map,
+            total_rows=total_rows,
+            prefix_map=prefix_map,
+        )
 
     def validate(self, lf: pl.LazyFrame) -> list[ValidationIssue]:
         """Validate using expression-based approach.
@@ -91,7 +112,7 @@ class NullValidator(Validator, ExpressionValidatorMixin):
 
 
 @register_validator
-class NotNullValidator(Validator, ExpressionValidatorMixin):
+class NotNullValidator(Validator, ExpressionValidatorMixin, NullCheckPushdownMixin):
     """Validates that columns have no null values.
 
     Uses expression-based architecture for batched execution.
@@ -116,22 +137,43 @@ class NotNullValidator(Validator, ExpressionValidatorMixin):
         columns: list[str],
     ) -> list[ValidationExpressionSpec]:
         """Get validation expressions for not-null checking."""
-        specs = []
-        for col in columns:
-            specs.append(
-                ValidationExpressionSpec(
-                    column=col,
-                    validator_name=self.name,
-                    issue_type="not_null_violation",
-                    count_expr=pl.col(col).null_count(),
-                    non_null_expr=pl.len(),
-                    severity_ratio_thresholds=(0.01, 0.001, 0.0001),  # Strict thresholds
-                    details_template="Expected no nulls, found {count} ({ratio:.1%})",
-                    expected=0,
-                    filter_expr=pl.col(col).is_null(),
-                )
-            )
-        return specs
+        return [self._build_not_null_spec(col) for col in columns]
+
+    def _build_not_null_spec(self, column: str) -> ValidationExpressionSpec:
+        return ValidationExpressionSpec(
+            column=column,
+            validator_name=self.name,
+            issue_type="not_null_violation",
+            count_expr=pl.col(column).null_count(),
+            non_null_expr=pl.len(),
+            severity_ratio_thresholds=(0.01, 0.001, 0.0001),
+            details_template="Expected no nulls, found {count} ({ratio:.1%})",
+            expected=0,
+            filter_expr=pl.col(column).is_null(),
+        )
+
+    def process_pushdown_results(
+        self,
+        results: list[PushdownResult],
+    ) -> list[ValidationIssue]:
+        prefix_map = {
+            f"_v{index}": self._build_not_null_spec(result.column)
+            for index, result in enumerate(results)
+        }
+        result_map = {
+            prefix: {
+                "count": int(result.value or 0),
+                "non_null": int(result.total_rows),
+            }
+            for prefix, result in zip(prefix_map, results, strict=False)
+        }
+        total_rows = max((int(result.total_rows) for result in results), default=0)
+        return self.build_issues_from_results(
+            specs=list(prefix_map.values()),
+            results=result_map,
+            total_rows=total_rows,
+            prefix_map=prefix_map,
+        )
 
     def validate(self, lf: pl.LazyFrame) -> list[ValidationIssue]:
         """Validate using expression-based approach."""
