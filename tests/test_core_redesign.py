@@ -159,4 +159,4 @@ def test_validation_runtime_falls_back_to_sequential_when_threadpool_unavailable
     assert plan.planned_execution_mode == "sequential"
     assert run_result.planned_execution_mode == "sequential"
     assert run_result.execution_mode == "sequential"
-    assert run_result.issue_count == 5
+    assert len(run_result.issues) == 5
