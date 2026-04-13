@@ -140,3 +140,23 @@ def test_validation_runtime_reports_parallel_mode_when_requested():
     assert plan.planned_execution_mode == "parallel"
     assert run_result.planned_execution_mode == "parallel"
     assert run_result.execution_mode == "parallel"
+
+
+def test_validation_runtime_falls_back_to_sequential_when_threadpool_unavailable(
+    monkeypatch,
+):
+    suite = ValidationSuite.from_legacy(validators=["null", "null", "null", "null", "null"])
+    asset = build_validation_asset({"id": [1, 2, 3], "email": [None, "a@example.com", "b@example.com"]})
+    plan = ScanPlanner().plan(suite=suite, asset=asset)
+
+    def _raise_thread_error(*args, **kwargs):
+        raise RuntimeError("can't start new thread")
+
+    monkeypatch.setattr("truthound.core.runtime.ThreadPoolExecutor", _raise_thread_error)
+
+    run_result = ValidationRuntime().execute(asset=asset, plan=plan)
+
+    assert plan.planned_execution_mode == "sequential"
+    assert run_result.planned_execution_mode == "sequential"
+    assert run_result.execution_mode == "sequential"
+    assert run_result.issue_count == 5

@@ -147,9 +147,19 @@ class ValidationRuntime:
                 all_issues.extend(issues)
                 execution_issues.extend(exec_issues)
         else:
-            used_threadpool = True
-            with ThreadPoolExecutor(max_workers=max_workers or 4) as executor:
-                for issues, exec_issues in executor.map(run_single, validator_instances):
+            try:
+                with ThreadPoolExecutor(max_workers=max_workers or 4) as executor:
+                    for issues, exec_issues in executor.map(run_single, validator_instances):
+                        all_issues.extend(issues)
+                        execution_issues.extend(exec_issues)
+                used_threadpool = True
+            except RuntimeError as exc:
+                logger.warning(
+                    "Thread pool execution unavailable; falling back to sequential validation: %s",
+                    exc,
+                )
+                for validator in validator_instances:
+                    issues, exec_issues = run_single(validator)
                     all_issues.extend(issues)
                     execution_issues.extend(exec_issues)
 
