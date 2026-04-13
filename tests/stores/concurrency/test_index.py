@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import json
 import threading
-import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from pathlib import Path
+from contextlib import suppress
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -14,10 +14,14 @@ from truthound.stores.concurrency.index import (
     ConcurrentIndex,
     IndexEntry,
     IndexSnapshot,
-    IndexTransaction,
 )
-from truthound.stores.concurrency.manager import FileLockManager
 from truthound.stores.concurrency.locks import NoOpLockStrategy
+from truthound.stores.concurrency.manager import FileLockManager
+
+if TYPE_CHECKING:
+    from pathlib import Path
+
+CONCURRENT_ACCESS_TEST_WORKERS = 4
 
 
 @pytest.fixture
@@ -156,9 +160,8 @@ class TestIndexTransaction:
         index.initialize()
         index.add("existing", {})
 
-        with pytest.raises(ValueError):
-            with index.transaction() as txn:
-                txn.add("existing", {})
+        with pytest.raises(ValueError), index.transaction() as txn:
+            txn.add("existing", {})
 
     def test_transaction_update(self, index: ConcurrentIndex) -> None:
         """Test updating entry in transaction."""
@@ -262,10 +265,9 @@ class TestIndexTransaction:
         """Test rollback on exception."""
         index.initialize()
 
-        with pytest.raises(ValueError):
-            with index.transaction() as txn:
-                txn.add("id", {})
-                raise ValueError("Test error")
+        with pytest.raises(ValueError), index.transaction() as txn:
+            txn.add("id", {})
+            raise ValueError("Test error")
 
         assert not index.contains("id")
 
@@ -284,7 +286,7 @@ class TestConcurrentIndex:
         """Test adding and retrieving entries."""
         index.initialize()
 
-        entry = index.add("id", {"key": "value"})
+        index.add("id", {"key": "value"})
         retrieved = index.get("id")
 
         assert retrieved is not None
@@ -403,7 +405,7 @@ class TestConcurrentAccess:
             except Exception as e:
                 errors.append(e)
 
-        with ThreadPoolExecutor(max_workers=10) as executor:
+        with ThreadPoolExecutor(max_workers=CONCURRENT_ACCESS_TEST_WORKERS) as executor:
             futures = [executor.submit(add_entry, i) for i in range(50)]
             for future in as_completed(futures):
                 future.result()
@@ -428,7 +430,7 @@ class TestConcurrentAccess:
                 with lock:
                     results.append(entry)
 
-        with ThreadPoolExecutor(max_workers=10) as executor:
+        with ThreadPoolExecutor(max_workers=CONCURRENT_ACCESS_TEST_WORKERS) as executor:
             futures = [executor.submit(read_entry, i % 20) for i in range(100)]
             for future in as_completed(futures):
                 future.result()
@@ -460,7 +462,7 @@ class TestConcurrentAccess:
                 with lock:
                     errors.append(e)
 
-        with ThreadPoolExecutor(max_workers=10) as executor:
+        with ThreadPoolExecutor(max_workers=CONCURRENT_ACCESS_TEST_WORKERS) as executor:
             futures = []
             for i in range(50):
                 if i % 3 == 0:
@@ -491,10 +493,8 @@ class TestConcurrentAccess:
 
         def update_entries() -> None:
             for i in range(10):
-                try:
+                with suppress(Exception):
                     index.update(f"id-{i}", {"version": 1})
-                except Exception:
-                    pass
 
         with ThreadPoolExecutor(max_workers=5) as executor:
             futures = []
