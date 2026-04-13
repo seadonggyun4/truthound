@@ -462,6 +462,30 @@ def test_tests_nightly_workflow_publishes_collect_summary():
 
 
 @pytest.mark.contract
+def test_benchmarks_release_workflow_is_version_agnostic():
+    workflow_path = (
+        Path(__file__).resolve().parents[1]
+        / ".github"
+        / "workflows"
+        / "benchmarks-release.yml"
+    )
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    trigger_block = workflow.get("on") or workflow.get(True) or {}
+    release_job = workflow["jobs"]["release-parity"]
+    rendered = yaml.safe_dump(workflow, sort_keys=False)
+
+    assert workflow["name"] == "Benchmarks Release Gate"
+    assert trigger_block["push"]["branches"] == ["release/*"]
+    assert trigger_block["push"]["tags"] == ["v*"]
+    assert release_job["environment"] == "truthound-release-ga"
+    assert release_job["concurrency"]["group"] == "truthound-release-ga"
+    assert "release/3.0" not in rendered
+    assert "release/3.1" not in rendered
+    assert "truthound-3-0-ga" not in rendered
+    assert "truthound-3.0-release-ga" not in rendered
+
+
+@pytest.mark.contract
 def test_ai_live_smoke_workflow_is_manual_and_collects_artifacts():
     workflow_path = (
         Path(__file__).resolve().parents[1]

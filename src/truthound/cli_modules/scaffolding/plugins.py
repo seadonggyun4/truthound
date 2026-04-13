@@ -12,9 +12,9 @@ various template variants:
 
 from __future__ import annotations
 
-from importlib.metadata import PackageNotFoundError, version
 from typing import Any, ClassVar
 
+from truthound._version import resolve_truthound_version
 from truthound.cli_modules.scaffolding.base import (
     BaseScaffold,
     ScaffoldConfig,
@@ -23,11 +23,7 @@ from truthound.cli_modules.scaffolding.base import (
 )
 
 PLUGIN_PACKAGE_DEVELOPMENT_STATUS = "Development Status :: 5 - Production/Stable"
-
-try:
-    DEFAULT_TRUTHOUND_PLUGIN_MIN_VERSION = version("truthound")
-except PackageNotFoundError:
-    DEFAULT_TRUTHOUND_PLUGIN_MIN_VERSION = "3.0.0"
+DEFAULT_TRUTHOUND_PLUGIN_MIN_VERSION = resolve_truthound_version()
 
 
 @register_scaffold(

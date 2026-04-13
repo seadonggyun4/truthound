@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import tomllib
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -13,6 +14,11 @@ def _doc(rel_path: str) -> Path:
 
 def _read(rel_path: str) -> str:
     return _doc(rel_path).read_text(encoding="utf-8")
+
+
+def _project_version() -> str:
+    pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    return pyproject["project"]["version"]
 
 
 def _all_docs() -> list[Path]:
@@ -130,6 +136,18 @@ def test_readme_preserves_brand_assets_and_slogan() -> None:
     assert "Sniffs out bad data." in text
     assert "awesome.re/badge.svg" in text
     assert "Powered%20by-Polars" in text
+
+
+def test_readme_and_docs_home_current_release_surface_match_package_version() -> None:
+    version = _project_version()
+    readme = _read("README.md")
+    home = _read("docs/index.md")
+
+    assert f"Truthound {version} is a layered data quality system" in readme
+    assert f"docs/releases/truthound-{version}.md" in readme
+    assert f"releases/truthound-{version}.md" in home
+    assert "Truthound 3.0 auto-creates a `.truthound/` workspace" not in readme
+    assert "Truthound auto-creates a `.truthound/` workspace" in readme
 
 
 def test_home_surfaces_define_truthound_as_a_layered_system() -> None:

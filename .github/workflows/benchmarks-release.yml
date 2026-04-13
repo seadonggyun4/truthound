@@ -4,19 +4,18 @@ on:
   workflow_dispatch:
   push:
     branches:
-      - "release/3.0"
-      - "release/3.0.x"
+      - "release/*"
     tags:
-      - "v3.0.0rc*"
+      - "v*"
 
 jobs:
   release-parity:
     runs-on:
       - self-hosted
       - benchmark-fixed
-    environment: truthound-3-0-ga
+    environment: truthound-release-ga
     concurrency:
-      group: truthound-3.0-release-ga
+      group: truthound-release-ga
       cancel-in-progress: false
     env:
       TRUTHOUND_BENCHMARK_RUNNER_CLASS: self-hosted-fixed

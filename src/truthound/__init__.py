@@ -1,8 +1,8 @@
 """Truthound public package surface.
 
-Truthound 3.0 keeps the root package intentionally small: the validation
-facade and the core result/context types live here, while advanced
-subsystems are imported through their namespaces.
+Truthound keeps the root package intentionally small: the validation facade
+and the core result/context types live here, while advanced subsystems are
+imported through their namespaces.
 """
 
 from __future__ import annotations
@@ -10,23 +10,19 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from truthound._ai_support import AISupportStatus, get_ai_support_status, has_ai_support
+from truthound._lazy import (
+    TRUTHOUND_IMPORT_MAP,
+    get_truthound_import_metrics,
+    truthound_getattr,
+)
+from truthound._version import resolve_truthound_version
 from truthound.api import check, mask, profile, read, scan
 from truthound.context import TruthoundContext, get_context
 from truthound.core import CheckResult, CheckSpec, SchemaSpec, ValidationRunResult, ValidationSuite
 from truthound.decorators import validator
 from truthound.schema import Schema, learn
-from truthound._lazy import (
-    TRUTHOUND_IMPORT_MAP,
-    truthound_getattr,
-    get_truthound_import_metrics,
-)
 
-try:
-    from importlib.metadata import PackageNotFoundError, version
-
-    __version__ = version('truthound')
-except PackageNotFoundError:
-    __version__ = '0.0.0.dev'
+__version__ = resolve_truthound_version()
 
 
 def __getattr__(name: str) -> Any:

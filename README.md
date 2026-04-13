@@ -236,7 +236,7 @@ The experimental `use_engine` and `--use-engine` switches remain removed.
 
 ## Zero-Config Workflow
 
-Truthound 3.0 auto-creates a `.truthound/` workspace at your project root. By default it manages:
+Truthound auto-creates a `.truthound/` workspace at your project root. By default it manages:
 
 - `.truthound/config.yaml`: resolved project defaults
 - `.truthound/catalog/`: asset fingerprints and source signatures

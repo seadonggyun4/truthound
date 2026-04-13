@@ -14,6 +14,7 @@ from importlib import metadata as importlib_metadata
 from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
+from truthound._version import resolve_truthound_version
 from truthound.benchmark.base import EnvironmentInfo
 from truthound.benchmark.workloads import (
     ParityWorkload,
@@ -575,10 +576,7 @@ class TruthoundAdapter:
     name = "truthound"
 
     def framework_version(self) -> str:
-        try:
-            return importlib_metadata.version("truthound")
-        except importlib_metadata.PackageNotFoundError:  # pragma: no cover - local editable path
-            return "0.0.0.dev"
+        return resolve_truthound_version()
 
     def is_available(self) -> tuple[bool, str | None]:
         return True, None

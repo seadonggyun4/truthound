@@ -15,25 +15,20 @@ Commands:
 from __future__ import annotations
 
 import json
-from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated
 
 import typer
 
+from truthound._version import resolve_truthound_version
 from truthound.plugins import (
-    PluginManager,
-    PluginType,
     PluginState,
+    PluginType,
     get_plugin_manager,
 )
 
 PLUGIN_PACKAGE_DEVELOPMENT_STATUS = "Development Status :: 5 - Production/Stable"
-
-try:
-    DEFAULT_TRUTHOUND_PLUGIN_MIN_VERSION = version("truthound")
-except PackageNotFoundError:
-    DEFAULT_TRUTHOUND_PLUGIN_MIN_VERSION = "3.0.0"
+DEFAULT_TRUTHOUND_PLUGIN_MIN_VERSION = resolve_truthound_version()
 
 
 # Create Typer app for plugin commands
@@ -67,11 +62,11 @@ def _format_type(plugin_type: PluginType) -> str:
 @app.command("list")
 def list_plugins(
     plugin_type: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--type", "-t", help="Filter by plugin type"),
     ] = None,
     state: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--state", "-s", help="Filter by state"),
     ] = None,
     verbose: Annotated[
@@ -201,7 +196,6 @@ def plugin_info(
     try:
         from rich.console import Console
         from rich.panel import Panel
-        from rich.table import Table
 
         console = Console()
     except ImportError:
@@ -218,9 +212,9 @@ def plugin_info(
         if cls:
             try:
                 plugin = cls()
-            except Exception as e:
-                typer.echo(f"Error instantiating plugin: {e}", err=True)
-                raise typer.Exit(1)
+            except Exception as exc:
+                typer.echo(f"Error instantiating plugin: {exc}", err=True)
+                raise typer.Exit(1) from exc
         else:
             typer.echo(f"Plugin '{name}' not found.", err=True)
             raise typer.Exit(1)
@@ -292,9 +286,9 @@ def load_plugin(
         typer.echo(f"Loaded plugin: {plugin.name} v{plugin.version}")
         if plugin.state == PluginState.ACTIVE:
             typer.echo("Plugin is now active.")
-    except Exception as e:
-        typer.echo(f"Error loading plugin: {e}", err=True)
-        raise typer.Exit(1)
+    except Exception as exc:
+        typer.echo(f"Error loading plugin: {exc}", err=True)
+        raise typer.Exit(1) from exc
 
 
 @app.command("unload")
@@ -313,9 +307,9 @@ def unload_plugin(
     try:
         manager.unload_plugin(name)
         typer.echo(f"Unloaded plugin: {name}")
-    except Exception as e:
-        typer.echo(f"Error unloading plugin: {e}", err=True)
-        raise typer.Exit(1)
+    except Exception as exc:
+        typer.echo(f"Error unloading plugin: {exc}", err=True)
+        raise typer.Exit(1) from exc
 
 
 @app.command("enable")
@@ -333,9 +327,9 @@ def enable_plugin(
 
         manager.enable_plugin(name)
         typer.echo(f"Enabled plugin: {name}")
-    except Exception as e:
-        typer.echo(f"Error enabling plugin: {e}", err=True)
-        raise typer.Exit(1)
+    except Exception as exc:
+        typer.echo(f"Error enabling plugin: {exc}", err=True)
+        raise typer.Exit(1) from exc
 
 
 @app.command("disable")
@@ -353,9 +347,9 @@ def disable_plugin(
     try:
         manager.disable_plugin(name)
         typer.echo(f"Disabled plugin: {name}")
-    except Exception as e:
-        typer.echo(f"Error disabling plugin: {e}", err=True)
-        raise typer.Exit(1)
+    except Exception as exc:
+        typer.echo(f"Error disabling plugin: {exc}", err=True)
+        raise typer.Exit(1) from exc
 
 
 @app.command("create")
@@ -370,7 +364,7 @@ def create_plugin(
         typer.Option("--type", "-t", help="Plugin type"),
     ] = "validator",
     author: Annotated[
-        Optional[str],
+        str | None,
         typer.Option("--author", help="Author name"),
     ] = None,
 ) -> None:
@@ -454,9 +448,8 @@ def _to_class_name(name: str) -> str:
 def _generate_plugin_template(name: str, plugin_type: str, author: str | None) -> str:
     """Generate plugin.py template."""
     class_name = _to_class_name(name)
-    pkg_name = name.replace("-", "_")
 
-    if plugin_type == "validator":
+    if plugin_type == "validator":  # noqa: SIM116 - explicit template branches are clearer here.
         return f'''"""Plugin implementation for {name}."""
 
 from truthound.plugins import (
