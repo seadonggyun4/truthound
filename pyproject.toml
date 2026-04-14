@@ -190,6 +190,47 @@ docs = [
     "pymdown-extensions>=10.8.0",
 ]
 
+# Internal dashboard runtime contract.
+# This table is intentionally kept outside `project.optional-dependencies` so it
+# does not become public package metadata or a user-facing install surface.
+# It defines the baseline optional Truthound features that private
+# Truthound Dashboard deployments must provision through their own private
+# runtime artifact.
+#
+# Scope rules:
+# - Included extras are baseline optional-core features that the dashboard
+#   product must be able to assume across private operator deployments.
+# - Excluded extras stay out of the baseline runtime because they are connector-
+#   specific, environment-specific, or otherwise optional for the dashboard.
+# - When the dashboard starts depending on a new baseline optional-core feature,
+#   update this manifest first, then sync the sibling dashboard contract and
+#   private runtime artifact generation.
+[tool.truthound.internal_runtime.dashboard_runtime]
+included_extras = ["ai", "drift", "anomaly", "reports"]
+excluded_extras = [
+    "dashboard",
+    "pdf",
+    "benchmarks",
+    "perf",
+    "stores",
+    "s3",
+    "gcs",
+    "azure",
+    "database",
+    "duckdb",
+    "mongodb",
+    "elasticsearch",
+    "nosql",
+    "kafka",
+    "streaming",
+    "async-datasources",
+    "dev",
+    "docs",
+    "all",
+]
+rationale = "Baseline dashboard runtime only; no connector extras or public packaging exposure."
+version_policy = "Tracks the Truthound patch version consumed by the current dashboard release line."
+
 [project.scripts]
 truthound = "truthound.cli:app"
 
