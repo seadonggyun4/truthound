@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-from concurrent.futures import ThreadPoolExecutor
 from typing import TYPE_CHECKING, Any
 
 from truthound.core.execution_modes import (
@@ -44,13 +43,10 @@ class ValidationRuntime:
             )
             actual_execution_mode = RuntimeExecutionMode.PARALLEL.value
         else:
-            issues, execution_issues, used_threadpool = self._execute_sequential(
+            issues, execution_issues = self._execute_sequential(
                 asset=asset,
                 validator_instances=validator_instances,
-                max_workers=plan.max_workers,
             )
-            if used_threadpool:
-                actual_execution_mode = RuntimeExecutionMode.THREADPOOL.value
 
         return ValidationRunResult.from_suite(
             suite=plan.suite,
@@ -98,12 +94,10 @@ class ValidationRuntime:
         *,
         asset: DataAsset,
         validator_instances: list[Any],
-        max_workers: int | None = None,
-    ) -> tuple[list[ValidationIssue], list[ExecutionIssue], bool]:
+    ) -> tuple[list[ValidationIssue], list[ExecutionIssue]]:
         lf = asset.to_lazyframe()
         all_issues: list[ValidationIssue] = []
         execution_issues: list[ExecutionIssue] = []
-        used_threadpool = False
 
         def run_single(validator: Any) -> tuple[list[ValidationIssue], list[ExecutionIssue]]:
             retries = getattr(getattr(validator, 'config', None), 'max_retries', 0)
@@ -141,26 +135,12 @@ class ValidationRuntime:
                     )
             return issues, exec_issues
 
-        if len(validator_instances) < 5:
-            for validator in validator_instances:
-                issues, exec_issues = run_single(validator)
-                all_issues.extend(issues)
-                execution_issues.extend(exec_issues)
-        else:
-            try:
-                with ThreadPoolExecutor(max_workers=max_workers or 4) as executor:
-                    for issues, exec_issues in executor.map(run_single, validator_instances):
-                        all_issues.extend(issues)
-                        execution_issues.extend(exec_issues)
-                used_threadpool = True
-            except RuntimeError as exc:
-                logger.warning(
-                    "Thread pool execution unavailable; falling back to sequential validation: %s",
-                    exc,
-                )
-                for validator in validator_instances:
-                    issues, exec_issues = run_single(validator)
-                    all_issues.extend(issues)
-                    execution_issues.extend(exec_issues)
+        # Keep the sequential runtime truly sequential. Running multiple
+        # validators concurrently against the same Polars lazy frame has caused
+        # process aborts in CI under heavier validator mixes.
+        for validator in validator_instances:
+            issues, exec_issues = run_single(validator)
+            all_issues.extend(issues)
+            execution_issues.extend(exec_issues)
 
-        return all_issues, execution_issues, used_threadpool
+        return all_issues, execution_issues
