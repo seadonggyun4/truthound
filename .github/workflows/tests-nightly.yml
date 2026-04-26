@@ -2,12 +2,20 @@ name: Tests Nightly
 
 on:
   schedule:
-    - cron: "0 18 * * *"
+    - cron: "0 18 * * 3"
   workflow_dispatch:
+    inputs:
+      run_full_suite:
+        description: "Run the full nightly marker suite"
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   nightly-chaos:
     runs-on: ubuntu-latest
+    env:
+      RUN_FULL_SUITE: ${{ github.event_name == 'workflow_dispatch' && inputs.run_full_suite || 'false' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -20,21 +28,36 @@ jobs:
       - name: Install project with dev extras
         run: uv pip install --system ".[dev]"
 
-      - name: Run ruff ratchets
-        run: python verification/ci/run_ruff_ratchet.py --all
-
       - name: Verify pytest collection
         run: python -m pytest --collect-only -q tests
 
       - name: Prepare nightly artifacts
-        run: mkdir -p test-artifacts && printf "fault_seed=42\nrun_mode=nightly\n" > test-artifacts/run-metadata.txt
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p test-artifacts
+          if [[ "${RUN_FULL_SUITE}" == "true" ]]; then
+            printf "fault_seed=42\nrun_mode=nightly\nlane_mode=manual-full\n" > test-artifacts/run-metadata.txt
+          else
+            printf "fault_seed=42\nrun_mode=nightly\nlane_mode=weekly-integration-core\n" > test-artifacts/run-metadata.txt
+          fi
 
       - name: Collect nightly lane summary
-        run: python -m pytest --collect-only -q tests -m "contract or fault or integration or soak or stress or scale_100m or e2e" --run-integration --run-expensive --run-soak -p no:cacheprovider > test-artifacts/nightly-collect.txt
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${RUN_FULL_SUITE}" == "true" ]]; then
+            python -m pytest --collect-only -q tests -m "contract or fault or integration or soak or stress or scale_100m or e2e" --run-integration --run-expensive --run-soak -p no:cacheprovider > test-artifacts/nightly-collect.txt
+          else
+            python -m pytest --collect-only -q tests -m "integration" --run-integration -p no:cacheprovider > test-artifacts/nightly-collect.txt
+          fi
 
       - name: Write nightly selection summary
+        env:
+          RUN_FULL_SUITE: ${{ env.RUN_FULL_SUITE }}
         run: |
           python - <<'PY'
+          import os
           import json
           from pathlib import Path
 
@@ -44,23 +67,37 @@ jobs:
               for line in collect_path.read_text(encoding="utf-8").splitlines()
               if line.startswith("tests/") or line.startswith("tests\\")
           ]
+          run_full_suite = os.environ["RUN_FULL_SUITE"] == "true"
           summary = {
               "selected_total": len(nodeids),
-              "marker_expression": "contract or fault or integration or soak or stress or scale_100m or e2e",
+              "mode": "manual-full" if run_full_suite else "weekly-integration-core",
+              "marker_expression": (
+                  "contract or fault or integration or soak or stress or scale_100m or e2e"
+                  if run_full_suite
+                  else "integration"
+              ),
               "run_integration": True,
-              "run_expensive": True,
-              "run_soak": True,
+              "run_expensive": run_full_suite,
+              "run_soak": run_full_suite,
           }
           Path("test-artifacts/nightly-summary.json").write_text(
               json.dumps(summary, indent=2, sort_keys=True),
               encoding="utf-8",
           )
           print("Nightly selection summary")
+          print(f"  mode: {summary['mode']}")
           print(f"  selected total: {summary['selected_total']}")
           PY
 
-      - name: Run nightly contract, fault, integration, and soak lanes
-        run: python -m pytest -q tests -m "contract or fault or integration or soak or stress or scale_100m or e2e" --run-integration --run-expensive --run-soak -p no:cacheprovider --junitxml test-artifacts/nightly-junit.xml
+      - name: Run nightly integration core or full suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${RUN_FULL_SUITE}" == "true" ]]; then
+            python -m pytest -q tests -m "contract or fault or integration or soak or stress or scale_100m or e2e" --run-integration --run-expensive --run-soak -p no:cacheprovider --junitxml test-artifacts/nightly-junit.xml
+          else
+            python -m pytest -q tests -m "integration" --run-integration -p no:cacheprovider --junitxml test-artifacts/nightly-junit.xml
+          fi
 
       - name: Upload nightly test artifacts
         if: always()

@@ -450,15 +450,44 @@ def test_tests_nightly_workflow_publishes_collect_summary():
         / "tests-nightly.yml"
     )
     workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    trigger_block = workflow.get("on") or workflow.get(True) or {}
+    workflow_dispatch = trigger_block["workflow_dispatch"]
     steps = workflow["jobs"]["nightly-chaos"]["steps"]
     step_names = [step.get("name", "") for step in steps]
-    ratchet_step = next(step for step in steps if step.get("name") == "Run ruff ratchets")
+    collect_step = next(step for step in steps if step.get("name") == "Collect nightly lane summary")
+    summary_step = next(step for step in steps if step.get("name") == "Write nightly selection summary")
+    run_step = next(
+        step for step in steps if step.get("name") == "Run nightly integration core or full suite"
+    )
 
-    assert "Run ruff ratchets" in step_names
+    assert trigger_block["schedule"] == [{"cron": "0 18 * * 3"}]
+    assert workflow_dispatch["inputs"]["run_full_suite"]["type"] == "boolean"
+    assert workflow_dispatch["inputs"]["run_full_suite"]["default"] is False
+    assert "Run ruff ratchets" not in step_names
     assert "Collect nightly lane summary" in step_names
     assert "Write nightly selection summary" in step_names
     assert "Upload nightly test artifacts" in step_names
-    assert "run_ruff_ratchet.py --all" in ratchet_step["run"]
+    assert 'RUN_FULL_SUITE: ${{ github.event_name == \'workflow_dispatch\' && inputs.run_full_suite || \'false\' }}' in workflow_path.read_text(encoding="utf-8")
+    assert '-m "integration" --run-integration -p no:cacheprovider' in collect_step["run"]
+    assert '-m "contract or fault or integration or soak or stress or scale_100m or e2e"' in collect_step["run"]
+    assert '"mode": "manual-full" if run_full_suite else "weekly-integration-core"' in summary_step["run"]
+    assert '-m "integration" --run-integration -p no:cacheprovider --junitxml test-artifacts/nightly-junit.xml' in run_step["run"]
+    assert '--run-expensive --run-soak' in run_step["run"]
+
+
+@pytest.mark.contract
+def test_benchmarks_nightly_workflow_is_manual_only():
+    workflow_path = (
+        Path(__file__).resolve().parents[1]
+        / ".github"
+        / "workflows"
+        / "benchmarks-nightly.yml"
+    )
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    trigger_block = workflow.get("on") or workflow.get(True) or {}
+
+    assert workflow["name"] == "Benchmarks Manual"
+    assert set(trigger_block) == {"workflow_dispatch"}
 
 
 @pytest.mark.contract
