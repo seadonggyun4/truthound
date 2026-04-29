@@ -19,6 +19,8 @@ import pytest
 import truthound as th
 from truthound.drift import compare
 
+pytestmark = pytest.mark.stress
+
 
 class TestExtremeScale:
     """Extreme scale tests - 10M+ rows."""
@@ -65,6 +67,8 @@ class TestExtremeScale:
         print(f"\nTotal processing time: {check_time + profile_time + learn_time:.2f}s")
 
         assert report is not None
+        assert profile is not None
+        assert schema is not None
         assert check_time < 120  # Should complete within 2 minutes
         assert profile_time < 30
         assert learn_time < 30
@@ -447,6 +451,8 @@ class TestRealisticWorkloads:
             elapsed = time.time() - start
             total_time += elapsed
             print(f"{name}: {len(df):,} rows, {elapsed:.2f}s")
+            assert report is not None
+            assert schema is not None
 
         print(f"\nTotal validation time: {total_time:.2f}s")
 
@@ -526,6 +532,7 @@ class TestEdgeCasesExtreme:
         report = th.check(df)
         schema = th.learn(df)
 
+        assert report is not None
         assert schema is not None
         # Should detect that all values are same
         assert schema.columns["constant"].min_value == schema.columns["constant"].max_value
