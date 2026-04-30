@@ -24,7 +24,7 @@
   </a>
 </p>
 
-> Truthound 3.1.1 is a layered data quality system built around a Polars-first validation kernel, with first-party orchestration adapters, an additive AI review surface, and an operational console built on top of the same core runtime contract.
+> Truthound 3.1.2 is a layered data quality system built around a Polars-first validation kernel, with first-party orchestration adapters, an additive AI review surface, and an operational console built on top of the same core runtime contract.
 
 ---
 
@@ -34,23 +34,27 @@
   <img width="200" alt="Truthound Icon" src="docs/assets/Truthound_icon_banner.png" />
 </p>
 
-Truthound 3.1.1 is a layered data quality system. At the center is a small, durable, Polars-first validation kernel. Around that core sit an additive `truthound.ai` review surface, Truthound Orchestration for host-native execution inside schedulers and workflow systems, and Truthound Dashboard for operating Truthound through an installation-managed control-plane UI.
+Truthound 3.1.2 is a layered data quality system. At the center is a small, durable, Polars-first validation kernel. Around that core sit an additive `truthound.ai` review surface, Truthound Orchestration for host-native execution inside schedulers and workflow systems, and Truthound Dashboard for operating Truthound through an installation-managed control-plane UI.
 
 The point of the 3.x reset is not to hide the broader product line. It is to make the system boundary honest. The core validation kernel is the most rigorously validated contract in the ecosystem, while the AI review layer, orchestration adapters, and dashboard build on top of that contract instead of redefining it.
 
 **Documentation**: [truthound.netlify.app](https://truthound.netlify.app/)
 
-## What's New In 3.1.1
+## What's New In 3.1.2
 
-Truthound 3.1.1 keeps the 3.1 review surface intact and tightens one small but
-important public integration edge for downstream consumers.
+Truthound 3.1.2 keeps the 3.1 review surface intact while tightening runtime
+behavior in constrained CI environments and making the public packaging surface
+more consistent.
 
-- `truthound.ai.resolve_source_key(...)` is now a root-level public helper for
-  dashboard and review-surface consumers
-- downstream integrations can resolve canonical source identity without
-  reaching into `TruthoundContext` implementation details
-- the additive AI boundary remains unchanged: optional install, explicit review
-  lifecycle, persisted proposal and analysis artifacts, and controlled apply
+- validation runtime now falls back to sequential execution when thread-pool
+  startup is unavailable on resource-constrained runners
+- SQLite null-check parity now uses the intended pushdown path again in the
+  benchmarked SQL lane
+- reporter and checkpoint outer-layer contracts are cleaner and protected by
+  folder-level `ruff` ratchets in CI
+- the core package version surface now resolves from one canonical source
+  across runtime, plugin scaffolding, benchmark metadata, and current-release
+  docs links
 
 ## Truthound Product Line
 
@@ -278,7 +282,7 @@ Truthound now uses one lifecycle runtime:
 - Orchestration layer: [truthound.netlify.app/orchestration/](https://truthound.netlify.app/orchestration/)
 - Orchestration getting started: [docs/orchestration/getting-started.md](docs/orchestration/getting-started.md)
 - Dashboard layer: [truthound.netlify.app/dashboard/](https://truthound.netlify.app/dashboard/)
-- Release notes: [docs/releases/truthound-3.1.1.md](docs/releases/truthound-3.1.1.md)
+- Release notes: [docs/releases/truthound-3.1.2.md](docs/releases/truthound-3.1.2.md)
 - Latest verified benchmark summary: [docs/releases/latest-benchmark-summary.md](docs/releases/latest-benchmark-summary.md)
 - Migration guide: [docs/guides/migration-3.0.md](docs/guides/migration-3.0.md)
 - Legacy archive: [docs/legacy/index.md](docs/legacy/index.md)

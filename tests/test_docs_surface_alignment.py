@@ -142,10 +142,12 @@ def test_readme_and_docs_home_current_release_surface_match_package_version() ->
     version = _project_version()
     readme = _read("README.md")
     home = _read("docs/index.md")
+    ai = _read("docs/ai/index.md")
 
     assert f"Truthound {version} is a layered data quality system" in readme
     assert f"docs/releases/truthound-{version}.md" in readme
     assert f"releases/truthound-{version}.md" in home
+    assert f"../releases/truthound-{version}.md" in ai
     assert "Truthound 3.0 auto-creates a `.truthound/` workspace" not in readme
     assert "Truthound auto-creates a `.truthound/` workspace" in readme
 
