@@ -11,8 +11,6 @@ edit_uri: edit/main/docs/
 theme:
   name: material
   language: en
-  logo: assets/truthound_icon.png
-  favicon: assets/truthound_icon.png
   palette:
     - scheme: slate
       primary: custom

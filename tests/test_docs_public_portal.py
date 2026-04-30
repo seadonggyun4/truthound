@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import importlib.util
 import re
+import struct
 import subprocess
 import sys
 from pathlib import Path
@@ -58,6 +59,13 @@ def _load_mkdocs(path: Path) -> dict:
     raw_text = path.read_text(encoding="utf-8")
     sanitized = re.sub(r"!!python/name:[^\s]+", "python-ref", raw_text)
     return yaml.safe_load(sanitized) or {}
+
+
+def _png_dimensions(path: Path) -> tuple[int, int]:
+    with path.open("rb") as handle:
+        header = handle.read(24)
+    assert header.startswith(b"\x89PNG\r\n\x1a\n")
+    return struct.unpack(">II", header[16:24])
 
 
 def _nav_labels(node) -> list[str]:
@@ -236,10 +244,12 @@ def test_mkdocs_brand_assets_are_preserved():
 
     for config in [main_config, public_config]:
         theme = config["theme"]
-        assert theme["logo"] == "assets/truthound_icon.png"
-        assert theme["favicon"] == "assets/truthound_icon.png"
+        assert "logo" not in theme
+        assert "favicon" not in theme
         assert theme["palette"][0]["primary"] == "custom"
         assert theme["palette"][1]["primary"] == "custom"
+
+    assert _png_dimensions(REPO_ROOT / "docs" / "assets" / "truthound_icon.png") == (256, 256)
 
 
 def test_external_source_banner_markup_uses_generic_upstream_contract() -> None:

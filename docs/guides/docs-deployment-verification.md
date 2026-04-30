@@ -27,8 +27,9 @@ Use this page as the canonical operator checklist whenever the public Truthound 
 - [ ] full and public docs staging run before the respective MkDocs builds
 - [ ] brand assets remain unchanged:
   - [ ] `assets/truthound_banner.png`
-  - [ ] `assets/truthound_icon.png`
+  - [ ] `assets/truthound_icon.png` remains a small static brand asset, not a MkDocs logo or favicon source
   - [ ] the existing palette configuration in both MkDocs configs
+  - [ ] MkDocs configs do not set `theme.logo` or `theme.favicon`
 
 ## Generated Site Checklist
 
