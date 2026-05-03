@@ -8,6 +8,14 @@ on:
         required: true
         default: "3.1.2"
         type: string
+      publish_mode:
+        description: Use the existing PyPI API token fallback or Trusted Publishing.
+        required: true
+        default: token
+        type: choice
+        options:
+          - token
+          - trusted
 
 permissions:
   contents: read
@@ -83,7 +91,26 @@ jobs:
           print(f"Smoke import passed for truthound {truthound.__version__}")
           PY
 
-      - name: Publish to PyPI
+      - name: Validate PyPI token fallback secret
+        if: inputs.publish_mode == 'token'
+        env:
+          PYPI_API_TOKEN: ${{ secrets.PYPI_API_TOKEN }}
+        run: |
+          if [ -z "${PYPI_API_TOKEN}" ]; then
+            echo "PYPI_API_TOKEN secret is required when publish_mode=token."
+            exit 1
+          fi
+
+      - name: Publish to PyPI with API token fallback
+        if: inputs.publish_mode == 'token'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/
+          user: __token__
+          password: ${{ secrets.PYPI_API_TOKEN }}
+
+      - name: Publish to PyPI with Trusted Publishing
+        if: inputs.publish_mode == 'trusted'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: dist/

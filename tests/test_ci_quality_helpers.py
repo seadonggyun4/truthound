@@ -555,7 +555,7 @@ def test_ai_live_smoke_workflow_is_manual_and_collects_artifacts():
 
 
 @pytest.mark.contract
-def test_release_pypi_workflow_uses_trusted_publishing_and_smoke_install():
+def test_release_pypi_workflow_supports_token_fallback_and_trusted_publishing():
     workflow_path = (
         Path(__file__).resolve().parents[1]
         / ".github"
@@ -574,15 +574,22 @@ def test_release_pypi_workflow_uses_trusted_publishing_and_smoke_install():
     assert workflow["permissions"]["id-token"] == "write"
     assert "workflow_dispatch" in trigger_block
     version_input = trigger_block["workflow_dispatch"]["inputs"]["version"]
+    publish_mode_input = trigger_block["workflow_dispatch"]["inputs"]["publish_mode"]
     assert version_input["default"] == "3.1.2"
+    assert publish_mode_input["default"] == "token"
+    assert publish_mode_input["options"] == ["token", "trusted"]
     assert publish_job["environment"]["name"] == "pypi"
     assert "Verify release version" in step_names
     assert "Build wheel and source distribution" in step_names
     assert "Check package metadata" in step_names
     assert "Smoke install built wheel with AI extra" in step_names
+    assert "Validate PyPI token fallback secret" in step_names
+    assert "Publish to PyPI with API token fallback" in step_names
+    assert "Publish to PyPI with Trusted Publishing" in step_names
     assert "uv build" in rendered
     assert "twine check" in rendered
     assert "[ai]" in rendered
+    assert "PYPI_API_TOKEN" in rendered
     assert "pypa/gh-action-pypi-publish@release/v1" in rendered
     assert "twine upload" not in rendered
 
