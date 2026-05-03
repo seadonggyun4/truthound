@@ -584,7 +584,7 @@ def test_release_pypi_workflow_supports_token_fallback_and_trusted_publishing():
     assert version_input["default"] == "3.1.2"
     assert publish_mode_input["default"] == "token"
     assert publish_mode_input["options"] == ["token", "trusted"]
-    assert publish_job["environment"]["name"] == "pypi"
+    assert "environment" not in publish_job
     assert "Verify release version" in step_names
     assert "Build wheel and source distribution" in step_names
     assert "Check package metadata" in step_names

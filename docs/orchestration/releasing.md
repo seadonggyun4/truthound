@@ -1,31 +1,39 @@
 # Releasing
 
-`truthound-orchestration` publishes from the GitHub `Release Gate` workflow and uploads the built `truthound-foundation` artifact to PyPI.
+`truthound` publishes package artifacts to PyPI from the GitHub `Release PyPI`
+workflow.
 
 ## One-Time Setup
 
-Before the first automated release, configure the repository secret:
+Before token-based publishing, configure the repository secret:
 
 - Secret name: `PYPI_API_TOKEN`
-- Scope: repository secret on `seadonggyun4/truthound-orchestration`
-- Value: the PyPI API token for the `truthound-orchestration` project
+- Scope: repository secret on `seadonggyun4/truthound`
+- Value: the PyPI API token for the `truthound` project
 
 The publish workflow fails fast with a clear error if this secret is missing.
+
+PyPI publish is a package registry operation, not an application deployment.
+The workflow intentionally does not use a GitHub `environment`, so PyPI release
+attempts do not create entries in the repository Deployments panel. If Trusted
+Publishing is used instead of the token fallback, configure the PyPI Trusted
+Publisher without a GitHub environment constraint.
 
 ## Release Flow
 
 1. Ensure `main` is green.
-2. Create and push a version tag such as `v3.0.1`.
-3. Let `Release Gate` run on the tag, or run it manually with `publish_release=true`.
-4. Verify that the nested `Publish` workflow finishes successfully.
+2. Run `Release PyPI` manually with the target version, for example `3.1.2`.
+3. Use `publish_mode=token` for the repository secret fallback or
+   `publish_mode=trusted` after PyPI Trusted Publishing is configured.
+4. Verify that PyPI shows the uploaded version.
 
 ## Retry Behavior
 
-The publish step uses `twine upload --skip-existing`.
+PyPI release files are immutable.
 
-That means a rerun is safe when:
+That means a rerun is safe only when:
 
-- a previous attempt already uploaded one or more `3.x.y` files
-- the release gate needs to be re-run after a transient GitHub or PyPI failure
+- the previous attempt failed before upload
+- the version has not already been published
 
 PyPI still forbids replacing an existing file with different contents, so version numbers remain immutable.
