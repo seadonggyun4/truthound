@@ -1,0 +1,81 @@
+[
+  {
+    "name": "quoted_exact",
+    "prompt": "`email`은 필수값입니다",
+    "columns": [
+      "email",
+      "backup_email"
+    ],
+    "expected_columns": [
+      "email"
+    ],
+    "expected_unresolved_reasons": [],
+    "intent_label": null,
+    "entity_labels": [],
+    "threshold_labels": {},
+    "ambiguity_label": "ambiguous",
+    "task_label": "validation_intent_normalization",
+    "unicode_labels": [
+      "plain"
+    ]
+  },
+  {
+    "name": "case_insensitive_exact",
+    "prompt": "CUSTOMER_ID는 중복 없어야 해",
+    "columns": [
+      "customer_id"
+    ],
+    "expected_columns": [
+      "customer_id"
+    ],
+    "expected_unresolved_reasons": [],
+    "intent_label": null,
+    "entity_labels": [],
+    "threshold_labels": {},
+    "ambiguity_label": "ambiguous",
+    "task_label": "validation_intent_normalization",
+    "unicode_labels": [
+      "plain"
+    ]
+  },
+  {
+    "name": "semantic_unique_alias",
+    "prompt": "고객ID는 중복 없어야 해",
+    "columns": [
+      "customer_id",
+      "email"
+    ],
+    "expected_columns": [
+      "customer_id"
+    ],
+    "expected_unresolved_reasons": [],
+    "intent_label": null,
+    "entity_labels": [],
+    "threshold_labels": {},
+    "ambiguity_label": "ambiguous",
+    "task_label": "validation_intent_normalization",
+    "unicode_labels": [
+      "plain"
+    ]
+  },
+  {
+    "name": "semantic_ambiguous_alias",
+    "prompt": "상태는 대기/승인 중 하나",
+    "columns": [
+      "status",
+      "state"
+    ],
+    "expected_columns": [],
+    "expected_unresolved_reasons": [
+      "column_alias_ambiguous"
+    ],
+    "intent_label": "in_set",
+    "entity_labels": [],
+    "threshold_labels": {},
+    "ambiguity_label": "ambiguous",
+    "task_label": "validation_intent_normalization",
+    "unicode_labels": [
+      "plain"
+    ]
+  }
+]

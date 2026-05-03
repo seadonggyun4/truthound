@@ -555,6 +555,39 @@ def test_ai_live_smoke_workflow_is_manual_and_collects_artifacts():
 
 
 @pytest.mark.contract
+def test_release_pypi_workflow_uses_trusted_publishing_and_smoke_install():
+    workflow_path = (
+        Path(__file__).resolve().parents[1]
+        / ".github"
+        / "workflows"
+        / "release-pypi.yml"
+    )
+    workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
+    trigger_block = workflow.get("on", workflow.get(True))
+    publish_job = workflow["jobs"]["publish"]
+    steps = publish_job["steps"]
+    rendered = yaml.safe_dump(workflow, sort_keys=False)
+    step_names = [step.get("name", "") for step in steps]
+
+    assert workflow["name"] == "Release PyPI"
+    assert workflow["permissions"]["contents"] == "read"
+    assert workflow["permissions"]["id-token"] == "write"
+    assert "workflow_dispatch" in trigger_block
+    version_input = trigger_block["workflow_dispatch"]["inputs"]["version"]
+    assert version_input["default"] == "3.1.2"
+    assert publish_job["environment"]["name"] == "pypi"
+    assert "Verify release version" in step_names
+    assert "Build wheel and source distribution" in step_names
+    assert "Check package metadata" in step_names
+    assert "Smoke install built wheel with AI extra" in step_names
+    assert "uv build" in rendered
+    assert "twine check" in rendered
+    assert "[ai]" in rendered
+    assert "pypa/gh-action-pypi-publish@release/v1" in rendered
+    assert "twine upload" not in rendered
+
+
+@pytest.mark.contract
 def test_dev_and_streaming_extras_cover_quality_gate_dependencies():
     pyproject_path = Path(__file__).resolve().parents[1] / "pyproject.toml"
     pyproject = tomllib.loads(pyproject_path.read_text(encoding="utf-8"))

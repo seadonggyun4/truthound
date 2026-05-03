@@ -1,0 +1,89 @@
+name: Release PyPI
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to publish. Must match pyproject.toml.
+        required: true
+        default: "3.1.2"
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - uses: astral-sh/setup-uv@v4
+
+      - name: Verify release version
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          python - <<'PY'
+          import os
+          import tomllib
+          from pathlib import Path
+
+          release_version = os.environ["RELEASE_VERSION"]
+          pyproject = tomllib.loads(Path("pyproject.toml").read_text(encoding="utf-8"))
+          project_version = pyproject["project"]["version"]
+          if project_version != release_version:
+              raise SystemExit(
+                  f"pyproject.toml version {project_version!r} does not match "
+                  f"workflow input {release_version!r}"
+              )
+          print(f"Publishing truthound {project_version}")
+          PY
+
+      - name: Build wheel and source distribution
+        run: uv build
+
+      - name: Check package metadata
+        run: uv tool run twine check dist/*
+
+      - name: Smoke install built wheel with AI extra
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          python -m venv /tmp/truthound-release-smoke
+          /tmp/truthound-release-smoke/bin/python -m pip install --upgrade pip
+          wheel_path="$(python - <<'PY'
+          from pathlib import Path
+
+          wheels = sorted(Path("dist").glob("truthound-*-py3-none-any.whl"))
+          if len(wheels) != 1:
+              raise SystemExit(f"expected exactly one wheel, found {wheels}")
+          print(wheels[0])
+          PY
+          )"
+          /tmp/truthound-release-smoke/bin/python -m pip install "${wheel_path}[ai]"
+          /tmp/truthound-release-smoke/bin/python - <<'PY'
+          import os
+
+          import truthound
+          import truthound.ai
+
+          expected = os.environ["RELEASE_VERSION"]
+          if truthound.__version__ != expected:
+              raise SystemExit(
+                  f"installed truthound {truthound.__version__!r}, expected {expected!r}"
+              )
+          print(f"Smoke import passed for truthound {truthound.__version__}")
+          PY
+
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist/

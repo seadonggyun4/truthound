@@ -1,0 +1,145 @@
+{
+  "schema_version": "1",
+  "locale": "ko-KR",
+  "lexicon_version": "2026-05-03.1",
+  "intent_synonyms": {
+    "not_null": [
+      "not null",
+      "required",
+      "필수",
+      "필수값",
+      "비어 있으면 안",
+      "빈값 안",
+      "누락 없어",
+      "누락되면 안",
+      "null이면 안",
+      "null 없어",
+      "결측 없어",
+      "반드시 채워",
+      "채워져야"
+    ],
+    "null": [
+      "must be null",
+      "null 이어야",
+      "비어 있어야"
+    ],
+    "unique": [
+      "unique",
+      "deduplicate",
+      "중복 없어",
+      "중복되면 안",
+      "중복 금지",
+      "고유",
+      "유일"
+    ],
+    "unique_ratio": [
+      "unique ratio",
+      "고유 비율",
+      "유일 비율",
+      "중복률"
+    ],
+    "completeness_ratio": [
+      "completeness ratio",
+      "결측률",
+      "누락률",
+      "완전성"
+    ],
+    "between": [
+      "between",
+      "bounded",
+      "범위",
+      "사이",
+      "이상",
+      "이하",
+      "부터",
+      "까지"
+    ],
+    "in_set": [
+      "in set",
+      "allowed values",
+      "중 하나",
+      "중에서",
+      "만 허용",
+      "허용값"
+    ],
+    "length": [
+      "length",
+      "길이",
+      "자",
+      "자리",
+      "글자"
+    ],
+    "format": [
+      "format",
+      "형식",
+      "포맷"
+    ],
+    "regex": [
+      "regex",
+      "정규식",
+      "정규 표현식"
+    ],
+    "mean_between": [
+      "mean",
+      "average",
+      "평균"
+    ],
+    "sum_between": [
+      "sum",
+      "total",
+      "합계",
+      "총합"
+    ]
+  },
+  "format_synonyms": {
+    "email": ["email", "이메일", "메일"],
+    "url": ["url", "uri", "링크", "주소"],
+    "phone": ["phone", "telephone", "전화번호", "전화", "휴대폰", "핸드폰"],
+    "uuid": ["uuid"],
+    "ip_address": ["ip", "ip address", "ip주소", "아이피"],
+    "ipv6_address": ["ipv6", "ipv6 address"]
+  },
+  "semantic_column_aliases": {
+    "email": ["이메일", "메일"],
+    "mail": ["이메일", "메일"],
+    "customer": ["고객", "고객명"],
+    "client": ["고객", "클라이언트"],
+    "user": ["사용자", "유저"],
+    "id": ["id", "아이디", "식별자"],
+    "score": ["score", "점수", "스코어"],
+    "status": ["status", "상태"],
+    "state": ["state", "상태"],
+    "phone": ["전화번호", "전화", "휴대폰"],
+    "url": ["url", "링크", "주소"],
+    "rate": ["비율"],
+    "ratio": ["비율"],
+    "refund": ["환불", "환불률"],
+    "amount": ["금액", "액수"],
+    "price": ["가격", "금액"],
+    "total": ["합계", "총합"],
+    "name": ["이름"],
+    "date": ["날짜", "일자"],
+    "time": ["시간"],
+    "sku": ["sku", "상품코드", "재고코드"]
+  },
+  "ambiguous_markers": [
+    "잘 검증",
+    "이상한 값",
+    "문제 없게",
+    "알아서",
+    "적당히",
+    "좋게",
+    "깨끗하게",
+    "품질 좋게"
+  ],
+  "false_positive_guards": [
+    "중복 실행",
+    "중복 요청",
+    "중복 클릭",
+    "상태가 좋은지",
+    "상태 좋아",
+    "값이 이상한지",
+    "문제 있는지 봐",
+    "대충 봐줘"
+  ]
+}

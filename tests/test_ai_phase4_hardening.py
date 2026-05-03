@@ -86,6 +86,8 @@ def _normalize_input_ref(ref: dict[str, Any]) -> dict[str, Any]:
         payload["ref"] = "runs:<run_id>"
     elif payload["ref"].startswith("docs:"):
         payload["ref"] = "docs:<run_id>"
+    elif payload["ref"].startswith("provider-trace:"):
+        payload["ref"] = "provider-trace:<provider_trace_id>"
     return payload
 
 
@@ -336,7 +338,7 @@ def test_phase4_malformed_provider_output_is_safely_rejected_without_core_state_
     before = _snapshot_core_state(context)
 
     artifact = suggest_suite(
-        prompt="Return malformed output on purpose.",
+        prompt="order_id는 unique여야 해",
         data=str(data_path),
         context=context,
         provider=FixtureProvider(_load_json_fixture("malformed_provider_output.json")),
@@ -374,6 +376,182 @@ def test_phase4_unsupported_intent_and_unsafe_regex_are_safely_rejected(tmp_path
     assert any("regex pattern is not allowed" in reason for reason in reasons)
     assert any(item.source == "model" for item in artifact.rejected_items)
     assert _snapshot_core_state(context) == before
+
+
+def test_phase4_enforce_rejects_non_actionable_ir_without_provider_call(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from truthound.ai import suggest_suite
+
+    monkeypatch.setenv("TRUTHOUND_AI_PROMPT_NORMALIZATION", "enforce")
+    data_path = _copy_orders_csv(tmp_path)
+    context = TruthoundContext(tmp_path)
+    provider = FixtureProvider(_load_json_fixture("happy_path_proposal_response.json"))
+
+    artifact = suggest_suite(
+        prompt="데이터를 알아서 잘 검증해줘",
+        data=str(data_path),
+        context=context,
+        provider=provider,
+    )
+
+    assert provider.requests == []
+    assert str(artifact.compile_status) == "rejected"
+    assert artifact.compiled_check_count == 0
+    assert artifact.rejected_check_count == 1
+    assert artifact.rejected_items[0].source == "normalizer"
+    assert artifact.rejected_items[0].reason == "prompt_too_ambiguous"
+    assert artifact.diff_preview.counts.rejected == 1
+    assert any(item.kind == "prompt_normalization" for item in artifact.input_refs)
+    assert not any(item.kind == "provider_trace" for item in artifact.input_refs)
+
+
+def test_phase4_unicode_risk_ir_is_rejected_before_provider_call(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from truthound.ai import suggest_suite
+
+    monkeypatch.setenv("TRUTHOUND_AI_PROMPT_NORMALIZATION", "enforce")
+    data_path = _copy_orders_csv(tmp_path)
+    context = TruthoundContext(tmp_path)
+    provider = FixtureProvider(_load_json_fixture("happy_path_proposal_response.json"))
+
+    artifact = suggest_suite(
+        prompt="ㅇㅣㅁㅔㅇㅣㄹ은 필수",
+        data=str(data_path),
+        context=context,
+        provider=provider,
+    )
+
+    assert provider.requests == []
+    assert str(artifact.compile_status) == "rejected"
+    assert artifact.rejected_items[0].source == "normalizer"
+    assert artifact.rejected_items[0].reason == "unicode_normalization_risk"
+    assert artifact.rejected_items[0].params["unicode_warnings"] == ["hangul_jamo_residual"]
+
+
+def test_phase4_shadow_keeps_provider_call_for_non_actionable_ir(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from truthound.ai import suggest_suite
+
+    monkeypatch.setenv("TRUTHOUND_AI_PROMPT_NORMALIZATION", "shadow")
+    data_path = _copy_orders_csv(tmp_path)
+    context = TruthoundContext(tmp_path)
+    provider = FixtureProvider(_load_json_fixture("happy_path_proposal_response.json"))
+
+    artifact = suggest_suite(
+        prompt="데이터를 알아서 잘 검증해줘",
+        data=str(data_path),
+        context=context,
+        provider=provider,
+    )
+
+    assert len(provider.requests) == 1
+    assert str(artifact.compile_status) == "ready"
+    assert any(item.kind == "prompt_normalization" for item in artifact.input_refs)
+    assert any(item.kind == "provider_trace" for item in artifact.input_refs)
+
+
+def test_phase4_off_skips_ir_gateway_and_prompt_normalization_ref(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from truthound.ai import suggest_suite
+
+    monkeypatch.setenv("TRUTHOUND_AI_PROMPT_NORMALIZATION", "off")
+    data_path = _copy_orders_csv(tmp_path)
+    context = TruthoundContext(tmp_path)
+    provider = FixtureProvider(_load_json_fixture("happy_path_proposal_response.json"))
+
+    artifact = suggest_suite(
+        prompt="데이터를 알아서 잘 검증해줘",
+        data=str(data_path),
+        context=context,
+        provider=provider,
+    )
+
+    assert len(provider.requests) == 1
+    assert not any(item.kind == "prompt_normalization" for item in artifact.input_refs)
+    assert any(item.kind == "provider_trace" for item in artifact.input_refs)
+
+
+def test_phase4_rejected_items_use_canonicalized_provider_intent(tmp_path: Path) -> None:
+    from truthound.ai import suggest_suite
+
+    data_path = _copy_orders_csv(tmp_path)
+    context = TruthoundContext(tmp_path)
+    payload = {
+        "summary": "Reject unsafe localized regex.",
+        "rationale": "Compiler should canonicalize before rejection.",
+        "proposed_checks": [
+            {
+                "intent": "정규식",
+                "columns": ["sku_code"],
+                "params": {"pattern": "(a+)+"},
+                "rationale": "Unsafe regex should be rejected.",
+            }
+        ],
+        "risks": [],
+        "rejected_requests": [],
+    }
+
+    artifact = suggest_suite(
+        prompt="sku_code는 7자여야 해",
+        data=str(data_path),
+        context=context,
+        provider=FixtureProvider(payload),
+    )
+
+    assert str(artifact.compile_status) == "rejected"
+    assert artifact.rejected_items[0].source == "compiler"
+    assert artifact.rejected_items[0].intent == "regex"
+    assert "regex pattern is not allowed" in artifact.rejected_items[0].reason
+
+
+def test_phase4_all_invalid_provider_output_is_rejected_without_route_crash(tmp_path: Path) -> None:
+    from truthound.ai import suggest_suite
+
+    data_path = _copy_orders_csv(tmp_path)
+    context = TruthoundContext(tmp_path)
+    payload = {
+        "summary": "Reject invalid suggestions.",
+        "rationale": "Every item is outside the supported DSL contract.",
+        "proposed_checks": [
+            {
+                "intent": "unsupported_magic",
+                "columns": ["order_id"],
+                "params": {},
+                "rationale": "Unsupported intent.",
+            },
+            {
+                "intent": "between",
+                "columns": ["status"],
+                "params": {"min_value": 0, "max_value": 1},
+                "rationale": "Wrong dtype.",
+            },
+        ],
+        "risks": [],
+        "rejected_requests": [],
+    }
+
+    artifact = suggest_suite(
+        prompt="order_id는 unique여야 해",
+        data=str(data_path),
+        context=context,
+        provider=FixtureProvider(payload),
+    )
+
+    assert str(artifact.compile_status) == "rejected"
+    assert artifact.compiled_check_count == 0
+    assert artifact.rejected_check_count == 2
+    assert {item.source for item in artifact.rejected_items} == {"compiler"}
+    reasons = {item.reason for item in artifact.rejected_items}
+    assert any("unsupported intent" in reason for reason in reasons)
+    assert any("requires numeric columns" in reason for reason in reasons)
 
 
 def test_phase4_analysis_golden_snapshot_matches_normalized_fixture(tmp_path: Path) -> None:
@@ -424,13 +602,10 @@ def test_phase4_redaction_privacy_invariants_block_pii_and_sample_payloads(tmp_p
     from truthound._ai_contract import analysis_artifact_id_for_run
     from truthound.ai import (
         InputRef,
-        RedactionViolationError,
         RejectedProposalItem,
         RunAnalysisArtifact,
         SuiteProposalArtifact,
     )
-
-    context = TruthoundContext(tmp_path)
 
     with pytest.raises(ValidationError, match="text contains PII-like literal content"):
         SuiteProposalArtifact(

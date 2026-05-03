@@ -242,6 +242,14 @@ Issues = "https://github.com/seadonggyun4/Truthound/issues"
 [tool.hatch.build.targets.wheel]
 packages = ["src/truthound"]
 
+[tool.hatch.build.targets.wheel.force-include]
+"src/truthound/ai/data/prompt_lexicon.ko.json" = "truthound/ai/data/prompt_lexicon.ko.json"
+"src/truthound/ai/data/validation_dsl_coverage.v1.json" = "truthound/ai/data/validation_dsl_coverage.v1.json"
+
+[tool.hatch.build.targets.sdist.force-include]
+"src/truthound/ai/data/prompt_lexicon.ko.json" = "src/truthound/ai/data/prompt_lexicon.ko.json"
+"src/truthound/ai/data/validation_dsl_coverage.v1.json" = "src/truthound/ai/data/validation_dsl_coverage.v1.json"
+
 [tool.hatch.envs.default]
 dependencies = [
     "pytest>=8.0.0",

@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import dataclass
-from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import polars as pl
@@ -18,7 +17,7 @@ from truthound.ai.suite_diff import (
     snapshot_validation_suite,
 )
 from truthound.context import TruthoundContext, get_context
-from truthound.schema import Schema, learn
+from truthound.schema import Schema
 
 if TYPE_CHECKING:
     from truthound.core.suite import ValidationSuite
@@ -61,7 +60,7 @@ class ContextBundle:
     source_ref: str
     workspace_root: str
     input_refs: tuple[InputRef, ...]
-    current_suite: "ValidationSuite"
+    current_suite: ValidationSuite
     current_suite_snapshot: ValidationSuiteSnapshot
     schema_summary: dict[str, Any]
     baseline_summary: dict[str, Any] | None

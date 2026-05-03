@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+# Typer CLI annotations intentionally keep runtime-friendly Optional/Path shapes.
+# ruff: noqa: I001,TC003,UP045
+
 import json
 from pathlib import Path
 from typing import Annotated, Optional
@@ -308,6 +311,123 @@ def openai_explain_run_smoke_cmd(
     if not result.success:
         typer.echo(f"failure_stage: {result.failure_stage or 'unknown'}")
         typer.echo(f"error_message: {result.error_message or 'unknown error'}")
+        raise typer.Exit(1)
+
+
+@smoke_app.command("openai-matrix")
+@error_boundary
+def openai_matrix_smoke_cmd(
+    model: Annotated[
+        Optional[str],
+        typer.Option("--model", help="Fallback OpenAI model name when no matrix env is set"),
+    ] = None,
+    base_url: Annotated[
+        Optional[str],
+        typer.Option("--base-url", help="Optional OpenAI-compatible base URL override"),
+    ] = None,
+    timeout_seconds: Annotated[
+        Optional[float],
+        typer.Option("--timeout-seconds", help="Optional timeout override in seconds"),
+    ] = None,
+    keep_workspace: Annotated[
+        bool,
+        typer.Option("--keep-workspace", help="Retain successful temporary workspaces"),
+    ] = False,
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Output the full model matrix result as JSON"),
+    ] = False,
+) -> None:
+    ai_namespace = _require_ai_namespace()
+    result = ai_namespace.run_openai_smoke_matrix(
+        model=model,
+        base_url=base_url,
+        timeout_seconds=timeout_seconds,
+        keep_workspace=keep_workspace,
+    )
+    if json_output:
+        typer.echo(result.model_dump_json(indent=2))
+        if not result.success:
+            raise typer.Exit(1)
+        return
+
+    typer.echo(f"success: {result.success}")
+    for item in result.results:
+        typer.echo(
+            " | ".join(
+                [
+                    item.model_name,
+                    f"expected_format={item.expected_format}",
+                    f"success={item.success}",
+                    f"proposal_format={item.proposal.response_format_type or 'unknown'}",
+                    f"analysis_format={item.explain_run.response_format_type or 'unknown'}",
+                ]
+            )
+        )
+    if not result.success:
+        raise typer.Exit(1)
+
+
+@smoke_app.command("openai-prompt-canary")
+@error_boundary
+def openai_prompt_canary_cmd(
+    model: Annotated[
+        Optional[str],
+        typer.Option("--model", help="OpenAI model name for the prompt acceptance canary"),
+    ] = None,
+    base_url: Annotated[
+        Optional[str],
+        typer.Option("--base-url", help="Optional OpenAI-compatible base URL override"),
+    ] = None,
+    timeout_seconds: Annotated[
+        Optional[float],
+        typer.Option("--timeout-seconds", help="Optional timeout override in seconds"),
+    ] = None,
+    keep_workspace: Annotated[
+        bool,
+        typer.Option("--keep-workspace", help="Retain the temporary canary workspace on success"),
+    ] = False,
+    json_output: Annotated[
+        bool,
+        typer.Option("--json", help="Output the full prompt canary result as JSON"),
+    ] = False,
+) -> None:
+    ai_namespace = _require_ai_namespace()
+    result = ai_namespace.run_openai_prompt_acceptance_canary(
+        model=model,
+        base_url=base_url,
+        timeout_seconds=timeout_seconds,
+        keep_workspace=keep_workspace,
+    )
+    if json_output:
+        typer.echo(result.model_dump_json(indent=2))
+        if not result.success:
+            raise typer.Exit(1)
+        return
+
+    typer.echo(f"success: {result.success}")
+    typer.echo(f"provider_name: {result.provider_name}")
+    typer.echo(f"model_name: {result.model_name or 'unknown'}")
+    typer.echo(
+        f"golden_case_count: {result.golden_case_count} | "
+        f"mixed_case_count: {result.mixed_case_count} | "
+        f"ambiguous_case_count: {result.ambiguous_case_count}"
+    )
+    for item in result.case_results:
+        typer.echo(
+            " | ".join(
+                [
+                    item.case_id,
+                    f"split={item.split}",
+                    f"success={item.success}",
+                    f"compile_status={item.compile_status or 'none'}",
+                ]
+            )
+        )
+    typer.echo(f"workspace_retained: {result.workspace_retained}")
+    if result.workspace_retained and result.workspace_dir:
+        typer.echo(f"workspace_dir: {result.workspace_dir}")
+    if not result.success:
         raise typer.Exit(1)
 
 
@@ -653,6 +773,7 @@ __all__ = [
     "list_analyses_cmd",
     "show_analysis_cmd",
     "openai_explain_run_smoke_cmd",
+    "openai_prompt_canary_cmd",
     "openai_smoke_cmd",
     "proposal_history_cmd",
     "proposals_app",

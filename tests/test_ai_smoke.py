@@ -83,7 +83,20 @@ def _make_success_artifact(root_dir: Path):
                 hash="smokehash01",
                 redacted=True,
                 metadata={"column_count": 4, "observed_count": 3},
-            )
+            ),
+            InputRef(
+                kind="provider_trace",
+                ref="provider-trace:smoke-success",
+                hash="smoke-success",
+                redacted=True,
+                metadata={
+                    "response_format_type": "json_schema",
+                    "used_json_mode_fallback": False,
+                    "repair_attempted": False,
+                    "repair_succeeded": False,
+                    "reason_codes": ["provider_request_succeeded", "json_parse_succeeded"],
+                },
+            ),
         ],
         model_provider="openai",
         model_name="gpt-smoke",
@@ -127,7 +140,20 @@ def _make_parse_failure_artifact(root_dir: Path):
                 hash="smokehash02",
                 redacted=True,
                 metadata={"column_count": 4, "observed_count": 3},
-            )
+            ),
+            InputRef(
+                kind="provider_trace",
+                ref="provider-trace:smoke-parse-failure",
+                hash="smoke-parse-failure",
+                redacted=True,
+                metadata={
+                    "response_format_type": "json_object",
+                    "used_json_mode_fallback": True,
+                    "repair_attempted": True,
+                    "repair_succeeded": False,
+                    "reason_codes": ["schema_unsupported", "repair_invalid_json"],
+                },
+            ),
         ],
         model_provider="openai",
         model_name="gpt-smoke",
@@ -172,6 +198,19 @@ def _make_analysis_artifact(
                 hash="historyhash-smoke-01",
                 redacted=True,
                 metadata={"included": True, "run_count": 1, "failure_count": 1},
+            ),
+            InputRef(
+                kind="provider_trace",
+                ref="provider-trace:analysis-smoke-success",
+                hash="analysis-smoke-success",
+                redacted=True,
+                metadata={
+                    "response_format_type": "json_schema",
+                    "used_json_mode_fallback": False,
+                    "repair_attempted": False,
+                    "repair_succeeded": False,
+                    "reason_codes": ["provider_request_succeeded", "json_parse_succeeded"],
+                },
             ),
         ],
         model_provider="openai",
@@ -228,6 +267,105 @@ def test_run_openai_explain_run_smoke_classifies_missing_key_and_model_as_config
     assert result.failure_stage == "config"
     assert result.workspace_retained is False
     assert result.workspace_dir is None
+
+
+def test_openai_smoke_model_matrix_parses_operator_contract():
+    from truthound.ai.smoke import parse_openai_smoke_model_matrix
+
+    entries = parse_openai_smoke_model_matrix(
+        '[{"model":"gpt-5.4-mini","expected_format":"json_schema"},'
+        '{"model":"legacy-json","expected_format":"json_object"}]'
+    )
+
+    assert [entry.model for entry in entries] == ["gpt-5.4-mini", "legacy-json"]
+    assert [entry.expected_format for entry in entries] == [
+        "json_schema",
+        "json_object",
+    ]
+
+
+def test_openai_smoke_model_matrix_rejects_invalid_shape():
+    from truthound.ai.providers import ProviderConfigurationError
+    from truthound.ai.smoke import parse_openai_smoke_model_matrix
+
+    with pytest.raises(ProviderConfigurationError):
+        parse_openai_smoke_model_matrix('{"model":"not-a-list"}')
+
+    with pytest.raises(ProviderConfigurationError):
+        parse_openai_smoke_model_matrix('[{"model":"gpt-test","expected_format":"xml"}]')
+
+
+def test_run_openai_smoke_matrix_records_per_model_evidence(monkeypatch: pytest.MonkeyPatch):
+    from truthound.ai import OpenAIExplainRunSmokeResult, OpenAISmokeResult
+    from truthound.ai.smoke import run_openai_smoke_matrix
+
+    monkeypatch.setenv(
+        "TRUTHOUND_AI_SMOKE_MODEL_MATRIX",
+        '[{"model":"gpt-structured","expected_format":"json_schema"},'
+        '{"model":"gpt-json","expected_format":"json_object"}]',
+    )
+
+    def fake_proposal(**kwargs):
+        model_name = kwargs["model"]
+        return OpenAISmokeResult(
+            model_name=model_name,
+            success=True,
+            response_format_type="json_schema" if model_name == "gpt-structured" else "json_object",
+            used_json_mode_fallback=model_name == "gpt-json",
+            repair_attempted=False,
+            provider_reason_codes=["json_parse_succeeded"],
+        )
+
+    def fake_explain(**kwargs):
+        model_name = kwargs["model"]
+        return OpenAIExplainRunSmokeResult(
+            model_name=model_name,
+            success=True,
+            response_format_type="json_schema" if model_name == "gpt-structured" else "json_object",
+            used_json_mode_fallback=model_name == "gpt-json",
+            repair_attempted=False,
+            provider_reason_codes=["json_parse_succeeded"],
+        )
+
+    monkeypatch.setattr("truthound.ai.smoke.run_openai_smoke", fake_proposal)
+    monkeypatch.setattr("truthound.ai.smoke.run_openai_explain_run_smoke", fake_explain)
+
+    result = run_openai_smoke_matrix()
+
+    assert result.success is True
+    assert [item.model_name for item in result.results] == ["gpt-structured", "gpt-json"]
+    assert [item.expected_format for item in result.results] == [
+        "json_schema",
+        "json_object",
+    ]
+    assert result.results[1].proposal.used_json_mode_fallback is True
+
+
+def test_run_openai_prompt_acceptance_canary_records_manual_subset(
+    monkeypatch: pytest.MonkeyPatch,
+):
+    from truthound.ai.smoke import run_openai_prompt_acceptance_canary
+
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setenv("TRUTHOUND_AI_SMOKE_MODEL", "gpt-smoke")
+
+    def fake_invoke(**kwargs):
+        prompt = kwargs["prompt"]
+        context = kwargs["context"]
+        if "잘 검증" in prompt or "이상한 값" in prompt:
+            return _make_parse_failure_artifact(context.root_dir)
+        return _make_success_artifact(context.root_dir)
+
+    monkeypatch.setattr("truthound.ai.smoke._invoke_suggest_suite", fake_invoke)
+
+    result = run_openai_prompt_acceptance_canary()
+
+    assert result.success is True
+    assert result.golden_case_count == 3
+    assert result.ambiguous_case_count == 2
+    assert result.mixed_case_count == 2
+    assert len(result.case_results) == 7
+    assert result.workspace_retained is False
 
 
 def test_run_openai_smoke_classifies_provider_transport_failures(monkeypatch: pytest.MonkeyPatch):
@@ -321,6 +459,11 @@ def test_run_openai_smoke_classifies_rejected_artifact_as_parse(monkeypatch: pyt
     assert result.success is False
     assert result.failure_stage == "parse"
     assert result.artifact_id is not None
+    assert result.response_format_type == "json_object"
+    assert result.used_json_mode_fallback is True
+    assert result.repair_attempted is True
+    assert result.repair_succeeded is False
+    assert "repair_invalid_json" in result.provider_reason_codes
     assert result.workspace_retained is True
     assert result.workspace_dir is not None
     shutil.rmtree(result.workspace_dir, ignore_errors=True)
@@ -481,6 +624,10 @@ def test_run_openai_smoke_cleans_up_success_workspace_by_default(monkeypatch: py
 
     assert result.success is True
     assert result.failure_stage is None
+    assert result.response_format_type == "json_schema"
+    assert result.used_json_mode_fallback is False
+    assert result.repair_attempted is False
+    assert "json_parse_succeeded" in result.provider_reason_codes
     assert result.workspace_retained is False
     assert result.workspace_dir is not None
     assert not Path(result.workspace_dir).exists()
@@ -512,6 +659,10 @@ def test_run_openai_explain_run_smoke_cleans_up_success_workspace_by_default(
 
     assert result.success is True
     assert result.failure_stage is None
+    assert result.response_format_type == "json_schema"
+    assert result.used_json_mode_fallback is False
+    assert result.repair_attempted is False
+    assert "json_parse_succeeded" in result.provider_reason_codes
     assert result.workspace_retained is False
     assert result.workspace_dir is not None
     assert not Path(result.workspace_dir).exists()
@@ -614,3 +765,67 @@ def test_ai_cli_openai_explain_run_smoke_json_outputs_typed_result(monkeypatch: 
     assert payload["success"] is False
     assert payload["failure_stage"] == "provider"
     assert payload["workspace_retained"] is True
+
+
+def test_ai_cli_openai_matrix_smoke_json_outputs_typed_result(monkeypatch: pytest.MonkeyPatch):
+    import truthound.ai as ai_namespace
+
+    runner = CliRunner()
+    smoke_result = ai_namespace.OpenAISmokeMatrixResult(
+        success=True,
+        results=[
+            ai_namespace.OpenAISmokeMatrixItemResult(
+                model_name="gpt-structured",
+                expected_format="json_schema",
+                success=True,
+                proposal=ai_namespace.OpenAISmokeResult(
+                    model_name="gpt-structured",
+                    success=True,
+                    response_format_type="json_schema",
+                ),
+                explain_run=ai_namespace.OpenAIExplainRunSmokeResult(
+                    model_name="gpt-structured",
+                    success=True,
+                    response_format_type="json_schema",
+                ),
+            )
+        ],
+    )
+    monkeypatch.setattr(ai_namespace, "run_openai_smoke_matrix", lambda **kwargs: smoke_result)
+
+    result = runner.invoke(app, ["ai", "smoke", "openai-matrix", "--json"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["success"] is True
+    assert payload["results"][0]["expected_format"] == "json_schema"
+
+
+def test_ai_cli_openai_prompt_canary_json_outputs_typed_result(monkeypatch: pytest.MonkeyPatch):
+    import truthound.ai as ai_namespace
+
+    runner = CliRunner()
+    smoke_result = ai_namespace.OpenAIPromptAcceptanceCanaryResult(
+        model_name="gpt-smoke",
+        success=True,
+        golden_case_count=3,
+        mixed_case_count=2,
+        ambiguous_case_count=2,
+        case_results=[
+            ai_namespace.OpenAIPromptCanaryCaseResult(
+                case_id="canary_golden_not_null_email",
+                split="golden",
+                success=True,
+                compile_status="ready",
+                compiled_check_count=1,
+            )
+        ],
+    )
+    monkeypatch.setattr(ai_namespace, "run_openai_prompt_acceptance_canary", lambda **kwargs: smoke_result)
+
+    result = runner.invoke(app, ["ai", "smoke", "openai-prompt-canary", "--json"])
+
+    assert result.exit_code == 0
+    payload = json.loads(result.output)
+    assert payload["success"] is True
+    assert payload["golden_case_count"] == 3

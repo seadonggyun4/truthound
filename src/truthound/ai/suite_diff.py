@@ -5,8 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-import polars as pl
-
 from truthound._applied_suite import canonical_check_key, normalize_json_value
 from truthound.ai.models import (
     CompiledProposalCheck,
@@ -20,6 +18,8 @@ from truthound.ai.models import (
 from truthound.schema import Schema, learn
 
 if TYPE_CHECKING:
+    import polars as pl
+
     from truthound.core.suite import CheckSpec, ValidationSuite
 
 
@@ -30,11 +30,13 @@ class FormalSuiteDiffResult:
     compiled_checks: list[CompiledProposalCheck]
     rejected_items: list[RejectedProposalItem]
     diff_preview: ValidationSuiteDiffPreview
+
+
 def build_current_validation_suite(
     *,
     observed_df: pl.DataFrame,
     baseline_schema: Schema | None,
-) -> "ValidationSuite":
+) -> ValidationSuite:
     from truthound.core.suite import ValidationSuite
 
     transient_schema = baseline_schema
@@ -68,7 +70,7 @@ def build_existing_suite_summary(snapshot: ValidationSuiteSnapshot) -> dict[str,
     }
 
 
-def snapshot_validation_suite(suite: "ValidationSuite") -> ValidationSuiteSnapshot:
+def snapshot_validation_suite(suite: ValidationSuite) -> ValidationSuiteSnapshot:
     checks = [snapshot_check_spec(spec) for spec in suite.checks]
     evidence_mode = getattr(suite.evidence_policy.result_format.format, "value", None)
     min_severity = getattr(suite.severity_policy.min_severity, "value", None)
@@ -82,7 +84,7 @@ def snapshot_validation_suite(suite: "ValidationSuite") -> ValidationSuiteSnapsh
     )
 
 
-def snapshot_check_spec(spec: "CheckSpec") -> SuiteCheckSnapshot:
+def snapshot_check_spec(spec: CheckSpec) -> SuiteCheckSnapshot:
     metadata = spec.metadata if isinstance(spec.metadata, dict) else {}
     raw_config = metadata.get("config", {}) if isinstance(metadata.get("config", {}), dict) else {}
     normalized_config = normalize_json_value(raw_config)
@@ -113,7 +115,7 @@ def snapshot_check_spec(spec: "CheckSpec") -> SuiteCheckSnapshot:
 
 def build_formal_suite_diff(
     *,
-    current_suite: "ValidationSuite",
+    current_suite: ValidationSuite,
     compiled_checks: list[CompiledProposalCheck],
     rejected_items: list[RejectedProposalItem],
 ) -> FormalSuiteDiffResult:
@@ -125,7 +127,7 @@ def build_formal_suite_diff(
     }
 
     accepted_checks: list[CompiledProposalCheck] = []
-    added_specs: list["CheckSpec"] = []
+    added_specs: list[CheckSpec] = []
     added_snapshots: list[SuiteCheckSnapshot] = []
     already_present: list[SuiteCheckSnapshot] = []
     conflicts: list[ValidationSuiteConflict] = []
@@ -196,9 +198,9 @@ def build_formal_suite_diff(
 
 def merge_validation_suites(
     *,
-    current_suite: "ValidationSuite",
-    added_specs: list["CheckSpec"],
-) -> "ValidationSuite":
+    current_suite: ValidationSuite,
+    added_specs: list[CheckSpec],
+) -> ValidationSuite:
     from truthound.core.suite import ValidationSuite
 
     return ValidationSuite(

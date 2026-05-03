@@ -18,6 +18,12 @@ The AI surface is deliberately narrow:
 The goal is not autonomous mutation. The goal is controlled operational
 assistance that stays subordinate to the core validation contract.
 
+Truthound 3.1.2 also hardens the prompt path for Korean, English, and mixed
+requests. Natural-language prompts are normalized into canonical validation
+intent candidates, provider output is checked through structured contracts, and
+unsupported or ambiguous prompts become reviewable rejected items instead of
+route failures.
+
 ## Public Entry Points
 
 Install the additive namespace with:
@@ -56,6 +62,7 @@ Key public entry points:
 - [Approval and Apply Semantics](approval-apply.md)
 - [Privacy and Redaction](privacy-redaction.md)
 - [Provider Contract](provider-contract.md)
+- [Prompt Hardening](prompt-hardening.md)
 - [Smoke and Release Gates](release-gate.md)
 
 ## Related Reading

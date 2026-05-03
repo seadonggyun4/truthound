@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from truthound._applied_suite import AppliedSuiteActor, AppliedSuiteRecord
 from truthound.ai.models import (
@@ -281,7 +281,7 @@ def _select_applied_checks(proposal: SuiteProposalArtifact):
 
 
 def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 __all__ = [

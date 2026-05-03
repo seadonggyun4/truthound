@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from truthound.ai.lifecycle import (
-    approve_proposal,
     apply_proposal,
+    approve_proposal,
     list_proposal_approval_events,
     reject_proposal,
 )

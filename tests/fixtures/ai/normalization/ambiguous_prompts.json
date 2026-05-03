@@ -1,0 +1,53 @@
+[
+  {
+    "name": "validate_well",
+    "prompt": "데이터를 알아서 잘 검증해줘",
+    "columns": [
+      "email",
+      "score"
+    ],
+    "expected_reason": "prompt_too_ambiguous",
+    "intent_label": null,
+    "entity_labels": [],
+    "threshold_labels": {},
+    "ambiguity_label": "ambiguous",
+    "task_label": "validation_intent_normalization",
+    "unicode_labels": [
+      "plain"
+    ]
+  },
+  {
+    "name": "find_weird_values",
+    "prompt": "이상한 값 잡아줘",
+    "columns": [
+      "email",
+      "score"
+    ],
+    "expected_reason": "prompt_too_ambiguous",
+    "intent_label": null,
+    "entity_labels": [],
+    "threshold_labels": {},
+    "ambiguity_label": "ambiguous",
+    "task_label": "validation_intent_normalization",
+    "unicode_labels": [
+      "plain"
+    ]
+  },
+  {
+    "name": "make_quality_good",
+    "prompt": "품질 좋게 만들어줘",
+    "columns": [
+      "email",
+      "score"
+    ],
+    "expected_reason": "prompt_too_ambiguous",
+    "intent_label": null,
+    "entity_labels": [],
+    "threshold_labels": {},
+    "ambiguity_label": "ambiguous",
+    "task_label": "validation_intent_normalization",
+    "unicode_labels": [
+      "plain"
+    ]
+  }
+]

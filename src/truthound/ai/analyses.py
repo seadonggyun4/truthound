@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 from truthound._ai_contract import analysis_artifact_id_for_run
-from truthound.ai.models import RunAnalysisArtifact
 from truthound.ai.store import AIArtifactStore
 from truthound.context import TruthoundContext, get_context
+
+if TYPE_CHECKING:
+    from truthound.ai.models import RunAnalysisArtifact
 
 
 def list_analyses(

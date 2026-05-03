@@ -1,0 +1,502 @@
+{
+  "schema_version": "1",
+  "thresholds": {
+    "min_golden_cases": 200,
+    "min_mixed_cases": 50,
+    "min_ambiguous_cases": 50,
+    "min_golden_ready_or_partial_rate": 0.9,
+    "min_mixed_ready_or_partial_rate": 0.9,
+    "min_ambiguous_clarification_rate": 0.95,
+    "max_crash_count": 0
+  },
+  "common_columns": [
+    "email",
+    "customer_id",
+    "score",
+    "status",
+    "refund_rate",
+    "phone",
+    "url",
+    "sku_code",
+    "amount",
+    "order_id",
+    "age",
+    "quantity",
+    "total_amount",
+    "zip_code",
+    "product_code",
+    "region",
+    "channel",
+    "payment_status",
+    "priority",
+    "ip_address"
+  ],
+  "candidate_groups": [
+    {
+      "id_prefix": "golden_not_null_ko",
+      "split": "golden",
+      "intent": "not_null",
+      "params": {},
+      "prompt_templates": [
+        "{term}은 비어 있으면 안 됩니다",
+        "{term} 필드는 필수입니다",
+        "{term}은 누락 없어야 합니다",
+        "{term}은 반드시 채워져야 합니다"
+      ],
+      "entities": [
+        {"column": "email", "terms": ["email", "이메일"]},
+        {"column": "customer_id", "terms": ["customer_id", "고객ID"]},
+        {"column": "status", "terms": ["status", "상태"]},
+        {"column": "score", "terms": ["score", "점수"]},
+        {"column": "phone", "terms": ["phone", "전화번호"]}
+      ],
+      "tags": ["golden", "ko", "not_null"]
+    },
+    {
+      "id_prefix": "golden_null_ko",
+      "split": "golden",
+      "intent": "null",
+      "params": {},
+      "prompt_templates": [
+        "{term}은 비어 있어야 합니다",
+        "{term}은 null 이어야 합니다"
+      ],
+      "entities": [
+        {"column": "email", "terms": ["email"]},
+        {"column": "status", "terms": ["status"]},
+        {"column": "phone", "terms": ["phone"]},
+        {"column": "url", "terms": ["url"]}
+      ],
+      "tags": ["golden", "ko", "null"]
+    },
+    {
+      "id_prefix": "golden_unique_ko",
+      "split": "golden",
+      "intent": "unique",
+      "params": {},
+      "prompt_templates": [
+        "{term} 중복 없어야 해",
+        "{term}은 중복되면 안 됩니다",
+        "{term}은 고유해야 합니다",
+        "{term}은 유일해야 합니다"
+      ],
+      "entities": [
+        {"column": "customer_id", "terms": ["customer_id", "고객ID"]},
+        {"column": "order_id", "terms": ["order_id"]},
+        {"column": "sku_code", "terms": ["sku_code"]},
+        {"column": "email", "terms": ["email"]}
+      ],
+      "tags": ["golden", "ko", "unique"]
+    },
+    {
+      "id_prefix": "golden_between_ko",
+      "split": "golden",
+      "intent": "between",
+      "params": {"min_value": 0, "max_value": 100, "inclusive": true},
+      "threshold_labels": {"min_value": 0, "max_value": 100, "inclusive": true},
+      "prompt_templates": [
+        "{term}는 0 이상 100 이하",
+        "{term}는 0부터 100까지",
+        "{term}는 0 ~ 100 사이",
+        "{term} 값은 0 이상 100 이하"
+      ],
+      "entities": [
+        {"column": "score", "terms": ["score", "점수"]},
+        {"column": "amount", "terms": ["amount", "금액"]},
+        {"column": "age", "terms": ["age"]},
+        {"column": "quantity", "terms": ["quantity"]}
+      ],
+      "tags": ["golden", "ko", "between"]
+    },
+    {
+      "id_prefix": "golden_lower_only_ko",
+      "split": "golden",
+      "intent": "between",
+      "params": {"min_value": 0, "inclusive": true},
+      "threshold_labels": {"min_value": 0, "inclusive": true},
+      "prompt_templates": [
+        "{term}는 0 이상이어야 합니다",
+        "{term}는 >= 0 이어야 합니다"
+      ],
+      "entities": [
+        {"column": "score", "terms": ["score"]},
+        {"column": "amount", "terms": ["amount"]},
+        {"column": "quantity", "terms": ["quantity"]},
+        {"column": "total_amount", "terms": ["total_amount"]},
+        {"column": "refund_rate", "terms": ["refund_rate"]}
+      ],
+      "tags": ["golden", "ko", "between", "lower_only"]
+    },
+    {
+      "id_prefix": "golden_upper_only_ko",
+      "split": "golden",
+      "intent": "between",
+      "params": {"max_value": 100, "inclusive": true},
+      "threshold_labels": {"max_value": 100, "inclusive": true},
+      "prompt_templates": [
+        "{term}는 100 이하이어야 합니다",
+        "{term}는 <= 100 이어야 합니다"
+      ],
+      "entities": [
+        {"column": "score", "terms": ["score"]},
+        {"column": "amount", "terms": ["amount"]},
+        {"column": "quantity", "terms": ["quantity"]},
+        {"column": "total_amount", "terms": ["total_amount"]},
+        {"column": "age", "terms": ["age"]}
+      ],
+      "tags": ["golden", "ko", "between", "upper_only"]
+    },
+    {
+      "id_prefix": "golden_completeness_ratio_ko",
+      "split": "golden",
+      "intent": "completeness_ratio",
+      "params": {"min_ratio": 0.95},
+      "threshold_labels": {"max_missing_ratio": 0.05, "min_ratio": 0.95},
+      "prompt_templates": [
+        "{term} 결측률 5%",
+        "{term} 누락률 5%",
+        "{term} 완전성 5%"
+      ],
+      "entities": [
+        {"column": "email", "terms": ["email"]},
+        {"column": "customer_id", "terms": ["customer_id"]},
+        {"column": "status", "terms": ["status"]},
+        {"column": "phone", "terms": ["phone"]},
+        {"column": "url", "terms": ["url"]},
+        {"column": "score", "terms": ["score"]}
+      ],
+      "tags": ["golden", "ko", "completeness_ratio"]
+    },
+    {
+      "id_prefix": "golden_unique_ratio_ko",
+      "split": "golden",
+      "intent": "unique_ratio",
+      "params": {"min_ratio": 0.95},
+      "threshold_labels": {"min_ratio": 0.95},
+      "prompt_templates": [
+        "{term} 고유 비율 95%",
+        "{term} 유일 비율 95%",
+        "{term} unique ratio 95%"
+      ],
+      "entities": [
+        {"column": "customer_id", "terms": ["customer_id"]},
+        {"column": "order_id", "terms": ["order_id"]},
+        {"column": "sku_code", "terms": ["sku_code"]},
+        {"column": "email", "terms": ["email"]},
+        {"column": "status", "terms": ["status"]}
+      ],
+      "tags": ["golden", "ko", "unique_ratio"]
+    },
+    {
+      "id_prefix": "golden_format_email_ko",
+      "split": "golden",
+      "intent": "format",
+      "params": {"format": "email"},
+      "prompt_templates": [
+        "{term} 이메일 형식 확인",
+        "{term} email 포맷 검증",
+        "{term} 메일 형식 검증",
+        "{term} format email"
+      ],
+      "entities": [{"column": "email", "terms": ["email", "이메일"]}],
+      "tags": ["golden", "ko", "format", "email"]
+    },
+    {
+      "id_prefix": "golden_format_phone_ko",
+      "split": "golden",
+      "intent": "format",
+      "params": {"format": "phone"},
+      "prompt_templates": [
+        "{term} 전화번호 형식 확인",
+        "{term} phone 포맷 검증",
+        "{term} 휴대폰 형식 검증",
+        "{term} format phone"
+      ],
+      "entities": [{"column": "phone", "terms": ["phone", "전화번호"]}],
+      "tags": ["golden", "ko", "format", "phone"]
+    },
+    {
+      "id_prefix": "golden_format_url_ko",
+      "split": "golden",
+      "intent": "format",
+      "params": {"format": "url"},
+      "prompt_templates": [
+        "{term} URL 형식 확인",
+        "{term} url 포맷 검증",
+        "{term} 링크 형식 검증",
+        "{term} format url"
+      ],
+      "entities": [{"column": "url", "terms": ["url", "링크"]}],
+      "tags": ["golden", "ko", "format", "url"]
+    },
+    {
+      "id_prefix": "golden_in_set_ko",
+      "split": "golden",
+      "intent": "in_set",
+      "params": {"allowed_values": ["대기", "승인", "반려"]},
+      "threshold_labels": {"allowed_values": ["대기", "승인", "반려"]},
+      "prompt_templates": [
+        "{term}는 대기/승인/반려 중 하나만 허용",
+        "{term}는 대기,승인,반려 허용값"
+      ],
+      "entities": [
+        {"column": "status", "terms": ["status", "상태"]},
+        {"column": "payment_status", "terms": ["payment_status"]},
+        {"column": "priority", "terms": ["priority"]},
+        {"column": "channel", "terms": ["channel"]}
+      ],
+      "tags": ["golden", "ko", "in_set"]
+    },
+    {
+      "id_prefix": "golden_length_ko",
+      "split": "golden",
+      "intent": "length",
+      "params": {"min_length": 8, "max_length": 8},
+      "threshold_labels": {"min_length": 8, "max_length": 8},
+      "prompt_templates": [
+        "{term}는 8자리 길이",
+        "{term}는 8자",
+        "{term}는 8글자"
+      ],
+      "entities": [
+        {"column": "sku_code", "terms": ["sku_code"]},
+        {"column": "zip_code", "terms": ["zip_code"]},
+        {"column": "product_code", "terms": ["product_code"]},
+        {"column": "phone", "terms": ["phone"]},
+        {"column": "order_id", "terms": ["order_id"]}
+      ],
+      "tags": ["golden", "ko", "length"]
+    },
+    {
+      "id_prefix": "golden_mean_between_ko",
+      "split": "golden",
+      "intent": "mean_between",
+      "params": {"min_value": 0, "max_value": 1},
+      "threshold_labels": {"min_value": 0, "max_value": 1},
+      "prompt_templates": [
+        "{term} 평균은 0부터 1까지",
+        "{term} average 0 ~ 1 사이"
+      ],
+      "entities": [
+        {"column": "refund_rate", "terms": ["refund_rate", "환불률"]},
+        {"column": "score", "terms": ["score"]},
+        {"column": "amount", "terms": ["amount"]},
+        {"column": "quantity", "terms": ["quantity"]},
+        {"column": "total_amount", "terms": ["total_amount"]}
+      ],
+      "tags": ["golden", "ko", "mean_between"]
+    },
+    {
+      "id_prefix": "golden_sum_between_ko",
+      "split": "golden",
+      "intent": "sum_between",
+      "params": {"min_value": 0, "max_value": 1000},
+      "threshold_labels": {"min_value": 0, "max_value": 1000},
+      "prompt_templates": [
+        "{term} 합계는 0부터 1000까지",
+        "{term} total 0 ~ 1000 사이"
+      ],
+      "entities": [
+        {"column": "amount", "terms": ["amount", "금액"]},
+        {"column": "quantity", "terms": ["quantity"]},
+        {"column": "total_amount", "terms": ["total_amount"]},
+        {"column": "score", "terms": ["score"]},
+        {"column": "refund_rate", "terms": ["refund_rate"]}
+      ],
+      "tags": ["golden", "ko", "sum_between"]
+    },
+    {
+      "id_prefix": "mixed_not_null",
+      "split": "mixed",
+      "intent": "not_null",
+      "params": {},
+      "prompt_templates": [
+        "{term} 필드는 null이면 안돼",
+        "{term} should be required"
+      ],
+      "entities": [
+        {"column": "email", "terms": ["email"]},
+        {"column": "customer_id", "terms": ["customer_id"]},
+        {"column": "status", "terms": ["status"]},
+        {"column": "score", "terms": ["score"]},
+        {"column": "phone", "terms": ["phone"]},
+        {"column": "url", "terms": ["url"]},
+        {"column": "order_id", "terms": ["order_id"]},
+        {"column": "amount", "terms": ["amount"]}
+      ],
+      "tags": ["mixed", "ko_en", "not_null"]
+    },
+    {
+      "id_prefix": "mixed_unique",
+      "split": "mixed",
+      "intent": "unique",
+      "params": {},
+      "prompt_templates": [
+        "{term} must be unique",
+        "{term} 중복 금지"
+      ],
+      "entities": [
+        {"column": "customer_id", "terms": ["customer_id"]},
+        {"column": "order_id", "terms": ["order_id"]},
+        {"column": "sku_code", "terms": ["sku_code"]},
+        {"column": "email", "terms": ["email"]},
+        {"column": "status", "terms": ["status"]}
+      ],
+      "tags": ["mixed", "ko_en", "unique"]
+    },
+    {
+      "id_prefix": "mixed_between",
+      "split": "mixed",
+      "intent": "between",
+      "params": {"min_value": 0, "max_value": 100, "inclusive": true},
+      "threshold_labels": {"min_value": 0, "max_value": 100, "inclusive": true},
+      "prompt_templates": [
+        "{term} range는 0 이상 100 이하",
+        "{term} value는 0 이상 100 이하"
+      ],
+      "entities": [
+        {"column": "score", "terms": ["score"]},
+        {"column": "amount", "terms": ["amount"]},
+        {"column": "quantity", "terms": ["quantity"]},
+        {"column": "total_amount", "terms": ["total_amount"]},
+        {"column": "age", "terms": ["age"]},
+        {"column": "refund_rate", "terms": ["refund_rate"]}
+      ],
+      "tags": ["mixed", "ko_en", "between"]
+    },
+    {
+      "id_prefix": "mixed_format",
+      "split": "mixed",
+      "intent": "format",
+      "params": {"format": "email"},
+      "prompt_templates": [
+        "{term} should match 이메일 format",
+        "{term}는 email 형식이어야 함"
+      ],
+      "entities": [{"column": "email", "terms": ["email", "이메일"]}],
+      "tags": ["mixed", "ko_en", "format", "email"]
+    },
+    {
+      "id_prefix": "mixed_completeness_ratio",
+      "split": "mixed",
+      "intent": "completeness_ratio",
+      "params": {"min_ratio": 0.95},
+      "threshold_labels": {"max_missing_ratio": 0.05, "min_ratio": 0.95},
+      "prompt_templates": [
+        "{term} 결측률 5%",
+        "{term} completeness ratio 5%"
+      ],
+      "entities": [
+        {"column": "email", "terms": ["email"]},
+        {"column": "status", "terms": ["status"]},
+        {"column": "phone", "terms": ["phone"]}
+      ],
+      "tags": ["mixed", "ko_en", "completeness_ratio"]
+    },
+    {
+      "id_prefix": "mixed_ratio",
+      "split": "mixed",
+      "intent": "unique_ratio",
+      "params": {"min_ratio": 0.95},
+      "threshold_labels": {"min_ratio": 0.95},
+      "prompt_templates": [
+        "{term} unique ratio 95%",
+        "{term} 고유 비율 95%"
+      ],
+      "entities": [
+        {"column": "customer_id", "terms": ["customer_id"]},
+        {"column": "order_id", "terms": ["order_id"]},
+        {"column": "sku_code", "terms": ["sku_code"]}
+      ],
+      "tags": ["mixed", "ko_en", "unique_ratio"]
+    }
+  ],
+  "ambiguous_groups": [
+    {
+      "id_prefix": "ambiguous_operator_broad",
+      "expected_reason": "prompt_too_ambiguous",
+      "prompt_templates": [
+        "{domain} 데이터 잘 검증해줘",
+        "{domain} 이상한 값 잡아줘",
+        "{domain} 문제 없게 해줘",
+        "{domain} 알아서 품질 좋게 만들어줘",
+        "{domain} 적당히 봐줘"
+      ],
+      "domains": [
+        "고객",
+        "주문",
+        "결제",
+        "배송",
+        "상품",
+        "정산",
+        "리포트",
+        "프로필",
+        "로그",
+        "소스"
+      ],
+      "tags": ["ambiguous", "ko", "operator_broad"]
+    }
+  ],
+  "unsupported_cases": [
+    {
+      "id": "unsupported_exclusive_range",
+      "prompt": "score는 0 초과 100 미만이어야 합니다",
+      "columns": ["score", "email", "status"],
+      "expected_outcome": "clarification",
+      "expected_reason": "prompt_too_ambiguous",
+      "task_label": "unsupported_validation_intent",
+      "intent_label": "between",
+      "entity_labels": ["score"],
+      "threshold_labels": {"exclusive_min": 0, "exclusive_max": 100},
+      "ambiguity_label": "ambiguous",
+      "unicode_labels": ["plain"],
+      "expected_candidates": [],
+      "tags": ["unsupported", "exclusive_range"]
+    },
+    {
+      "id": "unsupported_cross_column_condition",
+      "prompt": "amount가 refund_rate보다 크면 status를 실패로 봐줘",
+      "columns": ["amount", "refund_rate", "status"],
+      "expected_outcome": "clarification",
+      "expected_reason": "prompt_too_ambiguous",
+      "task_label": "unsupported_validation_intent",
+      "intent_label": "cross_column_condition",
+      "entity_labels": ["amount", "refund_rate", "status"],
+      "threshold_labels": {},
+      "ambiguity_label": "ambiguous",
+      "unicode_labels": ["plain"],
+      "expected_candidates": [],
+      "tags": ["unsupported", "cross_column"]
+    },
+    {
+      "id": "unsupported_generated_regex",
+      "prompt": "order_id 정규식을 알아서 만들어 검증해줘",
+      "columns": ["order_id", "email", "status"],
+      "expected_outcome": "clarification",
+      "expected_reason": "prompt_too_ambiguous",
+      "task_label": "unsupported_validation_intent",
+      "intent_label": "regex",
+      "entity_labels": ["order_id"],
+      "threshold_labels": {},
+      "ambiguity_label": "ambiguous",
+      "unicode_labels": ["plain"],
+      "expected_candidates": [],
+      "tags": ["unsupported", "generated_regex"]
+    }
+  ],
+  "provider_failure_fixtures": [
+    "tests/fixtures/ai/phase4/malformed_provider_output.json",
+    "tests/fixtures/ai/phase4/unsupported_or_unsafe_response.json"
+  ],
+  "manual_live_canary": {
+    "golden_case_count": 3,
+    "ambiguous_case_count": 2,
+    "mixed_case_count": 2,
+    "provider_failure_fixture_count": 1,
+    "env": [
+      "TRUTHOUND_AI_RUN_LIVE_SMOKE",
+      "TRUTHOUND_AI_SMOKE_MODEL_MATRIX",
+      "TRUTHOUND_AI_SMOKE_RESULT_PATH"
+    ]
+  }
+}

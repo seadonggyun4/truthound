@@ -8,6 +8,10 @@ This release keeps the additive AI review surface stable while tightening the
 core runtime and release hygiene around resource-constrained execution and
 package-version consistency.
 
+It also promotes the AI prompt path from a simple prompt-to-provider flow to a
+hardened review pipeline with deterministic normalization, compiler rejection,
+evaluation gates, and redacted rollout metrics.
+
 ## What's New
 
 - validation runtime now falls back to sequential execution when thread-pool
@@ -19,6 +23,16 @@ package-version consistency.
 - the core package version surface now resolves from one canonical source
   across runtime, plugin scaffolding, benchmark metadata, and current-release
   docs links
+- AI suite proposal prompts now pass through a Korean/English normalization IR
+  before provider guidance and compiler validation
+- Unicode normalization keeps raw prompt text out of telemetry while preserving
+  reproducible hash and warning metadata
+- provider output hardening prefers strict structured output, falls back to JSON
+  mode only for supported cases, and records fallback/repair/refusal counters
+- the prompt acceptance gate now tracks 200+ Korean golden prompts, mixed
+  Korean/English prompts, ambiguous prompts, and crash-free malformed fixtures
+- prompt rollout is observable through redacted reason-code metrics and the
+  `TRUTHOUND_AI_PROMPT_NORMALIZATION=off|shadow|enforce` mode switch
 
 ## Compatibility
 
@@ -28,6 +42,8 @@ Truthound 3.1.2 is additive.
 - `truthound[ai]` remains the optional installation path
 - no core workspace, checkpoint, reporter, or AI review contract is broken by
   this patch release
+- prompt hardening changes rejected or ambiguous AI suggestions into reviewable
+  artifacts instead of public API shape changes
 
 ## Upgrade Guidance
 

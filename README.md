@@ -55,6 +55,13 @@ more consistent.
 - the core package version surface now resolves from one canonical source
   across runtime, plugin scaffolding, benchmark metadata, and current-release
   docs links
+- AI prompt-to-proposal now uses a hardened Korean/English normalization path,
+  Unicode audit hashes, compiler rejection, and redacted rollout metrics
+- provider output now prefers strict structured output with bounded JSON-mode
+  fallback and repair telemetry
+- prompt readiness is protected by deterministic acceptance fixtures covering
+  200+ Korean prompts, mixed Korean/English prompts, ambiguous prompts, and
+  malformed provider fixtures
 
 ## Truthound Product Line
 
@@ -128,12 +135,15 @@ The practical 3.x kernel changes are:
 - checkpoints standardize on `CheckpointResult.validation_run` and `CheckpointResult.validation_view`
 - reporters and validation docs consume `ValidationRunResult` directly through reporter contract v3
 
-The practical 3.1 additions on top of that kernel are:
+The practical current 3.x AI additions on top of that kernel are:
 
 - optional AI dependency bundle: `truthound[ai]`
 - public AI review APIs and CLI commands
 - persisted suite proposal, run analysis, and approval/apply artifacts
 - root AI support probes for downstream services and dashboards
+- prompt hardening for Korean, English, and mixed prompts through deterministic
+  normalization, structured provider output, compiler validation, and explicit
+  review artifacts
 
 ## Quick Start
 
@@ -224,8 +234,13 @@ core hot path and zero-config workflow while exposing a reviewable AI layer.
 - `explain_run(...)` compiles run evidence into persisted analysis artifacts
 - `approve_proposal(...)`, `reject_proposal(...)`, and `apply_proposal(...)` keep approval and mutation in explicit human-reviewed steps
 - `has_ai_support()` and `get_ai_support_status()` let downstream integrations feature-gate the AI surface cleanly
+- Korean, English, and mixed prompt normalization converts common quality
+  requests into canonical validation intent candidates before provider guidance
+- ambiguous or unsupported prompt requests become reviewable rejected items
+  rather than route failures
 
 Read the technical docs in [docs/ai/index.md](docs/ai/index.md).
+Read the prompt safety contract in [docs/ai/prompt-hardening.md](docs/ai/prompt-hardening.md).
 
 The public CLI surface is additive as well:
 

@@ -1,0 +1,114 @@
+{
+  "schema_version": "1",
+  "dsl_version": "validation-dsl-v1",
+  "intents": {
+    "null": {
+      "required_columns": false,
+      "allowed_params": [],
+      "required_any_params": [],
+      "column_dtype_policy": "any",
+      "validator_mapping": "null",
+      "deterministic_extractor_supported": true,
+      "automatic_approximation": "forbidden"
+    },
+    "not_null": {
+      "required_columns": false,
+      "allowed_params": [],
+      "required_any_params": [],
+      "column_dtype_policy": "any",
+      "validator_mapping": "not_null",
+      "deterministic_extractor_supported": true,
+      "automatic_approximation": "forbidden"
+    },
+    "completeness_ratio": {
+      "required_columns": true,
+      "allowed_params": ["min_ratio"],
+      "required_any_params": ["min_ratio"],
+      "column_dtype_policy": "any",
+      "validator_mapping": "completeness_ratio",
+      "deterministic_extractor_supported": true,
+      "automatic_approximation": "forbidden"
+    },
+    "unique": {
+      "required_columns": true,
+      "allowed_params": [],
+      "required_any_params": [],
+      "column_dtype_policy": "any",
+      "validator_mapping": "unique",
+      "deterministic_extractor_supported": true,
+      "automatic_approximation": "forbidden"
+    },
+    "unique_ratio": {
+      "required_columns": true,
+      "allowed_params": ["min_ratio", "max_ratio"],
+      "required_any_params": ["min_ratio", "max_ratio"],
+      "column_dtype_policy": "any",
+      "validator_mapping": "unique_ratio",
+      "deterministic_extractor_supported": true,
+      "automatic_approximation": "forbidden"
+    },
+    "between": {
+      "required_columns": true,
+      "allowed_params": ["min_value", "max_value", "inclusive"],
+      "required_any_params": ["min_value", "max_value"],
+      "column_dtype_policy": "numeric",
+      "validator_mapping": "between",
+      "deterministic_extractor_supported": true,
+      "automatic_approximation": "forbidden"
+    },
+    "in_set": {
+      "required_columns": true,
+      "allowed_params": ["allowed_values"],
+      "required_any_params": ["allowed_values"],
+      "column_dtype_policy": "any",
+      "validator_mapping": "in_set",
+      "deterministic_extractor_supported": true,
+      "automatic_approximation": "forbidden"
+    },
+    "length": {
+      "required_columns": true,
+      "allowed_params": ["min_length", "max_length", "exact_length"],
+      "required_any_params": ["min_length", "max_length", "exact_length"],
+      "column_dtype_policy": "string",
+      "validator_mapping": "length",
+      "deterministic_extractor_supported": true,
+      "automatic_approximation": "forbidden"
+    },
+    "format": {
+      "required_columns": true,
+      "allowed_params": ["format", "kind"],
+      "required_any_params": ["format", "kind"],
+      "column_dtype_policy": "string",
+      "validator_mapping": "format:<format>",
+      "deterministic_extractor_supported": true,
+      "automatic_approximation": "forbidden"
+    },
+    "regex": {
+      "required_columns": true,
+      "allowed_params": ["pattern", "match_full", "dotall", "case_insensitive"],
+      "required_any_params": ["pattern"],
+      "column_dtype_policy": "string",
+      "validator_mapping": "regex",
+      "deterministic_extractor_supported": false,
+      "automatic_approximation": "forbidden"
+    },
+    "mean_between": {
+      "required_columns": true,
+      "allowed_params": ["min_value", "max_value"],
+      "required_any_params": ["min_value", "max_value"],
+      "column_dtype_policy": "numeric",
+      "validator_mapping": "mean_between",
+      "deterministic_extractor_supported": true,
+      "automatic_approximation": "forbidden"
+    },
+    "sum_between": {
+      "required_columns": true,
+      "allowed_params": ["min_value", "max_value"],
+      "required_any_params": ["min_value", "max_value"],
+      "column_dtype_policy": "numeric",
+      "validator_mapping": "sum_between",
+      "deterministic_extractor_supported": true,
+      "automatic_approximation": "forbidden"
+    }
+  }
+}

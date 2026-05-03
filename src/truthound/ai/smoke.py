@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import tempfile
@@ -12,8 +13,13 @@ from truthound.ai.analysis import explain_run
 from truthound.ai.models import (
     CompileStatus,
     OpenAIExplainRunSmokeResult,
-    OpenAISmokeResult,
+    OpenAIPromptAcceptanceCanaryResult,
+    OpenAIPromptCanaryCaseResult,
     OpenAIProviderSpec,
+    OpenAISmokeMatrixEntry,
+    OpenAISmokeMatrixItemResult,
+    OpenAISmokeMatrixResult,
+    OpenAISmokeResult,
     ProviderConfig,
 )
 from truthound.ai.providers import (
@@ -28,6 +34,7 @@ from truthound.context import TruthoundContext
 SMOKE_MODEL_ENV = "TRUTHOUND_AI_SMOKE_MODEL"
 SMOKE_BASE_URL_ENV = "TRUTHOUND_AI_SMOKE_BASE_URL"
 SMOKE_TIMEOUT_ENV = "TRUTHOUND_AI_SMOKE_TIMEOUT_SECONDS"
+SMOKE_MODEL_MATRIX_ENV = "TRUTHOUND_AI_SMOKE_MODEL_MATRIX"
 SMOKE_RUN_GATE_ENV = "TRUTHOUND_AI_RUN_LIVE_SMOKE"
 SMOKE_RESULT_PATH_ENV = "TRUTHOUND_AI_SMOKE_RESULT_PATH"
 SMOKE_KEEP_WORKSPACE_ENV = "TRUTHOUND_AI_SMOKE_KEEP_WORKSPACE"
@@ -36,6 +43,236 @@ _SMOKE_PROMPT = (
     "Create a conservative reviewable proposal for this small orders dataset. "
     "Keep identifiers stable, keep refund_rate bounded, and validate status with safe aggregate checks only."
 )
+_PROMPT_ACCEPTANCE_CANARY_CASES = (
+    {
+        "case_id": "canary_golden_not_null_email",
+        "split": "golden",
+        "prompt": "email은 비어 있으면 안 됩니다",
+    },
+    {
+        "case_id": "canary_golden_between_score",
+        "split": "golden",
+        "prompt": "score는 0 이상 100 이하",
+    },
+    {
+        "case_id": "canary_golden_in_set_status",
+        "split": "golden",
+        "prompt": "status는 대기/승인/반려 중 하나만 허용",
+    },
+    {
+        "case_id": "canary_ambiguous_broad_quality",
+        "split": "ambiguous",
+        "prompt": "고객 데이터 잘 검증해줘",
+    },
+    {
+        "case_id": "canary_ambiguous_strange_values",
+        "split": "ambiguous",
+        "prompt": "주문 이상한 값 잡아줘",
+    },
+    {
+        "case_id": "canary_mixed_unique_customer_id",
+        "split": "mixed",
+        "prompt": "customer_id must be unique",
+    },
+    {
+        "case_id": "canary_mixed_not_null_email",
+        "split": "mixed",
+        "prompt": "email 필드는 null이면 안돼",
+    },
+)
+
+
+def parse_openai_smoke_model_matrix(raw_value: str) -> list[OpenAISmokeMatrixEntry]:
+    try:
+        payload = json.loads(raw_value)
+    except json.JSONDecodeError as exc:
+        raise ProviderConfigurationError(
+            f"{SMOKE_MODEL_MATRIX_ENV} must be a JSON array"
+        ) from exc
+    if not isinstance(payload, list) or not payload:
+        raise ProviderConfigurationError(f"{SMOKE_MODEL_MATRIX_ENV} must be a non-empty JSON array")
+    entries: list[OpenAISmokeMatrixEntry] = []
+    for item in payload:
+        if not isinstance(item, dict):
+            raise ProviderConfigurationError(f"{SMOKE_MODEL_MATRIX_ENV} entries must be JSON objects")
+        try:
+            entries.append(OpenAISmokeMatrixEntry.model_validate(item))
+        except Exception as exc:
+            raise ProviderConfigurationError(
+                f"{SMOKE_MODEL_MATRIX_ENV} entry is invalid: {exc}"
+            ) from exc
+    return entries
+
+
+def _resolve_smoke_matrix_entries(model: str | None = None) -> list[OpenAISmokeMatrixEntry]:
+    raw_matrix = os.getenv(SMOKE_MODEL_MATRIX_ENV)
+    if raw_matrix:
+        return parse_openai_smoke_model_matrix(raw_matrix)
+    resolved_model, _ = _resolve_smoke_provider_config(
+        model=model,
+        base_url=None,
+        timeout_seconds=None,
+    )
+    return [OpenAISmokeMatrixEntry(model=resolved_model, expected_format="auto")]
+
+
+def run_openai_smoke_matrix(
+    model: str | None = None,
+    *,
+    base_url: str | None = None,
+    timeout_seconds: float | None = None,
+    keep_workspace: bool = False,
+) -> OpenAISmokeMatrixResult:
+    entries = _resolve_smoke_matrix_entries(model=model)
+    results: list[OpenAISmokeMatrixItemResult] = []
+    for entry in entries:
+        proposal = run_openai_smoke(
+            model=entry.model,
+            base_url=base_url,
+            timeout_seconds=timeout_seconds,
+            keep_workspace=keep_workspace,
+        )
+        explain = run_openai_explain_run_smoke(
+            model=entry.model,
+            base_url=base_url,
+            timeout_seconds=timeout_seconds,
+            keep_workspace=keep_workspace,
+        )
+        results.append(
+            OpenAISmokeMatrixItemResult(
+                model_name=entry.model,
+                expected_format=entry.expected_format,
+                success=proposal.success and explain.success,
+                proposal=proposal,
+                explain_run=explain,
+            )
+        )
+    return OpenAISmokeMatrixResult(
+        success=all(item.success for item in results),
+        results=results,
+    )
+
+
+def run_openai_prompt_acceptance_canary(
+    model: str | None = None,
+    *,
+    base_url: str | None = None,
+    timeout_seconds: float | None = None,
+    keep_workspace: bool = False,
+) -> OpenAIPromptAcceptanceCanaryResult:
+    """Run a small manual-only prompt acceptance canary against a live provider."""
+
+    workspace_dir: Path | None = None
+    resolved_model: str | None = None
+    case_results: list[OpenAIPromptCanaryCaseResult] = []
+    try:
+        resolved_model, provider_config = _resolve_smoke_provider_config(
+            model=model,
+            base_url=base_url,
+            timeout_seconds=timeout_seconds,
+        )
+        workspace_dir = Path(tempfile.mkdtemp(prefix="truthound-ai-prompt-canary-")).resolve()
+        data_path = workspace_dir / "prompt_canary_orders.csv"
+        _write_prompt_canary_csv(data_path)
+        context = TruthoundContext(workspace_dir)
+
+        for case in _PROMPT_ACCEPTANCE_CANARY_CASES:
+            case_results.append(
+                _run_prompt_acceptance_canary_case(
+                    case,
+                    data_path=data_path,
+                    context=context,
+                    provider_config=provider_config,
+                    model=resolved_model,
+                )
+            )
+
+        result = OpenAIPromptAcceptanceCanaryResult(
+            model_name=resolved_model,
+            success=all(item.success for item in case_results),
+            golden_case_count=sum(1 for item in case_results if item.split == "golden"),
+            mixed_case_count=sum(1 for item in case_results if item.split == "mixed"),
+            ambiguous_case_count=sum(1 for item in case_results if item.split == "ambiguous"),
+            case_results=case_results,
+        )
+        return _finalize_result(result, workspace_dir=workspace_dir, keep_workspace=keep_workspace)
+    except (ProviderConfigurationError, ProviderTransportError, ProviderResponseError) as exc:
+        case_results.append(
+            OpenAIPromptCanaryCaseResult(
+                case_id="canary_setup",
+                split="golden",
+                success=False,
+                failure_stage="provider" if not isinstance(exc, ProviderResponseError) else "parse",
+                error_message=str(exc),
+            )
+        )
+        result = OpenAIPromptAcceptanceCanaryResult(
+            model_name=resolved_model,
+            success=False,
+            case_results=case_results,
+        )
+        return _finalize_result(result, workspace_dir=workspace_dir, keep_workspace=keep_workspace)
+
+
+def _run_prompt_acceptance_canary_case(
+    case: dict[str, str],
+    *,
+    data_path: Path,
+    context: TruthoundContext,
+    provider_config: ProviderConfig,
+    model: str,
+) -> OpenAIPromptCanaryCaseResult:
+    try:
+        artifact = _invoke_suggest_suite(
+            prompt=case["prompt"],
+            data=str(data_path),
+            context=context,
+            provider=provider_config,
+            model=model,
+            sample_size=50,
+        )
+        compile_status = str(artifact.compile_status)
+        expected_success = (
+            compile_status == CompileStatus.REJECTED.value
+            if case["split"] == "ambiguous"
+            else compile_status in {CompileStatus.READY.value, CompileStatus.PARTIAL.value}
+            and artifact.compiled_check_count >= 1
+        )
+        return OpenAIPromptCanaryCaseResult(
+            case_id=case["case_id"],
+            split=case["split"],  # type: ignore[arg-type]
+            success=expected_success,
+            artifact_id=artifact.artifact_id,
+            compile_status=compile_status,
+            compiled_check_count=artifact.compiled_check_count,
+            rejected_check_count=artifact.rejected_check_count,
+            failure_stage=None if expected_success else "compile",
+            error_message=None if expected_success else "prompt canary did not meet expected compile status",
+        )
+    except ProviderTransportError as exc:
+        return OpenAIPromptCanaryCaseResult(
+            case_id=case["case_id"],
+            split=case["split"],  # type: ignore[arg-type]
+            success=False,
+            failure_stage="provider",
+            error_message=str(exc),
+        )
+    except ProviderResponseError as exc:
+        return OpenAIPromptCanaryCaseResult(
+            case_id=case["case_id"],
+            split=case["split"],  # type: ignore[arg-type]
+            success=False,
+            failure_stage="parse",
+            error_message=str(exc),
+        )
+    except Exception as exc:
+        return OpenAIPromptCanaryCaseResult(
+            case_id=case["case_id"],
+            split=case["split"],  # type: ignore[arg-type]
+            success=False,
+            failure_stage="verify",
+            error_message=str(exc),
+        )
 
 
 def run_openai_smoke(
@@ -92,6 +329,7 @@ def run_openai_smoke(
 
         current_stage = "verify"
         persisted = _read_smoke_proposal(context, artifact.artifact_id)
+        provider_trace = _provider_trace_update(persisted)
         artifact_failure = _classify_proposal_artifact_failure(persisted)
         if artifact_failure is not None:
             stage, message = artifact_failure
@@ -106,6 +344,7 @@ def run_openai_smoke(
                     proposal_path=str(proposal_path),
                     failure_stage=stage,
                     error_message=message,
+                    **provider_trace,
                 ),
                 workspace_dir=workspace_dir,
                 keep_workspace=keep_workspace,
@@ -121,6 +360,7 @@ def run_openai_smoke(
                 compiled_check_count=persisted.compiled_check_count,
                 rejected_check_count=persisted.rejected_check_count,
                 proposal_path=str(proposal_path),
+                **provider_trace,
             ),
             workspace_dir=workspace_dir,
             keep_workspace=keep_workspace,
@@ -143,6 +383,7 @@ def run_openai_smoke(
                 success=False,
                 failure_stage="provider",
                 error_message=str(exc),
+                **_provider_trace_update_from_error(exc),
             ),
             workspace_dir=workspace_dir,
             keep_workspace=keep_workspace,
@@ -154,6 +395,7 @@ def run_openai_smoke(
                 success=False,
                 failure_stage="parse",
                 error_message=str(exc),
+                **_provider_trace_update_from_error(exc),
             ),
             workspace_dir=workspace_dir,
             keep_workspace=keep_workspace,
@@ -226,6 +468,7 @@ def run_openai_explain_run_smoke(
 
         current_stage = "verify"
         persisted = _read_smoke_analysis(context, artifact.artifact_id)
+        provider_trace = _provider_trace_update(persisted)
         artifact_failure = _classify_analysis_artifact_failure(persisted)
         if artifact_failure is not None:
             stage, message = artifact_failure
@@ -241,6 +484,7 @@ def run_openai_explain_run_smoke(
                     evidence_ref_count=len(persisted.evidence_refs),
                     failure_stage=stage,
                     error_message=message,
+                    **provider_trace,
                 ),
                 workspace_dir=workspace_dir,
                 keep_workspace=keep_workspace,
@@ -257,6 +501,7 @@ def run_openai_explain_run_smoke(
                 failed_check_count=len(persisted.failed_checks),
                 top_column_count=len(persisted.top_columns),
                 evidence_ref_count=len(persisted.evidence_refs),
+                **provider_trace,
             ),
             workspace_dir=workspace_dir,
             keep_workspace=keep_workspace,
@@ -279,6 +524,7 @@ def run_openai_explain_run_smoke(
                 success=False,
                 failure_stage="provider",
                 error_message=str(exc),
+                **_provider_trace_update_from_error(exc),
             ),
             workspace_dir=workspace_dir,
             keep_workspace=keep_workspace,
@@ -290,6 +536,7 @@ def run_openai_explain_run_smoke(
                 success=False,
                 failure_stage="parse",
                 error_message=str(exc),
+                **_provider_trace_update_from_error(exc),
             ),
             workspace_dir=workspace_dir,
             keep_workspace=keep_workspace,
@@ -329,6 +576,60 @@ def _proposal_path(context: TruthoundContext, artifact_id: str) -> Path:
 
 def _analysis_path(context: TruthoundContext, artifact_id: str) -> Path:
     return AIArtifactStore(context).layout.analysis_path(artifact_id)
+
+
+def _provider_trace_update(artifact: Any) -> dict[str, Any]:
+    for input_ref in getattr(artifact, "input_refs", []):
+        if getattr(input_ref, "kind", None) == "provider_trace":
+            metadata = getattr(input_ref, "metadata", {}) or {}
+            return _provider_trace_update_from_metadata(metadata)
+    return {}
+
+
+def _provider_trace_update_from_error(exc: Exception) -> dict[str, Any]:
+    provider_events = getattr(exc, "provider_events", []) or []
+    if not provider_events:
+        return {}
+    event_payloads = [
+        event.model_dump(mode="json") if hasattr(event, "model_dump") else dict(event)
+        for event in provider_events
+    ]
+    metadata = {
+        "response_format_type": _last_response_format(event_payloads),
+        "used_json_mode_fallback": any(
+            event.get("reason_code") == "json_mode_fallback_succeeded"
+            for event in event_payloads
+        ),
+        "repair_attempted": any(event.get("phase") == "repair" for event in event_payloads),
+        "repair_succeeded": any(
+            event.get("reason_code") == "repair_json_parse_succeeded"
+            for event in event_payloads
+        ),
+        "reason_codes": [
+            event.get("reason_code")
+            for event in event_payloads
+            if event.get("reason_code")
+        ],
+    }
+    return _provider_trace_update_from_metadata(metadata)
+
+
+def _provider_trace_update_from_metadata(metadata: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "response_format_type": metadata.get("response_format_type"),
+        "used_json_mode_fallback": bool(metadata.get("used_json_mode_fallback", False)),
+        "repair_attempted": bool(metadata.get("repair_attempted", False)),
+        "repair_succeeded": bool(metadata.get("repair_succeeded", False)),
+        "provider_reason_codes": list(metadata.get("reason_codes") or []),
+    }
+
+
+def _last_response_format(events: list[dict[str, Any]]) -> str | None:
+    for event in reversed(events):
+        response_format = event.get("response_format")
+        if response_format:
+            return str(response_format)
+    return None
 
 
 def _verify_persisted_proposal(persisted, generated) -> None:
@@ -518,13 +819,31 @@ def _write_smoke_csv(path: Path) -> None:
     )
 
 
+def _write_prompt_canary_csv(path: Path) -> None:
+    path.write_text(
+        "\n".join(
+            [
+                "customer_id,email,score,status,order_id,refund_rate,sku_code",
+                "1,user@example.com,10,pending,ORD-001,0.10,SKU-001",
+                "2,,95,approved,ORD-002,0.25,SKU-002",
+                "2,duplicate@example.com,105,rejected,ORD-002,0.00,SKU-003",
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+
 __all__ = [
     "SMOKE_BASE_URL_ENV",
     "SMOKE_KEEP_WORKSPACE_ENV",
     "SMOKE_MODEL_ENV",
+    "SMOKE_MODEL_MATRIX_ENV",
     "SMOKE_RESULT_PATH_ENV",
     "SMOKE_RUN_GATE_ENV",
     "SMOKE_TIMEOUT_ENV",
+    "parse_openai_smoke_model_matrix",
     "run_openai_explain_run_smoke",
+    "run_openai_prompt_acceptance_canary",
     "run_openai_smoke",
+    "run_openai_smoke_matrix",
 ]

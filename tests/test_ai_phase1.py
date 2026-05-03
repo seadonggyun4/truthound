@@ -3,13 +3,16 @@ from __future__ import annotations
 import json
 import sys
 import types
-from pathlib import Path
+from typing import TYPE_CHECKING, Any
 
 import pytest
 from typer.testing import CliRunner
 
 from truthound.cli import app
 from truthound.context import TruthoundContext
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 pytest.importorskip("pydantic")
 
@@ -308,7 +311,7 @@ def test_suggest_suite_persists_rejected_artifact_for_malformed_provider_output(
     )
 
     artifact = suggest_suite(
-        prompt="Compile a proposal.",
+        prompt="order_id must be unique.",
         data=str(data_path),
         context=context,
         provider=provider,
@@ -318,11 +321,14 @@ def test_suggest_suite_persists_rejected_artifact_for_malformed_provider_output(
     assert artifact.compiler_errors == ["provider_output_validation_failed"]
     stored = AIArtifactStore(context).read_proposal(artifact.artifact_id)
     assert str(stored.compile_status) == "rejected"
+    provider_trace = [input_ref for input_ref in stored.input_refs if input_ref.kind == "provider_trace"]
+    assert len(provider_trace) == 1
+    assert provider_trace[0].metadata["provider_name"] == "fake-openai"
 
 
 def test_legacy_phase1_v1_proposal_is_upgraded_on_read_and_doctor_accepts_it(tmp_path: Path):
-    from truthound.ai import AIArtifactStore
     from truthound._ai_contract import TRUTHOUND_AI_PROPOSAL_COMPILER_VERSION_V1
+    from truthound.ai import AIArtifactStore
 
     context = TruthoundContext(tmp_path)
     proposal_dir = context.workspace_dir / "ai" / "proposals"
@@ -404,7 +410,11 @@ def test_legacy_phase1_v1_proposal_is_upgraded_on_read_and_doctor_accepts_it(tmp
 
 def test_openai_provider_parses_chat_completion_response(monkeypatch):
     from truthound.ai import ProviderConfig, StructuredProviderRequest
-    from truthound.ai.providers import OpenAIStructuredProvider
+    from truthound.ai.providers import (
+        OpenAIStructuredProvider,
+        get_provider_metrics_snapshot,
+        reset_provider_metrics,
+    )
 
     def fake_create(**kwargs):
         message = types.SimpleNamespace(
@@ -424,6 +434,7 @@ def test_openai_provider_parses_chat_completion_response(monkeypatch):
     provider = OpenAIStructuredProvider(
         ProviderConfig(provider_name="openai", model_name="gpt-test"),
     )
+    reset_provider_metrics()
     request = StructuredProviderRequest(
         provider_name="openai",
         model_name="gpt-test",
@@ -437,6 +448,232 @@ def test_openai_provider_parses_chat_completion_response(monkeypatch):
     assert response.provider_name == "openai"
     assert response.parsed_output["summary"] == "Compiled aggregate checks."
     assert response.usage == {"prompt_tokens": 10, "completion_tokens": 12, "total_tokens": 22}
+    assert response.response_format_type == "json_object"
+    assert response.used_json_mode_fallback is False
+    assert response.repair_attempted is False
+    assert [event.reason_code for event in response.provider_events] == [
+        "provider_request_succeeded",
+        "json_parse_succeeded",
+    ]
+    metrics = get_provider_metrics_snapshot()
+    assert metrics["ai_provider_requests_total"] == 1
+    assert metrics["ai_provider_json_mode_total"] == 1
+
+
+def test_openai_provider_uses_strict_json_schema_response_format(monkeypatch):
+    from truthound.ai import (
+        ProviderConfig,
+        StructuredProviderRequest,
+        SuiteProposalLLMResponse,
+    )
+    from truthound.ai.providers import OpenAIStructuredProvider
+
+    seen_response_formats: list[dict[str, Any]] = []
+
+    def fake_create(**kwargs):
+        response_format = kwargs["response_format"]
+        seen_response_formats.append(response_format)
+        assert response_format["type"] == "json_schema"
+        assert response_format["json_schema"]["strict"] is True
+        message = types.SimpleNamespace(
+            content=(
+                '{"summary":"Structured.","rationale":"Safe output.",'
+                '"proposed_checks":[],"risks":[],"rejected_requests":[]}'
+            )
+        )
+        choice = types.SimpleNamespace(message=message, finish_reason="stop")
+        return types.SimpleNamespace(choices=[choice], usage=None)
+
+    class FakeOpenAIClient:
+        def __init__(self, **kwargs):
+            self.chat = types.SimpleNamespace(completions=types.SimpleNamespace(create=fake_create))
+
+    monkeypatch.setitem(sys.modules, "openai", types.SimpleNamespace(OpenAI=FakeOpenAIClient))
+
+    provider = OpenAIStructuredProvider(
+        ProviderConfig(provider_name="openai", model_name="gpt-test"),
+    )
+    request = StructuredProviderRequest(
+        provider_name="openai",
+        model_name="gpt-test",
+        system_prompt="Return one JSON object with safe aggregate content only.",
+        user_prompt="operator_request: compile aggregate checks; source_key: source:orders",
+        response_format_name="suite_proposal",
+        response_model=SuiteProposalLLMResponse,
+    )
+
+    response = provider.generate_structured(request)
+
+    assert seen_response_formats
+    assert response.parsed_output["summary"] == "Structured."
+    assert response.response_format_type == "json_schema"
+    assert response.used_json_mode_fallback is False
+    assert response.provider_events[0].reason_code == "provider_request_succeeded"
+
+
+def test_openai_provider_falls_back_and_repairs_json_mode_response(monkeypatch):
+    from truthound.ai import (
+        ProviderConfig,
+        StructuredProviderRequest,
+        SuiteProposalLLMResponse,
+    )
+    from truthound.ai.providers import OpenAIStructuredProvider
+
+    calls: list[dict[str, Any]] = []
+
+    def fake_create(**kwargs):
+        calls.append(kwargs)
+        response_format = kwargs["response_format"]
+        if response_format["type"] == "json_schema":
+            raise ValueError("unsupported response_format json_schema")
+        content = "not json"
+        if "previous response was not valid JSON" in kwargs["messages"][-1]["content"]:
+            content = (
+                '{"summary":"Repaired.","rationale":"Safe output.",'
+                '"proposed_checks":[],"risks":[],"rejected_requests":[]}'
+            )
+        message = types.SimpleNamespace(content=content)
+        choice = types.SimpleNamespace(message=message, finish_reason="stop")
+        return types.SimpleNamespace(choices=[choice], usage=None)
+
+    class FakeOpenAIClient:
+        def __init__(self, **kwargs):
+            self.chat = types.SimpleNamespace(completions=types.SimpleNamespace(create=fake_create))
+
+    monkeypatch.setitem(sys.modules, "openai", types.SimpleNamespace(OpenAI=FakeOpenAIClient))
+
+    provider = OpenAIStructuredProvider(
+        ProviderConfig(provider_name="openai", model_name="gpt-test"),
+    )
+    request = StructuredProviderRequest(
+        provider_name="openai",
+        model_name="gpt-test",
+        system_prompt="Return one JSON object with safe aggregate content only.",
+        user_prompt="operator_request: compile aggregate checks; source_key: source:orders",
+        response_format_name="suite_proposal",
+        response_model=SuiteProposalLLMResponse,
+    )
+
+    response = provider.generate_structured(request)
+
+    assert response.parsed_output["summary"] == "Repaired."
+    assert [call["response_format"]["type"] for call in calls] == [
+        "json_schema",
+        "json_object",
+        "json_object",
+    ]
+    assert response.response_format_type == "json_object"
+    assert response.used_json_mode_fallback is True
+    assert response.repair_attempted is True
+    assert response.repair_succeeded is True
+    reason_codes = [event.reason_code for event in response.provider_events]
+    assert "schema_unsupported" in reason_codes
+    assert "json_mode_fallback_succeeded" in reason_codes
+    assert "invalid_json" in reason_codes
+    assert "repair_request_succeeded" in reason_codes
+    assert "repair_json_parse_succeeded" in reason_codes
+
+
+def test_openai_provider_returns_none_after_single_failed_json_repair(monkeypatch):
+    from truthound.ai import ProviderConfig, StructuredProviderRequest
+    from truthound.ai.providers import OpenAIStructuredProvider
+
+    calls: list[dict[str, Any]] = []
+
+    def fake_create(**kwargs):
+        calls.append(kwargs)
+        content = "not json"
+        if "previous response was not valid JSON" in kwargs["messages"][-1]["content"]:
+            content = "still not json"
+        message = types.SimpleNamespace(content=content)
+        choice = types.SimpleNamespace(message=message, finish_reason="stop")
+        return types.SimpleNamespace(choices=[choice], usage=None)
+
+    class FakeOpenAIClient:
+        def __init__(self, **kwargs):
+            self.chat = types.SimpleNamespace(completions=types.SimpleNamespace(create=fake_create))
+
+    monkeypatch.setitem(sys.modules, "openai", types.SimpleNamespace(OpenAI=FakeOpenAIClient))
+
+    provider = OpenAIStructuredProvider(
+        ProviderConfig(provider_name="openai", model_name="gpt-test"),
+    )
+    request = StructuredProviderRequest(
+        provider_name="openai",
+        model_name="gpt-test",
+        system_prompt="Return one JSON object with safe aggregate content only.",
+        user_prompt="operator_request: compile aggregate checks; source_key: source:orders",
+        response_format_name="suite_proposal",
+    )
+
+    response = provider.generate_structured(request)
+
+    assert len(calls) == 2
+    assert response.parsed_output is None
+    assert response.response_format_type == "json_object"
+    assert response.repair_attempted is True
+    assert response.repair_succeeded is False
+    reason_codes = [event.reason_code for event in response.provider_events]
+    assert reason_codes == [
+        "provider_request_succeeded",
+        "invalid_json",
+        "repair_request_succeeded",
+        "repair_invalid_json",
+    ]
+
+
+def test_openai_provider_refusal_is_classified_without_retry(monkeypatch):
+    from truthound.ai import (
+        ProviderConfig,
+        StructuredProviderRequest,
+        SuiteProposalLLMResponse,
+    )
+    from truthound.ai.providers import (
+        OpenAIStructuredProvider,
+        ProviderResponseError,
+        get_provider_metrics_snapshot,
+        reset_provider_metrics,
+    )
+
+    calls: list[dict[str, Any]] = []
+
+    def fake_create(**kwargs):
+        calls.append(kwargs)
+        message = types.SimpleNamespace(content="", refusal="safety refusal")
+        choice = types.SimpleNamespace(message=message, finish_reason="stop")
+        return types.SimpleNamespace(choices=[choice], usage=None)
+
+    class FakeOpenAIClient:
+        def __init__(self, **kwargs):
+            self.chat = types.SimpleNamespace(completions=types.SimpleNamespace(create=fake_create))
+
+    monkeypatch.setitem(sys.modules, "openai", types.SimpleNamespace(OpenAI=FakeOpenAIClient))
+
+    provider = OpenAIStructuredProvider(
+        ProviderConfig(provider_name="openai", model_name="gpt-test"),
+    )
+    reset_provider_metrics()
+    request = StructuredProviderRequest(
+        provider_name="openai",
+        model_name="gpt-test",
+        system_prompt="Return one JSON object with safe aggregate content only.",
+        user_prompt="operator_request: compile aggregate checks; source_key: source:orders",
+        response_format_name="suite_proposal",
+        response_model=SuiteProposalLLMResponse,
+    )
+
+    with pytest.raises(ProviderResponseError) as exc_info:
+        provider.generate_structured(request)
+
+    assert len(calls) == 1
+    assert exc_info.value.reason_code == "provider_refusal"
+    assert [event.reason_code for event in exc_info.value.provider_events] == [
+        "provider_request_succeeded",
+        "provider_refusal",
+    ]
+    metrics = get_provider_metrics_snapshot()
+    assert metrics["ai_provider_requests_total"] == 1
+    assert metrics["ai_provider_refusal_total"] == 1
 
 
 def test_ai_cli_suggest_list_and_show_surface(monkeypatch, tmp_path: Path):

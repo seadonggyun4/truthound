@@ -661,6 +661,8 @@ def explain_run(
     )
 
     response = resolved_provider.generate_structured(provider_request)
+    input_refs = list(bundle.input_refs)
+    input_refs.append(response.to_provider_trace_input_ref())
     try:
         if isinstance(response.parsed_output, dict):
             llm_response = RunAnalysisLLMResponse.model_validate(response.parsed_output)
@@ -669,7 +671,7 @@ def explain_run(
         artifact = RunAnalysisArtifact(
             artifact_id=f"run-analysis-{bundle.run_result.run_id}",
             source_key=bundle.source_key,
-            input_refs=list(bundle.input_refs),
+            input_refs=input_refs,
             model_provider=response.provider_name,
             model_name=response.model_name,
             prompt_hash=_hash_prompt(system_prompt, user_prompt),

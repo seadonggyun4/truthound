@@ -5,13 +5,12 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from truthound._ai_redaction import SummaryOnlyRedactor
-from truthound.ai.context import ContextBundle
 from truthound.ai.models import (
-    CompileStatus,
     CompiledProposalCheck,
+    CompileStatus,
     ProposedCheckIntent,
     RejectedProposalItem,
     SuiteProposalArtifact,
@@ -19,9 +18,19 @@ from truthound.ai.models import (
     ValidationSuiteDiffCounts,
     ValidationSuiteDiffPreview,
 )
+from truthound.ai.normalization import (
+    IntentCanonicalizer,
+    NormalizedPrompt,
+    PromptNormalizationMode,
+    get_prompt_normalization_mode,
+)
+from truthound.ai.prompt_metrics import record_proposal_compilation
 from truthound.ai.suite_diff import build_formal_suite_diff
 from truthound.validators import get_validator
 from truthound.validators.base import RegexSafetyChecker
+
+if TYPE_CHECKING:
+    from truthound.ai.context import ContextBundle
 
 MAX_IN_SET_VALUES = 50
 SUPPORTED_FORMAT_KINDS = {
@@ -57,8 +66,10 @@ class CompiledIntentResult:
 class ProposalCompiler:
     """Compile structured LLM output into a persisted suite proposal artifact."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, normalization_mode: PromptNormalizationMode | None = None) -> None:
         self._redactor = SummaryOnlyRedactor()
+        self._normalization_mode = normalization_mode or get_prompt_normalization_mode()
+        self._intent_canonicalizer = IntentCanonicalizer()
 
     def compile_artifact(
         self,
@@ -102,7 +113,7 @@ class ProposalCompiler:
             compiler_errors=compiler_errors,
         )
 
-        return SuiteProposalArtifact(
+        artifact = SuiteProposalArtifact(
             source_key=context_bundle.source_key,
             input_refs=list(context_bundle.input_refs),
             model_provider=model_provider,
@@ -121,6 +132,8 @@ class ProposalCompiler:
             rejected_check_count=len(rejected_items),
             compiler_errors=compiler_errors,
         )
+        record_proposal_compilation(artifact)
+        return artifact
 
     def build_rejected_artifact(
         self,
@@ -137,7 +150,7 @@ class ProposalCompiler:
             proposed_suite=context_bundle.current_suite_snapshot,
             counts=ValidationSuiteDiffCounts(),
         )
-        return SuiteProposalArtifact(
+        artifact = SuiteProposalArtifact(
             source_key=context_bundle.source_key,
             input_refs=list(context_bundle.input_refs),
             model_provider=model_provider,
@@ -156,6 +169,67 @@ class ProposalCompiler:
             rejected_check_count=0,
             compiler_errors=[error_code],
         )
+        record_proposal_compilation(artifact)
+        return artifact
+
+    def build_normalizer_rejected_artifact(
+        self,
+        *,
+        context_bundle: ContextBundle,
+        model_provider: str,
+        model_name: str,
+        prompt_hash: str,
+        normalized_prompt: NormalizedPrompt,
+        created_by: str = "truthound.ai.suggest_suite",
+    ) -> SuiteProposalArtifact:
+        reason = (
+            normalized_prompt.clarification.reason
+            if normalized_prompt.clarification is not None
+            else "normalization_not_actionable"
+        )
+        rejected_item = RejectedProposalItem(
+            source="normalizer",
+            intent="prompt_normalization",
+            columns=[],
+            params={
+                "mode": (
+                    normalized_prompt.mode.value
+                    if isinstance(normalized_prompt.mode, PromptNormalizationMode)
+                    else str(normalized_prompt.mode)
+                ),
+                "candidate_count": len(normalized_prompt.candidates),
+                "unresolved_count": len(normalized_prompt.unresolved_terms),
+                "unicode_warnings": list(normalized_prompt.unicode_warnings),
+            },
+            reason=reason,
+            rationale="Prompt normalization did not produce an actionable validation intent.",
+        )
+        diff_preview = ValidationSuiteDiffPreview(
+            current_suite=context_bundle.current_suite_snapshot,
+            proposed_suite=context_bundle.current_suite_snapshot,
+            rejected=[rejected_item],
+        )
+        artifact = SuiteProposalArtifact(
+            source_key=context_bundle.source_key,
+            input_refs=list(context_bundle.input_refs),
+            model_provider=model_provider,
+            model_name=model_name,
+            prompt_hash=prompt_hash,
+            created_by=created_by,
+            workspace_root=context_bundle.workspace_root,
+            summary="AI proposal requires prompt clarification.",
+            rationale="The normalized prompt could not be safely mapped to a supported validation intent.",
+            checks=[],
+            risks=[],
+            compile_status=CompileStatus.REJECTED,
+            diff_preview=diff_preview,
+            rejected_items=[rejected_item],
+            compiled_check_count=0,
+            rejected_check_count=1,
+            compiler_errors=[],
+        )
+        record_proposal_compilation(artifact)
+        return artifact
 
     def _compile_intent(
         self,
@@ -163,18 +237,23 @@ class ProposalCompiler:
         *,
         context_bundle: ContextBundle,
     ) -> CompiledIntentResult:
+        compile_intent = (
+            self._intent_canonicalizer.canonicalize_check(intent)
+            if self._normalization_mode != PromptNormalizationMode.OFF
+            else intent
+        )
         try:
-            compiled = self._compile_supported_intent(intent, context_bundle=context_bundle)
+            compiled = self._compile_supported_intent(compile_intent, context_bundle=context_bundle)
             return CompiledIntentResult(check=compiled)
         except ValueError as exc:
             return CompiledIntentResult(
                 rejected_item=RejectedProposalItem(
                     source="compiler",
-                    intent=intent.intent,
-                    columns=list(intent.columns),
-                    params=dict(intent.params),
+                    intent=compile_intent.intent,
+                    columns=list(compile_intent.columns),
+                    params=dict(compile_intent.params),
                     reason=str(exc),
-                    rationale=intent.rationale or None,
+                    rationale=compile_intent.rationale or None,
                 )
             )
 

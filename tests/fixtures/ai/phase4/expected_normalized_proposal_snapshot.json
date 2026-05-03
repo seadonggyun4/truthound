@@ -19,6 +19,48 @@
       "metadata": {
         "check_count": 5
       }
+    },
+    {
+      "kind": "prompt_normalization",
+      "ref": "prompt-normalization:c1863c9d6e96d42b",
+      "redacted": true,
+      "metadata": {
+        "mode": "enforce",
+        "language": "en",
+        "lexicon_version": "2026-05-03.1",
+        "lexicon_hash": "2c73cde3cce0af0c",
+        "raw_prompt_hash": "sha256:d9aebc9dfe79478e",
+        "normalized_text_hash": "sha256:d9aebc9dfe79478e",
+        "unicode_warnings": [],
+        "candidate_count": 1,
+        "unresolved_count": 0,
+        "clarification_required": false,
+        "candidates": [
+          {
+            "intent": "unique",
+            "columns": [
+              "order_id"
+            ],
+            "params": {},
+            "confidence": 0.9
+          }
+        ]
+      }
+    },
+    {
+      "kind": "provider_trace",
+      "ref": "provider-trace:<provider_trace_id>",
+      "redacted": true,
+      "metadata": {
+        "provider_name": "fake-openai",
+        "model_name": "gpt-fake",
+        "response_format_type": "unknown",
+        "used_json_mode_fallback": false,
+        "repair_attempted": false,
+        "repair_succeeded": false,
+        "reason_codes": [],
+        "events": []
+      }
     }
   ],
   "model_provider": "fake-openai",

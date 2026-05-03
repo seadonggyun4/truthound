@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+from dataclasses import replace
 from typing import Any
 
 from truthound.ai.compiler import ProposalCompiler
@@ -14,6 +15,8 @@ from truthound.ai.models import (
     SuiteProposalArtifact,
     SuiteProposalLLMResponse,
 )
+from truthound.ai.normalization import PromptNormalizationMode, PromptNormalizer
+from truthound.ai.prompt_metrics import record_prompt_normalization_result
 from truthound.ai.providers import resolve_model_name, resolve_provider
 from truthound.ai.store import AIArtifactStore
 from truthound.context import TruthoundContext, get_context
@@ -49,9 +52,38 @@ def suggest_suite(
         resolved_provider=resolved_provider,
     )
 
+    normalization_mode = PromptNormalizer().mode
+    normalized_prompt = None
+    if normalization_mode != PromptNormalizationMode.OFF:
+        normalized_prompt = PromptNormalizer(mode=normalization_mode).normalize(
+            prompt,
+            context_bundle=bundle,
+        )
+        record_prompt_normalization_result(normalized_prompt)
+        bundle = replace(bundle, input_refs=tuple(bundle.input_refs) + (normalized_prompt.to_input_ref(),))
+
     system_prompt = bundle.build_system_prompt()
     user_prompt = bundle.build_user_prompt(prompt.strip())
+    if normalized_prompt is not None:
+        user_prompt = f"{user_prompt}; {normalized_prompt.to_provider_guidance()}"
     prompt_hash = _hash_prompt(system_prompt, user_prompt)
+
+    compiler = ProposalCompiler(normalization_mode=normalization_mode)
+    if (
+        normalization_mode == PromptNormalizationMode.ENFORCE
+        and normalized_prompt is not None
+        and not normalized_prompt.actionable
+    ):
+        artifact = compiler.build_normalizer_rejected_artifact(
+            context_bundle=bundle,
+            model_provider=resolved_provider.provider_name,
+            model_name=resolved_model_name,
+            prompt_hash=prompt_hash,
+            normalized_prompt=normalized_prompt,
+        )
+        AIArtifactStore(active_context).write_proposal(artifact)
+        return artifact
+
     provider_request = StructuredProviderRequest(
         provider_name=resolved_provider.provider_name,
         model_name=resolved_model_name,
@@ -68,7 +100,10 @@ def suggest_suite(
     )
 
     response = resolved_provider.generate_structured(provider_request)
-    compiler = ProposalCompiler()
+    bundle = replace(
+        bundle,
+        input_refs=tuple(bundle.input_refs) + (response.to_provider_trace_input_ref(),),
+    )
 
     try:
         if isinstance(response.parsed_output, dict):

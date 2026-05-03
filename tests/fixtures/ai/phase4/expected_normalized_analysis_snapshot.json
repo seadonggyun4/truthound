@@ -38,6 +38,21 @@
         "run_count": 1,
         "failure_count": 1
       }
+    },
+    {
+      "kind": "provider_trace",
+      "ref": "provider-trace:<provider_trace_id>",
+      "redacted": true,
+      "metadata": {
+        "provider_name": "fake-openai",
+        "model_name": "gpt-fake",
+        "response_format_type": "unknown",
+        "used_json_mode_fallback": false,
+        "repair_attempted": false,
+        "repair_succeeded": false,
+        "reason_codes": [],
+        "events": []
+      }
     }
   ],
   "model_provider": "fake-openai",

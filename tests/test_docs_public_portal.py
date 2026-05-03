@@ -7,7 +7,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -222,6 +221,7 @@ def test_mkdocs_ai_nav_exposes_major_subsections() -> None:
         "Approval and Apply Semantics",
         "Privacy and Redaction",
         "Provider Contract",
+        "Prompt Hardening",
         "Smoke and Release Gates",
     ]
 

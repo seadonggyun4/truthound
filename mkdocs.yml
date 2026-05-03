@@ -420,6 +420,7 @@ nav:
       - Approval and Apply Semantics: ai/approval-apply.md
       - Privacy and Redaction: ai/privacy-redaction.md
       - Provider Contract: ai/provider-contract.md
+      - Prompt Hardening: ai/prompt-hardening.md
       - Smoke and Release Gates: ai/release-gate.md
   - Dashboard:
       - Overview: dashboard/index.md

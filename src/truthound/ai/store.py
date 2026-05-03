@@ -4,13 +4,12 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from truthound._ai_contract import (
     AI_ANALYSES_DIRNAME,
-    AI_APPROVALS_DIRNAME,
     AI_APPROVAL_LOG_FILENAME,
+    AI_APPROVALS_DIRNAME,
     AI_PROPOSALS_DIRNAME,
     AI_ROOT_DIRNAME,
     is_valid_analysis_artifact_id,
@@ -20,6 +19,8 @@ from truthound._ai_redaction import SummaryOnlyRedactor
 from truthound.ai.models import ApprovalLogEvent, RunAnalysisArtifact, SuiteProposalArtifact
 
 if TYPE_CHECKING:
+    from pathlib import Path
+
     from truthound.context import TruthoundContext
 
 
@@ -74,7 +75,7 @@ class AIWorkspaceLayout:
 class AIArtifactStore:
     """Persist and read AI artifacts without mutating the base workspace contract."""
 
-    def __init__(self, context: "TruthoundContext") -> None:
+    def __init__(self, context: TruthoundContext) -> None:
         self._context = context
         self.layout = AIWorkspaceLayout(context.workspace_dir)
         self._redactor = SummaryOnlyRedactor()

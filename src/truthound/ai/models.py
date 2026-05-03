@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any, Literal, Protocol
 
@@ -14,22 +15,21 @@ from truthound._ai_contract import (
     TRUTHOUND_AI_ANALYSIS_COMPILER_VERSION,
     TRUTHOUND_AI_COMPILER_VERSION,
     TRUTHOUND_AI_PROPOSAL_COMPILER_VERSION,
-    TRUTHOUND_AI_PROPOSAL_COMPILER_VERSION_V1,
     TRUTHOUND_AI_SCHEMA_VERSION,
     analysis_artifact_id_for_run,
     default_compiler_version_for_artifact_type,
     generate_approval_event_id,
     generate_suite_proposal_id,
     is_known_compiler_version,
-    is_valid_approval_event_id,
     is_valid_analysis_artifact_id,
+    is_valid_approval_event_id,
     is_valid_proposal_artifact_id,
 )
 from truthound._ai_redaction import SummaryOnlyRedactor
 
 
 def _utc_now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 class ArtifactType(str, Enum):
@@ -78,7 +78,7 @@ class RedactionPolicy(BaseStrictModel):
     pii_literals_allowed: bool = False
 
     @model_validator(mode="after")
-    def _validate_summary_only(self) -> "RedactionPolicy":
+    def _validate_summary_only(self) -> RedactionPolicy:
         if self.mode != RedactionMode.SUMMARY_ONLY:
             raise ValueError("Phase 1 only supports summary_only redaction")
         if self.raw_samples_allowed:
@@ -109,7 +109,7 @@ class ProposedCheckIntent(BaseStrictModel):
         return payload
 
     @model_validator(mode="after")
-    def _validate_redaction_contract(self) -> "ProposedCheckIntent":
+    def _validate_redaction_contract(self) -> ProposedCheckIntent:
         SummaryOnlyRedactor().assert_safe(
             {
                 "intent": self.intent,
@@ -123,7 +123,7 @@ class ProposedCheckIntent(BaseStrictModel):
 
 
 class RejectedProposalItem(BaseStrictModel):
-    source: Literal["compiler", "model"] = "compiler"
+    source: Literal["compiler", "model", "normalizer"] = "compiler"
     intent: str
     columns: list[str] = Field(default_factory=list)
     params: dict[str, Any] = Field(default_factory=dict)
@@ -131,7 +131,7 @@ class RejectedProposalItem(BaseStrictModel):
     rationale: str | None = None
 
     @model_validator(mode="after")
-    def _validate_redaction_contract(self) -> "RejectedProposalItem":
+    def _validate_redaction_contract(self) -> RejectedProposalItem:
         SummaryOnlyRedactor().assert_safe(
             self.model_dump(mode="json"),
             label="rejected proposal item",
@@ -169,7 +169,7 @@ class CompiledProposalCheck(BaseStrictModel):
         return payload
 
     @model_validator(mode="after")
-    def _validate_redaction_contract(self) -> "CompiledProposalCheck":
+    def _validate_redaction_contract(self) -> CompiledProposalCheck:
         SummaryOnlyRedactor().assert_safe(
             self.model_dump(mode="json"),
             label="compiled proposal check",
@@ -215,7 +215,7 @@ class SuiteCheckSnapshot(BaseStrictModel):
     origin: str
 
     @model_validator(mode="after")
-    def _validate_redaction_contract(self) -> "SuiteCheckSnapshot":
+    def _validate_redaction_contract(self) -> SuiteCheckSnapshot:
         SummaryOnlyRedactor().assert_safe(
             self.model_dump(mode="json"),
             label="suite check snapshot",
@@ -232,7 +232,7 @@ class ValidationSuiteSnapshot(BaseStrictModel):
     checks: list[SuiteCheckSnapshot] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def _validate_shape(self) -> "ValidationSuiteSnapshot":
+    def _validate_shape(self) -> ValidationSuiteSnapshot:
         if self.check_count != len(self.checks):
             object.__setattr__(self, "check_count", len(self.checks))
         return self
@@ -260,7 +260,7 @@ class ValidationSuiteDiffPreview(BaseStrictModel):
     counts: ValidationSuiteDiffCounts = Field(default_factory=ValidationSuiteDiffCounts)
 
     @model_validator(mode="after")
-    def _validate_counts(self) -> "ValidationSuiteDiffPreview":
+    def _validate_counts(self) -> ValidationSuiteDiffPreview:
         expected = ValidationSuiteDiffCounts(
             added=len(self.added),
             already_present=len(self.already_present),
@@ -296,7 +296,7 @@ class SuiteProposalLLMResponse(BaseStrictModel):
     rejected_requests: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def _validate_redaction_contract(self) -> "SuiteProposalLLMResponse":
+    def _validate_redaction_contract(self) -> SuiteProposalLLMResponse:
         SummaryOnlyRedactor().assert_safe(
             self.model_dump(mode="json"),
             label="suite proposal llm response",
@@ -310,7 +310,7 @@ class RunAnalysisLLMResponse(BaseStrictModel):
     evidence_refs: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def _validate_redaction_contract(self) -> "RunAnalysisLLMResponse":
+    def _validate_redaction_contract(self) -> RunAnalysisLLMResponse:
         if not self.evidence_refs:
             raise ValueError("run analysis response must include at least one evidence ref")
         SummaryOnlyRedactor().assert_safe(
@@ -689,7 +689,7 @@ class ArtifactBase(BaseStrictModel):
         return value
 
     @model_validator(mode="after")
-    def _validate_compiler_contract(self) -> "ArtifactBase":
+    def _validate_compiler_contract(self) -> ArtifactBase:
         artifact_type = (
             self.artifact_type.value
             if isinstance(self.artifact_type, ArtifactType)
@@ -754,7 +754,7 @@ class SuiteProposalArtifact(ArtifactBase):
         return value
 
     @model_validator(mode="after")
-    def _validate_counts(self) -> "SuiteProposalArtifact":
+    def _validate_counts(self) -> SuiteProposalArtifact:
         compiled_count = len(self.checks)
         rejected_count = len(self.rejected_items)
         if self.compiled_check_count != compiled_count:
@@ -827,7 +827,7 @@ class RunAnalysisArtifact(ArtifactBase):
         return value
 
     @model_validator(mode="after")
-    def _validate_run_binding(self) -> "RunAnalysisArtifact":
+    def _validate_run_binding(self) -> RunAnalysisArtifact:
         expected = analysis_artifact_id_for_run(self.run_id)
         if self.artifact_id != expected:
             raise ValueError(f"artifact_id must match run_id ({expected})")
@@ -885,7 +885,7 @@ class ApprovalLogEvent(BaseStrictModel):
         return value
 
     @model_validator(mode="after")
-    def _validate_redaction_contract(self) -> "ApprovalLogEvent":
+    def _validate_redaction_contract(self) -> ApprovalLogEvent:
         SummaryOnlyRedactor().assert_safe(
             self.model_dump(mode="json"),
             label="approval event",
@@ -899,7 +899,7 @@ class ProposalDecisionResult(BaseStrictModel):
     event: ApprovalLogEvent | None = None
 
     @model_validator(mode="after")
-    def _validate_shape(self) -> "ProposalDecisionResult":
+    def _validate_shape(self) -> ProposalDecisionResult:
         if self.changed and self.event is None:
             raise ValueError("changed proposal decisions must include an approval event")
         if not self.changed and self.event is not None:
@@ -916,7 +916,7 @@ class ProposalApplyResult(BaseStrictModel):
     effective_suite_snapshot: ValidationSuiteSnapshot
 
     @model_validator(mode="after")
-    def _validate_shape(self) -> "ProposalApplyResult":
+    def _validate_shape(self) -> ProposalApplyResult:
         if self.changed and self.event is None:
             raise ValueError("changed proposal apply results must include an approval event")
         if not self.changed and self.event is not None:
@@ -952,7 +952,7 @@ class StructuredProviderRequest(BaseStrictModel):
     metadata: dict[str, Any] = Field(default_factory=dict)
 
     @model_validator(mode="after")
-    def _validate_redaction_contract(self) -> "StructuredProviderRequest":
+    def _validate_redaction_contract(self) -> StructuredProviderRequest:
         SummaryOnlyRedactor().assert_safe(
             {
                 "system_prompt": self.system_prompt,
@@ -965,6 +965,13 @@ class StructuredProviderRequest(BaseStrictModel):
         return self
 
 
+class ProviderEvent(BaseStrictModel):
+    phase: str
+    response_format: Literal["json_schema", "json_object", "unknown"] = "unknown"
+    outcome: str
+    reason_code: str | None = None
+
+
 class StructuredProviderResponse(BaseStrictModel):
     provider_name: str
     model_name: str
@@ -973,17 +980,58 @@ class StructuredProviderResponse(BaseStrictModel):
     usage: dict[str, int] | None = None
     finish_reason: str | None = None
     raw_response: dict[str, Any] | None = None
+    response_format_type: Literal["json_schema", "json_object", "unknown"] = "unknown"
+    used_json_mode_fallback: bool = False
+    repair_attempted: bool = False
+    repair_succeeded: bool = False
+    provider_events: list[ProviderEvent] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def _validate_redaction_contract(self) -> "StructuredProviderResponse":
+    def _validate_redaction_contract(self) -> StructuredProviderResponse:
         SummaryOnlyRedactor().assert_safe(
             {
                 "output_text": self.output_text,
                 "parsed_output": self.parsed_output,
+                "provider_events": [
+                    event.model_dump(mode="json") for event in self.provider_events
+                ],
             },
             label="provider response",
         )
         return self
+
+    def to_provider_trace_input_ref(self) -> InputRef:
+        metadata = {
+            "provider_name": self.provider_name,
+            "model_name": self.model_name,
+            "response_format_type": self.response_format_type,
+            "used_json_mode_fallback": self.used_json_mode_fallback,
+            "repair_attempted": self.repair_attempted,
+            "repair_succeeded": self.repair_succeeded,
+            "reason_codes": [
+                event.reason_code
+                for event in self.provider_events
+                if event.reason_code
+            ],
+            "events": [
+                event.model_dump(mode="json") for event in self.provider_events
+            ],
+        }
+        digest = hashlib.sha256(
+            json.dumps(
+                metadata,
+                sort_keys=True,
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ).encode("utf-8")
+        ).hexdigest()[:16]
+        return InputRef(
+            kind="provider_trace",
+            ref=f"provider-trace:{digest}",
+            hash=digest,
+            redacted=True,
+            metadata=metadata,
+        )
 
 
 class AIProvider(Protocol):
@@ -1017,9 +1065,14 @@ class OpenAISmokeResult(BaseStrictModel):
     workspace_retained: bool = False
     failure_stage: Literal["config", "provider", "parse", "compile", "persist", "verify"] | None = None
     error_message: str | None = None
+    response_format_type: Literal["json_schema", "json_object", "unknown"] | None = None
+    used_json_mode_fallback: bool = False
+    repair_attempted: bool = False
+    repair_succeeded: bool = False
+    provider_reason_codes: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def _validate_shape(self) -> "OpenAISmokeResult":
+    def _validate_shape(self) -> OpenAISmokeResult:
         if self.success:
             if self.failure_stage is not None:
                 raise ValueError("successful smoke results cannot include failure_stage")
@@ -1049,9 +1102,14 @@ class OpenAIExplainRunSmokeResult(BaseStrictModel):
     workspace_retained: bool = False
     failure_stage: Literal["config", "prepare", "provider", "parse", "persist", "verify"] | None = None
     error_message: str | None = None
+    response_format_type: Literal["json_schema", "json_object", "unknown"] | None = None
+    used_json_mode_fallback: bool = False
+    repair_attempted: bool = False
+    repair_succeeded: bool = False
+    provider_reason_codes: list[str] = Field(default_factory=list)
 
     @model_validator(mode="after")
-    def _validate_shape(self) -> "OpenAIExplainRunSmokeResult":
+    def _validate_shape(self) -> OpenAIExplainRunSmokeResult:
         if self.success:
             if self.failure_stage is not None:
                 raise ValueError("successful explain-run smoke results cannot include failure_stage")
@@ -1067,6 +1125,49 @@ class OpenAIExplainRunSmokeResult(BaseStrictModel):
         return self
 
 
+class OpenAISmokeMatrixEntry(BaseStrictModel):
+    model: str
+    expected_format: Literal["json_schema", "json_object", "auto"] = "auto"
+
+
+class OpenAISmokeMatrixItemResult(BaseStrictModel):
+    model_name: str
+    expected_format: Literal["json_schema", "json_object", "auto"] = "auto"
+    success: bool
+    proposal: OpenAISmokeResult
+    explain_run: OpenAIExplainRunSmokeResult
+
+
+class OpenAISmokeMatrixResult(BaseStrictModel):
+    provider_name: Literal["openai"] = "openai"
+    success: bool
+    results: list[OpenAISmokeMatrixItemResult]
+
+
+class OpenAIPromptCanaryCaseResult(BaseStrictModel):
+    case_id: str
+    split: Literal["golden", "mixed", "ambiguous"]
+    success: bool
+    artifact_id: str | None = None
+    compile_status: str | None = None
+    compiled_check_count: int = 0
+    rejected_check_count: int = 0
+    failure_stage: Literal["provider", "parse", "compile", "persist", "verify"] | None = None
+    error_message: str | None = None
+
+
+class OpenAIPromptAcceptanceCanaryResult(BaseStrictModel):
+    provider_name: Literal["openai"] = "openai"
+    model_name: str | None = None
+    success: bool
+    golden_case_count: int = 0
+    mixed_case_count: int = 0
+    ambiguous_case_count: int = 0
+    case_results: list[OpenAIPromptCanaryCaseResult]
+    workspace_dir: str | None = None
+    workspace_retained: bool = False
+
+
 __all__ = [
     "AIProvider",
     "ActorRef",
@@ -1077,8 +1178,14 @@ __all__ = [
     "CompiledProposalCheck",
     "InputRef",
     "OpenAIExplainRunSmokeResult",
+    "OpenAIPromptAcceptanceCanaryResult",
+    "OpenAIPromptCanaryCaseResult",
+    "OpenAISmokeMatrixEntry",
+    "OpenAISmokeMatrixItemResult",
+    "OpenAISmokeMatrixResult",
     "OpenAIProviderSpec",
     "OpenAISmokeResult",
+    "ProviderEvent",
     "ProposalApplyResult",
     "ProposalDecisionResult",
     "ProposedCheckIntent",

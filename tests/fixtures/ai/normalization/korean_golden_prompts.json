@@ -1,0 +1,673 @@
+[
+  {
+    "name": "email_required",
+    "prompt": "이메일은 비어 있으면 안 됩니다",
+    "columns": [
+      "email",
+      "customer_id",
+      "score",
+      "status",
+      "refund_rate",
+      "phone",
+      "url",
+      "sku_code",
+      "amount"
+    ],
+    "expected_candidates": [
+      {
+        "intent": "not_null",
+        "columns": [
+          "email"
+        ],
+        "params": {}
+      }
+    ],
+    "actionable": true,
+    "intent_label": "not_null",
+    "entity_labels": [
+      "email"
+    ],
+    "threshold_labels": {},
+    "ambiguity_label": "clear",
+    "task_label": "validation_intent_normalization",
+    "unicode_labels": [
+      "plain"
+    ]
+  },
+  {
+    "name": "email_must_be_null",
+    "prompt": "email은 비어 있어야 합니다",
+    "columns": [
+      "email",
+      "customer_id",
+      "score",
+      "status",
+      "refund_rate",
+      "phone",
+      "url",
+      "sku_code",
+      "amount"
+    ],
+    "expected_candidates": [
+      {
+        "intent": "null",
+        "columns": [
+          "email"
+        ],
+        "params": {}
+      }
+    ],
+    "actionable": true,
+    "intent_label": "null",
+    "entity_labels": [
+      "email"
+    ],
+    "threshold_labels": {},
+    "ambiguity_label": "clear",
+    "task_label": "validation_intent_normalization",
+    "unicode_labels": [
+      "plain"
+    ]
+  },
+  {
+    "name": "customer_id_required_alias",
+    "prompt": "고객ID는 누락 없어야 해",
+    "columns": [
+      "email",
+      "customer_id",
+      "score",
+      "status",
+      "refund_rate",
+      "phone",
+      "url",
+      "sku_code",
+      "amount"
+    ],
+    "expected_candidates": [
+      {
+        "intent": "not_null",
+        "columns": [
+          "customer_id"
+        ],
+        "params": {}
+      }
+    ],
+    "actionable": true,
+    "intent_label": "not_null",
+    "entity_labels": [
+      "customer_id"
+    ],
+    "threshold_labels": {},
+    "ambiguity_label": "clear",
+    "task_label": "validation_intent_normalization",
+    "unicode_labels": [
+      "plain"
+    ]
+  },
+  {
+    "name": "status_required",
+    "prompt": "상태 필드는 빈값 안 됩니다",
+    "columns": [
+      "email",
+      "customer_id",
+      "score",
+      "status",
+      "refund_rate",
+      "phone",
+      "url",
+      "sku_code",
+      "amount"
+    ],
+    "expected_candidates": [
+      {
+        "intent": "not_null",
+        "columns": [
+          "status"
+        ],
+        "params": {}
+      }
+    ],
+    "actionable": true,
+    "intent_label": "not_null",
+    "entity_labels": [
+      "status"
+    ],
+    "threshold_labels": {},
+    "ambiguity_label": "clear",
+    "task_label": "validation_intent_normalization",
+    "unicode_labels": [
+      "plain"
+    ]
+  },
+  {
+    "name": "customer_id_unique",
+    "prompt": "고객ID 중복 없어야 해",
+    "columns": [
+      "email",
+      "customer_id",
+      "score",
+      "status",
+      "refund_rate",
+      "phone",
+      "url",
+      "sku_code",
+      "amount"
+    ],
+    "expected_candidates": [
+      {
+        "intent": "unique",
+        "columns": [
+          "customer_id"
+        ],
+        "params": {}
+      }
+    ],
+    "actionable": true,
+    "intent_label": "unique",
+    "entity_labels": [
+      "customer_id"
+    ],
+    "threshold_labels": {},
+    "ambiguity_label": "clear",
+    "task_label": "validation_intent_normalization",
+    "unicode_labels": [
+      "plain"
+    ]
+  },
+  {
+    "name": "score_between",
+    "prompt": "score는 0 이상 100 이하",
+    "columns": [
+      "email",
+      "customer_id",
+      "score",
+      "status",
+      "refund_rate",
+      "phone",
+      "url",
+      "sku_code",
+      "amount"
+    ],
+    "expected_candidates": [
+      {
+        "intent": "between",
+        "columns": [
+          "score"
+        ],
+        "params": {
+          "min_value": 0,
+          "max_value": 100,
+          "inclusive": true
+        }
+      }
+    ],
+    "actionable": true,
+    "intent_label": "between",
+    "entity_labels": [
+      "score"
+    ],
+    "threshold_labels": {
+      "min_value": 0,
+      "max_value": 100,
+      "inclusive": true
+    },
+    "ambiguity_label": "clear",
+    "task_label": "validation_intent_normalization",
+    "unicode_labels": [
+      "plain"
+    ]
+  },
+  {
+    "name": "amount_lower_bound",
+    "prompt": "amount는 0 이상",
+    "columns": [
+      "email",
+      "customer_id",
+      "score",
+      "status",
+      "refund_rate",
+      "phone",
+      "url",
+      "sku_code",
+      "amount"
+    ],
+    "expected_candidates": [
+      {
+        "intent": "between",
+        "columns": [
+          "amount"
+        ],
+        "params": {
+          "min_value": 0,
+          "inclusive": true
+        }
+      }
+    ],
+    "actionable": true,
+    "intent_label": "between",
+    "entity_labels": [
+      "amount"
+    ],
+    "threshold_labels": {
+      "min_value": 0,
+      "inclusive": true
+    },
+    "ambiguity_label": "clear",
+    "task_label": "validation_intent_normalization",
+    "unicode_labels": [
+      "plain"
+    ]
+  },
+  {
+    "name": "refund_rate_upper_bound",
+    "prompt": "환불률은 1 이하",
+    "columns": [
+      "email",
+      "customer_id",
+      "score",
+      "status",
+      "refund_rate",
+      "phone",
+      "url",
+      "sku_code",
+      "amount"
+    ],
+    "expected_candidates": [
+      {
+        "intent": "between",
+        "columns": [
+          "refund_rate"
+        ],
+        "params": {
+          "max_value": 1,
+          "inclusive": true
+        }
+      }
+    ],
+    "actionable": true,
+    "intent_label": "between",
+    "entity_labels": [
+      "refund_rate"
+    ],
+    "threshold_labels": {
+      "max_value": 1,
+      "inclusive": true
+    },
+    "ambiguity_label": "clear",
+    "task_label": "validation_intent_normalization",
+    "unicode_labels": [
+      "plain"
+    ]
+  },
+  {
+    "name": "email_completeness_ratio",
+    "prompt": "이메일 결측률 1% 이하로 유지",
+    "columns": [
+      "email",
+      "customer_id",
+      "score",
+      "status",
+      "refund_rate",
+      "phone",
+      "url",
+      "sku_code",
+      "amount"
+    ],
+    "expected_candidates": [
+      {
+        "intent": "completeness_ratio",
+        "columns": [
+          "email"
+        ],
+        "params": {
+          "min_ratio": 0.99
+        }
+      }
+    ],
+    "actionable": true,
+    "intent_label": "completeness_ratio",
+    "entity_labels": [
+      "email"
+    ],
+    "threshold_labels": {
+      "min_ratio": 0.99
+    },
+    "ambiguity_label": "clear",
+    "task_label": "validation_intent_normalization",
+    "unicode_labels": [
+      "plain"
+    ]
+  },
+  {
+    "name": "customer_unique_ratio",
+    "prompt": "customer_id 고유 비율 99% 이상",
+    "columns": [
+      "email",
+      "customer_id",
+      "score",
+      "status",
+      "refund_rate",
+      "phone",
+      "url",
+      "sku_code",
+      "amount"
+    ],
+    "expected_candidates": [
+      {
+        "intent": "unique_ratio",
+        "columns": [
+          "customer_id"
+        ],
+        "params": {
+          "min_ratio": 0.99
+        }
+      }
+    ],
+    "actionable": true,
+    "intent_label": "unique_ratio",
+    "entity_labels": [
+      "customer_id"
+    ],
+    "threshold_labels": {
+      "min_ratio": 0.99
+    },
+    "ambiguity_label": "clear",
+    "task_label": "validation_intent_normalization",
+    "unicode_labels": [
+      "plain"
+    ]
+  },
+  {
+    "name": "email_format",
+    "prompt": "이메일 형식 확인",
+    "columns": [
+      "email",
+      "customer_id",
+      "score",
+      "status",
+      "refund_rate",
+      "phone",
+      "url",
+      "sku_code",
+      "amount"
+    ],
+    "expected_candidates": [
+      {
+        "intent": "format",
+        "columns": [
+          "email"
+        ],
+        "params": {
+          "format": "email"
+        }
+      }
+    ],
+    "actionable": true,
+    "intent_label": "format",
+    "entity_labels": [
+      "email"
+    ],
+    "threshold_labels": {
+      "format": "email"
+    },
+    "ambiguity_label": "clear",
+    "task_label": "validation_intent_normalization",
+    "unicode_labels": [
+      "plain"
+    ]
+  },
+  {
+    "name": "phone_format",
+    "prompt": "전화번호 형식 확인",
+    "columns": [
+      "email",
+      "customer_id",
+      "score",
+      "status",
+      "refund_rate",
+      "phone",
+      "url",
+      "sku_code",
+      "amount"
+    ],
+    "expected_candidates": [
+      {
+        "intent": "format",
+        "columns": [
+          "phone"
+        ],
+        "params": {
+          "format": "phone"
+        }
+      }
+    ],
+    "actionable": true,
+    "intent_label": "format",
+    "entity_labels": [
+      "phone"
+    ],
+    "threshold_labels": {
+      "format": "phone"
+    },
+    "ambiguity_label": "clear",
+    "task_label": "validation_intent_normalization",
+    "unicode_labels": [
+      "plain"
+    ]
+  },
+  {
+    "name": "status_enum",
+    "prompt": "상태는 대기/승인/반려 중 하나만 허용",
+    "columns": [
+      "email",
+      "customer_id",
+      "score",
+      "status",
+      "refund_rate",
+      "phone",
+      "url",
+      "sku_code",
+      "amount"
+    ],
+    "expected_candidates": [
+      {
+        "intent": "in_set",
+        "columns": [
+          "status"
+        ],
+        "params": {
+          "allowed_values": [
+            "대기",
+            "승인",
+            "반려"
+          ]
+        }
+      }
+    ],
+    "actionable": true,
+    "intent_label": "in_set",
+    "entity_labels": [
+      "status"
+    ],
+    "threshold_labels": {
+      "allowed_values": [
+        "대기",
+        "승인",
+        "반려"
+      ]
+    },
+    "ambiguity_label": "clear",
+    "task_label": "validation_intent_normalization",
+    "unicode_labels": [
+      "plain"
+    ]
+  },
+  {
+    "name": "sku_exact_length",
+    "prompt": "sku_code 길이 7자",
+    "columns": [
+      "email",
+      "customer_id",
+      "score",
+      "status",
+      "refund_rate",
+      "phone",
+      "url",
+      "sku_code",
+      "amount"
+    ],
+    "expected_candidates": [
+      {
+        "intent": "length",
+        "columns": [
+          "sku_code"
+        ],
+        "params": {
+          "min_length": 7,
+          "max_length": 7
+        }
+      }
+    ],
+    "actionable": true,
+    "intent_label": "length",
+    "entity_labels": [
+      "sku_code"
+    ],
+    "threshold_labels": {
+      "min_length": 7,
+      "max_length": 7
+    },
+    "ambiguity_label": "clear",
+    "task_label": "validation_intent_normalization",
+    "unicode_labels": [
+      "plain"
+    ]
+  },
+  {
+    "name": "phone_length_range",
+    "prompt": "전화번호는 10자부터 11자까지",
+    "columns": [
+      "email",
+      "customer_id",
+      "score",
+      "status",
+      "refund_rate",
+      "phone",
+      "url",
+      "sku_code",
+      "amount"
+    ],
+    "expected_candidates": [
+      {
+        "intent": "length",
+        "columns": [
+          "phone"
+        ],
+        "params": {
+          "min_length": 10,
+          "max_length": 11
+        }
+      }
+    ],
+    "actionable": true,
+    "intent_label": "length",
+    "entity_labels": [
+      "phone"
+    ],
+    "threshold_labels": {
+      "min_length": 10,
+      "max_length": 11
+    },
+    "ambiguity_label": "clear",
+    "task_label": "validation_intent_normalization",
+    "unicode_labels": [
+      "plain"
+    ]
+  },
+  {
+    "name": "refund_rate_mean_between",
+    "prompt": "환불률 평균은 0부터 1까지",
+    "columns": [
+      "email",
+      "customer_id",
+      "score",
+      "status",
+      "refund_rate",
+      "phone",
+      "url",
+      "sku_code",
+      "amount"
+    ],
+    "expected_candidates": [
+      {
+        "intent": "mean_between",
+        "columns": [
+          "refund_rate"
+        ],
+        "params": {
+          "min_value": 0,
+          "max_value": 1,
+          "inclusive": true
+        }
+      }
+    ],
+    "actionable": true,
+    "intent_label": "mean_between",
+    "entity_labels": [
+      "refund_rate"
+    ],
+    "threshold_labels": {
+      "min_value": 0,
+      "max_value": 1,
+      "inclusive": true
+    },
+    "ambiguity_label": "clear",
+    "task_label": "validation_intent_normalization",
+    "unicode_labels": [
+      "plain"
+    ]
+  },
+  {
+    "name": "amount_sum_between",
+    "prompt": "금액 총합은 0부터 10000까지",
+    "columns": [
+      "email",
+      "customer_id",
+      "score",
+      "status",
+      "refund_rate",
+      "phone",
+      "url",
+      "sku_code",
+      "amount"
+    ],
+    "expected_candidates": [
+      {
+        "intent": "sum_between",
+        "columns": [
+          "amount"
+        ],
+        "params": {
+          "min_value": 0,
+          "max_value": 10000,
+          "inclusive": true
+        }
+      }
+    ],
+    "actionable": true,
+    "intent_label": "sum_between",
+    "entity_labels": [
+      "amount"
+    ],
+    "threshold_labels": {
+      "min_value": 0,
+      "max_value": 10000,
+      "inclusive": true
+    },
+    "ambiguity_label": "clear",
+    "task_label": "validation_intent_normalization",
+    "unicode_labels": [
+      "plain"
+    ]
+  }
+]

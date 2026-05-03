@@ -1,0 +1,52 @@
+[
+  {
+    "name": "duplicate_execution",
+    "prompt": "중복 실행 로그가 있는지 봐줘",
+    "columns": [
+      "execution_id",
+      "status"
+    ],
+    "expected_reason": "false_positive_guard",
+    "intent_label": null,
+    "entity_labels": [],
+    "threshold_labels": {},
+    "ambiguity_label": "false_positive",
+    "task_label": "validation_intent_normalization",
+    "unicode_labels": [
+      "plain"
+    ]
+  },
+  {
+    "name": "duplicate_request",
+    "prompt": "중복 요청 때문에 느린지 확인해줘",
+    "columns": [
+      "request_id",
+      "status"
+    ],
+    "expected_reason": "false_positive_guard",
+    "intent_label": null,
+    "entity_labels": [],
+    "threshold_labels": {},
+    "ambiguity_label": "false_positive",
+    "task_label": "validation_intent_normalization",
+    "unicode_labels": [
+      "plain"
+    ]
+  },
+  {
+    "name": "status_health",
+    "prompt": "상태가 좋은지 봐줘",
+    "columns": [
+      "status"
+    ],
+    "expected_reason": "false_positive_guard",
+    "intent_label": null,
+    "entity_labels": [],
+    "threshold_labels": {},
+    "ambiguity_label": "false_positive",
+    "task_label": "validation_intent_normalization",
+    "unicode_labels": [
+      "plain"
+    ]
+  }
+]
