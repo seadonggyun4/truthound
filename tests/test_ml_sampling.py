@@ -1,25 +1,49 @@
 """Tests for ML anomaly validator sampling and memory optimization."""
 
-import pytest
-import polars as pl
 import numpy as np
+import polars as pl
+import pytest
 
 from truthound.validators.anomaly.ml_based import (
+    DEFAULT_BATCH_SIZE,
+    DEFAULT_SAMPLE_SIZE,
+    MEMORY_THRESHOLD_MB,
+    DBSCANAnomalyValidator,
     IsolationForestValidator,
+    LargeDatasetMixin,
     LOFValidator,
     OneClassSVMValidator,
-    DBSCANAnomalyValidator,
-    LargeDatasetMixin,
-    _estimate_data_memory_mb,
     _compute_optimal_sample_size,
-    DEFAULT_SAMPLE_SIZE,
-    DEFAULT_BATCH_SIZE,
-    MEMORY_THRESHOLD_MB,
+    _estimate_data_memory_mb,
+    _resolve_sklearn_n_jobs,
 )
 
 
 class TestMemoryUtilities:
     """Tests for memory estimation utilities."""
+
+    def test_resolve_sklearn_n_jobs_defaults_to_all_cores(self, monkeypatch):
+        """Test sklearn worker default stays throughput-oriented outside CI."""
+        monkeypatch.delenv("TRUTHOUND_ML_N_JOBS", raising=False)
+
+        assert _resolve_sklearn_n_jobs() == -1
+
+    def test_resolve_sklearn_n_jobs_uses_operator_override(self, monkeypatch):
+        """Test CI/operator override can cap sklearn native workers."""
+        monkeypatch.setenv("TRUTHOUND_ML_N_JOBS", "1")
+
+        assert _resolve_sklearn_n_jobs() == 1
+
+    @pytest.mark.parametrize("value", ["", "not-an-int", "0"])
+    def test_resolve_sklearn_n_jobs_falls_back_for_invalid_override(
+        self,
+        monkeypatch,
+        value,
+    ):
+        """Test invalid override values preserve the production default."""
+        monkeypatch.setenv("TRUTHOUND_ML_N_JOBS", value)
+
+        assert _resolve_sklearn_n_jobs(default=-1) == -1
 
     def test_estimate_data_memory_mb(self):
         """Test memory estimation calculation."""

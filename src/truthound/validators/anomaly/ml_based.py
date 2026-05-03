@@ -20,24 +20,41 @@ Memory Optimization:
     )
 """
 
+import os
 from typing import Any
 
-import polars as pl
 import numpy as np
+import polars as pl
 
-from truthound.types import Severity
-from truthound.validators.base import ValidationIssue
-from truthound.validators.registry import register_validator
 from truthound.validators.anomaly.base import (
     AnomalyValidator,
     MLAnomalyMixin,
 )
-
+from truthound.validators.base import ValidationIssue
+from truthound.validators.registry import register_validator
 
 # Default thresholds for memory-efficient processing
 DEFAULT_SAMPLE_SIZE = 100000  # Default max samples for training
 DEFAULT_BATCH_SIZE = 50000    # Default batch size for scoring
 MEMORY_THRESHOLD_MB = 500     # Auto-sample when data exceeds this
+
+
+def _resolve_sklearn_n_jobs(default: int = -1) -> int:
+    """Resolve sklearn worker count with a CI/operator override.
+
+    scikit-learn's ``n_jobs=-1`` is good for interactive throughput, but hosted
+    CI runners can exhaust native threads when multiple shards run ML tests.
+    """
+    raw_value = os.getenv("TRUTHOUND_ML_N_JOBS")
+    if raw_value is None or not raw_value.strip():
+        return default
+
+    try:
+        parsed = int(raw_value)
+    except ValueError:
+        return default
+
+    return default if parsed == 0 else parsed
 
 
 def _check_sklearn_available() -> None:
@@ -48,7 +65,7 @@ def _check_sklearn_available() -> None:
         raise ImportError(
             "scikit-learn is required for ML-based anomaly detection. "
             "Install with: pip install truthound[anomaly]"
-        )
+        ) from None
 
 
 def _estimate_data_memory_mb(n_rows: int, n_cols: int) -> float:
@@ -335,7 +352,7 @@ class IsolationForestValidator(AnomalyValidator, MLAnomalyMixin, LargeDatasetMix
             n_estimators=self.n_estimators,
             max_samples=self.max_samples,
             random_state=self.random_state,
-            n_jobs=-1,  # Use all cores
+            n_jobs=_resolve_sklearn_n_jobs(),
         )
 
         # Predict: -1 for anomalies, 1 for normal
@@ -504,7 +521,7 @@ class LOFValidator(AnomalyValidator, MLAnomalyMixin, LargeDatasetMixin):
             n_neighbors=n_neighbors,
             contamination=self.contamination,
             metric=self.metric,
-            n_jobs=-1,
+            n_jobs=_resolve_sklearn_n_jobs(),
         )
 
         # Predict: -1 for anomalies, 1 for normal
@@ -1104,7 +1121,7 @@ class DBSCANAnomalyValidator(AnomalyValidator, MLAnomalyMixin, LargeDatasetMixin
             eps=self.eps,
             min_samples=self.min_samples,
             metric=self.metric,
-            n_jobs=-1,
+            n_jobs=_resolve_sklearn_n_jobs(),
         )
 
         labels = model.fit_predict(normalized_data)

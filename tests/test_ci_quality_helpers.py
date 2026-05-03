@@ -318,6 +318,12 @@ def test_tests_pr_workflow_uses_sharded_quality_gate():
 
     assert workflow["name"] == "Tests PR"
     assert workflow["concurrency"]["cancel-in-progress"] is True
+    assert workflow["env"]["POLARS_MAX_THREADS"] == "1"
+    assert workflow["env"]["OMP_NUM_THREADS"] == "1"
+    assert workflow["env"]["OPENBLAS_NUM_THREADS"] == "1"
+    assert workflow["env"]["MKL_NUM_THREADS"] == "1"
+    assert workflow["env"]["LOKY_MAX_CPU_COUNT"] == "1"
+    assert workflow["env"]["TRUTHOUND_ML_N_JOBS"] == "1"
     assert "quality-collect" in workflow["jobs"]
     assert "quality-contract" in workflow["jobs"]
     assert "quality-fault-e2e" in workflow["jobs"]

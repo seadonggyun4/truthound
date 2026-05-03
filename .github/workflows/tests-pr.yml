@@ -36,6 +36,20 @@ concurrency:
   group: tests-pr-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+env:
+  # Hosted runners have small thread/memory ceilings; keep native ML/Polars
+  # workloads deterministic so contract shards fail only on real regressions.
+  PYTHONUNBUFFERED: "1"
+  POLARS_MAX_THREADS: "1"
+  OMP_NUM_THREADS: "1"
+  OPENBLAS_NUM_THREADS: "1"
+  MKL_NUM_THREADS: "1"
+  NUMEXPR_NUM_THREADS: "1"
+  VECLIB_MAXIMUM_THREADS: "1"
+  BLIS_NUM_THREADS: "1"
+  LOKY_MAX_CPU_COUNT: "1"
+  TRUTHOUND_ML_N_JOBS: "1"
+
 jobs:
   quality-collect:
     runs-on: ubuntu-latest
