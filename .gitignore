@@ -101,9 +101,11 @@ CLAUDE.md
 # Truthound cache
 .truthound/
 benchmark-artifacts/
+test-artifacts/
 
 .truthound_keys
 site/
+.release-venv/
 
 #copilot
 copilot-instructions.md
