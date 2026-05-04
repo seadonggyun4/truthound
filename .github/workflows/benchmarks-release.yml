@@ -5,11 +5,16 @@ on:
   push:
     branches:
       - "release/*"
+    # Tag-based releases also run this gate. Keep the fixed self-hosted
+    # benchmark runner online before creating/pushing a release tag.
     tags:
       - "v*"
 
 jobs:
   release-parity:
+    # This gate requires a live self-hosted runner with both labels below.
+    # If the benchmark runner has been deleted or is offline, tag releases
+    # will stay queued until the runner is restored or the run is canceled.
     runs-on:
       - self-hosted
       - benchmark-fixed
