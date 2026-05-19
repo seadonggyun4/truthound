@@ -276,6 +276,7 @@ nav:
                   - new validator: cli/scaffolding/new-validator.md
       - Concepts & Architecture:
           - Architecture: concepts/architecture.md
+          - Depot Engine Primitives: concepts/depot-engine-primitives.md
           - Zero-Config Context: concepts/zero-config.md
           - Plugin Platform: concepts/plugins.md
           - Advanced Features: concepts/advanced.md

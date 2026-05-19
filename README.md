@@ -124,6 +124,20 @@ Truthound Core 3.x centers the public contract around a smaller and more durable
 
 Truthound Orchestration and Truthound Dashboard build on these contracts instead of replacing them. That is the key layered-system boundary.
 
+### Depot Engine Primitives
+
+Truthound Core also carries private Depot engine primitives for dataset
+repository workflows before they become public API. These Core-owned private
+primitives are used by Truthound Depot and Truthound Orchestration to exchange
+redacted artifact envelopes, deterministic dataset fingerprints, summary-level
+diffs, and `ValidationRunResult`-based quality gate projections.
+
+This is not a new root public surface: there is no public `truthound.datasets`
+and there is no public `truthound.depot` namespace. Core owns the validation engine,
+fingerprint/diff primitive, and quality gate projection runtime; Truthound
+Depot owns repository UI, branch/merge/review/rollback decisions, approval
+state, and operator workflows.
+
 The design is grounded in proven ideas from Great Expectations, Soda, Deequ, and Pandera, but optimized for a simpler zero-config starting point and a Polars-first execution path.
 
 The practical 3.x kernel changes are:
@@ -290,6 +304,7 @@ Truthound now uses one lifecycle runtime:
 - Core overview: [docs/index.md](docs/index.md)
 - Core getting started: [docs/getting-started/index.md](docs/getting-started/index.md)
 - Core architecture: [docs/concepts/architecture.md](docs/concepts/architecture.md)
+- Depot engine primitives: [docs/concepts/depot-engine-primitives.md](docs/concepts/depot-engine-primitives.md)
 - Core zero-config context: [docs/concepts/zero-config.md](docs/concepts/zero-config.md)
 - Core guides: [docs/guides/index.md](docs/guides/index.md)
 - Core reference: [docs/reference/index.md](docs/reference/index.md)

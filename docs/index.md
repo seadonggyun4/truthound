@@ -38,6 +38,7 @@ the boundary level without reproducing the full console implementation here.
 | Design scheduler-native execution | [Truthound Orchestration](orchestration/index.md) |
 | Operate a control-plane UI for Truthound | [Truthound Dashboard](dashboard/index.md) |
 | Understand how the layers fit together | [Concepts & Architecture](concepts/index.md) |
+| Understand private Depot engine contracts before public API promotion | [Depot Engine Primitives](concepts/depot-engine-primitives.md) |
 
 ## Why The Core Comes First
 
@@ -50,6 +51,10 @@ behavior are fixed.
 - planner/runtime boundaries keep execution exact-by-default and maintainable
 - `TruthoundContext` owns the zero-config `.truthound/` workspace
 - benchmark claims are intentionally bounded to comparable core workloads
+- private Depot engine primitives provide redacted artifact envelopes,
+  deterministic fingerprint/diff contracts, and quality gate projections for
+  Truthound Depot and Truthound Orchestration without creating a public
+  `truthound.datasets` or `truthound.depot` API
 
 ## Verified Core Benchmark Snapshot
 
@@ -74,6 +79,7 @@ Use `Core` when you need the kernel itself:
 - [Guides](guides/index.md)
 - [Reference](reference/index.md)
 - [Concepts & Architecture](concepts/index.md)
+- [Depot Engine Primitives](concepts/depot-engine-primitives.md)
 
 ### Orchestration
 

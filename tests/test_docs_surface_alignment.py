@@ -174,6 +174,61 @@ def test_concepts_docs_define_explicit_layer_boundaries() -> None:
     assert "data-plane / validation kernel" in text
     assert "execution integration layer" in text
     assert "control-plane" in text
+    assert "truthound._datasets" in text
+    assert "private engine primitives" in text
+
+
+def test_depot_engine_primitives_docs_define_private_core_boundary() -> None:
+    text = _read("docs/concepts/depot-engine-primitives.md")
+    lowered = text.lower()
+    compact = " ".join(text.split())
+
+    assert "private namespace" in lowered
+    assert "truthound._datasets" in text
+    assert "artifact_schema_version" in text
+    assert "raw rows" in lowered
+    assert "sample values" in lowered
+    assert "Truthound Depot" in text
+    assert "Truthound Orchestration" in text
+    assert "ValidationRunResult" in text
+    assert "DatasetArtifactEnvelope" in text
+    assert "row_level_diff_available" in text
+    assert "datasets-private" in text
+    assert "Core does not query a Depot database" in text
+    assert "does not expose `truthound.datasets`" in compact
+    assert "`truthound.depot`" in text
+
+    forbidden = (
+        "GitHub for Data",
+        "lakeFS replacement",
+        "DVC replacement",
+        "Dolt replacement",
+        "company-wide data lake versioning",
+        "from truthound.datasets import",
+        "import truthound.datasets",
+        "from truthound.depot import",
+        "import truthound.depot",
+    )
+    for phrase in forbidden:
+        assert phrase not in text
+
+
+def test_home_surfaces_link_depot_engine_primitives_without_public_api_promise() -> None:
+    readme = _read("README.md")
+    home = _read("docs/index.md")
+    readme_compact = " ".join(readme.split())
+    home_compact = " ".join(home.split())
+
+    assert "Depot Engine Primitives" in readme
+    assert "docs/concepts/depot-engine-primitives.md" in readme
+    assert "Core-owned private primitives" in readme_compact
+    assert "there is no public `truthound.datasets`" in readme
+    assert "there is no public `truthound.depot`" in readme
+
+    assert "Depot Engine Primitives" in home
+    assert "concepts/depot-engine-primitives.md" in home
+    assert "private Depot engine primitives" in home_compact
+    assert "without creating a public" in home_compact
 
 
 def test_dashboard_term_is_disambiguated_for_datadocs_ui() -> None:

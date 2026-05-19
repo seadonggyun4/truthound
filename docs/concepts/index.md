@@ -12,6 +12,9 @@ Read this section when you want to understand:
 - how the execution integration layer and control-plane relate to that core
 - where optional namespaces such as drift, profiler, realtime, lineage, and ML
   attach without becoming the kernel itself
+- how private Depot engine primitives let Truthound Depot and Truthound
+  Orchestration share dataset repository artifacts without making Core own the
+  console domain
 - which layer owns which contract
 
 ## Layered System Map
@@ -52,6 +55,7 @@ Not everything outside the root facade is a separate product layer.
 |---------|----------|----------------|
 | **Core-adjoining namespaces** | `truthound.drift`, `truthound.checkpoint`, `truthound.reporters`, `truthound.datadocs`, `truthound.profiler` | part of the main `truthound` repository and still downstream of the core validation contract |
 | **Review-layer namespace** | `truthound.ai` | additive AI surface that compiles proposals and run analysis into reviewable artifacts without redefining the kernel contract |
+| **Private engine primitives** | `truthound._datasets` | internal dataset repository contracts for redacted envelopes, fingerprints, summary diffs, quality gate projections, and bundle exchange before public API promotion |
 | **Optional advanced namespaces** | `truthound.lineage`, `truthound.realtime`, `truthound.ml` | broader capability surface inside the main repository; useful, but not the same thing as the core kernel |
 | **First-party external layers** | `truthound-orchestration`, dashboard control-plane | separate operational layers; orchestration remains mirrored here, while dashboard is represented through curated overview pages rather than a full mirrored manual |
 
@@ -71,10 +75,11 @@ Not everything outside the root facade is a separate product layer.
 1. [Truthound 3.0 Architecture](architecture.md)
 2. [Zero-Config Context](zero-config.md)
 3. [Plugin Platform](plugins.md)
-4. [Truthound AI](../ai/index.md)
-5. [Advanced Features](advanced.md)
-6. [Truthound Orchestration](../orchestration/index.md)
-7. [Truthound Dashboard](../dashboard/index.md)
+4. [Depot Engine Primitives](depot-engine-primitives.md)
+5. [Truthound AI](../ai/index.md)
+6. [Advanced Features](advanced.md)
+7. [Truthound Orchestration](../orchestration/index.md)
+8. [Truthound Dashboard](../dashboard/index.md)
 
 ## Related Reading
 
