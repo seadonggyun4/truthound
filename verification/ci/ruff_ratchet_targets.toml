@@ -16,3 +16,11 @@ paths = [
   "src/truthound/checkpoint/_result_helpers.py",
   "src/truthound/checkpoint/_validation.py",
 ]
+
+[[target]]
+name = "datasets-private"
+paths = [
+  "src/truthound/_datasets",
+  "src/truthound/_redaction.py",
+  "src/truthound/_ai_redaction.py",
+]

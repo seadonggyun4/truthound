@@ -222,7 +222,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [reporters, checkpoint-top-level]
+        target: [reporters, checkpoint-top-level, datasets-private]
     steps:
       - uses: actions/checkout@v4
 

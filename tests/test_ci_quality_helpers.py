@@ -12,12 +12,7 @@ import yaml
 
 
 def _load_module(script_name: str):
-    script_path = (
-        Path(__file__).resolve().parents[1]
-        / "verification"
-        / "ci"
-        / script_name
-    )
+    script_path = Path(__file__).resolve().parents[1] / "verification" / "ci" / script_name
     spec = importlib.util.spec_from_file_location(script_name.replace(".py", ""), script_path)
     module = importlib.util.module_from_spec(spec)
     assert spec is not None
@@ -29,10 +24,7 @@ def _load_module(script_name: str):
 
 def _load_ruff_ratchet_manifest() -> list[dict[str, object]]:
     manifest_path = (
-        Path(__file__).resolve().parents[1]
-        / "verification"
-        / "ci"
-        / "ruff_ratchet_targets.toml"
+        Path(__file__).resolve().parents[1] / "verification" / "ci" / "ruff_ratchet_targets.toml"
     )
     manifest = tomllib.loads(manifest_path.read_text(encoding="utf-8"))
     return manifest["target"]
@@ -122,11 +114,13 @@ def test_build_quality_shards_writes_balanced_manifests(tmp_path: Path):
     ]
 
     alpha_shards = [
-        name for name, nodeids in manifests.items()
+        name
+        for name, nodeids in manifests.items()
         if "tests/unit/checkpoint/test_alpha.py" in nodeids
     ]
     beta_shards = [
-        name for name, nodeids in manifests.items()
+        name
+        for name, nodeids in manifests.items()
         if "tests/unit/execution/test_beta.py" in nodeids
     ]
     assert alpha_shards == ["contract-1.txt"] or alpha_shards == ["contract-0.txt"]
@@ -227,16 +221,17 @@ def test_build_quality_shards_dedupes_overlap_into_fault_lane(tmp_path: Path):
         "tests/unit/security/test_fault.py",
         "tests/unit/security/test_overlap.py",
     ]
-    assert any("tests/unit/security/test_overlap.py" in entries for entries in contract_manifests.values())
+    assert any(
+        "tests/unit/security/test_overlap.py" in entries for entries in contract_manifests.values()
+    )
 
 
 @pytest.mark.contract
-def test_run_pytest_manifest_executes_selected_nodeids(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_run_pytest_manifest_executes_selected_nodeids(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
     script_path = (
-        Path(__file__).resolve().parents[1]
-        / "verification"
-        / "ci"
-        / "run_pytest_manifest.py"
+        Path(__file__).resolve().parents[1] / "verification" / "ci" / "run_pytest_manifest.py"
     )
     test_file = tmp_path / "test_sample.py"
     manifest = tmp_path / "manifest.txt"
@@ -285,10 +280,7 @@ def test_run_pytest_manifest_executes_selected_nodeids(tmp_path: Path, monkeypat
 @pytest.mark.contract
 def test_run_pytest_manifest_rejects_empty_manifest(tmp_path: Path):
     script_path = (
-        Path(__file__).resolve().parents[1]
-        / "verification"
-        / "ci"
-        / "run_pytest_manifest.py"
+        Path(__file__).resolve().parents[1] / "verification" / "ci" / "run_pytest_manifest.py"
     )
     manifest = tmp_path / "manifest.txt"
     manifest.write_text("", encoding="utf-8")
@@ -313,12 +305,7 @@ def test_run_pytest_manifest_rejects_empty_manifest(tmp_path: Path):
 
 @pytest.mark.contract
 def test_tests_pr_workflow_uses_sharded_quality_gate():
-    workflow_path = (
-        Path(__file__).resolve().parents[1]
-        / ".github"
-        / "workflows"
-        / "tests-pr.yml"
-    )
+    workflow_path = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "tests-pr.yml"
     workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
     ratchet_targets = [target["name"] for target in _load_ruff_ratchet_manifest()]
     on_section = workflow.get("on") or workflow.get(True) or {}
@@ -343,7 +330,9 @@ def test_tests_pr_workflow_uses_sharded_quality_gate():
     assert "docs/**" in on_section["push"]["paths"]
     assert "mkdocs.public.yml" in on_section["push"]["paths"]
     assert workflow["jobs"]["quality-contract"]["strategy"]["matrix"]["shard_id"] == [0, 1, 2, 3]
-    assert workflow["jobs"]["quality-ruff-ratchet"]["strategy"]["matrix"]["target"] == ratchet_targets
+    assert (
+        workflow["jobs"]["quality-ruff-ratchet"]["strategy"]["matrix"]["target"] == ratchet_targets
+    )
     assert workflow["jobs"]["quality-gate"]["needs"] == [
         "quality-contract",
         "quality-fault-e2e",
@@ -362,7 +351,9 @@ def test_tests_pr_workflow_uses_sharded_quality_gate():
         step for step in fault_steps if step.get("name") == "Download quality shard artifacts"
     )
     contract_run = next(step for step in contract_steps if step.get("name") == "Run contract shard")
-    fault_run = next(step for step in fault_steps if step.get("name") == "Run fault and e2e manifest")
+    fault_run = next(
+        step for step in fault_steps if step.get("name") == "Run fault and e2e manifest"
+    )
     ratchet_run = next(
         step for step in ratchet_steps if step.get("name") == "Run ruff ratchet target"
     )
@@ -378,12 +369,7 @@ def test_tests_pr_workflow_uses_sharded_quality_gate():
 
 @pytest.mark.contract
 def test_docs_workflow_does_not_checkout_dashboard_repo() -> None:
-    workflow_path = (
-        Path(__file__).resolve().parents[1]
-        / ".github"
-        / "workflows"
-        / "docs.yml"
-    )
+    workflow_path = Path(__file__).resolve().parents[1] / ".github" / "workflows" / "docs.yml"
     workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
 
     assert workflow["name"] == "Docs"
@@ -400,7 +386,11 @@ def test_docs_workflow_does_not_checkout_dashboard_repo() -> None:
 def test_ruff_ratchet_manifest_tracks_clean_boundaries():
     targets = _load_ruff_ratchet_manifest()
 
-    assert [target["name"] for target in targets] == ["reporters", "checkpoint-top-level"]
+    assert [target["name"] for target in targets] == [
+        "reporters",
+        "checkpoint-top-level",
+        "datasets-private",
+    ]
     assert targets[0]["paths"] == ["src/truthound/reporters"]
     assert targets[1]["paths"] == [
         "src/truthound/checkpoint/__init__.py",
@@ -412,15 +402,17 @@ def test_ruff_ratchet_manifest_tracks_clean_boundaries():
         "src/truthound/checkpoint/_result_helpers.py",
         "src/truthound/checkpoint/_validation.py",
     ]
+    assert targets[2]["paths"] == [
+        "src/truthound/_datasets",
+        "src/truthound/_redaction.py",
+        "src/truthound/_ai_redaction.py",
+    ]
 
 
 @pytest.mark.contract
 def test_run_ruff_ratchet_lists_manifest_targets():
     script_path = (
-        Path(__file__).resolve().parents[1]
-        / "verification"
-        / "ci"
-        / "run_ruff_ratchet.py"
+        Path(__file__).resolve().parents[1] / "verification" / "ci" / "run_ruff_ratchet.py"
     )
     result = subprocess.run(
         [sys.executable, str(script_path), "--list"],
@@ -432,16 +424,14 @@ def test_run_ruff_ratchet_lists_manifest_targets():
     assert result.returncode == 0, result.stderr
     assert "reporters" in result.stdout
     assert "checkpoint-top-level" in result.stdout
+    assert "datasets-private" in result.stdout
 
 
 @pytest.mark.contract
-@pytest.mark.parametrize("target_name", ["reporters", "checkpoint-top-level"])
+@pytest.mark.parametrize("target_name", ["reporters", "checkpoint-top-level", "datasets-private"])
 def test_run_ruff_ratchet_smoke(target_name: str):
     script_path = (
-        Path(__file__).resolve().parents[1]
-        / "verification"
-        / "ci"
-        / "run_ruff_ratchet.py"
+        Path(__file__).resolve().parents[1] / "verification" / "ci" / "run_ruff_ratchet.py"
     )
     result = subprocess.run(
         [sys.executable, str(script_path), "--target", target_name],
@@ -457,18 +447,19 @@ def test_run_ruff_ratchet_smoke(target_name: str):
 @pytest.mark.contract
 def test_tests_nightly_workflow_publishes_collect_summary():
     workflow_path = (
-        Path(__file__).resolve().parents[1]
-        / ".github"
-        / "workflows"
-        / "tests-nightly.yml"
+        Path(__file__).resolve().parents[1] / ".github" / "workflows" / "tests-nightly.yml"
     )
     workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
     trigger_block = workflow.get("on") or workflow.get(True) or {}
     workflow_dispatch = trigger_block["workflow_dispatch"]
     steps = workflow["jobs"]["nightly-chaos"]["steps"]
     step_names = [step.get("name", "") for step in steps]
-    collect_step = next(step for step in steps if step.get("name") == "Collect nightly lane summary")
-    summary_step = next(step for step in steps if step.get("name") == "Write nightly selection summary")
+    collect_step = next(
+        step for step in steps if step.get("name") == "Collect nightly lane summary"
+    )
+    summary_step = next(
+        step for step in steps if step.get("name") == "Write nightly selection summary"
+    )
     run_step = next(
         step for step in steps if step.get("name") == "Run nightly integration core or full suite"
     )
@@ -480,21 +471,30 @@ def test_tests_nightly_workflow_publishes_collect_summary():
     assert "Collect nightly lane summary" in step_names
     assert "Write nightly selection summary" in step_names
     assert "Upload nightly test artifacts" in step_names
-    assert 'RUN_FULL_SUITE: ${{ github.event_name == \'workflow_dispatch\' && inputs.run_full_suite || \'false\' }}' in workflow_path.read_text(encoding="utf-8")
+    assert (
+        "RUN_FULL_SUITE: ${{ github.event_name == 'workflow_dispatch' && inputs.run_full_suite || 'false' }}"
+        in workflow_path.read_text(encoding="utf-8")
+    )
     assert '-m "integration" --run-integration -p no:cacheprovider' in collect_step["run"]
-    assert '-m "contract or fault or integration or soak or stress or scale_100m or e2e"' in collect_step["run"]
-    assert '"mode": "manual-full" if run_full_suite else "weekly-integration-core"' in summary_step["run"]
-    assert '-m "integration" --run-integration -p no:cacheprovider --junitxml test-artifacts/nightly-junit.xml' in run_step["run"]
-    assert '--run-expensive --run-soak' in run_step["run"]
+    assert (
+        '-m "contract or fault or integration or soak or stress or scale_100m or e2e"'
+        in collect_step["run"]
+    )
+    assert (
+        '"mode": "manual-full" if run_full_suite else "weekly-integration-core"'
+        in summary_step["run"]
+    )
+    assert (
+        '-m "integration" --run-integration -p no:cacheprovider --junitxml test-artifacts/nightly-junit.xml'
+        in run_step["run"]
+    )
+    assert "--run-expensive --run-soak" in run_step["run"]
 
 
 @pytest.mark.contract
 def test_benchmarks_nightly_workflow_is_manual_only():
     workflow_path = (
-        Path(__file__).resolve().parents[1]
-        / ".github"
-        / "workflows"
-        / "benchmarks-nightly.yml"
+        Path(__file__).resolve().parents[1] / ".github" / "workflows" / "benchmarks-nightly.yml"
     )
     workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
     trigger_block = workflow.get("on") or workflow.get(True) or {}
@@ -506,10 +506,7 @@ def test_benchmarks_nightly_workflow_is_manual_only():
 @pytest.mark.contract
 def test_benchmarks_release_workflow_is_version_agnostic():
     workflow_path = (
-        Path(__file__).resolve().parents[1]
-        / ".github"
-        / "workflows"
-        / "benchmarks-release.yml"
+        Path(__file__).resolve().parents[1] / ".github" / "workflows" / "benchmarks-release.yml"
     )
     workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
     trigger_block = workflow.get("on") or workflow.get(True) or {}
@@ -530,17 +527,18 @@ def test_benchmarks_release_workflow_is_version_agnostic():
 @pytest.mark.contract
 def test_ai_live_smoke_workflow_is_manual_and_collects_artifacts():
     workflow_path = (
-        Path(__file__).resolve().parents[1]
-        / ".github"
-        / "workflows"
-        / "ai-live-smoke.yml"
+        Path(__file__).resolve().parents[1] / ".github" / "workflows" / "ai-live-smoke.yml"
     )
     workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
     trigger_block = workflow.get("on", workflow.get(True))
     steps = workflow["jobs"]["ai-live-smoke"]["steps"]
     step_names = [step.get("name", "") for step in steps]
-    proposal_step = next(step for step in steps if step.get("name") == "Run live OpenAI proposal smoke")
-    analysis_step = next(step for step in steps if step.get("name") == "Run live OpenAI explain-run smoke")
+    proposal_step = next(
+        step for step in steps if step.get("name") == "Run live OpenAI proposal smoke"
+    )
+    analysis_step = next(
+        step for step in steps if step.get("name") == "Run live OpenAI explain-run smoke"
+    )
     upload_step = next(step for step in steps if step.get("name") == "Upload live smoke artifacts")
 
     assert workflow["name"] == "AI Live Smoke"
@@ -556,12 +554,18 @@ def test_ai_live_smoke_workflow_is_manual_and_collects_artifacts():
     assert "--run-integration" in proposal_step["run"]
     assert "tests/integration/ai/test_openai_live_smoke.py" in proposal_step["run"]
     assert proposal_step["env"]["TRUTHOUND_AI_RUN_LIVE_SMOKE"] == "1"
-    assert proposal_step["env"]["TRUTHOUND_AI_SMOKE_RESULT_PATH"] == "test-artifacts/ai-live-smoke-proposal.json"
+    assert (
+        proposal_step["env"]["TRUTHOUND_AI_SMOKE_RESULT_PATH"]
+        == "test-artifacts/ai-live-smoke-proposal.json"
+    )
     assert analysis_step["if"] == "always()"
     assert "--run-integration" in analysis_step["run"]
     assert "tests/integration/ai/test_openai_live_explain_run_smoke.py" in analysis_step["run"]
     assert analysis_step["env"]["TRUTHOUND_AI_RUN_LIVE_SMOKE"] == "1"
-    assert analysis_step["env"]["TRUTHOUND_AI_SMOKE_RESULT_PATH"] == "test-artifacts/ai-live-smoke-analysis.json"
+    assert (
+        analysis_step["env"]["TRUTHOUND_AI_SMOKE_RESULT_PATH"]
+        == "test-artifacts/ai-live-smoke-analysis.json"
+    )
     assert upload_step["if"] == "always()"
     assert upload_step["with"]["name"] == "truthound-ai-live-smoke"
     assert upload_step["with"]["path"] == "test-artifacts"
@@ -570,10 +574,7 @@ def test_ai_live_smoke_workflow_is_manual_and_collects_artifacts():
 @pytest.mark.contract
 def test_release_pypi_workflow_is_manual_token_only_publish():
     workflow_path = (
-        Path(__file__).resolve().parents[1]
-        / ".github"
-        / "workflows"
-        / "release-pypi.yml"
+        Path(__file__).resolve().parents[1] / ".github" / "workflows" / "release-pypi.yml"
     )
     workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
     trigger_block = workflow.get("on", workflow.get(True))
