@@ -39,6 +39,24 @@ def test_truthound_dir_exposes_core_surface_only():
     assert "checkpoint" not in exported
     assert "profiler" not in exported
     assert "ml" not in exported
+    assert "datasets" not in exported
+    assert "depot" not in exported
+    assert "DatasetArtifactEnvelope" not in exported
+    assert "DatasetAssetManifest" not in exported
+    assert "DatasetSnapshotManifest" not in exported
+    assert "DatasetDiff" not in exported
+    assert "QualityGateResult" not in exported
+    assert "DatasetFingerprintOptions" not in exported
+    assert "fingerprint_dataset" not in exported
+    assert "diff_datasets" not in exported
+    assert "QualityGatePolicy" not in exported
+    assert "QualityGateContext" not in exported
+    assert "evaluate_quality_gate" not in exported
+    assert "DatasetSnapshotBundle" not in exported
+    assert "DatasetDiffBundle" not in exported
+    assert "QualityGateBundle" not in exported
+    assert "DatasetEvidenceInputPayload" not in exported
+    assert "restore_dataset_artifact" not in exported
 
 
 def test_truthound_top_level_advanced_access_warns():
@@ -46,6 +64,7 @@ def test_truthound_top_level_advanced_access_warns():
         _ = truthound.compare
 
     from truthound.drift import compare
+
     assert callable(compare)
 
 
