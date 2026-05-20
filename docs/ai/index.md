@@ -18,7 +18,7 @@ The AI surface is deliberately narrow:
 The goal is not autonomous mutation. The goal is controlled operational
 assistance that stays subordinate to the core validation contract.
 
-Truthound 3.1.2 also hardens the prompt path for Korean, English, and mixed
+Truthound 3.1.3 also keeps the hardened prompt path for Korean, English, and mixed
 requests. Natural-language prompts are normalized into canonical validation
 intent candidates, provider output is checked through structured contracts, and
 unsupported or ambiguous prompts become reviewable rejected items instead of
@@ -68,5 +68,5 @@ Key public entry points:
 ## Related Reading
 
 - [Python API Reference](../python-api/index.md)
-- [Truthound Dashboard](../dashboard/index.md)
-- [Truthound 3.1.2 Release Notes](../releases/truthound-3.1.2.md)
+- [Truthound Depot](../dashboard/index.md)
+- [Truthound 3.1.3 Release Notes](../releases/truthound-3.1.3.md)

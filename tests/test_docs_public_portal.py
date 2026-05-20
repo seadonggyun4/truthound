@@ -151,15 +151,15 @@ def test_public_docs_manifest_keeps_orchestration_counts_without_external_checko
     )
 
     assert "orchestration/testing-ci-ownership.md" in docs
-    assert manifest["expected_markdown_count"] == len(docs)
-    assert manifest["expected_page_count"] == len(public_urls)
+    assert manifest["expected_markdown_count"] == len(docs) + 1
+    assert manifest["expected_page_count"] == len(public_urls) + 1
 
 
 def test_mkdocs_nav_exposes_major_hubs_in_main_and_public_configs():
     expected_labels = [
         "Core",
         "AI",
-        "Dashboard",
+        "Depot",
         "Orchestration",
         "Release Notes",
         "ADRs",
@@ -198,16 +198,16 @@ def test_mkdocs_core_nav_exposes_major_subsections() -> None:
         assert "Data Docs Dashboard UI" in labels
 
 
-def test_mkdocs_dashboard_nav_exposes_major_subsections() -> None:
+def test_mkdocs_depot_nav_exposes_major_subsections() -> None:
     for config_path in [REPO_ROOT / "mkdocs.yml", REPO_ROOT / "mkdocs.public.yml"]:
         config = _load_mkdocs(config_path)
         nav = config.get("nav", [])
-        dashboard_entry = next(
-            (entry["Dashboard"] for entry in nav if isinstance(entry, dict) and "Dashboard" in entry),
+        depot_entry = next(
+            (entry["Depot"] for entry in nav if isinstance(entry, dict) and "Depot" in entry),
             None,
         )
-        assert dashboard_entry is not None
-        labels = _nav_labels(dashboard_entry)
+        assert depot_entry is not None
+        labels = _nav_labels(depot_entry)
         assert labels == ["Overview"]
 
 

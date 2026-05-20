@@ -24,7 +24,7 @@
   </a>
 </p>
 
-> Truthound 3.1.2 is a layered data quality system built around a Polars-first validation kernel, with first-party orchestration adapters, an additive AI review surface, and an operational console built on top of the same core runtime contract.
+> Truthound 3.1.3 is a layered data quality system built around a Polars-first validation kernel, first-party orchestration adapters, an additive AI review surface, and Truthound Depot as the repository console for dataset version-control workflows.
 
 ---
 
@@ -34,34 +34,31 @@
   <img width="200" alt="Truthound Icon" src="docs/assets/Truthound_icon_banner.png" />
 </p>
 
-Truthound 3.1.2 is a layered data quality system. At the center is a small, durable, Polars-first validation kernel. Around that core sit an additive `truthound.ai` review surface, Truthound Orchestration for host-native execution inside schedulers and workflow systems, and Truthound Dashboard for operating Truthound through an installation-managed control-plane UI.
+Truthound 3.1.3 is a layered data quality system. At the center is a small, durable, Polars-first validation kernel. Around that core sit an additive `truthound.ai` review surface, Truthound Orchestration for host-native execution inside schedulers and workflow systems, and Truthound Depot for operating dataset repositories through an installation-managed console.
 
-The point of the 3.x reset is not to hide the broader product line. It is to make the system boundary honest. The core validation kernel is the most rigorously validated contract in the ecosystem, while the AI review layer, orchestration adapters, and dashboard build on top of that contract instead of redefining it.
+The point of the 3.x reset is not to hide the broader product line. It is to make the system boundary honest. The core validation kernel is the most rigorously validated contract in the ecosystem, while the AI review layer, orchestration adapters, and Depot build on top of that contract instead of redefining it.
 
 **Documentation**: [truthound.netlify.app](https://truthound.netlify.app/)
 
-## What's New In 3.1.2
+## What's New In 3.1.3
 
-Truthound 3.1.2 keeps the 3.1 review surface intact while tightening runtime
-behavior in constrained CI environments and making the public packaging surface
-more consistent.
+Truthound 3.1.3 keeps the 3.1 review surface intact while aligning the public
+package, README, and docs surface with the completed Truthound Depot product
+direction.
 
-- validation runtime now falls back to sequential execution when thread-pool
-  startup is unavailable on resource-constrained runners
-- SQLite null-check parity now uses the intended pushdown path again in the
-  benchmarked SQL lane
-- reporter and checkpoint outer-layer contracts are cleaner and protected by
-  folder-level `ruff` ratchets in CI
-- the core package version surface now resolves from one canonical source
-  across runtime, plugin scaffolding, benchmark metadata, and current-release
-  docs links
-- AI prompt-to-proposal now uses a hardened Korean/English normalization path,
-  Unicode audit hashes, compiler rejection, and redacted rollout metrics
-- provider output now prefers strict structured output with bounded JSON-mode
-  fallback and repair telemetry
-- prompt readiness is protected by deterministic acceptance fixtures covering
-  200+ Korean prompts, mixed Korean/English prompts, ambiguous prompts, and
-  malformed provider fixtures
+- public product-line wording now points to Truthound Depot as the dataset
+  repository console instead of treating the older dashboard wording as the
+  canonical product surface
+- Core remains the data-plane primitive owner for validation semantics,
+  deterministic fingerprints, summary diffs, and quality gate projections
+- Depot remains the business-state owner for branch, merge, release, rollback,
+  approval, evidence, and operator workflows
+- Orchestration remains the execution owner for host-native submit, poll, wait,
+  retry, and projection behavior
+- the private Depot engine primitive docs now match the implemented
+  Core/Depot/Orchestration ownership contract used by the Depot release line
+- compatibility wording preserves existing Data Docs dashboard and private
+  runtime identifiers where they are feature names or migration surfaces
 
 ## Truthound Product Line
 
@@ -70,9 +67,9 @@ more consistent.
 | `Truthound Core` | [`truthound`](https://github.com/seadonggyun4/Truthound) | Validation kernel and data-plane: `th.check()`, `ValidationRunResult`, planner/runtime, zero-config workspace, reporters, checkpoints, Data Docs | [Core docs](https://truthound.netlify.app/) |
 | `Truthound AI` | `truthound.ai` | Optional review-layer APIs for prompt-to-proposal compilation, run analysis, approval history, and controlled apply | [`/ai/`](https://truthound.netlify.app/ai/) |
 | `Truthound Orchestration` | [`truthound-orchestration`](https://github.com/seadonggyun4/truthound-orchestration) | First-party execution integration layer for Airflow, Dagster, Prefect, dbt, Mage, and Kestra | [`/orchestration/`](https://truthound.netlify.app/orchestration/) |
-| `Truthound Dashboard` | separately distributed operational console | First-party control-plane for RBAC, sources, artifacts, incidents, secrets, observability, and AI review workflows | [`/dashboard/`](https://truthound.netlify.app/dashboard/) |
+| `Truthound Depot` | [`truthound-depot`](https://github.com/seadonggyun4/truthound-depot) | First-party dataset repository console for branch, push, compare, merge request, quality gate, release, rollback, evidence, RBAC, and operator workflows | [`/dashboard/`](https://truthound.netlify.app/dashboard/) |
 
-Truthound is therefore not a monolithic platform with one flat feature surface. It is a layered system in which the core validation contract stays central, while the AI namespace, orchestration adapters, and dashboard expose first-party operational layers on top of it.
+Truthound is therefore not a monolithic platform with one flat feature surface. It is a layered system in which the core validation contract stays central, while the AI namespace, orchestration adapters, and Depot expose first-party operational layers on top of it.
 
 ## Why Start With Truthound Core
 
@@ -122,7 +119,7 @@ Truthound Core 3.x centers the public contract around a smaller and more durable
 | `runtime` | Session lifecycle, retries, timeout-safe execution, exception isolation, and evidence capture |
 | `results` | `CheckResult`, `ValidationRunResult`, and `ExecutionIssue` as the canonical output model |
 
-Truthound Orchestration and Truthound Dashboard build on these contracts instead of replacing them. That is the key layered-system boundary.
+Truthound Orchestration and Truthound Depot build on these contracts instead of replacing them. That is the key layered-system boundary.
 
 ### Depot Engine Primitives
 
@@ -311,8 +308,8 @@ Truthound now uses one lifecycle runtime:
 - AI docs: [docs/ai/index.md](docs/ai/index.md)
 - Orchestration layer: [truthound.netlify.app/orchestration/](https://truthound.netlify.app/orchestration/)
 - Orchestration getting started: [docs/orchestration/getting-started.md](docs/orchestration/getting-started.md)
-- Dashboard layer: [truthound.netlify.app/dashboard/](https://truthound.netlify.app/dashboard/)
-- Release notes: [docs/releases/truthound-3.1.2.md](docs/releases/truthound-3.1.2.md)
+- Depot console layer: [truthound.netlify.app/dashboard/](https://truthound.netlify.app/dashboard/)
+- Release notes: [docs/releases/truthound-3.1.3.md](docs/releases/truthound-3.1.3.md)
 - Latest verified benchmark summary: [docs/releases/latest-benchmark-summary.md](docs/releases/latest-benchmark-summary.md)
 - Migration guide: [docs/guides/migration-3.0.md](docs/guides/migration-3.0.md)
 - Legacy archive: [docs/legacy/index.md](docs/legacy/index.md)

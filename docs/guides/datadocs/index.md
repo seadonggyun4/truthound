@@ -249,7 +249,7 @@ truthound dashboard --profile profile.json --port 8080
 ```
 
 This launches the local Data Docs dashboard UI. It is separate from the
-[Truthound Dashboard](../../dashboard/index.md) control-plane product.
+[Truthound Depot](../../dashboard/index.md) repository console product.
 
 ---
 

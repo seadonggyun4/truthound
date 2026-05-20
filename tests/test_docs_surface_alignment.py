@@ -160,20 +160,20 @@ def test_home_surfaces_define_truthound_as_a_layered_system() -> None:
     assert "Truthound Product Line" in readme
     assert "Truthound Core" in readme
     assert "Truthound Orchestration" in readme
-    assert "Truthound Dashboard" in readme
+    assert "Truthound Depot" in readme
 
     assert "layered data quality system" in home
     assert "Truthound By Layer" in home
     assert "Truthound Core" in home
     assert "Truthound Orchestration" in home
-    assert "Truthound Dashboard" in home
+    assert "Truthound Depot" in home
 
 
 def test_concepts_docs_define_explicit_layer_boundaries() -> None:
     text = _read("docs/concepts/index.md").lower()
     assert "data-plane / validation kernel" in text
     assert "execution integration layer" in text
-    assert "control-plane" in text
+    assert "repository console" in text
     assert "truthound._datasets" in text
     assert "private engine primitives" in text
 
@@ -239,7 +239,7 @@ def test_dashboard_term_is_disambiguated_for_datadocs_ui() -> None:
         "docs/cli/dashboard.md",
     ):
         text = _read(rel_path)
-        assert "Truthound Dashboard" in text, rel_path
+        assert "Truthound Depot" in text, rel_path
         assert "Data Docs dashboard" in text or "Data Docs Dashboard UI" in text, rel_path
 
 

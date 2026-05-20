@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "truthound"
-version = "3.1.2"
+version = "3.1.3"
 description = "Zero-Configuration Data Quality Framework Powered by Polars"
 readme = "README.md"
 license = "Apache-2.0"
@@ -190,21 +190,22 @@ docs = [
     "pymdown-extensions>=10.8.0",
 ]
 
-# Internal dashboard runtime contract.
+# Internal Depot runtime contract.
 # This table is intentionally kept outside `project.optional-dependencies` so it
 # does not become public package metadata or a user-facing install surface.
 # It defines the baseline optional Truthound features that private
-# Truthound Dashboard deployments must provision through their own private
-# runtime artifact.
+# Truthound Depot deployments must provision through their own private runtime
+# artifact. The table key keeps its legacy `dashboard_runtime` name until the
+# private runtime compatibility surface is renamed.
 #
 # Scope rules:
-# - Included extras are baseline optional-core features that the dashboard
+# - Included extras are baseline optional-core features that the Depot console
 #   product must be able to assume across private operator deployments.
 # - Excluded extras stay out of the baseline runtime because they are connector-
-#   specific, environment-specific, or otherwise optional for the dashboard.
-# - When the dashboard starts depending on a new baseline optional-core feature,
-#   update this manifest first, then sync the sibling dashboard contract and
-#   private runtime artifact generation.
+#   specific, environment-specific, or otherwise optional for Depot.
+# - When Depot starts depending on a new baseline optional-core feature, update
+#   this manifest first, then sync the sibling Depot contract and private
+#   runtime artifact generation.
 [tool.truthound.internal_runtime.dashboard_runtime]
 included_extras = ["ai", "drift", "anomaly", "reports"]
 excluded_extras = [

@@ -24,7 +24,7 @@ canonicalizer, compiler, and review workflow remain the safety boundary.
 
 ## Korean And Mixed Prompt Support
 
-Truthound 3.1.2 adds a deterministic prompt normalization path for common
+Truthound 3.1.3 keeps the deterministic prompt normalization path for common
 Korean and mixed Korean/English quality requests, including:
 
 - required values such as `이메일은 비어 있으면 안 됩니다`

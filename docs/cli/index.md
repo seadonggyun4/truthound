@@ -101,7 +101,7 @@ If you are still learning the platform, start with [Getting Started](../getting-
 | `dashboard` | - | `--profile, -p`, `--port` (8080), `--host` (localhost), `--title, -t` ("Truthound Dashboard"), `--debug` |
 
 This command launches the local Data Docs dashboard UI. For the first-party
-control-plane product, see [Truthound Dashboard](../dashboard/index.md).
+repository console product, see [Truthound Depot](../dashboard/index.md).
 
 ### Realtime Commands Summary
 

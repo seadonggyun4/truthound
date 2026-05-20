@@ -7,15 +7,15 @@
 Truthound is a layered data quality system. The center of that system is
 Truthound Core: a validation-first, Polars-first kernel built around
 `TruthoundContext`, `ValidationRunResult`, deterministic auto-suites, and a
-planner/runtime execution boundary. Around that core sit two first-party
-layers: Truthound Orchestration for host-native execution in schedulers and
-workflow systems, an additive `truthound.ai` namespace for reviewable AI
-proposal and analysis workflows, and Truthound Dashboard for operating
-Truthound through an installation-managed control-plane UI.
+planner/runtime execution boundary. Around that core sit Truthound
+Orchestration for host-native execution in schedulers and workflow systems, an
+additive `truthound.ai` namespace for reviewable AI proposal and analysis
+workflows, and Truthound Depot for operating dataset repositories through an
+installation-managed console.
 
 This portal keeps the core and orchestration surfaces fully documented, adds
-the public `truthound.ai` contract, and keeps the dashboard surface visible at
-the boundary level without reproducing the full console implementation here.
+the public `truthound.ai` contract, and keeps the Depot surface visible at the
+boundary level without reproducing the full console implementation here.
 
 ## Truthound By Layer
 
@@ -24,7 +24,7 @@ the boundary level without reproducing the full console implementation here.
 | **Truthound Core** | Validation kernel, zero-config workspace, result model, reporters, Data Docs, checkpoint runtime, profiling, benchmarked execution path | run your first validation, use the Python API or CLI, understand `ValidationRunResult`, or evaluate the core contract |
 | **Truthound AI** | Optional review-layer APIs for proposal generation, run analysis, approval logs, and controlled apply flows | understand the AI boundary, compile prompt-driven suite proposals, or analyze run evidence without mutating core state by default |
 | **Truthound Orchestration** | First-party execution integration layer for Airflow, Dagster, Prefect, dbt, Mage, and Kestra | run Truthound inside a scheduler, asset graph, flow system, or warehouse-native orchestration surface |
-| **Truthound Dashboard** | Installation-managed operational console for sessions, RBAC, sources, artifacts, incidents, AI review, and observability | operate Truthound deployments, manage teams and ownership, or review proposals and run analysis through a web UI |
+| **Truthound Depot** | Installation-managed dataset repository console for branch, push, compare, merge request, quality gate, release, rollback, evidence, RBAC, and observability workflows | operate dataset repositories, manage team access, review merge/release decisions, or inspect evidence through a web UI |
 
 ## Choose Your Entry Point
 
@@ -36,7 +36,7 @@ the boundary level without reproducing the full console implementation here.
 | Use Truthound from a terminal or CI job | [Core CLI Reference](cli/index.md) |
 | Learn the optional AI proposal and analysis contract | [Truthound AI](ai/index.md) |
 | Design scheduler-native execution | [Truthound Orchestration](orchestration/index.md) |
-| Operate a control-plane UI for Truthound | [Truthound Dashboard](dashboard/index.md) |
+| Operate a dataset repository console for Truthound | [Truthound Depot](dashboard/index.md) |
 | Understand how the layers fit together | [Concepts & Architecture](concepts/index.md) |
 | Understand private Depot engine contracts before public API promotion | [Depot Engine Primitives](concepts/depot-engine-primitives.md) |
 
@@ -101,20 +101,20 @@ core validation contract:
 - [Run Analysis Evidence Model](ai/run-analysis-evidence.md)
 - [Approval and Apply Semantics](ai/approval-apply.md)
 
-### Dashboard
+### Depot
 
-Use `Dashboard` when you need the operational control-plane:
+Use `Depot` when you need the dataset repository console:
 
-- [Dashboard Overview](dashboard/index.md)
-- installation-managed operational console guidance
-- deployment-aligned review and approval surface
-- AI review, proposal, and run-analysis workflows built on `truthound.ai`
+- [Depot Overview](dashboard/index.md)
+- branch, push, compare, pull request, release, and rollback workflows
+- deployment-aligned review, approval, evidence, and access surfaces
+- AI Evidence workflows built on `truthound.ai` review artifacts
 
 ## Keep Reading
 
 - [Core Getting Started](getting-started/index.md)
 - [Truthound AI](ai/index.md)
 - [Truthound Orchestration](orchestration/index.md)
-- [Truthound Dashboard](dashboard/index.md)
-- [Release Notes](releases/truthound-3.1.2.md)
+- [Truthound Depot](dashboard/index.md)
+- [Release Notes](releases/truthound-3.1.3.md)
 - [Migration to 3.0](guides/migration-3.0.md)

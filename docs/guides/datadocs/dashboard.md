@@ -5,9 +5,9 @@ profile exploration and report review.
 
 This page documents the **Data Docs dashboard UI** that ships with the main
 `truthound` package. It is **not** the same product as
-[Truthound Dashboard](../../dashboard/index.md), which is the first-party
-control-plane for sessions, RBAC, sources, artifacts, incidents, and
-observability.
+[Truthound Depot](../../dashboard/index.md), which is the first-party dataset
+repository console for branch, merge, release, rollback, evidence, access, and
+observability workflows.
 
 ## Installation
 
@@ -326,4 +326,4 @@ def create_app(
 
 - [HTML Reports](html-reports.md) - Static HTML reports
 - [Themes](themes.md) - Theme customization
-- [Truthound Dashboard overview](../../dashboard/index.md) - Boundary-level operational console overview
+- [Truthound Depot overview](../../dashboard/index.md) - Boundary-level repository console overview

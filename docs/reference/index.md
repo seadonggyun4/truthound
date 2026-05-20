@@ -7,7 +7,7 @@ details without walking through a tutorial.
 This section does **not** try to document the whole product line in one place.
 For host-native adapters, go to [Truthound Orchestration](../orchestration/index.md).
 For review-layer APIs, go to [Truthound AI](../ai/index.md).
-For control-plane APIs and operations, go to [Truthound Dashboard](../dashboard/index.md).
+For repository-console APIs and operations, go to [Truthound Depot](../dashboard/index.md).
 
 ## What Lives Here
 
@@ -57,7 +57,7 @@ Recommended entry points:
 | Understand the layered system and kernel boundaries | [Concepts & Architecture](../concepts/index.md) |
 | Use the optional prompt-to-proposal and run-analysis APIs | [Truthound AI](../ai/index.md) |
 | Run Truthound inside Airflow, Dagster, Prefect, dbt, Mage, or Kestra | [Truthound Orchestration](../orchestration/index.md) |
-| Operate a UI, RBAC, artifacts, incidents, and observability | [Truthound Dashboard](../dashboard/index.md) |
+| Operate a repository console, RBAC, artifacts, evidence, release, rollback, and observability | [Truthound Depot](../dashboard/index.md) |
 
 ## Common Lookup Paths
 
@@ -69,8 +69,8 @@ Recommended entry points:
   Go directly to [Truthound Orchestration](../orchestration/index.md).
 - I want reviewable AI proposal and run-analysis contracts:
   Go directly to [Truthound AI](../ai/index.md).
-- I want control-plane capabilities and deployment boundaries:
-  Go directly to [Truthound Dashboard](../dashboard/index.md).
+- I want repository-console capabilities and deployment boundaries:
+  Go directly to [Truthound Depot](../dashboard/index.md).
 - I want to compare Truthound with GX-style workflows:
   Read [Great Expectations Comparison](../guides/gx-parity.md) and [Migration to 3.0](../guides/migration-3.0.md).
 
@@ -82,4 +82,4 @@ Recommended entry points:
 - [Concepts & Architecture](../concepts/index.md)
 - [Truthound AI](../ai/index.md)
 - [Truthound Orchestration](../orchestration/index.md)
-- [Truthound Dashboard](../dashboard/index.md)
+- [Truthound Depot](../dashboard/index.md)

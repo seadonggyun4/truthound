@@ -3,8 +3,8 @@
 Launch the local Data Docs dashboard UI for interactive profile exploration.
 
 This command is part of the core `truthound` package. It is **not** the same as
-[Truthound Dashboard](../dashboard/index.md), which is the first-party
-control-plane product surfaced here through an overview page only.
+[Truthound Depot](../dashboard/index.md), which is the first-party dataset
+repository console surfaced here through an overview page only.
 
 ## Synopsis
 
@@ -254,5 +254,5 @@ truthound dashboard \
 
 ## See Also
 
-- [Truthound Dashboard overview](../dashboard/index.md)
+- [Truthound Depot overview](../dashboard/index.md)
 - [Data Docs Guide](../guides/datadocs.md)
