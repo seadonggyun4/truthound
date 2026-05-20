@@ -291,6 +291,7 @@ nav:
       - Architecture: orchestration/architecture.md
       - Zero-Config: orchestration/zero-config.md
       - Compatibility: orchestration/compatibility.md
+      - Depot Pipelines: orchestration/depot-pipelines.md
       - Adoption Playbook: orchestration/adoption-playbook.md
       - Production Readiness: orchestration/production-readiness.md
       - Troubleshooting: orchestration/troubleshooting.md

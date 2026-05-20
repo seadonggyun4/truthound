@@ -54,8 +54,9 @@ Use this path if you are new to the repository:
 3. [Architecture](architecture.md) to understand the adapter/runtime split.
 4. [Zero-Config](zero-config.md) to learn what is automatic and what still requires explicit configuration.
 5. [Compatibility](compatibility.md) before planning upgrades, release gates, or host-version support.
-6. [Adoption Playbook](adoption-playbook.md) when multiple teams or hosts need the same rollout pattern.
-7. [Production Readiness](production-readiness.md) when you are turning a working prototype into an operator-owned service.
+6. [Depot Pipelines](depot-pipelines.md) when branch, pull, validate, merge, release, rollback, or scheduled sync operations need to run through a host-native workflow.
+7. [Adoption Playbook](adoption-playbook.md) when multiple teams or hosts need the same rollout pattern.
+8. [Production Readiness](production-readiness.md) when you are turning a working prototype into an operator-owned service.
 
 Then go deeper into:
 

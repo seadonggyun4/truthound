@@ -151,8 +151,8 @@ def test_public_docs_manifest_keeps_orchestration_counts_without_external_checko
     )
 
     assert "orchestration/testing-ci-ownership.md" in docs
-    assert manifest["expected_markdown_count"] == len(docs) + 1
-    assert manifest["expected_page_count"] == len(public_urls) + 1
+    assert manifest["expected_markdown_count"] == len(docs)
+    assert manifest["expected_page_count"] == len(public_urls)
 
 
 def test_mkdocs_nav_exposes_major_hubs_in_main_and_public_configs():
