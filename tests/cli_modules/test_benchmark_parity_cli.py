@@ -30,34 +30,38 @@ def test_benchmark_help_lists_parity(runner: CliRunner) -> None:
 
 
 @pytest.mark.contract
-def test_benchmark_parity_truthound_only_writes_json_artifact(runner: CliRunner) -> None:
-    with runner.isolated_filesystem():
-        output = Path("parity.json")
-        result = runner.invoke(
-            app,
-            [
-                "benchmark",
-                "parity",
-                "--suite",
-                "pr-fast",
-                "--frameworks",
-                "truthound",
-                "--backend",
-                "local",
-                "--output",
-                str(output),
-                "--strict",
-            ],
-        )
+def test_benchmark_parity_truthound_only_writes_json_artifact(
+    runner: CliRunner,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    output = Path("parity.json")
+    result = runner.invoke(
+        app,
+        [
+            "benchmark",
+            "parity",
+            "--suite",
+            "pr-fast",
+            "--frameworks",
+            "truthound",
+            "--backend",
+            "local",
+            "--output",
+            str(output),
+            "--strict",
+        ],
+    )
 
-        assert result.exit_code == 0, result.output
-        payload = json.loads(output.read_text())
-        assert payload["suite_name"] == "pr-fast"
-        assert payload["summary"]["blocking_failures"] == 0
-        assert len(payload["observations"]) == 3
-        assert output.with_suffix(".md").exists()
-        assert output.with_suffix(".html").exists()
-        assert Path("env-manifest.json").exists()
+    assert result.exit_code == 0, result.output
+    payload = json.loads(output.read_text())
+    assert payload["suite_name"] == "pr-fast"
+    assert payload["summary"]["blocking_failures"] == 0
+    assert len(payload["observations"]) == 3
+    assert output.with_suffix(".md").exists()
+    assert output.with_suffix(".html").exists()
+    assert Path("env-manifest.json").exists()
 
 
 @pytest.mark.contract
@@ -102,6 +106,7 @@ def test_benchmark_parity_release_ga_rejects_backend_filter(runner: CliRunner) -
 def test_benchmark_parity_release_ga_writes_release_summary(
     runner: CliRunner,
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     class FakeRunner:
         def __init__(self, *args, **kwargs) -> None:
@@ -168,33 +173,34 @@ def test_benchmark_parity_release_ga_writes_release_summary(
             )
 
     monkeypatch.setattr("truthound.benchmark.ParityRunner", FakeRunner)
+    monkeypatch.chdir(tmp_path)
 
-    with runner.isolated_filesystem():
-        output = Path("release-ga.json")
-        result = runner.invoke(
-            app,
-            [
-                "benchmark",
-                "parity",
-                "--suite",
-                "release-ga",
-                "--frameworks",
-                "both",
-                "--output",
-                str(output),
-            ],
-        )
+    output = Path("release-ga.json")
+    result = runner.invoke(
+        app,
+        [
+            "benchmark",
+            "parity",
+            "--suite",
+            "release-ga",
+            "--frameworks",
+            "both",
+            "--output",
+            str(output),
+        ],
+    )
 
-        assert result.exit_code == 0, result.output
-        assert Path("env-manifest.json").exists()
-        assert Path("latest-benchmark-summary.md").exists()
-        assert "Release summary" in result.output
+    assert result.exit_code == 0, result.output
+    assert Path("env-manifest.json").exists()
+    assert Path("latest-benchmark-summary.md").exists()
+    assert "Release summary" in result.output
 
 
 @pytest.mark.contract
 def test_benchmark_parity_strict_exits_on_blocking_failures(
     runner: CliRunner,
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
 ) -> None:
     class FakeRunner:
         def __init__(self, *args, **kwargs) -> None:
@@ -235,19 +241,19 @@ def test_benchmark_parity_strict_exits_on_blocking_failures(
             )
 
     monkeypatch.setattr("truthound.benchmark.ParityRunner", FakeRunner)
+    monkeypatch.chdir(tmp_path)
 
-    with runner.isolated_filesystem():
-        result = runner.invoke(
-            app,
-            [
-                "benchmark",
-                "parity",
-                "--suite",
-                "pr-fast",
-                "--frameworks",
-                "truthound",
-                "--strict",
-            ],
-        )
+    result = runner.invoke(
+        app,
+        [
+            "benchmark",
+            "parity",
+            "--suite",
+            "pr-fast",
+            "--frameworks",
+            "truthound",
+            "--strict",
+        ],
+    )
 
-        assert result.exit_code == 1
+    assert result.exit_code == 1
