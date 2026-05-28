@@ -247,9 +247,41 @@ def test_mkdocs_brand_assets_are_preserved():
         assert "logo" not in theme
         assert "favicon" not in theme
         assert theme["palette"][0]["primary"] == "custom"
+        assert theme["palette"][0]["accent"] == "custom"
         assert theme["palette"][1]["primary"] == "custom"
+        assert theme["palette"][1]["accent"] == "custom"
+        assert config["extra_css"] == ["stylesheets/extra.css"]
 
     assert _png_dimensions(REPO_ROOT / "docs" / "assets" / "truthound_icon.png") == (256, 256)
+
+
+def test_mkdocs_palette_matches_logo_brand_colors():
+    css = (REPO_ROOT / "docs" / "stylesheets" / "extra.css").read_text(encoding="utf-8").lower()
+
+    for expected in (
+        "#151f27",
+        "#334155",
+        "#0b1117",
+        "#111827",
+        "#c2410c",
+        "#ff8a3d",
+        "#f7efea",
+        "rgba(249, 103, 19, 0.22)",
+        "rgba(254, 133, 37, 0.28)",
+    ):
+        assert expected in css
+
+    for stale in (
+        "#d4854a",
+        "#e2a06e",
+        "#b76b34",
+        "#8b4c1a",
+        "#7a4218",
+        "#6b3a15",
+        "-webkit-text-stroke",
+        "text-transform: uppercase",
+    ):
+        assert stale not in css
 
 
 def test_external_source_banner_markup_uses_generic_upstream_contract() -> None:

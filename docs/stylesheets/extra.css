@@ -6,62 +6,70 @@
 
 :root,
 [data-md-color-scheme="default"] {
-  --md-hue: 25deg;
+  --md-hue: 215deg;
 
   /* Primary */
-  --md-primary-fg-color: #d4854a;
-  --md-primary-fg-color--light: #e2a06e;
-  --md-primary-fg-color--dark: #b76b34;
+  --md-primary-fg-color: #151f27;
+  --md-primary-fg-color--light: #334155;
+  --md-primary-fg-color--dark: #0b1117;
   --md-primary-bg-color: #fff;
   --md-primary-bg-color--light: rgba(255, 255, 255, 0.7);
 
   /* Accent (hover / focus / active) */
-  --md-accent-fg-color: #d4854a;
-  --md-accent-fg-color--transparent: rgba(212, 133, 74, 0.1);
-  --md-accent-bg-color: #fff;
-  --md-accent-bg-color--light: rgba(255, 255, 255, 0.7);
-
-  /* Search highlight */
-  --md-typeset-mark-color: rgba(212, 133, 74, 0.3);
-}
-
-[data-md-color-scheme="slate"] {
-  --md-hue: 25deg;
-
-  /* Primary */
-  --md-primary-fg-color: #d4854a;
-  --md-primary-fg-color--light: #e2a06e;
-  --md-primary-fg-color--dark: #b76b34;
-  --md-primary-bg-color: #fff;
-  --md-primary-bg-color--light: rgba(255, 255, 255, 0.7);
-
-  /* Accent – slightly lighter for dark-bg contrast */
-  --md-accent-fg-color: #e2a06e;
-  --md-accent-fg-color--transparent: rgba(226, 160, 110, 0.1);
+  --md-accent-fg-color: #c2410c;
+  --md-accent-fg-color--transparent: rgba(194, 65, 12, 0.12);
   --md-accent-bg-color: #fff;
   --md-accent-bg-color--light: rgba(255, 255, 255, 0.7);
 
   /* Links */
-  --md-typeset-a-color: #e2a06e;
+  --md-typeset-a-color: #c2410c;
 
   /* Search highlight */
-  --md-typeset-mark-color: rgba(226, 160, 110, 0.3);
+  --md-typeset-mark-color: rgba(249, 103, 19, 0.22);
+}
+
+[data-md-color-scheme="slate"] {
+  --md-hue: 215deg;
+
+  /* Primary */
+  --md-primary-fg-color: #111827;
+  --md-primary-fg-color--light: #334155;
+  --md-primary-fg-color--dark: #0b1117;
+  --md-primary-bg-color: #f7efea;
+  --md-primary-bg-color--light: rgba(247, 239, 234, 0.76);
+
+  /* Accent - logo orange with dark-bg contrast */
+  --md-accent-fg-color: #ff8a3d;
+  --md-accent-fg-color--transparent: rgba(255, 138, 61, 0.16);
+  --md-accent-bg-color: #111827;
+  --md-accent-bg-color--light: rgba(17, 24, 39, 0.7);
+
+  /* Links */
+  --md-typeset-a-color: #ff8a3d;
+
+  /* Search highlight */
+  --md-typeset-mark-color: rgba(254, 133, 37, 0.28);
 }
 
 /* ----- Header Site Title ----- */
 
 .md-header__title .md-header__topic:first-child .md-ellipsis {
-  text-transform: uppercase;
-  font-weight: 900;
-  font-size: 1.3rem;
-  letter-spacing: 0.08em;
-  color: #fdf5ec;
-  -webkit-text-stroke: 1.5px #8b4c1a;
-  paint-order: stroke fill;
-  text-shadow:
-    2px 2px 0 #7a4218,
-    3px 3px 0 #6b3a15,
-    4px 4px 2px rgba(80, 40, 10, 0.4);
+  font-weight: 800;
+  font-size: 1.05rem;
+  letter-spacing: 0;
+  color: #f7efea;
+  text-shadow: none;
+}
+
+/* ----- Typeset Headings ----- */
+
+.md-typeset h1 {
+  color: #334155;
+  font-weight: 500;
+}
+
+[data-md-color-scheme="slate"] .md-typeset h1 {
+  color: #f7efea;
 }
 
 /* ----- Theme Toggle (pure CSS) ----- */
@@ -114,24 +122,24 @@ form[data-md-component="palette"] label.md-header__button.md-icon:active {
   transform: scale(0.92);
 }
 
-/* Sun icon in dark mode – warm glow */
+/* Sun icon in dark mode - warm glow */
 [data-md-color-scheme="slate"] form[data-md-component="palette"] label.md-header__button.md-icon {
-  color: #f9ca7a;
+  color: #ff8a3d;
 }
 
 [data-md-color-scheme="slate"] form[data-md-component="palette"] label.md-header__button.md-icon:hover {
-  background-color: rgba(249, 202, 122, 0.15);
-  box-shadow: 0 0 12px rgba(249, 202, 122, 0.2);
+  background-color: rgba(255, 138, 61, 0.16);
+  box-shadow: 0 0 12px rgba(255, 138, 61, 0.24);
 }
 
-/* Moon icon in light mode – cool tone */
+/* Moon icon in light mode - warm light tone */
 [data-md-color-scheme="default"] form[data-md-component="palette"] label.md-header__button.md-icon {
-  color: #fff;
+  color: #f7efea;
 }
 
 [data-md-color-scheme="default"] form[data-md-component="palette"] label.md-header__button.md-icon:hover {
-  background-color: rgba(255, 255, 255, 0.18);
-  box-shadow: 0 0 12px rgba(255, 255, 255, 0.15);
+  background-color: rgba(247, 239, 234, 0.16);
+  box-shadow: 0 0 12px rgba(247, 239, 234, 0.18);
 }
 
 /* ----- Reduced motion ----- */
