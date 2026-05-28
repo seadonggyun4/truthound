@@ -30,10 +30,6 @@
 
 ## Abstract
 
-<p align="center">
-  <img width="200" alt="Truthound Icon" src="docs/assets/Truthound_icon_banner.png" />
-</p>
-
 Truthound 3.1.3 is a layered data quality system. At the center is a small, durable, Polars-first validation kernel. Around that core sit an additive `truthound.ai` review surface, Truthound Orchestration for host-native execution inside schedulers and workflow systems, and Truthound Depot for operating dataset repositories through an installation-managed console.
 
 The point of the 3.x reset is not to hide the broader product line. It is to make the system boundary honest. The core validation kernel is the most rigorously validated contract in the ecosystem, while the AI review layer, orchestration adapters, and Depot build on top of that contract instead of redefining it.
