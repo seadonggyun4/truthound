@@ -132,7 +132,7 @@ def test_no_removed_exception_summary_or_validation_report_kwargs_in_current_doc
 def test_readme_preserves_brand_assets_and_slogan() -> None:
     text = _read("README.md")
     assert "docs/assets/truthound_banner.png" in text
-    assert "docs/assets/Truthound_icon_banner.png" in text
+    assert _doc("docs/assets/Truthound_icon_banner.png").is_file()
     assert "Sniffs out bad data." in text
     assert "awesome.re/badge.svg" in text
     assert "Powered%20by-Polars" in text
