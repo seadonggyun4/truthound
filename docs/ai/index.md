@@ -68,5 +68,5 @@ Key public entry points:
 ## Related Reading
 
 - [Python API Reference](../python-api/index.md)
-- [Truthound Depot](../dashboard/index.md)
+- Truthound workflow documentation
 - [Truthound 3.1.3 Release Notes](../releases/truthound-3.1.3.md)

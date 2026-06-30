@@ -29,12 +29,12 @@ kernel plus one additive review namespace:
 | `Truthound Core` | `truthound` | data-plane validation kernel, zero-config workspace, result model, reporters, checkpoint runtime, profiling |
 | `Truthound AI` | `truthound.ai` | review-layer APIs for proposal compilation, run analysis, approval logs, and controlled apply |
 | `Truthound Orchestration` | `truthound-orchestration` | execution integration layer for Airflow, Dagster, Prefect, dbt, Mage, and Kestra |
-| `Truthound Depot` | `truthound-depot` | dataset repository console for branch, push, compare, merge request, quality gate, release, rollback, evidence, access, and observability workflows |
+| `Truthound` | `truthound` | dataset repository console for branch, push, compare, merge request, quality gate, release, rollback, evidence, access, and observability workflows |
 
 The main docs site aggregates these boundaries, but aggregation is not the same
 as flattening them into one undifferentiated platform. The kernel remains the
 source of truth for execution semantics, while the AI namespace, orchestration
-layer, and Depot operate around those semantics instead of replacing them.
+layer, and Workflow operate around those semantics instead of replacing them.
 
 ## Kernel Boundaries
 
@@ -57,7 +57,7 @@ The first-party external layers sit outside the kernel as well:
 
 - `truthound.ai` compiles prompts and run evidence into reviewable artifacts while keeping provider/redaction logic outside the kernel hot path
 - `truthound-orchestration` adapts the kernel into host-native execution environments without redefining `ValidationRunResult`
-- Truthound Depot consumes validation artifacts and operational state without re-implementing validation execution, while owning repository business state and operator decisions
+- Truthound consumes validation artifacts and operational state without re-implementing validation execution, while owning repository business state and operator decisions
 
 ## Runtime Flow
 

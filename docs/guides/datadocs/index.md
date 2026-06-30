@@ -141,7 +141,7 @@ The Truthound Data Docs module transforms data profile results into visually app
 | [Versioning](versioning.md) | Report version management (4 strategies) |
 | [Custom Renderers](custom-renderers.md) | Custom renderer development |
 | [PDF Export](pdf-export.md) | PDF export (WeasyPrint) |
-| [Dashboard](dashboard.md) | Stage 2 interactive dashboard |
+| Data Docs reports | Stage 2 interactive dashboard |
 
 ---
 
@@ -249,7 +249,7 @@ truthound dashboard --profile profile.json --port 8080
 ```
 
 This launches the local Data Docs dashboard UI. It is separate from the
-[Truthound Depot](../../dashboard/index.md) repository console product.
+Truthound workflow documentation repository console product.
 
 ---
 
@@ -396,4 +396,4 @@ pip install truthound[dashboard]
 - [Themes](themes.md) - Theme customization
 - [Charts](charts.md) - Chart rendering
 - [PDF Export](pdf-export.md) - PDF export
-- [Dashboard](dashboard.md) - Interactive dashboard
+- Data Docs reports - Interactive dashboard

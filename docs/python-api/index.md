@@ -9,7 +9,7 @@ Data Docs.
 This page is intentionally scoped to the `truthound` repository. Host-native
 adapter APIs live in [Truthound Orchestration](../orchestration/index.md), and
 the additive AI review namespace lives in [Truthound AI](../ai/index.md).
-Repository-console APIs and deployment guidance live in [Truthound Depot](../dashboard/index.md).
+Repository-console APIs and deployment guidance live in Truthound workflow documentation.
 
 ## When To Use The Python API
 

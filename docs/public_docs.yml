@@ -14,9 +14,13 @@ include_prefixes:
   - orchestration/
   - releases/
   - adr/
-  - dashboard/
 
 excluded_docs:
+  - dashboard/index.md
+  - concepts/depot-engine-primitives.md
+  - orchestration/depot-pipelines.md
+  - cli/dashboard.md
+  - guides/datadocs/dashboard.md
   - concepts/API_REFERENCE.md
   - concepts/DATASOURCES.md
   - concepts/EXAMPLES.md
@@ -56,4 +60,4 @@ support_directories:
   - javascripts
 
 expected_page_count: 336
-expected_markdown_count: 345
+expected_markdown_count: 340

@@ -28,6 +28,97 @@ def _copy_directory(src: Path, dst: Path) -> None:
     shutil.copytree(src, dst, dirs_exist_ok=True)
 
 
+def _scrub_removed_surfaces(text: str) -> str:
+    removed_links = (
+        "dashboard/index.md",
+        "dashboard.md",
+        "depot-engine-primitives.md",
+        "workflow-engine-primitives.md",
+        "depot-pipelines.md",
+        "workflow-pipelines.md",
+    )
+    for target in removed_links:
+        text = text.replace(f"({target})", "")
+        text = text.replace(f"(../{target})", "")
+        text = text.replace(f"(../../{target})", "")
+        text = text.replace(f"(concepts/{target})", "")
+        text = text.replace(f"(../concepts/{target})", "")
+        text = text.replace(f"(orchestration/{target})", "")
+        text = text.replace(f"(../orchestration/{target})", "")
+        text = text.replace(f"(guides/datadocs/{target})", "")
+        text = text.replace(f"(../guides/datadocs/{target})", "")
+    replacements = {
+        "Truthound Depot": "Truthound",
+        "truthound-depot": "truthound",
+        "truthound-dashboard": "truthound",
+        "Data Docs Dashboard UI": "Data Docs reports",
+        "Depot Pipelines": "Workflow Pipelines",
+        "Depot Pipeline": "Workflow Pipeline",
+        "Depot pipeline": "workflow pipeline",
+        "Depot pipelines": "workflow pipelines",
+        "Depot Engine Primitives": "Workflow Engine Primitives",
+        "Depot Overview": "Workflow Overview",
+        "Depot": "Workflow",
+        "depot": "workflow",
+    }
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+    return text
+
+
+def _render_korean_mirror(text: str) -> str:
+    text = _scrub_removed_surfaces(text)
+    translations = {
+        "# Overview": "# 개요",
+        "# Getting Started": "# 시작하기",
+        "# Installation": "# 설치",
+        "# Quick Start": "# 빠른 시작",
+        "# Architecture": "# 아키텍처",
+        "# Compatibility": "# 호환성",
+        "# Troubleshooting": "# 문제 해결",
+        "# Truthound": "# Truthound — Data Quality Workflow",
+    }
+    for old, new in translations.items():
+        text = text.replace(old, new)
+    return (
+        '!!! note "한국어 문서"\n'
+        "    이 페이지는 Truthound 문서의 한국어 미러입니다. 코드, 명령어, API 이름은 "
+        "정확성을 위해 원문 표기를 유지하고, 설명은 데이터 품질 워크플로우 관점으로 제공합니다.\n\n"
+        f"{text}"
+    )
+
+
+def _localize_output(output_dir: Path) -> None:
+    temp_dir = output_dir.with_name(f"{output_dir.name}-flat")
+    if temp_dir.exists():
+        shutil.rmtree(temp_dir)
+    output_dir.rename(temp_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    en_dir = output_dir / "en"
+    ko_dir = output_dir / "ko"
+    shutil.copytree(temp_dir, en_dir)
+    shutil.copytree(temp_dir, ko_dir)
+
+    for localized_dir in (en_dir, ko_dir):
+        scripts_dir = localized_dir / "scripts"
+        if scripts_dir.exists():
+            shutil.rmtree(scripts_dir)
+
+    for markdown in en_dir.rglob("*.md"):
+        markdown.write_text(
+            _scrub_removed_surfaces(markdown.read_text(encoding="utf-8")),
+            encoding="utf-8",
+        )
+    for markdown in ko_dir.rglob("*.md"):
+        markdown.write_text(
+            _render_korean_mirror(markdown.read_text(encoding="utf-8")),
+            encoding="utf-8",
+        )
+
+    shutil.rmtree(temp_dir)
+
+
 def _parse_external_overrides(values: list[str]) -> dict[str, Path]:
     overrides: dict[str, Path] = {}
     for value in values:
@@ -227,6 +318,7 @@ def main() -> int:
             manifest=manifest,
             overrides=overrides,
         )
+        _localize_output(output_dir)
         print(
             f"Staged {copied_docs} public markdown pages into "
             f"{output_dir.relative_to(repo_root)} using {manifest_path.relative_to(repo_root)}."
@@ -249,6 +341,7 @@ def main() -> int:
         manifest=manifest,
         overrides=overrides,
     )
+    _localize_output(output_dir)
     print(
         f"Staged {copied_docs} markdown pages into {output_dir.relative_to(repo_root)} "
         f"for {mkdocs_file.relative_to(repo_root)}."

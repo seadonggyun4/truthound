@@ -43,7 +43,7 @@ After a local or Netlify build, confirm all of the following under `site/`:
 - [ ] `site/ai/index.html` exists and renders the AI overview
 - [ ] `site/ai/system-boundary/index.html` exists and renders the AI boundary document
 - [ ] `site/orchestration/index.html` exists and renders the Orchestration overview
-- [ ] `site/dashboard/index.html` exists and renders the Depot overview
+- [ ] `site/dashboard/index.html` exists and renders the Workflow overview
 - [ ] `site/orchestration/airflow/index.html` exists and renders one platform page under the integrated section
 - [ ] `site/orchestration/airflow/observability-alerting/index.html` exists and renders an expanded platform subguide
 - [ ] `site/orchestration/common/index.html` exists and renders the shared runtime overview
@@ -107,9 +107,9 @@ After a local or Netlify build, confirm all of the following under `site/`:
 - [ ] primary docs do not treat `RC1` as the current release note
 - [ ] benchmark pages use `release-grade`, `fixed-runner benchmark verification`, or `verified benchmark summary` rather than repeated `GA` wording
 - [ ] README and the docs site agree on the current benchmark positioning against Great Expectations
-- [ ] Home, Core, AI, Orchestration, Depot, Release Notes, ADRs, and Legacy / Archive are all discoverable from the public nav
+- [ ] Home, Core, AI, Orchestration, Workflow, Release Notes, ADRs, and Legacy / Archive are all discoverable from the public nav
 - [ ] the Core nav exposes Getting Started, Tutorials, Guides, Reference, and Concepts & Architecture
-- [ ] Depot docs remain intentionally high-level and do not claim a public pip install workflow
+- [ ] Workflow docs remain intentionally high-level and do not claim a public pip install workflow
 - [ ] AI docs describe the additive `truthound.ai` namespace without implying core reverse-imports
 - [ ] imported orchestration pages identify `truthound-orchestration` as the upstream source repository
 - [ ] source-banner edit links target `https://github.com/seadonggyun4/truthound-orchestration/edit/main/docs/...`

@@ -9,7 +9,7 @@ integration, jump to [Truthound Orchestration](../orchestration/index.md). If
 your task is primarily about reviewable AI proposals or run analysis, jump to
 [Truthound AI](../ai/index.md). If your task is primarily about sessions,
 branch, release, rollback, evidence, access, or artifact operations in a web
-UI, jump to [Truthound Depot](../dashboard/index.md).
+UI, jump to Truthound workflow documentation.
 
 > **Looking for CLI documentation?** See [CLI Reference](../cli/index.md).
 >
@@ -30,7 +30,7 @@ UI, jump to [Truthound Depot](../dashboard/index.md).
 
 - **Host-native execution layers**: use [Truthound Orchestration](../orchestration/index.md)
 - **AI review-layer workflows**: use [Truthound AI](../ai/index.md)
-- **Repository console workflows**: use [Truthound Depot](../dashboard/index.md)
+- **Repository console workflows**: use Truthound workflow documentation
 - **Command lookup**: use [Reference](../reference/index.md)
 - **Sequential first-run learning**: use [Tutorials](../tutorials/index.md)
 
@@ -119,4 +119,4 @@ drift = compare("baseline.csv", "current.csv", method="auto")
 - [Concepts & Architecture](../concepts/index.md)
 - [Truthound AI](../ai/index.md)
 - [Truthound Orchestration](../orchestration/index.md)
-- [Truthound Depot](../dashboard/index.md)
+- Truthound workflow documentation
