@@ -132,25 +132,14 @@ def test_concepts_docs_define_explicit_layer_boundaries() -> None:
     assert "private engine primitives" in text
 
 
-def test_depot_engine_primitives_docs_define_private_core_boundary() -> None:
+def test_depot_engine_primitives_docs_are_removed_from_public_surface() -> None:
     text = _read("docs/concepts/depot-engine-primitives.md")
     lowered = text.lower()
-    compact = " ".join(text.split())
 
-    assert "private namespace" in lowered
-    assert "truthound._datasets" in text
-    assert "artifact_schema_version" in text
-    assert "raw rows" in lowered
-    assert "sample values" in lowered
-    assert "Truthound Depot" in text
-    assert "Truthound Orchestration" in text
-    assert "ValidationRunResult" in text
-    assert "DatasetArtifactEnvelope" in text
-    assert "row_level_diff_available" in text
-    assert "datasets-private" in text
-    assert "Core does not query a Depot database" in text
-    assert "does not expose `truthound.datasets`" in compact
-    assert "`truthound.depot`" in text
+    assert "not exposed in the truthound mkdocs site" in lowered
+    assert "data quality validation semantics" in lowered
+    assert "Truthound Depot" not in text
+    assert "`truthound.depot`" not in text
 
     forbidden = (
         "GitHub for Data",
@@ -175,8 +164,9 @@ def test_dashboard_term_is_disambiguated_for_datadocs_ui() -> None:
         "docs/cli/dashboard.md",
     ):
         text = _read(rel_path)
-        assert "Truthound Depot" in text, rel_path
-        assert "Data Docs dashboard" in text or "Data Docs Dashboard UI" in text, rel_path
+        assert "Truthound Depot" not in text, rel_path
+        assert "Data Docs Dashboard UI" not in text, rel_path
+        assert "Data Docs reports" in text, rel_path
 
 
 def test_architecture_docs_keep_planner_scope_honest() -> None:
