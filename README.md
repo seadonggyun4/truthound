@@ -2,9 +2,10 @@
   <img width="500" alt="Truthound Banner" src="docs/assets/truthound_banner.png?v=a4bd297" />
 </div>
 
-<h1 align="center">Truthound</h1>
+<h1 align="center">Truthound — Data Quality Workflow</h1>
 
 <p align="center">
+  <strong>Polars 기반 제로 설정 데이터 품질 프레임워크</strong> <br/>
   <strong>Zero-Configuration Data Quality Framework Powered by Polars</strong>
 </p>
 
@@ -24,64 +25,66 @@
   </a>
 </p>
 
-> Truthound 3.1.3 is a layered data quality system built around a Polars-first validation kernel, first-party orchestration adapters, an additive AI review surface, and Truthound Depot as the repository console for dataset version-control workflows.
+
 
 ---
 
-## Abstract
+## 개요 (Overview)
 
-Truthound 3.1.3 is a layered data quality system. At the center is a small, durable, Polars-first validation kernel. Around that core sit an additive `truthound.ai` review surface, Truthound Orchestration for host-native execution inside schedulers and workflow systems, and Truthound Depot for operating dataset repositories through an installation-managed console.
+Truthound는 데이터 품질 검증(Data Validation)과 데이터 워크플로우(Data Workflow)를 위한 오픈소스 프레임워크입니다. Polars 기반의 검증 커널을 중심으로, 스키마 검증·사용자 정의 규칙·품질 검사·이상 데이터 탐지를 코드로 선언하고, 그 결과를 재현 가능하게 관리합니다.
 
-The point of the 3.x reset is not to hide the broader product line. It is to make the system boundary honest. The core validation kernel is the most rigorously validated contract in the ecosystem, while the AI review layer, orchestration adapters, and Depot build on top of that contract instead of redefining it.
+Truthound is an open-source framework for data validation and data quality workflows, built on a Polars-first validation kernel.
 
-**Documentation**: [truthound.netlify.app](https://truthound.netlify.app/)
 
-## What's New In 3.1.3
+**English Readme**: [English README](README.en.md) <br/>
+**문서 (Documentation)**: [truthound.netlify.app](https://truthound.netlify.app/)
 
-Truthound 3.1.3 keeps the 3.1 review surface intact while aligning the public
-package, README, and docs surface with the completed Truthound Depot product
-direction.
+---
 
-- public product-line wording now points to Truthound Depot as the dataset
-  repository console instead of treating the older dashboard wording as the
-  canonical product surface
-- Core remains the data-plane primitive owner for validation semantics,
-  deterministic fingerprints, summary diffs, and quality gate projections
-- Depot remains the business-state owner for branch, merge, release, rollback,
-  approval, evidence, and operator workflows
-- Orchestration remains the execution owner for host-native submit, poll, wait,
-  retry, and projection behavior
-- the private Depot engine primitive docs now match the implemented
-  Core/Depot/Orchestration ownership contract used by the Depot release line
-- compatibility wording preserves existing Data Docs dashboard and private
-  runtime identifiers where they are feature names or migration surfaces
+## 개발 목적 (Motivation)
 
-## Truthound Product Line
+데이터 품질 검증은 대부분 개별 프로젝트마다 서로 다른 방식으로 구현되어 재사용과 표준화가 어렵습니다. Truthound는 데이터 검증과 품질 관리 과정을 코드 기반 프레임워크와 워크플로우로 표준화하여, 누구나 일관되고 재현 가능한 데이터 검증 환경을 구축할 수 있도록 하는 것을 목표로 합니다.
 
-| Layer | Repository | Responsibility | Start Here |
-| --- | --- | --- | --- |
-| `Truthound Core` | [`truthound`](https://github.com/seadonggyun4/Truthound) | Validation kernel and data-plane: `th.check()`, `ValidationRunResult`, planner/runtime, zero-config workspace, reporters, checkpoints, Data Docs | [Core docs](https://truthound.netlify.app/) |
-| `Truthound AI` | `truthound.ai` | Optional review-layer APIs for prompt-to-proposal compilation, run analysis, approval history, and controlled apply | [`/ai/`](https://truthound.netlify.app/ai/) |
-| `Truthound Orchestration` | [`truthound-orchestration`](https://github.com/seadonggyun4/truthound-orchestration) | First-party execution integration layer for Airflow, Dagster, Prefect, dbt, Mage, and Kestra | [`/orchestration/`](https://truthound.netlify.app/orchestration/) |
-| `Truthound Depot` | [`truthound-depot`](https://github.com/seadonggyun4/truthound-depot) | First-party dataset repository console for branch, push, compare, merge request, quality gate, release, rollback, evidence, RBAC, and operator workflows | [`/dashboard/`](https://truthound.netlify.app/dashboard/) |
+---
 
-Truthound is therefore not a monolithic platform with one flat feature surface. It is a layered system in which the core validation contract stays central, while the AI namespace, orchestration adapters, and Depot expose first-party operational layers on top of it.
+## 프로젝트 소개 (Introduction)
 
-## Why Start With Truthound Core
+Truthound는 Polars 기반의 오픈소스 데이터 검증 프레임워크와 워크플로우 오케스트레이션을 제공하는 프로젝트입니다. 데이터 스키마 검증, 사용자 정의 규칙, 품질 검사, 이상 데이터 탐지 등 다양한 검증 기능을 지원하며, Airflow, Dagster, Prefect 등 주요 워크플로우 환경과 연계하여 검증 절차를 자동화할 수 있습니다. 코드 중심의 선언적 검증 방식을 통해 데이터 품질 관리의 재현성과 유지보수성을 높이고, 다양한 데이터 파이프라인에서 쉽게 활용할 수 있도록 설계되었습니다.
 
-- Polars-first execution and planner-driven aggregation instead of repeated validator-side scans
-- Extreme zero-configuration by default: `th.check(data)` creates and reuses a local `.truthound/` workspace automatically
-- Deterministic auto-suite selection that starts with schema/nullability/type/range/key heuristics instead of "run everything"
-- Canonical `ValidationRunResult` shared by checkpoints, reporters, validation docs, and plugins
-- Explicit contracts for contexts, check factories, backends, and artifact generation
-- Failure-first test lanes and migration diagnostics that make framework upgrades safer in production
+Truthound는 두 개의 저장소로 구성된 하나의 오픈소스 생태계입니다.
 
-## Measured Advantages Of Truthound Core Over Great Expectations
+| 구성 요소 | 저장소 | 역할 |
+| --- | --- | --- |
+| **Truthound** | [`truthound`](https://github.com/seadonggyun4/truthound) | 검증 커널 — `th.check()`, `ValidationRunResult`, 플래너/런타임, 제로 설정 워크스페이스, 리포터, 체크포인트 |
+| **Truthound Orchestration** | [`truthound-orchestration`](https://github.com/seadonggyun4/truthound-orchestration) | Airflow, Dagster, Prefect, dbt, Mage, Kestra 등 워크플로우 환경 연동 레이어 |
 
-The latest fixed-runner release-grade benchmark artifact set shows Truthound ahead of Great Expectations on every comparable workload in the current comparison catalog while preserving correctness parity.
+---
 
-| Workload | Truthound Warm (s) | GX Warm (s) | Speedup | Memory Ratio |
-| --- | ---: | ---: | ---: | ---: |
+## 기대 효과 (Impact)
+
+데이터 검증 로직을 표준화하고 자동화함으로써 반복적인 품질 관리 비용을 줄이고, 데이터 파이프라인의 신뢰성과 운영 효율성을 높일 수 있습니다. 또한 다양한 오픈소스 생태계와 연계 가능한 구조를 제공하여 데이터 분석, ETL, AI/ML 등 여러 분야에서 재사용 가능한 데이터 품질 기반을 마련할 것으로 기대합니다.
+
+---
+
+## 주요 특징 (Key Features)
+
+- **Polars 우선 실행**: 플래너 기반 메트릭 집계로 검증기마다 반복 스캔하지 않고 한 번에 계산합니다.
+- **제로 설정 (Zero-Configuration)**: `th.check(data)` 한 줄로 로컬 `.truthound/` 워크스페이스를 자동 생성·재사용합니다.
+- **결정론적 자동 검증 스위트**: 스키마·널 허용·타입·범위·키 휴리스틱을 기준으로 필요한 검사만 선택합니다 ("전부 실행"이 아님).
+- **단일 결과 모델**: `ValidationRunResult` 하나를 체크포인트, 리포터, 검증 문서, 플러그인이 공유합니다.
+- **명시적 계약(Contract)**: 컨텍스트, 체크 팩토리, 백엔드, 아티팩트 생성에 대한 안정적인 인터페이스를 제공합니다.
+- **워크플로우 연계**: Truthound Orchestration을 통해 스케줄러/워크플로우 환경에서 호스트 네이티브로 실행됩니다.
+
+> AI 검토 기능은 선택적 보조 레이어로 제공됩니다. Truthound의 핵심은 데이터 품질 워크플로우이며, AI는 프롬프트 기반 검증 제안·실행 분석 등을 사람이 검토하는 형태로 보조할 뿐입니다. AI 없이도 모든 핵심 기능이 동작합니다.
+
+---
+
+## 벤치마크 (Benchmark)
+
+고정 러너 기반 릴리스 등급 벤치마크에서, 비교 가능한 모든 워크로드에 대해 정확성을 유지하면서 Great Expectations 대비 더 빠른 실행 시간과 더 낮은 메모리 사용을 측정했습니다.
+
+| 워크로드 | Truthound Warm (s) | GX Warm (s) | 속도 향상 | 메모리 비율 |
+| --- | --- | --- | --- | --- |
 | local-mixed-core-suite | 0.028240 | 0.075232 | 2.66x | 44.29% |
 | local-null | 0.016487 | 0.024964 | 1.51x | 43.62% |
 | local-range | 0.002470 | 0.013219 | 5.35x | 43.84% |
@@ -91,82 +94,31 @@ The latest fixed-runner release-grade benchmark artifact set shows Truthound ahe
 | sqlite-range | 0.006053 | 0.022355 | 3.69x | 43.80% |
 | sqlite-unique | 0.002066 | 0.015655 | 7.58x | 42.12% |
 
-The practical reasons behind that result are straightforward and core-specific:
+이 비교는 결정론적 핵심 검사와 SQLite 푸시다운 워크로드로 범위를 한정한 결과이며, 모든 기능 영역에 대한 일반화된 주장이 아닙니다. 검증된 벤치마크 근거는 [Latest Verified Benchmark Summary](https://github.com/seadonggyun4/truthound/blob/main/docs/releases/latest-benchmark-summary.md)에서 확인할 수 있습니다.
 
-- a Polars-first planner/runtime that deduplicates metric work instead of re-scanning through validator loops
-- deterministic auto-suite selection that keeps default work relevant and exact
-- a smaller zero-config context model that persists baselines and artifacts without forcing a heavy project bootstrap
-- one canonical result contract shared by reporters, checkpoints, and validation docs
+성능 차이의 주요 원인:
+- 검증기 루프로 재스캔하지 않고 메트릭 작업을 중복 제거하는 Polars 우선 플래너/런타임
+- 기본 작업을 정확하고 관련성 있게 유지하는 결정론적 자동 스위트 선택
+- 무거운 프로젝트 부트스트랩 없이 베이스라인과 아티팩트를 유지하는 가벼운 제로 설정 컨텍스트
+- 리포터·체크포인트·검증 문서가 공유하는 단일 결과 계약
 
-This comparison is intentionally bounded. It covers comparable deterministic core checks and SQLite pushdown workloads. It is not a blanket claim about orchestration layers, dashboard operations, or every Great Expectations feature area.
+---
 
-Read the published evidence in [Latest Verified Benchmark Summary](docs/releases/latest-benchmark-summary.md).
+## 빠른 시작 (Quick Start)
 
-## What Truthound Core Stabilizes
-
-Truthound Core 3.x centers the public contract around a smaller and more durable kernel:
-
-| Layer | Responsibility |
-| --- | --- |
-| `TruthoundContext` | Auto-discovered project workspace, baselines, run history, docs artifacts, plugin runtime, and resolved defaults |
-| `contracts` | Stable ports such as `DataAsset`, `ExecutionBackend`, `MetricRepository`, `ArtifactStore`, and plugin capabilities |
-| `suite` | Immutable validation intent via `ValidationSuite`, `CheckSpec`, `SchemaSpec`, evidence policy, and severity policy |
-| `planning` | Scan planning, backend routing, metric deduplication, and pushdown eligibility |
-| `runtime` | Session lifecycle, retries, timeout-safe execution, exception isolation, and evidence capture |
-| `results` | `CheckResult`, `ValidationRunResult`, and `ExecutionIssue` as the canonical output model |
-
-Truthound Orchestration and Truthound Depot build on these contracts instead of replacing them. That is the key layered-system boundary.
-
-### Depot Engine Primitives
-
-Truthound Core also carries private Depot engine primitives for dataset
-repository workflows before they become public API. These Core-owned private
-primitives are used by Truthound Depot and Truthound Orchestration to exchange
-redacted artifact envelopes, deterministic dataset fingerprints, summary-level
-diffs, and `ValidationRunResult`-based quality gate projections.
-
-This is not a new root public surface: there is no public `truthound.datasets`
-and there is no public `truthound.depot` namespace. Core owns the validation engine,
-fingerprint/diff primitive, and quality gate projection runtime; Truthound
-Depot owns repository UI, branch/merge/review/rollback decisions, approval
-state, and operator workflows.
-
-The design is grounded in proven ideas from Great Expectations, Soda, Deequ, and Pandera, but optimized for a simpler zero-config starting point and a Polars-first execution path.
-
-The practical 3.x kernel changes are:
-
-- `th.check()` returns `ValidationRunResult` directly
-- the local `.truthound/` workspace is auto-created and reused
-- `validators=None` now means deterministic `AutoSuiteBuilder`, not "run every built-in validator"
-- `compare` moved to `truthound.drift.compare`
-- checkpoints standardize on `CheckpointResult.validation_run` and `CheckpointResult.validation_view`
-- reporters and validation docs consume `ValidationRunResult` directly through reporter contract v3
-
-The practical current 3.x AI additions on top of that kernel are:
-
-- optional AI dependency bundle: `truthound[ai]`
-- public AI review APIs and CLI commands
-- persisted suite proposal, run analysis, and approval/apply artifacts
-- root AI support probes for downstream services and dashboards
-- prompt hardening for Korean, English, and mixed prompts through deterministic
-  normalization, structured provider output, compiler validation, and explicit
-  review artifacts
-
-## Quick Start
-
-### Installation
+### 설치 (Installation)
 
 ```bash
 pip install truthound
 ```
 
 ```bash
-# Optional AI review surface
+# 선택적 AI 검토 기능
 pip install truthound[ai]
 ```
 
 ```bash
-# Development and docs workflows in this repository
+# 이 저장소에서의 개발/문서 작업
 uv sync --extra dev --extra docs
 ```
 
@@ -206,142 +158,108 @@ truthound check data.csv --validators null,unique
 truthound check --connection "sqlite:///warehouse.db" --table users --pushdown
 truthound scan pii.csv
 truthound profile data.csv
-truthound doctor . --migrate-2to3
 truthound doctor . --workspace
 truthound plugins list --json
 ```
 
 ```bash
-# Optional AI review workflow
+# 선택적 AI 검토 워크플로우
 truthound ai suggest-suite data.csv --prompt "Require customer_id to be unique"
 truthound ai proposals list
 truthound ai explain-run --run-id <run_id>
 ```
 
-## Public Surface
+---
 
-The root package intentionally exports a smaller API:
+## 제로 설정 워크플로우 (Zero-Config Workflow)
 
-- Stable facade: `check`, `scan`, `mask`, `profile`, `learn`, `read`, `get_context`
-- Core types: `TruthoundContext`, `ValidationSuite`, `CheckSpec`, `SchemaSpec`, `ValidationRunResult`, `CheckResult`
-- `th.check()` returns `ValidationRunResult` directly
-- Checkpoint runtime results: `CheckpointResult.validation_run` is canonical and `CheckpointResult.validation_view` is the compatibility projection for legacy action formatting
-- Reporter-facing types: `truthound.reporters.RunPresentation`, `truthound.reporters.ReporterContext`
-- Validation docs entry points: `truthound.datadocs.ValidationDocsBuilder`, `truthound.datadocs.generate_validation_report`
-- Drift comparison: import from `truthound.drift.compare`
-- Advanced systems: import by namespace, for example `truthound.ml`, `truthound.lineage`, `truthound.realtime`, or `truthound.datadocs`
-- Optional AI review surface: import `truthound.ai` after installing `truthound[ai]`
+Truthound는 프로젝트 루트에 `.truthound/` 워크스페이스를 자동으로 생성합니다. 기본적으로 다음을 관리합니다.
 
-## Optional AI Surface
+- `.truthound/config.yaml`: 해석된 프로젝트 기본값
+- `.truthound/catalog/`: 자산 핑거프린트와 소스 시그니처
+- `.truthound/baselines/`: 학습된 스키마와 메트릭 히스토리
+- `.truthound/runs/`: 저장된 `ValidationRunResult` 메타데이터
+- `.truthound/docs/`: 생성된 검증 문서
+- `.truthound/plugins/`: 해석된 플러그인 매니페스트와 신뢰 메타데이터
 
-Truthound now ships an additive `truthound.ai` namespace that preserves the
-core hot path and zero-config workflow while exposing a reviewable AI layer.
+`th.check(data)`만 호출해도 Truthound는 다음 순서로 동작합니다.
 
-- `suggest_suite(...)` compiles prompts into persisted suite proposal artifacts
-- `explain_run(...)` compiles run evidence into persisted analysis artifacts
-- `approve_proposal(...)`, `reject_proposal(...)`, and `apply_proposal(...)` keep approval and mutation in explicit human-reviewed steps
-- `has_ai_support()` and `get_ai_support_status()` let downstream integrations feature-gate the AI surface cleanly
-- Korean, English, and mixed prompt normalization converts common quality
-  requests into canonical validation intent candidates before provider guidance
-- ambiguous or unsupported prompt requests become reviewable rejected items
-  rather than route failures
+1. 자산/백엔드 감지
+2. 활성 `TruthoundContext` 해석
+3. 베이스라인 로드 또는 생성
+4. 자동 검증 스위트 합성
+5. 검증 계획 수립 및 실행
+6. (활성화 시) 실행 결과와 검증 문서 저장
 
-Read the technical docs in [docs/ai/index.md](docs/ai/index.md).
-Read the prompt safety contract in [docs/ai/prompt-hardening.md](docs/ai/prompt-hardening.md).
+`truthound doctor . --workspace`로 로컬 `.truthound/` 레이아웃과 인덱스, 베이스라인, 저장된 실행 아티팩트의 구조적 무결성을 점검할 수 있습니다.
 
-The public CLI surface is additive as well:
+---
 
-- `truthound ai suggest-suite`
-- `truthound ai explain-run`
-- `truthound ai proposals list/show/approve/reject/apply/history`
-- `truthound ai analyses list/show`
-- `truthound ai smoke openai`
-- `truthound ai smoke openai-explain-run`
+## 공개 API (Public Surface)
 
-The experimental `use_engine` and `--use-engine` switches remain removed.
+루트 패키지는 의도적으로 작은 API만 노출합니다.
 
-## Zero-Config Workflow
+- 안정 파사드: `check`, `scan`, `mask`, `profile`, `learn`, `read`, `get_context`
+- 핵심 타입: `TruthoundContext`, `ValidationSuite`, `CheckSpec`, `SchemaSpec`, `ValidationRunResult`, `CheckResult`
+- `th.check()`는 `ValidationRunResult`를 직접 반환합니다.
+- 체크포인트 결과: `CheckpointResult.validation_run`이 정식이며, `CheckpointResult.validation_view`는 레거시 호환 프로젝션입니다.
+- 리포터 타입: `truthound.reporters.RunPresentation`, `truthound.reporters.ReporterContext`
+- 검증 문서 진입점: `truthound.datadocs.ValidationDocsBuilder`, `truthound.datadocs.generate_validation_report`
+- 드리프트 비교: `truthound.drift.compare`
+- 고급 시스템: 네임스페이스로 임포트 (예: `truthound.ml`, `truthound.lineage`, `truthound.realtime`, `truthound.datadocs`)
+- 선택적 AI 레이어: `truthound[ai]` 설치 후 `truthound.ai` 임포트
 
-Truthound auto-creates a `.truthound/` workspace at your project root. By default it manages:
+---
 
-- `.truthound/config.yaml`: resolved project defaults
-- `.truthound/catalog/`: asset fingerprints and source signatures
-- `.truthound/baselines/`: learned schemas and metric history
-- `.truthound/runs/`: persisted `ValidationRunResult` metadata
-- `.truthound/docs/`: generated validation docs
-- `.truthound/plugins/`: resolved plugin manifest and trust metadata
+## 플러그인 플랫폼 (Plugin Platform)
 
-If you do nothing except call `th.check(data)`, Truthound will:
+Truthound는 단일 라이프사이클 런타임을 사용합니다.
 
-1. detect the asset/backend
-2. resolve the active `TruthoundContext`
-3. load or create a baseline
-4. synthesize an auto-suite
-5. plan and execute the validation
-6. persist the run and validation docs when persistence is enabled
+- `PluginManager`가 정식 플러그인 매니저입니다.
+- `EnterprisePluginManager`는 동일 런타임 위의 비동기·역량 기반 파사드입니다.
+- 플러그인은 `register_check_factory`, `register_data_asset_provider`, `register_reporter`, `register_hook`, `register_capability` 같은 안정 포트로 등록합니다.
+- 리포터 플러그인은 `ValidationRunResult`를 정식 렌더 입력으로, `RunPresentation`을 공유 렌더 프로젝션으로 사용하는 contract-v3 표면을 대상으로 합니다.
 
-Use `truthound doctor . --workspace` to verify that the local `.truthound/` layout, indexes, baselines, and persisted run artifacts are still structurally healthy.
+---
 
-## Plugin Platform
+## 문서 (Documentation)
 
-Truthound now uses one lifecycle runtime:
+- 메인 문서 포털: [truthound.netlify.app](https://truthound.netlify.app/)
+- 개요: [docs/index.md](https://github.com/seadonggyun4/truthound/blob/main/docs/index.md)
+- 시작하기: [docs/getting-started/index.md](https://github.com/seadonggyun4/truthound/blob/main/docs/getting-started/index.md)
+- 아키텍처: [docs/concepts/architecture.md](https://github.com/seadonggyun4/truthound/blob/main/docs/concepts/architecture.md)
+- 제로 설정 컨텍스트: [docs/concepts/zero-config.md](https://github.com/seadonggyun4/truthound/blob/main/docs/concepts/zero-config.md)
+- 가이드: [docs/guides/index.md](https://github.com/seadonggyun4/truthound/blob/main/docs/guides/index.md)
+- 레퍼런스: [docs/reference/index.md](https://github.com/seadonggyun4/truthound/blob/main/docs/reference/index.md)
+- AI 문서: [docs/ai/index.md](https://github.com/seadonggyun4/truthound/blob/main/docs/ai/index.md)
+- 오케스트레이션: [truthound.netlify.app/orchestration/](https://truthound.netlify.app/orchestration/)
+- 오케스트레이션 시작하기: [docs/orchestration/getting-started.md](https://github.com/seadonggyun4/truthound/blob/main/docs/orchestration/getting-started.md)
+- 최신 검증 벤치마크 요약: [docs/releases/latest-benchmark-summary.md](https://github.com/seadonggyun4/truthound/blob/main/docs/releases/latest-benchmark-summary.md)
 
-- `PluginManager` is the canonical plugin manager
-- `EnterprisePluginManager` is an async, capability-driven facade over the same runtime
-- Plugins register through stable ports such as `register_check_factory`, `register_data_asset_provider`, `register_reporter`, `register_hook`, and `register_capability`
-- Reporter plugins should target the contract-v3 surface where `ValidationRunResult` is the canonical render input and `RunPresentation` is the shared render projection
+---
 
-## Documentation
-
-- Main docs portal: [truthound.netlify.app](https://truthound.netlify.app/)
-- Core overview: [docs/index.md](docs/index.md)
-- Core getting started: [docs/getting-started/index.md](docs/getting-started/index.md)
-- Core architecture: [docs/concepts/architecture.md](docs/concepts/architecture.md)
-- Depot engine primitives: [docs/concepts/depot-engine-primitives.md](docs/concepts/depot-engine-primitives.md)
-- Core zero-config context: [docs/concepts/zero-config.md](docs/concepts/zero-config.md)
-- Core guides: [docs/guides/index.md](docs/guides/index.md)
-- Core reference: [docs/reference/index.md](docs/reference/index.md)
-- AI docs: [docs/ai/index.md](docs/ai/index.md)
-- Orchestration layer: [truthound.netlify.app/orchestration/](https://truthound.netlify.app/orchestration/)
-- Orchestration getting started: [docs/orchestration/getting-started.md](docs/orchestration/getting-started.md)
-- Depot console layer: [truthound.netlify.app/dashboard/](https://truthound.netlify.app/dashboard/)
-- Release notes: [docs/releases/truthound-3.1.3.md](docs/releases/truthound-3.1.3.md)
-- Latest verified benchmark summary: [docs/releases/latest-benchmark-summary.md](docs/releases/latest-benchmark-summary.md)
-- Migration guide: [docs/guides/migration-3.0.md](docs/guides/migration-3.0.md)
-- Legacy archive: [docs/legacy/index.md](docs/legacy/index.md)
-- ADRs: [docs/adr/001-validation-kernel.md](docs/adr/001-validation-kernel.md), [docs/adr/002-plugin-platform.md](docs/adr/002-plugin-platform.md), [docs/adr/003-result-model.md](docs/adr/003-result-model.md), [docs/adr/004-migration-compatibility.md](docs/adr/004-migration-compatibility.md)
-
-## Development
+## 개발 (Development)
 
 ```bash
 uv run --frozen --extra dev python -m pytest -q
 uv run --frozen --extra dev python -m pytest --collect-only -q tests
 uv run --frozen --extra dev python -m pytest -q -m "contract or fault or e2e" -p no:cacheprovider
-uv run --frozen --extra dev python -m pytest -q -m "contract or fault or integration or soak or stress or scale_100m or e2e" --run-integration --run-expensive --run-soak -p no:cacheprovider
-uv run --frozen --extra dev python -m pytest -q tests/test_truthound_3_0_contract.py tests/test_api.py tests/test_public_surface.py tests/test_checkpoint.py -p no:cacheprovider
 uv run --frozen --extra benchmarks python -m truthound.cli benchmark parity --suite pr-fast --frameworks truthound --backend local --strict
 uv run --frozen --extra benchmarks python -m truthound.cli benchmark parity --suite nightly-core --frameworks both --backend local --strict
-uv run --frozen --extra benchmarks python -m truthound.cli benchmark parity --suite nightly-sql --frameworks both --backend sqlite --strict
-uv run --frozen --extra benchmarks python -m truthound.cli benchmark parity --suite release-ga --frameworks both --strict
-python docs/scripts/prepare_public_docs.py --mode full
-python docs/scripts/prepare_public_docs.py --mode public
-uv run --frozen --extra dev python docs/scripts/check_links.py --mkdocs mkdocs.yml README.md CLAUDE.md build/full-docs
 uv run --frozen --extra dev --extra docs mkdocs build --strict
-uv run --frozen --extra dev --extra docs mkdocs build --strict -f mkdocs.public.yml
-truthound doctor . --migrate-2to3
 ```
 
-Official benchmark comparisons should cite the published fixed-runner artifact set: `release-ga.json`, `env-manifest.json`, and `latest-benchmark-summary.md`.
+테스트는 실패 우선(failure-first) 레인 모델을 따릅니다.
 
-Tests now follow a failure-first lane model:
+- `contract`: 안정 공개 API와 호환성 경계
+- `fault`: 결정론적 실패 주입, 타임아웃, 손상, 동시성 시나리오
+- `integration`: 옵트인 백엔드·외부 서비스 커버리지
+- `soak` / `stress`: 야간 전용 부하·카오스 커버리지
 
-- `contract`: stable public API and compatibility boundaries
-- `fault`: deterministic failure injection, timeout, corruption, and concurrency scenarios
-- `integration`: opt-in backend and external-service coverage
-- `soak` and `stress`: nightly-only load and chaos coverage
+공식 성능 수치는 `.truthound/benchmarks/release/` 아래의 검증된 릴리스 등급 패리티 아티팩트에서만 인용합니다. 야간 출력은 추세 확인용이며 공개 벤치마크 포지셔닝 용도가 아닙니다.
 
-The default local run is intentionally fast. Manual verification artifacts live under `verification/phase6` and are intentionally kept out of pytest discovery.
+---
 
-Official performance claims should come only from the verified release-grade parity artifacts under `.truthound/benchmarks/release/`. Nightly outputs are for trend visibility, not public benchmark positioning.
+## 라이선스 (License)
 
-When adding tests, prefer scenarios that protect public contracts or operational failure modes. Avoid adding default-value, getter/setter, enum-literal, `to_dict()` round-trip, or CSS-string existence tests unless they prove a compatibility boundary that has failed before.
+Apache License 2.0. 자세한 내용은 [LICENSE](https://github.com/seadonggyun4/truthound/blob/main/LICENSE)를 참고하세요.
