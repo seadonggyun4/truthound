@@ -99,12 +99,15 @@ def test_public_docs_manifest_exposes_full_portal():
     assert "cli/index.md" in docs
     assert "python-api/index.md" in docs
     assert "reference/index.md" in docs
-    assert "dashboard/index.md" in docs
     assert "guides/checkpoint/index.md" in docs
     assert "guides/validators/index.md" in docs
+    assert "dashboard/index.md" not in docs
+    assert "guides/datadocs/dashboard.md" not in docs
+    assert "cli/dashboard.md" not in docs
+    assert "concepts/depot-engine-primitives.md" not in docs
+    assert "orchestration/depot-pipelines.md" not in docs
     assert "concepts/API_REFERENCE.md" not in docs
     assert "guides/datasources/ARCHITECTURE.md" not in docs
-    assert (REPO_ROOT / "docs" / "dashboard" / "index.md").exists()
 
 
 def test_public_docs_expected_page_count_matches_manifest():
@@ -159,7 +162,6 @@ def test_mkdocs_nav_exposes_major_hubs_in_main_and_public_configs():
     expected_labels = [
         "Core",
         "AI",
-        "Depot",
         "Orchestration",
         "Release Notes",
         "ADRs",
@@ -195,20 +197,13 @@ def test_mkdocs_core_nav_exposes_major_subsections() -> None:
         labels = _nav_labels(core_entry)
         for label in expected_core_labels:
             assert label in labels
-        assert "Data Docs Dashboard UI" in labels
+        assert "Data Docs Dashboard UI" not in labels
 
 
-def test_mkdocs_depot_nav_exposes_major_subsections() -> None:
+def test_mkdocs_depot_nav_is_removed() -> None:
     for config_path in [REPO_ROOT / "mkdocs.yml", REPO_ROOT / "mkdocs.public.yml"]:
         config = _load_mkdocs(config_path)
-        nav = config.get("nav", [])
-        depot_entry = next(
-            (entry["Depot"] for entry in nav if isinstance(entry, dict) and "Depot" in entry),
-            None,
-        )
-        assert depot_entry is not None
-        labels = _nav_labels(depot_entry)
-        assert labels == ["Overview"]
+        assert "Depot" not in _top_level_nav_labels(config)
 
 
 def test_mkdocs_ai_nav_exposes_major_subsections() -> None:
