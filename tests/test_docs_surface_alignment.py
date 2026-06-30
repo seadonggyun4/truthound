@@ -156,7 +156,7 @@ def test_depot_engine_primitives_docs_are_removed_from_public_surface() -> None:
         assert phrase not in text
 
 
-def test_dashboard_term_is_disambiguated_for_datadocs_ui() -> None:
+def test_dashboard_terms_are_removed_from_public_docs_language() -> None:
     for rel_path in (
         "docs/guides/datadocs/dashboard.md",
         "docs/guides/datadocs/index.md",
@@ -166,7 +166,8 @@ def test_dashboard_term_is_disambiguated_for_datadocs_ui() -> None:
         text = _read(rel_path)
         assert "Truthound Depot" not in text, rel_path
         assert "Data Docs Dashboard UI" not in text, rel_path
-        assert "Data Docs reports" in text, rel_path
+        assert "truthound-dashboard" not in text, rel_path
+        assert "truthound[dashboard]" not in text, rel_path
 
 
 def test_architecture_docs_keep_planner_scope_honest() -> None:
