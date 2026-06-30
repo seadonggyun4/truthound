@@ -129,6 +129,19 @@ def test_public_docs_expected_page_count_matches_manifest():
     assert len(docs) > 36
 
 
+def test_language_redirect_matches_static_i18n_output_layout() -> None:
+    redirect_js = (
+        REPO_ROOT / "docs" / "javascripts" / "language-redirect.js"
+    ).read_text(encoding="utf-8")
+    redirects = (REPO_ROOT / "docs" / "_redirects").read_text(encoding="utf-8")
+
+    assert 'if (lang === "ko")' in redirect_js
+    assert 'var nextPath = "/en" + (path === "/" ? "/" : path);' in redirect_js
+    assert '"/" + lang + "/"' not in redirect_js
+    assert "/ko/* /:splat 301!" in redirects
+    assert "/ko/ / 301!" in redirects
+
+
 def test_public_docs_manifest_keeps_orchestration_counts_without_external_checkout():
     manifest_module = _load_public_manifest_module()
     manifest = manifest_module.load_manifest(REPO_ROOT / "docs" / "public_docs.yml")

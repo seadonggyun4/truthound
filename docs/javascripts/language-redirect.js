@@ -1,6 +1,6 @@
 (function () {
   var path = window.location.pathname;
-  if (/(^|\/)(ko|en)(\/|$)/.test(path)) {
+  if (/^\/(ko|en)(\/|$)/.test(path)) {
     return;
   }
 
@@ -13,8 +13,12 @@
     ? "ko"
     : "en";
   var lang = stored === "ko" || stored === "en" ? stored : browserLang;
-  var nextPath = path.replace(/\/$/, "") + "/" + lang + "/";
 
   window.localStorage.setItem(storageKey, lang);
+  if (lang === "ko") {
+    return;
+  }
+
+  var nextPath = "/en" + (path === "/" ? "/" : path);
   window.location.replace(nextPath.replace(/\/{2,}/g, "/"));
 })();
