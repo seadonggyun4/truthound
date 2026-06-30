@@ -25,6 +25,16 @@
   </a>
 </p>
 
+<!--
+README HEADER FORMAT LOCK:
+The exact header format above MUST be preserved.
+Do not rewrite it as Markdown-only syntax, do not remove the centered HTML,
+do not change the banner image block, title, bilingual subtitle, slogan, or
+badge block, and do not reorder those elements.
+This required format starts at:
+  <div align="center">
+and ends at the closing </p> of the badge block above.
+-->
 
 
 ---
