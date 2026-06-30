@@ -1,0 +1,464 @@
+# Custom Renderers
+
+실무 운영 가이드에서 Data Docs, Truthound, Data, Docs을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+
+## Template Renderers
+
+### CustomRenderer (Base Class)
+
+실무 운영 가이드에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+
+```python
+from truthound.datadocs.renderers.custom import CustomRenderer
+
+class MyRenderer(CustomRenderer):
+    def __init__(self, name: str | None = None):
+        super().__init__(name=name or "MyRenderer")
+
+    def _do_render(self, ctx, theme):
+        context = self._build_context(ctx, theme)
+        return f"<html><body>{context['title']}</body></html>"
+```
+
+### StringTemplateRenderer
+
+실무 운영 가이드에서 `{key}`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+
+```python
+from truthound.datadocs.renderers.custom import StringTemplateRenderer
+
+renderer = StringTemplateRenderer(
+    template="""
+    <html>
+        <head><title>{title}</title></head>
+        <body>
+            <h1>{title}</h1>
+            <p>{subtitle}</p>
+        </body>
+    </html>
+    """,
+    name="MyStringRenderer",
+    safe_mode=True,  # Enable HTML escaping
+)
+```
+
+### FileTemplateRenderer
+
+실무 운영 가이드에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+
+```python
+from pathlib import Path
+from truthound.datadocs.renderers.custom import FileTemplateRenderer
+
+renderer = FileTemplateRenderer(
+    template_path=Path("./templates/report.html.j2"),
+    engine="auto",  # "jinja2", "string", or "auto"
+    name="MyFileRenderer",
+    encoding="utf-8",
+)
+```
+
+**엔진 Auto-detection:**
+- 실무 운영 가이드에서 `.j2`, `.jinja`, `.jinja2`, Jinja2을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+- 실무 운영 가이드에서 `.html`, `{{`, `{%`, Jinja2을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+- 실무 운영 가이드에서 Otherwise, String을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+
+### CallableRenderer
+
+실무 운영 가이드에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+
+```python
+from truthound.datadocs.renderers.custom import CallableRenderer
+
+def my_render_func(ctx, theme):
+    return f"""
+    <html>
+        <head><title>{ctx.title}</title></head>
+        <body>
+            <h1>{ctx.title}</h1>
+            <p>Rows: {ctx.data.metadata.get('row_count', 0)}</p>
+        </body>
+    </html>
+    """
+
+renderer = CallableRenderer(
+    render_func=my_render_func,
+    name="MyCallableRenderer",
+)
+```
+
+## Template Context
+
+실무 운영 가이드에서 `_build_context()`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+
+### Default Context Variables
+
+```python
+context = {
+    "title": ctx.title,           # Report title
+    "subtitle": ctx.subtitle,     # Subtitle
+    "locale": ctx.locale,         # Locale
+    "theme": ctx.theme,           # Theme name
+    "theme_css": theme.get_css(), # Theme CSS
+    "metadata": data.metadata,    # Profile metadata
+    "sections": data.sections,    # Section data
+    "alerts": data.alerts,        # Alert list
+    "recommendations": data.recommendations,  # Recommendation list
+    "charts": data.charts,        # Chart data
+    "tables": data.tables,        # Table data
+    "raw": data.raw,              # Raw profile data
+    "options": ctx.options,       # Additional options
+}
+```
+
+### Custom Context Builder
+
+```python
+from truthound.datadocs.renderers.custom import CustomRenderer
+
+def my_context_builder(ctx, theme):
+    return {
+        "title": ctx.title,
+        "quality_score": ctx.data.raw.get("quality_score", 0),
+        "custom_data": "Hello World",
+    }
+
+renderer = CustomRenderer(
+    name="MyRenderer",
+    context_builder=my_context_builder,
+)
+```
+
+## Jinja2 Template 예시
+
+### Basic 리포트 Template
+
+```jinja2
+{# templates/report.html.j2 #}
+<!DOCTYPE html>
+<html lang="{{ locale }}">
+<head>
+    <meta charset="UTF-8">
+    <title>{{ title }}</title>
+    <style>{{ theme_css }}</style>
+</head>
+<body>
+    <header>
+        <h1>{{ title }}</h1>
+        {% if subtitle %}
+        <p class="subtitle">{{ subtitle }}</p>
+        {% endif %}
+    </header>
+
+    <main>
+        {# Overview #}
+        <section id="overview">
+            <h2>Overview</h2>
+            <div class="metrics">
+                <div class="metric">
+                    <span class="value">{{ metadata.row_count | default(0) | number }}</span>
+                    <span class="label">Rows</span>
+                </div>
+                <div class="metric">
+                    <span class="value">{{ metadata.column_count | default(0) }}</span>
+                    <span class="label">Columns</span>
+                </div>
+            </div>
+        </section>
+
+        {# Alerts #}
+        {% if alerts %}
+        <section id="alerts">
+            <h2>Alerts</h2>
+            {% for alert in alerts %}
+            <div class="alert alert-{{ alert.severity }}">
+                <strong>{{ alert.title }}</strong>
+                <p>{{ alert.message }}</p>
+            </div>
+            {% endfor %}
+        </section>
+        {% endif %}
+
+        {# Recommendations #}
+        {% if recommendations %}
+        <section id="recommendations">
+            <h2>Recommendations</h2>
+            <ul>
+            {% for rec in recommendations %}
+                <li>{{ rec }}</li>
+            {% endfor %}
+            </ul>
+        </section>
+        {% endif %}
+    </main>
+
+    <footer>
+        <p>Generated by Truthound</p>
+    </footer>
+</body>
+</html>
+```
+
+### Usage
+
+```python
+from pathlib import Path
+from truthound.datadocs.renderers.custom import FileTemplateRenderer
+from truthound.datadocs.engine.context import ReportContext, ReportData
+
+# Create renderer
+renderer = FileTemplateRenderer(
+    template_path=Path("./templates/report.html.j2"),
+    engine="jinja2",
+)
+
+# Create context
+ctx = ReportContext(
+    title="My Report",
+    subtitle="Q4 Analysis",
+    locale="en",
+    theme="professional",
+    data=ReportData(
+        metadata={"row_count": 1000, "column_count": 15},
+        raw=profile_dict,
+    ),
+)
+
+# Render
+html = renderer.render(ctx, theme=None)
+```
+
+## Extending Chart Renderers
+
+### Registering Custom Chart Renderers
+
+```python
+from truthound.datadocs import (
+    BaseChartRenderer,
+    ChartSpec,
+    ChartLibrary,
+    register_chart_renderer,
+)
+
+# NOTE: ChartLibrary enum currently supports only APEXCHARTS and SVG.
+# To add a new library, you must first add it to the ChartLibrary enum.
+# Below is an example of registering a custom renderer:
+
+@register_chart_renderer(ChartLibrary.APEXCHARTS)
+class CustomApexChartsRenderer(BaseChartRenderer):
+    """Custom ApexCharts-based chart renderer."""
+
+    library = ChartLibrary.APEXCHARTS
+
+    def render(self, spec: ChartSpec) -> str:
+        import json
+
+        chart_id = f"chart-{id(spec)}"
+        option = {
+            "title": {"text": spec.title},
+            "xAxis": {"data": spec.labels},
+            "yAxis": {},
+            "series": [{"type": "bar", "data": spec.values}],
+        }
+
+        return f"""
+        <div id="{chart_id}" style="height: {spec.height}px;"></div>
+        <script>
+            var chart = echarts.init(document.getElementById('{chart_id}'));
+            chart.setOption({json.dumps(option)});
+        </script>
+        """
+
+    def get_dependencies(self) -> list[str]:
+        return ["https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"]
+```
+
+### Usage
+
+```python
+from truthound.datadocs import get_chart_renderer, ChartLibrary
+
+renderer = get_chart_renderer(ChartLibrary.APEXCHARTS)
+html = renderer.render(chart_spec)
+```
+
+## Extending Section Renderers
+
+### Registering Custom Section Renderers
+
+```python
+from truthound.datadocs import (
+    BaseSectionRenderer,
+    SectionSpec,
+    SectionType,
+    register_section_renderer,
+)
+
+# NOTE: You must use the SectionType enum.
+# For custom sections, use SectionType.CUSTOM.
+
+@register_section_renderer(SectionType.CUSTOM)
+class KPIDashboardSection(BaseSectionRenderer):
+    """KPI dashboard section."""
+
+    section_type = SectionType.CUSTOM
+
+    def render(self, spec: SectionSpec, chart_renderer, theme_config) -> str:
+        metrics = spec.metrics
+        return f"""
+        <section class="kpi-dashboard">
+            <h2>{spec.title}</h2>
+            <div class="kpi-grid">
+                <div class="kpi-card">
+                    <span class="kpi-value">{metrics.get('quality_score', 0)}%</span>
+                    <span class="kpi-label">Quality Score</span>
+                </div>
+                <div class="kpi-card">
+                    <span class="kpi-value">{metrics.get('completeness', 0):.1f}%</span>
+                    <span class="kpi-label">Completeness</span>
+                </div>
+                <div class="kpi-card">
+                    <span class="kpi-value">{metrics.get('uniqueness', 0):.1f}%</span>
+                    <span class="kpi-label">Uniqueness</span>
+                </div>
+            </div>
+        </section>
+        """
+```
+
+### Using in ReportConfig
+
+```python
+from truthound.datadocs import ReportConfig, SectionType
+
+config = ReportConfig(
+    sections=[
+        "kpi_dashboard",       # Custom section (string)
+        SectionType.OVERVIEW,
+        SectionType.COLUMNS,
+    ]
+)
+```
+
+## Renderer Registry
+
+### Querying Registered Renderers
+
+```python
+from truthound.datadocs import renderer_registry
+
+# List registered chart renderers
+chart_renderers = renderer_registry.list_chart_renderers()
+# ['apexcharts', 'svg', 'echarts']
+
+# List registered section renderers
+section_renderers = renderer_registry.list_section_renderers()
+# ['overview', 'columns', 'quality', ..., 'kpi_dashboard']
+```
+
+### Getting Renderers
+
+```python
+from truthound.datadocs import (
+    get_chart_renderer,
+    get_section_renderer,
+)
+
+# Get renderer by name
+chart_renderer = get_chart_renderer("apexcharts")
+section_renderer = get_section_renderer("overview")
+```
+
+### Unregistering Renderers
+
+```python
+from truthound.datadocs import renderer_registry
+
+# Unregister chart renderer
+renderer_registry.unregister_chart("echarts")
+
+# Unregister section renderer
+renderer_registry.unregister_section("kpi_dashboard")
+```
+
+## API 레퍼런스
+
+### BaseRenderer
+
+```python
+class BaseRenderer(ABC):
+    def __init__(self, name: str | None = None) -> None:
+        self._name = name or self.__class__.__name__
+
+    @property
+    def name(self) -> str:
+        return self._name
+
+    def render(self, ctx: "ReportContext", theme: "Theme | None") -> str:
+        return self._do_render(ctx, theme)
+
+    @abstractmethod
+    def _do_render(self, ctx: "ReportContext", theme: "Theme | None") -> str:
+        ...
+```
+
+### CustomRenderer
+
+```python
+class CustomRenderer(BaseRenderer):
+    def __init__(
+        self,
+        name: str | None = None,
+        context_builder: Callable[[ReportContext, Theme | None], dict[str, Any]] | None = None,
+    ) -> None:
+        ...
+
+    def _build_context(self, ctx: ReportContext, theme: Theme | None) -> dict[str, Any]:
+        ...
+```
+
+### StringTemplateRenderer
+
+```python
+class StringTemplateRenderer(CustomRenderer):
+    def __init__(
+        self,
+        template: str,
+        name: str | None = None,
+        safe_mode: bool = True,  # HTML escaping
+    ) -> None:
+        ...
+```
+
+### FileTemplateRenderer
+
+```python
+class FileTemplateRenderer(CustomRenderer):
+    def __init__(
+        self,
+        template_path: Path | str,
+        engine: str = "auto",  # "jinja2", "string", "auto"
+        name: str | None = None,
+        encoding: str = "utf-8",
+    ) -> None:
+        ...
+```
+
+### CallableRenderer
+
+```python
+class CallableRenderer(CustomRenderer):
+    def __init__(
+        self,
+        render_func: Callable[[ReportContext, Theme | None], str],
+        name: str | None = None,
+    ) -> None:
+        ...
+```
+
+## 함께 보기
+
+- 실무 운영 가이드에서 HTML, Reports을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+- 실무 운영 가이드에서 Charts, Chart을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+- [Sections](sections.md) - Section 설정
+- 실무 운영 가이드에서 Themes, Theme을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.

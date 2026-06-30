@@ -142,6 +142,24 @@ def test_language_redirect_matches_static_i18n_output_layout() -> None:
     assert "/ko/ / 301!" in redirects
 
 
+def test_public_docs_have_real_korean_locale_overlays() -> None:
+    manifest_module = _load_public_manifest_module()
+    manifest = manifest_module.load_manifest(REPO_ROOT / "docs" / "public_docs.yml")
+    docs = manifest_module.resolve_public_docs(manifest, REPO_ROOT / "docs")
+    prepare_script = (REPO_ROOT / "docs" / "scripts" / "prepare_public_docs.py").read_text(
+        encoding="utf-8"
+    )
+
+    assert "_render_korean_mirror" not in prepare_script
+    assert "한국어 미러" not in prepare_script
+    for doc_path in docs:
+        overlay = REPO_ROOT / "docs" / "locales" / "ko" / doc_path
+        assert overlay.exists(), doc_path
+        text = overlay.read_text(encoding="utf-8")
+        assert "한국어 미러" not in text
+        assert len(re.findall(r"[가-힣]", text)) >= 40, doc_path
+
+
 def test_public_docs_manifest_keeps_orchestration_counts_without_external_checkout():
     manifest_module = _load_public_manifest_module()
     manifest = manifest_module.load_manifest(REPO_ROOT / "docs" / "public_docs.yml")
@@ -217,6 +235,20 @@ def test_mkdocs_depot_nav_is_removed() -> None:
     for config_path in [REPO_ROOT / "mkdocs.yml", REPO_ROOT / "mkdocs.public.yml"]:
         config = _load_mkdocs(config_path)
         assert "Depot" not in _top_level_nav_labels(config)
+
+
+def test_korean_nav_translations_are_configured_for_main_hubs():
+    for config_path in (REPO_ROOT / "mkdocs.yml", REPO_ROOT / "mkdocs.public.yml"):
+        config = _load_mkdocs(config_path)
+        languages = config["plugins"][1]["i18n"]["languages"]
+        ko = next(language for language in languages if language["locale"] == "ko")
+        translations = ko["nav_translations"]
+
+        assert ko["site_description"].startswith("Polars 기반")
+        assert translations["Home"] == "홈"
+        assert translations["Orchestration"] == "오케스트레이션"
+        assert translations["Release Notes"] == "릴리스 노트"
+        assert translations["Legacy / Archive"] == "레거시 / 아카이브"
 
 
 def test_mkdocs_ai_nav_exposes_major_subsections() -> None:

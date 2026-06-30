@@ -66,29 +66,49 @@ def _scrub_removed_surfaces(text: str) -> str:
     return text
 
 
-def _render_korean_mirror(text: str) -> str:
-    text = _scrub_removed_surfaces(text)
-    translations = {
-        "# Overview": "# 개요",
-        "# Getting Started": "# 시작하기",
-        "# Installation": "# 설치",
-        "# Quick Start": "# 빠른 시작",
-        "# Architecture": "# 아키텍처",
-        "# Compatibility": "# 호환성",
-        "# Troubleshooting": "# 문제 해결",
-        "# Truthound": "# Truthound — Data Quality Workflow",
-    }
-    for old, new in translations.items():
-        text = text.replace(old, new)
-    return (
-        '!!! note "한국어 문서"\n'
-        "    이 페이지는 Truthound 문서의 한국어 미러입니다. 코드, 명령어, API 이름은 "
-        "정확성을 위해 원문 표기를 유지하고, 설명은 데이터 품질 워크플로우 관점으로 제공합니다.\n\n"
-        f"{text}"
-    )
+def _load_korean_overlay(repo_root: Path, relative_path: Path, *, required: bool) -> str | None:
+    overlay_path = repo_root / "docs" / "locales" / "ko" / relative_path
+    if overlay_path.exists():
+        return _scrub_removed_surfaces(overlay_path.read_text(encoding="utf-8"))
+    if required:
+        raise FileNotFoundError(f"Missing Korean docs overlay: {overlay_path.relative_to(repo_root)}")
+    return None
 
 
-def _localize_output(output_dir: Path) -> None:
+def _leading_source_banner(text: str) -> str:
+    _, body = _split_frontmatter(text)
+    lines = body.splitlines()
+    start = 0
+    while start < len(lines) and not lines[start].strip():
+        start += 1
+    if start >= len(lines) or not lines[start].startswith('!!! note "Upstream Source"'):
+        return ""
+    banner: list[str] = []
+    for line in lines[start:]:
+        if banner and line.strip() and not line.startswith(" "):
+            break
+        banner.append(line)
+    return "\n".join(banner).strip()
+
+
+def _split_frontmatter(text: str) -> tuple[str, str]:
+    if not text.startswith("---\n"):
+        return "", text
+    marker = text.find("\n---\n", 4)
+    if marker == -1:
+        return "", text
+    end = marker + len("\n---\n")
+    return text[:end].rstrip(), text[end:].lstrip()
+
+
+def _insert_after_frontmatter(text: str, insert: str) -> str:
+    frontmatter, body = _split_frontmatter(text)
+    if frontmatter:
+        return f"{frontmatter}\n\n{insert}\n\n{body.lstrip()}"
+    return f"{insert}\n\n{text.lstrip()}"
+
+
+def _localize_output(output_dir: Path, *, repo_root: Path, require_korean: bool) -> None:
     temp_dir = output_dir.with_name(f"{output_dir.name}-flat")
     if temp_dir.exists():
         shutil.rmtree(temp_dir)
@@ -104,6 +124,9 @@ def _localize_output(output_dir: Path) -> None:
         scripts_dir = localized_dir / "scripts"
         if scripts_dir.exists():
             shutil.rmtree(scripts_dir)
+        locales_dir = localized_dir / "locales"
+        if locales_dir.exists():
+            shutil.rmtree(locales_dir)
 
     for markdown in en_dir.rglob("*.md"):
         markdown.write_text(
@@ -111,8 +134,15 @@ def _localize_output(output_dir: Path) -> None:
             encoding="utf-8",
         )
     for markdown in ko_dir.rglob("*.md"):
+        relative_path = markdown.relative_to(ko_dir)
+        overlay = _load_korean_overlay(repo_root, relative_path, required=require_korean)
+        source_banner = _leading_source_banner(markdown.read_text(encoding="utf-8"))
+        if overlay is not None and source_banner:
+            overlay = _insert_after_frontmatter(overlay, source_banner)
         markdown.write_text(
-            _render_korean_mirror(markdown.read_text(encoding="utf-8")),
+            overlay
+            if overlay is not None
+            else _scrub_removed_surfaces(markdown.read_text(encoding="utf-8")),
             encoding="utf-8",
         )
 
@@ -180,6 +210,9 @@ def _stage_full_docs(
     overrides: dict[str, Path],
 ) -> int:
     _copy_directory(docs_root, output_dir)
+    locales_dir = output_dir / "locales"
+    if locales_dir.exists():
+        shutil.rmtree(locales_dir)
 
     external_sources = load_external_sources(manifest)
     copied_docs = len(list(output_dir.rglob("*.md")))
@@ -318,7 +351,7 @@ def main() -> int:
             manifest=manifest,
             overrides=overrides,
         )
-        _localize_output(output_dir)
+        _localize_output(output_dir, repo_root=repo_root, require_korean=True)
         print(
             f"Staged {copied_docs} public markdown pages into "
             f"{output_dir.relative_to(repo_root)} using {manifest_path.relative_to(repo_root)}."
@@ -341,7 +374,7 @@ def main() -> int:
         manifest=manifest,
         overrides=overrides,
     )
-    _localize_output(output_dir)
+    _localize_output(output_dir, repo_root=repo_root, require_korean=False)
     print(
         f"Staged {copied_docs} markdown pages into {output_dir.relative_to(repo_root)} "
         f"for {mkdocs_file.relative_to(repo_root)}."

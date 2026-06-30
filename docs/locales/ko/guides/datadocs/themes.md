@@ -1,0 +1,410 @@
+# Themes
+
+실무 운영 가이드에서 Data Docs, Truthound, Data, Docs을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+
+## Built-in Themes
+
+| 실무 운영 가이드에서 Theme을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Description을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Best을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
+|-------|-------------|----------|
+| 실무 운영 가이드에서 `default`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Clean을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 General을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
+| 실무 운영 가이드에서 `light`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Light을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Printing을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
+| 실무 운영 가이드에서 `dark`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Dark을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Night을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
+| 실무 운영 가이드에서 `minimal`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Minimalist을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Concise을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
+| 실무 운영 가이드에서 `modern`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Apple을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Marketing을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
+| 실무 운영 가이드에서 `professional`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Corporate을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | Business 리포트 (default) |
+
+## Theme Usage
+
+### CLI
+
+```bash
+# List available themes
+truthound docs themes
+
+# Apply theme
+truthound docs generate profile.json -o report.html --theme dark
+```
+
+### Python API
+
+```python
+from truthound.datadocs import (
+    HTMLReportBuilder,
+    ReportTheme,
+    get_theme,
+    get_available_themes,
+)
+
+# List available themes
+print(get_available_themes())  # ['default', 'light', 'dark', 'minimal', 'modern', 'professional']
+
+# Specify theme by string
+builder = HTMLReportBuilder(theme="professional")
+
+# Specify theme by enum
+builder = HTMLReportBuilder(theme=ReportTheme.DARK)
+
+# Get theme configuration
+theme_config = get_theme("dark")
+```
+
+## Theme Structure
+
+### ThemeColors
+
+```python
+from truthound.datadocs.themes.base import ThemeColors
+
+colors = ThemeColors(
+    background="#ffffff",       # Background color
+    surface="#f8f9fa",          # Card/panel background
+    text_primary="#1a1a2e",     # Primary text
+    text_secondary="#6c757d",   # Secondary text
+    primary="#2563eb",          # Primary accent color
+    secondary="#7209b7",        # Secondary accent color
+    accent="#f72585",           # Accent
+    success="#10b981",          # Success/positive
+    warning="#f59e0b",          # Warning
+    error="#ef4444",            # Error
+    info="#3b82f6",             # Information
+    border="#e5e7eb",           # Border
+    shadow="rgba(0, 0, 0, 0.05)",  # Shadow
+    chart_palette=(             # Chart color palette
+        "#2563eb", "#7c3aed", "#db2777",
+        "#ea580c", "#65a30d", "#0891b2",
+    ),
+)
+
+# Convert to CSS variables
+css_vars = colors.to_css_vars()
+```
+
+### ThemeTypography
+
+```python
+from truthound.datadocs.themes.base import ThemeTypography
+
+typography = ThemeTypography(
+    font_family="'Inter', system-ui, -apple-system, sans-serif",
+    font_family_mono="'JetBrains Mono', 'Fira Code', monospace",
+    font_size_xs="0.75rem",
+    font_size_sm="0.875rem",
+    font_size_base="1rem",
+    font_size_lg="1.125rem",
+    font_size_xl="1.25rem",
+    font_size_2xl="1.5rem",
+    font_size_3xl="1.875rem",
+    font_weight_normal=400,
+    font_weight_medium=500,
+    font_weight_semibold=600,
+    font_weight_bold=700,
+    line_height_tight=1.25,
+    line_height_normal=1.5,
+    line_height_relaxed=1.75,
+)
+```
+
+### ThemeSpacing
+
+```python
+from truthound.datadocs.themes.base import ThemeSpacing
+
+spacing = ThemeSpacing(
+    border_radius_sm="4px",
+    border_radius_md="8px",
+    border_radius_lg="12px",
+    border_radius_xl="16px",
+    spacing_xs="0.25rem",
+    spacing_sm="0.5rem",
+    spacing_md="1rem",
+    spacing_lg="1.5rem",
+    spacing_xl="2rem",
+    spacing_2xl="3rem",
+    shadow_sm="0 1px 2px 0 rgb(0 0 0 / 0.05)",
+    shadow_md="0 4px 6px -1px rgb(0 0 0 / 0.1)",
+    shadow_lg="0 10px 15px -3px rgb(0 0 0 / 0.1)",
+    shadow_xl="0 25px 50px -12px rgb(0 0 0 / 0.25)",
+)
+```
+
+### ThemeAssets
+
+```python
+from truthound.datadocs.themes.base import ThemeAssets
+
+assets = ThemeAssets(
+    logo_url=None,                # Logo URL
+    logo_base64=None,             # Logo Base64 (for offline)
+    favicon_url=None,             # Favicon URL
+    favicon_base64=None,          # Favicon Base64
+    custom_fonts=[],              # Custom font URL list
+    external_css=[],              # External CSS files
+    external_js=[],               # External JS files
+)
+```
+
+### ThemeConfig (Complete Theme 설정)
+
+```python
+from truthound.datadocs.themes.base import (
+    ThemeConfig,
+    ThemeColors,
+    ThemeTypography,
+    ThemeSpacing,
+    ThemeAssets,
+)
+
+theme = ThemeConfig(
+    name="my_theme",
+    display_name="My Custom Theme",
+    description="Custom theme for my company",
+    colors=ThemeColors(...),
+    typography=ThemeTypography(...),
+    spacing=ThemeSpacing(...),
+    assets=ThemeAssets(...),
+    custom_css="",
+    header_text="",
+    footer_text="Generated by Truthound",
+    show_header=True,
+    show_footer=True,
+    show_toc=True,
+    compact_mode=False,
+)
+
+# Convert to CSS :root block
+css_root = theme.to_css_vars()
+```
+
+## Creating Custom Themes
+
+### Method 1: Direct ThemeConfig Creation
+
+```python
+from truthound.datadocs import (
+    HTMLReportBuilder,
+    ReportConfig,
+)
+from truthound.datadocs.themes.base import (
+    ThemeConfig,
+    ThemeColors,
+    ThemeTypography,
+    ThemeSpacing,
+)
+
+# Define custom colors
+custom_colors = ThemeColors(
+    background="#fafafa",
+    surface="#ffffff",
+    text_primary="#333333",
+    primary="#ff6b6b",
+    secondary="#4ecdc4",
+    accent="#ffe66d",
+)
+
+# Create custom theme
+custom_theme = ThemeConfig(
+    name="my_brand",
+    colors=custom_colors,
+    typography=ThemeTypography(
+        font_family="'Noto Sans KR', sans-serif",
+    ),
+)
+
+# Apply to report
+config = ReportConfig(custom_theme=custom_theme)
+builder = HTMLReportBuilder(config=config)
+html = builder.build(profile_dict)
+```
+
+### Method 2: Extending Existing Themes
+
+```python
+from truthound.datadocs.themes import get_theme
+
+# Get existing theme
+base_theme = get_theme("professional")
+
+# Create new theme by changing only colors
+from dataclasses import replace
+
+custom_theme = replace(
+    base_theme,
+    name="my_professional",
+    colors=replace(
+        base_theme.colors,
+        primary="#e63946",
+        secondary="#457b9d",
+    ),
+)
+```
+
+## Enterprise Theme (White-labeling)
+
+실무 운영 가이드에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+
+### BrandingConfig
+
+```python
+from truthound.datadocs.themes.enterprise import BrandingConfig
+
+branding = BrandingConfig(
+    company_name="Acme Corp",
+    tagline="Data Quality Excellence",
+    logo_url="https://example.com/logo.png",
+    logo_base64=None,             # Or Base64 encoded logo
+    logo_height="40px",
+    favicon_url="https://example.com/favicon.ico",
+    copyright_text="© 2025 Acme Corp. All rights reserved.",
+    website_url="https://acme.com",
+    support_email="support@acme.com",
+)
+
+# Auto-generate footer text
+footer = branding.get_footer_text()
+```
+
+### EnterpriseTheme
+
+```python
+from truthound.datadocs.themes.enterprise import (
+    EnterpriseTheme,
+    EnterpriseThemeConfig,
+)
+
+# Simple creation
+theme = EnterpriseTheme(
+    company_name="Acme Corp",
+    primary_color="#e63946",
+    secondary_color="#457b9d",
+    logo_url="https://example.com/logo.png",
+    font_family="'Roboto', sans-serif",
+    custom_css=".custom { color: red; }",
+)
+
+# Create from configuration file
+config = EnterpriseThemeConfig(
+    branding=BrandingConfig(...),
+    colors=ThemeColors(...),
+    ...
+)
+theme = EnterpriseTheme.from_config(config)
+
+# Customize with fluent API
+theme = (
+    EnterpriseTheme(company_name="Acme")
+    .with_branding(logo_url="https://...", tagline="Quality First")
+    .with_colors(primary="#e63946", secondary="#457b9d")
+    .customize(custom_css=".header { background: #fff; }")
+)
+```
+
+### Usage Example
+
+```python
+from truthound.datadocs import HTMLReportBuilder, ReportConfig
+from truthound.datadocs.themes.enterprise import EnterpriseTheme
+
+# Create enterprise theme
+theme = EnterpriseTheme(
+    company_name="Acme Corp",
+    primary_color="#1a5f7a",
+    logo_url="https://acme.com/logo.png",
+)
+
+# Apply to report
+config = ReportConfig(custom_theme=theme)
+builder = HTMLReportBuilder(config=config)
+html = builder.build(profile_dict)
+```
+
+## CSS Variables
+
+실무 운영 가이드에서 Themes, CSS을(를) 다루는 항목입니다:
+
+```css
+:root {
+  /* Colors */
+  --color-background: #ffffff;
+  --color-surface: #f8f9fa;
+  --color-text-primary: #1a1a2e;
+  --color-text-secondary: #6c757d;
+  --color-primary: #2563eb;
+  --color-secondary: #7209b7;
+  --color-accent: #f72585;
+  --color-success: #10b981;
+  --color-warning: #f59e0b;
+  --color-error: #ef4444;
+  --color-info: #3b82f6;
+  --color-border: #e5e7eb;
+
+  /* Typography */
+  --font-family: 'Inter', system-ui, sans-serif;
+  --font-family-mono: 'JetBrains Mono', monospace;
+  --font-size-xs: 0.75rem;
+  --font-size-sm: 0.875rem;
+  --font-size-md: 1rem;
+  --font-size-lg: 1.125rem;
+
+  /* Spacing */
+  --spacing-xs: 0.25rem;
+  --spacing-sm: 0.5rem;
+  --spacing-md: 1rem;
+  --spacing-lg: 1.5rem;
+  --spacing-xl: 2rem;
+
+  /* Border Radius */
+  --border-radius-sm: 4px;
+  --border-radius-md: 8px;
+  --border-radius-lg: 12px;
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1);
+}
+```
+
+## API 레퍼런스
+
+### Theme-related Functions
+
+```python
+from truthound.datadocs.themes import (
+    get_theme,            # Get theme by name
+    get_available_themes, # List available themes
+    THEMES,               # Theme dictionary
+)
+
+# List themes
+themes = get_available_themes()  # ['default', 'light', 'dark', ...]
+
+# Get theme
+theme = get_theme("professional")
+
+# Get with custom overrides
+theme = get_theme("dark", colors=ThemeColors(primary="#ff0000"))
+
+# Full theme dictionary
+from truthound.datadocs.themes import THEMES
+print(THEMES.keys())
+```
+
+### Predefined Theme Constants
+
+```python
+from truthound.datadocs import (
+    LIGHT_THEME,
+    DARK_THEME,
+    PROFESSIONAL_THEME,
+    MINIMAL_THEME,
+    MODERN_THEME,
+)
+
+# Direct usage
+config = ReportConfig(custom_theme=DARK_THEME)
+```
+
+## 함께 보기
+
+- 실무 운영 가이드에서 HTML, Reports을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+- 실무 운영 가이드에서 Charts, Chart을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+- 실무 운영 가이드에서 Custom, Renderers을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.

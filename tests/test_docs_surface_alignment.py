@@ -23,6 +23,14 @@ def _rel(path: Path) -> str:
     return path.relative_to(REPO_ROOT).as_posix()
 
 
+def _canonical_doc_rel(path: Path) -> str:
+    rel_path = _rel(path)
+    locale_prefix = "docs/locales/ko/"
+    if rel_path.startswith(locale_prefix):
+        return "docs/" + rel_path[len(locale_prefix) :]
+    return rel_path
+
+
 def _assert_no_matches(
     *,
     patterns: list[str],
@@ -34,7 +42,7 @@ def _assert_no_matches(
     compiled = [re.compile(pattern) for pattern in patterns]
     for path in _all_docs():
         rel_path = _rel(path)
-        if rel_path in allowlist:
+        if rel_path in allowlist or _canonical_doc_rel(path) in allowlist:
             continue
 
         text = path.read_text(encoding="utf-8")

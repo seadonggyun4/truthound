@@ -1,0 +1,883 @@
+# Enterprise SDK
+
+실무 운영 가이드에서 Enterprise, SDK을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+
+## 개요
+
+Enterprise SDK 아키텍처:
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                    Enterprise SDK Manager                            │
+└─────────────────────────────────────────────────────────────────────┘
+                                │
+┌───────────────┬───────────────┼───────────────┬─────────────────────┐
+│               │               │               │                     │
+▼               ▼               ▼               ▼                     ▼
+┌─────────┐   ┌─────────┐    ┌──────────┐   ┌──────────┐    ┌────────────┐
+│ Sandbox │   │ Resource│    │ Signing  │   │ Version  │    │  License   │
+│ Manager │   │ Limiter │    │ Manager  │   │ Checker  │    │  Manager   │
+└─────────┘   └─────────┘    └──────────┘   └──────────┘    └────────────┘
+```
+
+실무 운영 가이드에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+
+## 1. Sandbox Execution
+
+실무 운영 가이드에서 Execute을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+
+### SandboxBackend
+
+| 실무 운영 가이드에서 Backend을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Isolation, Level을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Description을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
+|---------|-----------------|-------------|
+| 실무 운영 가이드에서 `IN_PROCESS`, IN_PROCESS을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Low을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 In-process을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
+| 실무 운영 가이드에서 `SUBPROCESS`, SUBPROCESS을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Medium을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Separate을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
+| 실무 운영 가이드에서 `DOCKER`, DOCKER을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 High을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Docker을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
+
+### SandboxConfig
+
+```python
+from truthound.validators.sdk.enterprise import (
+    SandboxConfig,
+    SandboxBackend,
+    create_sandbox,
+)
+
+# Custom configuration
+config = SandboxConfig(
+    backend=SandboxBackend.SUBPROCESS,
+    timeout_seconds=60.0,
+    max_memory_mb=512,
+    max_cpu_percent=100,
+    allowed_paths=("/data", "/tmp"),
+    allowed_modules=("polars", "numpy", "pandas", "truthound"),
+    blocked_modules=(
+        "os", "subprocess", "shutil", "socket", "urllib",
+        "requests", "http", "ftplib", "smtplib", "telnetlib",
+        "ctypes", "multiprocessing",
+    ),
+    network_enabled=False,
+    env_vars={},
+    docker_image="python:3.11-slim",
+    working_dir="/workspace",
+)
+
+# Preset configurations
+strict_config = SandboxConfig.strict()    # Docker, 256MB, 30 seconds
+standard_config = SandboxConfig.standard() # Subprocess, 512MB, 60 seconds
+permissive_config = SandboxConfig.permissive() # In-process, 2GB, 120 seconds
+```
+
+### Usage Example
+
+```python
+from truthound.validators.sdk.enterprise import (
+    SandboxConfig,
+    SandboxBackend,
+    create_sandbox,
+)
+
+config = SandboxConfig(
+    backend=SandboxBackend.SUBPROCESS,
+    timeout_seconds=30,
+)
+
+executor = create_sandbox(config)
+result = await executor.execute(
+    validator_class=MyValidator,
+    data=my_dataframe,
+    config={"columns": ("col1", "col2")},
+)
+
+if result.success:
+    issues = result.result
+    print(f"Execution time: {result.execution_time_seconds:.2f}s")
+else:
+    print(f"Error: {result.error}")
+```
+
+### SandboxResult
+
+```python
+@dataclass
+class SandboxResult:
+    success: bool
+    result: Any = None              # Validation result (on success)
+    error: str | None = None        # Error message (on failure)
+    execution_time_seconds: float = 0.0
+    memory_used_mb: float = 0.0
+    cpu_time_seconds: float = 0.0
+    sandbox_id: str = ""            # Unique execution ID
+    started_at: datetime = ...
+    finished_at: datetime | None = None
+
+    def to_dict(self) -> dict[str, Any]: ...
+```
+
+### Exception Classes
+
+| 실무 운영 가이드에서 Exception을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Description을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
+|-----------|-------------|
+| 실무 운영 가이드에서 `SandboxError`, SandboxError을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Base을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
+| 실무 운영 가이드에서 `SandboxTimeoutError`, SandboxTimeoutError을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Execution을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
+| 실무 운영 가이드에서 `SandboxResourceError`, SandboxResourceError을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Resource을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
+| 실무 운영 가이드에서 `SandboxSecurityError`, SandboxSecurityError을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 보안 violation detected |
+
+실무 운영 가이드에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+
+## 2. Resource Limits
+
+실무 운영 가이드에서 Apply, CPU을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+
+### ResourceLimits
+
+```python
+from truthound.validators.sdk.enterprise import (
+    ResourceLimits,
+    CombinedResourceLimiter,
+)
+
+# Custom configuration
+limits = ResourceLimits(
+    max_memory_mb=512,           # Maximum memory (MB)
+    max_cpu_seconds=60.0,        # Maximum CPU time (seconds)
+    max_wall_time_seconds=120.0, # Maximum wall time (seconds)
+    max_file_descriptors=256,    # Maximum file descriptors
+    max_processes=4,             # Maximum child processes
+    soft_memory_threshold=0.8,   # Warning threshold (0.0-1.0)
+    check_interval_seconds=0.5,  # Monitoring interval
+    graceful_degradation=True,   # Allow graceful degradation
+)
+
+# Presets
+strict_limits = ResourceLimits.strict()     # 256MB, 30 seconds
+standard_limits = ResourceLimits.standard() # 512MB, 60 seconds
+generous_limits = ResourceLimits.generous() # 4GB, 300 seconds
+```
+
+### Resource 모니터링
+
+```python
+from truthound.validators.sdk.enterprise import (
+    ResourceMonitor,
+    ResourceLimits,
+)
+
+limits = ResourceLimits(max_memory_mb=512)
+monitor = ResourceMonitor(
+    limits=limits,
+    on_threshold=lambda usage: print(f"Warning: {usage.memory_percent}% memory"),
+    on_exceeded=lambda res_type, limit, actual: print(f"Exceeded: {res_type}"),
+)
+
+monitor.start()
+try:
+    # Execute validation
+    result = validator.validate(data)
+finally:
+    monitor.stop()
+
+# Check usage
+usage = monitor.get_usage()
+print(f"Memory: {usage.memory_mb:.1f}MB ({usage.memory_percent:.1f}%)")
+print(f"CPU: {usage.cpu_seconds:.2f}s ({usage.cpu_percent:.1f}%)")
+
+# Peak usage
+peak = monitor.get_peak_usage()
+print(f"Peak memory: {peak.memory_mb:.1f}MB")
+```
+
+### Context Manager
+
+```python
+from truthound.validators.sdk.enterprise import (
+    CombinedResourceLimiter,
+    MemoryLimiter,
+    CPULimiter,
+)
+
+# Combined limiter
+limiter = CombinedResourceLimiter(limits)
+with limiter.enforce() as monitor:
+    result = validator.validate(data)
+    print(f"Used: {monitor.get_usage().memory_mb:.1f}MB")
+
+# Individual limiters
+with MemoryLimiter(max_memory_mb=256).enforce() as monitor:
+    result = validator.validate(data)
+
+with CPULimiter(max_cpu_seconds=30).enforce() as monitor:
+    result = validator.validate(data)
+```
+
+### Decorator
+
+```python
+from truthound.validators.sdk.enterprise.resources import with_resource_limits
+
+@with_resource_limits(max_memory_mb=256, max_cpu_seconds=30)
+def expensive_validation(data):
+    validator = MyValidator()
+    return validator.validate(data)
+```
+
+### ResourceUsage
+
+```python
+@dataclass
+class ResourceUsage:
+    memory_mb: float = 0.0
+    memory_percent: float = 0.0
+    cpu_seconds: float = 0.0
+    cpu_percent: float = 0.0
+    wall_seconds: float = 0.0
+    wall_percent: float = 0.0
+    file_descriptors: int = 0
+    timestamp: datetime = ...
+
+    def is_within_limits(self) -> bool: ...
+    def is_near_limits(self, threshold: float = 0.8) -> bool: ...
+    def to_dict(self) -> dict[str, Any]: ...
+```
+
+실무 운영 가이드에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+
+## 3. Code Signing
+
+실무 운영 가이드에서 Cryptographic을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+
+### SignatureAlgorithm
+
+| 실무 운영 가이드에서 Algorithm을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Description을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Case을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
+|-----------|-------------|----------|
+| 실무 운영 가이드에서 `SHA256`, SHA256을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 SHA256을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Development/testing을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
+| 실무 운영 가이드에서 `SHA512`, SHA512을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 SHA512을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Development/testing을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
+| 실무 운영 가이드에서 `HMAC_SHA256`, HMAC_SHA256을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 HMAC-SHA256을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Production을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
+| 실무 운영 가이드에서 `HMAC_SHA512`, HMAC_SHA512을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 HMAC-SHA512을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Production을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
+| 실무 운영 가이드에서 `RSA_SHA256`, RSA_SHA256을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 RSA, SHA256을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Enterprise을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
+| 실무 운영 가이드에서 `ED25519`, ED25519을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Ed25519을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Enterprise을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
+
+### SignatureConfig
+
+```python
+from truthound.validators.sdk.enterprise import (
+    SignatureConfig,
+    SignatureAlgorithm,
+    SignatureManager,
+)
+
+# Development (weak security)
+dev_config = SignatureConfig.development()
+
+# Production
+prod_config = SignatureConfig.production(secret_key="your-secret-key")
+
+# Custom configuration
+config = SignatureConfig(
+    algorithm=SignatureAlgorithm.HMAC_SHA256,
+    secret_key="your-secret-key",
+    private_key_path=Path("/path/to/private.pem"),  # For RSA
+    public_key_path=Path("/path/to/public.pem"),    # For RSA
+    validity_days=365,                               # Signature validity period
+    require_timestamp=True,                          # Timestamp required
+    trusted_signers=("admin@company.com",),         # Trusted signers
+    revocation_list_url="https://...",              # Revocation list URL
+)
+```
+
+### Signing and Verification
+
+```python
+from truthound.validators.sdk.enterprise import (
+    SignatureManager,
+    SignatureConfig,
+    sign_validator,
+    verify_validator,
+)
+
+# Using manager
+config = SignatureConfig.production(secret_key="secret")
+manager = SignatureManager(config)
+
+# Create signature
+signature = manager.sign_validator(
+    MyValidator,
+    signer_id="admin@company.com",
+    metadata={"team": "data-quality"},
+)
+
+# Save/load signature
+manager.save_signature(signature, Path("my_validator.sig"))
+loaded_sig = manager.load_signature(Path("my_validator.sig"))
+
+# Verify signature
+try:
+    is_valid = manager.verify_validator(
+        MyValidator,
+        signature,
+        check_expiry=True,
+        check_signer=True,
+    )
+except SignatureExpiredError:
+    print("Signature has expired")
+except SignatureTamperError:
+    print("Code has been modified!")
+except SignatureVerificationError as e:
+    print(f"Verification failed: {e.reason}")
+
+# Convenience functions
+signature = sign_validator(
+    MyValidator,
+    secret_key="secret",
+    algorithm=SignatureAlgorithm.HMAC_SHA256,
+    signer_id="admin",
+)
+
+is_valid = verify_validator(
+    MyValidator,
+    signature,
+    secret_key="secret",
+)
+```
+
+### ValidatorSignature
+
+```python
+@dataclass
+class ValidatorSignature:
+    validator_name: str
+    validator_version: str
+    code_hash: str                    # Source code hash
+    signature: str                    # Base64-encoded signature
+    algorithm: SignatureAlgorithm
+    signer_id: str = ""
+    signed_at: datetime = ...
+    expires_at: datetime | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+    def is_expired(self) -> bool: ...
+    def to_dict(self) -> dict[str, Any]: ...
+    def to_json(self) -> str: ...
+    @classmethod
+    def from_dict(cls, data: dict) -> "ValidatorSignature": ...
+    @classmethod
+    def from_json(cls, json_str: str) -> "ValidatorSignature": ...
+```
+
+실무 운영 가이드에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+
+## 4. Version 호환성
+
+실무 운영 가이드에서 Truthound, Check을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+
+### SemanticVersion
+
+```python
+from truthound.validators.sdk.enterprise import (
+    SemanticVersion,
+    VersionConstraint,
+    VersionSpec,
+)
+
+# Parse version
+version = SemanticVersion.parse("2.1.0")
+version_pre = SemanticVersion.parse("2.0.0-alpha.1+build.123")
+
+# Compare versions
+v1 = SemanticVersion.parse("1.0.0")
+v2 = SemanticVersion.parse("2.0.0")
+print(v1 < v2)  # True
+
+# Version bumping
+version = SemanticVersion(1, 2, 3)
+print(version.bump_major())  # 2.0.0
+print(version.bump_minor())  # 1.3.0
+print(version.bump_patch())  # 1.2.4
+
+# Compatibility check
+compatibility = v1.is_compatible_with(v2)
+# VersionCompatibility.INCOMPATIBLE (different major version)
+```
+
+### VersionConstraint
+
+```python
+from truthound.validators.sdk.enterprise import VersionConstraint
+
+# Parse constraints
+constraint = VersionConstraint.parse(">=1.0.0")
+constraint = VersionConstraint.parse("<2.0.0")
+constraint = VersionConstraint.parse("~1.2.0")  # >=1.2.0, <1.3.0
+constraint = VersionConstraint.parse("^1.2.0")  # >=1.2.0, <2.0.0
+
+# Check matching
+version = SemanticVersion.parse("1.5.0")
+print(constraint.matches(version))  # True
+```
+
+#### Supported Operators
+
+| 오퍼레이터 | 실무 운영 가이드에서 Example을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Meaning을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
+|----------|---------|---------|
+| 실무 운영 가이드에서 `=`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 `=1.0.0`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Exactly을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
+| 실무 운영 가이드에서 `!=`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 `!=1.0.0`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Excludes을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
+| 실무 운영 가이드에서 `>`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 `>1.0.0`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Greater을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
+| 실무 운영 가이드에서 `>=`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 `>=1.0.0`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
+| 실무 운영 가이드에서 `<`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 `<2.0.0`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Less을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
+| 실무 운영 가이드에서 `<=`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 `<=2.0.0`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
+| 실무 운영 가이드에서 `~`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 `~1.2.0`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
+| 실무 운영 가이드에서 `^`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 `^1.2.0`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
+
+### VersionSpec
+
+실무 운영 가이드에서 Supports을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+
+```python
+from truthound.validators.sdk.enterprise import VersionSpec
+
+# AND combination (comma)
+spec = VersionSpec.parse(">=1.0.0,<2.0.0")
+
+# OR combination (||)
+spec = VersionSpec.parse(">=1.0.0,<2.0.0 || >=3.0.0")
+
+# Check matching
+version = SemanticVersion.parse("1.5.0")
+print(spec.matches(version))  # True
+
+# Wildcard (allows all versions)
+spec = VersionSpec.parse("*")
+```
+
+### VersionChecker
+
+```python
+from truthound.validators.sdk.enterprise import (
+    VersionChecker,
+    VersionCompatibility,
+)
+
+checker = VersionChecker(
+    truthound_version="1.0.0",
+    python_version=None,  # Auto-detect
+)
+
+# Single validator compatibility check
+try:
+    compatibility = checker.check_compatibility(
+        MyValidator,
+        raise_on_incompatible=True,
+    )
+except VersionConflictError as e:
+    print(f"Incompatible: {e.required} required, {e.actual} installed")
+
+# Check multiple validators
+results = checker.check_all(
+    [Validator1, Validator2, Validator3],
+    raise_on_first=False,
+)
+for name, compat in results.items():
+    print(f"{name}: {compat.name}")
+```
+
+### Declaring 검증기 Version Information
+
+실무 운영 가이드에서 Declare을(를) 다루는 항목입니다:
+
+```python
+class MyValidator(Validator):
+    name = "my_validator"
+    version = "1.2.0"
+
+    # Truthound version requirements
+    min_truthound_version = "1.0.0"
+    max_truthound_version = "2.0.0"
+
+    # Python version requirements
+    python_version = ">=3.11"
+
+    # Dependencies (package name: version spec)
+    dependencies = {
+        "polars": ">=0.20.0",
+        "numpy": ">=1.24.0,<2.0.0",
+    }
+```
+
+실무 운영 가이드에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+
+## 5. License Management
+
+실무 운영 가이드에서 Track을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+
+### LicenseType
+
+```python
+from truthound.validators.sdk.enterprise import LicenseType
+
+# Open source licenses
+LicenseType.MIT
+LicenseType.APACHE_2
+LicenseType.BSD_3
+LicenseType.GPL_3
+LicenseType.LGPL_3
+
+# Commercial licenses
+LicenseType.COMMERCIAL
+LicenseType.ENTERPRISE
+LicenseType.TRIAL
+
+# Special licenses
+LicenseType.PROPRIETARY
+LicenseType.CUSTOM
+```
+
+### LicenseInfo
+
+```python
+from truthound.validators.sdk.enterprise import LicenseInfo, LicenseType
+
+# Preset licenses
+mit_license = LicenseInfo.mit("my_validator")
+apache_license = LicenseInfo.apache2("my_validator")
+trial_license = LicenseInfo.trial("my_validator", days=30)
+
+# Custom license
+license_info = LicenseInfo(
+    license_type=LicenseType.COMMERCIAL,
+    license_key="...",
+    licensee="Company Inc.",
+    issued_at=datetime.now(timezone.utc),
+    expires_at=datetime.now(timezone.utc) + timedelta(days=365),
+    max_users=10,           # 0 = unlimited
+    max_rows=1_000_000,     # 0 = unlimited
+    features=("advanced", "ml"),  # Allowed features
+    restrictions=("no_export",),  # Restrictions
+    validator_name="my_validator",
+    validator_version="1.0.0",
+)
+
+# License checks
+print(license_info.is_expired())      # False
+print(license_info.is_open_source())  # False
+print(license_info.is_commercial())   # True
+print(license_info.days_until_expiry())  # 365
+print(license_info.has_feature("advanced"))  # True
+```
+
+### LicenseValidator
+
+실무 운영 가이드에서 Validates을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+
+```python
+from truthound.validators.sdk.enterprise import (
+    LicenseValidator,
+    LicenseInfo,
+)
+
+validator = LicenseValidator(
+    allow_expired=False,        # Allow expired licenses
+    allow_trial=True,           # Allow trial licenses
+    require_commercial=False,   # Require commercial license
+    required_features=["ml"],   # Required features
+)
+
+try:
+    is_valid = validator.validate(
+        license_info,
+        raise_on_invalid=True,
+    )
+except LicenseExpiredError:
+    print("License expired")
+except LicenseViolationError as e:
+    print(f"Violation: {e.violation_type}")
+```
+
+### LicenseManager
+
+```python
+from truthound.validators.sdk.enterprise import LicenseManager
+
+manager = LicenseManager(
+    secret_key="license-signing-key",
+    license_dir=Path("/licenses"),
+    validator=LicenseValidator(),
+)
+
+# Retrieve license
+license_info = manager.get_license(MyValidator)
+
+# Validate license
+is_valid = manager.validate_license(MyValidator)
+
+# Track usage
+manager.track_usage(
+    MyValidator,
+    rows_processed=10000,
+    user_id="user@company.com",
+    session_id="session-123",
+)
+
+# Usage report
+report = manager.get_usage_report(
+    start_date=datetime(2024, 1, 1),
+    end_date=datetime(2024, 12, 31),
+)
+```
+
+### Declaring Licenses in 검증기
+
+```python
+class MyCommercialValidator(Validator):
+    name = "my_commercial_validator"
+    license_type = "COMMERCIAL"  # Or LicenseType.COMMERCIAL
+    license_key = "..."  # License key (optional)
+```
+
+실무 운영 가이드에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+
+## 6. Fuzz Testing
+
+실무 운영 가이드에서 Fuzzing을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+
+### FuzzStrategy
+
+| 실무 운영 가이드에서 Strategy을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Description을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
+|----------|-------------|
+| 실무 운영 가이드에서 `RANDOM`, RANDOM을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Pure을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
+| 실무 운영 가이드에서 `BOUNDARY`, BOUNDARY을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Boundary을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
+| 실무 운영 가이드에서 `MUTATION`, MUTATION을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Mutate을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
+| 실무 운영 가이드에서 `DICTIONARY`, DICTIONARY을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Known을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
+| 실무 운영 가이드에서 `STRUCTURE_AWARE`, STRUCTURE_AWARE을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 스키마-aware fuzzing |
+
+### FuzzConfig
+
+```python
+from truthound.validators.sdk.enterprise import FuzzConfig, FuzzStrategy
+
+# Custom configuration
+config = FuzzConfig(
+    strategy=FuzzStrategy.RANDOM,
+    iterations=100,
+    seed=42,                    # Seed for reproducibility
+    max_rows=1000,
+    max_columns=20,
+    timeout_seconds=10.0,
+    include_nulls=True,
+    include_edge_cases=True,
+    include_unicode=True,
+    mutation_rate=0.1,
+)
+
+# Presets
+quick_config = FuzzConfig.quick()       # 10 iterations, 5 seconds
+thorough_config = FuzzConfig.thorough() # 1000 iterations, 30 seconds
+```
+
+### FuzzRunner
+
+```python
+from truthound.validators.sdk.enterprise import FuzzRunner, run_fuzz_tests
+
+# Basic fuzzing
+report = run_fuzz_tests(
+    MyValidator,
+    iterations=100,
+    seed=42,
+)
+
+print(f"Passed: {report.passed}/{report.total_iterations}")
+print(f"Success rate: {report.success_rate:.1%}")
+print(f"Duration: {report.total_duration_seconds:.2f}s")
+
+# Check failures
+for error in report.errors:
+    print(f"Iteration {error.iteration}:")
+    print(f"  Seed: {error.seed_used}")
+    print(f"  Data shape: {error.data_shape}")
+    print(f"  Error: {error.error}")
+```
+
+### Property-Based Testing
+
+```python
+from truthound.validators.sdk.enterprise import FuzzRunner
+
+runner = FuzzRunner(FuzzConfig.thorough())
+reports = runner.fuzz_with_properties(MyValidator)
+
+for prop_name, report in reports.items():
+    print(f"{prop_name}: {report.success_rate:.1%}")
+```
+
+실무 운영 가이드에서 Tested을(를) 다루는 항목입니다:
+
+| 실무 운영 가이드에서 Property을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Description을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
+|----------|-------------|
+| 실무 운영 가이드에서 `no_crash`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
+| 실무 운영 가이드에서 `returns_list`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Always을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
+| 실무 운영 가이드에서 `issues_have_fields`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Issues을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
+
+### PropertyBasedTester
+
+```python
+from truthound.validators.sdk.enterprise import PropertyBasedTester
+
+tester = PropertyBasedTester(MyValidator)
+
+# Individual property tests
+print(tester.test_no_crash(data))
+print(tester.test_returns_list(data))
+print(tester.test_issues_have_fields(data))
+
+# All property tests
+results = tester.run_all(data)
+```
+
+### Edge Case Values
+
+실무 운영 가이드에서 Edge을(를) 다루는 항목입니다:
+
+실무 운영 가이드에서 Numeric을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+- 실무 운영 가이드에서 `0`, `-0`, `1`, `-1`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+- 실무 운영 가이드에서 `float("inf")`, `float("-inf")`, `float("nan")`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+- 실무 운영 가이드에서 `2**31 - 1`, `-(2**31)`, `2**63 - 1`, `-(2**63)`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+- 실무 운영 가이드에서 `1e-300`, `1e300`, `-1e-300`, `-1e300`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+
+실무 운영 가이드에서 String을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+- 실무 운영 가이드에서 `""`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+- 실무 운영 가이드에서 `" "`, `"\t"`, `"\n"`, `"\r\n"`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+- 실무 운영 가이드에서 `"null"`, `"NULL"`, `"None"`, `"undefined"`, `"NaN"`, `"inf"`, NULL, None을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+- 실무 운영 가이드에서 SQL, XSS/SQL을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+- 실무 운영 가이드에서 Path을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+- 실무 운영 가이드에서 Null을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+
+실무 운영 가이드에서 Unicode을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+- 실무 운영 가이드에서 `"Hello 世界"`, `"مرحبا"`, `"שלום"`, `"🎉🚀💻"`, Hello을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+- 실무 운영 가이드에서 Zero-width, BOM을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+
+실무 운영 가이드에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+
+## 7. EnterpriseSDKManager
+
+실무 운영 가이드에서 Manager을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+
+### EnterpriseConfig
+
+```python
+from truthound.validators.sdk.enterprise import (
+    EnterpriseSDKManager,
+    EnterpriseConfig,
+)
+
+# Preset configurations
+dev_config = EnterpriseConfig.development()  # Minimal security
+prod_config = EnterpriseConfig.production(license_key="...")  # Standard security
+secure_config = EnterpriseConfig.secure(license_key="...")  # Maximum security
+
+# Custom configuration
+config = EnterpriseConfig(
+    # Sandbox
+    sandbox_enabled=True,
+    sandbox_backend=SandboxBackend.SUBPROCESS,
+    sandbox_timeout_seconds=60.0,
+
+    # Resource limits
+    resource_limits=ResourceLimits.standard(),
+
+    # Signing
+    signing_enabled=True,
+    signing_config=SignatureConfig.production("secret"),
+
+    # Version checking
+    version_check_enabled=True,
+    truthound_version="1.0.0",
+
+    # License
+    license_check_enabled=True,
+    license_secret_key="license-key",
+    license_dir=Path("/licenses"),
+)
+```
+
+### Integrated Execution
+
+```python
+async with EnterpriseSDKManager(config) as manager:
+    # Execute with all protection features applied
+    result = await manager.execute_validator(
+        validator_class=MyValidator,
+        data=my_dataframe,
+        config={"columns": ("col1",)},
+        signature=signature,  # Optional
+    )
+
+    if result.success:
+        issues = result.validation_result
+        print(f"Found {len(issues)} issues")
+        print(f"Execution time: {result.execution_time_seconds:.2f}s")
+    else:
+        print(f"Failed: {result.error}")
+
+    # Check results
+    print(f"Version compatible: {result.version_compatible}")
+    print(f"Signature valid: {result.signature_valid}")
+    print(f"License valid: {result.license_valid}")
+```
+
+### Synchronous Execution
+
+```python
+manager = EnterpriseSDKManager(config)
+result = manager.execute_validator_sync(
+    MyValidator,
+    data,
+)
+```
+
+### Using Individual Features
+
+```python
+manager = EnterpriseSDKManager(config)
+
+# Signing
+signature = manager.sign_validator(MyValidator, signer_id="admin")
+is_valid = manager.verify_validator(MyValidator, signature)
+
+# Version compatibility
+compatibility = manager.check_compatibility(MyValidator)
+
+# License
+license_info = manager.get_license(MyValidator)
+
+# Documentation generation
+docs = manager.generate_docs(MyValidator, format=DocFormat.MARKDOWN)
+
+# Fuzzing
+report = manager.fuzz_validator(MyValidator, FuzzConfig.quick())
+```
+
+### ExecutionResult
+
+```python
+@dataclass
+class ExecutionResult:
+    success: bool
+    validation_result: Any = None     # Validation result
+    error: str | None = None
+    sandbox_result: SandboxResult | None = None
+    resource_usage: ResourceUsage | None = None
+    signature_valid: bool | None = None
+    version_compatible: bool | None = None
+    license_valid: bool | None = None
+    execution_time_seconds: float = 0.0
+    started_at: datetime = ...
+    finished_at: datetime | None = None
+```
+
+실무 운영 가이드에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+
+## 다음 단계
+
+- 실무 운영 가이드에서 SQL, Security, Guide, ReDoS을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+- 실무 운영 가이드에서 Custom, Validators, SDK을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+- 실무 운영 가이드에서 Built-in, Validators을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.

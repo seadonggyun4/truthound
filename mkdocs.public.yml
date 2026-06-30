@@ -49,6 +49,129 @@ plugins:
           name: 한국어
           build: true
           site_name: Truthound — Data Quality Workflow
+          site_description: Polars 기반 데이터 품질 검증과 워크플로우 자동화 문서
+          nav_translations:
+            Home: 홈
+            Core: Core
+            Core Overview: Core 개요
+            Getting Started: 시작하기
+            Overview: 개요
+            Installation: 설치
+            Quick Start: 빠른 시작
+            First Validation: 첫 검증
+            Tutorials: 튜토리얼
+            Data Profiling: 데이터 프로파일링
+            Custom Validator: 사용자 정의 검증기
+            Enterprise Setup: 엔터프라이즈 설정
+            Usage Examples: 사용 예시
+            Guides: 가이드
+            Validation Workflows: 검증 워크플로우
+            Checkpoints Overview: 체크포인트 개요
+            Validators: 검증기
+            Categories: 분류
+            Built-in Validators: 기본 제공 검증기
+            Custom Validators: 사용자 정의 검증기
+            Security Validators: 보안 검증기
+            Optimization: 최적화
+            Enterprise SDK: 엔터프라이즈 SDK
+            Internationalization: 국제화
+            Datasources: 데이터 소스
+            Files: 파일
+            Databases: 데이터베이스
+            Cloud Warehouses: 클라우드 웨어하우스
+            Streaming: 스트리밍
+            Custom Sources: 사용자 정의 소스
+            CLI Datasource Guide: CLI 데이터 소스 가이드
+            Operations & Automation: 운영과 자동화
+            Checkpoint Family: 체크포인트 계열
+            Basics: 기본
+            Async Execution: 비동기 실행
+            Triggers: 트리거
+            Routing: 라우팅
+            Escalation: 에스컬레이션
+            Throttling: 스로틀링
+            Deduplication: 중복 제거
+            CI Platforms: CI 플랫폼
+            Configuration: 설정
+            Environment Variables: 환경 변수
+            Datasource Config: 데이터 소스 설정
+            Checkpoint Config: 체크포인트 설정
+            Store Config: 스토어 설정
+            Profiler Config: 프로파일러 설정
+            Logging: 로깅
+            Metrics: 메트릭
+            Encryption: 암호화
+            Audit: 감사
+            Resilience: 복원력
+            Config Sources: 설정 소스
+            CI/CD: CI/CD
+            Notifications: 알림
+            Reporting & Docs: 리포팅과 문서
+            Reporters: 리포터
+            Console Reporter: 콘솔 리포터
+            JSON & YAML: JSON 및 YAML
+            HTML & Markdown: HTML 및 Markdown
+            CI Reporters: CI 리포터
+            Custom SDK: 사용자 정의 SDK
+            Data Docs: Data Docs
+            HTML Reports: HTML 리포트
+            Themes: 테마
+            Charts: 차트
+            Sections: 섹션
+            PDF Export: PDF 내보내기
+            Versioning: 버전 관리
+            Custom Renderers: 사용자 정의 렌더러
+            Reporter SDK: 리포터 SDK
+            Profiling, Storage, and Governance: 프로파일링, 저장소, 거버넌스
+            Profiler: 프로파일러
+            Caching: 캐싱
+            Drift Detection: 드리프트 감지
+            Rule Generation: 규칙 생성
+            Sampling: 샘플링
+            Quality Scoring: 품질 점수
+            Schema Evolution: 스키마 진화
+            Threshold Tuning: 임계값 조정
+            Distributed Profiling: 분산 프로파일링
+            ML Inference: ML 추론
+            Enterprise Sampling: 엔터프라이즈 샘플링
+            Visualization: 시각화
+            Patterns: 패턴
+            Stores: 스토어
+            Filesystem: 파일시스템
+            Cloud Storage: 클라우드 저장소
+            Retention: 보존
+            Tiering: 티어링
+            Replication: 복제
+            Observability: 관측성
+            Performance: 성능
+            Benchmark Methodology: 벤치마크 방법론
+            Benchmark Workloads: 벤치마크 워크로드
+            Great Expectations Comparison: Great Expectations 비교
+            Data Masking: 데이터 마스킹
+            Privacy: 개인정보
+            ML Monitoring: ML 모니터링
+            Migration to 3.0: 3.0 마이그레이션
+            Docs Deployment Verification: 문서 배포 검증
+            Reference: 레퍼런스
+            Python API: Python API
+            Core Functions: Core 함수
+            Schema: 스키마
+            Advanced Features: 고급 기능
+            CLI: CLI
+            Common Output Formats: 공통 출력 형식
+            Core Commands: Core 명령
+            Profiler Commands: 프로파일러 명령
+            ML Commands: ML 명령
+            Docs Commands: 문서 명령
+            Realtime Commands: 실시간 명령
+            Benchmark Commands: 벤치마크 명령
+            Scaffolding Commands: 스캐폴딩 명령
+            Plugin Commands: 플러그인 명령
+            Orchestration: 오케스트레이션
+            AI: AI
+            Release Notes: 릴리스 노트
+            ADRs: ADR
+            Legacy / Archive: 레거시 / 아카이브
         - locale: en
           name: English
           build: true

@@ -10,3 +10,4 @@ python3 docs/scripts/check_links.py --mkdocs mkdocs.yml README.md CLAUDE.md
 python3 docs/scripts/check_links.py --mkdocs mkdocs.public.yml build/public-docs
 python3 -m mkdocs build --strict -f mkdocs.public.yml
 python3 docs/scripts/verify_public_surface.py --manifest docs/public_docs.yml --site-dir site
+python3 docs/scripts/verify_korean_docs.py --site-dir site
