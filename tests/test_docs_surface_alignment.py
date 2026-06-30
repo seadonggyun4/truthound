@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-import tomllib
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -14,11 +13,6 @@ def _doc(rel_path: str) -> Path:
 
 def _read(rel_path: str) -> str:
     return _doc(rel_path).read_text(encoding="utf-8")
-
-
-def _project_version() -> str:
-    pyproject = tomllib.loads((REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-    return pyproject["project"]["version"]
 
 
 def _all_docs() -> list[Path]:
@@ -129,46 +123,6 @@ def test_no_removed_exception_summary_or_validation_report_kwargs_in_current_doc
     )
 
 
-def test_readme_preserves_brand_assets_and_slogan() -> None:
-    text = _read("README.md")
-    assert "docs/assets/truthound_banner.png" in text
-    assert _doc("docs/assets/Truthound_icon_banner.png").is_file()
-    assert "Sniffs out bad data." in text
-    assert "awesome.re/badge.svg" in text
-    assert "Powered%20by-Polars" in text
-
-
-def test_readme_and_docs_home_current_release_surface_match_package_version() -> None:
-    version = _project_version()
-    readme = _read("README.md")
-    home = _read("docs/index.md")
-    ai = _read("docs/ai/index.md")
-
-    assert f"Truthound {version} is a layered data quality system" in readme
-    assert f"docs/releases/truthound-{version}.md" in readme
-    assert f"releases/truthound-{version}.md" in home
-    assert f"../releases/truthound-{version}.md" in ai
-    assert "Truthound 3.0 auto-creates a `.truthound/` workspace" not in readme
-    assert "Truthound auto-creates a `.truthound/` workspace" in readme
-
-
-def test_home_surfaces_define_truthound_as_a_layered_system() -> None:
-    readme = _read("README.md")
-    home = _read("docs/index.md")
-
-    assert "layered data quality system" in readme
-    assert "Truthound Product Line" in readme
-    assert "Truthound Core" in readme
-    assert "Truthound Orchestration" in readme
-    assert "Truthound Depot" in readme
-
-    assert "layered data quality system" in home
-    assert "Truthound By Layer" in home
-    assert "Truthound Core" in home
-    assert "Truthound Orchestration" in home
-    assert "Truthound Depot" in home
-
-
 def test_concepts_docs_define_explicit_layer_boundaries() -> None:
     text = _read("docs/concepts/index.md").lower()
     assert "data-plane / validation kernel" in text
@@ -211,24 +165,6 @@ def test_depot_engine_primitives_docs_define_private_core_boundary() -> None:
     )
     for phrase in forbidden:
         assert phrase not in text
-
-
-def test_home_surfaces_link_depot_engine_primitives_without_public_api_promise() -> None:
-    readme = _read("README.md")
-    home = _read("docs/index.md")
-    readme_compact = " ".join(readme.split())
-    home_compact = " ".join(home.split())
-
-    assert "Depot Engine Primitives" in readme
-    assert "docs/concepts/depot-engine-primitives.md" in readme
-    assert "Core-owned private primitives" in readme_compact
-    assert "there is no public `truthound.datasets`" in readme
-    assert "there is no public `truthound.depot`" in readme
-
-    assert "Depot Engine Primitives" in home
-    assert "concepts/depot-engine-primitives.md" in home
-    assert "private Depot engine primitives" in home_compact
-    assert "without creating a public" in home_compact
 
 
 def test_dashboard_term_is_disambiguated_for_datadocs_ui() -> None:

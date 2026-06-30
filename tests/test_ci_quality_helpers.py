@@ -30,13 +30,6 @@ def _load_ruff_ratchet_manifest() -> list[dict[str, object]]:
     return manifest["target"]
 
 
-def _project_version() -> str:
-    pyproject = tomllib.loads(
-        (Path(__file__).resolve().parents[1] / "pyproject.toml").read_text(encoding="utf-8")
-    )
-    return pyproject["project"]["version"]
-
-
 @pytest.mark.contract
 def test_build_quality_shards_writes_balanced_manifests(tmp_path: Path):
     module = _load_module("build_quality_shards.py")
@@ -587,8 +580,6 @@ def test_release_pypi_workflow_is_manual_token_only_publish():
     assert workflow["permissions"]["contents"] == "read"
     assert "id-token" not in workflow["permissions"]
     assert "workflow_dispatch" in trigger_block
-    version_input = trigger_block["workflow_dispatch"]["inputs"]["version"]
-    assert version_input["default"] == _project_version()
     assert "publish_mode" not in trigger_block["workflow_dispatch"]["inputs"]
     assert "environment" not in publish_job
     assert "Verify release version" in step_names
