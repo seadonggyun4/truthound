@@ -7,7 +7,12 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from urllib.parse import urlparse
 
-from external_docs import load_external_sources, match_external_source, upstream_edit_url
+from external_docs import (
+    load_external_sources,
+    load_mkdocs_config,
+    match_external_source,
+    upstream_edit_url,
+)
 from public_manifest import load_manifest, resolve_public_docs
 
 
@@ -18,6 +23,37 @@ def _doc_to_public_path(doc_path: str) -> str:
             return "/"
         return f"/{path.parent.as_posix()}/"
     return f"/{(path.parent / path.stem).as_posix()}/"
+
+
+def _localized_path(path: str, locale: str, default_locale: str) -> str:
+    if locale == default_locale:
+        return path
+    if path == "/":
+        return f"/{locale}/"
+    return f"/{locale}{path}"
+
+
+def _built_locales(mkdocs_file: Path) -> tuple[list[str], str]:
+    config = load_mkdocs_config(mkdocs_file)
+    for plugin in config.get("plugins", []):
+        if not isinstance(plugin, dict) or "i18n" not in plugin:
+            continue
+        languages = plugin["i18n"].get("languages", [])
+        built = [
+            language["locale"]
+            for language in languages
+            if language.get("build", True) and language.get("locale")
+        ]
+        default_locale = next(
+            (
+                language["locale"]
+                for language in languages
+                if language.get("default") and language.get("locale")
+            ),
+            built[0] if built else "",
+        )
+        return built or [default_locale], default_locale
+    return [""], ""
 
 
 def _normalize_location(location: str) -> str:
@@ -77,19 +113,34 @@ def main() -> int:
         default=Path("site"),
         help="Path to the generated site directory.",
     )
+    parser.add_argument(
+        "--mkdocs-file",
+        type=Path,
+        default=Path("mkdocs.public.yml"),
+        help="MkDocs config used to build the public site.",
+    )
     args = parser.parse_args()
 
     repo_root = Path(__file__).resolve().parents[2]
     manifest = load_manifest((repo_root / args.manifest).resolve())
     site_dir = (repo_root / args.site_dir).resolve()
+    mkdocs_file = (repo_root / args.mkdocs_file).resolve()
     external_sources = load_external_sources(manifest)
     public_docs = resolve_public_docs(manifest, repo_root / "docs")
+    built_locales, default_locale = _built_locales(mkdocs_file)
 
-    allowlisted_paths = {_doc_to_public_path(doc_path) for doc_path in public_docs}
+    base_allowlisted_paths = {_doc_to_public_path(doc_path) for doc_path in public_docs}
+    allowlisted_paths = {
+        _localized_path(path, locale, default_locale)
+        for path in base_allowlisted_paths
+        for locale in built_locales
+    }
     excluded_prefixes = tuple(
         f"/{prefix.strip('/')}/" for prefix in manifest.get("excluded_prefixes", [])
     )
-    expected_page_count = int(manifest.get("expected_page_count", len(allowlisted_paths)))
+    expected_page_count = int(
+        manifest.get("expected_page_count", len(base_allowlisted_paths))
+    ) * len(built_locales)
 
     sitemap_paths = _read_sitemap_paths(site_dir)
     search_paths = _read_search_paths(site_dir)

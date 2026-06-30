@@ -19,8 +19,8 @@ completed Truthound product direction.
   release, rollback, approval, evidence, audit, and access workflows
 - Orchestration is documented as the execution owner for host-native submit,
   poll, wait, retry, and projection behavior
-- Data Docs dashboard wording now distinguishes the local dashboard UI from the
-  Workflow repository console product
+- Data Docs wording now focuses on static report artifacts in the public docs
+  surface
 - release workflow defaults now point at the `3.1.3` package version
 
 ## Compatibility

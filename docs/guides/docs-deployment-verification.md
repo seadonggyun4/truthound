@@ -9,7 +9,7 @@ Use this page as the canonical operator checklist whenever the public Truthound 
 - [ ] the build command is `sh docs/scripts/build_site.sh`
 - [ ] the publish directory is `site`
 - [ ] the deployed site uses `https://truthound.netlify.app/` as the canonical docs URL
-- [ ] the docs operator runbook distinguishes the public docs host from any separately operated dashboard runtime
+- [ ] the docs operator runbook treats the public docs host as the only MkDocs deployment surface
 
 ## Repo Configuration Checklist
 
@@ -20,9 +20,8 @@ Use this page as the canonical operator checklist whenever the public Truthound 
 - [ ] `docs/public_docs.yml` defines the public docs manifest, including section prefixes and exclusions
 - [ ] `docs/_redirects` keeps `truthound.io` and `www.truthound.io` in redirect-only mode toward `truthound.netlify.app`
 - [ ] `docs/orchestration/` is a checked-in snapshot mirrored from `truthound-orchestration`
-- [ ] `docs/dashboard/index.md` is a locally maintained overview page rather than a mirrored dashboard manual
 - [ ] `docs/ai/` is a locally maintained technical section describing the public `truthound.ai` contract
-- [ ] docs verification does not assume a dashboard runtime is hosted inside the Netlify site
+- [ ] docs verification confirms dashboard and Depot pages are not hosted inside the Netlify site
 - [ ] `scripts/fetch-external-docs.sh orchestration` is the canonical pre-release sync step for the orchestration snapshot
 - [ ] full and public docs staging run before the respective MkDocs builds
 - [ ] brand assets remain unchanged:
@@ -43,7 +42,6 @@ After a local or Netlify build, confirm all of the following under `site/`:
 - [ ] `site/ai/index.html` exists and renders the AI overview
 - [ ] `site/ai/system-boundary/index.html` exists and renders the AI boundary document
 - [ ] `site/orchestration/index.html` exists and renders the Orchestration overview
-- [ ] `site/dashboard/index.html` exists and renders the Workflow overview
 - [ ] `site/orchestration/airflow/index.html` exists and renders one platform page under the integrated section
 - [ ] `site/orchestration/airflow/observability-alerting/index.html` exists and renders an expanded platform subguide
 - [ ] `site/orchestration/common/index.html` exists and renders the shared runtime overview
@@ -107,9 +105,9 @@ After a local or Netlify build, confirm all of the following under `site/`:
 - [ ] primary docs do not treat `RC1` as the current release note
 - [ ] benchmark pages use `release-grade`, `fixed-runner benchmark verification`, or `verified benchmark summary` rather than repeated `GA` wording
 - [ ] README and the docs site agree on the current benchmark positioning against Great Expectations
-- [ ] Home, Core, AI, Orchestration, Workflow, Release Notes, ADRs, and Legacy / Archive are all discoverable from the public nav
+- [ ] Home, Core, AI, Orchestration, Release Notes, ADRs, and Legacy / Archive are all discoverable from the public nav
 - [ ] the Core nav exposes Getting Started, Tutorials, Guides, Reference, and Concepts & Architecture
-- [ ] Workflow docs remain intentionally high-level and do not claim a public pip install workflow
+- [ ] dashboard and Depot docs remain outside the public MkDocs surface
 - [ ] AI docs describe the additive `truthound.ai` namespace without implying core reverse-imports
 - [ ] imported orchestration pages identify `truthound-orchestration` as the upstream source repository
 - [ ] source-banner edit links target `https://github.com/seadonggyun4/truthound-orchestration/edit/main/docs/...`

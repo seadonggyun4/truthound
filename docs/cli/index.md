@@ -94,15 +94,6 @@ If you are still learning the platform, start with [Getting Started](../getting-
 | `docs generate` | PROFILE_FILE (required) | `--output, -o`, `--title, -t` ("Data Profile Report"), `--subtitle, -s`, `--theme` (light/dark/professional/minimal/modern), `--format, -f` (html/pdf) |
 | `docs themes` | - | - |
 
-### Data Docs reports Command Summary
-
-| Command | Arguments | Options |
-|---------|-----------|---------|
-| `dashboard` | - | `--profile, -p`, `--port` (8080), `--host` (localhost), `--title, -t` ("Truthound Dashboard"), `--debug` |
-
-This command launches the local Data Docs dashboard UI. For the first-party
-repository console product, see Truthound workflow documentation.
-
 ### Realtime Commands Summary
 
 !!! warning "realtime checkpoint vs checkpoint"

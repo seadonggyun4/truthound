@@ -141,18 +141,18 @@ The Truthound Data Docs module transforms data profile results into visually app
 | [Versioning](versioning.md) | Report version management (4 strategies) |
 | [Custom Renderers](custom-renderers.md) | Custom renderer development |
 | [PDF Export](pdf-export.md) | PDF export (WeasyPrint) |
-| Data Docs reports | Stage 2 interactive dashboard |
 
 ---
 
 ## Overview
 
-Data Docs consists of two stages:
+Data Docs focuses on static data quality report artifacts that can be attached to CI jobs, shared with reviewers, or archived with pipeline outputs.
 
-| Stage | Functionality | Dependencies |
-|-------|---------------|--------------|
-| **Stage 1: Static HTML Report** | Self-contained HTML report generation | None (CDN-based) |
-| **Stage 2: Interactive Dashboard** | Reflex-based interactive dashboard | `truthound[dashboard]` |
+| Output | Functionality | Dependencies |
+|--------|---------------|--------------|
+| **HTML Report** | Self-contained HTML report generation | None (CDN-based) |
+| **PDF Report** | Printable distribution artifact | `truthound[pdf]` |
+| **Markdown Report** | Review-friendly text artifact | None |
 
 ### Key Features
 
@@ -171,14 +171,11 @@ Data Docs consists of two stages:
 ## Installation
 
 ```bash
-# Basic installation (Stage 1: HTML Report - requires Jinja2)
+# Basic installation (HTML report support - requires Jinja2)
 pip install truthound[reports]
 
 # PDF export support
 pip install truthound[pdf]
-
-# Dashboard support (Stage 2)
-pip install truthound[dashboard]
 
 # Full installation
 pip install truthound[all]
@@ -242,15 +239,6 @@ truthound docs generate <profile_file> [OPTIONS]
 truthound docs themes  # List available themes
 ```
 
-### `truthound dashboard` (Data Docs dashboard UI)
-
-```bash
-truthound dashboard --profile profile.json --port 8080
-```
-
-This launches the local Data Docs dashboard UI. It is separate from the
-Truthound workflow documentation repository console product.
-
 ---
 
 ## Architecture
@@ -295,11 +283,6 @@ src/truthound/datadocs/
 │   ├── catalog.py       # 15 languages
 │   ├── plurals.py       # CLDR plural rules
 │   └── formatting.py    # Number/date formatting
-│
-└── dashboard/           # Data Docs dashboard UI
-    ├── app.py           # DashboardApp
-    ├── state.py         # Reflex state
-    └── components.py    # UI components
 ```
 
 ### Class Hierarchy
@@ -382,18 +365,9 @@ truthound docs generate profile.json -o report.pdf --format pdf
 
 System libraries are required. Refer to the [PDF Export](pdf-export.md) documentation.
 
-### Dashboard import error
-
-```bash
-pip install truthound[dashboard]
-```
-
----
-
 ## See Also
 
 - [HTML Reports](html-reports.md) - Static HTML report generation
 - [Themes](themes.md) - Theme customization
 - [Charts](charts.md) - Chart rendering
 - [PDF Export](pdf-export.md) - PDF export
-- Data Docs reports - Interactive dashboard
