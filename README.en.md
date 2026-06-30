@@ -75,7 +75,15 @@ By standardizing and automating data validation logic, Truthound reduces repetit
 
 ## Key Features
 
-- **Polars-first execution**: Planner-based metric aggregation computes checks together instead of repeatedly scanning data per validator.
+<!--
+FACT-CHECK LOCK, 2026-07-01:
+The default th.check() local runtime is Polars/LazyFrame based, but it executes
+validators sequentially through ValidationRuntime._execute_sequential().
+ExpressionBatchExecutor and SharedMetricStore provide batched/deduplicated
+metric execution utilities, but ScanPlanner does not automatically fuse all
+validator metrics into one collect() on the default path.
+-->
+- **Polars-first execution**: Local validation uses Polars `LazyFrame` as the reference path. Batched expression and shared-metric utilities are available, but the default `th.check()` path does not automatically fuse every validator metric into one aggregate query.
 - **Zero-Configuration**: `th.check(data)` automatically creates and reuses a local `.truthound/` workspace.
 - **Deterministic auto validation suites**: Selects only relevant checks using schema, nullability, type, range, and key heuristics instead of "run everything."
 - **Single result model**: Checkpoints, reporters, validation docs, and plugins all share one `ValidationRunResult`.
@@ -88,7 +96,7 @@ By standardizing and automating data validation logic, Truthound reduces repetit
 
 ## Benchmark
 
-In fixed-runner release-grade benchmarks, Truthound measured faster execution time and lower memory usage than Great Expectations across all comparable workloads while preserving correctness.
+In fixed-runner release-grade benchmarks, Truthound measured faster execution time and lower memory usage than Great Expectations across the eight comparable workloads in the published release artifact set while preserving correctness.
 
 | Workload | Truthound Warm (s) | GX Warm (s) | Speedup | Memory Ratio |
 | --- | --- | --- | --- | --- |
@@ -101,10 +109,11 @@ In fixed-runner release-grade benchmarks, Truthound measured faster execution ti
 | sqlite-range | 0.006053 | 0.022355 | 3.69x | 43.80% |
 | sqlite-unique | 0.002066 | 0.015655 | 7.58x | 42.12% |
 
-This comparison is limited to deterministic core checks and SQLite pushdown workloads. It is not a generalized claim about every feature area. Verified benchmark evidence is available in the [Latest Verified Benchmark Summary](https://github.com/seadonggyun4/truthound/blob/main/docs/releases/latest-benchmark-summary.md).
+This comparison is limited to deterministic core checks and SQLite pushdown workloads. It is not a generalized claim about every feature area. The repository-local `.truthound/benchmarks/artifacts` directory may contain only a subset of raw observations; treat the release artifact set and the [Latest Verified Benchmark Summary](https://github.com/seadonggyun4/truthound/blob/main/docs/releases/latest-benchmark-summary.md) as the official source for these numbers.
 
 Primary reasons for the performance difference:
-- a Polars-first planner/runtime that deduplicates metric work instead of rescanning through validator loops
+- Polars `LazyFrame` based local execution and SQL pushdown paths
+- batched expression and shared-metric optimization utilities used by some validators and advanced execution paths
 - deterministic auto-suite selection that keeps default work exact and relevant
 - a lightweight zero-configuration context that preserves baselines and artifacts without heavy project bootstrapping
 - a single result contract shared by reporters, checkpoints, and validation docs

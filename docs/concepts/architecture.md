@@ -136,9 +136,11 @@ This prevents the public API from drifting away from the real runtime model.
 
 When `validators=None`, Truthound does not run every validator. It invokes a deterministic `AutoSuiteBuilder` that:
 
-- always includes schema/nullability/type coverage when enough information exists
+- includes a schema check when a `SchemaSpec` is available
+- always includes nullability coverage across discovered columns
+- adds type checks for string-like columns when schema information is available
 - adds uniqueness only for key-like columns inferred from profile and naming heuristics
-- adds range checks for numeric columns with confident bounds
+- adds range checks for numeric columns when schema information identifies numeric dtypes
 - avoids expensive probabilistic work unless explicitly eligible
 
 `ScanPlanner` then owns the execution planning concerns that previously leaked through the API or validator base layer:
@@ -148,9 +150,18 @@ When `validators=None`, Truthound does not run every validator. It invokes a det
 - parallel eligibility
 - pushdown eligibility
 - backend routing metadata
-- execution metadata handed off to validator optimization utilities
+- execution metadata
 
-Metric deduplication and aggregate fusion live below the planner in validator execution utilities and optimization helpers. The planner is intentionally narrow: it should decide *how* a suite should run, not *perform* the validation itself.
+<!--
+FACT-CHECK LOCK, 2026-07-01:
+ScanPlanner only builds ScanPlan steps and selects coarse execution mode.
+It does not collect validator metric requirements or precompute shared metrics.
+ExpressionBatchExecutor/SharedMetricStore live in validators/base.py and
+validators/metrics.py; the default local th.check() runtime does not call that
+batch executor.
+-->
+
+Metric deduplication and aggregate fusion live below the planner in validator execution utilities and optimization helpers. They are available implementation tools, not a guarantee that every `th.check()` run fuses all validators into one collect. The planner is intentionally narrow: it should decide *how* a suite should run, not *perform* the validation itself.
 
 ## Runtime Responsibilities
 
@@ -158,7 +169,8 @@ Metric deduplication and aggregate fusion live below the planner in validator ex
 
 - validator construction from `CheckSpec`
 - timeout-safe and retry-safe execution
-- sequential and parallel orchestration
+- sequential orchestration for the default local path
+- DAG-based parallel orchestration when explicitly requested and eligible
 - pushdown delegation for SQL assets
 - conversion of runtime failures into `ExecutionIssue`
 - stable result ordering

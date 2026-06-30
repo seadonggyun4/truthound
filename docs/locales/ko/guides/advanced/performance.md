@@ -619,11 +619,18 @@ validator = QueryValidator(
 
 ## 9. Internal 성능 Optimizations
 
-실무 운영 가이드에서 Truthound을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+Truthound에는 여러 성능 최적화가 있습니다. 다만 일부는 기본 공개 경로에 항상 적용되고, 일부는 명시적으로 사용하는 유틸리티이거나 조건을 만족하는 검증기에만 적용됩니다.
+
+<!--
+FACT-CHECK LOCK, 2026-07-01:
+ExpressionBatchExecutor와 SharedMetricStore를 모든 기본 th.check() 실행에
+자동 적용된다고 설명하지 않는다. 기본 로컬 경로의
+ValidationRuntime._execute_sequential()은 validator별로 _validate_safe()를 호출한다.
+-->
 
 ### 9.1 Expression-Based 검증기 아키텍처
 
-실무 운영 가이드에서 `collect()`, Validators을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+표현식 기반 실행을 지원하는 검증기는 `ExpressionBatchExecutor`를 통해 실행할 때 단일 `collect()` 호출로 배치될 수 있습니다. 기본 로컬 `th.check()` 순차 경로가 모든 suite를 이 executor로 자동 라우팅하지는 않습니다.
 
 실무 운영 가이드에서 `src/truthound/validators/base.py`, Implementation을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
 
@@ -638,11 +645,11 @@ from truthound.validators.base import ExpressionBatchExecutor
 from truthound.validators.completeness.null import NullValidator
 from truthound.validators.distribution.range import RangeValidator
 
-# Batch execution (single collect())
+# Batch execution utility (single collect for eligible expression validators)
 executor = ExpressionBatchExecutor()
 executor.add_validator(NullValidator())
 executor.add_validator(RangeValidator(min_value=0))
-all_issues = executor.execute(lf)  # Single collect() for all validators
+all_issues = executor.execute(lf)
 ```
 
 **Supported 검증기**:
@@ -656,11 +663,14 @@ all_issues = executor.execute(lf)  # Single collect() for all validators
 실무 운영 가이드에서 `src/truthound/validators/_lazy.py`, Implementation을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
 
 ```python
-# 200+ validators mapped to their modules
+# Fact-check lock, 2026-07-01:
+# - 302 lazy-loadable symbols are mapped to modules.
+# - 266 mapped symbols end with "Validator".
+# - registry.list_all() returns 263 registered built-in validators.
 VALIDATOR_IMPORT_MAP: dict[str, str] = {
     "NullValidator": "truthound.validators.completeness.null",
     "BetweenValidator": "truthound.validators.distribution.range",
-    # ... 200+ validators
+    # ... lazy-loadable validator and helper symbols
 }
 
 # Category-based lazy loading
@@ -765,8 +775,8 @@ stats = lf.select(stats_exprs).collect()
 
 | 실무 운영 가이드에서 Optimization을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Location을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Effect을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
 |-------------|----------|--------|
-| 실무 운영 가이드에서 Expression, Batch, Executor을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 `validators/base.py`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | Multiple 검증기, single collect() |
-| 실무 운영 가이드에서 Lazy, Loading, Registry을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 `validators/_lazy.py`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 200+ 검증기 lazy loading |
+| 실무 운영 가이드에서 Expression, Batch, Executor을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 `validators/base.py`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 조건을 만족하는 검증기를 위한 선택형 배치 유틸리티 |
+| 실무 운영 가이드에서 Lazy, Loading, Registry을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 `validators/_lazy.py`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 302 lazy-loadable symbols, 266 `*Validator` symbols, 263 registered built-in validators |
 | xxhash 캐시 | 실무 운영 가이드에서 `cache.py`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
 | 실무 운영 가이드에서 Polars, Native, Masking을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 `maskers.py`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Eliminates을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
 | 실무 운영 가이드에서 Heap-Based, Sorting을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 `report.py`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |

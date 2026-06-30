@@ -58,9 +58,16 @@ behavior are fixed.
 
 ## Verified Core Benchmark Snapshot
 
+<!--
+FACT-CHECK LOCK, 2026-07-01:
+These numbers are sourced from docs/releases/latest-benchmark-summary.md and
+the published release artifact set. The repo-local .truthound/benchmarks
+directory may not contain every raw observation used to publish the summary.
+-->
+
 The latest fixed-runner benchmark verification shows:
 
-- Truthound Core finished ahead of Great Expectations on all eight comparable release-grade workloads
+- Truthound Core finished ahead of Great Expectations on all eight comparable release-grade workloads in the published artifact set
 - local speedups ranged from `1.51x` to `11.70x`
 - SQLite pushdown speedups ranged from `3.69x` to `7.58x`
 - local peak RSS stayed between `35.88%` and `48.16%` of Great Expectations

@@ -619,11 +619,18 @@ validator = QueryValidator(
 
 ## 9. Internal Performance Optimizations
 
-Truthound implements several internal optimizations for maximum performance. These are automatically applied and don't require user configuration.
+Truthound implements several internal optimizations for maximum performance. Some optimizations are always part of the public path, while others are opt-in utilities or apply only to eligible validators.
+
+<!--
+FACT-CHECK LOCK, 2026-07-01:
+Do not describe ExpressionBatchExecutor or SharedMetricStore as automatically
+used by every default th.check() run. ValidationRuntime._execute_sequential()
+calls _validate_safe() per validator on the default local path.
+-->
 
 ### 9.1 Expression-Based Validator Architecture
 
-Validators that support expression-based execution can be batched into a single `collect()` call.
+Validators that support expression-based execution can be batched into a single `collect()` call when they are run through `ExpressionBatchExecutor`. The default local `th.check()` sequential path does not automatically route every suite through this executor.
 
 **Implementation**: `src/truthound/validators/base.py`
 
@@ -638,11 +645,11 @@ from truthound.validators.base import ExpressionBatchExecutor
 from truthound.validators.completeness.null import NullValidator
 from truthound.validators.distribution.range import RangeValidator
 
-# Batch execution (single collect())
+# Batch execution utility (single collect for eligible expression validators)
 executor = ExpressionBatchExecutor()
 executor.add_validator(NullValidator())
 executor.add_validator(RangeValidator(min_value=0))
-all_issues = executor.execute(lf)  # Single collect() for all validators
+all_issues = executor.execute(lf)
 ```
 
 **Supported validators**:
@@ -656,11 +663,14 @@ The validator registry uses lazy loading to minimize startup time.
 **Implementation**: `src/truthound/validators/_lazy.py`
 
 ```python
-# 200+ validators mapped to their modules
+# Fact-check lock, 2026-07-01:
+# - 302 lazy-loadable symbols are mapped to modules.
+# - 266 mapped symbols end with "Validator".
+# - registry.list_all() returns 263 registered built-in validators.
 VALIDATOR_IMPORT_MAP: dict[str, str] = {
     "NullValidator": "truthound.validators.completeness.null",
     "BetweenValidator": "truthound.validators.distribution.range",
-    # ... 200+ validators
+    # ... lazy-loadable validator and helper symbols
 }
 
 # Category-based lazy loading
@@ -765,8 +775,8 @@ stats = lf.select(stats_exprs).collect()
 
 | Optimization | Location | Effect |
 |-------------|----------|--------|
-| Expression Batch Executor | `validators/base.py` | Multiple validators, single collect() |
-| Lazy Loading Registry | `validators/_lazy.py` | 200+ validator lazy loading |
+| Expression Batch Executor | `validators/base.py` | Optional batching utility for eligible validators |
+| Lazy Loading Registry | `validators/_lazy.py` | 302 lazy-loadable symbols, 266 `*Validator` symbols, 263 registered built-in validators |
 | xxhash Cache | `cache.py` | ~10x faster fingerprinting |
 | Native Polars Masking | `maskers.py` | Eliminates map_elements |
 | Heap-Based Sorting | `report.py` | O(1) severity access |

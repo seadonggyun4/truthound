@@ -324,8 +324,8 @@ await manager.load_plugin("my-plugin")
 
 ### Performance Tuning
 
-- **Expression Batching**: Multiple validators in single collect()
-- **Lazy Loading**: 200+ validators loaded on demand
+- **Expression Batching**: Optional utility for eligible validators; the default local `th.check()` path does not automatically use it for every suite
+- **Lazy Loading**: 302 lazy-loadable symbols, including 266 names ending in `Validator`, with 263 registered built-in validators in the runtime registry
 - **xxhash Caching**: ~10x faster fingerprinting
 - **Enterprise Sampling**: Handle 100M+ row datasets
 
@@ -335,7 +335,7 @@ from truthound.validators.base import ExpressionBatchExecutor
 executor = ExpressionBatchExecutor()
 executor.add_validator(NullValidator())
 executor.add_validator(RangeValidator(min_value=0))
-issues = executor.execute(lf)  # Single collect() for all
+issues = executor.execute(lf)  # Single collect() for eligible expression validators
 ```
 
 ---

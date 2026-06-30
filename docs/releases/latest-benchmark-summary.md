@@ -14,6 +14,13 @@ The latest release-grade artifact set passed fixed-runner benchmark verification
 - Passed: `yes`
 - Official benchmark artifact set: `ready`
 
+<!--
+FACT-CHECK LOCK, 2026-07-01:
+This file is the public summary of the release artifact set. Do not infer that
+the repository-local .truthound/benchmarks/artifacts directory contains every raw
+observation referenced here; local working copies can contain only a subset.
+-->
+
 ## Artifact Links
 
 - [release-ga.json](https://github.com/seadonggyun4/truthound/releases/download/v3.0.0/release-ga.json)

@@ -12,6 +12,11 @@ The latest verified result shows:
 
 See the current numbers in [Latest Verified Benchmark Summary](../releases/latest-benchmark-summary.md).
 
+> Fact-check note: the benchmark numbers in the public docs come from the
+> published release artifact set. The repository-local
+> `.truthound/benchmarks/artifacts` directory can be partial and should not be
+> treated as the complete source for reconstructing every published observation.
+
 ## What Gets Measured
 
 Truthound benchmarks the real public path:
@@ -20,6 +25,12 @@ Truthound benchmarks the real public path:
 - SQL exact workloads run through `th.check(source=..., pushdown=True)`
 - zero-config context discovery and `.truthound/` reuse are part of the measured path
 - correctness is validated before any speedup claim is accepted
+
+The default local `th.check(...)` runtime is Polars `LazyFrame` based, but it
+executes validators sequentially unless a parallel or pushdown path is selected.
+Expression batching and shared-metric deduplication are available utilities for
+eligible validators and advanced execution paths; they are not a blanket claim
+that every default local run is executed as one fused aggregate query.
 
 ## Benchmark Classes
 
@@ -93,6 +104,7 @@ Truthound's published comparison is intentionally narrow and precise:
 - it covers comparable deterministic core checks plus SQLite pushdown workloads
 - it does not claim blanket superiority over every Great Expectations feature area
 - it is meant to describe the current release-grade artifact set, not all possible future workloads
+- it should not be read as proof that every validator category uses metric deduplication or single-pass execution by default
 
 ## Related Reading
 

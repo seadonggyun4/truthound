@@ -41,7 +41,14 @@ Truthound Core는 런타임 계약, 벤치마크 근거, 결과 모델이 가장
 
 ## 검증된 Core 벤치마크 요약
 
-최근 고정 runner 벤치마크는 비교 가능한 8개 release-grade 워크로드에서 Truthound Core가 Great Expectations보다 빠르게 완료됐음을 보여줍니다. 로컬 속도 향상은 `1.51x`에서 `11.70x`, SQLite pushdown 속도 향상은 `3.69x`에서 `7.58x` 범위였습니다. 자세한 근거는 [최신 검증 벤치마크 요약](releases/latest-benchmark-summary.md)을 참고하세요.
+<!--
+FACT-CHECK LOCK, 2026-07-01:
+이 숫자는 docs/releases/latest-benchmark-summary.md와 공개 release artifact set을
+기준으로 한다. 로컬 .truthound/benchmarks/artifacts 디렉터리는 일부 원시
+observation만 포함할 수 있으므로 전체 산출물 원천으로 쓰지 않는다.
+-->
+
+최근 고정 runner 벤치마크는 공개 release artifact set의 비교 가능한 8개 release-grade 워크로드에서 Truthound Core가 Great Expectations보다 빠르게 완료됐음을 보여줍니다. 로컬 속도 향상은 `1.51x`에서 `11.70x`, SQLite pushdown 속도 향상은 `3.69x`에서 `7.58x` 범위였습니다. 자세한 근거는 [최신 검증 벤치마크 요약](releases/latest-benchmark-summary.md)을 참고하세요.
 
 ## 계속 읽기
 

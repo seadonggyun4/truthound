@@ -134,31 +134,43 @@ flowchart LR
 
 ## Auto-Suite and Planner Responsibilities
 
-핵심 개념과 경계에서 Truthound, `validators=None`, `AutoSuiteBuilder`, None, AutoSuiteBuilder을(를) 다루는 항목입니다:
+`validators=None`이면 Truthound는 모든 검증기를 실행하지 않습니다. 결정론적 `AutoSuiteBuilder`가 다음 기준으로 필요한 검사만 구성합니다.
 
-- 핵심 개념과 경계에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-- 핵심 개념과 경계에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-- 핵심 개념과 경계에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-- 핵심 개념과 경계에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+- `SchemaSpec`이 있으면 schema check를 포함합니다.
+- 발견된 컬럼 전체에 대해 nullability 검사를 항상 포함합니다.
+- schema 정보가 문자열 계열 컬럼을 식별하면 type 검사를 추가합니다.
+- profile/naming 휴리스틱으로 key-like 컬럼을 추론할 수 있을 때만 uniqueness 검사를 추가합니다.
+- schema 정보가 numeric dtype을 식별하면 range 검사를 추가합니다.
+- 명시적으로 적합하지 않은 고비용 probabilistic 검사는 기본 자동 suite에 넣지 않습니다.
 
-핵심 개념과 경계에서 API, `ScanPlanner`, ScanPlanner을(를) 다루는 항목입니다:
+`ScanPlanner`는 실행 계획의 좁은 경계를 담당합니다.
 
-- 핵심 개념과 경계에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-- 핵심 개념과 경계에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-- 핵심 개념과 경계에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-- 핵심 개념과 경계에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-- 핵심 개념과 경계에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-- 핵심 개념과 경계에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+- 중복 check accounting
+- coarse execution mode 선택
+- parallel eligibility
+- pushdown eligibility
+- backend routing metadata
+- execution metadata
 
-핵심 개념과 경계에서 Metric을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+<!--
+FACT-CHECK LOCK, 2026-07-01:
+ScanPlanner는 ScanPlan step을 만들고 coarse execution mode를 고른다.
+validator metric requirement를 수집하거나 shared metric을 미리 계산하지 않는다.
+ExpressionBatchExecutor/SharedMetricStore는 validators/base.py와
+validators/metrics.py에 있으며, 기본 로컬 th.check() runtime은 해당 batch
+executor를 호출하지 않는다.
+-->
+
+Metric deduplication과 aggregate fusion은 planner 자체가 아니라 validator execution utility와 optimization helper 쪽에 있습니다. 사용할 수 있는 구현 도구이지, 모든 `th.check()` 실행이 모든 validator를 단일 `collect()`로 합친다는 보장은 아닙니다.
 
 ## 런타임 Responsibilities
 
-핵심 개념과 경계에서 `ValidationRuntime`, ValidationRuntime을(를) 다루는 항목입니다:
+`ValidationRuntime`은 실행 의미론을 담당합니다.
 
 - 검증기 construction from `CheckSpec`
 - 핵심 개념과 경계에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-- sequential and parallel 오케스트레이션
+- 기본 로컬 경로의 sequential 오케스트레이션
+- 명시적으로 요청되고 가능한 경우 DAG 기반 parallel 오케스트레이션
 - 핵심 개념과 경계에서 SQL을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
 - conversion of 런타임 실패 into `ExecutionIssue`
 - stable 결과 ordering

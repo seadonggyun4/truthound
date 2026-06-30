@@ -1,30 +1,42 @@
 """Built-in validators for data quality checks.
 
-This module provides 289+ validators across 28 categories with lazy loading
-for improved startup performance.
+This module exposes the lazy validator registry and the public validator
+namespace.
+
+Fact-check lock, 2026-07-01:
+- ``VALIDATOR_IMPORT_MAP`` contains 302 lazy-loadable symbols.
+- 266 of those symbols end with ``Validator``.
+- ``registry.list_all()`` currently returns 263 registered built-in validator
+  entries across 21 runtime categories.
+
+Keep these definitions separate in docs and comments:
+- "symbols" means keys in ``VALIDATOR_IMPORT_MAP``.
+- "Validator symbols" means lazy-loadable names ending in ``Validator``.
+- "registered built-in validators" means concrete entries returned by the
+  runtime registry.
 
 Categories:
-- schema: Table structure validation (14 validators)
+- schema: Table structure validation
 - completeness: Null and missing value detection (12 validators)
 - uniqueness: Duplicate, primary key, and distinct value checks (17 validators)
 - distribution: Range, set, and statistical checks (15 validators)
-- string: Pattern matching and format validation (20 validators)
+- string: Pattern matching and format validation
 - datetime: Date format and range checks (10 validators)
 - aggregate: Statistical aggregate validation (8 validators)
-- cross_table: Multi-table validation (4 validators)
-- query: SQL and expression-based validation (18 validators)
-- multi_column: Multi-column compound checks (18 validators)
-- table: Table metadata validation (17 validators)
-- geospatial: Geographic coordinate validation (12 validators)
+- cross_table: Multi-table validation
+- query: SQL and expression-based validation
+- multi_column: Multi-column compound checks
+- table: Table metadata validation
+- geospatial: Geographic coordinate validation
 - drift: Data drift detection (14 validators)
-- anomaly: Anomaly and outlier detection (17 validators)
-- referential: Referential integrity validation (16 validators)
-- timeseries: Time series validation (18 validators)
-- business_rule: Business rule validation (8 validators)
-- profiling: Data profiling validation (8 validators)
-- localization: Asian localization validation (9 validators)
-- ml_feature: ML feature validation (9 validators)
-- privacy: GDPR/CCPA/Global privacy compliance (20+ validators)
+- anomaly: Anomaly and outlier detection
+- referential: Referential integrity validation
+- timeseries: Time series validation
+- business_rule: Business rule validation
+- profiling: Data profiling validation
+- localization: Asian localization validation
+- ml_feature: ML feature validation
+- privacy: GDPR/CCPA/Global privacy compliance
 
 Usage:
     # Import specific validators (recommended - lazy loaded)
