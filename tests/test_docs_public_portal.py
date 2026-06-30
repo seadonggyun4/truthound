@@ -296,14 +296,15 @@ def test_external_source_banner_markup_uses_generic_upstream_contract() -> None:
     assert '!!! note "Upstream Source"' in banner
 
 
-def test_docs_deployment_verification_tracks_dashboard_as_overview_only() -> None:
+def test_docs_deployment_verification_excludes_dashboard_and_depot_surface() -> None:
     verification_doc = (
         REPO_ROOT / "docs" / "guides" / "docs-deployment-verification.md"
     ).read_text(encoding="utf-8")
 
     assert "https://truthound.netlify.app/" in verification_doc
-    assert "dashboard runtime is hosted inside the Netlify site" in verification_doc
-    assert "docs/dashboard/index.md" in verification_doc
+    assert "dashboard and Depot pages are not hosted inside the Netlify site" in verification_doc
+    assert "dashboard and Depot docs remain outside the public MkDocs surface" in verification_doc
+    assert "docs/dashboard/index.md" not in verification_doc
     assert "docs/ai/" in verification_doc
 
 
