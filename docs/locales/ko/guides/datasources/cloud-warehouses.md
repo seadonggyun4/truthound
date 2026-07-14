@@ -18,6 +18,11 @@ provider class import나 mock contract test만으로 실제 계정 지원을 선
 `th.profile(source=...)`, cleanup, 재진입 결과와 설치 artifact를 함께 기록해야
 합니다. credential이 없으면 통과가 아니라 **미검증**입니다.
 
+3.1.6부터 BigQuery, Snowflake, Redshift, Databricks 공개 class는 모두 concrete이며,
+사용하지 않는 schema-query abstract method 대신 기존 provider-native schema 조회를
+정식 전략으로 사용합니다. 이는 package 생성 계약이며 실제 credential 기반
+provider 인증을 대신하지 않습니다.
+
 실무 운영 가이드에서 Databricks, Truthound, Snowflake, Redshift, BigQuery을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
 
 ## 개요

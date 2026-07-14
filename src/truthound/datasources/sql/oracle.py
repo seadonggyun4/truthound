@@ -235,12 +235,7 @@ class OracleDataSource(BaseSQLDataSource):
             AND TABLE_NAME = UPPER('{self._table}')
             ORDER BY COLUMN_ID
         """
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(query)
-            result = cursor.fetchall()
-            cursor.close()
-            return [(row[0], row[1]) for row in result]
+        return self._fetch_schema_query_rows(query)
 
     def _get_row_count_query(self) -> str:
         """Get Oracle row count query."""

@@ -25,6 +25,7 @@ All SQL data sources share these capabilities:
 - **Query Mode**: Validate custom SQL query results
 - **SQL Pushdown**: Run operations directly on the database
 - **Schema Inference**: Automatic column type detection
+- **Schema Strategy**: Shared schema query or provider-native metadata discovery
 - **Row Normalization**: Tuple, mapping, and driver row objects share one result contract
 - **Bounded Fallback**: Polars fallback reads are batched and fail before silent truncation
 
@@ -61,6 +62,19 @@ profile = th.profile(source=sampled_source)
 
 `max_rows` remains the overall DataSource safety limit.
 `materialization_row_limit` is the stricter in-memory fallback limit.
+
+### Provider construction contract
+
+An advertised SQL provider must be a concrete class before credential or
+network checks begin. Providers can use the shared schema-query strategy or a
+native metadata strategy. A custom provider that implements neither fails at
+construction with a schema strategy error. Release QA imports and inspects all
+ten SQL provider classes from the built artifact in addition to importing their
+drivers.
+
+This contract proves that the provider can be constructed; it does not certify
+an external account. Operational support still requires a credential-backed
+read, validation/profile result, serialization or re-entry, and cleanup.
 
 ### Capabilities
 

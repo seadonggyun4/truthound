@@ -39,6 +39,11 @@ installed Truthound artifact, driver version, real credential-backed read,
 `th.check(source=...)`, `th.profile(source=...)`, cleanup, and re-entry result.
 Missing credentials are reported as **unverified**, never as passed.
 
+As of 3.1.6, BigQuery, Snowflake, Redshift, and Databricks are concrete public
+classes and use their provider-native schema discovery implementations without
+an unused schema-query abstract method. This is a package construction
+contract, not credential-backed provider certification.
+
 ## Google BigQuery
 
 BigQuery is Google Cloud's serverless data warehouse.

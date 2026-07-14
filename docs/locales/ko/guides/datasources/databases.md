@@ -19,6 +19,7 @@ Truthound의 SQLite, DuckDB, PostgreSQL, MySQL, Oracle, SQL Server 연결과
 - thread-safe connection pool
 - table mode와 지원되는 provider의 query mode
 - SQL pushdown과 schema inference
+- 공통 schema query 또는 provider-native metadata 조회 전략
 - tuple, mapping, driver row를 column name 기준으로 정규화
 - `fetch_size` batch와 `materialization_row_limit`를 적용한 bounded fallback
 
@@ -43,6 +44,19 @@ config = SQLDataSourceConfig(
     materialization_row_limit=100_000,
 )
 ```
+
+### Provider 생성 계약
+
+공개 지원 목록의 SQL provider는 credential 또는 network 검사 전에 concrete
+class여야 합니다. provider는 공통 schema query 전략이나 native metadata 전략 중
+하나를 사용합니다. 두 전략을 모두 구현하지 않은 사용자 정의 provider는 생성
+시점에 schema strategy 오류로 실패합니다. release QA는 driver import뿐 아니라
+built artifact에서 SQL provider class 10종을 직접 import하고 concrete 상태를
+전수 검사합니다.
+
+이 계약은 provider 생성 가능성을 증명할 뿐 외부 계정을 인증하지 않습니다.
+운영 지원에는 실제 credential 기반 read, validation/profile 결과, 재진입과 cleanup
+증거가 별도로 필요합니다.
 
 ### Capabilities
 

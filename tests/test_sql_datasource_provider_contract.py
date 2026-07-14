@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import importlib
+import inspect
 import sqlite3
 import tomllib
 from dataclasses import dataclass
@@ -29,6 +31,8 @@ class FakeCursor:
 
     def execute(self, query: str, params: Any = None) -> None:
         self.connection.queries.append((query, params))
+        if self.connection.execute_error is not None:
+            raise self.connection.execute_error
         if "COUNT" in query.upper():
             self.description = [("count", None)]
             self._rows = [self.connection.scalar_row]
@@ -64,10 +68,12 @@ class FakeConnection:
         columns: list[str],
         rows: list[Any],
         scalar_row: Any,
+        execute_error: Exception | None = None,
     ) -> None:
         self.columns = columns
         self.rows = rows
         self.scalar_row = scalar_row
+        self.execute_error = execute_error
         self.queries: list[tuple[str, Any]] = []
         self.fetchmany_sizes: list[int] = []
         self.fetchall_calls = 0
@@ -108,6 +114,175 @@ class FakeSQLDataSource(BaseSQLDataSource):
 
     def _quote_identifier(self, identifier: str) -> str:
         return f'"{identifier}"'
+
+
+class NativeSchemaSQLDataSource(BaseSQLDataSource):
+    """Provider fixture that discovers schema without a schema SQL hook."""
+
+    source_type = "native_schema"
+
+    def _create_connection(self) -> FakeConnection:
+        raise AssertionError("native schema fixture must not connect")
+
+    def _fetch_schema(self) -> list[tuple[str, str]]:
+        return [("id", "INTEGER")]
+
+    def _get_row_count_query(self) -> str:
+        return "SELECT COUNT(*) FROM records"
+
+    def _quote_identifier(self, identifier: str) -> str:
+        return f'"{identifier}"'
+
+
+class MissingSchemaSQLDataSource(BaseSQLDataSource):
+    """Invalid provider fixture without either supported schema strategy."""
+
+    source_type = "missing_schema"
+
+    def _create_connection(self) -> FakeConnection:
+        raise AssertionError("invalid fixture must not connect")
+
+    def _get_row_count_query(self) -> str:
+        return "SELECT COUNT(*) FROM records"
+
+    def _quote_identifier(self, identifier: str) -> str:
+        return f'"{identifier}"'
+
+
+def test_native_schema_strategy_is_a_valid_concrete_provider_contract() -> None:
+    assert not inspect.isabstract(NativeSchemaSQLDataSource)
+
+    source = NativeSchemaSQLDataSource(table="records")
+
+    assert source.sql_schema == {"id": "INTEGER"}
+
+
+def test_provider_without_any_schema_strategy_fails_at_construction() -> None:
+    assert not inspect.isabstract(MissingSchemaSQLDataSource)
+
+    with pytest.raises(TypeError, match="schema discovery strategy"):
+        MissingSchemaSQLDataSource(table="records")
+
+
+@pytest.mark.parametrize(
+    ("module_name", "class_name"),
+    [
+        ("postgresql", "PostgreSQLDataSource"),
+        ("mysql", "MySQLDataSource"),
+        ("sqlite", "SQLiteDataSource"),
+        ("snowflake", "SnowflakeDataSource"),
+        ("bigquery", "BigQueryDataSource"),
+        ("redshift", "RedshiftDataSource"),
+        ("databricks", "DatabricksDataSource"),
+        ("oracle", "OracleDataSource"),
+        ("sqlserver", "SQLServerDataSource"),
+    ],
+)
+def test_advertised_sql_provider_class_is_concrete(
+    module_name: str,
+    class_name: str,
+) -> None:
+    module = importlib.import_module(f"truthound.datasources.sql.{module_name}")
+    provider_class = getattr(module, class_name)
+
+    assert not inspect.isabstract(provider_class)
+    assert provider_class.__abstractmethods__ == frozenset()
+
+
+def test_enterprise_provider_constructors_reach_config_boundary(monkeypatch) -> None:
+    from truthound.datasources.sql import (
+        bigquery,
+        databricks,
+        oracle,
+        redshift,
+        snowflake,
+        sqlserver,
+    )
+
+    monkeypatch.setattr(snowflake, "_check_snowflake_available", lambda: None)
+    monkeypatch.setattr(bigquery, "_check_bigquery_available", lambda: None)
+    monkeypatch.setattr(redshift, "_check_redshift_available", lambda: ("test", object()))
+    monkeypatch.setattr(databricks, "_check_databricks_available", lambda: None)
+    monkeypatch.setattr(oracle, "_check_oracle_available", lambda: None)
+    monkeypatch.setattr(sqlserver, "_check_sqlserver_available", lambda: ("test", object()))
+    monkeypatch.setattr(
+        bigquery.BigQueryDataSource,
+        "_validate_credentials",
+        lambda self: True,
+    )
+
+    sources = [
+        snowflake.SnowflakeDataSource(
+            table="records",
+            account="account",
+            user="user",
+            password="secret",
+            database="database",
+        ),
+        bigquery.BigQueryDataSource(
+            table="records",
+            project="project",
+            dataset="dataset",
+        ),
+        redshift.RedshiftDataSource(
+            table="records",
+            host="host",
+            database="database",
+        ),
+        databricks.DatabricksDataSource(
+            table="records",
+            host="host",
+            http_path="/sql/path",
+            access_token="secret",
+        ),
+        oracle.OracleDataSource(
+            table="records",
+            dsn="dsn",
+            user="user",
+            password="secret",
+        ),
+        sqlserver.SQLServerDataSource(
+            table="records",
+            host="host",
+            database="database",
+        ),
+    ]
+
+    assert [source.source_type for source in sources] == [
+        "snowflake",
+        "bigquery",
+        "redshift",
+        "databricks",
+        "oracle",
+        "sqlserver",
+    ]
+
+
+def test_schema_query_normalizes_mapping_rows_and_closes_cursor() -> None:
+    connection = FakeConnection(
+        columns=["column_name", "data_type"],
+        rows=[{"COLUMN_NAME": "id", "DATA_TYPE": "INTEGER"}],
+        scalar_row=(1,),
+    )
+    source = FakeSQLDataSource(connection)
+
+    assert source.sql_schema == {"id": "INTEGER"}
+    assert connection.closed_cursors == 1
+
+
+def test_schema_query_closes_cursor_when_execution_fails() -> None:
+    connection = FakeConnection(
+        columns=[],
+        rows=[],
+        scalar_row=None,
+        execute_error=RuntimeError("schema query failed"),
+    )
+    source = FakeSQLDataSource(connection)
+
+    with pytest.raises(RuntimeError, match="schema query failed"):
+        _ = source.sql_schema
+
+    assert connection.closed_cursors == 1
 
 
 @pytest.mark.parametrize(

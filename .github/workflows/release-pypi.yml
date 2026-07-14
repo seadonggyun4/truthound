@@ -6,7 +6,7 @@ on:
       version:
         description: Version to publish. Must match pyproject.toml.
         required: true
-        default: "3.1.5"
+        default: "3.1.6"
         type: string
 
 permissions:
@@ -77,6 +77,7 @@ jobs:
             "${wheel_path}[ai,sql-connectors]"
           /tmp/truthound-release-smoke/bin/python - <<'PY'
           import importlib
+          import inspect
           import os
           import sqlite3
           import tempfile
@@ -84,7 +85,16 @@ jobs:
 
           import truthound
           import truthound.ai
+          from truthound.datasources.sql.bigquery import BigQueryDataSource
+          from truthound.datasources.sql.databricks import DatabricksDataSource
+          from truthound.datasources.sql.duckdb import DuckDBDataSource
+          from truthound.datasources.sql.mysql import MySQLDataSource
+          from truthound.datasources.sql.oracle import OracleDataSource
+          from truthound.datasources.sql.postgresql import PostgreSQLDataSource
+          from truthound.datasources.sql.redshift import RedshiftDataSource
+          from truthound.datasources.sql.snowflake import SnowflakeDataSource
           from truthound.datasources.sql import SQLiteDataSource
+          from truthound.datasources.sql.sqlserver import SQLServerDataSource
 
           expected = os.environ["RELEASE_VERSION"]
           if truthound.__version__ != expected:
@@ -104,6 +114,29 @@ jobs:
               "pymssql",
           ):
               importlib.import_module(module_name)
+
+          provider_classes = (
+              PostgreSQLDataSource,
+              MySQLDataSource,
+              SQLiteDataSource,
+              DuckDBDataSource,
+              SnowflakeDataSource,
+              BigQueryDataSource,
+              RedshiftDataSource,
+              DatabricksDataSource,
+              OracleDataSource,
+              SQLServerDataSource,
+          )
+          abstract_providers = {
+              provider_class.__name__: sorted(provider_class.__abstractmethods__)
+              for provider_class in provider_classes
+              if inspect.isabstract(provider_class)
+              or provider_class.__abstractmethods__
+          }
+          if abstract_providers:
+              raise SystemExit(
+                  f"advertised SQL provider classes are abstract: {abstract_providers}"
+              )
 
           with tempfile.TemporaryDirectory() as temp_dir:
               database = Path(temp_dir) / "release-contract.sqlite3"

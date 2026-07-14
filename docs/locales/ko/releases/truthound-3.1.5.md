@@ -66,6 +66,14 @@ profile = th.profile(source=source)
 
 credential 부재, skip, import 성공은 통과가 아닙니다.
 
+## 알려진 제한
+
+3.1.5 artifact의 Snowflake, BigQuery, Redshift, Databricks, Oracle, SQL Server는
+provider-native schema 구현이 base class의 query 전용 abstract hook을 충족하지
+못해 여전히 abstract class로 남습니다. 해당 provider를 사용하려면 3.1.6 이상으로
+업그레이드해야 합니다. constructor 수정이 실제 credential 기반 지원 인증을
+의미하지는 않습니다.
+
 ## 소비자 업그레이드 Gate
 
 소비자 저장소는 Core 결함을 위한 로컬 우회 코드를 영구 유지하면 안 됩니다.

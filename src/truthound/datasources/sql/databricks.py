@@ -227,13 +227,10 @@ class DatabricksDataSource(CloudDWDataSource):
     def _fetch_schema(self) -> list[tuple[str, str]]:
         """Fetch schema from Databricks."""
         query = f"DESCRIBE TABLE {self.full_table_name}"
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(query)
-            result = cursor.fetchall()
-            cursor.close()
-            # DESCRIBE returns (col_name, data_type, comment)
-            return [(row[0], row[1]) for row in result if not row[0].startswith("#")]
+        # DESCRIBE returns (col_name, data_type, comment). The common helper
+        # normalizes tuple and mapping rows and always closes the cursor.
+        rows = self._fetch_schema_query_rows(query)
+        return [row for row in rows if not row[0].startswith("#")]
 
     def _get_row_count_query(self) -> str:
         """Get Databricks row count query."""

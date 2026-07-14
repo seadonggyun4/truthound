@@ -564,6 +564,7 @@ nav:
       - Smoke and Release Gates: ai/release-gate.md
   - Release Notes:
       - Latest Verified Benchmark Summary: releases/latest-benchmark-summary.md
+      - Truthound 3.1.6: releases/truthound-3.1.6.md
       - Truthound 3.1.5: releases/truthound-3.1.5.md
       - Truthound 3.1.3: releases/truthound-3.1.3.md
       - Truthound 3.1: releases/truthound-3.1.md

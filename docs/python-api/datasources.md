@@ -144,6 +144,17 @@ It reads in `fetch_size` batches and enforces `materialization_row_limit`. If a
 source is larger, it raises `DataSourceSizeError`; callers must use SQL pushdown
 or explicitly call `source.sample(n)`.
 
+SQL providers may discover table schema in either of two supported ways:
+
+- implement `_get_table_schema_query()` and use the shared DB-API query path; or
+- implement `_fetch_schema()` for a provider-native metadata API such as
+  BigQuery table metadata or a warehouse-specific `DESCRIBE` operation.
+
+Every advertised provider class must be concrete. Truthound validates that a
+custom SQL provider implements at least one schema strategy when it is
+constructed. The release artifact also checks every SQL provider class after
+installing `truthound[sql-connectors]`; importing a driver alone is not enough.
+
 Use SQL sources through the public facade as follows:
 
 ```python

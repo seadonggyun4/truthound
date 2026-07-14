@@ -123,5 +123,5 @@ Use `Workflow` when you need the dataset repository console:
 - [Truthound AI](ai/index.md)
 - [Truthound Orchestration](orchestration/index.md)
 - Truthound workflow documentation
-- [Release Notes](releases/truthound-3.1.5.md)
+- [Release Notes](releases/truthound-3.1.6.md)
 - [Migration to 3.0](guides/migration-3.0.md)

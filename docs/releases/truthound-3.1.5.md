@@ -78,6 +78,14 @@ An unavailable credential, skipped test, or import-only check is not a pass.
 See the release evidence and consumer repository QA for the exact artifact and
 provider matrix used after publication.
 
+## Known limitation
+
+The 3.1.5 artifact still leaves Snowflake, BigQuery, Redshift, Databricks,
+Oracle, and SQL Server as abstract classes because their provider-native schema
+implementations do not satisfy the base class's query-only abstract hook.
+Upgrade to 3.1.6 before using those providers. No credential-backed support is
+implied by this constructor fix.
+
 ## Consumer upgrade gate
 
 Consumer repositories must not keep a permanent local workaround for a Core

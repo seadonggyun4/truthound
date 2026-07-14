@@ -262,12 +262,7 @@ class RedshiftDataSource(CloudDWDataSource):
             AND table_name = '{self._table}'
             ORDER BY ordinal_position
         """
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(query)
-            result = cursor.fetchall()
-            cursor.close()
-            return [(row[0], row[1]) for row in result]
+        return self._fetch_schema_query_rows(query)
 
     def _get_row_count_query(self) -> str:
         """Get Redshift row count query."""

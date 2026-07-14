@@ -284,8 +284,9 @@ class BaseSQLDataSource(BaseDataSource[SQLDataSourceConfig]):
 
     Subclasses must implement:
     - _create_connection(): Create a database connection
-    - _get_table_schema(): Get column names and types from database
+    - _get_table_schema_query() or _fetch_schema(): Discover columns and types
     - _get_row_count_query(): Get SQL for counting rows
+    - _quote_identifier(): Quote an identifier for the provider dialect
 
     Example:
         >>> # Table mode
@@ -319,6 +320,7 @@ class BaseSQLDataSource(BaseDataSource[SQLDataSourceConfig]):
             ValueError: If neither or both table and query are provided.
         """
         super().__init__(config)
+        self._validate_schema_discovery_strategy()
 
         # Validate mutually exclusive parameters
         if table is None and query is None:
@@ -335,6 +337,23 @@ class BaseSQLDataSource(BaseDataSource[SQLDataSourceConfig]):
     @classmethod
     def _default_config(cls) -> SQLDataSourceConfig:
         return SQLDataSourceConfig()
+
+    def _validate_schema_discovery_strategy(self) -> None:
+        """Require either query-based or provider-native schema discovery."""
+
+        provider_class = type(self)
+        has_query_strategy = (
+            provider_class._get_table_schema_query
+            is not BaseSQLDataSource._get_table_schema_query
+        )
+        has_native_strategy = (
+            provider_class._fetch_schema is not BaseSQLDataSource._fetch_schema
+        )
+        if not (has_query_strategy or has_native_strategy):
+            raise TypeError(
+                f"{provider_class.__name__} must implement a schema discovery strategy: "
+                "override _get_table_schema_query() or _fetch_schema()."
+            )
 
     @property
     def table_name(self) -> str | None:
@@ -399,14 +418,16 @@ class BaseSQLDataSource(BaseDataSource[SQLDataSourceConfig]):
         """
         pass
 
-    @abstractmethod
     def _get_table_schema_query(self) -> str:
-        """Get SQL query to retrieve table schema.
+        """Get SQL used by the common query-based schema discovery strategy.
+
+        Providers with a native metadata API may override ``_fetch_schema``
+        instead. Construction validates that at least one strategy is present.
 
         Returns:
             SQL query that returns (column_name, data_type) rows.
         """
-        pass
+        raise NotImplementedError
 
     @abstractmethod
     def _get_row_count_query(self) -> str:
@@ -472,12 +493,18 @@ class BaseSQLDataSource(BaseDataSource[SQLDataSourceConfig]):
         if self._is_query_mode:
             return self._fetch_schema_from_query()
 
+        return self._fetch_schema_query_rows(self._get_table_schema_query())
+
+    def _fetch_schema_query_rows(self, query: str) -> list[tuple[str, str]]:
+        """Execute a schema query with shared row normalization and cleanup."""
+
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute(self._get_table_schema_query())
-            result = cursor.fetchall()
-            cursor.close()
-            return [_schema_pair(row) for row in result]
+            try:
+                cursor.execute(query)
+                return [_schema_pair(row) for row in cursor.fetchall()]
+            finally:
+                cursor.close()
 
     def _fetch_schema_from_query(self) -> list[tuple[str, str]]:
         """Infer schema from query result metadata.
