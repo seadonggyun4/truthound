@@ -61,10 +61,23 @@ config = SQLDataSourceConfig(
     pool_timeout=30.0,              # Pool acquire timeout
     query_timeout=300.0,            # Query timeout (5 min)
     fetch_size=10000,               # Rows per fetch batch
+    materialization_row_limit=100_000,  # Max rows for a Polars fallback
     use_server_side_cursor=False,   # Server-side cursors
     schema_name=None,               # Database schema
 )
 ```
+
+`max_rows` is the overall DataSource safety ceiling. SQL pushdown can operate
+without materializing rows in Python, while a validator or profiler that needs
+Polars is bounded by `materialization_row_limit`. The fallback reads at most
+`limit + 1` rows in `fetch_size` batches so that concurrent source growth is
+detected and partial data is never reported as complete.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `fetch_size` | 10,000 | Maximum DB-API rows requested per fallback batch |
+| `materialization_row_limit` | 100,000 | Maximum complete result allowed in a Polars fallback |
+| `use_server_side_cursor` | False | Provider-specific server cursor preference |
 
 ### Connection Pooling
 

@@ -9,20 +9,17 @@ Requires: pip install redshift-connector or psycopg2
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
+from truthound.datasources.base import (
+    DataSourceConnectionError,
+    DataSourceError,
+)
 from truthound.datasources.sql.cloud_base import (
     CloudDWConfig,
     CloudDWDataSource,
     load_credentials_from_env,
 )
-from truthound.datasources.base import (
-    DataSourceConnectionError,
-    DataSourceError,
-)
-
-if TYPE_CHECKING:
-    pass
 
 
 def _check_redshift_available() -> tuple[str, Any]:
@@ -199,11 +196,11 @@ class RedshiftDataSource(CloudDWDataSource):
             cursor.close()
             conn.close()
             return True
-        except Exception as e:
+        except Exception as exc:
             raise DataSourceConnectionError(
                 source_type="redshift",
-                details=f"Failed to authenticate: {e}",
-            )
+                details=f"Failed to authenticate: {exc}",
+            ) from exc
 
     def _create_connection(self) -> Any:
         """Create Redshift connection."""
@@ -286,42 +283,9 @@ class RedshiftDataSource(CloudDWDataSource):
         # Could use EXPLAIN to get scan info
         return None
 
-    def execute_query(self, query: str) -> list[dict[str, Any]]:
-        """Execute Redshift query."""
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(query)
-            columns = [desc[0] for desc in cursor.description]
-            results = cursor.fetchall()
-            cursor.close()
-            return [dict(zip(columns, row)) for row in results]
-
-    def execute_scalar(self, query: str) -> Any:
-        """Execute Redshift query returning single value."""
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(query)
-            result = cursor.fetchone()
-            cursor.close()
-            return result[0] if result else None
-
     def to_polars_lazyframe(self):
-        """Convert Redshift table to Polars LazyFrame."""
-        import polars as pl
-
-        query = f"SELECT * FROM {self.full_table_name}"
-        if self._config.max_rows:
-            query += f" LIMIT {self._config.max_rows}"
-
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(query)
-            columns = [desc[0] for desc in cursor.description]
-            data = cursor.fetchall()
-            cursor.close()
-
-        df_dict = {col: [row[i] for row in data] for i, col in enumerate(columns)}
-        return pl.DataFrame(df_dict).lazy()
+        """Convert through the common bounded SQL materialization path."""
+        return super().to_polars_lazyframe()
 
     def validate_connection(self) -> bool:
         """Validate Redshift connection."""
@@ -446,7 +410,7 @@ class RedshiftDataSource(CloudDWDataSource):
         table: str,
         schema: str = "public",
         env_prefix: str = "REDSHIFT",
-    ) -> "RedshiftDataSource":
+    ) -> RedshiftDataSource:
         """Create data source from environment variables.
 
         Reads: REDSHIFT_HOST, REDSHIFT_DATABASE, REDSHIFT_USER, REDSHIFT_PASSWORD, etc.

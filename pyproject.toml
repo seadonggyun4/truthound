@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "truthound"
-version = "3.1.4"
+version = "3.1.5"
 description = "Zero-Configuration Data Quality Framework Powered by Polars"
 readme = "README.md"
 license = "Apache-2.0"
@@ -76,6 +76,49 @@ azure = [
 # Database storage backend
 database = [
     "sqlalchemy>=2.0.0",
+]
+
+# SQL datasource providers
+postgresql = [
+    "psycopg2-binary>=2.9.9",
+]
+mysql = [
+    "pymysql>=1.1.0",
+]
+snowflake = [
+    "snowflake-connector-python>=3.12.0",
+]
+bigquery = [
+    "google-cloud-bigquery>=3.25.0",
+    "db-dtypes>=1.3.0",
+]
+redshift = [
+    "redshift-connector>=2.1.3",
+]
+databricks = [
+    "databricks-sql-connector>=3.4.0",
+]
+oracle = [
+    "oracledb>=2.4.0",
+]
+sqlserver = [
+    "pymssql>=2.3.1",
+]
+enterprise = [
+    "oracledb>=2.4.0",
+    "pymssql>=2.3.1",
+]
+sql-connectors = [
+    "psycopg2-binary>=2.9.9",
+    "pymysql>=1.1.0",
+    "duckdb>=1.0.0",
+    "snowflake-connector-python>=3.12.0",
+    "google-cloud-bigquery>=3.25.0",
+    "db-dtypes>=1.3.0",
+    "redshift-connector>=2.1.3",
+    "databricks-sql-connector>=3.4.0",
+    "oracledb>=2.4.0",
+    "pymssql>=2.3.1",
 ]
 
 # All storage backends
@@ -157,6 +200,15 @@ all = [
     "azure-storage-blob>=12.0.0",
     "sqlalchemy>=2.0.0",
     "duckdb>=1.0.0,<2.0.0",
+    "psycopg2-binary>=2.9.9",
+    "pymysql>=1.1.0",
+    "snowflake-connector-python>=3.12.0",
+    "google-cloud-bigquery>=3.25.0",
+    "db-dtypes>=1.3.0",
+    "redshift-connector>=2.1.3",
+    "databricks-sql-connector>=3.4.0",
+    "oracledb>=2.4.0",
+    "pymssql>=2.3.1",
     "reflex>=0.4.0",
     "weasyprint>=60.0",
     "motor>=3.0.0",

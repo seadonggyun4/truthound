@@ -1,6 +1,7 @@
 # Traditional Database Data Sources
 
-This document covers traditional relational database data sources in Truthound: SQLite, PostgreSQL, and MySQL.
+This document covers relational database data sources in Truthound: SQLite,
+DuckDB, PostgreSQL, MySQL, Oracle, and SQL Server.
 
 ## Overview
 
@@ -9,10 +10,11 @@ SQL database sources provide connection pooling, query pushdown optimization, an
 | Database | Driver | Installation | Built-in |
 |----------|--------|--------------|----------|
 | SQLite | `sqlite3` | Built-in | Yes |
-| PostgreSQL | `psycopg2` | `pip install psycopg2-binary` | No |
-| MySQL | `pymysql` | `pip install pymysql` | No |
-| Oracle | `oracledb` | `pip install oracledb` | No |
-| SQL Server | `pyodbc` | `pip install pyodbc` | No |
+| DuckDB | `duckdb` | `pip install truthound[duckdb]` | No |
+| PostgreSQL | `psycopg2` | `pip install truthound[postgresql]` | No |
+| MySQL | `pymysql` | `pip install truthound[mysql]` | No |
+| Oracle | `oracledb` | `pip install truthound[oracle]` | No |
+| SQL Server | `pymssql` (`pyodbc` is also accepted) | `pip install truthound[sqlserver]` | No |
 
 ## Common Features
 
@@ -23,6 +25,42 @@ All SQL data sources share these capabilities:
 - **Query Mode**: Validate custom SQL query results
 - **SQL Pushdown**: Run operations directly on the database
 - **Schema Inference**: Automatic column type detection
+- **Row Normalization**: Tuple, mapping, and driver row objects share one result contract
+- **Bounded Fallback**: Polars fallback reads are batched and fail before silent truncation
+
+### Public API and bounded materialization
+
+Pass SQL data sources through the `source` parameter. Passing a DataSource as
+the positional `data` argument is not part of the public contract.
+
+```python
+import truthound as th
+
+validation = th.check(source=source)
+profile = th.profile(source=source)
+```
+
+Exact SQL-capable checks use query pushdown where available. Operations that
+need a Polars fallback are limited by `materialization_row_limit` and fetched in
+`fetch_size` batches. The default fallback limit is 100,000 rows. Truthound
+raises `DataSourceSizeError` when the source exceeds the limit; it never treats
+a silently truncated result as complete data.
+
+```python
+from truthound.datasources.sql.base import SQLDataSourceConfig
+
+config = SQLDataSourceConfig(
+    fetch_size=10_000,
+    materialization_row_limit=100_000,
+)
+
+# Use an explicit bounded source for profile or non-pushdown work.
+sampled_source = source.sample(10_000)
+profile = th.profile(source=sampled_source)
+```
+
+`max_rows` remains the overall DataSource safety limit.
+`materialization_row_limit` is the stricter in-memory fallback limit.
 
 ### Capabilities
 

@@ -9,31 +9,28 @@ Requires: pip install snowflake-connector-python
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
+from truthound.datasources.base import (
+    DataSourceConnectionError,
+    DataSourceError,
+)
 from truthound.datasources.sql.cloud_base import (
     CloudDWConfig,
     CloudDWDataSource,
     load_credentials_from_env,
 )
-from truthound.datasources.base import (
-    DataSourceConnectionError,
-    DataSourceError,
-)
-
-if TYPE_CHECKING:
-    import snowflake.connector
 
 
 def _check_snowflake_available() -> None:
     """Check if Snowflake connector is available."""
     try:
         import snowflake.connector  # noqa: F401
-    except ImportError:
+    except ImportError as exc:
         raise ImportError(
             "snowflake-connector-python is required for SnowflakeDataSource. "
             "Install with: pip install snowflake-connector-python"
-        )
+        ) from exc
 
 
 # =============================================================================
@@ -183,11 +180,11 @@ class SnowflakeDataSource(CloudDWDataSource):
             conn.cursor().execute("SELECT 1")
             conn.close()
             return True
-        except Exception as e:
+        except Exception as exc:
             raise DataSourceConnectionError(
                 source_type="snowflake",
-                details=f"Failed to authenticate: {e}",
-            )
+                details=f"Failed to authenticate: {exc}",
+            ) from exc
 
     def _create_connection(self) -> Any:
         """Create Snowflake connection."""
@@ -276,43 +273,9 @@ class SnowflakeDataSource(CloudDWDataSource):
         # Could implement EXPLAIN-based estimation
         return None
 
-    def execute_query(self, query: str) -> list[dict[str, Any]]:
-        """Execute Snowflake query."""
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(query)
-            columns = [desc[0] for desc in cursor.description]
-            results = cursor.fetchall()
-            cursor.close()
-            return [dict(zip(columns, row)) for row in results]
-
-    def execute_scalar(self, query: str) -> Any:
-        """Execute Snowflake query returning single value."""
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(query)
-            result = cursor.fetchone()
-            cursor.close()
-            return result[0] if result else None
-
     def to_polars_lazyframe(self):
-        """Convert Snowflake table to Polars LazyFrame."""
-        import polars as pl
-
-        query = f"SELECT * FROM {self.full_table_name}"
-        if self._config.max_rows:
-            query += f" LIMIT {self._config.max_rows}"
-
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(query)
-            columns = [desc[0] for desc in cursor.description]
-            data = cursor.fetchall()
-            cursor.close()
-
-        # Convert to DataFrame
-        df_dict = {col: [row[i] for row in data] for i, col in enumerate(columns)}
-        return pl.DataFrame(df_dict).lazy()
+        """Convert through the common bounded SQL materialization path."""
+        return super().to_polars_lazyframe()
 
     def validate_connection(self) -> bool:
         """Validate Snowflake connection."""
@@ -403,7 +366,7 @@ class SnowflakeDataSource(CloudDWDataSource):
         table: str,
         schema: str = "PUBLIC",
         env_prefix: str = "SNOWFLAKE",
-    ) -> "SnowflakeDataSource":
+    ) -> SnowflakeDataSource:
         """Create data source from environment variables.
 
         Reads: SNOWFLAKE_ACCOUNT, SNOWFLAKE_USER, SNOWFLAKE_PASSWORD,

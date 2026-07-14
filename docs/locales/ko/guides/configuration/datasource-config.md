@@ -61,10 +61,22 @@ config = SQLDataSourceConfig(
     pool_timeout=30.0,              # Pool acquire timeout
     query_timeout=300.0,            # Query timeout (5 min)
     fetch_size=10000,               # Rows per fetch batch
+    materialization_row_limit=100_000,  # Polars fallback 최대 행 수
     use_server_side_cursor=False,   # Server-side cursors
     schema_name=None,               # Database schema
 )
 ```
+
+`max_rows`는 DataSource 전체 안전 한도이고, `materialization_row_limit`는
+Python 메모리에서 Polars fallback을 수행할 때의 더 엄격한 한도입니다. fallback은
+`fetch_size` batch로 `limit + 1`행까지 확인하므로 동시 데이터 증가를 감지하며,
+일부 데이터가 전체 결과인 것처럼 성공 처리되지 않습니다.
+
+| 설정 | 기본값 | 의미 |
+|------|--------|------|
+| `fetch_size` | 10,000 | fallback batch당 요청할 최대 행 수 |
+| `materialization_row_limit` | 100,000 | 완전한 Polars fallback으로 허용할 최대 행 수 |
+| `use_server_side_cursor` | False | provider별 server cursor 선호 설정 |
 
 ### Connection Pooling
 

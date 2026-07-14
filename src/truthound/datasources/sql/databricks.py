@@ -9,31 +9,28 @@ Requires: pip install databricks-sql-connector
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
+from truthound.datasources.base import (
+    DataSourceConnectionError,
+    DataSourceError,
+)
 from truthound.datasources.sql.cloud_base import (
     CloudDWConfig,
     CloudDWDataSource,
     load_credentials_from_env,
 )
-from truthound.datasources.base import (
-    DataSourceConnectionError,
-    DataSourceError,
-)
-
-if TYPE_CHECKING:
-    pass
 
 
 def _check_databricks_available() -> None:
     """Check if Databricks SQL connector is available."""
     try:
         from databricks import sql  # noqa: F401
-    except ImportError:
+    except ImportError as exc:
         raise ImportError(
             "databricks-sql-connector is required for DatabricksDataSource. "
             "Install with: pip install databricks-sql-connector"
-        )
+        ) from exc
 
 
 # =============================================================================
@@ -184,11 +181,11 @@ class DatabricksDataSource(CloudDWDataSource):
             cursor.close()
             conn.close()
             return True
-        except Exception as e:
+        except Exception as exc:
             raise DataSourceConnectionError(
                 source_type="databricks",
-                details=f"Failed to authenticate: {e}",
-            )
+                details=f"Failed to authenticate: {exc}",
+            ) from exc
 
     def _create_connection(self) -> Any:
         """Create Databricks connection."""
@@ -251,42 +248,9 @@ class DatabricksDataSource(CloudDWDataSource):
         """Databricks doesn't have direct cost estimation via dry run."""
         return None
 
-    def execute_query(self, query: str) -> list[dict[str, Any]]:
-        """Execute Databricks query."""
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(query)
-            columns = [desc[0] for desc in cursor.description]
-            results = cursor.fetchall()
-            cursor.close()
-            return [dict(zip(columns, row)) for row in results]
-
-    def execute_scalar(self, query: str) -> Any:
-        """Execute Databricks query returning single value."""
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(query)
-            result = cursor.fetchone()
-            cursor.close()
-            return result[0] if result else None
-
     def to_polars_lazyframe(self):
-        """Convert Databricks table to Polars LazyFrame."""
-        import polars as pl
-
-        query = f"SELECT * FROM {self.full_table_name}"
-        if self._config.max_rows:
-            query += f" LIMIT {self._config.max_rows}"
-
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(query)
-            columns = [desc[0] for desc in cursor.description]
-            data = cursor.fetchall()
-            cursor.close()
-
-        df_dict = {col: [row[i] for row in data] for i, col in enumerate(columns)}
-        return pl.DataFrame(df_dict).lazy()
+        """Convert through the common bounded SQL materialization path."""
+        return super().to_polars_lazyframe()
 
     def validate_connection(self) -> bool:
         """Validate Databricks connection."""
@@ -400,10 +364,7 @@ class DatabricksDataSource(CloudDWDataSource):
     def get_schemas(self, catalog: str | None = None) -> list[str]:
         """List schemas in a catalog."""
         cat = catalog or self._catalog
-        if cat:
-            query = f"SHOW SCHEMAS IN `{cat}`"
-        else:
-            query = "SHOW SCHEMAS"
+        query = f"SHOW SCHEMAS IN `{cat}`" if cat else "SHOW SCHEMAS"
         results = self.execute_query(query)
         return [r["databaseName"] for r in results]
 
@@ -412,10 +373,7 @@ class DatabricksDataSource(CloudDWDataSource):
         cat = catalog or self._catalog
         sch = schema or self._schema
 
-        if cat:
-            query = f"SHOW TABLES IN `{cat}`.`{sch}`"
-        else:
-            query = f"SHOW TABLES IN `{sch}`"
+        query = f"SHOW TABLES IN `{cat}`.`{sch}`" if cat else f"SHOW TABLES IN `{sch}`"
 
         results = self.execute_query(query)
         return [r["tableName"] for r in results]
@@ -427,7 +385,7 @@ class DatabricksDataSource(CloudDWDataSource):
         schema: str = "default",
         catalog: str | None = None,
         env_prefix: str = "DATABRICKS",
-    ) -> "DatabricksDataSource":
+    ) -> DatabricksDataSource:
         """Create data source from environment variables.
 
         Reads: DATABRICKS_HOST, DATABRICKS_HTTP_PATH, DATABRICKS_TOKEN, etc.

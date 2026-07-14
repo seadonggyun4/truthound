@@ -1,5 +1,23 @@
 # Cloud Data 웨어하우스 Data Sources
 
+## 설치와 실행 증거
+
+| 플랫폼 | 드라이버 | 설치 |
+|--------|----------|------|
+| BigQuery | `google-cloud-bigquery` | `pip install truthound[bigquery]` |
+| Snowflake | `snowflake-connector-python` | `pip install truthound[snowflake]` |
+| Redshift | `redshift-connector` | `pip install truthound[redshift]` |
+| Databricks | `databricks-sql-connector` | `pip install truthound[databricks]` |
+
+Cloud warehouse도 관계형 SQL source와 같은 row 정규화 및 bounded Polars
+fallback 계약을 사용합니다. 일부 결과를 전체 결과로 오인하지 않도록 제한을
+넘으면 `DataSourceSizeError`를 발생시킵니다.
+
+provider class import나 mock contract test만으로 실제 계정 지원을 선언할 수
+없습니다. 실제 credential 기반 read, `th.check(source=...)`,
+`th.profile(source=...)`, cleanup, 재진입 결과와 설치 artifact를 함께 기록해야
+합니다. credential이 없으면 통과가 아니라 **미검증**입니다.
+
 실무 운영 가이드에서 Databricks, Truthound, Snowflake, Redshift, BigQuery을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
 
 ## 개요

@@ -29,13 +29,13 @@ Each data source requires specific Python packages. Core file formats (CSV, JSON
 | **Core SQL** | SQLite | (built-in) | - |
 | | DuckDB | `duckdb` | `pip install truthound[duckdb]` |
 | | PostgreSQL | `psycopg2` | `pip install truthound[postgresql]` |
-| | MySQL | `mysql-connector-python` | `pip install truthound[mysql]` |
+| | MySQL | `pymysql` | `pip install truthound[mysql]` |
 | **Cloud DW** | BigQuery | `google-cloud-bigquery` | `pip install truthound[bigquery]` |
 | | Snowflake | `snowflake-connector-python` | `pip install truthound[snowflake]` |
 | | Redshift | `redshift-connector` | `pip install truthound[redshift]` |
 | | Databricks | `databricks-sql-connector` | `pip install truthound[databricks]` |
 | **Enterprise** | Oracle | `oracledb` | `pip install truthound[oracle]` |
-| | SQL Server | `pyodbc` | `pip install truthound[sqlserver]` |
+| | SQL Server | `pymssql` (`pyodbc` accepted) | `pip install truthound[sqlserver]` |
 | **NoSQL** | MongoDB | `pymongo` | `pip install truthound[mongodb]` |
 | | Elasticsearch | `elasticsearch` | `pip install truthound[elasticsearch]` |
 | **Streaming** | Kafka | `confluent-kafka` | `pip install truthound[kafka]` |
@@ -47,6 +47,9 @@ Each data source requires specific Python packages. Core file formats (CSV, JSON
 ```bash
 # Install all enterprise data sources
 pip install truthound[enterprise]
+
+# Install every SQL provider driver used by the provider matrix
+pip install truthound[sql-connectors]
 
 # Install specific combinations
 pip install truthound[postgresql,bigquery,spark]
@@ -127,6 +130,27 @@ class BaseDataSource(ABC, Generic[ConfigT]):
     @abstractmethod
     def sample(self, n: int, seed: int | None = None) -> BaseDataSource:
         """Return sampled data source."""
+```
+
+### SQL row and materialization contract
+
+`BaseSQLDataSource.execute_query()` returns dictionaries keyed by cursor column
+names for tuple rows, mapping rows such as PyMySQL `DictCursor`, and
+SQLAlchemy-style rows exposing `_mapping`. `execute_scalar()` and `row_count`
+use the same normalization contract.
+
+`to_polars_lazyframe()` is a bounded fallback, not an unrestricted table dump.
+It reads in `fetch_size` batches and enforces `materialization_row_limit`. If a
+source is larger, it raises `DataSourceSizeError`; callers must use SQL pushdown
+or explicitly call `source.sample(n)`.
+
+Use SQL sources through the public facade as follows:
+
+```python
+import truthound as th
+
+validation = th.check(source=source)
+profile = th.profile(source=source.sample(10_000))
 ```
 
 ### Capabilities

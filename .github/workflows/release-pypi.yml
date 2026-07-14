@@ -6,7 +6,7 @@ on:
       version:
         description: Version to publish. Must match pyproject.toml.
         required: true
-        default: "3.1.3"
+        default: "3.1.5"
         type: string
 
 permissions:
@@ -44,13 +44,21 @@ jobs:
           print(f"Publishing truthound {project_version}")
           PY
 
+      - name: Run SQL provider release contracts
+        run: |
+          uv sync --frozen --extra dev
+          uv run --frozen --extra dev python -m pytest -q \
+            tests/test_version_surface.py \
+            tests/test_sql_datasource_provider_contract.py \
+            -p no:cacheprovider
+
       - name: Build wheel and source distribution
         run: uv build
 
       - name: Check package metadata
         run: uv tool run twine check dist/*
 
-      - name: Smoke install built wheel with AI extra
+      - name: Smoke install built wheel with AI and SQL provider extras
         env:
           RELEASE_VERSION: ${{ inputs.version }}
         run: |
@@ -65,18 +73,57 @@ jobs:
           print(wheels[0])
           PY
           )"
-          /tmp/truthound-release-smoke/bin/python -m pip install "${wheel_path}[ai]"
+          /tmp/truthound-release-smoke/bin/python -m pip install \
+            "${wheel_path}[ai,sql-connectors]"
           /tmp/truthound-release-smoke/bin/python - <<'PY'
+          import importlib
           import os
+          import sqlite3
+          import tempfile
+          from pathlib import Path
 
           import truthound
           import truthound.ai
+          from truthound.datasources.sql import SQLiteDataSource
 
           expected = os.environ["RELEASE_VERSION"]
           if truthound.__version__ != expected:
               raise SystemExit(
                   f"installed truthound {truthound.__version__!r}, expected {expected!r}"
               )
+
+          for module_name in (
+              "psycopg2",
+              "pymysql",
+              "duckdb",
+              "snowflake.connector",
+              "google.cloud.bigquery",
+              "redshift_connector",
+              "databricks.sql",
+              "oracledb",
+              "pymssql",
+          ):
+              importlib.import_module(module_name)
+
+          with tempfile.TemporaryDirectory() as temp_dir:
+              database = Path(temp_dir) / "release-contract.sqlite3"
+              connection = sqlite3.connect(database)
+              connection.execute("CREATE TABLE records (id INTEGER, name TEXT)")
+              connection.executemany(
+                  "INSERT INTO records VALUES (?, ?)",
+                  [(1, "alpha"), (2, "beta")],
+              )
+              connection.commit()
+              connection.close()
+
+              source = SQLiteDataSource(table="records", database=str(database))
+              result = truthound.check(source=source)
+              profile = truthound.profile(source=source)
+              if type(result).__name__ != "ValidationRunResult":
+                  raise SystemExit(f"unexpected check result: {type(result).__name__}")
+              if (profile.row_count, profile.column_count) != (2, 2):
+                  raise SystemExit("unexpected profile result")
+
           print(f"Smoke import passed for truthound {truthound.__version__}")
           PY
 

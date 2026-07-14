@@ -1,28 +1,48 @@
-# Traditional 데이터베이스 Data Sources
+# 관계형 데이터베이스 DataSource
 
-실무 운영 가이드에서 PostgreSQL, Truthound, SQLite, MySQL, SQL을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+Truthound의 SQLite, DuckDB, PostgreSQL, MySQL, Oracle, SQL Server 연결과
+검증 계약을 설명합니다.
 
 ## 개요
 
-실무 운영 가이드에서 SQL을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+| 데이터베이스 | 드라이버 | 설치 | 기본 포함 |
+|--------------|----------|------|-----------|
+| SQLite | `sqlite3` | 별도 설치 없음 | 예 |
+| DuckDB | `duckdb` | `pip install truthound[duckdb]` | 아니요 |
+| PostgreSQL | `psycopg2` | `pip install truthound[postgresql]` | 아니요 |
+| MySQL | `pymysql` | `pip install truthound[mysql]` | 아니요 |
+| Oracle | `oracledb` | `pip install truthound[oracle]` | 아니요 |
+| SQL Server | `pymssql` (`pyodbc`도 사용 가능) | `pip install truthound[sqlserver]` | 아니요 |
 
-| 데이터베이스 | 실무 운영 가이드에서 Driver을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 설치 | 실무 운영 가이드에서 Built-in을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
-|----------|--------|--------------|----------|
-| 실무 운영 가이드에서 SQLite, SQL을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 `sqlite3`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Built-in을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Yes을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
-| 실무 운영 가이드에서 PostgreSQL, SQL을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 `psycopg2`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 `pip install psycopg2-binary`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
-| 실무 운영 가이드에서 MySQL, SQL을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 `pymysql`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 `pip install pymysql`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
-| 실무 운영 가이드에서 Oracle을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 `oracledb`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 `pip install oracledb`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
-| 실무 운영 가이드에서 SQL, Server을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 `pyodbc`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 `pip install pyodbc`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
+## 공통 계약
 
-## Common Features
+- thread-safe connection pool
+- table mode와 지원되는 provider의 query mode
+- SQL pushdown과 schema inference
+- tuple, mapping, driver row를 column name 기준으로 정규화
+- `fetch_size` batch와 `materialization_row_limit`를 적용한 bounded fallback
 
-실무 운영 가이드에서 SQL을(를) 다루는 항목입니다:
+SQL DataSource는 위치 인자가 아니라 `source` keyword로 전달합니다.
 
-- 실무 운영 가이드에서 Connection, Pooling, Thread-safe을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-- **테이블 Mode**: Validate existing 테이블
-- 실무 운영 가이드에서 SQL, Query, Mode, Validate을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-- 실무 운영 가이드에서 SQL, Pushdown, Run을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-- 실무 운영 가이드에서 Schema, Inference, Automatic을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+```python
+import truthound as th
+
+validation = th.check(source=source)
+profile = th.profile(source=source)
+```
+
+Polars fallback 기본 제한은 100,000행입니다. 제한을 넘으면 일부 데이터만
+성공으로 반환하지 않고 `DataSourceSizeError`를 발생시킵니다. 대용량 profile이나
+non-pushdown 작업은 `source.sample(10_000)`처럼 명시적인 sample을 사용합니다.
+
+```python
+from truthound.datasources.sql.base import SQLDataSourceConfig
+
+config = SQLDataSourceConfig(
+    fetch_size=10_000,
+    materialization_row_limit=100_000,
+)
+```
 
 ### Capabilities
 

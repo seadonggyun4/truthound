@@ -11,14 +11,14 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
 
-from truthound.datasources.sql.cloud_base import (
-    CloudDWConfig,
-    CloudDWDataSource,
-    load_service_account_json,
-)
 from truthound.datasources.base import (
     DataSourceConnectionError,
     DataSourceError,
+)
+from truthound.datasources.sql.base import _row_mapping
+from truthound.datasources.sql.cloud_base import (
+    CloudDWConfig,
+    CloudDWDataSource,
 )
 
 if TYPE_CHECKING:
@@ -29,11 +29,11 @@ def _check_bigquery_available() -> None:
     """Check if BigQuery client is available."""
     try:
         from google.cloud import bigquery  # noqa: F401
-    except ImportError:
+    except ImportError as exc:
         raise ImportError(
             "google-cloud-bigquery is required for BigQueryDataSource. "
             "Install with: pip install google-cloud-bigquery db-dtypes"
-        )
+        ) from exc
 
 
 # =============================================================================
@@ -164,9 +164,9 @@ class BigQueryDataSource(CloudDWDataSource):
             raise DataSourceConnectionError(
                 source_type="bigquery",
                 details=f"Failed to authenticate: {e}",
-            )
+            ) from e
 
-    def _get_client(self) -> "Client":
+    def _get_client(self) -> Client:
         """Get or create BigQuery client."""
         if self._client is None:
             from google.cloud import bigquery
@@ -270,18 +270,20 @@ class BigQueryDataSource(CloudDWDataSource):
         return None
 
     def to_polars_lazyframe(self):
-        """Convert BigQuery table to Polars LazyFrame."""
-        import polars as pl
+        """Convert through the common bounded SQL materialization path."""
+        return super().to_polars_lazyframe()
 
-        # Fetch data as pandas first (BigQuery has native pandas support)
-        client = self._get_client()
-        query = f"SELECT * FROM {self.full_table_name}"
+    def _fetch_bounded_rows(
+        self,
+        query: str,
+        *,
+        max_rows: int,
+    ) -> tuple[list[str], list[dict[str, Any]]]:
+        """Fetch a query already bounded by LIMIT through BigQuery paging."""
 
-        if self._config.max_rows:
-            query += f" LIMIT {self._config.max_rows}"
-
-        df = client.query(query).to_dataframe()
-        return pl.from_pandas(df).lazy()
+        rows = self.execute_query(query)[:max_rows]
+        columns = list(rows[0]) if rows else list(self.schema)
+        return columns, [_row_mapping(row, columns) for row in rows]
 
     def validate_connection(self) -> bool:
         """Validate BigQuery connection."""
@@ -364,7 +366,7 @@ class BigQueryDataSource(CloudDWDataSource):
         dataset: str,
         table_name: str = "_query_result",
         credentials_path: str | None = None,
-    ) -> "BigQueryDataSource":
+    ) -> BigQueryDataSource:
         """Create data source from a BigQuery query.
 
         This creates a temporary view for the query results.
@@ -400,7 +402,7 @@ class BigQueryDataSource(CloudDWDataSource):
             client.delete_table(view_id, not_found_ok=True)
             client.create_table(view)
         except Exception as e:
-            raise DataSourceError(f"Failed to create view from query: {e}")
+            raise DataSourceError(f"Failed to create view from query: {e}") from e
 
         return cls(
             table=table_name,

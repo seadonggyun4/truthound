@@ -9,22 +9,22 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from truthound.datasources.base import DataSourceConnectionError
 from truthound.datasources.sql.base import (
     BaseSQLDataSource,
     SQLDataSourceConfig,
 )
-from truthound.datasources.base import DataSourceConnectionError
 
 
 def _check_pymysql_available() -> None:
     """Check if pymysql is available."""
     try:
         import pymysql  # noqa: F401
-    except ImportError:
+    except ImportError as exc:
         raise ImportError(
             "pymysql is required for MySQLDataSource. "
             "Install with: pip install pymysql"
-        )
+        ) from exc
 
 
 # =============================================================================
@@ -131,7 +131,7 @@ class MySQLDataSource(BaseSQLDataSource):
         cls,
         connection_string: str,
         table: str,
-    ) -> "MySQLDataSource":
+    ) -> MySQLDataSource:
         """Create data source from connection string.
 
         Args:
@@ -181,8 +181,8 @@ class MySQLDataSource(BaseSQLDataSource):
                 cursorclass=pymysql.cursors.DictCursor,
             )
             return conn
-        except pymysql.Error as e:
-            raise DataSourceConnectionError("mysql", str(e))
+        except pymysql.Error as exc:
+            raise DataSourceConnectionError("mysql", str(exc)) from exc
 
     def _get_table_schema_query(self) -> str:
         """Get MySQL schema query from information_schema."""
@@ -227,39 +227,16 @@ class MySQLDataSource(BaseSQLDataSource):
         query: str,
         params: tuple | dict | None = None,
     ) -> list[dict[str, Any]]:
-        """Execute a SQL query and return results."""
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            if params:
-                cursor.execute(query, params)
-            else:
-                cursor.execute(query)
-            result = cursor.fetchall()
-            cursor.close()
-            return list(result)
+        """Execute a query through the common mapping-row contract."""
+        return super().execute_query(query, params)
 
     def execute_scalar(
         self,
         query: str,
         params: tuple | dict | None = None,
     ) -> Any:
-        """Execute a query and return a single value."""
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            if params:
-                cursor.execute(query, params)
-            else:
-                cursor.execute(query)
-            result = cursor.fetchone()
-            cursor.close()
-
-            if result is None:
-                return None
-
-            # DictCursor returns dict, get first value
-            if isinstance(result, dict):
-                return list(result.values())[0]
-            return result[0]
+        """Execute a scalar query through the common mapping-row contract."""
+        return super().execute_scalar(query, params)
 
     # -------------------------------------------------------------------------
     # MySQL-specific Methods

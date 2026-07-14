@@ -5,24 +5,34 @@ on:
     paths:
       - ".github/workflows/docs.yml"
       - "README.md"
+      - "README.en.md"
       - "CLAUDE.md"
       - "docs/**"
       - "mkdocs.yml"
       - "mkdocs.public.yml"
       - "pyproject.toml"
+      - "uv.lock"
+      - "src/**"
       - "tests/cli_modules/test_plugins_cli.py"
+      - "tests/test_docs_surface_alignment.py"
       - "tests/test_docs_public_portal.py"
+      - "tests/test_public_surface.py"
   push:
     paths:
       - ".github/workflows/docs.yml"
       - "README.md"
+      - "README.en.md"
       - "CLAUDE.md"
       - "docs/**"
       - "mkdocs.yml"
       - "mkdocs.public.yml"
       - "pyproject.toml"
+      - "uv.lock"
+      - "src/**"
       - "tests/cli_modules/test_plugins_cli.py"
+      - "tests/test_docs_surface_alignment.py"
       - "tests/test_docs_public_portal.py"
+      - "tests/test_public_surface.py"
 
 jobs:
   docs:
@@ -51,6 +61,9 @@ jobs:
       - name: Check public markdown links
         run: python docs/scripts/check_links.py --mkdocs mkdocs.public.yml build/public-docs
 
+      - name: Verify docs and public API surface alignment
+        run: python -m pytest -q tests/test_docs_surface_alignment.py tests/test_public_surface.py -p no:cacheprovider
+
       - name: Build full docs
         run: mkdocs build --strict
 
@@ -59,6 +72,12 @@ jobs:
 
       - name: Verify docs public portal
         run: python -m pytest -q tests/test_docs_public_portal.py -p no:cacheprovider
+
+      - name: Verify generated public surface
+        run: python docs/scripts/verify_public_surface.py --manifest docs/public_docs.yml --site-dir site
+
+      - name: Verify generated Korean docs
+        run: python docs/scripts/verify_korean_docs.py --site-dir site
 
       - name: Verify plugins CLI snapshot
         run: python -m pytest -q tests/cli_modules/test_plugins_cli.py -p no:cacheprovider

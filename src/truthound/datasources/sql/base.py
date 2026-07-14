@@ -7,11 +7,12 @@ with connection pooling and common SQL operations.
 from __future__ import annotations
 
 from abc import abstractmethod
-from contextlib import contextmanager
-from dataclasses import dataclass, field
-from queue import Queue, Empty
+from collections.abc import Iterator, Mapping
+from contextlib import contextmanager, suppress
+from dataclasses import dataclass
+from queue import Empty, Queue
 from threading import Lock
-from typing import TYPE_CHECKING, Any, Iterator
+from typing import TYPE_CHECKING, Any
 
 from truthound.datasources._protocols import (
     ColumnType,
@@ -22,11 +23,14 @@ from truthound.datasources.base import (
     DataSourceConfig,
     DataSourceConnectionError,
     DataSourceError,
+    DataSourceSchemaError,
+    DataSourceSizeError,
     sql_type_to_column_type,
 )
 
 if TYPE_CHECKING:
     import polars as pl
+
     from truthound.execution.base import BaseExecutionEngine
 
 
@@ -44,6 +48,9 @@ class SQLDataSourceConfig(DataSourceConfig):
         pool_timeout: Timeout for acquiring a connection from pool.
         query_timeout: Timeout for query execution.
         fetch_size: Number of rows to fetch at a time.
+        materialization_row_limit: Maximum rows allowed in an in-memory
+            Polars fallback. SQL pushdown operations are not limited by this
+            value.
         use_server_side_cursor: Use server-side cursor for large results.
         schema_name: Database schema name (for PostgreSQL, etc.).
     """
@@ -52,8 +59,98 @@ class SQLDataSourceConfig(DataSourceConfig):
     pool_timeout: float = 30.0
     query_timeout: float = 300.0
     fetch_size: int = 10000
+    materialization_row_limit: int = 100_000
     use_server_side_cursor: bool = False
     schema_name: str | None = None
+
+
+def _row_mapping(row: Any, columns: list[str]) -> dict[str, Any]:
+    """Normalize DB-API, mapping, and SQLAlchemy-style rows by column name."""
+
+    if len(columns) != len(set(columns)):
+        raise DataSourceSchemaError(
+            "SQL result contains duplicate column names. Alias duplicate columns "
+            "before converting the result to a mapping."
+        )
+
+    mapping: Mapping[Any, Any] | None = None
+    if isinstance(row, Mapping):
+        mapping = row
+    else:
+        candidate = getattr(row, "_mapping", None)
+        if isinstance(candidate, Mapping):
+            mapping = candidate
+
+    if mapping is not None:
+        if all(column in mapping for column in columns):
+            return {column: mapping[column] for column in columns}
+
+        casefolded = {str(key).casefold(): value for key, value in mapping.items()}
+        if all(column.casefold() in casefolded for column in columns):
+            return {column: casefolded[column.casefold()] for column in columns}
+
+        values = list(mapping.values())
+        if len(values) == len(columns):
+            return dict(zip(columns, values, strict=True))
+        raise DataSourceSchemaError(
+            "SQL row keys do not match cursor description columns."
+        )
+
+    try:
+        values = list(row)
+    except TypeError as exc:
+        raise DataSourceSchemaError(
+            f"Unsupported SQL row type: {type(row).__name__}"
+        ) from exc
+    if len(values) != len(columns):
+        raise DataSourceSchemaError(
+            "SQL row value count does not match cursor description columns."
+        )
+    return dict(zip(columns, values, strict=True))
+
+
+def _scalar_value(row: Any) -> Any:
+    """Extract the first selected value without assuming a tuple row."""
+
+    if row is None:
+        return None
+    if isinstance(row, Mapping):
+        return next(iter(row.values()), None)
+    candidate = getattr(row, "_mapping", None)
+    if isinstance(candidate, Mapping):
+        return next(iter(candidate.values()), None)
+    try:
+        return row[0]
+    except (KeyError, IndexError, TypeError):
+        try:
+            return next(iter(row))
+        except TypeError:
+            return row
+
+
+def _schema_pair(row: Any) -> tuple[str, str]:
+    """Normalize a schema query row to ``(column_name, data_type)``."""
+
+    if isinstance(row, Mapping):
+        lowered = {str(key).casefold(): value for key, value in row.items()}
+        name = lowered.get("column_name", lowered.get("name"))
+        data_type = lowered.get("data_type", lowered.get("type"))
+        if name is not None and data_type is not None:
+            return str(name), str(data_type)
+        values = list(row.values())
+    else:
+        candidate = getattr(row, "_mapping", None)
+        if isinstance(candidate, Mapping):
+            return _schema_pair(candidate)
+        try:
+            values = list(row)
+        except TypeError as exc:
+            raise DataSourceSchemaError(
+                f"Unsupported SQL schema row type: {type(row).__name__}"
+            ) from exc
+    if len(values) < 2:
+        raise DataSourceSchemaError("SQL schema row must contain a name and data type.")
+    return str(values[0]), str(values[1])
 
 
 # =============================================================================
@@ -134,7 +231,7 @@ class SQLConnectionPool:
                     raise DataSourceConnectionError(
                         "pool",
                         f"Timeout waiting for connection after {self._timeout}s"
-                    )
+                    ) from None
 
         try:
             yield conn
@@ -145,10 +242,8 @@ class SQLConnectionPool:
                     self._pool.put_nowait(conn)
                 except Exception:
                     # Pool is full or closed, close the connection
-                    try:
+                    with suppress(Exception):
                         conn.close()
-                    except Exception:
-                        pass
 
     def close(self) -> None:
         """Close all connections in the pool."""
@@ -156,10 +251,8 @@ class SQLConnectionPool:
         while True:
             try:
                 conn = self._pool.get_nowait()
-                try:
+                with suppress(Exception):
                     conn.close()
-                except Exception:
-                    pass
             except Empty:
                 break
 
@@ -206,6 +299,8 @@ class BaseSQLDataSource(BaseDataSource[SQLDataSourceConfig]):
     """
 
     source_type = "sql"
+    materialization_dialect = "limit"
+    subquery_alias_keyword = "AS"
 
     def __init__(
         self,
@@ -251,6 +346,17 @@ class BaseSQLDataSource(BaseDataSource[SQLDataSourceConfig]):
         """Get the custom SQL query (None if in table mode)."""
         return self._query
 
+    def _clean_query_sql(self) -> str:
+        """Return a custom query safe to embed as a subquery."""
+
+        return str(self._query or "").strip().rstrip(";")
+
+    def _alias_subquery(self, query: str, alias: str) -> str:
+        """Wrap and alias a query using the provider's SQL dialect."""
+
+        keyword = f" {self.subquery_alias_keyword}" if self.subquery_alias_keyword else ""
+        return f"({query}){keyword} {alias}"
+
     @property
     def is_query_mode(self) -> bool:
         """Check if data source is in query mode."""
@@ -275,7 +381,7 @@ class BaseSQLDataSource(BaseDataSource[SQLDataSourceConfig]):
         """
         if self._is_query_mode:
             # Wrap query as subquery with alias for use in FROM clauses
-            return f"({self._query}) AS _query_result"
+            return self._alias_subquery(self._clean_query_sql(), "_query_result")
         if self._config.schema_name:
             return f"{self._config.schema_name}.{self._table}"
         return self._table
@@ -371,7 +477,7 @@ class BaseSQLDataSource(BaseDataSource[SQLDataSourceConfig]):
             cursor.execute(self._get_table_schema_query())
             result = cursor.fetchall()
             cursor.close()
-            return result
+            return [_schema_pair(row) for row in result]
 
     def _fetch_schema_from_query(self) -> list[tuple[str, str]]:
         """Infer schema from query result metadata.
@@ -380,7 +486,11 @@ class BaseSQLDataSource(BaseDataSource[SQLDataSourceConfig]):
         """
         # Use LIMIT 0 to get metadata without fetching actual data
         # Wrap in subquery to ensure LIMIT works with any query
-        schema_query = f"SELECT * FROM ({self._query}) AS _schema_check LIMIT 0"
+        schema_source = self._alias_subquery(
+            self._clean_query_sql(),
+            "_schema_check",
+        )
+        schema_query = f"SELECT * FROM {schema_source} LIMIT 0"
 
         with self._get_connection() as conn:
             cursor = conn.cursor()
@@ -388,7 +498,7 @@ class BaseSQLDataSource(BaseDataSource[SQLDataSourceConfig]):
                 cursor.execute(schema_query)
             except Exception:
                 # Fallback: try direct query (some DBs don't support LIMIT 0 well)
-                cursor.execute(self._query)
+                cursor.execute(self._clean_query_sql())
 
             # Get column names and types from cursor description
             if cursor.description is None:
@@ -452,13 +562,13 @@ class BaseSQLDataSource(BaseDataSource[SQLDataSourceConfig]):
     def row_count(self) -> int | None:
         """Get row count from database."""
         if self._cached_row_count is None:
-            with self._get_connection() as conn:
-                cursor = conn.cursor()
-                query = self._get_effective_row_count_query()
-                cursor.execute(query)
-                result = cursor.fetchone()
-                cursor.close()
-                self._cached_row_count = result[0] if result else 0
+            value = self.execute_scalar(self._get_effective_row_count_query())
+            try:
+                self._cached_row_count = int(value or 0)
+            except (TypeError, ValueError) as exc:
+                raise DataSourceError(
+                    f"Invalid row count returned by {self.source_type}: {type(value).__name__}"
+                ) from exc
         return self._cached_row_count
 
     def _get_effective_row_count_query(self) -> str:
@@ -467,7 +577,8 @@ class BaseSQLDataSource(BaseDataSource[SQLDataSourceConfig]):
         In query mode, wraps the custom query to count its results.
         """
         if self._is_query_mode:
-            return f"SELECT COUNT(*) FROM ({self._query}) AS _count_query"
+            source = self._alias_subquery(self._clean_query_sql(), "_count_query")
+            return f"SELECT COUNT(*) FROM {source}"
         return self._get_row_count_query()
 
     # -------------------------------------------------------------------------
@@ -490,16 +601,17 @@ class BaseSQLDataSource(BaseDataSource[SQLDataSourceConfig]):
         """
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            if params:
-                cursor.execute(query, params)
-            else:
-                cursor.execute(query)
+            try:
+                if params is not None:
+                    cursor.execute(query, params)
+                else:
+                    cursor.execute(query)
 
-            columns = [desc[0] for desc in cursor.description]
-            rows = cursor.fetchall()
-            cursor.close()
-
-            return [dict(zip(columns, row)) for row in rows]
+                columns = [str(desc[0]) for desc in (cursor.description or ())]
+                rows = cursor.fetchall()
+                return [_row_mapping(row, columns) for row in rows]
+            finally:
+                cursor.close()
 
     def execute_scalar(
         self,
@@ -517,13 +629,14 @@ class BaseSQLDataSource(BaseDataSource[SQLDataSourceConfig]):
         """
         with self._get_connection() as conn:
             cursor = conn.cursor()
-            if params:
-                cursor.execute(query, params)
-            else:
-                cursor.execute(query)
-            result = cursor.fetchone()
-            cursor.close()
-            return result[0] if result else None
+            try:
+                if params is not None:
+                    cursor.execute(query, params)
+                else:
+                    cursor.execute(query)
+                return _scalar_value(cursor.fetchone())
+            finally:
+                cursor.close()
 
     # -------------------------------------------------------------------------
     # Data Source Interface
@@ -539,7 +652,7 @@ class BaseSQLDataSource(BaseDataSource[SQLDataSourceConfig]):
             DataSourceCapability.ROW_COUNT,
         }
 
-    def get_execution_engine(self) -> "BaseExecutionEngine":
+    def get_execution_engine(self) -> BaseExecutionEngine:
         """Get a SQL execution engine."""
         from truthound.execution.sql_engine import SQLExecutionEngine
         return SQLExecutionEngine(self)
@@ -548,7 +661,7 @@ class BaseSQLDataSource(BaseDataSource[SQLDataSourceConfig]):
         self,
         n: int = 1000,
         seed: int | None = None,
-    ) -> "BaseSQLDataSource":
+    ) -> BaseSQLDataSource:
         """Create a sampled view of the data.
 
         Note: Most SQL databases don't support seeded sampling,
@@ -557,36 +670,80 @@ class BaseSQLDataSource(BaseDataSource[SQLDataSourceConfig]):
         # Return a wrapper that limits queries
         return SampledSQLDataSource(self, n, seed)
 
-    def to_polars_lazyframe(self) -> "pl.LazyFrame":
-        """Convert to Polars LazyFrame by fetching all data.
+    def _materialization_limit(self) -> int:
+        limit = min(
+            int(self._config.max_rows),
+            int(self._config.materialization_row_limit),
+        )
+        if limit <= 0:
+            raise DataSourceError("materialization_row_limit must be greater than zero")
+        return limit
 
-        Warning: This loads all data into memory.
+    def _materialization_source(self) -> str:
+        if self._is_query_mode:
+            return self._alias_subquery(
+                self._clean_query_sql(),
+                "_truthound_materialized_source",
+            )
+        return self.full_table_name
 
-        In query mode, executes the custom query directly.
-        In table mode, fetches all rows from the table.
+    def _build_bounded_materialization_query(self, limit: int) -> str:
+        """Build a provider-safe query that can return at most ``limit`` rows."""
+
+        source = self._materialization_source()
+        if self.materialization_dialect == "top":
+            return f"SELECT TOP ({limit}) * FROM {source}"
+        if self.materialization_dialect == "rownum":
+            return f"SELECT * FROM {source} WHERE ROWNUM <= {limit}"
+        return f"SELECT * FROM {source} LIMIT {limit}"
+
+    def _fetch_bounded_rows(
+        self,
+        query: str,
+        *,
+        max_rows: int,
+    ) -> tuple[list[str], list[dict[str, Any]]]:
+        """Fetch no more than ``max_rows`` using DB-API batches."""
+
+        batch_size = max(1, min(int(self._config.fetch_size), max_rows))
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            try:
+                cursor.execute(query)
+                columns = [str(desc[0]) for desc in (cursor.description or ())]
+                rows: list[dict[str, Any]] = []
+                while len(rows) < max_rows:
+                    requested = min(batch_size, max_rows - len(rows))
+                    batch = cursor.fetchmany(requested)
+                    if not batch:
+                        break
+                    rows.extend(_row_mapping(row, columns) for row in batch)
+                return columns, rows
+            finally:
+                cursor.close()
+
+    def to_polars_lazyframe(self) -> pl.LazyFrame:
+        """Convert a safely bounded SQL result to a Polars LazyFrame.
+
+        Exact SQL operations continue to use pushdown. Validators that require
+        an in-memory Polars fallback must fit within
+        ``materialization_row_limit`` or use an explicit sampled data source.
         """
         import polars as pl
 
-        # Check size limits
         self.check_size_limits()
+        limit = self._materialization_limit()
+        row_count = self.row_count
+        if row_count is not None and row_count > limit:
+            raise DataSourceSizeError(row_count, limit, "rows for SQL materialization")
 
-        # Fetch all data
-        if self._is_query_mode:
-            # In query mode, execute the custom query directly
-            query = self._query
-        else:
-            query = f"SELECT * FROM {self.full_table_name}"
-
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(query)
-            columns = [desc[0] for desc in cursor.description]
-            rows = cursor.fetchall()
-            cursor.close()
-
-        # Convert to Polars
-        data = {col: [row[i] for row in rows] for i, col in enumerate(columns)}
-        return pl.DataFrame(data).lazy()
+        query = self._build_bounded_materialization_query(limit + 1)
+        columns, rows = self._fetch_bounded_rows(query, max_rows=limit + 1)
+        if len(rows) > limit:
+            raise DataSourceSizeError(len(rows), limit, "rows for SQL materialization")
+        if rows:
+            return pl.DataFrame(rows).lazy()
+        return pl.DataFrame({column: [] for column in columns or self.columns}).lazy()
 
     def validate_connection(self) -> bool:
         """Validate database connection."""
@@ -670,18 +827,22 @@ class SampledSQLDataSource(BaseSQLDataSource):
             seed: Random seed (may be ignored by database).
         """
         super().__init__(
-            table=parent.table_name,
+            table=parent.table_name or "_truthound_sampled_query",
             config=parent.config,
         )
         self._parent = parent
         self._sample_size = sample_size
         self._seed = seed
+        self.materialization_dialect = parent.materialization_dialect
 
     def _create_connection(self) -> Any:
         return self._parent._create_connection()
 
     def _get_table_schema_query(self) -> str:
         return self._parent._get_table_schema_query()
+
+    def _fetch_schema(self) -> list[tuple[str, str]]:
+        return list(self._parent.sql_schema.items())
 
     def _get_row_count_query(self) -> str:
         # Return sample size as row count
@@ -693,8 +854,8 @@ class SampledSQLDataSource(BaseSQLDataSource):
     @property
     def full_table_name(self) -> str:
         """Get sampled table expression."""
-        # Subquery with LIMIT
-        return f"(SELECT * FROM {self._parent.full_table_name} LIMIT {self._sample_size}) AS sampled"
+        query = self._parent._build_bounded_materialization_query(self._sample_size)
+        return self._parent._alias_subquery(query, "sampled")
 
     @property
     def row_count(self) -> int | None:
@@ -704,7 +865,33 @@ class SampledSQLDataSource(BaseSQLDataSource):
             return self._sample_size
         return min(parent_count, self._sample_size)
 
-    def sample(self, n: int = 1000, seed: int | None = None) -> "SampledSQLDataSource":
+    def sample(self, n: int = 1000, seed: int | None = None) -> SampledSQLDataSource:
         """Create a smaller sample."""
         new_size = min(n, self._sample_size)
         return SampledSQLDataSource(self._parent, new_size, seed)
+
+    def execute_query(
+        self,
+        query: str,
+        params: tuple | dict | None = None,
+    ) -> list[dict[str, Any]]:
+        if params is None:
+            return self._parent.execute_query(query)
+        return self._parent.execute_query(query, params)
+
+    def execute_scalar(
+        self,
+        query: str,
+        params: tuple | dict | None = None,
+    ) -> Any:
+        if params is None:
+            return self._parent.execute_scalar(query)
+        return self._parent.execute_scalar(query, params)
+
+    def _fetch_bounded_rows(
+        self,
+        query: str,
+        *,
+        max_rows: int,
+    ) -> tuple[list[str], list[dict[str, Any]]]:
+        return self._parent._fetch_bounded_rows(query, max_rows=max_rows)

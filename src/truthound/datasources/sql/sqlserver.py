@@ -9,19 +9,12 @@ Requires: pip install pyodbc or pymssql
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from truthound.datasources.sql.base import (
     BaseSQLDataSource,
     SQLDataSourceConfig,
 )
-from truthound.datasources.base import (
-    DataSourceConnectionError,
-    DataSourceError,
-)
-
-if TYPE_CHECKING:
-    pass
 
 
 def _check_sqlserver_available() -> tuple[str, Any]:
@@ -131,6 +124,8 @@ class SQLServerDataSource(BaseSQLDataSource):
         >>> engine = source.get_execution_engine()
         >>> print(engine.count_rows())
     """
+
+    materialization_dialect = "top"
 
     source_type = "sqlserver"
 
@@ -262,42 +257,9 @@ class SQLServerDataSource(BaseSQLDataSource):
         escaped = identifier.replace("]", "]]")
         return f"[{escaped}]"
 
-    def execute_query(self, query: str) -> list[dict[str, Any]]:
-        """Execute SQL Server query."""
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(query)
-            columns = [desc[0] for desc in cursor.description]
-            results = cursor.fetchall()
-            cursor.close()
-            return [dict(zip(columns, row)) for row in results]
-
-    def execute_scalar(self, query: str) -> Any:
-        """Execute SQL Server query returning single value."""
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(query)
-            result = cursor.fetchone()
-            cursor.close()
-            return result[0] if result else None
-
     def to_polars_lazyframe(self):
-        """Convert SQL Server table to Polars LazyFrame."""
-        import polars as pl
-
-        query = f"SELECT * FROM {self.full_table_name}"
-        if self._config.max_rows:
-            query = f"SELECT TOP {self._config.max_rows} * FROM {self.full_table_name}"
-
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(query)
-            columns = [desc[0] for desc in cursor.description]
-            data = cursor.fetchall()
-            cursor.close()
-
-        df_dict = {col: [row[i] for row in data] for i, col in enumerate(columns)}
-        return pl.DataFrame(df_dict).lazy()
+        """Convert through the common bounded SQL materialization path."""
+        return super().to_polars_lazyframe()
 
     def validate_connection(self) -> bool:
         """Validate SQL Server connection."""
@@ -399,7 +361,7 @@ class SQLServerDataSource(BaseSQLDataSource):
         table: str,
         connection_string: str,
         schema: str = "dbo",
-    ) -> "SQLServerDataSource":
+    ) -> SQLServerDataSource:
         """Create data source from connection string.
 
         Args:

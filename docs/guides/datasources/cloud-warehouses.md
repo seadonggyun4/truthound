@@ -12,10 +12,32 @@ Cloud data warehouse sources inherit from `CloudDWDataSource` and share common f
 
 | Platform | Driver | Installation |
 |----------|--------|--------------|
-| BigQuery | `google-cloud-bigquery` | `pip install google-cloud-bigquery db-dtypes` |
-| Snowflake | `snowflake-connector-python` | `pip install snowflake-connector-python` |
-| Redshift | `redshift-connector` | `pip install redshift-connector` |
-| Databricks | `databricks-sql-connector` | `pip install databricks-sql-connector` |
+| BigQuery | `google-cloud-bigquery` | `pip install truthound[bigquery]` |
+| Snowflake | `snowflake-connector-python` | `pip install truthound[snowflake]` |
+| Redshift | `redshift-connector` | `pip install truthound[redshift]` |
+| Databricks | `databricks-sql-connector` | `pip install truthound[databricks]` |
+
+## Runtime and evidence contract
+
+Cloud warehouse sources use the same SQL row normalization and bounded Polars
+fallback contract as relational sources. Tuple rows, mapping rows, and driver
+row objects are normalized by cursor column names. A fallback materialization
+uses a provider-compatible row limit and raises `DataSourceSizeError` rather
+than silently returning a partial dataset.
+
+```python
+import truthound as th
+from truthound.datasources.sql.base import SQLDataSourceConfig
+
+config = SQLDataSourceConfig(materialization_row_limit=100_000)
+result = th.check(source=source)
+```
+
+An importable provider class or a contract test is not evidence that a real
+account is operationally supported. Provider certification must record the
+installed Truthound artifact, driver version, real credential-backed read,
+`th.check(source=...)`, `th.profile(source=...)`, cleanup, and re-entry result.
+Missing credentials are reported as **unverified**, never as passed.
 
 ## Google BigQuery
 

@@ -9,30 +9,26 @@ Requires: pip install oracledb
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
+from truthound.datasources.base import (
+    DataSourceError,
+)
 from truthound.datasources.sql.base import (
     BaseSQLDataSource,
     SQLDataSourceConfig,
 )
-from truthound.datasources.base import (
-    DataSourceConnectionError,
-    DataSourceError,
-)
-
-if TYPE_CHECKING:
-    pass
 
 
 def _check_oracle_available() -> None:
     """Check if Oracle client is available."""
     try:
         import oracledb  # noqa: F401
-    except ImportError:
+    except ImportError as exc:
         raise ImportError(
             "oracledb is required for OracleDataSource. "
             "Install with: pip install oracledb"
-        )
+        ) from exc
 
 
 # =============================================================================
@@ -115,6 +111,9 @@ class OracleDataSource(BaseSQLDataSource):
         >>> engine = source.get_execution_engine()
         >>> print(engine.count_rows())
     """
+
+    materialization_dialect = "rownum"
+    subquery_alias_keyword = ""
 
     source_type = "oracle"
 
@@ -252,42 +251,9 @@ class OracleDataSource(BaseSQLDataSource):
         escaped = identifier.replace('"', '""')
         return f'"{escaped}"'
 
-    def execute_query(self, query: str) -> list[dict[str, Any]]:
-        """Execute Oracle query."""
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(query)
-            columns = [desc[0] for desc in cursor.description]
-            results = cursor.fetchall()
-            cursor.close()
-            return [dict(zip(columns, row)) for row in results]
-
-    def execute_scalar(self, query: str) -> Any:
-        """Execute Oracle query returning single value."""
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(query)
-            result = cursor.fetchone()
-            cursor.close()
-            return result[0] if result else None
-
     def to_polars_lazyframe(self):
-        """Convert Oracle table to Polars LazyFrame."""
-        import polars as pl
-
-        query = f"SELECT * FROM {self.full_table_name}"
-        if self._config.max_rows:
-            query = f"SELECT * FROM ({query}) WHERE ROWNUM <= {self._config.max_rows}"
-
-        with self._get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(query)
-            columns = [desc[0] for desc in cursor.description]
-            data = cursor.fetchall()
-            cursor.close()
-
-        df_dict = {col: [row[i] for row in data] for i, col in enumerate(columns)}
-        return pl.DataFrame(df_dict).lazy()
+        """Convert through the common bounded SQL materialization path."""
+        return super().to_polars_lazyframe()
 
     def validate_connection(self) -> bool:
         """Validate Oracle connection."""
@@ -400,7 +366,7 @@ class OracleDataSource(BaseSQLDataSource):
         password: str,
         schema: str | None = None,
         tns_admin: str | None = None,
-    ) -> "OracleDataSource":
+    ) -> OracleDataSource:
         """Create data source from TNS name.
 
         Args:
