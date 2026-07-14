@@ -585,12 +585,27 @@ def test_release_pypi_workflow_is_manual_token_only_publish():
     assert "Verify release version" in step_names
     assert "Build wheel and source distribution" in step_names
     assert "Check package metadata" in step_names
-    assert "Smoke install built wheel with AI extra" in step_names
+    assert "Run SQL provider release contracts" in step_names
+    assert "Smoke install built wheel with AI and SQL provider extras" in step_names
     assert "Validate PyPI API token secret" in step_names
     assert "Publish to PyPI" in step_names
     assert "uv build" in rendered
     assert "twine check" in rendered
-    assert "[ai]" in rendered
+    assert "[ai,sql-connectors]" in rendered
+    for module_name in (
+        "psycopg2",
+        "pymysql",
+        "duckdb",
+        "snowflake.connector",
+        "google.cloud.bigquery",
+        "redshift_connector",
+        "databricks.sql",
+        "oracledb",
+        "pymssql",
+    ):
+        assert module_name in rendered
+    assert "truthound.check(source=source)" in rendered
+    assert "truthound.profile(source=source)" in rendered
     assert "PYPI_API_TOKEN" in rendered
     assert "pypa/gh-action-pypi-publish@release/v1" in rendered
     assert "Trusted Publishing" not in rendered
