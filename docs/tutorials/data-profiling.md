@@ -440,6 +440,12 @@ drift = compare(baseline, current, sample_size=10000)
 > drift = compare(baseline, current, method="psi", columns=["age", "salary", "score"])
 > ```
 
+With `method="auto"`, nested `Struct` and `List` columns are converted to
+deterministic JSON categories for comparison. Object key order does not create
+false drift, while nested value changes remain observable. The original Polars
+dtype is retained in `ColumnDrift.dtype`. Explicit numeric methods such as
+`ks` and `psi` still require numeric columns.
+
 ## Best Practices
 
 ### 1. Profile Before Validation

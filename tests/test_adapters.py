@@ -67,6 +67,70 @@ class TestToLazyframe:
 
             Path(f.name).unlink()
 
+    def test_from_top_level_json_object(self):
+        """A complete JSON object is represented as one record."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            f.write(
+                '{"asset_refs": [{"id": "asset-1"}], '
+                '"metadata": {"branch": "draft"}, "active": true}'
+            )
+            f.flush()
+
+            df = to_lazyframe(f.name).collect()
+
+            assert df.height == 1
+            assert df["active"].to_list() == [True]
+            assert df["metadata"].to_list() == [{"branch": "draft"}]
+            assert df["asset_refs"].to_list() == [[{"id": "asset-1"}]]
+
+            Path(f.name).unlink()
+
+    @pytest.mark.parametrize(
+        ("payload", "expected"),
+        [
+            ("42", 42),
+            ('"ready"', "ready"),
+            ("true", True),
+            ("null", None),
+        ],
+    )
+    def test_from_top_level_json_scalar(self, payload, expected):
+        """Legal scalar JSON documents remain inspectable as one record."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            f.write(payload)
+            f.flush()
+
+            df = to_lazyframe(f.name).collect()
+
+            assert df.height == 1
+            assert df.columns == ["value"]
+            assert df["value"].to_list() == [expected]
+
+            Path(f.name).unlink()
+
+    def test_from_ndjson_file_uses_line_delimited_contract(self):
+        """NDJSON remains a distinct line-delimited input format."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".ndjson", delete=False) as f:
+            f.write('{"id": 1}\n{"id": 2}\n')
+            f.flush()
+
+            df = to_lazyframe(f.name).collect()
+
+            assert df["id"].to_list() == [1, 2]
+
+            Path(f.name).unlink()
+
+    def test_malformed_json_document_is_rejected(self):
+        """A malformed .json file must not be reinterpreted as NDJSON."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as f:
+            f.write('{"id": 1}\n{"id": 2}\n')
+            f.flush()
+
+            with pytest.raises(ValueError):
+                to_lazyframe(f.name)
+
+            Path(f.name).unlink()
+
     def test_from_parquet_file(self):
         """Test loading from Parquet file."""
         with tempfile.NamedTemporaryFile(suffix=".parquet", delete=False) as f:

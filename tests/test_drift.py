@@ -229,6 +229,52 @@ class TestCompare:
         assert "columns" in data
         assert len(data["columns"]) == 1
 
+    def test_compare_nested_struct_and_list_columns(self):
+        """Nested values are compared as deterministic categorical values."""
+        baseline = pl.DataFrame(
+            {
+                "metadata": [
+                    {"name": "alpha", "weight": 1},
+                    {"name": "beta", "weight": 2},
+                ],
+                "tags": [["stable", "public"], ["stable"]],
+            }
+        )
+        current = pl.DataFrame(
+            {
+                "metadata": [
+                    {"weight": 1, "name": "alpha"},
+                    {"weight": 3, "name": "beta"},
+                ],
+                "tags": [["stable", "public"], ["changed"]],
+            }
+        )
+
+        report = compare(baseline, current)
+
+        assert {column.column for column in report.columns} == {"metadata", "tags"}
+        metadata = next(
+            column for column in report.columns if column.column == "metadata"
+        )
+        tags = next(column for column in report.columns if column.column == "tags")
+        assert metadata.dtype.startswith("Struct")
+        assert tags.dtype.startswith("List")
+        assert metadata.baseline_stats["unique"] == 2
+        assert tags.current_stats["unique"] == 2
+
+    def test_compare_nested_struct_ignores_mapping_key_order(self):
+        """Equivalent objects do not drift solely because key order changed."""
+        baseline = pl.DataFrame(
+            {"payload": [{"alpha": 1, "beta": "x"} for _ in range(20)]}
+        )
+        current = pl.DataFrame(
+            {"payload": [{"beta": "x", "alpha": 1} for _ in range(20)]}
+        )
+
+        report = compare(baseline, current)
+
+        assert report.columns[0].result.drifted is False
+
 
 class TestDriftReport:
     """Tests for DriftReport."""

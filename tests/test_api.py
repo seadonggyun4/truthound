@@ -187,6 +187,19 @@ class TestProfile:
         col_info = report.columns[0]
         assert col_info["null_pct"] == "40.0%"
 
+    def test_profile_top_level_json_object(self, tmp_path):
+        """Profile accepts a complete top-level JSON object."""
+        json_file = tmp_path / "metadata.json"
+        json_file.write_text(
+            '{"asset_refs": [{"id": "asset-1"}], '
+            '"metadata": {"branch": "draft"}, "count": 1}'
+        )
+
+        report = th.profile(str(json_file))
+
+        assert report.row_count == 1
+        assert report.column_count == 3
+
 
 class TestCustomValidator:
     """Tests for custom validators."""
@@ -253,8 +266,8 @@ class TestRead:
 
     def test_read_dict_config_with_path_key(self):
         """Test reading with dict config containing 'path' key."""
-        import tempfile
         import os
+        import tempfile
 
         # Create a temporary CSV file
         with tempfile.NamedTemporaryFile(mode="w", suffix=".csv", delete=False) as f:
@@ -306,3 +319,20 @@ class TestRead:
 
         assert isinstance(df, pl.DataFrame)
         assert len(df) == 2
+
+    def test_read_top_level_json_object(self, tmp_path):
+        """Root read and FileDataSource share the JSON document contract."""
+        from truthound.datasources import FileDataSource
+
+        json_file = tmp_path / "metadata.json"
+        json_file.write_text(
+            '{"asset_refs": [{"id": "asset-1"}], '
+            '"metadata": {"branch": "draft"}, "count": 1}'
+        )
+
+        root_df = th.read(str(json_file))
+        source_df = FileDataSource(json_file).to_polars_lazyframe().collect()
+
+        assert root_df.equals(source_df)
+        assert root_df.height == 1
+        assert root_df["count"].to_list() == [1]

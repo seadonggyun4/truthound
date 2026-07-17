@@ -212,9 +212,9 @@ from truthound.datasources import FileDataSource
 source = FileDataSource("data.json")
 ```
 
-### JSON Structure
+### JSON 문서 구조
 
-실무 운영 가이드에서 JSON을(를) 다루는 항목입니다:
+`.json` 파일은 하나의 완전한 JSON 문서여야 합니다.
 
 ```json
 [
@@ -224,7 +224,20 @@ source = FileDataSource("data.json")
 ]
 ```
 
-> 실무 운영 가이드에서 Polars, JSON, `pl.read_json()`, `scan_json()`, Note, NDJSON을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+Truthound는 최상위 JSON 값을 다음 행 모델로 변환합니다.
+
+| 최상위 값 | 행 모델 |
+|-----------|---------|
+| 객체 배열 | 객체 하나당 한 행 |
+| 객체 | 객체 필드를 포함하는 한 행 |
+| 스칼라 배열 | 배열 항목마다 `value` 한 행 |
+| 스칼라 | `value` 열을 가진 한 행 |
+
+중첩 객체와 배열은 Polars `Struct`, `List` 열로 보존됩니다. `.json`은 하나의
+bounded 문서로 eager loading합니다. 대용량 또는 스트리밍 데이터는 line-delimited
+lazy scan을 유지하는 `.ndjson` 또는 `.jsonl`을 사용하세요. 여러 JSON 문서를
+`.json`에 연속해서 넣는 것은 허용하지 않으며 line-delimited 확장자를 사용해야
+합니다.
 
 ## NDJSON / JSONL 파일
 

@@ -1,12 +1,11 @@
 """Input adapters for converting various data formats to Polars LazyFrame."""
 
-import json
-import tempfile
 from pathlib import Path
 from typing import Any
 
 import polars as pl
 
+from truthound._json_document import read_json_document
 from truthound.datasources._polars_compat import pandas_to_polars_frame
 
 
@@ -104,10 +103,11 @@ def _is_pandas_dataframe(obj: Any) -> bool:
 
 
 def _read_json_auto(path: Path) -> pl.LazyFrame:
-    """Read JSON file, auto-detecting format (JSON Array or NDJSON).
+    """Read a complete JSON document into a bounded in-memory LazyFrame.
 
-    JSON Array format: [{}, {}, {}]
-    NDJSON format: {}\n{}\n{}
+    ``.json`` and newline-delimited JSON have different contracts. A JSON file
+    may contain a top-level object, array, or scalar, while ``.ndjson`` and
+    ``.jsonl`` are handled separately by :func:`pl.scan_ndjson`.
 
     Args:
         path: Path to the JSON file.
@@ -115,25 +115,4 @@ def _read_json_auto(path: Path) -> pl.LazyFrame:
     Returns:
         Polars LazyFrame.
     """
-    with open(path, "r", encoding="utf-8") as f:
-        first_char = f.read(1)
-        # Skip whitespace to find first meaningful character
-        while first_char and first_char in " \t\n\r":
-            first_char = f.read(1)
-
-    if first_char == "[":
-        # JSON Array format - convert to NDJSON for lazy loading
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".ndjson", delete=False, encoding="utf-8"
-        ) as tmp:
-            for record in data:
-                tmp.write(json.dumps(record, ensure_ascii=False) + "\n")
-            tmp_path = tmp.name
-
-        return pl.scan_ndjson(tmp_path)
-    else:
-        # NDJSON format - read directly
-        return pl.scan_ndjson(path)
+    return read_json_document(path)

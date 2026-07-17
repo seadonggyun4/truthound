@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 import polars as pl
@@ -107,10 +108,18 @@ def compare(
 
         dtype = baseline_df.schema[col]
         dtype_str = str(dtype)
+        comparison_baseline = baseline_series
+        comparison_current = current_series
+        comparison_dtype = dtype
+
+        if _is_nested_dtype(dtype) or _is_nested_dtype(current_df.schema[col]):
+            comparison_baseline = _canonicalize_nested_series(baseline_series)
+            comparison_current = _canonicalize_nested_series(current_series)
+            comparison_dtype = pl.String
 
         # Select appropriate detector
         if method == "auto":
-            if dtype in numeric_types:
+            if comparison_dtype in numeric_types:
                 detector = detectors["numeric"]
             else:
                 detector = detectors["categorical"]
@@ -118,11 +127,15 @@ def compare(
             detector = detectors["default"]
 
         # Run drift detection
-        result = detector.detect(baseline_series, current_series)
+        result = detector.detect(comparison_baseline, comparison_current)
 
         # Collect statistics
-        baseline_stats = _compute_stats(baseline_series, dtype, numeric_types)
-        current_stats = _compute_stats(current_series, dtype, numeric_types)
+        baseline_stats = _compute_stats(
+            comparison_baseline, comparison_dtype, numeric_types
+        )
+        current_stats = _compute_stats(
+            comparison_current, comparison_dtype, numeric_types
+        )
 
         column_drifts.append(
             ColumnDrift(
@@ -141,6 +154,29 @@ def compare(
         current_rows=len(current_df),
         columns=column_drifts,
     )
+
+
+def _is_nested_dtype(dtype: pl.DataType) -> bool:
+    """Return whether a Polars dtype contains non-hashable nested values."""
+    is_nested = getattr(dtype, "is_nested", None)
+    return bool(is_nested and is_nested())
+
+
+def _canonicalize_nested_series(series: pl.Series) -> pl.Series:
+    """Convert nested values to deterministic JSON categories for comparison."""
+    values = [
+        None
+        if value is None
+        else json.dumps(
+            value,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+            default=str,
+        )
+        for value in series.to_list()
+    ]
+    return pl.Series(series.name, values, dtype=pl.String)
 
 
 def _get_detectors(method: str, threshold: float | None) -> dict[str, DriftDetector]:

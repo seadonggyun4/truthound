@@ -6,12 +6,13 @@ as well as file-based data sources (CSV, JSON, Parquet).
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 import polars as pl
 
+from truthound._json_document import read_json_document
 from truthound.datasources._protocols import (
     ColumnType,
     DataSourceCapability,
@@ -23,7 +24,6 @@ from truthound.datasources.base import (
     polars_to_column_type,
 )
 from truthound.execution.polars_engine import PolarsExecutionEngine
-
 
 # =============================================================================
 # Configuration
@@ -148,7 +148,7 @@ class PolarsDataSource(BaseDataSource[PolarsDataSourceConfig]):
         self,
         n: int = 1000,
         seed: int | None = None,
-    ) -> "PolarsDataSource":
+    ) -> PolarsDataSource:
         """Create a new data source with sampled data."""
         row_count = self.row_count or 0
 
@@ -278,8 +278,7 @@ class FileDataSource(BaseDataSource[FileDataSourceConfig]):
         elif self._file_type == "parquet":
             return pl.scan_parquet(path_str, rechunk=cfg.rechunk)
         elif self._file_type == "json":
-            # JSON doesn't have a scan method, read eagerly
-            return pl.read_json(path_str).lazy()
+            return read_json_document(path_str)
         elif self._file_type == "ndjson":
             return pl.scan_ndjson(
                 path_str,
@@ -329,7 +328,7 @@ class FileDataSource(BaseDataSource[FileDataSourceConfig]):
         self,
         n: int = 1000,
         seed: int | None = None,
-    ) -> "FileDataSource":
+    ) -> FileDataSource:
         """Create a new data source with sampled data.
 
         Note: This loads data into memory for sampling.

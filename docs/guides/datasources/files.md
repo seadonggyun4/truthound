@@ -212,9 +212,9 @@ from truthound.datasources import FileDataSource
 source = FileDataSource("data.json")
 ```
 
-### JSON Structure
+### JSON document structure
 
-The JSON file should be an array of objects:
+The `.json` contract is one complete JSON document:
 
 ```json
 [
@@ -224,7 +224,20 @@ The JSON file should be an array of objects:
 ]
 ```
 
-> **Note**: JSON files are loaded eagerly using `pl.read_json()` since Polars doesn't have a `scan_json()` function. For large JSON datasets, consider using NDJSON format.
+Truthound maps JSON values to rows as follows:
+
+| Top-level value | Row model |
+|-----------------|-----------|
+| Array of objects | One row per object |
+| Object | One row containing the object's fields |
+| Array of scalars | One `value` row per array item |
+| Scalar | One row with a `value` column |
+
+Nested objects and arrays remain Polars `Struct` and `List` columns. `.json` is
+loaded eagerly as one bounded document. For large or streaming datasets, use
+`.ndjson` or `.jsonl`; those extensions retain line-delimited lazy scanning.
+A file containing multiple JSON documents is invalid as `.json` and must use a
+line-delimited extension.
 
 ## NDJSON / JSONL Files
 
