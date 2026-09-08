@@ -157,7 +157,7 @@ print([check.name for check in run.checks])
 print(run.metadata["context_root"])
 
 json_report = get_reporter("json").render(run)
-validation_docs = generate_validation_report(run, title="Customer Quality Overview")
+validation_docs = generate_validation_report(run, title="Customer Quality Overview", locale="ko")
 
 context = th.get_context()
 schema = th.learn({"id": [1, 2], "status": ["active", "inactive"]})
@@ -229,6 +229,7 @@ Truthound는 프로젝트 루트에 `.truthound/` 워크스페이스를 자동�
 - 체크포인트 결과: `CheckpointResult.validation_run`이 정식이며, `CheckpointResult.validation_view`는 레거시 호환 프로젝션입니다.
 - 리포터 타입: `truthound.reporters.RunPresentation`, `truthound.reporters.ReporterContext`
 - 검증 문서 진입점: `truthound.datadocs.ValidationDocsBuilder`, `truthound.datadocs.generate_validation_report`
+  - 3.1.13부터 `locale="en"`(기본값) 또는 `locale="ko"`는 본문 제목·표 머리글·알림을 번역합니다. 품질 수치·상태 코드·사용자 데이터는 바꾸지 않으며 미지원 locale은 `ValueError`입니다. 이전 버전에는 이 옵션이 없습니다.
 - 드리프트 비교: `truthound.drift.compare`
 - 고급 시스템: 네임스페이스로 임포트 (예: `truthound.ml`, `truthound.lineage`, `truthound.realtime`, `truthound.datadocs`)
 - 선택적 AI 레이어: `truthound[ai]` 설치 후 `truthound.ai` 임포트

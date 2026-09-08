@@ -856,13 +856,18 @@ Python API 사용에서 HTML, Generate을(를) 기준으로 데이터 품질 검
 
 ### Basic HTML 리포트
 
+검증 Data Docs의 `generate_validation_report`와 `ValidationDocsBuilder`는
+`locale="en"`(기본값) 또는 `locale="ko"`로 라벨·알림을 번역합니다.
+canonical 수치·상태 코드·사용자 데이터는 그대로 보존하며 미지원 locale은
+`ValueError`입니다. locale 인수는 3.1.13부터 제공되며 이전 버전에는 없습니다.
+
 ```python
 import truthound as th
 from truthound import datadocs
 
 # Validation docs from ValidationRunResult
 run = th.check("data.csv")
-validation_html = datadocs.generate_validation_report(run)
+validation_html = datadocs.generate_validation_report(run, locale="ko")
 with open("validation-report.html", "w") as f:
     f.write(validation_html)
 

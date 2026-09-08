@@ -57,6 +57,11 @@ Path("profile-report.html").write_text(profile_html)
 Path("validation-report.html").write_text(validation_html)
 ```
 
+검증 리포트의 `generate_validation_report`와 `ValidationDocsBuilder`는
+`locale="en"`(기본값) 또는 `locale="ko"`로 본문 제목·표 머리글·알림을 번역합니다.
+canonical 품질 수치·상태 코드·사용자 데이터는 바꾸지 않습니다. 미지원 locale은
+`ValueError`입니다. locale 옵션은 3.1.13부터 제공되며 이전 버전에는 없습니다.
+
 ### 워크플로우 2: Custom Themed 리포트
 
 ```python

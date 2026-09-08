@@ -856,13 +856,19 @@ Generate HTML reports and documentation.
 
 ### Basic HTML Report
 
+Validation Data Docs accept `locale="en"` (default) or `locale="ko"` in
+`generate_validation_report` and `ValidationDocsBuilder`. Labels and alerts
+are translated; canonical values, status codes and caller data are unchanged.
+Unsupported locales raise `ValueError`. The locale argument is available starting
+in 3.1.13; earlier versions do not support it.
+
 ```python
 import truthound as th
 from truthound import datadocs
 
 # Validation docs from ValidationRunResult
 run = th.check("data.csv")
-validation_html = datadocs.generate_validation_report(run)
+validation_html = datadocs.generate_validation_report(run, locale="en")
 with open("validation-report.html", "w") as f:
     f.write(validation_html)
 

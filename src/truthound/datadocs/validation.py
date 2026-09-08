@@ -8,6 +8,7 @@ from typing import Any
 
 from truthound.datadocs.base import ReportTheme
 from truthound.datadocs.engine.context import ReportContext, ReportData
+from truthound.datadocs.i18n import ReportCatalog, get_catalog
 from truthound.datadocs.styles import get_complete_stylesheet
 from truthound.datadocs.themes import get_theme
 from truthound.reporters.adapters import canonicalize_validation_run_result
@@ -47,7 +48,7 @@ class ValidationDataConverter:
                 "suite_name": self.presentation.suite_name,
                 "run_id": self.presentation.run_id,
             },
-            alerts=self._alerts(),
+            alerts=self._alerts(locale),
         )
         return ReportContext(
             data=data,
@@ -125,18 +126,19 @@ class ValidationDataConverter:
             ]
         }
 
-    def _alerts(self) -> list[dict[str, Any]]:
+    def _alerts(self, locale: str = "en") -> list[dict[str, Any]]:
+        catalog = get_catalog(locale)
         alerts: list[dict[str, Any]] = []
         if self.presentation.summary.total_execution_issues:
             alerts.append({
-                "title": "Execution issues detected",
-                "message": f"{self.presentation.summary.total_execution_issues} execution issue(s) occurred during validation.",
+                "title": catalog.get("validation.execution_title", default="Execution issues detected"),
+                "message": catalog.get("validation.execution_message", default="{count} execution issue(s) occurred during validation.", count=self.presentation.summary.total_execution_issues),
                 "severity": "error",
             })
         elif self.presentation.summary.total_issues:
             alerts.append({
-                "title": "Validation issues detected",
-                "message": f"{self.presentation.summary.total_issues} validation issue(s) require review.",
+                "title": catalog.get("validation.quality_title", default="Validation issues detected"),
+                "message": catalog.get("validation.quality_message", default="{count} validation issue(s) require review.", count=self.presentation.summary.total_issues),
                 "severity": "warning",
             })
         return alerts
@@ -145,7 +147,10 @@ class ValidationDataConverter:
 class ValidationDocsBuilder:
     """Build validation Data Docs from ValidationRunResult."""
 
-    def __init__(self, theme: ReportTheme | str = ReportTheme.LIGHT) -> None:
+    def __init__(self, theme: ReportTheme | str = ReportTheme.LIGHT, *, locale: str = "en") -> None:
+        if locale not in {"en", "ko"}:
+            raise ValueError("Unsupported validation report locale; expected en or ko.")
+        self.locale = locale
         self._theme_config = get_theme(theme)
         self.theme = self._theme_config.name
 
@@ -161,6 +166,7 @@ class ValidationDocsBuilder:
             title=title,
             subtitle=subtitle,
             theme=self.theme,
+            locale=self.locale,
         )
         return self._render_html(context)
 
@@ -171,6 +177,10 @@ class ValidationDocsBuilder:
         return path
 
     def _render_html(self, context: ReportContext) -> str:
+        catalog = get_catalog(context.locale)
+        def label(value: str) -> str:
+            return catalog.get("validation.label." + value.lower().replace(" ", "_"), default=value)
+
         presentation = self._get_presentation(context)
         sections = context.data.sections
         css = get_complete_stylesheet(
@@ -185,7 +195,7 @@ class ValidationDocsBuilder:
         subtitle = context.subtitle or context.metadata.get("source", "")
 
         return f"""<!DOCTYPE html>
-<html lang="en">
+<html lang="{html.escape(context.locale, quote=True)}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -375,31 +385,31 @@ code {{
     </section>
     {self._render_alerts(context.data.alerts)}
     <section class="panel">
-      <h2>Overview</h2>
+      <h2>{html.escape(label("Overview"))}</h2>
       <div class="metrics">
-        {''.join(self._render_metric(label, value) for label, value in overview['metrics'])}
+        {''.join(self._render_metric(label(name), value) for name, value in overview['metrics'])}
       </div>
       <div class="severity-bar">
-        {''.join(self._render_severity_pill(name, count) for name, count in overview['severity'].items())}
+        {''.join(self._render_severity_pill(label(name.title()), count) for name, count in overview['severity'].items())}
       </div>
     </section>
     <section class="panel">
-      <h2>Checks</h2>
-      {self._render_table(["Check", "Category", "Status", "Issue Count", "Top Severity", "Columns"], checks)}
+      <h2>{html.escape(label("Checks"))}</h2>
+      {self._render_table(["Check", "Category", "Status", "Issue Count", "Top Severity", "Columns"], checks, catalog=catalog)}
     </section>
     <section class="panel">
-      <h2>Issues</h2>
-      {self._render_table(["Validator", "Column", "Issue Type", "Count", "Severity", "Message"], issues)}
+      <h2>{html.escape(label("Issues"))}</h2>
+      {self._render_table(["Validator", "Column", "Issue Type", "Count", "Severity", "Message"], issues, catalog=catalog)}
     </section>
     <section class="panel">
-      <h2>Execution Issues</h2>
-      {self._render_table(["Check", "Message", "Exception Type", "Failure Category", "Retries"], execution_issues)}
+      <h2>{html.escape(label("Execution Issues"))}</h2>
+      {self._render_table(["Check", "Message", "Exception Type", "Failure Category", "Retries"], execution_issues, catalog=catalog)}
     </section>
     <section class="panel">
-      <h2>Metadata</h2>
+      <h2>{html.escape(label("Metadata"))}</h2>
       <table>
         <tbody>
-          {''.join(f"<tr><th>{html.escape(label)}</th><td><code>{html.escape(value)}</code></td></tr>" for label, value in metadata)}
+          {''.join(f"<tr><th>{html.escape(label(name))}</th><td><code>{html.escape(value)}</code></td></tr>" for name, value in metadata)}
         </tbody>
       </table>
     </section>
@@ -440,11 +450,13 @@ code {{
         return f'<section class="alerts">{body}</section>'
 
     @staticmethod
-    def _render_table(headers: list[str], rows: list[dict[str, Any]]) -> str:
+    def _render_table(headers: list[str], rows: list[dict[str, Any]], *, catalog: ReportCatalog | None = None) -> str:
         if not rows:
-            return '<p class="muted">No data available.</p>'
+            message = catalog.get("validation.no_data") if catalog else "No data available."
+            return f'<p class="muted">{html.escape(message)}</p>'
         keys = [header.lower().replace(" ", "_") for header in headers]
-        header_html = "".join(f"<th>{html.escape(header)}</th>" for header in headers)
+        labels = [catalog.get("validation.label." + header.lower().replace(" ", "_"), default=header) if catalog else header for header in headers]
+        header_html = "".join(f"<th>{html.escape(header)}</th>" for header in labels)
         row_html = []
         for row in rows:
             row_html.append(
@@ -465,9 +477,14 @@ def generate_validation_report(
     subtitle: str = "",
     theme: ReportTheme | str = ReportTheme.LIGHT,
     output_path: str | Path | None = None,
+    locale: str = "en",
 ) -> str:
-    """Generate static HTML validation Data Docs."""
-    builder = ValidationDocsBuilder(theme=theme)
+    """Generate validation Data Docs in English (default) or Korean.
+
+    Locale changes display labels and alerts only; canonical quality values,
+    machine statuses and caller-provided content are preserved.
+    """
+    builder = ValidationDocsBuilder(theme=theme, locale=locale)
     html_content = builder.build(result, title=title, subtitle=subtitle)
     if output_path:
         builder.save(html_content, output_path)

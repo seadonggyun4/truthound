@@ -8,8 +8,11 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any, Iterator
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
+    from pathlib import Path
 
 
 @dataclass
@@ -74,7 +77,7 @@ class ReportCatalog:
         """Return all message keys."""
         return list(self.messages.keys())
 
-    def merge(self, other: "ReportCatalog") -> "ReportCatalog":
+    def merge(self, other: ReportCatalog) -> ReportCatalog:
         """Merge with another catalog.
 
         Args:
@@ -89,7 +92,7 @@ class ReportCatalog:
             metadata={**self.metadata, **other.metadata},
         )
 
-    def extend(self, messages: dict[str, str]) -> "ReportCatalog":
+    def extend(self, messages: dict[str, str]) -> ReportCatalog:
         """Extend with additional messages.
 
         Args:
@@ -123,7 +126,7 @@ class ReportCatalog:
         locale: str,
         messages: dict[str, str],
         metadata: dict[str, Any] | None = None,
-    ) -> "ReportCatalog":
+    ) -> ReportCatalog:
         """Create from dictionary."""
         return cls(
             locale=locale,
@@ -132,9 +135,9 @@ class ReportCatalog:
         )
 
     @classmethod
-    def from_json(cls, path: Path) -> "ReportCatalog":
+    def from_json(cls, path: Path) -> ReportCatalog:
         """Load from JSON file."""
-        with open(path, "r", encoding="utf-8") as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
 
         return cls(
@@ -144,7 +147,7 @@ class ReportCatalog:
         )
 
     @classmethod
-    def builder(cls, locale: str) -> "CatalogBuilder":
+    def builder(cls, locale: str) -> CatalogBuilder:
         """Create a catalog builder."""
         return CatalogBuilder(locale)
 
@@ -157,7 +160,7 @@ class CatalogBuilder:
         self._messages: dict[str, str] = {}
         self._metadata: dict[str, Any] = {}
 
-    def add(self, key: str, value: str) -> "CatalogBuilder":
+    def add(self, key: str, value: str) -> CatalogBuilder:
         """Add a message."""
         self._messages[key] = value
         return self
@@ -168,7 +171,7 @@ class CatalogBuilder:
         subtitle: str,
         summary: str,
         details: str,
-    ) -> "CatalogBuilder":
+    ) -> CatalogBuilder:
         """Add report section messages."""
         self._messages["report.title"] = title
         self._messages["report.subtitle"] = subtitle
@@ -183,7 +186,7 @@ class CatalogBuilder:
         fair: str,
         poor: str,
         critical: str,
-    ) -> "CatalogBuilder":
+    ) -> CatalogBuilder:
         """Add quality grade labels."""
         self._messages["quality.excellent"] = excellent
         self._messages["quality.good"] = good
@@ -199,7 +202,7 @@ class CatalogBuilder:
         alerts: str,
         recommendations: str,
         statistics: str,
-    ) -> "CatalogBuilder":
+    ) -> CatalogBuilder:
         """Add section title messages."""
         self._messages["section.overview"] = overview
         self._messages["section.columns"] = columns
@@ -213,7 +216,7 @@ class CatalogBuilder:
         critical: str,
         warning: str,
         info: str,
-    ) -> "CatalogBuilder":
+    ) -> CatalogBuilder:
         """Add alert severity labels."""
         self._messages["alert.critical"] = critical
         self._messages["alert.warning"] = warning
@@ -227,7 +230,7 @@ class CatalogBuilder:
         null_ratio: str,
         unique_ratio: str,
         duplicate_count: str,
-    ) -> "CatalogBuilder":
+    ) -> CatalogBuilder:
         """Add statistics labels."""
         self._messages["stats.row_count"] = row_count
         self._messages["stats.column_count"] = column_count
@@ -236,7 +239,7 @@ class CatalogBuilder:
         self._messages["stats.duplicate_count"] = duplicate_count
         return self
 
-    def with_metadata(self, **metadata: Any) -> "CatalogBuilder":
+    def with_metadata(self, **metadata: Any) -> CatalogBuilder:
         """Add metadata."""
         self._metadata.update(metadata)
         return self
@@ -364,6 +367,11 @@ def _create_english_catalog() -> ReportCatalog:
         {
             # Report
             "report.title": "Data Quality Report",
+            "validation.execution_title": "Execution issues detected",
+            "validation.execution_message": "{count} execution issue(s) occurred during validation.",
+            "validation.quality_title": "Validation issues detected",
+            "validation.quality_message": "{count} validation issue(s) require review.",
+            "validation.no_data": "No data available.",
             "report.subtitle": "Automated Data Profiling and Validation",
             "report.summary": "Summary",
             "report.details": "Details",
@@ -603,6 +611,45 @@ def _create_korean_catalog() -> ReportCatalog:
         "ko",
         {
             "report.title": "데이터 품질 보고서",
+            "validation.execution_title": "실행 오류가 발견되었습니다",
+            "validation.execution_message": "검증 중 실행 오류 {count}건이 발생했습니다.",
+            "validation.quality_title": "품질 문제가 발견되었습니다",
+            "validation.quality_message": "품질 문제 {count}건을 검토해야 합니다.",
+            "validation.no_data": "데이터가 없습니다.",
+            "validation.label.overview": "개요",
+            "validation.label.checks": "검사",
+            "validation.label.issues": "품질 문제",
+            "validation.label.execution_issues": "실행 오류",
+            "validation.label.metadata": "메타데이터",
+            "validation.label.status": "상태",
+            "validation.label.rows": "행 수",
+            "validation.label.columns": "열 수",
+            "validation.label.pass_rate": "통과율",
+            "validation.label.check": "검사",
+            "validation.label.category": "분류",
+            "validation.label.issue_count": "문제 수",
+            "validation.label.top_severity": "최고 심각도",
+            "validation.label.validator": "검증기",
+            "validation.label.column": "열",
+            "validation.label.issue_type": "문제 유형",
+            "validation.label.count": "건수",
+            "validation.label.severity": "심각도",
+            "validation.label.message": "메시지",
+            "validation.label.exception_type": "예외 유형",
+            "validation.label.failure_category": "실패 분류",
+            "validation.label.retries": "재시도 횟수",
+            "validation.label.run_id": "실행 ID",
+            "validation.label.run_time": "실행 시각",
+            "validation.label.suite": "검증 묶음",
+            "validation.label.source": "데이터 소스",
+            "validation.label.execution_mode": "실행 방식",
+            "validation.label.planned_execution_mode": "계획된 실행 방식",
+            "validation.label.result_format": "결과 형식",
+            "validation.label.runtime_environment": "실행 환경",
+            "validation.label.critical": "심각",
+            "validation.label.high": "높음",
+            "validation.label.medium": "중간",
+            "validation.label.low": "낮음",
             "report.subtitle": "자동화된 데이터 프로파일링 및 검증",
             "report.summary": "요약",
             "report.details": "상세",

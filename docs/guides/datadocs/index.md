@@ -57,6 +57,12 @@ Path("profile-report.html").write_text(profile_html)
 Path("validation-report.html").write_text(validation_html)
 ```
 
+Validation reports accept `locale="en"` (default) or `locale="ko"` in
+`generate_validation_report` and `ValidationDocsBuilder`. Locale translates
+headings, table headers and alerts, not canonical quality values, status codes
+or caller data. Unsupported locales raise `ValueError`. This API addition is
+available starting in 3.1.13; earlier versions do not accept the locale option.
+
 ### Workflow 2: Custom Themed Report
 
 ```python
