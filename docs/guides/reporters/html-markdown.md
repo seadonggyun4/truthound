@@ -8,6 +8,9 @@ outside the renderer; visibility must not change report content. All registered
 Core report themes are available through the corresponding renderer.
 The unreleased SVG Profile renderer also uses the selected theme's foreground
 for table/chart text and displays top-value frequencies as counts, not percentages.
+Profile column names, chart labels, patterns, recommendations and alerts are
+escaped as text. Interactive-chart JSON cannot close its surrounding script tag.
+Escaping preserves the input and displayed text; it does not redact report data.
 
 The unreleased renderer also preserves actual check names and execution retry
 counts in tables, escaping names as text rather than interpreting them as HTML.

@@ -10,6 +10,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
+from html import escape
 from typing import Any, Callable, Protocol, runtime_checkable
 
 
@@ -474,10 +475,10 @@ class BaseSectionRenderer(ABC):
                 <div class="alert {css_class}">
                     <div class="alert-header">
                         <span class="alert-icon"></span>
-                        <span class="alert-title">{alert.title}</span>
+                        <span class="alert-title">{escape(str(alert.title), quote=False)}</span>
                     </div>
-                    <div class="alert-message">{alert.message}</div>
-                    {f'<div class="alert-suggestion">{alert.suggestion}</div>' if alert.suggestion else ''}
+                    <div class="alert-message">{escape(str(alert.message), quote=False)}</div>
+                    {f'<div class="alert-suggestion">{escape(str(alert.suggestion), quote=False)}</div>' if alert.suggestion else ''}
                 </div>
             ''')
         html_parts.append('</div>')

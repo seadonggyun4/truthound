@@ -6,6 +6,7 @@ Each section is designed to present specific aspects of the data profile.
 
 from __future__ import annotations
 
+from html import escape
 from typing import Any
 
 from truthound.datadocs.base import (
@@ -121,7 +122,7 @@ class OverviewSection(BaseSectionRenderer):
             return f"{value:,.2f}"
         elif isinstance(value, int):
             return f"{value:,}"
-        return str(value)
+        return escape(str(value))
 
 
 # =============================================================================
@@ -170,17 +171,17 @@ class ColumnsSection(BaseSectionRenderer):
 
         html_parts = []
         for table in tables:
-            title = table.get("title", "Column Summary")
+            title = escape(str(table.get("title", "Column Summary")))
             headers = table.get("headers", [])
             rows = table.get("rows", [])
 
             if not rows:
                 continue
 
-            header_html = "".join(f"<th>{h}</th>" for h in headers)
+            header_html = "".join(f"<th>{escape(str(h))}</th>" for h in headers)
             rows_html = ""
             for row in rows:
-                cells = "".join(f"<td>{cell}</td>" for cell in row)
+                cells = "".join(f"<td>{escape(str(cell))}</td>" for cell in row)
                 rows_html += f"<tr>{cells}</tr>"
 
             html_parts.append(f'''
@@ -254,7 +255,7 @@ class ColumnsSection(BaseSectionRenderer):
             if "detected_patterns" in col and col["detected_patterns"]:
                 patterns = col["detected_patterns"][:3]
                 pattern_items = "".join(
-                    f'<span class="pattern-tag">{p.get("pattern", "")}</span>'
+                    f'<span class="pattern-tag">{escape(str(p.get("pattern", "")))}</span>'
                     for p in patterns
                 )
                 patterns_html = f'<div class="column-patterns">{pattern_items}</div>'
@@ -262,8 +263,8 @@ class ColumnsSection(BaseSectionRenderer):
             cards.append(f'''
                 <div class="column-card">
                     <div class="column-header">
-                        <h4 class="column-name">{name}</h4>
-                        <span class="column-type {type_class}">{inferred or dtype}</span>
+                        <h4 class="column-name">{escape(str(name))}</h4>
+                        <span class="column-type {type_class}">{escape(str(inferred or dtype))}</span>
                     </div>
                     <div class="column-metrics">
                         <div class="metric-mini {quality_class}">
@@ -451,8 +452,8 @@ class PatternsSection(BaseSectionRenderer):
             items.append(f'''
                 <div class="pattern-item">
                     <div class="pattern-header">
-                        <span class="pattern-column">{column}</span>
-                        <span class="pattern-name">{pattern}</span>
+                        <span class="pattern-column">{escape(str(column))}</span>
+                        <span class="pattern-name">{escape(str(pattern))}</span>
                         <span class="pattern-match {match_class}">{match_ratio:.1%}</span>
                     </div>
                     {samples_html}
@@ -469,7 +470,7 @@ class PatternsSection(BaseSectionRenderer):
 
         html_parts = []
         for table in tables:
-            title = table.get("title", "")
+            title = escape(str(table.get("title", "")))
             headers = table.get("headers", [
                 labels.get("patterns.column", "Column"),
                 labels.get("patterns.pattern", "Pattern"),
@@ -481,10 +482,10 @@ class PatternsSection(BaseSectionRenderer):
             if not rows:
                 continue
 
-            header_html = "".join(f"<th>{h}</th>" for h in headers)
+            header_html = "".join(f"<th>{escape(str(h))}</th>" for h in headers)
             rows_html = ""
             for row in rows:
-                cells = "".join(f"<td>{cell}</td>" for cell in row)
+                cells = "".join(f"<td>{escape(str(cell))}</td>" for cell in row)
                 rows_html += f"<tr>{cells}</tr>"
 
             html_parts.append(f'''
@@ -644,7 +645,7 @@ class RecommendationsSection(BaseSectionRenderer):
         if not recommendations:
             return f'<p class="no-data">{labels.get("recommendations.none", "No specific recommendations at this time")}</p>'
 
-        items = "".join(f'<li class="recommendation-item">{r}</li>' for r in recommendations)
+        items = "".join(f'<li class="recommendation-item">{escape(str(r), quote=False)}</li>' for r in recommendations)
         return f'<ul class="recommendations-list">{items}</ul>'
 
     def _render_suggested_validators(
@@ -667,8 +668,8 @@ class RecommendationsSection(BaseSectionRenderer):
 
             items.append(f'''
                 <div class="validator-suggestion">
-                    <span class="validator-column">{column}</span>
-                    <code class="validator-code">{validator_type}({params_str})</code>
+                    <span class="validator-column">{escape(str(column))}</span>
+                    <code class="validator-code">{escape(str(validator_type))}({escape(params_str)})</code>
                 </div>
             ''')
 
@@ -734,7 +735,7 @@ class CustomSection(BaseSectionRenderer):
         theme: ThemeConfig,
     ) -> str:
         charts_html = self._render_charts(spec.charts, chart_renderer)
-        text_html = "".join(f'<p>{t}</p>' for t in spec.text_blocks)
+        text_html = "".join(f'<p>{escape(str(t))}</p>' for t in spec.text_blocks)
 
         return f'''
 <section class="report-section section-custom" id="section-{spec.title.lower().replace(" ", "-")}">

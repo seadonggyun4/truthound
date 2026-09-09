@@ -11,6 +11,7 @@ Supported libraries:
 from __future__ import annotations
 
 import json
+from html import escape
 from typing import Any
 
 from truthound.datadocs.base import (
@@ -61,7 +62,8 @@ class ApexChartsRenderer(BaseChartRenderer):
     def render(self, spec: ChartSpec) -> str:
         chart_id = self._generate_chart_id()
         options = self._build_options(spec)
-        options_json = json.dumps(options, indent=2, default=str)
+        # JSON inside a script element must not contain a literal closing tag.
+        options_json = json.dumps(options, indent=2, default=str).replace("<", "\\u003c").replace(">", "\\u003e").replace("&", "\\u0026")
 
         height_style = f"height: {spec.height}px;"
         width_style = f"width: {spec.width}px;" if spec.width else "width: 100%;"
@@ -364,7 +366,7 @@ class SVGChartRenderer(BaseChartRenderer):
             bars.append(
                 f'<rect x="{x}" y="{y}" width="{bar_width}" height="{bar_height}" '
                 f'fill="{color}" rx="4">'
-                f'<title>{label}: {value:.1f}</title></rect>'
+                f'<title>{escape(str(label))}: {value:.1f}</title></rect>'
             )
 
             # Value label on top of bar
@@ -383,7 +385,7 @@ class SVGChartRenderer(BaseChartRenderer):
             labels.append(
                 f'<text x="{label_x}" y="{label_y}" text-anchor="end" '
                 f'style="font-size: 10px; fill: {self.muted_text_color};" '
-                f'transform="rotate(-45 {label_x} {label_y})">{display_label}</text>'
+                f'transform="rotate(-45 {label_x} {label_y})">{escape(display_label)}</text>'
             )
 
         return f'''
@@ -426,7 +428,7 @@ class SVGChartRenderer(BaseChartRenderer):
             bars.append(
                 f'<rect x="{x}" y="{y}" width="{bar_width}" height="{bar_height}" '
                 f'fill="{color}" rx="4">'
-                f'<title>{label}: {self._horizontal_value(spec, value)}</title></rect>'
+                f'<title>{escape(str(label))}: {self._horizontal_value(spec, value)}</title></rect>'
             )
 
             # Y-axis label (column name)
@@ -437,7 +439,7 @@ class SVGChartRenderer(BaseChartRenderer):
             labels.append(
                 f'<text x="{label_x}" y="{label_y}" text-anchor="end" '
                 f'dominant-baseline="middle" class="chart-label" '
-                f'style="font-size: 11px; fill: {self.muted_text_color};">{display_label}</text>'
+                f'style="font-size: 11px; fill: {self.muted_text_color};">{escape(display_label)}</text>'
             )
 
             # Value label (percentage) - positioned at end of bar
@@ -536,7 +538,7 @@ class SVGChartRenderer(BaseChartRenderer):
 
             slices.append(
                 f'<path d="{path}" fill="{color}" stroke="white" stroke-width="2">'
-                f'<title>{label}: {value} ({percentage:.1f}%)</title></path>'
+                f'<title>{escape(str(label))}: {value} ({percentage:.1f}%)</title></path>'
             )
 
             # Add percentage label on the slice (only if slice is big enough)
@@ -563,7 +565,7 @@ class SVGChartRenderer(BaseChartRenderer):
                 f'fill="{color}" rx="3"/>'
                 f'<text x="{chart_area_width + 40}" y="{legend_y + 1}" '
                 f'style="font-size: 11px; fill: {self.muted_text_color};" dominant-baseline="middle">'
-                f'{display_label}</text>'
+                f'{escape(display_label)}</text>'
                 f'<text x="{width - 10}" y="{legend_y + 1}" text-anchor="end" '
                 f'style="font-size: 11px; font-weight: 600; fill: {self.text_color};" dominant-baseline="middle">'
                 f'{percentage:.1f}%</text>'
@@ -618,7 +620,7 @@ class SVGChartRenderer(BaseChartRenderer):
             label = spec.labels[i] if i < len(spec.labels) else str(i)
             dots.append(
                 f'<circle cx="{x}" cy="{y}" r="4" fill="{color}">'
-                f'<title>{label}: {value}</title></circle>'
+                f'<title>{escape(str(label))}: {value}</title></circle>'
             )
 
         return f'''
