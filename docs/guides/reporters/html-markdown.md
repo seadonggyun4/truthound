@@ -6,17 +6,17 @@ Profile and Validation render the supplied Core results without a separate
 public-report statistical filter. Hosting applications enforce access permissions
 outside the renderer; visibility must not change report content. All registered
 Core report themes are available through the corresponding renderer.
-The unreleased SVG Profile renderer also uses the selected theme's foreground
+Since 3.1.14, the SVG Profile renderer uses the selected theme's foreground
 for table/chart text and displays top-value frequencies as counts, not percentages.
 Profile column names, chart labels, patterns, recommendations and alerts are
 escaped as text. Interactive-chart JSON cannot close its surrounding script tag.
 Escaping preserves the input and displayed text; it does not redact report data.
 
-The unreleased renderer also preserves actual check names and execution retry
+The 3.1.14 renderer also preserves actual check names and execution retry
 counts in tables, escaping names as text rather than interpreting them as HTML.
-The unreleased result-model correction preserves explicitly failed checks even
+The 3.1.14 result-model correction preserves explicitly failed checks even
 when issue details are absent or redacted, without fabricating issues. Consumers
-must verify the fixed package; do not assume this behavior in published 3.1.13.
+must verify the installed package is at least 3.1.14.
 Profile and Validation consume different result types: equal themes do not imply
 equal sections or information. Truly empty results keep their existing semantics.
 
