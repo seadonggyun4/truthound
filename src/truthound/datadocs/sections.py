@@ -21,6 +21,7 @@ from truthound.datadocs.base import (
     ThemeConfig,
     register_section_renderer,
 )
+from truthound.datadocs.type_labels import profile_type_label
 
 
 # =============================================================================
@@ -210,14 +211,13 @@ class ColumnsSection(BaseSectionRenderer):
         cards = []
         for col in columns:
             name = col.get("name", labels.get("column.unknown", "Unknown"))
-            dtype = col.get("physical_type", col.get("dtype", "unknown"))
-            inferred = col.get("inferred_type", "")
+            dtype = profile_type_label(col)
             null_ratio = col.get("null_ratio", 0)
             unique_ratio = col.get("unique_ratio", 0)
             distinct = col.get("distinct_count", 0)
 
             # Type badge
-            type_class = self._get_type_class(inferred or dtype)
+            type_class = self._get_type_class(dtype)
 
             # Quality indicator
             quality_class = "quality-good" if null_ratio < 0.05 else "quality-warning" if null_ratio < 0.2 else "quality-bad"
@@ -264,7 +264,7 @@ class ColumnsSection(BaseSectionRenderer):
                 <div class="column-card">
                     <div class="column-header">
                         <h4 class="column-name">{escape(str(name))}</h4>
-                        <span class="column-type {type_class}">{escape(str(inferred or dtype))}</span>
+                        <span class="column-type {type_class}">{escape(dtype)}</span>
                     </div>
                     <div class="column-metrics">
                         <div class="metric-mini {quality_class}">

@@ -12,6 +12,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
+from math import isfinite
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -131,7 +132,14 @@ class DistributionStats:
     kurtosis: float | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {k: v for k, v in self.__dict__.items() if v is not None}
+        # Standardized moments are undefined for constant/singleton inputs.
+        # Preserve that absence as JSON null, never as a measured zero. Other
+        # measurements and source values are not sanitized by this serializer.
+        return {
+            k: None if k in {"skewness", "kurtosis"} and not isfinite(v) else v
+            for k, v in self.__dict__.items()
+            if v is not None
+        }
 
 
 @dataclass(frozen=True)

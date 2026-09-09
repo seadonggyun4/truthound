@@ -9,6 +9,7 @@ from typing import Any
 
 from truthound.datadocs.base import ReportSpec, SectionSpec, SectionType
 from truthound.datadocs.report_document import ChapterGroup, ResearchReportDocument
+from truthound.datadocs.type_labels import profile_type_label
 
 
 class ReportDocumentRenderer:
@@ -234,7 +235,7 @@ class ReportDocumentRenderer:
         return (
             "<tr>"
             f"<td>{html.escape(str(column.get('name', '')))}</td>"
-            f"<td>{html.escape(str(column.get('inferred_type', column.get('physical_type', ''))))}</td>"
+            f"<td>{html.escape(profile_type_label(column))}</td>"
             f"<td>{column.get('null_ratio', 0):.1%}</td>"
             f"<td>{column.get('unique_ratio', 0):.1%}</td>"
             f"<td>{int(column.get('distinct_count', 0)):,}</td>"

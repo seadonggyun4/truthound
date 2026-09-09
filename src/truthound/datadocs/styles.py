@@ -1345,7 +1345,6 @@ PRINT_CSS = """
         display: none;
     }
 
-    .report-section,
     .panel,
     .summary-box,
     .report-summary,
@@ -1355,15 +1354,66 @@ PRINT_CSS = """
         break-inside: avoid;
     }
 
+    /* Long sections must fragment in block flow. Flex/grid fragmentation can
+       detach headings and split otherwise page-sized column cards. */
+    .report-section,
+    .section-content {
+        display: block;
+        page-break-inside: auto;
+        break-inside: auto;
+    }
+
+    .section-content > * + * {
+        margin-top: 4mm;
+    }
+
+    .chapter-header,
+    .chapter-lead,
+    .section-header,
+    .appendix-title,
+    .appendix-lead,
+    .toc-title-professional {
+        page-break-after: avoid;
+        break-after: avoid;
+    }
+
+    .columns-grid,
+    .charts-grid {
+        display: block;
+    }
+
+    .column-card {
+        margin-bottom: 4mm;
+        page-break-inside: avoid;
+        break-inside: avoid;
+    }
+
+    .column-header > * {
+        min-width: 0;
+        overflow-wrap: anywhere;
+    }
+
     .chart-container,
     figure {
         page-break-inside: avoid;
         break-inside: avoid;
     }
 
+    .table-container,
     table,
     .data-table {
         page-break-inside: auto;
+        break-inside: auto;
+    }
+
+    .data-table {
+        table-layout: fixed;
+    }
+
+    .data-table th,
+    .data-table td {
+        white-space: normal;
+        overflow-wrap: anywhere;
     }
 
     tr,

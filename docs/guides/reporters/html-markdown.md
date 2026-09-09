@@ -20,6 +20,21 @@ must verify the installed package is at least 3.1.14.
 Profile and Validation consume different result types: equal themes do not imply
 equal sections or information. Truly empty results keep their existing semantics.
 
+Profile tables, charts and cards share the same type-label precedence: the first
+nonempty string among `inferred_type`, `physical_type` and legacy `dtype`, or
+`unknown` when none is supplied. An explicitly supplied `unknown` is preserved.
+This is presentation compatibility, not type inference or a change to input or
+quality calculations; labels are still escaped as text.
+
+In PDF output, long sections and tables may continue on another page. Chapter
+and section headings stay with following content; column cards that fit on a
+page stay together. Long column names wrap within table cells. These print-only
+layout rules preserve the screen theme, source values and report calculations.
+
+For constant or singleton inputs, undefined skewness and kurtosis serialize as
+JSON `null`, not a measured zero. Finite moments, other statistics and source
+values remain unchanged; this is not a general non-finite-value sanitizer.
+
 ## HTML Reporter
 
 ### Basic Usage

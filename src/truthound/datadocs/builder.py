@@ -34,6 +34,7 @@ from truthound.datadocs.report_document import ALERT_THRESHOLDS, ResearchReportD
 from truthound.datadocs.report_renderers import ReportDocumentRenderer
 from truthound.datadocs.sections import get_section_renderer
 from truthound.datadocs.styles import get_complete_stylesheet
+from truthound.datadocs.type_labels import profile_type_label
 
 
 # =============================================================================
@@ -129,7 +130,7 @@ class ProfileDataConverter:
         type_counts: dict[str, int] = {}
 
         for col in columns:
-            dtype = col.get("inferred_type", col.get("physical_type", "unknown"))
+            dtype = profile_type_label(col)
             type_counts[dtype] = type_counts.get(dtype, 0) + 1
 
         return ChartSpec(
@@ -624,7 +625,7 @@ class HTMLReportBuilder:
                 "rows": [
                     [
                         c.get("name", ""),
-                        c.get("inferred_type", c.get("physical_type", "")),
+                        profile_type_label(c),
                         f"{c.get('null_ratio', 0):.1%}",
                         f"{c.get('unique_ratio', 0):.1%}",
                         f"{c.get('distinct_count', 0):,}",
@@ -1152,7 +1153,8 @@ body.pdf-document .appendix-title {
 }
 
 body.pdf-document .report-section {
-    page-break-inside: avoid;
+    page-break-inside: auto;
+    break-inside: auto;
     margin-bottom: 2rem;
 }
 
@@ -1170,7 +1172,6 @@ body.pdf-document .data-table thead {
 }
 
 body.pdf-document .data-table tr,
-body.pdf-document .table-container,
 body.pdf-document .auditability-block,
 body.pdf-document .executive-summary-item {
     page-break-inside: avoid;
