@@ -232,6 +232,7 @@ class ColumnsSection(BaseSectionRenderer):
                     height=150,
                     show_legend=False,
                     show_labels=False,
+                    options={"value_unit": "count"},
                 )
                 distribution_chart = chart_renderer.render(chart_spec)
 
@@ -337,7 +338,7 @@ class QualitySection(BaseSectionRenderer):
         theme: ThemeConfig,
     ) -> str:
         charts_html = self._render_charts(spec.charts, chart_renderer)
-        metrics_html = self._render_quality_metrics(spec.metrics, spec.metadata.get("labels", {}))
+        metrics_html = self._render_quality_metrics(spec.metrics, spec.metadata.get("labels", {}), text_color=theme.colors.text_primary)
         alerts_html = self._render_alerts(spec.alerts, theme)
 
         return f'''
@@ -355,7 +356,7 @@ class QualitySection(BaseSectionRenderer):
 </section>
 '''
 
-    def _render_quality_metrics(self, metrics: dict[str, Any], labels: dict[str, str] | None = None) -> str:
+    def _render_quality_metrics(self, metrics: dict[str, Any], labels: dict[str, str] | None = None, *, text_color: str = "#1f2937") -> str:
         """Render quality score gauges and metrics."""
         if not metrics:
             return ""
@@ -381,7 +382,7 @@ class QualitySection(BaseSectionRenderer):
                             <svg viewBox="0 0 36 36" class="circular-chart">
                                 <path class="circle-bg" fill="none" stroke="#e5e7eb" stroke-width="3.8" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"/>
                                 <path class="circle" fill="none" stroke="{stroke_color}" stroke-width="2.8" stroke-linecap="round" stroke-dasharray="{score}, 100" d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"/>
-                                <text x="18" y="20.35" class="percentage" fill="#1f2937" font-size="0.5em" font-weight="bold" text-anchor="middle">{score:.0f}%</text>
+                                <text x="18" y="20.35" class="percentage" fill="{text_color}" font-size="0.5em" font-weight="bold" text-anchor="middle">{score:.0f}%</text>
                             </svg>
                         </div>
                         <div class="score-label">{label}</div>

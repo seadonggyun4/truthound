@@ -381,6 +381,9 @@ class HTMLReportBuilder:
         # Use SVG for PDF, ApexCharts for HTML
         chart_lib = ChartLibrary.SVG if _use_svg else ChartLibrary.APEXCHARTS
         self._chart_renderer = get_chart_renderer(chart_lib)
+        if _use_svg:
+            self._chart_renderer.text_color = self._theme_config.colors.text_primary
+            self._chart_renderer.muted_text_color = self._theme_config.colors.text_secondary
         self._report_document = ResearchReportDocument(
             self._label,
             language=self.config.language,

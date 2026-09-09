@@ -184,7 +184,11 @@ class ValidationRunResult:
 
     @property
     def has_failures(self) -> bool:
-        return self.has_issues or bool(self.execution_issues)
+        # A redacted/summary-only result can retain a genuine failed check
+        # without its issue details. Do not turn that failure into success.
+        return self.has_issues or bool(self.execution_issues) or any(
+            not check.success for check in self.checks
+        )
 
     @property
     def success(self) -> bool:

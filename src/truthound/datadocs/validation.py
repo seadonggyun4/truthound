@@ -305,7 +305,7 @@ th, td {{
 }}
 th {{
   background: var(--color-primary);
-  color: #ffffff;
+  color: var(--color-background);
   font-size: var(--font-size-sm);
   font-weight: 700;
   text-align: center;
@@ -395,7 +395,7 @@ code {{
     </section>
     <section class="panel">
       <h2>{html.escape(label("Checks"))}</h2>
-      {self._render_table(["Check", "Category", "Status", "Issue Count", "Top Severity", "Columns"], checks, catalog=catalog)}
+      {self._render_table(["Check", "Category", "Status", "Issue Count", "Top Severity", "Columns"], checks, catalog=catalog, fields=["name", "category", "status", "issue_count", "top_severity", "columns"])}
     </section>
     <section class="panel">
       <h2>{html.escape(label("Issues"))}</h2>
@@ -403,7 +403,7 @@ code {{
     </section>
     <section class="panel">
       <h2>{html.escape(label("Execution Issues"))}</h2>
-      {self._render_table(["Check", "Message", "Exception Type", "Failure Category", "Retries"], execution_issues, catalog=catalog)}
+      {self._render_table(["Check", "Message", "Exception Type", "Failure Category", "Retries"], execution_issues, catalog=catalog, fields=["check_name", "message", "exception_type", "failure_category", "retry_count"])}
     </section>
     <section class="panel">
       <h2>{html.escape(label("Metadata"))}</h2>
@@ -450,11 +450,14 @@ code {{
         return f'<section class="alerts">{body}</section>'
 
     @staticmethod
-    def _render_table(headers: list[str], rows: list[dict[str, Any]], *, catalog: ReportCatalog | None = None) -> str:
+    def _render_table(headers: list[str], rows: list[dict[str, Any]], *, catalog: ReportCatalog | None = None, fields: list[str] | None = None) -> str:
         if not rows:
             message = catalog.get("validation.no_data") if catalog else "No data available."
             return f'<p class="muted">{html.escape(message)}</p>'
-        keys = [header.lower().replace(" ", "_") for header in headers]
+        # Display labels are not always the document model's field names.
+        keys = fields if fields is not None else [header.lower().replace(" ", "_") for header in headers]
+        if len(keys) != len(headers):
+            raise ValueError("Report table fields must match its headers")
         labels = [catalog.get("validation.label." + header.lower().replace(" ", "_"), default=header) if catalog else header for header in headers]
         header_html = "".join(f"<th>{html.escape(header)}</th>" for header in labels)
         row_html = []

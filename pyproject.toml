@@ -300,6 +300,10 @@ packages = ["src/truthound"]
 "src/truthound/ai/data/prompt_lexicon.ko.json" = "truthound/ai/data/prompt_lexicon.ko.json"
 "src/truthound/ai/data/validation_dsl_coverage.v1.json" = "truthound/ai/data/validation_dsl_coverage.v1.json"
 
+[tool.hatch.build.targets.sdist]
+# Generated verification output is not source or a runtime package resource.
+exclude = ["/verification/**"]
+
 [tool.hatch.build.targets.sdist.force-include]
 "src/truthound/ai/data/prompt_lexicon.ko.json" = "src/truthound/ai/data/prompt_lexicon.ko.json"
 "src/truthound/ai/data/validation_dsl_coverage.v1.json" = "src/truthound/ai/data/validation_dsl_coverage.v1.json"

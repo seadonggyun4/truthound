@@ -226,6 +226,7 @@ Truthound는 프로젝트 루트에 `.truthound/` 워크스페이스를 자동�
 - 안정 파사드: `check`, `scan`, `mask`, `profile`, `learn`, `read`, `get_context`
 - 핵심 타입: `TruthoundContext`, `ValidationSuite`, `CheckSpec`, `SchemaSpec`, `ValidationRunResult`, `CheckResult`
 - `th.check()`는 `ValidationRunResult`를 직접 반환합니다.
+  - 미릴리스 결과 판정 수정은 issue 상세가 없어도 명시적으로 실패한 check를 실패로 보존합니다. 공개 3.1.13에 포함됐다고 가정하지 말고 수정 릴리스 후 설치 버전을 확인해야 합니다.
 - 체크포인트 결과: `CheckpointResult.validation_run`이 정식이며, `CheckpointResult.validation_view`는 레거시 호환 프로젝션입니다.
 - 리포터 타입: `truthound.reporters.RunPresentation`, `truthound.reporters.ReporterContext`
 - 검증 문서 진입점: `truthound.datadocs.ValidationDocsBuilder`, `truthound.datadocs.generate_validation_report`

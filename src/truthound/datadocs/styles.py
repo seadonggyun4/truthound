@@ -530,6 +530,7 @@ table th,
 table td,
 .data-table th,
 .data-table td {
+    color: var(--color-text-primary);
     padding: 2mm 2.5mm;
     border-right: 0.5pt solid var(--color-border);
     border-bottom: 0.5pt solid var(--color-border);
@@ -548,7 +549,7 @@ table.report-object-table td,
 table th,
 .data-table th {
     background-color: var(--color-primary);
-    color: #ffffff;
+    color: var(--color-background);
     font-weight: var(--font-weight-semibold);
     text-align: center;
 }
@@ -825,6 +826,7 @@ COMPONENTS_CSS = """
 }
 
 .column-stats .stat-value {
+    color: var(--color-text-primary);
     display: block;
     font-size: var(--font-size-sm);
     font-weight: var(--font-weight-medium);
@@ -1169,6 +1171,7 @@ COMPONENTS_CSS = """
 
 .recommendation-item {
     padding: var(--spacing-md);
+    color: var(--color-text-primary);
     margin-bottom: var(--spacing-sm);
     background-color: var(--color-surface);
     border-radius: var(--border-radius-md);

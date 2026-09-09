@@ -294,6 +294,9 @@ class SVGChartRenderer(BaseChartRenderer):
 
     library = ChartLibrary.SVG
 
+    text_color = "#1a1a2e"
+    muted_text_color = "#374151"
+
     def get_dependencies(self) -> list[str]:
         return []  # No dependencies
 
@@ -369,7 +372,7 @@ class SVGChartRenderer(BaseChartRenderer):
             value_y = y - 8
             value_labels.append(
                 f'<text x="{value_x}" y="{value_y}" text-anchor="middle" '
-                f'style="font-size: 10px; font-weight: 600; fill: #1a1a2e;">'
+                f'style="font-size: 10px; font-weight: 600; fill: {self.text_color};">'
                 f'{value:.1f}</text>'
             )
 
@@ -379,7 +382,7 @@ class SVGChartRenderer(BaseChartRenderer):
             display_label = label[:10] + "..." if len(label) > 10 else label
             labels.append(
                 f'<text x="{label_x}" y="{label_y}" text-anchor="end" '
-                f'style="font-size: 10px; fill: #374151;" '
+                f'style="font-size: 10px; fill: {self.muted_text_color};" '
                 f'transform="rotate(-45 {label_x} {label_y})">{display_label}</text>'
             )
 
@@ -423,7 +426,7 @@ class SVGChartRenderer(BaseChartRenderer):
             bars.append(
                 f'<rect x="{x}" y="{y}" width="{bar_width}" height="{bar_height}" '
                 f'fill="{color}" rx="4">'
-                f'<title>{label}: {value:.1f}%</title></rect>'
+                f'<title>{label}: {self._horizontal_value(spec, value)}</title></rect>'
             )
 
             # Y-axis label (column name)
@@ -434,7 +437,7 @@ class SVGChartRenderer(BaseChartRenderer):
             labels.append(
                 f'<text x="{label_x}" y="{label_y}" text-anchor="end" '
                 f'dominant-baseline="middle" class="chart-label" '
-                f'style="font-size: 11px; fill: #374151;">{display_label}</text>'
+                f'style="font-size: 11px; fill: {self.muted_text_color};">{display_label}</text>'
             )
 
             # Value label (percentage) - positioned at end of bar
@@ -443,7 +446,7 @@ class SVGChartRenderer(BaseChartRenderer):
             value_labels.append(
                 f'<text x="{value_x}" y="{value_y}" text-anchor="start" '
                 f'dominant-baseline="middle" class="chart-value-label" '
-                f'style="font-size: 11px; font-weight: 600; fill: #1a1a2e;">{value:.1f}%</text>'
+                f'style="font-size: 11px; font-weight: 600; fill: {self.text_color};">{self._horizontal_value(spec, value)}</text>'
             )
 
         return f'''
@@ -453,6 +456,11 @@ class SVGChartRenderer(BaseChartRenderer):
     {"".join(value_labels)}
 </svg>
 '''
+
+    @staticmethod
+    def _horizontal_value(spec: ChartSpec, value: float) -> str:
+        """Keep frequency counts distinct from ratio chart percentages."""
+        return format(value, "g") if spec.options.get("value_unit") == "count" else f"{value:.1f}%"
 
     def _render_pie(
         self,
@@ -554,10 +562,10 @@ class SVGChartRenderer(BaseChartRenderer):
                 f'<rect x="{chart_area_width + 20}" y="{legend_y - 6}" width="14" height="14" '
                 f'fill="{color}" rx="3"/>'
                 f'<text x="{chart_area_width + 40}" y="{legend_y + 1}" '
-                f'style="font-size: 11px; fill: #374151;" dominant-baseline="middle">'
+                f'style="font-size: 11px; fill: {self.muted_text_color};" dominant-baseline="middle">'
                 f'{display_label}</text>'
                 f'<text x="{width - 10}" y="{legend_y + 1}" text-anchor="end" '
-                f'style="font-size: 11px; font-weight: 600; fill: #1a1a2e;" dominant-baseline="middle">'
+                f'style="font-size: 11px; font-weight: 600; fill: {self.text_color};" dominant-baseline="middle">'
                 f'{percentage:.1f}%</text>'
             )
 

@@ -171,7 +171,11 @@ class ColumnAnalyzer(ABC):
 
 
 class BasicStatsAnalyzer(ColumnAnalyzer):
-    """Analyzes basic column statistics."""
+    """Analyze basic counts and non-null uniqueness.
+
+    ``distinct_count`` retains Polars' null bucket for compatibility, whereas
+    ``unique_ratio`` and ``is_unique`` describe only non-null observations.
+    """
 
     name = "basic_stats"
 
@@ -191,9 +195,11 @@ class BasicStatsAnalyzer(ColumnAnalyzer):
         null_count = stats["null_count"][0]
         distinct_count = stats["distinct_count"][0]
 
-        # Handle nulls in distinct count
+        # Polars distinct_count includes a null bucket. Preserve that public
+        # count, but compare non-null distinct values to non-null observations.
         non_null_count = row_count - null_count
-        unique_ratio = distinct_count / non_null_count if non_null_count > 0 else 0.0
+        non_null_distinct = distinct_count - int(null_count > 0)
+        unique_ratio = non_null_distinct / non_null_count if non_null_count > 0 else 0.0
 
         return {
             "row_count": row_count,
@@ -201,7 +207,7 @@ class BasicStatsAnalyzer(ColumnAnalyzer):
             "null_ratio": null_count / row_count if row_count > 0 else 0.0,
             "distinct_count": distinct_count,
             "unique_ratio": unique_ratio,
-            "is_unique": distinct_count == non_null_count and non_null_count > 0,
+            "is_unique": non_null_distinct == non_null_count and non_null_count > 0,
             "is_constant": distinct_count <= 1,
         }
 
