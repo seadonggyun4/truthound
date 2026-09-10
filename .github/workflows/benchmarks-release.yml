@@ -58,13 +58,25 @@ jobs:
       VERIFY_HARNESS_COMMIT: ${{ github.sha }}
       VERIFY_HARNESS_ROOT: ${{ github.workspace }}
       VERIFY_RELEASE_ROOT: ${{ github.workspace }}/.release-target
-      VERIFY_WHEEL_PATH: ${{ runner.temp }}/truthound-release-${{ github.run_id }}-${{ github.run_attempt }}/truthound-${{ inputs.release_version }}-py3-none-any.whl
-      RELEASE_VENV: ${{ runner.temp }}/truthound-release-${{ github.run_id }}-${{ github.run_attempt }}/venv
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+
+      - name: Initialize release runtime paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "${VERIFY_VERSION:-}" && ! "$VERIFY_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "RELEASE_VERSION_INVALID" >&2
+            exit 1
+          fi
+          release_runtime_dir="${RUNNER_TEMP}/truthound-release-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          {
+            printf 'RELEASE_VENV=%s/venv\n' "$release_runtime_dir"
+            printf 'VERIFY_WHEEL_PATH=%s/truthound-%s-py3-none-any.whl\n' "$release_runtime_dir" "${VERIFY_VERSION:-}"
+          } >> "$GITHUB_ENV"
 
       - uses: astral-sh/setup-uv@v4
 

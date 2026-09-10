@@ -6,6 +6,8 @@ import importlib.util
 import json
 import os
 import py_compile
+import re
+import subprocess
 import sys
 import types
 import zipfile
@@ -230,7 +232,88 @@ def test_workflow_preserves_source_lane_and_has_explicit_wheel_lane():
     )
     assert "uv pip freeze" not in source
     assert "--clear" not in source
-    assert "${{ github.run_id }}-${{ github.run_attempt }}/venv" in source
+    assert "truthound-release-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}" in source
+    assert "printf 'RELEASE_VENV=%s/venv\\n'" in source
+
+
+def _release_workflow_job():
+    import yaml
+
+    path = Path(__file__).resolve().parents[1] / ".github/workflows/benchmarks-release.yml"
+    return yaml.safe_load(path.read_text())["jobs"]["release-parity"]
+
+
+def test_release_job_env_only_uses_available_github_contexts():
+    allowed = {"github", "needs", "strategy", "matrix", "vars", "secrets", "inputs"}
+    job = _release_workflow_job()
+    for value in job["env"].values():
+        contexts = re.findall(r"\$\{\{\s*([A-Za-z_][A-Za-z_0-9]*)[.\[]", str(value))
+        assert set(contexts) <= allowed
+    assert "RELEASE_VENV" not in job["env"]
+    assert "VERIFY_WHEEL_PATH" not in job["env"]
+
+
+@pytest.mark.parametrize("version", ["", "3.1.15"])
+def test_release_runtime_paths_initialize_before_venv_creation(tmp_path, version):
+    job = _release_workflow_job()
+    steps = job["steps"]
+    index = next(
+        i for i, step in enumerate(steps) if step.get("name") == "Initialize release runtime paths"
+    )
+    create_index = next(
+        i
+        for i, step in enumerate(steps)
+        if step.get("name") == "Create release benchmark virtual environment"
+    )
+    assert index < create_index
+    step = steps[index]
+    assert step["shell"] == "bash"
+    environment_file = tmp_path / "environment"
+    runner_temp = tmp_path / "runner temp"
+    result = subprocess.run(
+        ["bash", "-c", step["run"]],
+        env={
+            **os.environ,
+            "RUNNER_TEMP": str(runner_temp),
+            "GITHUB_RUN_ID": "123",
+            "GITHUB_RUN_ATTEMPT": "2",
+            "VERIFY_VERSION": version,
+            "GITHUB_ENV": str(environment_file),
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    workdir = runner_temp / "truthound-release-123-2"
+    assert environment_file.read_text().splitlines() == [
+        f"RELEASE_VENV={workdir}/venv",
+        f"VERIFY_WHEEL_PATH={workdir}/truthound-{version}-py3-none-any.whl",
+    ]
+
+
+@pytest.mark.parametrize("version", ["3.1.15\nINJECTED_ENV=unexpected", "3.1.15; echo unsafe"])
+def test_release_runtime_path_inputs_cannot_inject_environment(tmp_path, version):
+    steps = _release_workflow_job()["steps"]
+    step = next(step for step in steps if step.get("name") == "Initialize release runtime paths")
+    environment_file = tmp_path / "environment"
+    result = subprocess.run(
+        ["bash", "-c", step["run"]],
+        env={
+            **os.environ,
+            "RUNNER_TEMP": str(tmp_path),
+            "GITHUB_RUN_ID": "123",
+            "GITHUB_RUN_ATTEMPT": "2",
+            "VERIFY_VERSION": version,
+            "GITHUB_ENV": str(environment_file),
+        },
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode != 0
+    assert "RELEASE_VERSION_INVALID" in result.stderr
+    assert not environment_file.exists()
 
 
 def _installed_fixture(verifier, tmp_path, monkeypatch):
