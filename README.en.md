@@ -96,7 +96,7 @@ validator metrics into one collect() on the default path.
 
 ## Benchmark
 
-In fixed-runner release-grade benchmarks, Truthound measured faster execution time and lower memory usage than Great Expectations across the eight comparable workloads in the published release artifact set while preserving correctness.
+The table below preserves historical measurements from the previously published fixed-runner release artifact set. Under the conditions recorded for those eight comparable workloads, Truthound measured faster execution time and lower memory usage than Great Expectations while preserving correctness. These results do not establish a performance pass for later versions or a changed methodology.
 
 | Workload | Truthound Warm (s) | GX Warm (s) | Speedup | Memory Ratio |
 | --- | --- | --- | --- | --- |
@@ -110,6 +110,8 @@ In fixed-runner release-grade benchmarks, Truthound measured faster execution ti
 | sqlite-unique | 0.002066 | 0.015655 | 7.58x | 42.12% |
 
 This comparison is limited to deterministic core checks and SQLite pushdown workloads. It is not a generalized claim about every feature area. The repository-local `.truthound/benchmarks/artifacts` directory may contain only a subset of raw observations; treat the release artifact set and the [Latest Verified Benchmark Summary](https://github.com/seadonggyun4/truthound/blob/main/docs/releases/latest-benchmark-summary.md) as the official source for these numbers.
+
+New benchmarks default to `truthound-parity-thread-budget-v2`: an equal worker thread budget of `1` for both frameworks, one cold iteration, and seven warm iterations, retaining correctness for every iteration and every warm sample. Historical results are not overwritten; direct comparison requires matching methodology, workload contract, dataset, backend, and exactness. When a corrected harness verifies a published wheel, its revision is recorded separately from the wheel version and digest. Authoritative release verification requires the complete default methodology and unchanged thresholds; custom methodologies are advisory. A new performance pass requires actual verified artifacts. See [Benchmark Methodology](docs/guides/benchmark-methodology.md).
 
 Primary reasons for the performance difference:
 - Polars `LazyFrame` based local execution and SQL pushdown paths

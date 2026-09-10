@@ -2,6 +2,24 @@ name: Benchmarks Release Gate
 
 on:
   workflow_dispatch:
+    inputs:
+      target:
+        description: Measure this checkout, or verify an unchanged published wheel
+        type: choice
+        options: [source, released-wheel]
+        default: source
+      release_version:
+        description: Published stable version (released-wheel only)
+        type: string
+      release_tag:
+        description: Immutable version tag (released-wheel only)
+        type: string
+      release_commit:
+        description: Exact 40-character commit of that tag (released-wheel only)
+        type: string
+      wheel_sha256:
+        description: Independently approved SHA-256 of the published universal wheel
+        type: string
   push:
     branches:
       - "release/*"
@@ -12,6 +30,7 @@ on:
 
 jobs:
   release-parity:
+    timeout-minutes: 15
     # This gate requires a live self-hosted runner with both labels below.
     # If the benchmark runner has been deleted or is offline, tag releases
     # will stay queued until the runner is restored or the run is canceled.
@@ -22,6 +41,8 @@ jobs:
     concurrency:
       group: truthound-release-ga
       cancel-in-progress: false
+    permissions:
+      contents: read
     env:
       TRUTHOUND_BENCHMARK_RUNNER_CLASS: self-hosted-fixed
       TRUTHOUND_BENCHMARK_RUNNER_LABELS: self-hosted,benchmark-fixed
@@ -30,8 +51,20 @@ jobs:
       TRUTHOUND_BENCHMARK_CPU_MODEL: ${{ vars.TRUTHOUND_BENCHMARK_CPU_MODEL }}
       TRUTHOUND_BENCHMARK_RAM_BYTES: ${{ vars.TRUTHOUND_BENCHMARK_RAM_BYTES }}
       TRUTHOUND_BENCHMARK_CPU_PHYSICAL_CORES: ${{ vars.TRUTHOUND_BENCHMARK_CPU_PHYSICAL_CORES }}
+      VERIFY_VERSION: ${{ inputs.release_version }}
+      VERIFY_TAG: ${{ inputs.release_tag }}
+      VERIFY_RELEASE_COMMIT: ${{ inputs.release_commit }}
+      VERIFY_WHEEL_SHA256: ${{ inputs.wheel_sha256 }}
+      VERIFY_HARNESS_COMMIT: ${{ github.sha }}
+      VERIFY_HARNESS_ROOT: ${{ github.workspace }}
+      VERIFY_RELEASE_ROOT: ${{ github.workspace }}/.release-target
+      VERIFY_WHEEL_PATH: ${{ runner.temp }}/truthound-release-${{ github.run_id }}-${{ github.run_attempt }}/truthound-${{ inputs.release_version }}-py3-none-any.whl
+      RELEASE_VENV: ${{ runner.temp }}/truthound-release-${{ github.run_id }}-${{ github.run_attempt }}/venv
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
 
       - uses: astral-sh/setup-uv@v4
 
@@ -39,7 +72,24 @@ jobs:
         run: uv python install 3.11
 
       - name: Create release benchmark virtual environment
-        run: uv venv --python 3.11 .release-venv
+        shell: bash
+        run: |
+          set -euo pipefail
+          test ! -e "$RELEASE_VENV"
+          uv venv --python 3.11 "$RELEASE_VENV"
+
+      - name: Validate explicit release identity before checking out its ref
+        if: github.event_name == 'workflow_dispatch' && inputs.target == 'released-wheel'
+        run: '"$RELEASE_VENV/bin/python" -I scripts/benchmarks/verify_release_package.py validate'
+
+      - name: Check out the immutable release target separately
+        if: github.event_name == 'workflow_dispatch' && inputs.target == 'released-wheel'
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_commit }}
+          path: .release-target
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Validate fixed runner metadata
         shell: bash
@@ -58,13 +108,39 @@ jobs:
           done
 
       - name: Install project with release benchmark constraints
-        run: uv pip install --python .release-venv/bin/python -c benchmarks/constraints/release.txt ".[dev,benchmarks]"
+        if: github.event_name != 'workflow_dispatch' || inputs.target != 'released-wheel'
+        run: uv pip install --python "$RELEASE_VENV/bin/python" -c benchmarks/constraints/release.txt ".[dev,benchmarks]"
+
+      - name: Verify tag and download the exact published wheel
+        if: github.event_name == 'workflow_dispatch' && inputs.target == 'released-wheel'
+        run: '"$RELEASE_VENV/bin/python" -I scripts/benchmarks/verify_release_package.py prepare'
+
+      - name: Install only the verified wheel and release benchmark dependencies
+        if: github.event_name == 'workflow_dispatch' && inputs.target == 'released-wheel'
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv pip install --python "$RELEASE_VENV/bin/python" \
+            -c .release-target/benchmarks/constraints/release.txt "${VERIFY_WHEEL_PATH}[benchmarks]"
 
       - name: Run release GA parity suite
-        run: .release-venv/bin/python -m truthound.cli benchmark parity --suite release-ga --frameworks both --strict --output benchmark-artifacts/release-ga.json
+        if: github.event_name != 'workflow_dispatch' || inputs.target != 'released-wheel'
+        run: '"$RELEASE_VENV/bin/python" -m truthound.cli benchmark parity --suite release-ga --frameworks both --strict --output benchmark-artifacts/release-ga.json'
+
+      - name: Verify released wheel with the separately identified corrected harness
+        if: github.event_name == 'workflow_dispatch' && inputs.target == 'released-wheel'
+        run: '"$RELEASE_VENV/bin/python" -I scripts/benchmarks/verify_release_package.py run'
 
       - name: Render docs release summary draft
-        run: .release-venv/bin/python docs/scripts/publish_benchmark_summary.py --json benchmark-artifacts/release-ga.json --artifact-base-url .. --output benchmark-artifacts/published/latest-benchmark-summary.md
+        if: github.event_name != 'workflow_dispatch' || inputs.target != 'released-wheel'
+        run: '"$RELEASE_VENV/bin/python" docs/scripts/publish_benchmark_summary.py --json benchmark-artifacts/release-ga.json --artifact-base-url .. --output benchmark-artifacts/published/latest-benchmark-summary.md'
+
+      - name: Record installed benchmark dependency versions
+        if: always()
+        shell: bash
+        run: |
+          "$RELEASE_VENV/bin/python" -I scripts/benchmarks/verify_release_package.py dependencies \
+            --result-output benchmark-artifacts/installed-dependencies.json
 
       - name: Upload release benchmark artifacts
         if: always()

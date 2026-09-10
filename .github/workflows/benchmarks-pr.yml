@@ -4,26 +4,30 @@ on:
   pull_request:
     paths:
       - ".github/workflows/benchmarks-pr.yml"
+      - ".github/workflows/benchmarks-release.yml"
       - "benchmarks/**"
+      - "scripts/benchmarks/**"
       - "README.md"
       - "CLAUDE.md"
       - "pyproject.toml"
       - "src/truthound/benchmark/**"
       - "src/truthound/cli_modules/advanced/benchmark.py"
-      - "tests/test_benchmark.py"
-      - "tests/test_benchmark_parity.py"
+      - "tests/test_benchmark*.py"
+      - "tests/test_release_package_benchmark.py"
       - "tests/cli_modules/test_benchmark_parity_cli.py"
   push:
     paths:
       - ".github/workflows/benchmarks-pr.yml"
+      - ".github/workflows/benchmarks-release.yml"
       - "benchmarks/**"
+      - "scripts/benchmarks/**"
       - "README.md"
       - "CLAUDE.md"
       - "pyproject.toml"
       - "src/truthound/benchmark/**"
       - "src/truthound/cli_modules/advanced/benchmark.py"
-      - "tests/test_benchmark.py"
-      - "tests/test_benchmark_parity.py"
+      - "tests/test_benchmark*.py"
+      - "tests/test_release_package_benchmark.py"
       - "tests/cli_modules/test_benchmark_parity_cli.py"
 
 jobs:
@@ -46,7 +50,12 @@ jobs:
         run: uv pip install --system ".[dev,reports]"
 
       - name: Run benchmark unit and CLI tests
-        run: python -m pytest -q tests/test_benchmark.py tests/test_benchmark_parity.py tests/cli_modules/test_benchmark_parity_cli.py -p no:cacheprovider
+        run: >-
+          python -m pytest -q tests/test_benchmark.py tests/test_benchmark_parity.py
+          tests/test_benchmark_measurement_policy.py
+          tests/test_benchmark_measurement_integrity_adversarial.py
+          tests/test_benchmark_publish_summary.py tests/test_release_package_benchmark.py
+          tests/cli_modules/test_benchmark_parity_cli.py -p no:cacheprovider
 
       - name: Run PR parity smoke
         run: python -m truthound.cli benchmark parity --suite pr-fast --frameworks truthound --backend local --strict --output benchmark-artifacts/pr-fast.json

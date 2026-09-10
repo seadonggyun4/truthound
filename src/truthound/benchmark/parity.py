@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import html
 import json
+import math
 import os
 import platform
+import statistics
 import subprocess
 import sys
 from dataclasses import dataclass, field
@@ -15,13 +17,14 @@ from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 from truthound._version import resolve_truthound_version
-from truthound.benchmark.base import EnvironmentInfo
-from truthound.benchmark.workloads import (
+from truthound.context import get_context
+
+from .base import EnvironmentInfo
+from .workloads import (
     ParityWorkload,
     WorkloadClass,
     load_suite_workloads,
 )
-from truthound.context import get_context
 
 FIXED_RUNNER_CLASS = "self-hosted-fixed"
 RUNNER_CLASS_ENV = "TRUTHOUND_BENCHMARK_RUNNER_CLASS"
@@ -33,6 +36,36 @@ RUNNER_CPU_LOGICAL_CORES_ENV = "TRUTHOUND_BENCHMARK_CPU_LOGICAL_CORES"
 RUNNER_RAM_BYTES_ENV = "TRUTHOUND_BENCHMARK_RAM_BYTES"
 RELEASE_VERDICT_ENV = "TRUTHOUND_BENCHMARK_RELEASE_VERDICT"
 RELEASE_ARTIFACT_WORKLOAD_COUNT = 8
+WORKER_THREADS_ENV = "TRUTHOUND_BENCHMARK_WORKER_THREADS"
+NATIVE_THREAD_ENVIRON = (
+    "POLARS_MAX_THREADS",
+    "OMP_NUM_THREADS",
+    "OPENBLAS_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "NUMEXPR_NUM_THREADS",
+    "VECLIB_MAXIMUM_THREADS",
+)
+
+
+def _json_bool(data: dict[str, Any], key: str, default: bool) -> bool:
+    value = data.get(key, default)
+    if type(value) is not bool:
+        raise ValueError(f"Benchmark {key} must be a JSON boolean.")
+    return value
+
+
+def _json_int(data: dict[str, Any], key: str, default: int) -> int:
+    value = data.get(key, default)
+    if type(value) is not int:
+        raise ValueError(f"Benchmark {key} must be a JSON integer.")
+    return value
+
+
+def _json_number(data: dict[str, Any], key: str, default: float) -> float:
+    value = data.get(key, default)
+    if type(value) not in (int, float) or not math.isfinite(value):
+        raise ValueError(f"Benchmark {key} must be a finite JSON number.")
+    return float(value)
 
 
 @runtime_checkable
@@ -167,14 +200,16 @@ class FrameworkObservation:
             dataset_fingerprint=str(data["dataset_fingerprint"]),
             backend=str(data["backend"]),
             exactness=str(data.get("exactness", "exact")),
-            cold_start_seconds=float(data.get("cold_start_seconds", 0.0)),
-            warm_median_seconds=float(data.get("warm_median_seconds", 0.0)),
-            peak_rss_bytes=int(data.get("peak_rss_bytes", 0)),
-            correctness_passed=bool(data.get("correctness_passed", False)),
-            expected_issue_count=int(data.get("expected_issue_count", 0)),
-            observed_issue_count=int(data.get("observed_issue_count", 0)),
-            artifact_paths={str(k): str(v) for k, v in dict(data.get("artifact_paths", {})).items()},
-            available=bool(data.get("available", True)),
+            cold_start_seconds=_json_number(data, "cold_start_seconds", 0.0),
+            warm_median_seconds=_json_number(data, "warm_median_seconds", 0.0),
+            peak_rss_bytes=_json_int(data, "peak_rss_bytes", 0),
+            correctness_passed=_json_bool(data, "correctness_passed", False),
+            expected_issue_count=_json_int(data, "expected_issue_count", 0),
+            observed_issue_count=_json_int(data, "observed_issue_count", 0),
+            artifact_paths={
+                str(k): str(v) for k, v in dict(data.get("artifact_paths", {})).items()
+            },
+            available=_json_bool(data, "available", True),
             status=str(data.get("status", "ok")),
             error=data.get("error"),
             metadata=dict(data.get("metadata", {})),
@@ -204,7 +239,7 @@ class ParityAssertion:
     def from_dict(cls, data: dict[str, Any]) -> ParityAssertion:
         return cls(
             name=str(data["name"]),
-            passed=bool(data.get("passed", False)),
+            passed=_json_bool(data, "passed", False),
             message=str(data.get("message", "")),
             severity=str(data.get("severity", "error")),
             details=dict(data.get("details", {})),
@@ -215,9 +250,9 @@ class ParityAssertion:
 class BenchmarkMethodology:
     """Documented measurement methodology for parity runs."""
 
-    name: str = "truthound-3.0-parity-gate"
+    name: str = "truthound-parity-thread-budget-v2"
     cold_iterations: int = 1
-    warm_iterations: int = 2
+    warm_iterations: int = 7
     runner_class: str = "hybrid"
     exactness_policy: str = "exact-by-default"
     official_claim_policy: str = "self-hosted-fixed-runner-only"
@@ -226,12 +261,29 @@ class BenchmarkMethodology:
     sql_speedup_target: float = 1.2
     local_memory_ratio_threshold: float = 0.60
     truthound_baseline_regression_percent: float = 10.0
+    worker_threads: int | None = 1
+
+    def __post_init__(self) -> None:
+        if (
+            type(self.cold_iterations) is not int
+            or self.cold_iterations != 1
+            or type(self.warm_iterations) is not int
+            or self.warm_iterations < 1
+        ):
+            raise ValueError("Parity requires one cold iteration and at least one warm sample.")
+        if self.worker_threads is not None and (
+            type(self.worker_threads) is not int or self.worker_threads < 1
+        ):
+            raise ValueError(
+                "worker_threads must be a positive integer or None for legacy measurements."
+            )
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "name": self.name,
             "cold_iterations": self.cold_iterations,
             "warm_iterations": self.warm_iterations,
+            "worker_threads": self.worker_threads,
             "runner_class": self.runner_class,
             "exactness_policy": self.exactness_policy,
             "official_claim_policy": self.official_claim_policy,
@@ -244,21 +296,29 @@ class BenchmarkMethodology:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> BenchmarkMethodology:
+        if (
+            data.get("name") == "truthound-parity-thread-budget-v2"
+            and data.get("worker_threads") is None
+        ):
+            raise ValueError("A v2 artifact must declare its worker thread budget.")
         return cls(
             name=str(data.get("name", "truthound-3.0-parity-gate")),
-            cold_iterations=int(data.get("cold_iterations", 1)),
-            warm_iterations=int(data.get("warm_iterations", 2)),
+            cold_iterations=_json_int(data, "cold_iterations", 1),
+            warm_iterations=_json_int(data, "warm_iterations", 2),
+            worker_threads=_json_int(data, "worker_threads", 1)
+            if data.get("worker_threads") is not None
+            else None,
             runner_class=str(data.get("runner_class", "hybrid")),
             exactness_policy=str(data.get("exactness_policy", "exact-by-default")),
             official_claim_policy=str(
                 data.get("official_claim_policy", "self-hosted-fixed-runner-only")
             ),
-            local_speedup_threshold=float(data.get("local_speedup_threshold", 1.5)),
-            sql_speedup_threshold=float(data.get("sql_speedup_threshold", 1.0)),
-            sql_speedup_target=float(data.get("sql_speedup_target", 1.2)),
-            local_memory_ratio_threshold=float(data.get("local_memory_ratio_threshold", 0.60)),
-            truthound_baseline_regression_percent=float(
-                data.get("truthound_baseline_regression_percent", 10.0)
+            local_speedup_threshold=_json_number(data, "local_speedup_threshold", 1.5),
+            sql_speedup_threshold=_json_number(data, "sql_speedup_threshold", 1.0),
+            sql_speedup_target=_json_number(data, "sql_speedup_target", 1.2),
+            local_memory_ratio_threshold=_json_number(data, "local_memory_ratio_threshold", 0.60),
+            truthound_baseline_regression_percent=_json_number(
+                data, "truthound_baseline_regression_percent", 10.0
             ),
         )
 
@@ -383,7 +443,16 @@ def classify_release_blockers(result: ParityResult) -> dict[str, Any]:
 
     for assertion in result.blocking_failures:
         name = assertion.name
-        if name.startswith("release-ga:") or name.endswith(":present") or name.endswith(":available"):
+        if name.startswith("release-ga:") or name.endswith(
+            (
+                ":present",
+                ":available",
+                ":measurement-integrity",
+                ":baseline-compatible",
+                ":observation-set",
+                ":observation-integrity",
+            )
+        ):
             categories.add("environment")
             continue
         if name.endswith(":correctness") or name.endswith(":issue-parity"):
@@ -495,9 +564,7 @@ def capture_parity_environment() -> dict[str, Any]:
 
     runner_class = os.environ.get(RUNNER_CLASS_ENV, "ad-hoc-local").strip() or "ad-hoc-local"
     runner_labels = tuple(
-        label.strip()
-        for label in os.environ.get(RUNNER_LABELS_ENV, "").split(",")
-        if label.strip()
+        label.strip() for label in os.environ.get(RUNNER_LABELS_ENV, "").split(",") if label.strip()
     )
     storage_class = os.environ.get(RUNNER_STORAGE_CLASS_ENV, "").strip() or "unspecified"
     cpu_model = os.environ.get(RUNNER_CPU_MODEL_ENV, "").strip() or platform.processor().strip()
@@ -615,11 +682,28 @@ def evaluate_parity_assertions(
     for observation in observations:
         grouped.setdefault(observation.workload_id, {})[observation.framework] = observation
 
-    assertions: list[ParityAssertion] = []
+    expected_pairs = {
+        (workload.id, framework)
+        for workload in workloads
+        for framework in requested_frameworks
+        if workload.supports_framework(framework)
+    }
+    actual_pairs = [(item.workload_id, item.framework) for item in observations]
+    assertions: list[ParityAssertion] = [
+        ParityAssertion(
+            name="parity:observation-set",
+            passed=bool(expected_pairs)
+            and len(actual_pairs) == len(expected_pairs)
+            and set(actual_pairs) == expected_pairs,
+            message="Exactly one observation is required for each requested workload and framework.",
+        )
+    ]
     for workload in workloads:
         workload_observations = grouped.get(workload.id, {})
         supported_requested = tuple(
-            framework for framework in requested_frameworks if workload.supports_framework(framework)
+            framework
+            for framework in requested_frameworks
+            if workload.supports_framework(framework)
         )
 
         for framework in supported_requested:
@@ -657,6 +741,25 @@ def evaluate_parity_assertions(
                     },
                 )
             )
+
+            assertions.append(
+                ParityAssertion(
+                    name=f"{workload.id}:{framework}:observation-integrity",
+                    passed=_observation_integrity(observation, workload),
+                    message="Observation identity, counts and finite positive measurements must match the workload.",
+                )
+            )
+            if (
+                methodology.worker_threads is not None
+                or methodology.name == "truthound-parity-thread-budget-v2"
+            ):
+                assertions.append(
+                    ParityAssertion(
+                        name=f"{workload.id}:{framework}:measurement-integrity",
+                        passed=_measurement_integrity(observation, workload, methodology),
+                        message="All samples, iteration verdicts and actual worker thread budget must match the declared methodology.",
+                    )
+                )
 
         truthound_observation = workload_observations.get("truthound")
         gx_observation = workload_observations.get("gx")
@@ -701,7 +804,10 @@ def evaluate_parity_assertions(
                             details={"speedup": speedup},
                         )
                     )
-                    if gx_observation.peak_rss_bytes > 0 and truthound_observation.peak_rss_bytes > 0:
+                    if (
+                        gx_observation.peak_rss_bytes > 0
+                        and truthound_observation.peak_rss_bytes > 0
+                    ):
                         memory_ratio = (
                             truthound_observation.peak_rss_bytes / gx_observation.peak_rss_bytes
                         )
@@ -739,7 +845,11 @@ def evaluate_parity_assertions(
                         )
                     )
 
-        if baseline_result is not None and truthound_observation is not None and truthound_observation.available:
+        if (
+            baseline_result is not None
+            and truthound_observation is not None
+            and truthound_observation.available
+        ):
             baseline_lookup = {
                 (item.workload_id, item.framework): item for item in baseline_result.observations
             }
@@ -752,12 +862,25 @@ def evaluate_parity_assertions(
                         message="Missing Truthound baseline observation for regression comparison.",
                     )
                 )
+            elif not _baseline_compatible(
+                baseline_result, baseline_observation, truthound_observation, workload, methodology
+            ):
+                assertions.append(
+                    ParityAssertion(
+                        name=f"{workload.id}:baseline-compatible",
+                        passed=False,
+                        message="Baseline methodology, thread budget and workload contract must match; no cross-methodology speed claim is valid.",
+                    )
+                )
             elif (
                 baseline_observation.warm_median_seconds > 0
                 and truthound_observation.warm_median_seconds > 0
             ):
                 regression = (
-                    (truthound_observation.warm_median_seconds - baseline_observation.warm_median_seconds)
+                    (
+                        truthound_observation.warm_median_seconds
+                        - baseline_observation.warm_median_seconds
+                    )
                     / baseline_observation.warm_median_seconds
                 ) * 100
                 assertions.append(
@@ -773,6 +896,96 @@ def evaluate_parity_assertions(
                 )
 
     return assertions
+
+
+def _finite_number(value: object) -> bool:
+    return type(value) in (int, float) and math.isfinite(value)
+
+
+def _observation_integrity(observation: FrameworkObservation, workload: ParityWorkload) -> bool:
+    return (
+        observation.status == "ok"
+        and observation.available is True
+        and observation.workload_id == workload.id
+        and observation.dataset_fingerprint == workload.dataset_fingerprint
+        and observation.backend == workload.backend.value
+        and observation.exactness == workload.exactness
+        and type(observation.expected_issue_count) is int
+        and observation.expected_issue_count == workload.expected.issue_count
+        and type(observation.observed_issue_count) is int
+        and observation.observed_issue_count == workload.expected.issue_count
+        and observation.correctness_passed is True
+        and _finite_number(observation.cold_start_seconds)
+        and observation.cold_start_seconds > 0
+        and _finite_number(observation.warm_median_seconds)
+        and observation.warm_median_seconds > 0
+        and type(observation.peak_rss_bytes) is int
+        and observation.peak_rss_bytes > 0
+    )
+
+
+def _measurement_integrity(
+    observation: FrameworkObservation, workload: ParityWorkload, methodology: BenchmarkMethodology
+) -> bool:
+    """Reject incomplete or forged measurements instead of skipping thresholds."""
+    samples = observation.metadata.get("warm_durations_seconds", [])
+    cpu_samples = observation.metadata.get("warm_process_cpu_seconds", [])
+    verdicts = observation.metadata.get("iteration_correctness", [])
+    return (
+        type(methodology.worker_threads) is int
+        and methodology.worker_threads > 0
+        and observation.status == "ok"
+        and observation.dataset_fingerprint == workload.dataset_fingerprint
+        and observation.backend == workload.backend.value
+        and observation.exactness == workload.exactness
+        and observation.metadata.get("workload_contract_sha256") == workload.contract_sha256
+        and observation.metadata.get("warm_iterations") == methodology.warm_iterations
+        and isinstance(samples, list)
+        and len(samples) == methodology.warm_iterations
+        and all(_finite_number(v) and v > 0 for v in samples)
+        and isinstance(cpu_samples, list)
+        and len(cpu_samples) == methodology.warm_iterations
+        and all(_finite_number(v) and v >= 0 for v in cpu_samples)
+        and _finite_number(observation.cold_start_seconds)
+        and observation.cold_start_seconds > 0
+        and _finite_number(observation.warm_median_seconds)
+        and math.isclose(statistics.median(samples), observation.warm_median_seconds, rel_tol=1e-9)
+        and isinstance(verdicts, list)
+        and len(verdicts) == methodology.warm_iterations + 1
+        and all(v is True for v in verdicts)
+        and observation.metadata.get("worker_threads") == methodology.worker_threads
+        and observation.metadata.get("polars_thread_pool_size") == methodology.worker_threads
+        and observation.metadata.get("native_thread_limits")
+        == {name: str(methodology.worker_threads) for name in NATIVE_THREAD_ENVIRON}
+        and observation.peak_rss_bytes > 0
+    )
+
+
+def _baseline_compatible(
+    baseline: ParityResult,
+    old: FrameworkObservation,
+    new: FrameworkObservation,
+    workload: ParityWorkload,
+    methodology: BenchmarkMethodology,
+) -> bool:
+    pairs = [(item.workload_id, item.framework) for item in baseline.observations]
+    return (
+        len(pairs) == len(set(pairs))
+        and not baseline.has_blocking_failures
+        and baseline.methodology == methodology
+        and _observation_integrity(old, workload)
+        and (
+            methodology.worker_threads is None
+            and methodology.name != "truthound-parity-thread-budget-v2"
+            or _measurement_integrity(old, workload, methodology)
+        )
+        and old.dataset_fingerprint == new.dataset_fingerprint
+        and old.backend == new.backend
+        and old.exactness == new.exactness
+        and old.expected_issue_count == new.expected_issue_count
+        and old.metadata.get("workload_contract_sha256")
+        == new.metadata.get("workload_contract_sha256")
+    )
 
 
 def evaluate_release_environment_assertions(
@@ -904,6 +1117,14 @@ class ParityRunner:
             baseline_result=baseline_result,
         )
         environment = capture_parity_environment()
+        if suite_name == "release-ga":
+            assertions.append(
+                ParityAssertion(
+                    name="release-ga:measurement-policy",
+                    passed=self.methodology == BenchmarkMethodology(),
+                    message="An authoritative release verdict requires the complete fixed v2 measurement policy and unchanged thresholds.",
+                )
+            )
         assertions.extend(
             evaluate_release_environment_assertions(
                 suite_name=suite_name,
@@ -928,8 +1149,10 @@ class ParityRunner:
                 "requested_frameworks": requested_frameworks,
                 "backend_filter": backend,
                 "suite_catalog_size": len(workloads),
-                "release_claim_ready": suite_name == "release-ga" and not any(
-                    assertion.severity == "error" and not assertion.passed for assertion in assertions
+                "release_claim_ready": suite_name == "release-ga"
+                and not any(
+                    assertion.severity == "error" and not assertion.passed
+                    for assertion in assertions
                 ),
                 "release_blockers": classify_release_blockers(
                     ParityResult(
@@ -951,8 +1174,7 @@ class ParityRunner:
             return self._SUPPORTED_FRAMEWORKS
         if frameworks not in self._SUPPORTED_FRAMEWORKS:
             raise ValueError(
-                f"Unknown framework selector '{frameworks}'. "
-                f"Expected one of: truthound, gx, both."
+                f"Unknown framework selector '{frameworks}'. Expected one of: truthound, gx, both."
             )
         return (frameworks,)
 
@@ -973,17 +1195,13 @@ class ParityRunner:
         artifact_dir.mkdir(parents=True, exist_ok=True)
         payload_path = artifact_dir / "observation.json"
 
-        env = os.environ.copy()
-        src_root = str(Path(__file__).resolve().parents[2])
-        current_pythonpath = env.get("PYTHONPATH", "")
-        env["PYTHONPATH"] = (
-            src_root if not current_pythonpath else f"{src_root}{os.pathsep}{current_pythonpath}"
-        )
+        env = self._worker_environment()
+        if self.methodology.worker_threads is not None:
+            for name in (*NATIVE_THREAD_ENVIRON, WORKER_THREADS_ENV):
+                env[name] = str(self.methodology.worker_threads)
 
         command = [
-            sys.executable,
-            "-m",
-            "truthound.benchmark._parity_worker",
+            *self._worker_command(),
             "--manifest",
             str(workload.manifest_path),
             "--framework",
@@ -1003,8 +1221,10 @@ class ParityRunner:
             check=False,
         )
         if completed.returncode != 0:
-            error_message = completed.stderr.strip() or completed.stdout.strip() or (
-                f"Worker exited with code {completed.returncode}."
+            error_message = (
+                completed.stderr.strip()
+                or completed.stdout.strip()
+                or (f"Worker exited with code {completed.returncode}.")
             )
             return FrameworkObservation.error_observation(
                 framework=framework,
@@ -1020,8 +1240,22 @@ class ParityRunner:
         payload = json.loads(payload_path.read_text(encoding="utf-8"))
         return FrameworkObservation.from_dict(payload)
 
+    def _worker_command(self) -> list[str]:
+        """Override the bootstrap without changing measured work or assertions."""
+        return [sys.executable, "-m", "truthound.benchmark._parity_worker"]
 
-def write_parity_artifacts(result: ParityResult, output_path: str | Path) -> tuple[Path, Path, Path]:
+    def _worker_environment(self) -> dict[str, str]:
+        """Source-runner imports; installed-wheel verifiers override this seam."""
+        env = os.environ.copy()
+        src_root = str(Path(__file__).resolve().parents[2])
+        current = env.get("PYTHONPATH", "")
+        env["PYTHONPATH"] = src_root if not current else f"{src_root}{os.pathsep}{current}"
+        return env
+
+
+def write_parity_artifacts(
+    result: ParityResult, output_path: str | Path
+) -> tuple[Path, Path, Path]:
     """Write JSON, Markdown, and HTML parity artifacts."""
 
     json_path = Path(output_path)
@@ -1071,7 +1305,9 @@ def write_release_summary(
     machine = dict(result.environment.get("machine", {}))
     env_manifest_label = Path(env_manifest_path).name if env_manifest_path is not None else None
     release_claim_ready = bool(result.metadata.get("release_claim_ready"))
-    release_blockers = dict(result.metadata.get("release_blockers", classify_release_blockers(result)))
+    release_blockers = dict(
+        result.metadata.get("release_blockers", classify_release_blockers(result))
+    )
     blocker_categories = tuple(release_blockers.get("categories", ()))
     primary_blocker = release_blockers.get("primary")
 
@@ -1124,12 +1360,13 @@ def write_release_summary(
             else "n/a"
         )
         gx_warm = (
-            f"{gx_observation.warm_median_seconds:.6f}"
-            if gx_observation is not None
-            else "n/a"
+            f"{gx_observation.warm_median_seconds:.6f}" if gx_observation is not None else "n/a"
         )
         if truthound_observation is not None and gx_observation is not None:
-            if truthound_observation.warm_median_seconds > 0 and gx_observation.warm_median_seconds > 0:
+            if (
+                truthound_observation.warm_median_seconds > 0
+                and gx_observation.warm_median_seconds > 0
+            ):
                 speedup = f"{gx_observation.warm_median_seconds / truthound_observation.warm_median_seconds:.2f}x"
             if truthound_observation.peak_rss_bytes > 0 and gx_observation.peak_rss_bytes > 0:
                 memory_ratio = (

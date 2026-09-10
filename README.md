@@ -98,7 +98,7 @@ validator metrics into one collect() on the default path.
 
 ## 벤치마크 (Benchmark)
 
-고정 러너 기반 릴리스 등급 벤치마크에서, 공개된 release artifact set 기준으로 비교 가능한 8개 워크로드에 대해 정확성을 유지하면서 Great Expectations 대비 더 빠른 실행 시간과 더 낮은 메모리 사용을 측정했습니다.
+아래 표는 기존에 공개된 고정 러너 release artifact set의 역사적 측정 결과입니다. 당시 동일 조건의 8개 워크로드에서 정확성을 유지하면서 Great Expectations 대비 더 빠른 실행 시간과 더 낮은 메모리 사용을 측정했으며, 이후 버전이나 변경된 측정 방식의 성능 통과를 뜻하지 않습니다.
 
 | 워크로드 | Truthound Warm (s) | GX Warm (s) | 속도 향상 | 메모리 비율 |
 | --- | --- | --- | --- | --- |
@@ -112,6 +112,8 @@ validator metrics into one collect() on the default path.
 | sqlite-unique | 0.002066 | 0.015655 | 7.58x | 42.12% |
 
 이 비교는 결정론적 핵심 검사와 SQLite 푸시다운 워크로드로 범위를 한정한 결과이며, 모든 기능 영역에 대한 일반화된 주장이 아닙니다. 저장소 안의 `.truthound/benchmarks/artifacts`에는 일부 원시 observation만 남아 있을 수 있으므로, 공식 수치는 release artifact set과 [Latest Verified Benchmark Summary](https://github.com/seadonggyun4/truthound/blob/main/docs/releases/latest-benchmark-summary.md)를 기준으로 해석해야 합니다.
+
+새 벤치마크의 기본 측정 방식은 `truthound-parity-thread-budget-v2`입니다. 두 프레임워크에 동일한 worker thread budget `1`을 적용하고, cold 1회와 warm 7회의 정확성 및 모든 warm 측정값을 보존합니다. 기존 결과는 덮어쓰지 않으며, methodology·워크로드 계약·데이터·backend·exactness가 다른 결과를 직접 성능 비교하지 않습니다. 공개 wheel을 수정된 측정 도구로 재검증할 때도 wheel 버전·digest와 도구 revision을 별도로 기록합니다. 공식 릴리스 검증에는 전체 기본 methodology와 변경하지 않은 threshold가 필요하며, 사용자 지정 methodology는 참고용입니다. 새 방식의 성능 통과는 실제 검증 artifact가 있어야 인정됩니다. 자세한 기준은 [Benchmark Methodology](docs/guides/benchmark-methodology.md)를 참고하세요.
 
 성능 차이의 주요 원인:
 - Polars `LazyFrame` 기반 로컬 실행과 SQL 푸시다운 경로

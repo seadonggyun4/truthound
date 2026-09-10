@@ -17,12 +17,14 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from truthound.benchmark.parity import (
+from .parity import (
+    NATIVE_THREAD_ENVIRON,
+    WORKER_THREADS_ENV,
     FrameworkObservation,
     GreatExpectationsAdapter,
     TruthoundAdapter,
 )
-from truthound.benchmark.workloads import ParityWorkload, WorkloadBackend, load_workload
+from .workloads import ParityWorkload, WorkloadBackend, load_workload
 
 
 def _sum_truthound_issue_count(run_result: Any) -> int:
@@ -31,6 +33,30 @@ def _sum_truthound_issue_count(run_result: Any) -> int:
         issue_count = getattr(issue, "count", 0)
         total += int(issue_count) if int(issue_count) > 0 else 1
     return total
+
+
+def _measurement_metadata(
+    workload: ParityWorkload,
+    warm_durations: list[float],
+    warm_cpu: list[float],
+    verdicts: list[bool],
+    cold_cpu: float,
+) -> dict[str, Any]:
+    """Keep every observation; report numeric resource state, never row values."""
+    import polars as pl
+
+    declared = os.environ.get(WORKER_THREADS_ENV)
+    return {
+        "warm_durations_seconds": warm_durations,
+        "warm_process_cpu_seconds": warm_cpu,
+        "cold_process_cpu_seconds": cold_cpu,
+        "iteration_correctness": verdicts,
+        "worker_threads": int(declared) if declared is not None else None,
+        "polars_thread_pool_size": pl.thread_pool_size(),
+        "native_thread_limits": {name: os.environ.get(name) for name in NATIVE_THREAD_ENVIRON},
+        "host_load_average": list(os.getloadavg()) if hasattr(os, "getloadavg") else None,
+        "workload_contract_sha256": workload.contract_sha256,
+    }
 
 
 class _PeakRSSMonitor:
@@ -104,10 +130,7 @@ def _materialize_sql_table(workload: ParityWorkload, artifact_dir: Path) -> Path
                 columns.append(f"{name} {sql_type}")
             conn.execute(f"CREATE TABLE {table_name} ({', '.join(columns)})")
             placeholders = ", ".join(["?"] * len(data.columns))
-            rows = [
-                tuple(row.get(column) for column in data.columns)
-                for row in data.to_dicts()
-            ]
+            rows = [tuple(row.get(column) for column in data.columns) for row in data.to_dicts()]
             conn.executemany(
                 f"INSERT INTO {table_name} VALUES ({placeholders})",
                 rows,
@@ -141,10 +164,7 @@ def _materialize_sql_table(workload: ParityWorkload, artifact_dir: Path) -> Path
                 columns.append(f"{name} {sql_type}")
             conn.execute(f"CREATE TABLE {table_name} ({', '.join(columns)})")
             placeholders = ", ".join(["?"] * len(data.columns))
-            rows = [
-                tuple(row.get(column) for column in data.columns)
-                for row in data.to_dicts()
-            ]
+            rows = [tuple(row.get(column) for column in data.columns) for row in data.to_dicts()]
             conn.executemany(
                 f"INSERT INTO {table_name} VALUES ({placeholders})",
                 rows,
@@ -183,6 +203,9 @@ def _truthound_execute(
 
     cold_duration = 0.0
     warm_durations: list[float] = []
+    cold_cpu = 0.0
+    warm_cpu: list[float] = []
+    iteration_correctness: list[bool] = []
     final_result: Any | None = None
     cwd = Path.cwd()
     monitor = _PeakRSSMonitor()
@@ -191,6 +214,7 @@ def _truthound_execute(
         os.chdir(project_root)
         for iteration in range(warm_iterations + 1):
             started = time.perf_counter()
+            cpu_started = time.process_time()
             if workload.backend == WorkloadBackend.LOCAL:
                 payload = workload.load_polars()
                 final_result = th.check(
@@ -208,10 +232,17 @@ def _truthound_execute(
                     pushdown=workload.truthound.pushdown,
                 )
             elapsed = time.perf_counter() - started
+            cpu_elapsed = time.process_time() - cpu_started
             if iteration == 0:
                 cold_duration = elapsed
+                cold_cpu = cpu_elapsed
             else:
                 warm_durations.append(elapsed)
+                warm_cpu.append(cpu_elapsed)
+            iteration_correctness.append(
+                final_result.success == workload.expected.success
+                and _sum_truthound_issue_count(final_result) == workload.expected.issue_count
+            )
     finally:
         os.chdir(cwd)
         monitor.stop()
@@ -231,10 +262,7 @@ def _truthound_execute(
         cold_start_seconds=cold_duration,
         warm_median_seconds=warm_median,
         peak_rss_bytes=monitor.peak_rss,
-        correctness_passed=(
-            final_result.success == workload.expected.success
-            and observed_issue_count == workload.expected.issue_count
-        ),
+        correctness_passed=all(iteration_correctness),
         expected_issue_count=workload.expected.issue_count,
         observed_issue_count=observed_issue_count,
         artifact_paths={
@@ -245,6 +273,9 @@ def _truthound_execute(
             "database_path": str(sql_database_path) if sql_database_path is not None else "",
         },
         metadata={
+            **_measurement_metadata(
+                workload, warm_durations, warm_cpu, iteration_correctness, cold_cpu
+            ),
             "row_count": workload.row_count,
             "workload_class": workload.benchmark_class.value,
             "success": final_result.success,
@@ -376,6 +407,9 @@ def _gx_execute(
 
     cold_duration = 0.0
     warm_durations: list[float] = []
+    cold_cpu = 0.0
+    warm_cpu: list[float] = []
+    iteration_correctness: list[bool] = []
     final_success = False
     final_issue_count = 0
     final_raw_issue_count = 0
@@ -386,6 +420,7 @@ def _gx_execute(
         os.chdir(project_root)
         for iteration in range(warm_iterations + 1):
             started = time.perf_counter()
+            cpu_started = time.process_time()
             context = _gx_get_context(gx)
             run_id = uuid4().hex[:8]
             datasource_name = f"truthound_parity_{workload.id}_{iteration}_{run_id}"
@@ -432,10 +467,17 @@ def _gx_execute(
             final_issue_count = issue_total
             final_raw_issue_count = raw_issue_total
             elapsed = time.perf_counter() - started
+            cpu_elapsed = time.process_time() - cpu_started
             if iteration == 0:
                 cold_duration = elapsed
+                cold_cpu = cpu_elapsed
             else:
                 warm_durations.append(elapsed)
+                warm_cpu.append(cpu_elapsed)
+            iteration_correctness.append(
+                final_success == workload.expected.success
+                and final_issue_count == workload.expected.issue_count
+            )
     finally:
         os.chdir(cwd)
         monitor.stop()
@@ -451,10 +493,7 @@ def _gx_execute(
         cold_start_seconds=cold_duration,
         warm_median_seconds=warm_median,
         peak_rss_bytes=monitor.peak_rss,
-        correctness_passed=(
-            final_success == workload.expected.success
-            and final_issue_count == workload.expected.issue_count
-        ),
+        correctness_passed=all(iteration_correctness),
         expected_issue_count=workload.expected.issue_count,
         observed_issue_count=final_issue_count,
         artifact_paths={
@@ -462,6 +501,9 @@ def _gx_execute(
             "database_path": str(sql_database_path) if sql_database_path is not None else "",
         },
         metadata={
+            **_measurement_metadata(
+                workload, warm_durations, warm_cpu, iteration_correctness, cold_cpu
+            ),
             "row_count": workload.row_count,
             "workload_class": workload.benchmark_class.value,
             "success": final_success,
@@ -479,6 +521,9 @@ def execute_framework_observation(
     warm_iterations: int,
 ) -> FrameworkObservation:
     """Execute one framework/workload observation in-process."""
+
+    if type(warm_iterations) is not int or warm_iterations < 1:
+        raise ValueError("warm_iterations must be a positive integer.")
 
     root = Path(artifact_dir).resolve()
     root.mkdir(parents=True, exist_ok=True)

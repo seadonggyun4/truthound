@@ -79,8 +79,7 @@ class TruthoundWorkloadSpec:
         return cls(
             validators=tuple(str(value) for value in payload.get("validators", ())),
             validator_config={
-                str(name): dict(config)
-                for name, config in dict(validator_config).items()
+                str(name): dict(config) for name, config in dict(validator_config).items()
             },
             schema=dict(payload["schema"]) if isinstance(payload.get("schema"), dict) else None,
             pushdown=bool(payload.get("pushdown", False)),
@@ -129,8 +128,7 @@ class GXWorkloadSpec:
     def from_dict(cls, data: dict[str, Any] | None) -> GXWorkloadSpec:
         payload = dict(data or {})
         expectations = tuple(
-            ExpectationSpec.from_dict(item)
-            for item in payload.get("expectations", ())
+            ExpectationSpec.from_dict(item) for item in payload.get("expectations", ())
         )
         return cls(expectations=expectations)
 
@@ -138,6 +136,14 @@ class GXWorkloadSpec:
 @dataclass(frozen=True)
 class ParityWorkload:
     """Immutable repo-tracked parity workload."""
+
+    @property
+    def contract_sha256(self) -> str:
+        """Bind comparison semantics, not just the dataset's byte fingerprint."""
+        payload = json.loads(self.manifest_path.read_text(encoding="utf-8"))
+        return hashlib.sha256(
+            json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+        ).hexdigest()
 
     id: str
     name: str
