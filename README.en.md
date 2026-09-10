@@ -175,6 +175,7 @@ appendices, quality-dimension mapping, and a methodology appendix for diagnostic
 criteria and thresholds. Advanced integrations can inspect the report
 architecture with `ReportDocument` while keeping `generate_html_report`,
 `HTMLReportBuilder`, and `export_to_pdf` compatible.
+Printed alert cards that fit on one page keep their title, message, and suggestion together at page boundaries.
 
 ### CLI
 

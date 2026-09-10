@@ -6,7 +6,7 @@ on:
       version:
         description: Version to publish. Must match pyproject.toml.
         required: true
-        default: "3.1.15"
+        default: "3.1.16"
         type: string
 
 permissions:
@@ -72,6 +72,7 @@ jobs:
             tests/test_profile_pdf_layout.py \
             tests/datadocs/test_report_visual_smoke.py \
             tests/datadocs/test_report_theme_policy.py \
+            tests/datadocs/test_pdf_alert_fragmentation.py \
             -p no:cacheprovider
 
       - name: Build wheel and source distribution

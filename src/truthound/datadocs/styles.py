@@ -1378,8 +1378,16 @@ PRINT_CSS = """
     }
 
     .columns-grid,
-    .charts-grid {
+    .charts-grid,
+    .alerts-container {
         display: block;
+    }
+
+    /* Flex fragmentation can shrink an alert at the page boundary and clip
+       its message. Block flow lets the existing break-inside rule keep each
+       short card intact; sibling margins replace the screen-only flex gap. */
+    .alerts-container > .alert + .alert {
+        margin-top: var(--spacing-md);
     }
 
     .column-card {

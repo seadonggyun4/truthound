@@ -2,6 +2,10 @@
 
 Truthound Data Docs supports exporting HTML reports to PDF using WeasyPrint.
 
+Printed alert lists use block flow so a short card that fits on one page keeps
+its title, message, and suggestion together at page boundaries. Screen layouts,
+report themes, input data, and quality calculations are unchanged.
+
 ## Installation
 
 PDF export requires both **system libraries** and **Python packages**.
