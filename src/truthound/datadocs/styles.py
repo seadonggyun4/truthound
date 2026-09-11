@@ -1379,8 +1379,24 @@ PRINT_CSS = """
 
     .columns-grid,
     .charts-grid,
-    .alerts-container {
+    .alerts-container,
+    .patterns-list {
         display: block;
+    }
+
+    /* Pattern examples may contain unbroken JSON tokens. Keep their complete
+       text inside the printable width and allow long examples to paginate. */
+    .patterns-list > .pattern-item + .pattern-item {
+        margin-top: var(--spacing-sm);
+    }
+
+    .pattern-item,
+    .pattern-header > *,
+    .pattern-samples,
+    .pattern-samples code {
+        min-width: 0;
+        white-space: normal;
+        overflow-wrap: anywhere;
     }
 
     /* Flex fragmentation can shrink an alert at the page boundary and clip
