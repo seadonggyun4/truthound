@@ -199,7 +199,22 @@ def _scan_parquet_pii(path, schema: pl.Schema) -> tuple[int, list[dict]] | None:
     counts = {col: 0 for col in columns}
     with pq.ParquetFile(path) as parquet:
         row_count = parquet.metadata.num_rows
-        if columns:
+        footer_counts = _parquet_non_null_counts(parquet.metadata, columns)
+        if footer_counts is not None:
+            counts = footer_counts
+        if footer_counts is not None:
+            # A sparse column must not keep decoding already-sampled wide
+            # columns (for example geometry) in later row groups.
+            for col in columns:
+                wanted = min(1000, counts[col])
+                if not wanted:
+                    continue
+                for batch in parquet.iter_batches(batch_size=1024, columns=[col], use_threads=False):
+                    values = batch.column(0)
+                    samples[col].extend(values.drop_null().slice(0, wanted - len(samples[col])).to_pylist())
+                    if len(samples[col]) >= wanted:
+                        break
+        elif columns:
             for batch in parquet.iter_batches(batch_size=1024, columns=columns, use_threads=False):
                 for index, col in enumerate(columns):
                     values = batch.column(index)
@@ -214,3 +229,33 @@ def _scan_parquet_pii(path, schema: pl.Schema) -> tuple[int, list[dict]] | None:
             findings.append(finding)
     findings.sort(key=lambda item: item["confidence"], reverse=True)
     return row_count, findings
+
+
+def _parquet_non_null_counts(metadata, columns: list[str]) -> dict[str, int] | None:
+    """Use complete flat-column footer counts, otherwise require the full scan.
+
+    This only avoids recounting values; the first non-null sample and PII
+    scoring remain unchanged. Missing/ambiguous statistics never imply zero.
+    """
+    counts = {col: 0 for col in columns}
+    for group_index in range(metadata.num_row_groups):
+        group = metadata.row_group(group_index)
+        indexed = {}
+        for index in range(group.num_columns):
+            column = group.column(index)
+            name = column.path_in_schema
+            if name in indexed:
+                return None
+            indexed[name] = column
+        for name in columns:
+            column = indexed.get(name)
+            if column is None or column.num_values != group.num_rows:
+                return None
+            statistics = column.statistics
+            if statistics is None or not statistics.has_null_count:
+                return None
+            null_count = statistics.null_count
+            if not isinstance(null_count, int) or not 0 <= null_count <= group.num_rows:
+                return None
+            counts[name] += group.num_rows - null_count
+    return counts

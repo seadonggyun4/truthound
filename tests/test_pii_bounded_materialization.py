@@ -78,3 +78,74 @@ def test_parquet_read_error_is_not_a_clean_pii_result(tmp_path, monkeypatch):
     monkeypatch.setattr(pq.ParquetFile, "iter_batches", failed)
     with pytest.raises(OSError, match="synthetic reader failure"):
         th.scan(str(path))
+
+
+def test_complete_parquet_null_counts_stop_reading_after_sample(tmp_path, monkeypatch):
+    import pyarrow.parquet as pq
+
+    path = tmp_path / "synthetic.parquet"
+    pl.DataFrame({"email": ["person@example.com"] * 12000}).write_parquet(path, row_group_size=2000)
+    original = pq.ParquetFile.iter_batches
+    batches_read = []
+
+    def batches(file, *args, **kwargs):
+        for batch in original(file, *args, **kwargs):
+            batches_read.append(batch.num_rows)
+            yield batch
+
+    monkeypatch.setattr(pq.ParquetFile, "iter_batches", batches)
+    result = th.scan(str(path))
+    assert result.row_count == 12000
+    assert result.findings[0]["count"] == 12000
+    assert len(batches_read) == 1
+
+
+@pytest.mark.parametrize("statistics", [True, False])
+def test_footer_and_missing_statistics_preserve_sparse_sample_counts(tmp_path, monkeypatch, statistics):
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+
+    frame = pl.DataFrame({
+        "email": [None] * 2500 + ["person@example.com"] * 1200 + ["ordinary"] * 300,
+        "all_null": [None] * 4000,
+        "number": list(range(4000)),
+    }, schema_overrides={"all_null": pl.String})
+    path = tmp_path / "synthetic.parquet"
+    pq.write_table(pa.table(frame.to_dict(as_series=False)), path, row_group_size=800, write_statistics=statistics)
+    expected = scan_pii(frame.lazy())
+    original = pq.ParquetFile.iter_batches
+    sizes = []
+
+    def batches(file, *args, **kwargs):
+        for batch in original(file, *args, **kwargs):
+            sizes.append(batch.num_rows)
+            yield batch
+
+    monkeypatch.setattr(pq.ParquetFile, "iter_batches", batches)
+    result = th.scan(str(path))
+    assert result.row_count == 4000
+    assert result.findings == expected
+    if not statistics:
+        assert sum(sizes) == 4000
+
+
+def test_sparse_column_does_not_extend_completed_column_read(tmp_path, monkeypatch):
+    import pyarrow.parquet as pq
+
+    path = tmp_path / "synthetic.parquet"
+    frame = pl.DataFrame({"wide": ["ordinary"] * 4000, "sparse": [None] * 3500 + ["ordinary"] * 500})
+    frame.write_parquet(path, row_group_size=800)
+    original = pq.ParquetFile.iter_batches
+    reads = {"wide": 0, "sparse": 0}
+
+    def batches(file, *args, **kwargs):
+        assert len(kwargs["columns"]) == 1
+        column = kwargs["columns"][0]
+        for batch in original(file, *args, **kwargs):
+            reads[column] += batch.num_rows
+            yield batch
+
+    monkeypatch.setattr(pq.ParquetFile, "iter_batches", batches)
+    result = th.scan(str(path))
+    assert result.findings == []
+    assert reads == {"wide": 1024, "sparse": 4000}

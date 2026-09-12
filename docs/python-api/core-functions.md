@@ -274,7 +274,7 @@ schema = th.learn(source=source)
 
 Scans data for personally identifiable information (PII).
 
-Detection uses the first 1,000 non-null values per string column. Finding counts are estimates based on each column's full non-null count, not a full-row inspection guarantee. Scalar counts and lazily bounded column samples avoid collecting the full input frame. Local Parquet files use 1,024-row, single-threaded PyArrow batches when PyArrow is installed, sharing the same scoring logic. Without PyArrow, the lazy path remains available. Reader buffers and unusually large individual values can still require memory; no universal process memory ceiling is promised.
+Detection uses the first 1,000 non-null values per string column. Finding counts are estimates based on each column's full non-null count, not a full-row inspection guarantee. Scalar counts and lazily bounded column samples avoid collecting the full input frame. Local Parquet files use 1,024-row, single-threaded PyArrow batches when PyArrow is installed, sharing the same scoring logic. When every relevant row group has complete non-null counts in its Parquet footer, those exact counts are reused and each column stops reading after its existing sample is complete. Missing statistics fall back to a complete batched count. Without PyArrow, the lazy path remains available. Reader buffers and unusually large individual values can still require memory; no universal process memory ceiling is promised.
 
 ### Signature
 
