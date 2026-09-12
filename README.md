@@ -44,6 +44,8 @@ Truthound는 데이터 품질 검증(Data Validation)과 데이터 워크플로�
 
 Truthound is an open-source framework for data validation and data quality workflows, built on a Polars-first validation kernel.
 
+`th.scan()`은 문자열 컬럼별 첫 1,000개 비결측값을 검사하는 PII 표본 탐지입니다. 전체 프레임 적재 없이 집계·제한 표본을 사용하며 발견 건수는 추정치입니다. [PII API](docs/python-api/core-functions.md#thscan)를 참고하세요.
+
 
 **English Readme**: [English README](README.en.md) <br/>
 **문서 (Documentation)**: [truthound.netlify.app](https://truthound.netlify.app/)

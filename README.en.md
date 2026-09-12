@@ -44,6 +44,8 @@ Truthound is an open-source framework for data validation and data quality workf
 Truthound is an open-source framework for data validation and data quality
 workflows, built on a Polars-first validation kernel.
 
+`th.scan()` inspects the first 1,000 non-null values per string column and estimates finding counts. Local Parquet inputs use 1,024-row batches when PyArrow is installed; other inputs use lazy scalar counts and bounded samples. This is not a full-row inspection guarantee. See the [PII API](docs/python-api/core-functions.md#thscan).
+
 **Documentation**: [truthound.netlify.app](https://truthound.netlify.app/)
 
 ---

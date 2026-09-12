@@ -15,7 +15,7 @@ import polars as pl
 
 from truthound.adapters import to_lazyframe
 from truthound.maskers import mask_data
-from truthound.scanners import scan_pii
+from truthound.scanners import _scan_parquet_pii, scan_pii
 from truthound.types import ResultFormat, ResultFormatConfig, Severity
 
 
@@ -189,10 +189,17 @@ def scan(
         lf = to_lazyframe(data)
         source_name = str(data) if isinstance(data, str) else type(data).__name__
 
-    df = lf.collect()
-    row_count = len(df)
-
-    findings = scan_pii(df.lazy())
+    parquet_result = None
+    if source is None and isinstance(data, (str, Path)):
+        path = Path(data)
+        if path.suffix.lower() == ".parquet" and path.is_file():
+            parquet_result = _scan_parquet_pii(path, lf.collect_schema())
+    if parquet_result is not None:
+        row_count, findings = parquet_result
+    else:
+        # Keep the exact row count without retaining every input value.
+        row_count = lf.select(pl.len()).collect(streaming=True).item()
+        findings = scan_pii(lf)
 
     # Lazy import PIIReport
     PIIReport, _, _ = _get_report_classes()

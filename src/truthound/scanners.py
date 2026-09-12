@@ -103,68 +103,114 @@ def scan_pii(lf: pl.LazyFrame) -> list[dict]:
     """
     findings: list[dict] = []
     schema = lf.collect_schema()
-    df = lf.collect()
-
-    if len(df) == 0:
+    string_columns = [
+        col for col in schema.names() if schema[col] in (pl.String, pl.Utf8)
+    ]
+    if not string_columns:
         return findings
 
-    for col in schema.names():
-        dtype = schema[col]
+    # Preserve full non-null denominators while collecting only scalar counts.
+    counts = lf.select(
+        [pl.col(col).count() for col in string_columns]
+    ).collect(streaming=True).row(0, named=True)
 
-        if dtype not in (pl.String, pl.Utf8):
+    for col in string_columns:
+        non_null_count = counts[col]
+        if non_null_count == 0:
             continue
 
-        col_data = df.get_column(col).drop_nulls()
-
-        if len(col_data) == 0:
-            continue
-
-        col_lower = col.lower()
-
-        # Check each PII pattern
-        for pii_pattern in PII_PATTERNS:
-            match_count = 0
-            sample_size = min(len(col_data), 1000)  # Sample for performance
-            sample = col_data.head(sample_size)
-
-            for val in sample.to_list():
-                if isinstance(val, str) and pii_pattern.pattern.match(val):
-                    match_count += 1
-
-            if match_count == 0:
-                continue
-
-            # Calculate confidence
-            match_ratio = match_count / sample_size
-            confidence = pii_pattern.confidence_base
-
-            # Boost confidence if column name hints at PII type
-            hints = COLUMN_HINTS.get(pii_pattern.pii_type, [])
-            if any(hint in col_lower for hint in hints):
-                confidence = min(99, confidence + 10)
-
-            # Adjust based on match ratio
-            if match_ratio > 0.8:
-                confidence = min(99, confidence + 5)
-            elif match_ratio < 0.3:
-                confidence = max(50, confidence - 20)
-
-            # Only report if confidence is reasonable and match ratio is significant
-            if confidence >= 50 and match_ratio >= 0.1:
-                # Extrapolate count to full dataset
-                estimated_count = int(len(col_data) * match_ratio)
-
-                findings.append(
-                    {
-                        "column": col,
-                        "pii_type": pii_pattern.pii_type.value,
-                        "count": estimated_count,
-                        "confidence": confidence,
-                    }
-                )
-                break  # Only report one PII type per column
+        # The existing scanner uses the first 1000 non-null values, not rows.
+        # Project and bound in the lazy plan before materializing any values.
+        sample = lf.select(
+            pl.col(col).drop_nulls().head(1000)
+        ).collect(streaming=True).get_column(col)
+        finding = _score_pii_sample(col, non_null_count, sample.to_list())
+        if finding is not None:
+            findings.append(finding)
 
     # Sort by confidence descending
     findings.sort(key=lambda x: x["confidence"], reverse=True)
 
     return findings
+
+
+def _score_pii_sample(col: str, non_null_count: int, sample: list[str]) -> dict | None:
+    """Shared scoring for lazy and batch readers; preserve existing thresholds."""
+    if not sample:
+        return None
+    sample_size = len(sample)
+    col_lower = col.lower()
+
+    # Check each PII pattern
+    for pii_pattern in PII_PATTERNS:
+        match_count = 0
+        for val in sample:
+            if isinstance(val, str) and pii_pattern.pattern.match(val):
+                match_count += 1
+
+        if match_count == 0:
+            continue
+
+        # Calculate confidence
+        match_ratio = match_count / sample_size
+        confidence = pii_pattern.confidence_base
+
+        # Boost confidence if column name hints at PII type
+        hints = COLUMN_HINTS.get(pii_pattern.pii_type, [])
+        if any(hint in col_lower for hint in hints):
+            confidence = min(99, confidence + 10)
+
+        # Adjust based on match ratio
+        if match_ratio > 0.8:
+            confidence = min(99, confidence + 5)
+        elif match_ratio < 0.3:
+            confidence = max(50, confidence - 20)
+
+        # Only report if confidence is reasonable and match ratio is significant
+        if confidence >= 50 and match_ratio >= 0.1:
+            # Extrapolate count to full dataset
+            estimated_count = int(non_null_count * match_ratio)
+
+            return {
+                    "column": col,
+                    "pii_type": pii_pattern.pii_type.value,
+                    "count": estimated_count,
+                    "confidence": confidence,
+            }
+
+    return None
+
+
+def _scan_parquet_pii(path, schema: pl.Schema) -> tuple[int, list[dict]] | None:
+    """Read local Parquet in bounded Arrow batches when Arrow is installed.
+
+    The optional fast path retains the same first-1000-non-null sample and
+    full non-null denominator. Reader errors propagate, never become a pass.
+    """
+    try:
+        import pyarrow.parquet as pq
+    except ModuleNotFoundError as exc:
+        if exc.name == "pyarrow":
+            return None
+        raise
+
+    columns = [col for col in schema.names() if schema[col] in (pl.String, pl.Utf8)]
+    samples = {col: [] for col in columns}
+    counts = {col: 0 for col in columns}
+    with pq.ParquetFile(path) as parquet:
+        row_count = parquet.metadata.num_rows
+        if columns:
+            for batch in parquet.iter_batches(batch_size=1024, columns=columns, use_threads=False):
+                for index, col in enumerate(columns):
+                    values = batch.column(index)
+                    counts[col] += len(values) - values.null_count
+                    remaining = 1000 - len(samples[col])
+                    if remaining:
+                        samples[col].extend(values.drop_null().slice(0, remaining).to_pylist())
+    findings = []
+    for col in columns:
+        finding = _score_pii_sample(col, counts[col], samples[col])
+        if finding is not None:
+            findings.append(finding)
+    findings.sort(key=lambda item: item["confidence"], reverse=True)
+    return row_count, findings
