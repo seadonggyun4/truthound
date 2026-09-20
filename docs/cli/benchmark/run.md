@@ -29,6 +29,8 @@ truthound benchmark run [BENCHMARK] [OPTIONS]
 | `--compare-baseline` | | `false` | Compare with existing baseline |
 | `--verbose` | `-v` | `false` | Verbose logging |
 
+Console and JSON output do not require the optional HTML reporting dependencies. For HTML output, install `truthound[reports]`.
+
 ## Description
 
 The `benchmark run` command executes performance benchmarks:

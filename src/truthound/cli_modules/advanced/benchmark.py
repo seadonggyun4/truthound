@@ -209,13 +209,12 @@ def run_cmd(
             raise typer.Exit(1)
 
         # Generate output
-        reporters = {
-            "console": ConsoleReporter(use_colors=True),
-            "json": JSONReporter(pretty=True),
-            "html": HTMLReporter(),
-        }
-
-        reporter = reporters.get(output_format, JSONReporter(pretty=True))
+        if output_format == "console":
+            reporter = ConsoleReporter(use_colors=True)
+        elif output_format == "json":
+            reporter = JSONReporter(pretty=True)
+        else:
+            reporter = HTMLReporter()
         report_content = reporter.report_suite(results)
 
         if output:

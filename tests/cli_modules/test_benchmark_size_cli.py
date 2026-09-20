@@ -14,8 +14,9 @@ from truthound.cli_modules.advanced.benchmark import app
 
 
 @pytest.mark.contract
+@pytest.mark.parametrize('output_format', ['json', 'console'])
 @pytest.mark.parametrize('override,expected', [(None, 100_000_000), ('17', 17)])
-def test_stress_size_reaches_runner_without_allocating_input(monkeypatch, override, expected):
+def test_stress_size_reaches_runner_without_optional_html(monkeypatch, override, expected, output_format):
     calls = []
 
     def run(self, name, **kwargs):
@@ -29,8 +30,12 @@ def test_stress_size_reaches_runner_without_allocating_input(monkeypatch, overri
             completed_at=datetime.now(),
         )
 
+    def unavailable_html():
+        raise ImportError('HTML reporting requires the optional reports extra')
+
+    monkeypatch.setattr('truthound.benchmark.HTMLReporter', unavailable_html)
     monkeypatch.setattr(BenchmarkRunner, 'run', run)
-    args = ['run', 'profile', '--size', 'stress', '--format', 'json']
+    args = ['run', 'profile', '--size', 'stress', '--format', output_format]
     if override:
         args += ['--rows', override]
     result = CliRunner().invoke(app, args)

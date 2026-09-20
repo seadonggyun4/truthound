@@ -38,7 +38,7 @@ and ends at the closing </p> of the badge block above.
 
 ---
 
-벤치마크 CLI는 `--size stress`(1억 행)를 지원하며 `--rows`로 행 수를 재정의할 수 있습니다. [벤치마크 명령](docs/cli/benchmark/run.md)을 참고하세요.
+벤치마크 CLI는 `--size stress`(1억 행)를 지원하며 `--rows`로 행 수를 재정의할 수 있습니다. [벤치마크 명령](docs/cli/benchmark/run.md)을 참고하세요. 콘솔과 JSON 벤치마크 출력에는 선택적인 HTML 리포트 의존성이 필요하지 않습니다.
 
 ## 개요 (Overview)
 
