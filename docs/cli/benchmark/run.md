@@ -19,7 +19,7 @@ truthound benchmark run [BENCHMARK] [OPTIONS]
 | Option | Short | Default | Description |
 |--------|-------|---------|-------------|
 | `--suite` | `-s` | None | Benchmark suite (quick, ci, full, profiling, validation) |
-| `--size` | | `small` | Data size preset (tiny, small, medium, large, xlarge) |
+| `--size` | | `small` | Data size preset (tiny, small, medium, large, xlarge, stress) |
 | `--rows` | `-r` | None | Number of rows (overrides --size) |
 | `--iterations` | `-i` | `3` | Number of iterations |
 | `--warmup` | `-w` | `1` | Warmup iterations |
@@ -58,6 +58,7 @@ The `benchmark run` command executes performance benchmarks:
 | `medium` | ~100,000 | ~200 MB | Default |
 | `large` | ~1,000,000 | ~1 GB | Performance testing |
 | `xlarge` | ~10,000,000 | ~5 GB | Stress testing |
+| `stress` | 100,000,000 | Workload-dependent | Explicit large-scale stress testing |
 
 ## Examples
 

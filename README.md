@@ -38,6 +38,8 @@ and ends at the closing </p> of the badge block above.
 
 ---
 
+벤치마크 CLI는 `--size stress`(1억 행)를 지원하며 `--rows`로 행 수를 재정의할 수 있습니다. [벤치마크 명령](docs/cli/benchmark/run.md)을 참고하세요.
+
 ## 개요 (Overview)
 
 Truthound는 데이터 품질 검증(Data Validation)과 데이터 워크플로우(Data Workflow)를 위한 오픈소스 프레임워크입니다. Polars 기반의 검증 커널을 중심으로, 스키마 검증·사용자 정의 규칙·품질 검사·이상 데이터 탐지를 코드로 선언하고, 그 결과를 재현 가능하게 관리합니다.

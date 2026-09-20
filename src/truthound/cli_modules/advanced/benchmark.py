@@ -49,7 +49,7 @@ def run_cmd(
     ] = None,
     size: Annotated[
         str,
-        typer.Option("--size", help="Data size: tiny (1K), small (10K), medium (100K), large (1M)"),
+        typer.Option("--size", help="Data size: tiny (1K), small (10K), medium (100K), large (1M), xlarge (10M), stress (100M)"),
     ] = "small",
     rows: Annotated[
         int | None,
@@ -117,6 +117,7 @@ def run_cmd(
             "medium": BenchmarkSize.MEDIUM,
             "large": BenchmarkSize.LARGE,
             "xlarge": BenchmarkSize.XLARGE,
+            "stress": BenchmarkSize.STRESS,
         }
         benchmark_size = size_map.get(size, BenchmarkSize.MEDIUM)
         row_count = rows if rows else benchmark_size.row_count

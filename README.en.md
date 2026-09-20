@@ -46,6 +46,8 @@ workflows, built on a Polars-first validation kernel.
 
 `th.scan()` inspects the first 1,000 non-null values per string column and estimates finding counts. Local Parquet inputs use 1,024-row batches when PyArrow is installed; complete Parquet footer counts avoid reading already-sampled columns further, while missing statistics retain full batched counting. Other inputs use lazy scalar counts and bounded samples. This is not a full-row inspection guarantee. See the [PII API](docs/python-api/core-functions.md#thscan).
 
+The benchmark CLI supports `--size stress` (100 million rows); `--rows` overrides the preset. See the [benchmark command](docs/cli/benchmark/run.md).
+
 **Documentation**: [truthound.netlify.app](https://truthound.netlify.app/)
 
 ---
