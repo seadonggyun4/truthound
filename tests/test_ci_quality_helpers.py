@@ -585,7 +585,7 @@ def test_release_pypi_workflow_is_manual_token_only_publish():
     assert "Verify release version" in step_names
     assert "Build wheel and source distribution" in step_names
     assert "Check package metadata" in step_names
-    assert "Run SQL provider release contracts" in step_names
+    assert "Run CLI and SQL provider release contracts" in step_names
     assert "Smoke install built wheel with AI and SQL provider extras" in step_names
     assert "Validate PyPI API token secret" in step_names
     assert "Publish to PyPI" in step_names
