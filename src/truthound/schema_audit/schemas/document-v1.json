@@ -1,0 +1,740 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "urn:truthound:schema-audit:1",
+  "oneOf": [
+    {
+      "$ref": "#/$defs/StandardRevision"
+    },
+    {
+      "$ref": "#/$defs/DesignRevision"
+    },
+    {
+      "$ref": "#/$defs/CatalogSnapshot"
+    }
+  ],
+  "$defs": {
+    "StandardRevision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "kind",
+        "id",
+        "revision",
+        "dialect",
+        "words",
+        "terms",
+        "domains",
+        "naming_policy",
+        "sources"
+      ],
+      "properties": {
+        "contract_version": {
+          "enum": [
+            "truthound.schema-audit/1"
+          ]
+        },
+        "kind": {
+          "enum": [
+            "STANDARD"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "dialect": {
+          "$ref": "#/$defs/Dialect"
+        },
+        "words": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Word"
+          },
+          "maxItems": 50000
+        },
+        "terms": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Term"
+          },
+          "maxItems": 50000
+        },
+        "domains": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Domain"
+          },
+          "maxItems": 50000
+        },
+        "naming_policy": {
+          "$ref": "#/$defs/NamingPolicy"
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SourceLocation"
+          },
+          "maxItems": 50000
+        }
+      }
+    },
+    "Dialect": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "major"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "major": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "Word": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "logical_name",
+        "abbreviation",
+        "deprecated"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "logical_name": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "abbreviation": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "deprecated": {
+          "type": "boolean"
+        }
+      }
+    },
+    "Term": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "logical_name",
+        "word_ids",
+        "domain_id",
+        "deprecated"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "logical_name": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "word_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "maxItems": 50000
+        },
+        "domain_id": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "deprecated": {
+          "type": "boolean"
+        }
+      }
+    },
+    "Domain": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "logical_name",
+        "type"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "logical_name": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "type": {
+          "$ref": "#/$defs/TypeDescriptor"
+        }
+      }
+    },
+    "TypeDescriptor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "native_type",
+        "type_schema",
+        "length",
+        "length_unit",
+        "precision",
+        "scale",
+        "timezone",
+        "array_rank",
+        "domain_ref",
+        "enum_values_ref",
+        "collation"
+      ],
+      "properties": {
+        "native_type": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "type_schema": {
+          "$ref": "#/$defs/Attribute"
+        },
+        "length": {
+          "$ref": "#/$defs/Attribute"
+        },
+        "length_unit": {
+          "$ref": "#/$defs/Attribute"
+        },
+        "precision": {
+          "$ref": "#/$defs/Attribute"
+        },
+        "scale": {
+          "$ref": "#/$defs/Attribute"
+        },
+        "timezone": {
+          "$ref": "#/$defs/Attribute"
+        },
+        "array_rank": {
+          "$ref": "#/$defs/Attribute"
+        },
+        "domain_ref": {
+          "$ref": "#/$defs/Attribute"
+        },
+        "enum_values_ref": {
+          "$ref": "#/$defs/Attribute"
+        },
+        "collation": {
+          "$ref": "#/$defs/Attribute"
+        }
+      }
+    },
+    "Attribute": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "value",
+        "reason"
+      ],
+      "properties": {
+        "state": {
+          "type": "string",
+          "enum": [
+            "VALUE",
+            "ABSENT",
+            "UNKNOWN",
+            "NOT_APPLICABLE"
+          ]
+        },
+        "value": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 4096
+            },
+            {
+              "type": "integer",
+              "minimum": -9007199254740991,
+              "maximum": 9007199254740991
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "NONE",
+            "NOT_COLLECTED",
+            "PERMISSION_DENIED",
+            "UNSUPPORTED",
+            "INCOMPLETE",
+            "OUT_OF_SCOPE"
+          ]
+        }
+      }
+    },
+    "NamingPolicy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "separator",
+        "case",
+        "max_bytes"
+      ],
+      "properties": {
+        "separator": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "case": {
+          "enum": [
+            "PRESERVE",
+            "LOWER_ASCII",
+            "UPPER_ASCII"
+          ]
+        },
+        "max_bytes": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "SourceLocation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "object_id",
+        "input_digest",
+        "pointer"
+      ],
+      "properties": {
+        "object_id": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "input_digest": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "pointer": {
+          "type": "string",
+          "maxLength": 4096
+        }
+      }
+    },
+    "DesignRevision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "kind",
+        "id",
+        "revision",
+        "dialect",
+        "tables",
+        "sources"
+      ],
+      "properties": {
+        "contract_version": {
+          "enum": [
+            "truthound.schema-audit/1"
+          ]
+        },
+        "kind": {
+          "enum": [
+            "DESIGN"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "dialect": {
+          "$ref": "#/$defs/Dialect"
+        },
+        "tables": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Table"
+          },
+          "maxItems": 50000
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SourceLocation"
+          },
+          "maxItems": 50000
+        }
+      }
+    },
+    "Table": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "namespace",
+        "physical_name",
+        "logical_name",
+        "columns",
+        "constraints"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "namespace": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "physical_name": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "logical_name": {
+          "$ref": "#/$defs/LogicalName"
+        },
+        "columns": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Column"
+          },
+          "maxItems": 50000
+        },
+        "constraints": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Constraint"
+          },
+          "maxItems": 50000
+        }
+      }
+    },
+    "Identifier": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "text",
+        "origin"
+      ],
+      "properties": {
+        "text": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "origin": {
+          "type": "string",
+          "enum": [
+            "UNQUOTED",
+            "QUOTED",
+            "CATALOG"
+          ]
+        }
+      }
+    },
+    "LogicalName": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name",
+        "source"
+      ],
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/Attribute"
+        },
+        "source": {
+          "enum": [
+            "DESIGN",
+            "COMMENT",
+            "EXTERNAL_MAPPING",
+            "NONE"
+          ]
+        }
+      }
+    },
+    "Column": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "physical_name",
+        "logical_name",
+        "type",
+        "nullable",
+        "default",
+        "ordinal"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "physical_name": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "logical_name": {
+          "$ref": "#/$defs/LogicalName"
+        },
+        "type": {
+          "$ref": "#/$defs/TypeDescriptor"
+        },
+        "nullable": {
+          "$ref": "#/$defs/Attribute"
+        },
+        "default": {
+          "$ref": "#/$defs/Attribute"
+        },
+        "ordinal": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        }
+      }
+    },
+    "Constraint": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "id",
+        "name",
+        "kind",
+        "column_ids",
+        "referenced_table_id",
+        "referenced_column_ids",
+        "on_update",
+        "on_delete",
+        "deferrable",
+        "expression"
+      ],
+      "properties": {
+        "id": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "name": {
+          "$ref": "#/$defs/Identifier"
+        },
+        "kind": {
+          "type": "string",
+          "enum": [
+            "PRIMARY_KEY",
+            "UNIQUE",
+            "FOREIGN_KEY",
+            "CHECK"
+          ]
+        },
+        "column_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "maxItems": 50000
+        },
+        "referenced_table_id": {
+          "anyOf": [
+            {
+              "type": "string",
+              "maxLength": 4096
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "referenced_column_ids": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "maxLength": 4096
+          },
+          "maxItems": 50000
+        },
+        "on_update": {
+          "anyOf": [
+            {
+              "enum": [
+                "NO_ACTION",
+                "RESTRICT",
+                "CASCADE",
+                "SET_NULL",
+                "SET_DEFAULT"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "on_delete": {
+          "anyOf": [
+            {
+              "enum": [
+                "NO_ACTION",
+                "RESTRICT",
+                "CASCADE",
+                "SET_NULL",
+                "SET_DEFAULT"
+              ]
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "deferrable": {
+          "$ref": "#/$defs/Attribute"
+        },
+        "expression": {
+          "$ref": "#/$defs/Attribute"
+        }
+      }
+    },
+    "CatalogSnapshot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "contract_version",
+        "kind",
+        "id",
+        "revision",
+        "dialect",
+        "binding_ref",
+        "adapter_version",
+        "captured_at",
+        "scope",
+        "coverage",
+        "tables",
+        "sources"
+      ],
+      "properties": {
+        "contract_version": {
+          "enum": [
+            "truthound.schema-audit/1"
+          ]
+        },
+        "kind": {
+          "enum": [
+            "CATALOG"
+          ]
+        },
+        "id": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "revision": {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        "dialect": {
+          "$ref": "#/$defs/Dialect"
+        },
+        "binding_ref": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "adapter_version": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "captured_at": {
+          "type": "string",
+          "maxLength": 4096
+        },
+        "scope": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Identifier"
+          },
+          "maxItems": 50000
+        },
+        "coverage": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Coverage"
+          },
+          "maxItems": 50000
+        },
+        "tables": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Table"
+          },
+          "maxItems": 50000
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SourceLocation"
+          },
+          "maxItems": 50000
+        }
+      }
+    },
+    "Coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "facet",
+        "state",
+        "reason"
+      ],
+      "properties": {
+        "facet": {
+          "enum": [
+            "TABLES",
+            "COLUMNS",
+            "CONSTRAINTS",
+            "LOGICAL_NAMES",
+            "TYPES",
+            "DEFAULTS"
+          ]
+        },
+        "state": {
+          "enum": [
+            "COMPLETE",
+            "PARTIAL",
+            "UNKNOWN",
+            "NOT_APPLICABLE"
+          ]
+        },
+        "reason": {
+          "type": "string",
+          "enum": [
+            "NONE",
+            "NOT_COLLECTED",
+            "PERMISSION_DENIED",
+            "UNSUPPORTED",
+            "INCOMPLETE",
+            "OUT_OF_SCOPE"
+          ]
+        }
+      }
+    }
+  }
+}

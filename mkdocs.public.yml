@@ -343,6 +343,7 @@ nav:
               - Overview: python-api/index.md
               - Core Functions: python-api/core-functions.md
               - Schema: python-api/schema.md
+              - Schema Audit Contracts: python-api/schema-audit.md
               - Validators: python-api/validators.md
               - Datasources: python-api/datasources.md
               - Reporters: python-api/reporters.md

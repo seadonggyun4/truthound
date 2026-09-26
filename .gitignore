@@ -82,6 +82,7 @@ Thumbs.db
 *.csv
 *.parquet
 *.json
+!src/truthound/schema_audit/schemas/document-v1.json
 !pyproject.toml
 !tests/fixtures/
 !tests/fixtures/**

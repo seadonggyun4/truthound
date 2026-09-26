@@ -237,6 +237,7 @@ The root package intentionally exposes a small API.
 - Reporter types: `truthound.reporters.RunPresentation`, `truthound.reporters.ReporterContext`
 - Validation docs entry points: `truthound.datadocs.ValidationDocsBuilder`, `truthound.datadocs.generate_validation_report`
 - Drift comparison: `truthound.drift.compare`
+- ERD audit (in development): [`truthound.schema_audit`](docs/python-api/schema-audit.md) provides immutable models, JSON, digests, standards-to-design audit A, design-to-catalog audit B and bounded PG14/17 read-only collection. Console, connection authorization and approval authority remain separate.
 - Advanced systems: import by namespace, for example `truthound.ml`, `truthound.lineage`, `truthound.realtime`, `truthound.datadocs`
 - Optional AI layer: install `truthound[ai]`, then import `truthound.ai`
 

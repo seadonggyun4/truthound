@@ -247,6 +247,7 @@ Truthound는 프로젝트 루트에 `.truthound/` 워크스페이스를 자동�
 - 검증 문서 진입점: `truthound.datadocs.ValidationDocsBuilder`, `truthound.datadocs.generate_validation_report`
   - 3.1.13부터 `locale="en"`(기본값) 또는 `locale="ko"`는 본문 제목·표 머리글·알림을 번역합니다. 품질 수치·상태 코드·사용자 데이터는 바꾸지 않으며 미지원 locale은 `ValueError`입니다. 이전 버전에는 이 옵션이 없습니다.
 - 드리프트 비교: `truthound.drift.compare`
+- ERD 감사(개발 중): [`truthound.schema_audit`](docs/python-api/schema-audit.md)의 불변 모델·JSON·digest, 표준→설계 감사 A, 설계→카탈로그 감사 B와 제한된 PG14/17 읽기 전용 수집기. Console·접속 인가·승인 권한은 별도입니다.
 - 고급 시스템: 네임스페이스로 임포트 (예: `truthound.ml`, `truthound.lineage`, `truthound.realtime`, `truthound.datadocs`)
 - 선택적 AI 레이어: `truthound[ai]` 설치 후 `truthound.ai` 임포트
 
