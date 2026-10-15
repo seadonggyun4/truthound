@@ -19,10 +19,9 @@
 [![License](https://img.shields.io/badge/License-Apache%202.0-orange.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Powered by Polars](https://img.shields.io/badge/Powered%20by-Polars-2563EB?logo=polars&logoColor=white)](https://pola.rs/)
 [![Awesome Polars](https://awesome.re/badge.svg)](https://github.com/ddotta/awesome-polars)
-
 [![Total Downloads](https://api.pepy.tech/personalized-badge/truthound?period=total&units=abbreviation&left_color=grey&right_color=brightgreen&left_text=downloads)](https://pepy.tech/project/truthound)
-[![Monthly Downloads](https://api.pepy.tech/personalized-badge/truthound?period=month&units=abbreviation&left_color=grey&right_color=green&left_text=downloads%2Fmonth)](https://pepy.tech/project/truthound)
-[![Weekly Downloads](https://api.pepy.tech/personalized-badge/truthound?period=week&units=abbreviation&left_color=grey&right_color=red&left_text=downloads%2Fweek)](https://pepy.tech/project/truthound)
+
+
 
 <!--
 README HEADER FORMAT LOCK:
