@@ -2,7 +2,7 @@
   "mcpServers": {"truthound": {
     "type": "stdio",
     "command": "uv",
-    "cwd": ".",
+    "cwd": "./",
     "args": ["run", "--no-config", "--frozen", "python", "server.py"]
   }}
 }

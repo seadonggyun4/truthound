@@ -41,7 +41,7 @@ and ends at the closing </p> of the badge block above.
 
 ## Plugin Platform
 
-- **Codex and ChatGPT desktop (plugin 0.1.1)**: Add the [Truthound repository marketplace](.agents/plugins/marketplace.json), then choose **Plugins → Truthound Plugins → Truthound Local → Install → Set up** and approve a data directory. One-time marketplace setup: `codex plugin marketplace add seadonggyun4/truthound --ref main`. [Installation, consent and official submission](docs/guides/mcp.md)
+- **Codex and ChatGPT desktop (plugin 0.1.2)**: Add the [Truthound repository marketplace](.agents/plugins/marketplace.json), then choose **Plugins → Truthound Plugins → Truthound Local → Install → Set up** and approve a data directory. One-time marketplace setup: `codex plugin marketplace add seadonggyun4/truthound --ref main`. [Installation, consent and official submission](docs/guides/mcp.md)
 - **Find it in a marketplace**: Search for `io.github.seadonggyun4/truthound` in the [official MCP Registry](https://registry.modelcontextprotocol.io/). If a connected client's marketplace lists it, select **Install** and specify the data directory you allow it to access. [Published 3.2.0 metadata](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.seadonggyun4%2Ftruthound/versions/3.2.0)
 - **Claude Desktop**: [Download the MCPB](https://github.com/seadonggyun4/truthound/releases/download/v3.2.0/truthound-3.2.0.mcpb) → **Settings → Extensions → Advanced settings → Install Extension…** → select the file and allowed directory. [Official installation guide](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop)
 

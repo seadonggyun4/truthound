@@ -126,7 +126,7 @@ def test_cli_build_checks_manifest_lock_and_relocatable_command(tmp_path):
             == proof["plugin_version"]
         )
         mcp = json.loads(archive.read("mcp.json"))["mcpServers"]["truthound"]
-        assert mcp["cwd"] == "." and not any("${" in a for a in mcp["args"])
+        assert mcp["cwd"] == "./" and not any("${" in a for a in mcp["args"])
 
 
 def test_windows_npm_shim_uses_node_without_shell_evaluation(tmp_path, monkeypatch):
@@ -145,3 +145,22 @@ def test_windows_npm_shim_uses_node_without_shell_evaluation(tmp_path, monkeypat
     entry.unlink()
     with pytest.raises(RuntimeError, match="unsupported_codex_npm_layout"):
         command()
+
+
+def test_portable_schema_rejects_unprefixed_working_directory(tmp_path):
+    import shutil
+
+    from jsonschema import ValidationError
+
+    api = runpy.run_path(str(ROOT / "verification/openai_plugin.py"))
+    plugin = tmp_path / "plugin"
+    shutil.copytree(
+        ROOT / "plugins/truthound", plugin, ignore=shutil.ignore_patterns(".venv", "__pycache__")
+    )
+    api["validate_portable"](plugin)
+    path = plugin / "mcp.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["mcpServers"]["truthound"]["cwd"] = "."
+    path.write_text(json.dumps(data), encoding="utf-8")
+    with pytest.raises(ValidationError):
+        api["validate_portable"](plugin)

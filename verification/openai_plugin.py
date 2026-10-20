@@ -66,7 +66,7 @@ async def smoke(plugin: Path, work: Path) -> dict:
     )
     args = [a.replace("${PLUGIN_ROOT}", str(plugin)) for a in connection["args"]]
     assert not any("${" in a for a in args)
-    assert connection["cwd"] == "."
+    assert connection["cwd"] == "./"
     working_directory = plugin / connection["cwd"]
     data = work / "approved"
     data.mkdir()
@@ -151,6 +151,22 @@ def codex_command() -> list[str]:
     return [cli]
 
 
+def validate_portable(plugin: Path) -> None:
+    from jsonschema.validators import validator_for
+
+    for name in ["plugin", "mcp"]:
+        schema = json.loads(
+            (
+                ROOT / "verification/schemas" / ("agent-plugins-1.0.0-" + name + ".schema.json")
+            ).read_text(encoding="utf-8")
+        )
+        validator = validator_for(schema)
+        validator.check_schema(schema)
+        validator(schema).validate(
+            json.loads((plugin / (name + ".json")).read_text(encoding="utf-8"))
+        )
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
@@ -159,13 +175,26 @@ def main() -> None:
     parser.add_argument("--plugin", type=Path, default=ROOT / "plugins/truthound")
     args = parser.parse_args()
     plugin = args.plugin.resolve(strict=True)
+    validate_portable(plugin)
     manifest = json.loads((plugin / "plugin.json").read_text(encoding="utf-8"))
     project = tomllib.loads((plugin / "pyproject.toml").read_text(encoding="utf-8"))["project"]
     assert manifest["name"] == "truthound" and manifest["version"] == project["version"]
     extension = manifest["extensions"]["com.openai"]
     compat = json.loads((plugin / ".codex-plugin/plugin.json").read_text(encoding="utf-8"))
     assert compat["interface"] == extension["interface"]
-    assert compat["name"] == manifest["name"] and compat["version"] == manifest["version"]
+    for key in [
+        "name",
+        "version",
+        "description",
+        "author",
+        "homepage",
+        "repository",
+        "license",
+        "keywords",
+    ]:
+        assert compat[key] == manifest[key]
+    assert compat["requires_local_executor"] is True
+    assert compat["extensions"]["com.openai"]["onboardingSkill"] == extension["onboardingSkill"]
     assert (
         json.loads((plugin / ".mcp.json").read_text(encoding="utf-8"))["mcpServers"]
         == json.loads((plugin / "mcp.json").read_text(encoding="utf-8"))["mcpServers"]

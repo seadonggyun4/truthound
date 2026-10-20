@@ -1,9 +1,9 @@
 name: OpenAI local plugin
 on:
   push:
-    paths: ["plugins/truthound/**", ".agents/plugins/marketplace.json", "verification/openai_plugin.py", "tests/test_openai_plugin.py", ".github/workflows/openai-plugin.yml"]
+    paths: ["plugins/truthound/**", ".agents/plugins/marketplace.json", "verification/openai_plugin.py", "verification/schemas/agent-plugins-1.0.0-*.schema.json", "tests/test_openai_plugin.py", ".github/workflows/openai-plugin.yml"]
   pull_request:
-    paths: ["plugins/truthound/**", ".agents/plugins/marketplace.json", "verification/openai_plugin.py", "tests/test_openai_plugin.py", ".github/workflows/openai-plugin.yml"]
+    paths: ["plugins/truthound/**", ".agents/plugins/marketplace.json", "verification/openai_plugin.py", "verification/schemas/agent-plugins-1.0.0-*.schema.json", "tests/test_openai_plugin.py", ".github/workflows/openai-plugin.yml"]
   workflow_dispatch:
 permissions:
   contents: read
