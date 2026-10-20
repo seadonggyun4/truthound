@@ -16,7 +16,7 @@ are not part of this version. Additional tools require their own contracts.
 
 ## Sources examined and application
 
-This is a bounded engineering review of seven primary references, not an
+This is a bounded engineering review of nine primary references, not an
 exhaustive systematic review. Full paid books and paper evaluations were not
 reproduced. References were accessed on 2026-10-20.
 
@@ -29,6 +29,8 @@ reproduced. References were accessed on 2026-10-20.
 | [Saltzer and Schroeder, 1975](https://www.cs.virginia.edu/~evans/cs551/saltzer/), protection principles | Deny absent roots; mediate each request; minimize exposed authority | Application checks are not an OS security boundary |
 | [Percival and Gregory, Architecture Patterns with Python, chapter 2](https://www.cosmicpython.com/book/chapter_02_repository), dependency inversion section | Dependencies point toward existing Core; optional transport remains outside | The chapter concerns persistence; applying it to MCP is an engineering inference |
 | [MCP Safety Audit](https://arxiv.org/abs/2504.03767), abstract only | Do not interpret metadata as instructions or expose unrestricted tools | No reproduction or claim of solving prompt injection |
+| [MCP cancellation](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/cancellation), full utility page | Propagate request cancellation to owned work and free resources | Cancellation races are allowed; not an unconditional protocol guarantee |
+| [AnyIO cancellation](https://anyio.readthedocs.io/en/stable/cancellation.html), task-group, deadline and shielded-finalization sections; installed subprocess implementation | Await a structured child directly, rather than abandoning a synchronous background thread | Normal OS process termination, not kernel-hang or sandbox protection |
 
 ## Alternatives and tradeoffs
 
@@ -44,6 +46,20 @@ and aggregate statistics. Those may be sensitive, and the client controls model
 provider transmission. Tool annotations describe intended behavior only.
 
 ## Verification
+
+The stdio handler directly awaits the service. AnyIO's subprocess context kills
+and reaps the worker on cancellation or deadline; only then does the service
+remove its private input and release the busy lock. SDK connection shutdown
+cancels in-flight handlers. Real wire cancellation, stdin EOF and timeout tests
+observe owned PIDs and temporary directories within a declared five-second
+test grace; cancellation additionally proves a subsequent normal call succeeds.
+This is not a universal wall-clock bound for pathological OS/filesystem hangs.
+Initialization uses the SDK factory so configured safety instructions reach clients.
+
+The mandatory MCP lane rejects absent SDKs, empty collection, skipped tests and
+missing required test files. Core source changes trigger it. Fresh wheel/sdist
+and extracted UV launcher tests assert the intended Python minor inside each
+installed runtime and emit actual Python/SDK/Polars versions and artifact hashes.
 
 Use synthetic Core parity and real stdio initialization/list/call/error tests,
 path traversal/symlink/size/timeout failure tests, package inventory inspection,

@@ -5,7 +5,6 @@ from __future__ import annotations
 import json
 import os
 import stat
-import subprocess
 import sys
 import tempfile
 import threading
@@ -21,6 +20,19 @@ class MCPService:
         self._busy = threading.Lock()
 
     def call(self, operation: str, path: str) -> dict:
+        """Synchronous facade for non-transport callers; SDK remains optional."""
+        import anyio
+
+        return anyio.run(self.call_async, operation, path)
+
+    def _worker_argv(self) -> list[str]:
+        return [sys.executable, "-I", "-m", "truthound.mcp.worker"]
+
+    async def call_async(self, operation: str, path: str) -> dict:
+        """Own the child in the request's cancellation scope through reaping."""
+        import anyio
+
+        await anyio.lowlevel.checkpoint()
         if operation not in {"check", "profile", "scan"}:
             return response("unknown", error="unknown_operation")
         if not self._busy.acquire(blocking=False):
@@ -42,6 +54,7 @@ class MCPService:
                         if copied > self.policy.max_file_bytes:
                             raise MCPError("file_too_large")
                         output.write(chunk)
+                        await anyio.lowlevel.checkpoint()
                 request = {
                     "operation": operation,
                     "path": str(target),
@@ -65,24 +78,22 @@ class MCPService:
                     }
                 }
                 env.update(POLARS_MAX_THREADS="1", OMP_NUM_THREADS="1", OPENBLAS_NUM_THREADS="1")
-                worker = subprocess.run(
-                    [sys.executable, "-I", "-m", "truthound.mcp.worker"],
-                    input=json.dumps(request),
-                    capture_output=True,
-                    text=True,
-                    timeout=self.policy.timeout_seconds,
-                    cwd=directory,
-                    env=env,
-                )
-                if (
-                    worker.returncode
-                    or len(worker.stdout.encode()) > self.policy.max_response_bytes
-                ):
+                # AnyIO owns and shield-finalizes the process: cancellation and
+                # timeout kill/reap it before deleting its input and releasing busy.
+                with anyio.fail_after(self.policy.timeout_seconds):
+                    worker = await anyio.run_process(
+                        self._worker_argv(),
+                        input=json.dumps(request).encode(),
+                        check=False,
+                        cwd=directory,
+                        env=env,
+                    )
+                if worker.returncode or len(worker.stdout) > self.policy.max_response_bytes:
                     raise MCPError("worker_error")
                 return json.loads(worker.stdout)
         except MCPError as exc:
             return response(operation, error=exc.code)
-        except subprocess.TimeoutExpired:
+        except TimeoutError:
             return response(operation, error="timeout")
         except Exception:
             return response(operation, error="worker_error")

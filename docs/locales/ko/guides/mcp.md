@@ -49,7 +49,10 @@ worker는 실행·임시 경로와 Windows CPU 아키텍처 식별자만 허용 
 URL·glob·상위 경로 이동·허용 폴더 아래의 심볼릭 링크를 거부합니다. 검사를
 허용한 일반 파일은 비공개 임시 디렉터리에 복사한 뒤 Core에 전달합니다.
 Core의 context 산출물도 임시 디렉터리에만 생성하고 요청 종료·worker timeout
-후 제거합니다. 입력 폴더에 보고서나 `.truthound` workspace를 쓰지 않습니다.
+시 회수합니다. MCP 취소와 stdin EOF도 worker에 전달하여 프로세스 종료·회수,
+임시 복사본 삭제, busy 잠금 해제 순서로 정리합니다. 취소 후 후속 호출이
+가능하지만 병적인 커널·파일시스템 hang까지 보편적인 종료 시한을 보장하지는 않습니다.
+입력 폴더에 보고서나 `.truthound` workspace를 쓰지 않습니다.
 
 기본 제한은 입력 100 MiB, 상세 100개, 응답 64 KiB, Core worker 30초입니다.
 `--max-file-bytes`, `--max-items`, `--timeout-seconds`로 지원 범위 안에서

@@ -7,6 +7,7 @@ import hashlib
 import json
 import shutil
 import subprocess
+import sys
 import tarfile
 import tempfile
 import tomllib
@@ -40,7 +41,9 @@ async def run():
         params=StdioServerParameters(command=sys.executable,args=["-I","-m","truthound.mcp","serve","--allow-dir",td])
         async with stdio_client(params) as (r,w):
             async with ClientSession(r,w) as client:
-                await client.initialize()
+                initialized=await client.initialize()
+                assert initialized.instructions and "No raw values are returned" in initialized.instructions
+                assert initialized.protocolVersion=="2025-11-25"
                 assert len((await client.list_tools()).tools)==3
                 for name in ("check_file","profile_file","scan_pii"):
                     result=await client.call_tool(name,{"path":str(p)})
@@ -74,7 +77,53 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--smoke", action="store_true")
+    parser.add_argument(
+        "--expected-python", default=f"{sys.version_info.major}.{sys.version_info.minor}"
+    )
     args = parser.parse_args()
+    if args.expected_python != f"{sys.version_info.major}.{sys.version_info.minor}":
+        parser.error("Source interpreter does not match intended matrix Python")
+    proofs = []
+
+    def smoke(command, code, artifact, stage, cwd):
+        # Assertions and metadata execute in the installed interpreter, not its parent.
+        prefix = (
+            "import sys; assert str(sys.version_info.major)+'.'+str(sys.version_info.minor)=="
+            + repr(args.expected_python)
+            + ";\n"
+        )
+        suffix = """
+import importlib.metadata as metadata, importlib.util, json, platform
+print("TRUTHOUND_RUNTIME_PROOF:"+json.dumps({
+    "python": platform.python_version(),
+    "mcp": metadata.version("mcp") if importlib.util.find_spec("mcp") else None,
+    "polars": metadata.version("polars"), "truthound": metadata.version("truthound")
+}))
+"""
+        result = subprocess.run(
+            list(map(str, command)) + [prefix + code + suffix],
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode:
+            raise RuntimeError("INSTALLED_RUNTIME_SMOKE_FAILED:" + stage)
+        lines = [
+            line
+            for line in result.stdout.splitlines()
+            if line.startswith("TRUTHOUND_RUNTIME_PROOF:")
+        ]
+        assert len(lines) == 1
+        proof = json.loads(lines[0].split(":", 1)[1])
+        proof.update(
+            stage=stage,
+            artifact=artifact.name,
+            sha256=hashlib.sha256(artifact.read_bytes()).hexdigest(),
+            expected_python=args.expected_python,
+        )
+        proofs.append(proof)
+        print(json.dumps(proof), flush=True)
+
     root = Path(__file__).resolve().parents[1]
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=False)
@@ -101,10 +150,10 @@ def main():
             "Private distribution inventory"
         )
         assert any(n.endswith("truthound/mcp/server.py") for n in z.namelist())
-    version = tomllib.loads((root / "pyproject.toml").read_text())["project"]["version"]
-    python = (
-        root / ".venv" / ("Scripts/python.exe" if __import__("os").name == "nt" else "bin/python")
-    )
+    version = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"][
+        "version"
+    ]
+    python = sys.executable
     run(
         [python, "-m", "truthound.mcp", "bundle", "--output", output / f"truthound-{version}.mcpb"],
         cwd=root,
@@ -136,31 +185,45 @@ def main():
         for artifact in (wheel, sdist):
             with tempfile.TemporaryDirectory(prefix="truthound-install-") as td:
                 venv = Path(td) / "venv"
-                run([uv, "venv", "--python", "3.11", venv])
+                run([uv, "venv", "--python", args.expected_python, venv])
                 executable = venv / (
                     "Scripts/python.exe" if __import__("os").name == "nt" else "bin/python"
                 )
                 run([uv, "pip", "install", "--python", executable, artifact])
-                run([executable, "-I", "-c", BASE_SMOKE], cwd=td)
+                smoke([executable, "-I", "-c"], BASE_SMOKE, artifact, "base-install", td)
                 run([uv, "pip", "install", "--python", executable, str(artifact) + "[mcp]"])
-                run([executable, "-I", "-c", SMOKE], cwd=td)
+                smoke([executable, "-I", "-c"], SMOKE, artifact, "mcp-install", td)
         # Exercise the actual extracted launcher and UV source mapping before PyPI publishing.
         with tempfile.TemporaryDirectory(prefix="truthound-bundle-data-") as td:
             launcher_code = SMOKE.replace(
                 '["-I","-m","truthound.mcp","serve","--allow-dir",td]',
                 '[str(Path.cwd()/"server.py"),"serve","--allow-dir",td]',
             )
-            run(
-                [uv, "run", "--directory", output / "extension", "python", "-c", launcher_code],
-                cwd=output / "extension",
+            smoke(
+                [
+                    uv,
+                    "run",
+                    "--directory",
+                    output / "extension",
+                    "--python",
+                    args.expected_python,
+                    "python",
+                    "-c",
+                ],
+                launcher_code,
+                output / f"truthound-{version}-local.mcpb",
+                "uv-launcher",
+                output / "extension",
             )
+    (output / "runtime-proofs.json").write_text(json.dumps(proofs, indent=2), encoding="utf-8")
     inventory = [
         p for p in output.iterdir() if p.is_file() and p.suffix in {".whl", ".gz", ".mcpb"}
     ]
     (output / "SHA256SUMS").write_text(
         "".join(
             f"{hashlib.sha256(p.read_bytes()).hexdigest()}  {p.name}\n" for p in sorted(inventory)
-        )
+        ),
+        encoding="utf-8",
     )
     print(
         json.dumps(

@@ -4351,6 +4351,7 @@ dev = [
     { name = "mypy" },
     { name = "openai" },
     { name = "pandas" },
+    { name = "psutil" },
     { name = "pyarrow" },
     { name = "pydantic" },
     { name = "pytest" },
@@ -4387,6 +4388,7 @@ kafka = [
     { name = "aiokafka" },
 ]
 mcp = [
+    { name = "anyio" },
     { name = "mcp" },
     { name = "polars" },
 ]
@@ -4456,6 +4458,7 @@ requires-dist = [
     { name = "aiokafka", marker = "extra == 'async-datasources'", specifier = ">=0.9.0" },
     { name = "aiokafka", marker = "extra == 'kafka'", specifier = ">=0.9.0" },
     { name = "aiokafka", marker = "extra == 'streaming'", specifier = ">=0.9.0" },
+    { name = "anyio", marker = "extra == 'mcp'", specifier = ">=4.6,<5.0" },
     { name = "azure-storage-blob", marker = "extra == 'all'", specifier = ">=12.0.0" },
     { name = "azure-storage-blob", marker = "extra == 'azure'", specifier = ">=12.0.0" },
     { name = "azure-storage-blob", marker = "extra == 'stores'", specifier = ">=12.0.0" },
@@ -4511,6 +4514,7 @@ requires-dist = [
     { name = "polars", marker = "extra == 'mcp'", specifier = ">=1.0.0,<2.0.0" },
     { name = "psutil", marker = "extra == 'all'", specifier = ">=5.9.0,<8.0.0" },
     { name = "psutil", marker = "extra == 'benchmarks'", specifier = ">=5.9.0,<8.0.0" },
+    { name = "psutil", marker = "extra == 'dev'", specifier = ">=5.9.0,<8.0.0" },
     { name = "psycopg2-binary", marker = "extra == 'all'", specifier = ">=2.9.9" },
     { name = "psycopg2-binary", marker = "extra == 'postgresql'", specifier = ">=2.9.9" },
     { name = "psycopg2-binary", marker = "extra == 'sql-connectors'", specifier = ">=2.9.9" },

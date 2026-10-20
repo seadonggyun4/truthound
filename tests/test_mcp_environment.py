@@ -20,7 +20,10 @@ def test_worker_keeps_windows_architecture_but_not_secrets_or_cpu_bypass(tmp_pat
     monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "synthetic-test-marker")
     monkeypatch.setenv("PYTHONPATH", "synthetic-test-marker")
 
-    def run(argv, **kwargs):
+    observed = []
+
+    async def run(argv, **kwargs):
+        observed.append(True)
         env = kwargs["env"]
         assert env["PROCESSOR_ARCHITECTURE"] == "AMD64"
         assert env["PROCESSOR_ARCHITEW6432"] == "ARM64"
@@ -29,7 +32,10 @@ def test_worker_keeps_windows_architecture_but_not_secrets_or_cpu_bypass(tmp_pat
         assert env["POLARS_MAX_THREADS"] == "1"
         from truthound.mcp.projection import response
 
-        return SimpleNamespace(returncode=0, stdout=json.dumps(response("check", data={})))
+        return SimpleNamespace(returncode=0, stdout=json.dumps(response("check", data={})).encode())
 
-    monkeypatch.setattr("truthound.mcp.service.subprocess.run", run)
+    import anyio
+
+    monkeypatch.setattr(anyio, "run_process", run)
     assert MCPService(MCPPolicy((tmp_path,))).call("check", str(data))["ok"]
+    assert observed == [True]

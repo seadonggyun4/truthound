@@ -13,3 +13,10 @@ wheel 포함 MCPB를 제공하며 최초 의존성 해석에는 네트워크가 
 요구합니다. 이전의 상한 없는 기본 의존성은 Polars 2를 선택해 제거된 streaming 인자에서
 실패할 수 있었습니다. 이제 wheel/sdist 기본 설치에서도 MCP SDK 없이 Core 검증·프로파일·
 PII API를 실제 호출해 확인합니다.
+
+요청 취소·stdin EOF·worker timeout 시 worker 종료·회수, 임시 입력 제거,
+busy 잠금 해제를 연결합니다. 초기화 응답에 설정된 안전 지침을 포함합니다.
+필수 연동 CI는 Core 소스만 바뀌어도 실행되며 SDK 부재·0개 수집·skip을
+실패로 처리합니다. 새 wheel/sdist와 UV launcher의 실제 Python 3.11–3.13 및
+의존성 버전을 기록합니다. 프로세스 메모리 상한·OS sandbox·병적인 커널이나
+파일시스템 hang의 보편적인 종료 시한을 보장하는 것은 아닙니다.

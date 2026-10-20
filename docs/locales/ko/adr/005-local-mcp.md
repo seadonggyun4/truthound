@@ -8,7 +8,7 @@
 로컬 파일 정책, 별도 Core worker, 명시적 결과 투영을 조합합니다.
 PyPI extra와 MCPB는 동일한 Truthound 버전을 사용합니다.
 
-관련 7개 1차 자료를 범위가 정해진 엔지니어링 검토로 조사했습니다.
+관련 9개 1차 자료를 범위가 정해진 엔지니어링 검토로 조사했습니다.
 체계적 문헌고찰·유료 서적 전체 열람·논문의 성능 재현을 주장하지 않습니다.
 자료 확인 날짜는 2026-10-20입니다.
 
@@ -21,8 +21,22 @@ PyPI extra와 MCPB는 동일한 Truthound 버전을 사용합니다.
 | [Saltzer·Schroeder 1975](https://www.cs.virginia.edu/~evans/cs551/saltzer/), 보안 원칙 | 기본 거부와 요청별 접근 검사 | 애플리케이션 정책은 OS sandbox가 아님 |
 | [Architecture Patterns with Python 2장](https://www.cosmicpython.com/book/chapter_02_repository), 의존성 역전 절 | 기존 Core 쪽으로 의존성 방향 유지 | 저장소 패턴을 MCP에 적용한 설계적 추론 |
 | [MCP Safety Audit](https://arxiv.org/abs/2504.03767), 초록만 | 메타데이터를 명령으로 해석하지 않고 권한 축소 | 실험 재현·prompt injection 해결 주장 없음 |
+| [MCP 취소 규격](https://modelcontextprotocol.io/specification/2025-11-25/basic/utilities/cancellation), 해당 페이지 전체 | 요청 취소를 작업에 전달하고 자원 회수 | 취소 경쟁이 허용되며 무조건적인 프로토콜 보장은 아님 |
+| [AnyIO 취소 문서](https://anyio.readthedocs.io/en/stable/cancellation.html), task group·deadline·shield 절 및 설치된 subprocess 구현 | 동기 스레드를 방치하지 않고 구조화된 자식 프로세스를 직접 await | 정상 OS 종료 기준이며 커널 hang·sandbox 방어는 아님 |
 
 ## 대안과 검증
+
+stdio handler가 비동기 서비스를 직접 기다립니다. 취소·timeout 시 AnyIO가
+worker를 종료·회수한 뒤 임시 입력을 삭제하고 busy 잠금을 해제합니다. SDK의
+연결 종료도 진행 중 handler를 취소합니다. 실제 취소 알림·stdin EOF·timeout
+테스트가 PID와 임시 폴더 제거를 5초 테스트 유예 안에서 확인하며, 취소 후
+같은 서버의 정상 후속 호출도 확인합니다. 병적인 OS·파일시스템 hang까지
+보편적인 시간 상한을 보장하지 않습니다. 초기화는 SDK factory를 사용하여
+설정된 안전 지침을 클라이언트에 전달합니다.
+
+필수 MCP CI는 SDK 부재·0개 수집·skip·필수 파일 누락을 실패로 처리하며 Core
+소스 변경에도 실행합니다. 새 wheel/sdist·추출한 UV launcher의 실제 런타임에서
+의도한 Python minor를 검사하고 Python·SDK·Polars 버전과 설치물 해시를 기록합니다.
 
 직접 JSON-RPC를 구현하면 규격 유지보수 책임이 중복됩니다. 원격 서비스는
 인증·호스팅·데이터 전송 설계가 필요합니다. Core를 event loop에서 직접 실행하면

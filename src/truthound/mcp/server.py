@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import json
 from typing import TYPE_CHECKING
 
@@ -26,8 +25,7 @@ TOOLS = {
 
 async def serve(policy: MCPPolicy) -> None:
     from mcp import types
-    from mcp.server.lowlevel import NotificationOptions, Server
-    from mcp.server.models import InitializationOptions
+    from mcp.server.lowlevel import Server
     from mcp.server.stdio import stdio_server
 
     from truthound import __version__
@@ -86,7 +84,7 @@ async def serve(policy: MCPPolicy) -> None:
         ):
             result = response(TOOLS[name][0], error="invalid_arguments")
         else:
-            result = await asyncio.to_thread(service.call, TOOLS[name][0], arguments["path"])
+            result = await service.call_async(TOOLS[name][0], arguments["path"])
         return types.CallToolResult(
             content=[types.TextContent(type="text", text=json.dumps(result, allow_nan=False))],
             structuredContent=result,
@@ -97,11 +95,5 @@ async def serve(policy: MCPPolicy) -> None:
         await server.run(
             read,
             write,
-            InitializationOptions(
-                server_name="truthound",
-                server_version=__version__,
-                capabilities=server.get_capabilities(
-                    notification_options=NotificationOptions(), experimental_capabilities={}
-                ),
-            ),
+            server.create_initialization_options(),
         )

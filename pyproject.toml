@@ -41,7 +41,7 @@ dependencies = [
 
 [project.optional-dependencies]
 # Local MCP transport; Core remains usable without the SDK.
-mcp = ["mcp>=1.30.0,<2.0.0", "polars>=1.0.0,<2.0.0"]
+mcp = ["mcp>=1.30.0,<2.0.0", "anyio>=4.6,<5.0", "polars>=1.0.0,<2.0.0"]
 # Optional AI artifact and provider contract surface
 ai = [
     "pydantic>=2.0.0,<3.0.0",
@@ -224,6 +224,7 @@ all = [
 
 # Development dependencies
 dev = [
+    "psutil>=5.9.0,<8.0.0",
     "pydantic>=2.0.0,<3.0.0",
     "openai>=1.35.0,<2.0.0",
     "pytest>=8.0.0",

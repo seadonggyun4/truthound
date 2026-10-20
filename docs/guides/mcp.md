@@ -63,6 +63,10 @@ The adapter rejects URLs, glob expressions, parent traversal and symlinks below
 the configured roots. It copies an admitted regular file to a private temporary
 directory before calling Core. Core context artifacts stay in that temporary
 directory and are removed after the request, including after worker timeout.
+MCP cancellation and stdin EOF propagate to the owned worker: it is killed and
+reaped before the private copy is removed and the busy lock is released. The
+server can accept another request after cancellation. This is not a hard bound
+against pathological kernel or filesystem hangs.
 No reports or `.truthound` workspace are written to the input directory.
 
 Defaults are a 100 MiB input limit, 100 detail entries, 64 KiB response limit and

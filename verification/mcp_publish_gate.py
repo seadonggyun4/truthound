@@ -47,25 +47,17 @@ def main() -> int:
             run = subprocess.run(
                 [
                     str(root / ".venv/bin/python"),
-                    "-m",
-                    "pytest",
-                    "-q",
-                    "tests/test_mcp.py",
-                    "tests/test_mcp_bundle.py",
-                    "tests/test_mcp_faults.py",
-                    "tests/test_mcp_environment.py",
-                    "tests/test_polars_dependency_contract.py",
-                    "-p",
-                    "no:cacheprovider",
-                    f"--junitxml={junit}",
+                    "verification/mcp_ci_gate.py",
+                    "--junitxml",
+                    str(junit),
                 ],
                 cwd=root,
                 capture_output=True,
-                timeout=25,
+                timeout=45,
             )
             suites = ET.parse(junit).getroot().findall("testsuite")
             assert run.returncode == 0 and suites
-            assert sum(int(s.get("tests", 0)) for s in suites) >= 22
+            assert sum(int(s.get("tests", 0)) for s in suites) >= 30
             assert all(int(s.get("skipped", 0)) == 0 for s in suites)
             results["api"] = "PASS"
         api = "https://api.github.com/repos/seadonggyun4/truthound"

@@ -14,3 +14,11 @@ access. Both the base package and MCP extra require Polars 1.x for the existing
 Core PII scanner API. The previous open-ended base constraint could select Polars
 2 and fail on its removed streaming argument; default wheel/sdist installs now
 exercise Core check, profile and PII calls without installing the MCP SDK.
+
+Request cancellation, stdin EOF and worker timeout terminate and reap the owned
+worker, remove private inputs and release the busy lock. Initialization includes
+configured safety instructions. The mandatory integration lane covers Core-only
+source changes, rejects missing SDKs/empty/skipped suites, and records actual
+Python 3.11–3.13 runtimes and dependency versions for fresh wheel/sdist and UV
+launcher tests. These tests do not establish a universal process-memory limit,
+OS sandbox or termination deadline for pathological kernel/filesystem hangs.
