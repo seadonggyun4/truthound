@@ -128,6 +128,73 @@ are separate steps. Directory listing/review is separate from file distribution;
 building a bundle does not establish Anthropic approval or tested GUI behavior.
 The bundle never contains project data, development environments or internal notes.
 
+## OpenAI local plugin and repository marketplace
+
+The standalone OpenAI plugin is version `0.1.0`, pins the published Core
+`truthound[mcp]==3.2.0`, and includes a frozen UV dependency lock. It is local
+desktop software, not a hosted service or a ChatGPT web connector. Install UV
+and make it available on the desktop application's PATH. First setup needs
+network access and a compatible Python 3.11–3.13 runtime.
+
+Add the repository marketplace once:
+
+```bash
+codex plugin marketplace add seadonggyun4/truthound --ref main
+```
+
+Refresh or restart the desktop app if needed. In **Plugins**, select the
+**Truthound Plugins** source, open **Truthound Local**, and choose **Install**.
+Then choose **Set up** and approve the exact absolute data directory. In the
+CLI, installation is also available through `codex plugin add truthound@truthound`.
+Client version and organization policy can affect marketplace availability.
+Packages include the portable manifest and a matching Codex compatibility
+manifest for older clients. If **Set up** is unavailable, ask the agent to run
+the packaged **Truthound setup** skill; do not bypass directory approval.
+
+Installation grants no data access. The three MCP tools initialize normally but
+return `access_denied` until you approve a directory. Setup runs the packaged
+`permissions.py` only after your approval. It stores an atomic local allowlist
+at `~/.truthound-openai/permissions.json`, outside the plugin and data workspace.
+The next tool call reads the updated policy; no server restart is required.
+Re-running setup replaces the previous directory list; `permissions.py --revoke`
+revokes access. Revocation affects subsequent calls, not an already-running call.
+Missing, malformed, unsafe or empty permission files deny access. POSIX ownership
+and write modes are checked; Windows uses the user's directory/NTFS permissions,
+not a claim that POSIX modes enforce Windows ACLs.
+
+The server reuses Core's MCP transport, service, file policy and worker APIs;
+it adds only the local consent loader. No HTTP listener, upload tool, OAuth,
+credentials or paid model call is introduced. Raw values are redacted, but file
+paths and column names are tool metadata the host may send to its model provider.
+The optional `TRUTHOUND_OPENAI_CONFIG` absolute-path override is for an
+operator-selected alternative consent file or isolated tests, not implicit access.
+
+### OpenAI official directory approval
+
+Repository distribution is **not** official public directory publication.
+The current plugin has no OpenAI approval or assigned public listing ID.
+To request a public **Desktop only** listing:
+
+1. Have the submitting organization owner contact an OpenAI representative for
+   local MCP partner eligibility and organization allowlisting; wait for confirmation.
+2. Complete developer/business identity verification. The submitter needs owner
+   access or **Apps Management Write**. Do not send credentials in chat or the ZIP.
+3. Prepare real publisher-owned privacy and terms URLs, review metadata, five
+   positive and three negative cases, and an accessible video walkthrough. The
+   repository package is not a completed legal-policy or video submission.
+4. Test a clean desktop install, new/existing-chat onboarding and primary workflows.
+5. In the [submission portal](https://platform.openai.com/plugins), use the
+   approved local MCP **Skills only / Upload ZIP** route (retain the actual MCP
+   configuration), resolve findings and obtain the publisher's policy attestations.
+6. Submit for review; only after approval choose **Publish plugin**. Record the
+   actual listing URL and independently verify the directory's Install flow.
+
+See the [official packaging guide](https://developers.openai.com/plugins/build/plugins),
+[desktop-only eligibility](https://developers.openai.com/plugins/deploy/desktop-only)
+and [submission requirements](https://developers.openai.com/plugins/deploy/submission).
+No allowlist, legal acceptance, review approval or web support is implied by a
+successful ZIP build or repository marketplace installation.
+
 ## Registry metadata and installation
 
 Find `io.github.seadonggyun4/truthound` in the [official MCP Registry](https://registry.modelcontextprotocol.io/); [version 3.2.0 is published](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.seadonggyun4%2Ftruthound/versions/3.2.0). If a connected client's marketplace exposes the listing, choose **Install** and configure an explicitly allowed directory. Registry publication does not guarantee visibility or approval in every client marketplace.

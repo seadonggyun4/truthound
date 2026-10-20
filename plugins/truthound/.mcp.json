@@ -1,0 +1,7 @@
+{
+  "mcpServers": {"truthound": {
+    "type": "stdio",
+    "command": "uv",
+    "args": ["run", "--no-config", "--frozen", "--directory", "${PLUGIN_ROOT}", "python", "server.py"]
+  }}
+}

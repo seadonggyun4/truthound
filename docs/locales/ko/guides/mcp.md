@@ -115,6 +115,69 @@ Anthropic 승인이나 GUI 검증을 주장하지 않습니다. 개발 환경·�
 작업 기록은 포함하지 않습니다. 구현 경계와 연구 근거는
 [설계 문서](../adr/005-local-mcp.md)를 참고하세요.
 
+## OpenAI 로컬 플러그인과 저장소 마켓플레이스
+
+OpenAI 플러그인은 Core와 별도인 버전 `0.1.0`이며 공개 PyPI의
+`truthound[mcp]==3.2.0`과 고정된 UV dependency lock을 사용합니다.
+로컬 데스크톱용이며 원격 서비스나 ChatGPT 웹 커넥터가 아닙니다.
+UV를 설치해 데스크톱 앱의 PATH에서 사용할 수 있어야 하며 최초 설치에는
+네트워크와 Python 3.11–3.13 런타임이 필요합니다.
+
+마켓플레이스를 한 번 추가합니다.
+
+```bash
+codex plugin marketplace add seadonggyun4/truthound --ref main
+```
+
+필요하면 앱을 새로고침·재시작한 뒤 **Plugins → Truthound Plugins 소스 →
+Truthound Local → Install → Set up**에서 읽기를 허용할 정확한 절대경로
+폴더에 동의합니다. CLI 설치는 `codex plugin add truthound@truthound`입니다.
+클라이언트 버전과 조직 정책에 따라 저장소 마켓플레이스 사용 가능 여부가 다릅니다.
+패키지는 portable manifest와 구형 Codex용 호환 manifest를 함께 제공합니다.
+**Set up**이 없는 클라이언트에서는 에이전트에게 패키지의 **Truthound setup**
+스킬 실행을 요청하세요. 폴더 동의 절차를 생략하지 않습니다.
+
+설치만으로 데이터 접근 권한은 생기지 않습니다. 세 도구는 정상 연결되지만
+폴더 동의 전에는 `access_denied`를 반환합니다. 온보딩은 사용자 동의 후에만
+패키지의 `permissions.py`를 실행하며 설정은 plugin·입력 폴더 외부의
+`~/.truthound-openai/permissions.json`에 원자적으로 저장합니다.
+다음 도구 호출부터 새 정책을 읽으므로 서버 재시작은 필요하지 않습니다.
+재설정은 기존 목록을 교체하며 `permissions.py --revoke`로 철회합니다.
+철회는 다음 호출에 적용되고 진행 중인 호출을 소급 취소하지는 않습니다.
+누락·손상·안전하지 않은 설정·빈 목록은 접근을 거부합니다. POSIX에서는
+파일 소유자·쓰기 모드를 검사하며 Windows는 사용자 폴더·NTFS 권한에
+의존합니다. POSIX mode가 Windows ACL을 강제한다고 주장하지 않습니다.
+
+Core의 MCP transport·service·파일 정책·worker를 재사용하고 로컬 동의 로더만
+추가합니다. HTTP listener·업로드 도구·OAuth·자격증명·유료 모델 호출은 없습니다.
+원시 값은 숨기지만 파일 경로·컬럼명은 host가 모델 제공자에게 보낼 수 있는
+도구 메타데이터입니다. 선택적 `TRUTHOUND_OPENAI_CONFIG` 절대경로 override는
+운영자가 지정한 별도 설정 파일이나 격리 테스트용이며 접근 권한 자체가 아닙니다.
+
+### OpenAI 공식 디렉터리 승인 절차
+
+저장소 배포는 **OpenAI 공식 공개 디렉터리 게시가 아닙니다.** 현재 플러그인은
+OpenAI 승인이나 공개 listing ID가 없습니다. 공식 **Desktop only** 등재 절차는 다음과 같습니다.
+
+1. 제출 조직 소유자가 OpenAI 담당자에게 로컬 MCP 파트너 자격·조직 allowlist를
+   요청하고 승인 확인을 기다립니다.
+2. 개발자·사업자 본인 확인을 완료합니다. 제출자는 조직 owner 또는
+   **Apps Management Write** 권한이 필요합니다. 자격증명을 대화·ZIP에 넣지 않습니다.
+3. 실제 게시자 소유의 개인정보·이용약관 URL, 심사 메타데이터, 양성 5개·음성 3개
+   테스트와 접근 가능한 시연 영상 URL을 준비합니다. 현재 패키지는 법적 정책·영상
+   심사 자료까지 완성된 제출물이 아닙니다.
+4. 깨끗한 데스크톱 설치, 새 대화·기존 대화의 온보딩과 주요 workflow를 검증합니다.
+5. [제출 포털](https://platform.openai.com/plugins)에서 승인된 로컬 MCP용
+   **Skills only / Upload ZIP** 경로를 사용하되 실제 MCP 설정을 유지합니다.
+   자동 검증 지적을 해결하고 게시자에게 정책 확인·동의를 받습니다.
+6. 심사 제출 후 승인을 받은 버전에서만 **Publish plugin**을 선택합니다.
+   실제 listing URL을 기록하고 공식 디렉터리의 Install을 별도 검증합니다.
+
+[공식 패키징](https://developers.openai.com/plugins/build/plugins),
+[데스크톱 제출 자격](https://developers.openai.com/plugins/deploy/desktop-only),
+[심사·게시 요건](https://developers.openai.com/plugins/deploy/submission)을 참고하세요.
+ZIP 생성·저장소 설치 성공을 allowlist·법적 동의·심사 승인·웹 지원으로 대신하지 않습니다.
+
 ## Registry 메타데이터와 설치
 
 [공식 MCP Registry](https://registry.modelcontextprotocol.io/)에서 `io.github.seadonggyun4/truthound`를 검색할 수 있으며 [3.2.0이 게시되어 있습니다](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.seadonggyun4%2Ftruthound/versions/3.2.0). 연동 클라이언트의 마켓플레이스에 표시되면 **Install**을 누르고 접근을 허용할 폴더를 지정합니다. Registry 등록만으로 모든 클라이언트의 마켓플레이스 노출·승인이 보장되지는 않습니다.

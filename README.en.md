@@ -41,10 +41,11 @@ and ends at the closing </p> of the badge block above.
 
 ## Plugin Platform
 
+- **Codex and ChatGPT desktop**: Add the [Truthound repository marketplace](.agents/plugins/marketplace.json), then choose **Plugins → Truthound Plugins → Truthound Local → Install → Set up** and approve a data directory. One-time marketplace setup: `codex plugin marketplace add seadonggyun4/truthound --ref main`. [Installation, consent and official submission](docs/guides/mcp.md)
 - **Find it in a marketplace**: Search for `io.github.seadonggyun4/truthound` in the [official MCP Registry](https://registry.modelcontextprotocol.io/). If a connected client's marketplace lists it, select **Install** and specify the data directory you allow it to access. [Published 3.2.0 metadata](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.seadonggyun4%2Ftruthound/versions/3.2.0)
 - **Claude Desktop**: [Download the MCPB](https://github.com/seadonggyun4/truthound/releases/download/v3.2.0/truthound-3.2.0.mcpb) → **Settings → Extensions → Advanced settings → Install Extension…** → select the file and allowed directory. [Official installation guide](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop)
 
-Registry publication is separate from each marketplace's review and visibility; a Claude official directory listing has not been confirmed. This is local stdio only and requires Python 3.11+, UV and network access on first setup. See the [MCP guide](docs/guides/mcp.md) for the three tools and security/runtime limits.
+Repository marketplace distribution is not an OpenAI public directory listing. Official local MCP submission requires an allowlisted organization, identity verification and review; approval has not been obtained. A Claude official directory listing is also unconfirmed. Local stdio only: Python 3.11–3.13, UV and first-install network access are required; ChatGPT web and remote hosting are not supported. Installation alone grants no file access.
 
 Truthound uses a single lifecycle runtime.
 
