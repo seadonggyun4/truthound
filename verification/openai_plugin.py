@@ -134,6 +134,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--smoke", action="store_true")
+    parser.add_argument("--check-codex", action="store_true")
     parser.add_argument("--plugin", type=Path, default=ROOT / "plugins/truthound")
     args = parser.parse_args()
     plugin = args.plugin.resolve(strict=True)
@@ -170,10 +171,35 @@ def main() -> None:
         "openai_public_directory_published": False,
         "smoke": None,
     }
+    if args.check_codex:
+        cli = subprocess.run(
+            ["codex", "mcp", "list", "--json"], check=True, capture_output=True, text=True
+        )
+        targets = [s for s in json.loads(cli.stdout) if s["name"] == "truthound"]
+        assert len(targets) == 1 and targets[0]["enabled"]
+        transport = targets[0]["transport"]
+        expected = json.loads((plugin / "mcp.json").read_text(encoding="utf-8"))["mcpServers"][
+            "truthound"
+        ]
+        assert transport["type"] == "stdio" and transport["command"] == "uv"
+        assert transport["args"] == expected["args"] and not any(
+            "${" in a for a in transport["args"]
+        )
+        installed = Path(transport["cwd"])
+        assert installed.is_absolute() and (installed / "server.py").is_file()
+        assert (
+            json.loads((installed / ".codex-plugin/plugin.json").read_text(encoding="utf-8"))[
+                "version"
+            ]
+            == manifest["version"]
+        )
+        for name in FILES:
+            assert (installed / name).read_bytes() == (plugin / name).read_bytes(), name
+        result["actual_codex_install_and_runtime_config_verified"] = True
     if args.smoke:
         with tempfile.TemporaryDirectory(prefix="truthound-plugin-") as td:
             work = Path(td)
-            extracted = work / "plugin"
+            extracted = work / "plugin with spaces 한글"
             with zipfile.ZipFile(output) as archive:
                 assert set(archive.namelist()) == set(FILES)
                 archive.extractall(extracted)
