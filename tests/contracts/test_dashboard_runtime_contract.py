@@ -16,10 +16,7 @@ def _load_truthound_pyproject() -> dict[str, object]:
 
 def _load_dashboard_contract() -> dict[str, object]:
     contract_path = (
-        DASHBOARD_ROOT
-        / "deployment"
-        / "private-runtime"
-        / "dashboard-runtime.contract.toml"
+        DASHBOARD_ROOT / "deployment" / "private-runtime" / "dashboard-runtime.contract.toml"
     )
     if not contract_path.exists():
         pytest.skip("truthound-dashboard sibling repository is not checked out")
@@ -48,15 +45,16 @@ def test_all_extra_is_a_superset_of_internal_dashboard_runtime_dependencies() ->
     manifest = pyproject["tool"]["truthound"]["internal_runtime"]["dashboard_runtime"]
 
     all_extra = set(optional["all"])
-    included_deps = {
-        dep
-        for extra in manifest["included_extras"]
-        for dep in optional[extra]
-    }
+    included_deps = {dep for extra in manifest["included_extras"] for dep in optional[extra]}
 
     assert included_deps <= all_extra
 
 
+@pytest.mark.optional_consumer
+@pytest.mark.skipif(
+    not (DASHBOARD_ROOT / "deployment/private-runtime/dashboard-runtime.contract.toml").exists(),
+    reason="truthound-dashboard sibling repository is not checked out",
+)
 def test_dashboard_runtime_contract_matches_dashboard_repository_snapshot_when_available() -> None:
     pyproject = _load_truthound_pyproject()
     manifest = pyproject["tool"]["truthound"]["internal_runtime"]["dashboard_runtime"]

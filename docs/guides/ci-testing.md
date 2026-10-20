@@ -90,6 +90,40 @@ separate from passed tests. MCP and scale requirements cannot receive this waive
 Runtime-only skips are not silently allowlisted. Collection-time module skips
 are preserved separately and do not count as executed tests.
 
+Live BigQuery, Snowflake, Redshift and Databricks fixture closures require
+`TRUTHOUND_CLOUD_DW_RUN_LIVE=1`; the existing paid OpenAI smoke tests require
+`TRUTHOUND_AI_RUN_LIVE_SMOKE=1`. Set either only with separate account/cost
+authorization and prerequisites. The release does not enable them: their selected
+tests remain explicit `live_account` SKIP/unverified, never PASS. Hermetic warehouse
+configuration/generator tests remain active. An existing optional sibling-consumer
+snapshot check is likewise recorded as `optional_consumer` when unavailable.
+Unexpected runtime skips, including missing local libraries and service startup
+failures, are not covered by this boundary.
+Other pre-existing collection-time optional skips (credential-gated cloud stores,
+Kafka/LocalStack Testcontainers and a default-disabled Redis-stream test) remain
+separately reported as `other_optional_skipped`; they are not claimed as covered.
+This is not a waiver for newly failing required tests or runtime skips.
+
+Local Nightly prerequisites additionally install the existing benchmark/PDF
+extras and the `nightly-local` dependency group (OpenTelemetry SDK, Zstandard,
+pypdf). Ubuntu jobs install Pango, Poppler and CJK fonts and require PDF smoke and
+render checks. Missing local prerequisites are not converted into skip waivers.
+The integration VM owns disposable Redis and Elasticsearch service containers,
+accessed as real local endpoints, not mocks. Existing mock KMS/TMS fixtures are
+explicitly recorded as mock coverage, not live cloud verification. Startup or
+readiness failure fails the tests. SQLAlchemy queue pools forward
+`pool_timeout` to the engine; real SQLite tests verify the configured timeout and
+query execution without a database account.
+
+The dev environment requires pytest 9. Native subtests are recorded separately
+from the parent's setup/call/teardown phases with consecutive parent-local
+ordinals, without storing their context/parameter values. Parent testcase counts
+and parent-plus-subtest JUnit totals must both agree. Failed, skipped or xfailed
+subtests, missing ordinals, duplicate events and foreign parents fail the gate;
+subtests are neither ignored nor counted as extra top-level selected tests.
+Collection validation runs before execution rather than raising from a finally
+hook that could mask pytest's original missing-node error.
+
 The previous cancelled monolithic run selected 9,477 nodes and stopped printing
 progress at 19%. This establishes an observability gap, not a specific hanging
 test, OOM or product root cause. New lane logs/stacks are needed for that diagnosis.

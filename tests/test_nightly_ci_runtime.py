@@ -20,10 +20,28 @@ nightly = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(nightly)
 
 
-@pytest.mark.parametrize("scenario", ["normal", "failure", "timeout", "wrong-sha"])
+@pytest.mark.parametrize(
+    "scenario",
+    [
+        "normal",
+        "failure",
+        "timeout",
+        "wrong-sha",
+        "subtests",
+        "subtest-failure",
+        "subtest-skip",
+        "missing-node",
+    ],
+)
 def test_real_manifest_executor_preserves_failure_timeout_and_identity(tmp_path, scenario):
     sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     name = "test_required_failure" if scenario == "failure" else "test_boundary"
+    name = {
+        "subtests": "test_subtests",
+        "subtest-failure": "test_subtest_failure",
+        "subtest-skip": "test_subtest_skip",
+        "missing-node": "test_does_not_exist",
+    }.get(scenario, name)
     nodeid = f"tests/fixtures/nightly_case.py::{name}"
     plan = nightly.build_plan([dict(nodeid=nodeid, markers=["contract"], skip_reason=None)], sha)
     (tmp_path / "plan.json").write_text(json.dumps(plan))
@@ -71,9 +89,45 @@ def test_real_manifest_executor_preserves_failure_timeout_and_identity(tmp_path,
         )
         # Stack emission is diagnostic, not evidence of an enforced deadline.
         assert "Timeout" in result.stderr
+    elif scenario == "subtests":
+        import copy
+
+        assert result.returncode == 0, result.stderr
+        evidence = json.loads(output.read_text())
+        assert (
+            nightly.verify_lane(plan, "contract-0", evidence, junit, run_id="synthetic42")[
+                "subtests_passed"
+            ]
+            == 3
+        )
+        for mutation in ("missing", "duplicate", "failed", "skipped", "foreign", "xfail"):
+            changed = copy.deepcopy(evidence)
+            if mutation == "missing":
+                changed["subtests"].pop()
+            elif mutation == "duplicate":
+                changed["subtests"].append(copy.deepcopy(changed["subtests"][0]))
+            elif mutation in {"failed", "skipped"}:
+                changed["subtests"][0]["outcome"] = mutation
+            elif mutation == "xfail":
+                changed["subtests"][0]["xfail"] = True
+            else:
+                changed["subtests"][0]["nodeid"] = "tests/foreign.py::test_foreign"
+            with pytest.raises(ValueError):
+                nightly.verify_lane(plan, "contract-0", changed, junit, run_id="synthetic42")
+    elif scenario == "subtest-skip":
+        assert result.returncode == 0  # pytest itself allows a skipped subtest.
+        with pytest.raises(ValueError):
+            nightly.verify_lane(
+                plan, "contract-0", json.loads(output.read_text()), junit, run_id="synthetic42"
+            )
+    elif scenario == "missing-node":
+        assert result.returncode == 4
+        assert "not found" in result.stderr
+        assert "collection differs" not in result.stderr
+        assert json.loads(output.read_text())["exit_code"] == 4
     else:
         assert result.returncode != 0
-        if scenario == "failure":
+        if scenario in {"failure", "subtest-failure"}:
             with pytest.raises(ValueError):
                 nightly.verify_lane(
                     plan, "contract-0", json.loads(output.read_text()), junit, run_id="synthetic42"

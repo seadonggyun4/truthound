@@ -75,12 +75,14 @@ def test_release_gate_uses_workflow_identity_not_mutable_titles(mutation):
     elif mutation == "sha":
         full["head_sha"] = "b" * 40
     elif mutation == "integration":
-        full["display_title"] = "Nightly / weekly-integration-core"
+        # Discovery is independent of titles; actual full mode/flags/executions
+        # are subsequently required from the immutable artifact, not this label.
+        full["display_title"] = "arbitrary renamed nightly"
     elif mutation == "path":
         full["path"] = ".github/workflows/impostor.yml"
     elif mutation == "event":
         full["event"] = "schedule"
-    if mutation is None:
+    if mutation in {None, "integration"}:
         assert gate.validate_workflows(runs, sha) == [full]
     else:
         with pytest.raises(ValueError):

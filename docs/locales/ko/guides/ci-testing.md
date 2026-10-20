@@ -1,5 +1,23 @@
 # 저장소 CI와 full Nightly 검증
 
+실계정 BigQuery·Snowflake·Redshift·Databricks fixture에는
+`TRUTHOUND_CLOUD_DW_RUN_LIVE=1`, 기존 유료 OpenAI smoke에는
+`TRUTHOUND_AI_RUN_LIVE_SMOKE=1`이 필요합니다. 별도 계정·비용 승인 없이 설정하지
+않습니다. 이번 릴리스에서는 선택된 테스트를 제거하지 않고 `live_account`
+SKIP/미검증으로 기록하여 필수 PASS와 분리합니다. 계정 없이 실행 가능한 생성기·설정
+검증은 유지합니다. 기존 선택적 소비자 snapshot 검증도 없을 경우
+`optional_consumer` 미검증으로 구분합니다. 로컬 라이브러리 누락이나 서비스
+시작 실패, 예상하지 못한 runtime SKIP에는 이 예외를 적용하지 않습니다.
+기존 수집 시점 선택적 SKIP(자격증명 기반 cloud store, Kafka/LocalStack
+Testcontainers, 기본 비활성 Redis-stream 테스트)은 `other_optional_skipped`로
+별도 보고하며 검증 완료로 표현하지 않습니다. 새 필수 실패나 runtime SKIP은 허용하지
+않습니다.
+
+integration VM의 Redis·Elasticsearch는 실제 로컬 서비스 컨테이너이며 mock으로
+대체하지 않습니다. 기존 KMS/TMS mock fixture는 mock 검증임을 JUnit에 기록하며
+실계정 검증으로 표현하지 않습니다. 시작·준비 실패는 FAIL입니다. SQLAlchemy
+queue pool은 `pool_timeout`을 엔진에 전달하며 실제 SQLite 연결·쿼리로 검증합니다.
+
 PR의 contract 4개 shard, fault/e2e, lint ratchet과 최종 gate를 유지합니다.
 MCP distribution의 9개 OS/Python 조합, SDK 필수·skip 금지 검증,
 실제 wheel/sdist/UV 설치 검증도 유지합니다. Core `src/**`, 공통 pytest 설정,
@@ -9,6 +27,18 @@ lockfile 변경을 MCP 영향에서 제외하지 않습니다. PR 또는 MCP 통
 유발하지 않아도 정확한 최종 revision을 검증할 수 있습니다.
 
 ## 원래 full 집합의 정확한 분할
+
+Nightly는 기존 benchmarks/pdf extra와 `nightly-local` 개발 의존성 그룹의
+OpenTelemetry SDK·Zstandard·pypdf를 설치합니다. Ubuntu는 Pango·Poppler·CJK
+폰트를 설치하고 PDF smoke/render를 필수로 검증하며, 로컬 의존성 누락을 skip
+면제로 바꾸지 않습니다.
+
+dev 환경은 pytest 9를 사용합니다. native subtest는 부모의 setup/call/teardown과
+분리하고 부모별 연속 순번을 기록하되 context·parameter 원문은 저장하지 않습니다.
+부모 testcase 수와 부모+subtest JUnit 총계가 모두 일치해야 합니다. 실패·skip·xfail,
+순번 누락·중복·다른 부모의 subtest는 거부하며, subtest를 무시하거나 별도의
+최상위 선택 테스트로 중복 집계하지 않습니다. 수집 검증은 실행 전에 수행하여
+finally hook이 pytest의 원래 missing-node 오류를 가리지 않게 합니다.
 
 수집한 경로와 실제 import된 모듈 파일이 같은지 검사하고 소스 SHA-256을
 기록합니다. 각 lane도 동일한 identity를 재검사하여 같은 파일명 때문에 다른

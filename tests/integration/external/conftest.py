@@ -171,9 +171,7 @@ def pytest_collection_modifyitems(
         try:
             p = _get_provider(provider_type)
             if not p.is_available():
-                skip_provider = pytest.mark.skip(
-                    reason=f"Provider {provider} not available"
-                )
+                skip_provider = pytest.mark.skip(reason=f"Provider {provider} not available")
                 for item in items:
                     item.add_marker(skip_provider)
         except Exception:
@@ -243,6 +241,7 @@ def service_registry() -> Generator[ServiceRegistry, None, None]:
 def redis_config() -> "RedisConfig":
     """Get Redis configuration."""
     from tests.integration.external.backends.redis_backend import RedisConfig
+
     return RedisConfig.from_env()
 
 
@@ -250,6 +249,7 @@ def redis_config() -> "RedisConfig":
 def redis_backend(
     provider_type: ProviderType,
     docker_available: bool,
+    record_testsuite_property,
 ) -> Generator["RedisBackend | None", None, None]:
     """Create Redis backend for tests."""
     from tests.integration.external.backends.redis_backend import (
@@ -262,7 +262,10 @@ def redis_backend(
         pytest.skip("Docker not available for Redis")
 
     config = RedisConfig.from_env()
-    config.provider = provider_type
+    # Explicit endpoint selects the already-provisioned local service. Never
+    # substitute an in-memory provider for the Docker Redis integration tests.
+    config.provider = ProviderType.LOCAL if config.host and config.port else provider_type
+    record_testsuite_property("redis_test_provider", config.provider.value)
 
     backend = RedisBackend(config)
 
@@ -270,7 +273,7 @@ def redis_backend(
         if backend.start() and backend.wait_until_ready():
             yield backend
         else:
-            pytest.skip("Redis backend failed to start")
+            pytest.fail("Redis backend startup/readiness failed")
             yield None
     finally:
         backend.stop()
@@ -296,6 +299,7 @@ def redis_client(redis_backend: "RedisBackend") -> Generator[Any, None, None]:
 def elasticsearch_config() -> "ElasticsearchConfig":
     """Get Elasticsearch configuration."""
     from tests.integration.external.backends.elasticsearch_backend import ElasticsearchConfig
+
     return ElasticsearchConfig.from_env()
 
 
@@ -303,6 +307,7 @@ def elasticsearch_config() -> "ElasticsearchConfig":
 def elasticsearch_backend(
     provider_type: ProviderType,
     docker_available: bool,
+    record_testsuite_property,
 ) -> Generator["ElasticsearchBackend | None", None, None]:
     """Create Elasticsearch backend for tests."""
     from tests.integration.external.backends.elasticsearch_backend import (
@@ -314,7 +319,8 @@ def elasticsearch_backend(
         pytest.skip("Docker not available for Elasticsearch")
 
     config = ElasticsearchConfig.from_env()
-    config.provider = provider_type
+    config.provider = ProviderType.LOCAL if config.host and config.port else provider_type
+    record_testsuite_property("elasticsearch_test_provider", config.provider.value)
     # Elasticsearch takes longer to start
     config.timeout_seconds = 120
 
@@ -324,7 +330,7 @@ def elasticsearch_backend(
         if backend.start() and backend.wait_until_ready():
             yield backend
         else:
-            pytest.skip("Elasticsearch backend failed to start")
+            pytest.fail("Elasticsearch backend startup/readiness failed")
             yield None
     finally:
         # Cleanup test indices
@@ -353,6 +359,7 @@ def elasticsearch_client(
 def vault_config() -> "VaultConfig":
     """Get Vault configuration."""
     from tests.integration.external.backends.vault_backend import VaultConfig
+
     return VaultConfig.from_env()
 
 
@@ -403,6 +410,7 @@ def vault_client(vault_backend: "VaultBackend") -> Generator[Any, None, None]:
 def kms_config() -> "KMSConfig":
     """Get KMS configuration."""
     from tests.integration.external.backends.kms_backend import KMSConfig
+
     return KMSConfig.from_env()
 
 
@@ -410,6 +418,7 @@ def kms_config() -> "KMSConfig":
 def kms_backend(
     provider_type: ProviderType,
     docker_available: bool,
+    record_testsuite_property,
 ) -> Generator["KMSBackend | None", None, None]:
     """Create KMS backend for tests."""
     from tests.integration.external.backends.kms_backend import (
@@ -419,7 +428,9 @@ def kms_backend(
     )
 
     # Use mock if Docker not available
-    if provider_type == ProviderType.DOCKER and not docker_available:
+    if provider_type == ProviderType.MOCK or (
+        provider_type == ProviderType.DOCKER and not docker_available
+    ):
         config = KMSConfig.from_env()
         config.provider = ProviderType.MOCK
         config.kms_provider = KMSProvider.MOCK
@@ -428,12 +439,13 @@ def kms_backend(
         config.provider = provider_type
 
     backend = KMSBackend(config)
+    record_testsuite_property("kms_test_provider", config.kms_provider.value)
 
     try:
         if backend.start() and backend.wait_until_ready():
             yield backend
         else:
-            pytest.skip("KMS backend failed to start")
+            pytest.fail("KMS backend startup/readiness failed")
             yield None
     finally:
         backend.stop()
@@ -448,12 +460,14 @@ def kms_backend(
 def tms_config() -> "TMSConfig":
     """Get TMS configuration."""
     from tests.integration.external.backends.tms_backend import TMSConfig
+
     return TMSConfig.from_env()
 
 
 @pytest.fixture(scope="session")
 def tms_backend(
     provider_type: ProviderType,
+    record_testsuite_property,
 ) -> Generator["TMSBackend | None", None, None]:
     """Create TMS backend for tests."""
     from tests.integration.external.backends.tms_backend import (
@@ -464,16 +478,19 @@ def tms_backend(
 
     # TMS uses mock by default (real APIs require credentials)
     config = TMSConfig.from_env()
-    if config.tms_provider == TMSProvider.MOCK or not config.api_key:
-        config.tms_provider = TMSProvider.MOCK
+    if config.tms_provider == TMSProvider.MOCK:
+        config.provider = ProviderType.MOCK
+    elif not config.api_key:
+        pytest.fail("An explicitly configured real TMS provider requires credentials")
 
     backend = TMSBackend(config)
+    record_testsuite_property("tms_test_provider", config.tms_provider.value)
 
     try:
         if backend.start() and backend.wait_until_ready():
             yield backend
         else:
-            pytest.skip("TMS backend failed to start")
+            pytest.fail("TMS backend startup/readiness failed")
             yield None
     finally:
         backend.stop()
@@ -537,6 +554,7 @@ def mock_tms() -> Generator["MockTMSService", None, None]:
 def test_project_id() -> str:
     """Generate a unique test project ID."""
     import uuid
+
     return f"test-project-{uuid.uuid4().hex[:8]}"
 
 
@@ -544,6 +562,7 @@ def test_project_id() -> str:
 def test_key_id() -> str:
     """Generate a unique test key ID."""
     import uuid
+
     return f"test-key-{uuid.uuid4().hex[:8]}"
 
 

@@ -180,6 +180,26 @@ def verify_lane(
         ):
             raise ValueError("missing_or_skipped_required_phase")
     root = ET.parse(junit).getroot()
+    # Subtests are real executions, not additional parent call phases. Their
+    # ordinals are parent-local and contain no raw context/parameter values.
+    subtests = result.get("subtests", [])
+    ordinals = {}
+    for report in subtests:
+        node = report["nodeid"]
+        ordinal = ordinals.get(node, 0) + 1
+        if (
+            node not in wanted
+            or node in expected_skips
+            or report.get("when") != "call"
+            or report.get("ordinal") != ordinal
+            or report.get("outcome") != "passed"
+            or report.get("xfail")
+        ):
+            raise ValueError("failed_skipped_missing_or_duplicate_subtest")
+        ordinals[node] = ordinal
+    junit_total = sum(int(s.get("tests", "-1")) for s in root.iter("testsuite"))
+    if junit_total != len(wanted) + len(subtests):
+        raise ValueError("junit_subtest_count_disagrees")
     if list(root.iter("failure")) or list(root.iter("error")):
         raise ValueError("failed_junit")
     if (
@@ -187,7 +207,29 @@ def verify_lane(
         or len(list(root.iter("skipped"))) != skipped
     ):
         raise ValueError("junit_execution_disagrees")
-    return dict(selected=len(wanted), passed=len(wanted) - skipped, expected_skipped=skipped)
+    return dict(
+        selected=len(wanted),
+        passed=len(wanted) - skipped,
+        expected_skipped=skipped,
+        unverified_live_account=sum(
+            r["nodeid"] in wanted
+            and r["nodeid"] in expected_skips
+            and "live_account" in r["markers"]
+            for r in plan["collection"]
+        ),
+        unverified_optional_consumer=sum(
+            r["nodeid"] in wanted
+            and r["nodeid"] in expected_skips
+            and "optional_consumer" in r["markers"]
+            for r in plan["collection"]
+        ),
+        subtests_passed=len(subtests),
+        other_optional_skipped=sum(
+            r["nodeid"] in wanted and r["nodeid"] in expected_skips
+            and not {"live_account", "optional_consumer"}.intersection(r["markers"])
+            for r in plan["collection"]
+        ),
+    )
 
 
 def environment() -> dict[str, str | None]:
@@ -249,19 +291,22 @@ class Execution:
 
         self.plan, self.lane, self.output = plan, lane, output
         self.reports = []
+        self.subtests = []
+        self.subtest_ordinals = {}
         self.collected = []
         self.sources = {}
         self.collection_errors = []
         self.output.parent.mkdir(parents=True, exist_ok=True)
         self.stream = self.output.with_suffix(".ndjson").open("w", encoding="utf-8", buffering=1)
         self.pytest = pytest
+        pytest.hookimpl(trylast=True)(type(self).pytest_collection_modifyitems)
 
-    def pytest_collection_finish(self, session):
-        self.collected = [item.nodeid for item in session.items]
+    def pytest_collection_modifyitems(self, session, config, items):
+        self.collected = [item.nodeid for item in items]
         # Preserve the original collection error instead of masking it in finally.
         if session.testsfailed or self.collection_errors:
             return
-        self.sources = {item.nodeid: source_identity(item) for item in session.items}
+        self.sources = {item.nodeid: source_identity(item) for item in items}
         expected = {r["nodeid"]: r.get("source") for r in self.plan["collection"]}
         if any(
             expected[node] is not None and expected[node] != source
@@ -272,6 +317,11 @@ class Execution:
             raise self.pytest.UsageError(
                 "nightly execution collection differs from approved manifest"
             )
+
+    def pytest_collection_finish(self, session):
+        # This hook also runs in finally after UsageError (e.g. missing node).
+        # Only observe here; validation before test execution is above.
+        self.collected = [item.nodeid for item in session.items]
 
     def pytest_collectreport(self, report):
         if report.failed:
@@ -293,15 +343,23 @@ class Execution:
             skip_reason=reason,
             xfail=bool(getattr(report, "wasxfail", False)),
         )
-        self.reports.append(record)
-        self.stream.write(json.dumps(record) + "\n")
+        if hasattr(report, "context"):
+            ordinal = self.subtest_ordinals.get(report.nodeid, 0) + 1
+            self.subtest_ordinals[report.nodeid] = ordinal
+            record["ordinal"] = ordinal
+            self.subtests.append(record)
+            kind = "subtest"
+        else:
+            self.reports.append(record)
+            kind = "phase"
+        self.stream.write(json.dumps(dict(kind=kind, **record)) + "\n")
 
     def pytest_sessionfinish(self, session, exitstatus):
         self.stream.close()
         self.output.write_text(
             json.dumps(
                 dict(
-                    schema_version=1,
+                    schema_version=2,
                     sha=self.plan["sha"],
                     run_id=os.environ.get("GITHUB_RUN_ID", "local"),
                     plan_digest=self.plan["digest"],
@@ -310,6 +368,7 @@ class Execution:
                     sources=self.sources,
                     collection_errors=self.collection_errors,
                     reports=self.reports,
+                    subtests=self.subtests,
                     exit_code=int(exitstatus),
                     environment=environment(),
                 ),

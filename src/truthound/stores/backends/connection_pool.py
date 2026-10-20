@@ -884,7 +884,7 @@ class ConnectionPoolManager:
             pool_kwargs = {
                 "pool_size": pool_config.pool_size,
                 "max_overflow": pool_config.max_overflow,
-                "timeout": pool_config.pool_timeout,
+                "pool_timeout": pool_config.pool_timeout,
                 "pool_recycle": pool_config.pool_recycle,
                 "pool_pre_ping": pool_config.pool_pre_ping,
             }

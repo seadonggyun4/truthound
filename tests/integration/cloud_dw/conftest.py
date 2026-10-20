@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import logging
 import os
+from pathlib import Path
 from typing import TYPE_CHECKING, Any, Generator
 
 import pytest
@@ -155,6 +156,27 @@ def pytest_collection_modifyitems(
     items: list[pytest.Item],
 ) -> None:
     """Modify collected tests based on options and markers."""
+    # Fixture closures distinguish live connections from hermetic generator tests.
+    live_fixtures = {
+        "any_backend",
+        "bigquery_backend",
+        "snowflake_backend",
+        "redshift_backend",
+        "databricks_backend",
+    }
+    for item in items:
+        if Path(__file__).parent in Path(item.path).parents and live_fixtures.intersection(
+            getattr(item, "fixturenames", ())
+        ):
+            item.add_marker(pytest.mark.live_account)
+            if os.getenv("TRUTHOUND_CLOUD_DW_RUN_LIVE") != "1":
+                item.add_marker(
+                    pytest.mark.skip(
+                        reason="Cloud warehouse live-account validation is not authorized; "
+                        "TRUTHOUND_CLOUD_DW_RUN_LIVE=1 is required"
+                    )
+                )
+
     # Skip expensive tests if requested
     if config.getoption("--skip-expensive"):
         skip_expensive = pytest.mark.skip(reason="--skip-expensive option set")

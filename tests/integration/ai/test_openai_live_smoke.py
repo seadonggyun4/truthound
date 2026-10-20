@@ -18,6 +18,11 @@ def _write_result_if_requested(result) -> None:
 
 
 @pytest.mark.integration
+@pytest.mark.live_account
+@pytest.mark.skipif(
+    os.getenv("TRUTHOUND_AI_RUN_LIVE_SMOKE") != "1",
+    reason="TRUTHOUND_AI_RUN_LIVE_SMOKE=1 is required for the live OpenAI smoke test.",
+)
 def test_openai_live_smoke_end_to_end():
     from truthound.ai import run_openai_smoke
 

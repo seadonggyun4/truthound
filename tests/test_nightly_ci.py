@@ -77,7 +77,7 @@ def execution(plan, lane):
 def junit(tmp_path, count=1, extra=""):
     path = tmp_path / "junit.xml"
     path.write_text(
-        "<testsuites><testsuite>"
+        f'<testsuites><testsuite tests="{count}">'
         + '<testcase name="boundary"/>' * count
         + extra
         + "</testsuite></testsuites>"
@@ -171,19 +171,23 @@ def test_full_execution_requires_both_exact_reports_and_junit(tmp_path):
         nightly.verify_lane(plan, "scale-100m", result, junit(tmp_path), run_id="43")
 
 
-def test_explicit_optional_static_skip_is_counted_as_skip_never_pass(tmp_path):
+@pytest.mark.parametrize("optional_marker", ["live_account", "optional_consumer"])
+def test_explicit_optional_static_skip_is_counted_as_skip_never_pass(tmp_path, optional_marker):
     items = collection()
     items[-3]["skip_reason"] = "optional backend is not installed"
+    items[-3]["markers"].append(optional_marker)
     plan = nightly.build_plan(items, SHA)
     result = execution(plan, "integration")
     result["reports"][0].update(outcome="skipped", skip_reason="optional backend is not installed")
     result["reports"] = [result["reports"][0], result["reports"][2]]
     path = tmp_path / "skip.xml"
     path.write_text(
-        "<testsuites><testsuite><testcase><skipped/></testcase></testsuite></testsuites>"
+        '<testsuites><testsuite tests="1"><testcase><skipped/></testcase></testsuite></testsuites>'
     )
     verified = nightly.verify_lane(plan, "integration", result, path, run_id="42")
     assert verified["passed"] == 0 and verified["expected_skipped"] == 1
+    assert verified["unverified_live_account"] == (optional_marker == "live_account")
+    assert verified["unverified_optional_consumer"] == (optional_marker == "optional_consumer")
     # Scale and MCP requirements cannot gain a skip waiver from source marks.
     items[-1]["skip_reason"] = "optional backend is not installed"
     with pytest.raises(ValueError):

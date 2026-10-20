@@ -7,6 +7,8 @@ claim approval: it checks public GitHub/PyPI metadata for one immutable commit.
 from __future__ import annotations
 
 import argparse
+import hashlib
+import io
 import json
 import re
 import subprocess
@@ -14,6 +16,7 @@ import sys
 import tempfile
 import urllib.request
 import xml.etree.ElementTree as ET
+import zipfile
 from pathlib import Path
 
 
@@ -60,11 +63,57 @@ def validate_workflows(runs, sha, *, require_release=True):
         for r in applicable
         if r["path"] == ".github/workflows/tests-nightly.yml"
         and r.get("event") == "workflow_dispatch"
-        and "manual-full" in r.get("display_title", "")
     ]
     if not full:
         raise ValueError("missing_actual_manual_full")
     return full
+
+
+def verify_full_artifact(run_id, sha):
+    """Verify execution receipts, not mutable run/job display names."""
+    sys.path.insert(0, str(Path(__file__).resolve().parent / "ci"))
+    import nightly_plan as nightly
+
+    base = f"repos/seadonggyun4/truthound/actions/runs/{run_id}/artifacts?per_page=100"
+    metadata = json.loads(subprocess.check_output(["gh", "api", base], timeout=30))
+    assert metadata["total_count"] <= 100
+    matches = [
+        a
+        for a in metadata["artifacts"]
+        if a["name"] == "truthound-nightly-test-artifacts" and not a["expired"]
+    ]
+    assert len(matches) == 1
+    artifact = matches[0]
+    archive = subprocess.check_output(
+        ["gh", "api", f"repos/seadonggyun4/truthound/actions/artifacts/{artifact['id']}/zip"],
+        timeout=min(300, max(60, 30 + artifact["size_in_bytes"] // 100_000)),
+    )
+    assert len(archive) == artifact["size_in_bytes"]
+    assert "sha256:" + hashlib.sha256(archive).hexdigest() == artifact["digest"]
+    with zipfile.ZipFile(io.BytesIO(archive)) as bundle:
+        names = [n for n in bundle.namelist() if not n.endswith("/")]
+        assert len({Path(n).name for n in names}) == len(names)
+        files = {Path(n).name: bundle.read(n) for n in names}
+    plan = json.loads(files["plan.json"])
+    nightly.validate_plan(plan)
+    assert plan["sha"] == sha and plan["mode"] == "manual-full"
+    assert plan["flags"] == nightly.FLAGS and plan["marker_expression"] == nightly.FULL
+    expected_environment = json.loads(files["collection-environment.json"])["environment"]
+    nightly.require_environment(expected_environment)
+    summaries = {}
+    with tempfile.TemporaryDirectory(prefix="truthound-full-receipts-") as td:
+        for lane in plan["lanes"]:
+            receipt = json.loads(files[f"execution-{lane}.json"])
+            assert receipt["environment"] == expected_environment
+            report = Path(td) / f"{lane}.xml"
+            report.write_bytes(files[f"junit-{lane}.xml"])
+            summaries[lane] = nightly.verify_lane(plan, lane, receipt, report, run_id=str(run_id))
+    summary = json.loads(files["nightly-summary.json"])
+    assert summary["sha"] == sha and summary["mode"] == "manual-full"
+    assert summary["complete"] is True and summary["overlap"] == 0
+    assert summary["selected"] == len(plan["collection"])
+    assert summary["plan_digest"] == plan["digest"] and summary["lanes"] == summaries
+    return summaries
 
 
 def main() -> int:
@@ -139,6 +188,7 @@ def main() -> int:
             "nightly / scale-100m",
         } | {f"nightly / contract-{i}" for i in range(4)}
         for full_run in full_runs:
+            verify_full_artifact(full_run["id"], args.commit)
             jobs = read_json(f"{api}/actions/runs/{full_run['id']}/jobs?per_page=100")["jobs"]
             assert required_jobs == {job["name"] for job in jobs}
             assert all(

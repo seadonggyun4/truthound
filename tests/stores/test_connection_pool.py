@@ -191,16 +191,12 @@ class TestConnectionPoolConfig:
 
     def test_dialect_property(self) -> None:
         """Test dialect property detection."""
-        config = ConnectionPoolConfig(
-            connection_url="postgresql://localhost/db"
-        )
+        config = ConnectionPoolConfig(connection_url="postgresql://localhost/db")
         assert config.dialect == DatabaseDialect.POSTGRESQL
 
     def test_with_dialect_defaults_sqlite(self) -> None:
         """Test SQLite-specific defaults."""
-        config = ConnectionPoolConfig(
-            connection_url="sqlite:///:memory:"
-        )
+        config = ConnectionPoolConfig(connection_url="sqlite:///:memory:")
         updated = config.with_dialect_defaults()
         assert updated.connect_args.get("check_same_thread") is False
         # SQLite should have reduced pool size
@@ -209,18 +205,14 @@ class TestConnectionPoolConfig:
 
     def test_with_dialect_defaults_postgresql(self) -> None:
         """Test PostgreSQL-specific defaults."""
-        config = ConnectionPoolConfig(
-            connection_url="postgresql://localhost/db"
-        )
+        config = ConnectionPoolConfig(connection_url="postgresql://localhost/db")
         updated = config.with_dialect_defaults()
         assert updated.engine_options.get("pool_use_lifo") is True
         assert updated.pool.pool_recycle <= 1800
 
     def test_with_dialect_defaults_mysql(self) -> None:
         """Test MySQL-specific defaults."""
-        config = ConnectionPoolConfig(
-            connection_url="mysql://localhost/db"
-        )
+        config = ConnectionPoolConfig(connection_url="mysql://localhost/db")
         updated = config.with_dialect_defaults()
         assert updated.connect_args.get("connect_timeout") == 10
 
@@ -352,9 +344,7 @@ class TestCircuitBreaker:
         assert not cb.is_open
         assert cb.can_execute()
 
-    def test_opens_after_threshold(
-        self, circuit_breaker_config: CircuitBreakerConfig
-    ) -> None:
+    def test_opens_after_threshold(self, circuit_breaker_config: CircuitBreakerConfig) -> None:
         """Test circuit opens after failure threshold."""
         cb = CircuitBreaker(circuit_breaker_config)
 
@@ -365,9 +355,7 @@ class TestCircuitBreaker:
         assert cb.is_open
         assert not cb.can_execute()
 
-    def test_transitions_to_half_open(
-        self, circuit_breaker_config: CircuitBreakerConfig
-    ) -> None:
+    def test_transitions_to_half_open(self, circuit_breaker_config: CircuitBreakerConfig) -> None:
         """Test circuit transitions to half-open after timeout."""
         cb = CircuitBreaker(circuit_breaker_config)
 
@@ -408,9 +396,7 @@ class TestCircuitBreaker:
         assert cb.state == CircuitState.CLOSED
         assert cb.is_closed
 
-    def test_half_open_failure_reopens(
-        self, circuit_breaker_config: CircuitBreakerConfig
-    ) -> None:
+    def test_half_open_failure_reopens(self, circuit_breaker_config: CircuitBreakerConfig) -> None:
         """Test failure in half-open immediately reopens circuit."""
         cb = CircuitBreaker(circuit_breaker_config)
 
@@ -441,9 +427,7 @@ class TestCircuitBreaker:
         assert cb.is_closed
         assert cb.can_execute()
 
-    def test_half_open_max_calls(
-        self, circuit_breaker_config: CircuitBreakerConfig
-    ) -> None:
+    def test_half_open_max_calls(self, circuit_breaker_config: CircuitBreakerConfig) -> None:
         """Test half-open limits concurrent calls."""
         cb = CircuitBreaker(circuit_breaker_config)
 
@@ -469,9 +453,7 @@ class TestCircuitBreaker:
 class TestRetryHandler:
     """Tests for retry handler."""
 
-    def test_should_retry_on_retryable_error(
-        self, retry_config: RetryConfig
-    ) -> None:
+    def test_should_retry_on_retryable_error(self, retry_config: RetryConfig) -> None:
         """Test retry decision for retryable errors."""
         handler = RetryHandler(retry_config)
 
@@ -481,9 +463,7 @@ class TestRetryHandler:
             assert handler.should_retry(error, 2)
             assert not handler.should_retry(error, 3)  # Max retries
 
-    def test_should_not_retry_on_other_errors(
-        self, retry_config: RetryConfig
-    ) -> None:
+    def test_should_not_retry_on_other_errors(self, retry_config: RetryConfig) -> None:
         """Test no retry for non-retryable errors."""
         handler = RetryHandler(retry_config)
         error = ValueError("test")
@@ -516,9 +496,7 @@ class TestRetryHandler:
         delay = handler.get_delay(10)
         assert delay <= 5.0
 
-    def test_execute_with_retry_success(
-        self, retry_config: RetryConfig
-    ) -> None:
+    def test_execute_with_retry_success(self, retry_config: RetryConfig) -> None:
         """Test successful execution without retry."""
         handler = RetryHandler(retry_config)
         call_count = 0
@@ -532,9 +510,7 @@ class TestRetryHandler:
         assert result == "success"
         assert call_count == 1
 
-    def test_execute_with_retry_eventual_success(
-        self, retry_config: RetryConfig
-    ) -> None:
+    def test_execute_with_retry_eventual_success(self, retry_config: RetryConfig) -> None:
         """Test eventual success after retries."""
         if not HAS_SQLALCHEMY:
             pytest.skip("SQLAlchemy not available")
@@ -553,9 +529,7 @@ class TestRetryHandler:
         assert result == "success"
         assert call_count == 3
 
-    def test_execute_with_retry_exhausted(
-        self, retry_config: RetryConfig
-    ) -> None:
+    def test_execute_with_retry_exhausted(self, retry_config: RetryConfig) -> None:
         """Test exception raised when retries exhausted."""
         if not HAS_SQLALCHEMY:
             pytest.skip("SQLAlchemy not available")
@@ -578,9 +552,7 @@ class TestRetryHandler:
 class TestConnectionPoolManager:
     """Tests for connection pool manager."""
 
-    def test_initialization(
-        self, connection_pool_config: ConnectionPoolConfig
-    ) -> None:
+    def test_initialization(self, connection_pool_config: ConnectionPoolConfig) -> None:
         """Test pool manager initialization."""
         manager = ConnectionPoolManager(connection_pool_config)
         manager.initialize()
@@ -590,88 +562,64 @@ class TestConnectionPoolManager:
 
         manager.dispose()
 
-    def test_context_manager(
-        self, connection_pool_config: ConnectionPoolConfig
-    ) -> None:
+    def test_context_manager(self, connection_pool_config: ConnectionPoolConfig) -> None:
         """Test context manager protocol."""
         with ConnectionPoolManager(connection_pool_config) as manager:
             assert manager.is_healthy
 
-    def test_get_engine(
-        self, connection_pool_config: ConnectionPoolConfig
-    ) -> None:
+    def test_get_engine(self, connection_pool_config: ConnectionPoolConfig) -> None:
         """Test getting the SQLAlchemy engine."""
         with ConnectionPoolManager(connection_pool_config) as manager:
             engine = manager.get_engine()
             assert engine is not None
 
-    def test_get_session(
-        self, connection_pool_config: ConnectionPoolConfig
-    ) -> None:
+    def test_get_session(self, connection_pool_config: ConnectionPoolConfig) -> None:
         """Test getting a database session."""
         with ConnectionPoolManager(connection_pool_config) as manager:
             session = manager.get_session()
             assert session is not None
             session.close()
 
-    def test_session_context_manager(
-        self, connection_pool_config: ConnectionPoolConfig
-    ) -> None:
+    def test_session_context_manager(self, connection_pool_config: ConnectionPoolConfig) -> None:
         """Test session context manager."""
         with ConnectionPoolManager(connection_pool_config) as manager:
             with manager.session() as session:
                 result = session.execute(text("SELECT 1"))
                 assert result.scalar() == 1
 
-    def test_session_auto_commit(
-        self, connection_pool_config: ConnectionPoolConfig
-    ) -> None:
+    def test_session_auto_commit(self, connection_pool_config: ConnectionPoolConfig) -> None:
         """Test session auto-commits on success."""
         with ConnectionPoolManager(connection_pool_config) as manager:
             with manager.session() as session:
-                session.execute(
-                    text("CREATE TABLE test_table (id INTEGER PRIMARY KEY)")
-                )
+                session.execute(text("CREATE TABLE test_table (id INTEGER PRIMARY KEY)"))
 
             # Table should exist after commit
             with manager.session() as session:
-                result = session.execute(
-                    text("SELECT name FROM sqlite_master WHERE type='table'")
-                )
+                result = session.execute(text("SELECT name FROM sqlite_master WHERE type='table'"))
                 tables = [row[0] for row in result]
                 assert "test_table" in tables
 
-    def test_session_auto_rollback(
-        self, connection_pool_config: ConnectionPoolConfig
-    ) -> None:
+    def test_session_auto_rollback(self, connection_pool_config: ConnectionPoolConfig) -> None:
         """Test session auto-rollback on error."""
         with ConnectionPoolManager(connection_pool_config) as manager:
             # Create table first
             with manager.session() as session:
-                session.execute(
-                    text("CREATE TABLE rollback_test (id INTEGER PRIMARY KEY)")
-                )
+                session.execute(text("CREATE TABLE rollback_test (id INTEGER PRIMARY KEY)"))
 
             # Try insert with error
             try:
                 with manager.session() as session:
-                    session.execute(
-                        text("INSERT INTO rollback_test VALUES (1)")
-                    )
+                    session.execute(text("INSERT INTO rollback_test VALUES (1)"))
                     raise ValueError("Simulated error")
             except ValueError:
                 pass
 
             # Insert should have been rolled back
             with manager.session() as session:
-                result = session.execute(
-                    text("SELECT COUNT(*) FROM rollback_test")
-                )
+                result = session.execute(text("SELECT COUNT(*) FROM rollback_test"))
                 assert result.scalar() == 0
 
-    def test_metrics_collection(
-        self, connection_pool_config: ConnectionPoolConfig
-    ) -> None:
+    def test_metrics_collection(self, connection_pool_config: ConnectionPoolConfig) -> None:
         """Test metrics are collected during operations."""
         with ConnectionPoolManager(connection_pool_config) as manager:
             with manager.session() as session:
@@ -680,9 +628,7 @@ class TestConnectionPoolManager:
             metrics = manager.metrics
             assert metrics.checkouts >= 1
 
-    def test_pool_status(
-        self, connection_pool_config: ConnectionPoolConfig
-    ) -> None:
+    def test_pool_status(self, connection_pool_config: ConnectionPoolConfig) -> None:
         """Test pool status reporting."""
         with ConnectionPoolManager(connection_pool_config) as manager:
             status = manager.get_pool_status()
@@ -693,9 +639,7 @@ class TestConnectionPoolManager:
             assert "config" in status
             assert "metrics" in status
 
-    def test_password_masking(
-        self, connection_pool_config: ConnectionPoolConfig
-    ) -> None:
+    def test_password_masking(self, connection_pool_config: ConnectionPoolConfig) -> None:
         """Test password is masked in status output."""
         config = ConnectionPoolConfig(
             connection_url="postgresql://user:secretpass@localhost/db",
@@ -708,9 +652,7 @@ class TestConnectionPoolManager:
         assert "secretpass" not in masked
         assert "***" in masked
 
-    def test_recycle_connections(
-        self, connection_pool_config: ConnectionPoolConfig
-    ) -> None:
+    def test_recycle_connections(self, connection_pool_config: ConnectionPoolConfig) -> None:
         """Test manual connection recycling."""
         with ConnectionPoolManager(connection_pool_config) as manager:
             # Use a connection first
@@ -728,9 +670,7 @@ class TestConnectionPoolManager:
         """Test circuit breaker integration."""
         with ConnectionPoolManager(connection_pool_config) as manager:
             # Record failures to open circuit
-            for _ in range(
-                connection_pool_config.circuit_breaker.failure_threshold
-            ):
+            for _ in range(connection_pool_config.circuit_breaker.failure_threshold):
                 manager._circuit_breaker.record_failure()
 
             assert manager.circuit_state == CircuitState.OPEN
@@ -769,6 +709,22 @@ class TestConnectionPoolManager:
 class TestCreatePoolForDialect:
     """Tests for dialect-specific pool creation."""
 
+    def test_queue_pool_timeout_is_forwarded_to_real_sqlalchemy(self) -> None:
+        manager = ConnectionPoolManager(
+            ConnectionPoolConfig(
+                connection_url="sqlite:///:memory:",
+                pool=PoolConfig(strategy=PoolStrategy.QUEUE_POOL, pool_timeout=7.0),
+                health_check=HealthCheckConfig(enabled=False),
+            )
+        )
+        try:
+            manager.initialize()
+            assert manager.get_engine().pool.timeout() == 7.0
+            with manager.session() as session:
+                assert session.execute(text("SELECT 1")).scalar_one() == 1
+        finally:
+            manager.dispose()
+
     def test_sqlite_dialect(self) -> None:
         """Test SQLite pool creation."""
         manager = create_pool_for_dialect(
@@ -781,9 +737,21 @@ class TestCreatePoolForDialect:
 
     def test_postgresql_url_format(self) -> None:
         """Test PostgreSQL URL format."""
-        # Just test URL construction, not actual connection
-        manager = create_pool_for_dialect.__wrapped__  # type: ignore
-        # We can't test actual connection without PostgreSQL
+        # Exercise the public factory without opening a network connection.
+        with patch("truthound.stores.backends.connection_pool.create_pool_manager") as factory:
+            manager = create_pool_for_dialect(
+                DatabaseDialect.POSTGRESQL,
+                host="db.example.invalid",
+                database="quality",
+                username="reader",
+                password="synthetic",
+                pool_timeout=7,
+            )
+        factory.assert_called_once_with(
+            "postgresql://reader:synthetic@db.example.invalid:5432/quality",
+            pool_timeout=7,
+        )
+        assert manager is factory.return_value
 
     def test_invalid_dialect(self) -> None:
         """Test error on invalid dialect."""
@@ -800,9 +768,7 @@ class TestCreatePoolForDialect:
 class TestConcurrency:
     """Tests for concurrent pool operations."""
 
-    def test_concurrent_sessions(
-        self, connection_pool_config: ConnectionPoolConfig
-    ) -> None:
+    def test_concurrent_sessions(self, connection_pool_config: ConnectionPoolConfig) -> None:
         """Test concurrent session access."""
         # Increase pool size for concurrency test
         connection_pool_config.pool.pool_size = 5
@@ -824,9 +790,7 @@ class TestConcurrency:
                     with lock:
                         errors.append(e)
 
-            threads = [
-                threading.Thread(target=worker, args=(i,)) for i in range(10)
-            ]
+            threads = [threading.Thread(target=worker, args=(i,)) for i in range(10)]
 
             for t in threads:
                 t.start()
@@ -838,11 +802,10 @@ class TestConcurrency:
             assert len(results) == 10
             assert sorted(results) == list(range(10))
 
-    def test_concurrent_metric_updates(
-        self, connection_pool_config: ConnectionPoolConfig
-    ) -> None:
+    def test_concurrent_metric_updates(self, connection_pool_config: ConnectionPoolConfig) -> None:
         """Test thread-safe metric updates under concurrency."""
         with ConnectionPoolManager(connection_pool_config) as manager:
+
             def worker() -> None:
                 for _ in range(50):
                     with manager.session() as session:
@@ -878,18 +841,14 @@ class TestEdgeCases:
         manager = ConnectionPoolManager(config)
         manager.dispose()  # Should not raise
 
-    def test_double_dispose(
-        self, connection_pool_config: ConnectionPoolConfig
-    ) -> None:
+    def test_double_dispose(self, connection_pool_config: ConnectionPoolConfig) -> None:
         """Test double dispose is safe."""
         manager = ConnectionPoolManager(connection_pool_config)
         manager.initialize()
         manager.dispose()
         manager.dispose()  # Should not raise
 
-    def test_init_after_dispose(
-        self, connection_pool_config: ConnectionPoolConfig
-    ) -> None:
+    def test_init_after_dispose(self, connection_pool_config: ConnectionPoolConfig) -> None:
         """Test initialization after dispose raises error."""
         manager = ConnectionPoolManager(connection_pool_config)
         manager.initialize()

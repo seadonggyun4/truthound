@@ -42,3 +42,11 @@ the original result; full verification still requires the SDK. Registry text is
 read explicitly as UTF-8 on Windows. Test infrastructure fixes retain existing
 assertions and limits: explicit LZ4 installation, reentrant stress summary locking,
 and bounded duplicate-candidate extraction in the exact-set scale fixture.
+
+Nightly verification includes native PDF prerequisites and actual local Redis and
+Elasticsearch services. SQLAlchemy queue-pool initialization now forwards the
+engine's `pool_timeout` option correctly. Native pytest subtests are independently
+accounted for without masking collection errors. Live warehouse/paid OpenAI
+checks and an unavailable optional consumer snapshot remain explicitly unverified
+SKIP, separate from mandatory PASS; this release does not claim live-account
+coverage. Existing KMS/TMS mock results are identified as mock coverage.

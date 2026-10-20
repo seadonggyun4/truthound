@@ -26,6 +26,8 @@ env:
   LOKY_MAX_CPU_COUNT: "1"
   TRUTHOUND_ML_N_JOBS: "1"
   NIGHTLY_MODE: ${{ inputs.run_full_suite && 'manual-full' || 'weekly-integration-core' }}
+  TRUTHOUND_DATADOCS_REQUIRE_PDF_SMOKE: "1"
+  TRUTHOUND_DATADOCS_REQUIRE_PDF_RENDER: "1"
 jobs:
   nightly-collect:
     runs-on: ubuntu-latest
@@ -38,10 +40,14 @@ jobs:
         with:
           python-version: "3.11"
       - uses: astral-sh/setup-uv@v4
-      - run: uv sync --frozen --extra dev --extra mcp
+      - name: Install local native PDF verification prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y libpango-1.0-0 libpangoft2-1.0-0 poppler-utils fonts-noto-cjk
+      - run: uv sync --frozen --extra dev --extra mcp --extra benchmarks --extra pdf --group nightly-local
       - name: Collect and verify exact disjoint full partition
         id: plan
-        run: uv run --frozen --extra dev --extra mcp python verification/ci/nightly_plan.py collect --mode "$NIGHTLY_MODE"
+        run: uv run --frozen --extra dev --extra mcp --extra benchmarks --extra pdf --group nightly-local python verification/ci/nightly_plan.py collect --mode "$NIGHTLY_MODE"
       - uses: actions/upload-artifact@v4
         with:
           name: truthound-nightly-plan
@@ -53,6 +59,26 @@ jobs:
     name: nightly / ${{ matrix.lane }}
     needs: nightly-collect
     runs-on: ${{ matrix.runner }}
+    # Only the integration VM owns these disposable local services. Other
+    # lanes, especially scale, do not share their CPU/RAM or a mock substitute.
+    services:
+      redis:
+        image: ${{ matrix.lane == 'integration' && 'redis:7-alpine' || '' }}
+        ports: ["6379:6379"]
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 10
+      elasticsearch:
+        image: ${{ matrix.lane == 'integration' && 'docker.elastic.co/elasticsearch/elasticsearch:8.11.0' || '' }}
+        env:
+          discovery.type: single-node
+          xpack.security.enabled: "false"
+          ES_JAVA_OPTS: -Xms512m -Xmx512m
+        ports: ["9200:9200"]
+        options: --health-cmd "curl -fsS http://localhost:9200/_cluster/health" --health-interval 5s --health-timeout 3s --health-retries 10
+    env:
+      TRUTHOUND_TEST_REDIS_HOST: ${{ matrix.lane == 'integration' && '127.0.0.1' || '' }}
+      TRUTHOUND_TEST_REDIS_PORT: ${{ matrix.lane == 'integration' && '6379' || '0' }}
+      TRUTHOUND_TEST_ELASTICSEARCH_HOST: ${{ matrix.lane == 'integration' && '127.0.0.1' || '' }}
+      TRUTHOUND_TEST_ELASTICSEARCH_PORT: ${{ matrix.lane == 'integration' && '9200' || '0' }}
     timeout-minutes: ${{ matrix.job_minutes }}
     strategy:
       fail-fast: false
@@ -64,13 +90,17 @@ jobs:
         with:
           python-version: "3.11"
       - uses: astral-sh/setup-uv@v4
-      - run: uv sync --frozen --extra dev --extra mcp
+      - name: Install local native PDF verification prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y libpango-1.0-0 libpangoft2-1.0-0 poppler-utils fonts-noto-cjk
+      - run: uv sync --frozen --extra dev --extra mcp --extra benchmarks --extra pdf --group nightly-local
       - uses: actions/download-artifact@v4
         with:
           name: truthound-nightly-plan
           path: test-artifacts/nightly
       - name: Record and check actual runner resources
-        run: uv run --frozen --extra dev --extra mcp python verification/ci/nightly_plan.py resources --lane "${{ matrix.lane }}"
+        run: uv run --frozen --extra dev --extra mcp --extra benchmarks --extra pdf --group nightly-local python verification/ci/nightly_plan.py resources --lane "${{ matrix.lane }}"
       - name: Execute exact manifest with soft stacks and hard test deadline
         shell: bash
         run: |
@@ -79,7 +109,7 @@ jobs:
           if [[ "$NIGHTLY_MODE" == "manual-full" ]]; then
             flags+=(--pytest-arg=--run-expensive --pytest-arg=--run-soak)
           fi
-          uv run --frozen --extra dev --extra mcp python verification/ci/run_pytest_manifest.py \
+          uv run --frozen --extra dev --extra mcp --extra benchmarks --extra pdf --group nightly-local python verification/ci/run_pytest_manifest.py \
             --manifest "test-artifacts/nightly/${{ matrix.lane }}.txt" \
             --nightly-plan test-artifacts/nightly/plan.json \
             --lane "${{ matrix.lane }}" \
