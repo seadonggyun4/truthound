@@ -14,7 +14,7 @@ import zipfile
 from pathlib import Path
 
 SMOKE = """
-import asyncio, json, sys, tempfile
+import asyncio, hashlib, json, os, re, subprocess, sys, tempfile
 from pathlib import Path
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -29,6 +29,16 @@ async def run():
                 assert len((await client.list_tools()).tools)==3
                 for name in ("check_file","profile_file","scan_pii"):
                     result=await client.call_tool(name,{"path":str(p)})
+                    if result.isError and result.structuredContent["error"]["code"] == "worker_error":
+                        # Metadata-only diagnostics for a fresh runtime failure. Never print
+                        # raw stderr, data rows, environment values or absolute paths.
+                        env={k:v for k,v in os.environ.items() if k in {"PATH","SYSTEMROOT","WINDIR","TEMP","TMP"}}
+                        env.update(POLARS_MAX_THREADS="1",OMP_NUM_THREADS="1",OPENBLAS_NUM_THREADS="1")
+                        request={"operation":"check","path":str(p),"max_items":100,"max_response_bytes":65536}
+                        probe=subprocess.run([sys.executable,"-I","-m","truthound.mcp.worker"],input=json.dumps(request),capture_output=True,text=True,cwd=td,env=env,timeout=30)
+                        kinds=re.findall(r"([A-Za-z]+(?:Error|Exception)):",probe.stderr)
+                        missing=re.findall(r"No module named '([A-Za-z0-9_.]+)'",probe.stderr)
+                        print(json.dumps({"worker_returncode":probe.returncode,"exception_types":kinds,"missing_modules":missing,"stderr_sha256":hashlib.sha256(probe.stderr.encode()).hexdigest()}),flush=True)
                     assert not result.isError, result
                     assert result.structuredContent["data"]["row_count"]==3
                     assert "a@example.com" not in result.model_dump_json()
