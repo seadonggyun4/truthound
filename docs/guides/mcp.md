@@ -152,6 +152,9 @@ manifest for older clients. If **Set up** is unavailable, ask the agent to run
 the packaged **Truthound setup** skill; do not bypass directory approval.
 The MCP command uses a plugin-relative `cwd` instead of depending on host-specific
 argument placeholder interpolation. Version 0.1.1 fixes 0.1.0 startup on Codex 0.141.0.
+The OS validation workflow checks actual Codex installation and normalized runtime
+configuration as well as the frozen UV launch. On Windows, verification invokes
+npm's Codex JS entry point through Node rather than shell-evaluating a `.cmd` shim.
 
 Installation grants no data access. The three MCP tools initialize normally but
 return `access_denied` until you approve a directory. Setup runs the packaged

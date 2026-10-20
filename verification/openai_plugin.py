@@ -136,6 +136,21 @@ async def smoke(plugin: Path, work: Path) -> dict:
     }
 
 
+def codex_command() -> list[str]:
+    cli = shutil.which("codex")
+    if not cli:
+        raise RuntimeError("codex_cli_not_installed")
+    if Path(cli).suffix.lower() in {".cmd", ".ps1"}:
+        # npm Windows shims are not native CreateProcess executables. Invoke
+        # their official JS entry point through Node, never shell-evaluate paths.
+        entry = Path(cli).parent / "node_modules/@openai/codex/bin/codex.js"
+        node = shutil.which("node")
+        if not node or not entry.is_file():
+            raise RuntimeError("unsupported_codex_npm_layout")
+        return [node, str(entry)]
+    return [cli]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
@@ -182,7 +197,7 @@ def main() -> None:
     }
     if args.check_codex:
         cli = subprocess.run(
-            ["codex", "mcp", "list", "--json"], check=True, capture_output=True, text=True
+            [*codex_command(), "mcp", "list", "--json"], check=True, capture_output=True, text=True
         )
         targets = [s for s in json.loads(cli.stdout) if s["name"] == "truthound"]
         assert len(targets) == 1 and targets[0]["enabled"]

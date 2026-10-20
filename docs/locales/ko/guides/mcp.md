@@ -138,6 +138,9 @@ Truthound Local → Install → Set up**에서 읽기를 허용할 정확한 절
 스킬 실행을 요청하세요. 폴더 동의 절차를 생략하지 않습니다.
 MCP 명령은 host별 인자 placeholder 치환에 의존하지 않고 플러그인 기준의 상대
 `cwd`를 사용합니다. 0.1.1은 Codex 0.141.0에서 0.1.0의 시작 문제를 수정합니다.
+OS별 CI는 실제 Codex 설치·정규화된 실행 설정과 frozen UV 실행을 함께 검사합니다.
+Windows 검증기는 `.cmd` shim을 shell 평가하지 않고 npm의 Codex JS 진입점을
+Node로 직접 실행합니다.
 
 설치만으로 데이터 접근 권한은 생기지 않습니다. 세 도구는 정상 연결되지만
 폴더 동의 전에는 `access_denied`를 반환합니다. 온보딩은 사용자 동의 후에만

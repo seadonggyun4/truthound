@@ -127,3 +127,21 @@ def test_cli_build_checks_manifest_lock_and_relocatable_command(tmp_path):
         )
         mcp = json.loads(archive.read("mcp.json"))["mcpServers"]["truthound"]
         assert mcp["cwd"] == "." and not any("${" in a for a in mcp["args"])
+
+
+def test_windows_npm_shim_uses_node_without_shell_evaluation(tmp_path, monkeypatch):
+    api = runpy.run_path(str(ROOT / "verification/openai_plugin.py"))
+    prefix = tmp_path / "npm with spaces"
+    entry = prefix / "node_modules/@openai/codex/bin/codex.js"
+    entry.parent.mkdir(parents=True)
+    entry.write_text("// synthetic npm layout", encoding="utf-8")
+    command = api["codex_command"]
+    monkeypatch.setattr(
+        command.__globals__["shutil"],
+        "which",
+        lambda name: str(prefix / "codex.cmd") if name == "codex" else str(prefix / "node.exe"),
+    )
+    assert command() == [str(prefix / "node.exe"), str(entry)]
+    entry.unlink()
+    with pytest.raises(RuntimeError, match="unsupported_codex_npm_layout"):
+        command()
