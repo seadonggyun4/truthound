@@ -18,6 +18,12 @@ integration VM의 Redis·Elasticsearch는 실제 로컬 서비스 컨테이너�
 실계정 검증으로 표현하지 않습니다. 시작·준비 실패는 FAIL입니다. SQLAlchemy
 queue pool은 `pool_timeout`을 엔진에 전달하며 실제 SQLite 연결·쿼리로 검증합니다.
 
+Elasticsearch 로그 fixture는 기존 100행을 유지하고 datetime 연산으로 초·분 경계를
+넘어도 유효한 시각을 생성합니다. 정리는 literal 테스트 prefix로 이름을 먼저 조회한
+뒤 일치하는 명시적 인덱스만 삭제합니다. 빈 값·wildcard prefix나 범위 밖 이름은
+거부하며 Elasticsearch의 destructive-action 이름 보호 설정은 끄지 않습니다.
+정리에 실패해도 fixture 종료는 실행하고, 정리 실패를 PASS로 숨기지 않습니다.
+
 PR의 contract 4개 shard, fault/e2e, lint ratchet과 최종 gate를 유지합니다.
 MCP distribution의 9개 OS/Python 조합, SDK 필수·skip 금지 검증,
 실제 wheel/sdist/UV 설치 검증도 유지합니다. Core `src/**`, 공통 pytest 설정,

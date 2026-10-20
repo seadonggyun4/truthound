@@ -308,17 +308,19 @@ class ElasticsearchBackend(ExternalServiceBackend[ElasticsearchConfig, "Elastics
         return success
 
     def cleanup_test_indices(self, prefix: str = "truthound_test_") -> int:
-        """Delete all indices with the given prefix."""
+        """Resolve the test prefix, then delete explicit names with ES safety on."""
+        if not prefix or any(c in prefix for c in "*?[],"):
+            raise ValueError("Cleanup requires a literal nonempty test-index prefix")
         if self._client is None:
             return 0
 
         indices = self._client.indices.get(index=f"{prefix}*", ignore=[404])
-        count = len(indices)
-
-        if count > 0:
-            self._client.indices.delete(index=f"{prefix}*", ignore=[404])
-
-        return count
+        names = list(indices)
+        if any(not name.startswith(prefix) or any(c in name for c in "*?[],") for name in names):
+            raise ValueError("Resolved cleanup index is outside the literal test prefix")
+        for name in names:
+            self.delete_index(name)
+        return len(names)
 
 
 # =============================================================================

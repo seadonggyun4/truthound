@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import time
 import uuid
+from datetime import datetime, timedelta, timezone
 from typing import TYPE_CHECKING
 
 import pytest
@@ -156,6 +157,12 @@ class TestMockElasticsearchLogging:
 # =============================================================================
 
 
+def _log_timestamp(entry: int, seconds_per_entry: int = 1) -> str:
+    """Keep every original row while rolling minute/hour boundaries correctly."""
+    start = datetime(2025, 12, 28, 10, tzinfo=timezone.utc)
+    return (start + timedelta(seconds=entry * seconds_per_entry)).isoformat().replace("+00:00", "Z")
+
+
 @pytest.mark.elasticsearch
 @pytest.mark.integration
 class TestElasticsearchLogging:
@@ -219,7 +226,7 @@ class TestElasticsearchLogging:
         """Test bulk log indexing."""
         logs = [
             {
-                "@timestamp": f"2025-12-28T10:{i:02d}:00Z",
+                "@timestamp": _log_timestamp(i, seconds_per_entry=60),
                 "level": "INFO",
                 "message": f"Bulk log {i}",
             }
@@ -233,8 +240,8 @@ class TestElasticsearchLogging:
         time.sleep(2)
 
         # Verify count
-        results = elasticsearch_backend.search(log_index, size=0)
-        # Note: search with size=0 returns total count
+        results = elasticsearch_backend.search(log_index, size=100)
+        assert len(results) == 100
 
     def test_log_search(
         self,
@@ -274,7 +281,7 @@ class TestElasticsearchLogging:
 
         for i, level in enumerate(levels):
             elasticsearch_backend.index_document(log_index, {
-                "@timestamp": f"2025-12-28T10:00:{i:02d}Z",
+                "@timestamp": _log_timestamp(i),
                 "level": level,
                 "message": f"Log entry {i}",
             })

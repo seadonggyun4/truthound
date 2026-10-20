@@ -334,9 +334,11 @@ def elasticsearch_backend(
             yield None
     finally:
         # Cleanup test indices
-        if backend.is_running:
-            backend.cleanup_test_indices()
-        backend.stop()
+        try:
+            if backend.is_running:
+                backend.cleanup_test_indices()
+        finally:
+            backend.stop()
 
 
 @pytest.fixture

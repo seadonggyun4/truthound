@@ -115,6 +115,13 @@ readiness failure fails the tests. SQLAlchemy queue pools forward
 `pool_timeout` to the engine; real SQLite tests verify the configured timeout and
 query execution without a database account.
 
+Elasticsearch log fixtures retain all 100 rows while datetime arithmetic rolls
+seconds/minutes into valid timestamps. Cleanup first resolves a literal test-index
+prefix and deletes only the explicit matching names; empty/wildcard prefixes and
+foreign resolved names are rejected. Elasticsearch's destructive-action name
+protection remains enabled. Fixture shutdown still runs if cleanup raises, and
+cleanup failures remain failures rather than being suppressed.
+
 The dev environment requires pytest 9. Native subtests are recorded separately
 from the parent's setup/call/teardown phases with consecutive parent-local
 ordinals, without storing their context/parameter values. Parent testcase counts
