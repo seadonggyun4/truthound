@@ -21,19 +21,19 @@ def test_bundle_is_deterministic_versioned_and_private_free(tmp_path):
         assert manifest["server"]["type"] == "uv"
         project = tomllib.loads(z.read("pyproject.toml").decode())
         assert project["project"]["version"] == manifest["version"]
-        assert project["tool"]["uv"]["sources"]["truthound"]["path"] == "truthound.whl" if "tool" in project else True
+        assert "tool" not in project  # PyPI mode must not carry a local wheel source.
         assert any(d.startswith("truthound[mcp]==") for d in project["project"]["dependencies"])
         assert manifest["user_config"]["allowed_directory"]["required"]
         assert "default" not in manifest["user_config"]["allowed_directory"]
 
 def test_documentation_and_optional_dependency_contract():
     root = Path(__file__).resolve().parents[1]
-    project = tomllib.loads((root / "pyproject.toml").read_text())
+    project = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))
     assert any(d.startswith("mcp>=") for d in project["project"]["optional-dependencies"]["mcp"])
     assert not any(d.startswith("mcp") for d in project["project"]["dependencies"])
     for path in ("docs/guides/mcp.md", "docs/locales/ko/guides/mcp.md"):
-        text = (root / path).read_text()
+        text = (root / path).read_text(encoding="utf-8")
         for term in ("truthound[mcp]", "--allow-dir", "check_file", "profile_file", "scan_pii", ".mcpb"):
             assert term in text
     for path in ("mkdocs.yml", "mkdocs.public.yml"):
-        assert "guides/mcp.md" in (root / path).read_text()
+        assert "guides/mcp.md" in (root / path).read_text(encoding="utf-8")
