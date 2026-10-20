@@ -176,3 +176,23 @@ def test_missing_argon2_is_an_explicit_error_not_a_weaker_kdf(monkeypatch):
     monkeypatch.setattr(builtins, "__import__", missing)
     with pytest.raises(KeyDerivationError, match="argon2-cffi"):
         Argon2KeyDeriver().derive("synthetic", b"x" * 16, 32)
+
+
+def test_paired_sampling_budget_still_detects_actual_slow_path():
+    import time
+
+    from tests.fixtures.sampling_timing import measure_sampling_pair
+
+    calls = []
+
+    def sampled():
+        calls.append("sampled")
+        time.sleep(0.005)
+
+    def full():
+        calls.append("full")
+
+    sampled_time, full_time = measure_sampling_pair(sampled, full)
+    assert calls.count("sampled") == calls.count("full") == 8
+    assert calls[2:6] == ["sampled", "full", "full", "sampled"]
+    assert sampled_time > full_time * 5

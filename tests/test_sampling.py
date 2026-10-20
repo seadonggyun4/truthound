@@ -912,30 +912,25 @@ class TestPerformance:
 
     def test_sampling_faster_than_full_scan(self, large_df):
         """Test that sampling is faster than full scan."""
-        import time
+        from tests.fixtures.sampling_timing import measure_sampling_pair
 
         lf = large_df.lazy()
 
-        # Time with sampling - use explicit HEAD strategy to ensure sampling is applied
-        start = time.perf_counter()
-        config_sampled = SamplingConfig(
-            strategy=SamplingMethod.HEAD,
-            max_rows=10_000,
-        )
-        sampler = Sampler(config_sampled)
-        result_sampled = sampler.sample(lf)
-        # Force collect to actually measure execution time
-        _ = result_sampled.data.collect()
-        sampled_time = time.perf_counter() - start
+        def sampled():
+            config = SamplingConfig(strategy=SamplingMethod.HEAD, max_rows=10_000)
+            result = Sampler(config).sample(lf)
+            data = result.data.collect()
+            assert result.is_sampled and data.height == result.metrics.sample_size
+            assert 0 < data.height <= 10_000
 
-        # Time without sampling (full scan)
-        start = time.perf_counter()
-        config_full = SamplingConfig(strategy=SamplingMethod.NONE)
-        sampler_full = Sampler(config_full)
-        result_full = sampler_full.sample(lf)
-        # Force collect to actually measure execution time
-        _ = result_full.data.collect()
-        full_time = time.perf_counter() - start
+        def full():
+            result = Sampler(SamplingConfig(strategy=SamplingMethod.NONE)).sample(lf)
+            data = result.data.collect()
+            assert not result.is_sampled and data.height == large_df.height
+
+        # Fixed 1 warmup / 7 paired samples with alternating order, not an
+        # adaptive retry. Include constructor + sample + collect for both paths.
+        sampled_time, full_time = measure_sampling_pair(sampled, full)
 
         # Sampled should be faster (or at least not much slower)
         # Note: For LazyFrame operations, the difference may be minimal

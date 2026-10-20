@@ -35,6 +35,12 @@ properties. Its bounded regression covers concurrent writes and JSON/Markdown/HT
 reports. The scale uniqueness fixture retains 100 million rows and its existing
 300-second threshold. It uses an exact Python set (not a Core HLL validator) and
 takes the same first 1,000 prior IDs without repeatedly copying the entire set.
+The in-memory HEAD/NONE sampling timing test keeps its 5x overhead ceiling but
+uses one equal warmup and seven fixed alternating pairs, comparing medians. It
+includes construction, sampling and collection for both paths, checks actual row
+counts, and has a deliberately slow-path regression. This measures warm relative
+overhead, not cold-start latency; it does not retry until passing or alter the
+separate fixed-runner release performance criteria.
 
 A matrix runs at most three lanes concurrently with fail-fast disabled. Jobs
 have independent environments, filesystems and fixtures: session fixtures and

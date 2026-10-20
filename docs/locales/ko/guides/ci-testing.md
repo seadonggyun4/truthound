@@ -20,6 +20,11 @@ stress 지표는 중첩 property 조회가 가능한 재진입 잠금으로 일�
 검증합니다. scale uniqueness fixture는 1억 행과 기존 300초 기준을 유지합니다.
 Core HLL 검사가 아닌 정확한 Python set oracle이며, 기존 첫 1,000개 후보를
 동일하게 사용하되 커지는 전체 set을 반복 복사하지 않습니다.
+HEAD/NONE 메모리 sampling 시간 검사는 기존 5배 overhead 기준을 유지하면서
+양쪽 동일 warmup 1회와 순서를 번갈아 측정하는 고정 7쌍의 중앙값을 사용합니다.
+생성·sampling·collect 비용과 실제 행수를 확인하고 인위적으로 느린 경로가
+거부되는 반례를 둡니다. cold-start가 아닌 warm 상대 overhead 검증이며,
+통과할 때까지 반복하거나 별도 고정 runner 릴리스 성능 기준을 바꾸지 않습니다.
 
 예약 Nightly는 기존 integration-only 범위입니다. 릴리스 검증에는
 `run_full_suite=true`로 수동 실행합니다. 원래 marker 식
