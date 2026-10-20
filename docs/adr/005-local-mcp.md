@@ -16,7 +16,7 @@ are not part of this version. Additional tools require their own contracts.
 
 ## Sources examined and application
 
-This is a bounded engineering review of nine primary references, not an
+This is a bounded engineering review of ten primary references, not an
 exhaustive systematic review. Full paid books and paper evaluations were not
 reproduced. References were accessed on 2026-10-20.
 
@@ -33,6 +33,16 @@ reproduced. References were accessed on 2026-10-20.
 | [AnyIO cancellation](https://anyio.readthedocs.io/en/stable/cancellation.html), task-group, deadline and shielded-finalization sections; installed subprocess implementation | Await a structured child directly, rather than abandoning a synchronous background thread | Normal OS process termination, not kernel-hang or sandbox protection |
 
 ## Alternatives and tradeoffs
+
+[Polars Enum documentation](https://docs.pola.rs/api/python/stable/reference/api/polars.datatypes.Enum.html),
+the categories parameter and repr examples, is the tenth primary reference.
+Actual Enum Parquet/stdin profiling reproduced category values inside a Core
+dtype string. MCP therefore returns only finite allowlisted family names,
+discarding all type parameters and mapping unknown text to `Unknown`. Nested
+types and timezones lose detail intentionally; Core Python type fidelity stays
+unchanged. This closes the reproduced metadata route, not every possible privacy
+inference from column names and aggregates. Source and installed-runtime tests
+exercise the Enum case; projection tests cover nested, temporal and unknown text.
 
 A bespoke JSON-RPC implementation would duplicate protocol maintenance. A
 remote service would add identity, hosting and dataset-transfer requirements.

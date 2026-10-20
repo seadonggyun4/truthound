@@ -27,11 +27,14 @@ truthound-mcp serve --allow-dir /absolute/path/to/data
 | 도구 | 기존 Core API | 반환 요약 |
 | --- | --- | --- |
 | `check_file` | `th.check()` | 결측값·중복 행 검사와 통과 여부·이슈 수 |
-| `profile_file` | `th.profile()` | 행·열 수, 컬럼명·자료형, 결측·고유값 비율 |
+| `profile_file` | `th.profile()` | 행·열 수, 컬럼명·타입 계열, 결측·고유값 비율 |
 | `scan_pii` | `th.scan()` | 컬럼별 개인정보 유형·신뢰도·추정 발견 수 |
 
 `check_file`은 내장 null/duplicate 검사만 명시적으로 선택합니다. 프로젝트
-suite·플러그인·임의 검증 설정을 받지 않습니다. 품질 위반은 실행 오류가 아니므로
+suite·플러그인·임의 검증 설정을 받지 않습니다. 프로파일의 `dtype`은 허용 목록의
+`Enum`, `List`, `Struct`, `Datetime` 같은 타입 계열만 반환하며 범주값·중첩 타입
+상세·시간대·정밀도 매개변수는 제외합니다. 알 수 없는 자료형 문자열은 `Unknown`으로
+표시합니다. Core Python API의 전체 자료형 메타데이터는 바꾸지 않습니다. 품질 위반은 실행 오류가 아니므로
 `ok=true`, `data.success=false`로 표시됩니다. 정책·실행 오류는 MCP
 `isError=true`와 안정적인 오류 코드를 반환합니다.
 

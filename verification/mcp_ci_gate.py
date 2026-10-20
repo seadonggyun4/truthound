@@ -20,6 +20,7 @@ TEST_FILES = (
     "tests/test_polars_dependency_contract.py",
     "tests/test_mcp_lifecycle.py",
     "tests/test_mcp_ci_gate.py",
+    "tests/test_mcp_dtype_privacy.py",
 )
 
 

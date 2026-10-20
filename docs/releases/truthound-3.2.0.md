@@ -22,3 +22,8 @@ source changes, rejects missing SDKs/empty/skipped suites, and records actual
 Python 3.11–3.13 runtimes and dependency versions for fresh wheel/sdist and UV
 launcher tests. These tests do not establish a universal process-memory limit,
 OS sandbox or termination deadline for pathological kernel/filesystem hangs.
+
+MCP profile `dtype` returns only an allowlisted type family: Enum category values,
+nested type details and timezone/precision parameters are omitted. Unknown type
+text becomes `Unknown`; the Core Python API retains full type metadata. Real
+stdio and fresh installed-runtime regressions cover Enum Parquet value privacy.

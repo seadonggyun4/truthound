@@ -8,7 +8,7 @@
 로컬 파일 정책, 별도 Core worker, 명시적 결과 투영을 조합합니다.
 PyPI extra와 MCPB는 동일한 Truthound 버전을 사용합니다.
 
-관련 9개 1차 자료를 범위가 정해진 엔지니어링 검토로 조사했습니다.
+관련 10개 1차 자료를 범위가 정해진 엔지니어링 검토로 조사했습니다.
 체계적 문헌고찰·유료 서적 전체 열람·논문의 성능 재현을 주장하지 않습니다.
 자료 확인 날짜는 2026-10-20입니다.
 
@@ -25,6 +25,14 @@ PyPI extra와 MCPB는 동일한 Truthound 버전을 사용합니다.
 | [AnyIO 취소 문서](https://anyio.readthedocs.io/en/stable/cancellation.html), task group·deadline·shield 절 및 설치된 subprocess 구현 | 동기 스레드를 방치하지 않고 구조화된 자식 프로세스를 직접 await | 정상 OS 종료 기준이며 커널 hang·sandbox 방어는 아님 |
 
 ## 대안과 검증
+
+열 번째 1차 자료는 [Polars Enum 문서](https://docs.pola.rs/api/python/stable/reference/api/polars.datatypes.Enum.html)의
+categories 매개변수와 repr 예제입니다. 실제 Enum Parquet/stdin 프로파일에서 Core의
+자료형 문자열을 통한 범주값 노출을 재현했습니다. MCP만 유한 허용 목록의 타입
+계열을 반환하고 모든 매개변수를 제외하며 알 수 없는 문자열은 `Unknown`으로
+바꿉니다. 중첩 타입·시간대 상세는 의도적으로 줄이되 Core Python의 자료형 정보는
+유지합니다. 재현된 메타데이터 노출 경로의 수정이지 컬럼명·집계의 모든 개인정보
+추론 방어는 아닙니다. source/설치 런타임에서 Enum을, 투영에서 중첩·시간·unknown을 검증합니다.
 
 stdio handler가 비동기 서비스를 직접 기다립니다. 취소·timeout 시 AnyIO가
 worker를 종료·회수한 뒤 임시 입력을 삭제하고 busy 잠금을 해제합니다. SDK의

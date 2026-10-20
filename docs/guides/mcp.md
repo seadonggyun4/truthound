@@ -40,11 +40,15 @@ All tools take one `path` string. Supported suffixes are `.csv`, `.parquet`,
 | Tool | Core API | Summary |
 | --- | --- | --- |
 | `check_file` | `th.check()` | Null and duplicate-row checks, verdicts and issue totals |
-| `profile_file` | `th.profile()` | Row/column counts, column names/types and null/unique percentages |
+| `profile_file` | `th.profile()` | Row/column counts, column names/type families and null/unique percentages |
 | `scan_pii` | `th.scan()` | Column, PII category, confidence and estimated finding count |
 
 `check_file` deliberately selects built-in null/duplicate checks rather than
-loading project suites, plugins or arbitrary validator configuration. A quality
+loading project suites, plugins or arbitrary validator configuration. Profile
+`dtype` is an allowlisted family such as `Enum`, `List`, `Struct` or `Datetime`;
+category values, nested type details and timezone/precision parameters are
+omitted. Unknown dtype text becomes `Unknown`. The Core Python API retains its
+full type metadata. A quality
 failure is a completed tool call with `ok=true` and `data.success=false`.
 Execution or policy errors set MCP `isError=true` and return a stable error code.
 

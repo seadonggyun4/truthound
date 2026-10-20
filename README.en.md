@@ -245,7 +245,7 @@ The root package intentionally exposes a small API.
 
 ## Plugin Platform
 
-Install `truthound[mcp]` for local MCP tools and run `truthound-mcp serve --allow-dir /absolute/path/to/data`. The adapter reuses Core validation, profiling and PII APIs and can build a Claude Desktop `.mcpb`. See the [MCP guide and limits](docs/guides/mcp.md).
+Install `truthound[mcp]` for local MCP tools and run `truthound-mcp serve --allow-dir /absolute/path/to/data`. The adapter reuses Core validation, profiling and PII APIs and can build a Claude Desktop `.mcpb`. Profile dtypes return only type families, excluding category values and parameters. See the [MCP guide and limits](docs/guides/mcp.md).
 Both the base installation and MCP extra require Polars 1.x; Polars 2 is not yet supported.
 
 Truthound uses a single lifecycle runtime.

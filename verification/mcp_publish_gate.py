@@ -57,7 +57,7 @@ def main() -> int:
             )
             suites = ET.parse(junit).getroot().findall("testsuite")
             assert run.returncode == 0 and suites
-            assert sum(int(s.get("tests", 0)) for s in suites) >= 30
+            assert sum(int(s.get("tests", 0)) for s in suites) >= 37
             assert all(int(s.get("skipped", 0)) == 0 for s in suites)
             results["api"] = "PASS"
         api = "https://api.github.com/repos/seadonggyun4/truthound"

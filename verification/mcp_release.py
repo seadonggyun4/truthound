@@ -63,6 +63,15 @@ async def run():
                     assert not result.isError, result
                     assert result.structuredContent["data"]["row_count"]==3
                     assert "a@example.com" not in result.model_dump_json()
+                # Parameterized dtypes themselves can encode raw category values.
+                import polars as pl
+                marker="synthetic_private_category_9f31"
+                enum_file=Path(td)/"enum.parquet"
+                pl.DataFrame({"kind":pl.Series([marker],dtype=pl.Enum([marker]))}).write_parquet(enum_file)
+                result=await client.call_tool("profile_file",{"path":str(enum_file)})
+                assert not result.isError
+                assert result.structuredContent["data"]["columns"][0]["dtype"]=="Enum"
+                assert marker not in result.model_dump_json()
                 assert not (Path(td)/".truthound").exists()
 asyncio.run(run())
 print("fresh-install-stdio-pass")
