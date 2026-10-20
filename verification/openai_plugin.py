@@ -66,6 +66,8 @@ async def smoke(plugin: Path, work: Path) -> dict:
     )
     args = [a.replace("${PLUGIN_ROOT}", str(plugin)) for a in connection["args"]]
     assert not any("${" in a for a in args)
+    assert connection["cwd"] == "."
+    working_directory = plugin / connection["cwd"]
     data = work / "approved"
     data.mkdir()
     source = data / "input.csv"
@@ -74,7 +76,11 @@ async def smoke(plugin: Path, work: Path) -> dict:
     outside = work / "outside.csv"
     outside.write_text("x\n9\n", encoding="utf-8")
     async with (
-        stdio_client(StdioServerParameters(command=shutil.which("uv"), args=args, env=env)) as (
+        stdio_client(
+            StdioServerParameters(
+                command=shutil.which("uv"), args=args, env=env, cwd=str(working_directory)
+            )
+        ) as (
             read,
             write,
         ),
@@ -139,7 +145,8 @@ def main() -> None:
     args = parser.parse_args()
     plugin = args.plugin.resolve(strict=True)
     manifest = json.loads((plugin / "plugin.json").read_text(encoding="utf-8"))
-    assert manifest["name"] == "truthound" and manifest["version"] == "0.1.0"
+    project = tomllib.loads((plugin / "pyproject.toml").read_text(encoding="utf-8"))["project"]
+    assert manifest["name"] == "truthound" and manifest["version"] == project["version"]
     extension = manifest["extensions"]["com.openai"]
     compat = json.loads((plugin / ".codex-plugin/plugin.json").read_text(encoding="utf-8"))
     assert compat["interface"] == extension["interface"]
@@ -153,6 +160,8 @@ def main() -> None:
     )
     assert extension["onboardingSkill"] == "./skills/truthound-setup/SKILL.md"
     lock = tomllib.loads((plugin / "uv.lock").read_text(encoding="utf-8"))
+    virtual = next(p for p in lock["package"] if p["name"] == project["name"])
+    assert virtual["version"] == manifest["version"]
     core = next(p for p in lock["package"] if p["name"] == "truthound")
     assert core["version"] == "3.2.0" and core["source"] == {"registry": "https://pypi.org/simple"}
     assert (

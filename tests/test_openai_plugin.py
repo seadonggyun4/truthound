@@ -99,3 +99,31 @@ def test_unsafe_permission_file_is_rejected_on_the_platform(tmp_path):
         path.chmod(0o666)
     with pytest.raises(ValueError):
         API["read_directories"](path)
+
+
+def test_cli_build_checks_manifest_lock_and_relocatable_command(tmp_path):
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(ROOT / "verification/openai_plugin.py"),
+            "--output",
+            str(tmp_path / "dist"),
+        ],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    proof = json.loads(result.stdout)
+    import tomllib
+    import zipfile
+
+    with zipfile.ZipFile(next((tmp_path / "dist").glob("*.zip"))) as archive:
+        manifest = json.loads(archive.read("plugin.json"))
+        lock = tomllib.loads(archive.read("uv.lock").decode("utf-8"))
+        assert (
+            next(p for p in lock["package"] if p["name"] == "truthound-openai-plugin")["version"]
+            == manifest["version"]
+            == proof["plugin_version"]
+        )
+        mcp = json.loads(archive.read("mcp.json"))["mcpServers"]["truthound"]
+        assert mcp["cwd"] == "." and not any("${" in a for a in mcp["args"])

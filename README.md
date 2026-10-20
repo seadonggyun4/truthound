@@ -41,7 +41,7 @@ and ends at the closing </p> of the badge block above.
 
 ## 플러그인 플랫폼 (Plugin Platform)
 
-- **Codex·ChatGPT 데스크톱**: [Truthound 저장소 마켓플레이스](.agents/plugins/marketplace.json)를 추가한 뒤 **Plugins → Truthound Plugins → Truthound Local → Install → Set up**에서 허용 폴더를 지정합니다. 최초 마켓플레이스 추가: `codex plugin marketplace add seadonggyun4/truthound --ref main`. [설치·권한·공식 등재 절차](docs/locales/ko/guides/mcp.md)
+- **Codex·ChatGPT 데스크톱 (플러그인 0.1.1)**: [Truthound 저장소 마켓플레이스](.agents/plugins/marketplace.json)를 추가한 뒤 **Plugins → Truthound Plugins → Truthound Local → Install → Set up**에서 허용 폴더를 지정합니다. 최초 마켓플레이스 추가: `codex plugin marketplace add seadonggyun4/truthound --ref main`. [설치·권한·공식 등재 절차](docs/locales/ko/guides/mcp.md)
 - **마켓플레이스에서 찾기**: [공식 MCP Registry](https://registry.modelcontextprotocol.io/)에서 `io.github.seadonggyun4/truthound`를 검색하세요. 연동 클라이언트의 마켓플레이스에 표시되면 **Install**을 누르고 접근을 허용할 데이터 폴더를 지정합니다. [등록된 3.2.0 정보](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.seadonggyun4%2Ftruthound/versions/3.2.0)
 - **Claude Desktop**: [MCPB 다운로드](https://github.com/seadonggyun4/truthound/releases/download/v3.2.0/truthound-3.2.0.mcpb) → **Settings → Extensions → Advanced settings → Install Extension…** → 파일 선택·허용 폴더 설정. [공식 설치 안내](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop)
 

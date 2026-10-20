@@ -130,7 +130,7 @@ The bundle never contains project data, development environments or internal not
 
 ## OpenAI local plugin and repository marketplace
 
-The standalone OpenAI plugin is version `0.1.0`, pins the published Core
+The standalone OpenAI plugin is version `0.1.1`, pins the published Core
 `truthound[mcp]==3.2.0`, and includes a frozen UV dependency lock. It is local
 desktop software, not a hosted service or a ChatGPT web connector. Install UV
 and make it available on the desktop application's PATH. First setup needs
@@ -150,6 +150,8 @@ Client version and organization policy can affect marketplace availability.
 Packages include the portable manifest and a matching Codex compatibility
 manifest for older clients. If **Set up** is unavailable, ask the agent to run
 the packaged **Truthound setup** skill; do not bypass directory approval.
+The MCP command uses a plugin-relative `cwd` instead of depending on host-specific
+argument placeholder interpolation. Version 0.1.1 fixes 0.1.0 startup on Codex 0.141.0.
 
 Installation grants no data access. The three MCP tools initialize normally but
 return `access_denied` until you approve a directory. Setup runs the packaged

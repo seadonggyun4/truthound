@@ -117,7 +117,7 @@ Anthropic 승인이나 GUI 검증을 주장하지 않습니다. 개발 환경·�
 
 ## OpenAI 로컬 플러그인과 저장소 마켓플레이스
 
-OpenAI 플러그인은 Core와 별도인 버전 `0.1.0`이며 공개 PyPI의
+OpenAI 플러그인은 Core와 별도인 버전 `0.1.1`이며 공개 PyPI의
 `truthound[mcp]==3.2.0`과 고정된 UV dependency lock을 사용합니다.
 로컬 데스크톱용이며 원격 서비스나 ChatGPT 웹 커넥터가 아닙니다.
 UV를 설치해 데스크톱 앱의 PATH에서 사용할 수 있어야 하며 최초 설치에는
@@ -136,6 +136,8 @@ Truthound Local → Install → Set up**에서 읽기를 허용할 정확한 절
 패키지는 portable manifest와 구형 Codex용 호환 manifest를 함께 제공합니다.
 **Set up**이 없는 클라이언트에서는 에이전트에게 패키지의 **Truthound setup**
 스킬 실행을 요청하세요. 폴더 동의 절차를 생략하지 않습니다.
+MCP 명령은 host별 인자 placeholder 치환에 의존하지 않고 플러그인 기준의 상대
+`cwd`를 사용합니다. 0.1.1은 Codex 0.141.0에서 0.1.0의 시작 문제를 수정합니다.
 
 설치만으로 데이터 접근 권한은 생기지 않습니다. 세 도구는 정상 연결되지만
 폴더 동의 전에는 `access_denied`를 반환합니다. 온보딩은 사용자 동의 후에만
