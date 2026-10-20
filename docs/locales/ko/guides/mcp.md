@@ -7,7 +7,7 @@ stdio를 지원하는 에이전트에서 사용할 수 있습니다.
 ## 설치와 실행
 
 ```bash
-pip install "truthound[mcp]"
+pip install "truthound[mcp]==3.2.0"
 truthound-mcp serve --allow-dir /absolute/path/to/data
 ```
 
@@ -18,6 +18,27 @@ truthound-mcp serve --allow-dir /absolute/path/to/data
 환경의 실행 파일을 사용해야 하며 pip 설치만으로 자동 연결되지는 않습니다.
 기본 패키지와 MCP extra는 Polars 1.x를 사용합니다. Core PII scanner가 Polars 2에서
 제거된 API를 사용하므로 저장소 lockfile과 별도로 클린 설치를 검증합니다.
+
+Linux/macOS/Windows CI는 Python 3.11–3.13을 검증합니다. Windows에서는
+POSIX의 `bin/truthound-mcp` 대신 설치 환경의 `Scripts/truthound-mcp.exe`를
+사용합니다. 아래는 클라이언트 형식에 맞춰 조정하는 수동 stdio 설정 예시입니다.
+
+```json
+{
+  "mcpServers": {
+    "truthound": {
+      "command": "/absolute/path/to/venv/bin/truthound-mcp",
+      "args": ["serve", "--allow-dir", "/absolute/path/to/data"]
+    }
+  }
+}
+```
+
+로컬 stdio 서버이며 HTTP/OAuth 원격 endpoint를 제공하지 않습니다.
+원격 connector가 필요한 클라이언트에는 이 설정을 직접 적용할 수 없습니다.
+초기화 후 `profile_file`에 `{"path": "example.csv"}`를 전달하면 명시적으로
+허용된 폴더의 파일을 검사하고 원본 행 대신 제한된 집계 메타데이터를 반환합니다.
+`check_file`, `scan_pii`도 같은 입력 형식입니다.
 
 ## 도구와 결과
 
@@ -78,6 +99,7 @@ truthound-mcp bundle --output truthound-3.2.0.mcpb
 PyPI에서 정확히 `truthound[mcp]==3.2.0`을 설치하고 하위 의존성을 해석합니다.
 최초 설정에는 네트워크와 manifest 0.4/UV를 지원하는 Claude Desktop이
 필요합니다. archive 바이트는 결정론적이지만 완전히 잠긴 오프라인 환경은 아닙니다.
+생성된 번들은 서명되지 않았으며 설치 시 host의 동의가 필요합니다.
 
 PyPI 게시 전에 테스트하려면 동일 버전 wheel을 포함합니다.
 

@@ -258,6 +258,7 @@ Truthound는 프로젝트 루트에 `.truthound/` 워크스페이스를 자동�
 
 `pip install "truthound[mcp]"`로 로컬 MCP를 설치하고 `truthound-mcp serve --allow-dir /absolute/path/to/data`로 실행합니다. 기존 Core API의 검증·프로파일·PII 요약과 Claude Desktop용 `.mcpb` 생성을 제공합니다. 프로파일의 자료형은 범주값·매개변수를 제외한 타입 계열만 반환합니다. [MCP 사용법과 제한](docs/guides/mcp.md)을 확인하세요.
 기본 설치와 MCP extra 모두 Polars 1.x를 사용하며, Polars 2는 아직 지원하지 않습니다.
+MCP는 명시적으로 허용한 폴더에만 접근하는 로컬 stdio 서버입니다. pip 설치만으로 에이전트에 자동 등록되거나 HTTP/OAuth 원격 서버가 제공되지는 않습니다.
 
 Truthound는 단일 라이프사이클 런타임을 사용합니다.
 

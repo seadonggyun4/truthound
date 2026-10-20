@@ -7,7 +7,7 @@ and `th.scan()` APIs. It does not need a hosted validation service.
 ## Install and start
 
 ```bash
-pip install "truthound[mcp]"
+pip install "truthound[mcp]==3.2.0"
 truthound-mcp serve --allow-dir /absolute/path/to/data
 ```
 
@@ -31,6 +31,17 @@ Example manual host configuration (adapt to your client's format):
   }
 }
 ```
+
+Python 3.11–3.13 is covered by the Linux/macOS/Windows CI matrix. On Windows,
+use the installed environment's `Scripts/truthound-mcp.exe` in place of the
+POSIX `bin/truthound-mcp` path. The server implements local stdio, not a hosted
+HTTP/OAuth endpoint: clients requiring a remote connector cannot use this
+configuration directly. Installing the package does not register it with a host.
+
+For example, after initialization a host can call `profile_file` with
+`{"path": "example.csv"}` within the explicitly allowed directory. The tool
+returns bounded aggregate metadata, not the file's raw rows. The same input
+shape applies to `check_file` and `scan_pii`.
 
 ## Tools and results
 
@@ -101,6 +112,7 @@ license. Its UV runtime installs exactly `truthound[mcp]==3.2.0` from PyPI and
 resolves supporting dependencies. It needs network access on first setup and a
 Claude Desktop version supporting MCPB manifest 0.4 and the UV runtime. This is
 a deterministic bundle archive, not a fully locked offline environment.
+The generated bundles are unsigned; installation still requires host consent.
 
 Before publishing that version to PyPI, embed its built wheel instead:
 

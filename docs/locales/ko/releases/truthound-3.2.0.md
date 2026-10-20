@@ -32,3 +32,10 @@ integration, soak/stress, 실제 자원을 확인하는 scale lane으로 중복 
 [저장소 CI 가이드](../guides/ci-testing.md)를 참고하세요.
 README에는 버전이 일치하는 공식 Registry 메타데이터의 소유권 marker도 포함합니다.
 유효한 메타데이터와 실제 Registry·marketplace 게시 완료는 구별합니다.
+
+릴리스 CI는 수집 경로와 실제 import된 모듈의 identity·소스 해시를 대조하여
+동일한 파일명 때문에 다른 테스트가 실행되지 않게 합니다. SDK 진단 정보 누락이
+원래 결과를 지우지 않으며 full 검증은 SDK를 계속 필수로 요구합니다. Windows의
+Registry 텍스트 읽기는 UTF-8을 명시합니다. LZ4 명시 설치, stress summary의
+재진입 잠금과 exact-set scale fixture의 제한된 후보 추출은 기존 assertion과
+행수·시간 기준을 유지하는 테스트 인프라 수정입니다.

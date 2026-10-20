@@ -8,6 +8,18 @@ lockfile 변경을 MCP 영향에서 제외하지 않습니다. PR 또는 MCP 통
 
 ## 원래 full 집합의 정확한 분할
 
+수집한 경로와 실제 import된 모듈 파일이 같은지 검사하고 소스 SHA-256을
+기록합니다. 각 lane도 동일한 identity를 재검사하여 같은 파일명 때문에 다른
+테스트가 대신 실행되지 않게 합니다. dev extra는 기본 압축 pipeline roundtrip에
+필요한 LZ4를 명시적으로 설치합니다. 선택 의존성의 진단 정보 조회는 원래 테스트
+결과를 지우지 않으며 full 수집·집계는 필수 MCP SDK 누락을 계속 거부합니다.
+
+stress 지표는 중첩 property 조회가 가능한 재진입 잠금으로 일관된 summary를
+만들고, 동시 기록 및 JSON/Markdown/HTML 보고서를 제한된 자식 프로세스에서
+검증합니다. scale uniqueness fixture는 1억 행과 기존 300초 기준을 유지합니다.
+Core HLL 검사가 아닌 정확한 Python set oracle이며, 기존 첫 1,000개 후보를
+동일하게 사용하되 커지는 전체 set을 반복 복사하지 않습니다.
+
 예약 Nightly는 기존 integration-only 범위입니다. 릴리스 검증에는
 `run_full_suite=true`로 수동 실행합니다. 원래 marker 식
 `contract or fault or integration or soak or stress or scale_100m or e2e`와

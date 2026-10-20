@@ -392,7 +392,8 @@ class StressMetricsCollector:
         self._sample_interval_seconds = 1.0
         self._last_sample_time: float = 0.0
 
-        self._lock = threading.Lock()
+        # Summary holds a coherent snapshot while reading lock-protected properties.
+        self._lock = threading.RLock()
 
     @property
     def name(self) -> str:

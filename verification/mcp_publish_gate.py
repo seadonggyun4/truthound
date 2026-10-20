@@ -26,6 +26,47 @@ def read_json(url: str) -> dict:
     return json.loads(raw)
 
 
+REQUIRED_WORKFLOWS = {
+    ".github/workflows/" + name + ".yml"
+    for name in (
+        "tests-pr",
+        "docs",
+        "benchmarks-pr",
+        "mcp",
+        "tests-nightly",
+        "benchmarks-nightly",
+        "benchmarks-release",
+        "release-pypi",
+    )
+}
+
+
+def validate_workflows(runs, sha, *, require_release=True):
+    required = REQUIRED_WORKFLOWS - (
+        set() if require_release else {".github/workflows/release-pypi.yml"}
+    )
+    applicable = [r for r in runs if r.get("path") in required]
+    if required != {r["path"] for r in applicable}:
+        raise ValueError("missing_required_workflow")
+    if any(
+        r.get("head_sha") != sha
+        or r.get("status") != "completed"
+        or r.get("conclusion") != "success"
+        for r in applicable
+    ):
+        raise ValueError("failed_cancelled_pending_or_wrong_sha_workflow")
+    full = [
+        r
+        for r in applicable
+        if r["path"] == ".github/workflows/tests-nightly.yml"
+        and r.get("event") == "workflow_dispatch"
+        and "manual-full" in r.get("display_title", "")
+    ]
+    if not full:
+        raise ValueError("missing_actual_manual_full")
+    return full
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--commit", help="Exact commit; defaults to this source checkout HEAD")
@@ -88,29 +129,7 @@ def main() -> int:
         workflows = read_json(f"{api}/actions/runs?head_sha={args.commit}&per_page=100")[
             "workflow_runs"
         ]
-        required = {
-            "Tests PR",
-            "Docs",
-            "Benchmarks PR",
-            "MCP distribution",
-            "Tests Nightly",
-            "Benchmarks Manual",
-            "Benchmarks Release Gate",
-            "Release PyPI",
-        }
-        assert required <= {run["name"] for run in workflows}
-        # Every applicable run on this exact revision must finish successfully.
-        assert all(
-            run["status"] == "completed" and run["conclusion"] == "success"
-            for run in workflows
-            if run["name"] in required
-        )
-        full_runs = [
-            run
-            for run in workflows
-            if run["name"] == "Tests Nightly" and "manual-full" in run.get("display_title", "")
-        ]
-        assert full_runs
+        full_runs = validate_workflows(workflows, args.commit)
         required_jobs = {
             "nightly-collect",
             "nightly-gate",

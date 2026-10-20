@@ -29,8 +29,8 @@ SPEC.loader.exec_module(registry)
     ],
 )
 def test_registry_rejects_install_identity_or_consent_regressions(mutation):
-    document = json.loads((ROOT / "server.json").read_text())
-    readmes = [(ROOT / p).read_text() for p in ("README.md", "README.en.md")]
+    document = json.loads((ROOT / "server.json").read_text(encoding="utf-8"))
+    readmes = [(ROOT / p).read_text(encoding="utf-8") for p in ("README.md", "README.en.md")]
     package = document["packages"][0]
     if mutation == "wrong-version":
         package["version"] = "3.1.21"
@@ -51,8 +51,8 @@ def test_registry_rejects_install_identity_or_consent_regressions(mutation):
 
 
 def test_registry_schema_and_explicit_local_command_match_release(tmp_path):
-    document = json.loads((ROOT / "server.json").read_text())
-    readmes = [(ROOT / p).read_text() for p in ("README.md", "README.en.md")]
+    document = json.loads((ROOT / "server.json").read_text(encoding="utf-8"))
+    readmes = [(ROOT / p).read_text(encoding="utf-8") for p in ("README.md", "README.en.md")]
     registry.validate_metadata(copy.deepcopy(document), "3.2.0", readmes)
     assert registry.runtime_argv(document, tmp_path) == [
         "uvx",

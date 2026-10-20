@@ -445,43 +445,28 @@ def test_tests_nightly_workflow_publishes_collect_summary():
     workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
     trigger_block = workflow.get("on") or workflow.get(True) or {}
     workflow_dispatch = trigger_block["workflow_dispatch"]
-    steps = workflow["jobs"]["nightly-chaos"]["steps"]
-    step_names = [step.get("name", "") for step in steps]
-    collect_step = next(
-        step for step in steps if step.get("name") == "Collect nightly lane summary"
-    )
-    summary_step = next(
-        step for step in steps if step.get("name") == "Write nightly selection summary"
-    )
-    run_step = next(
-        step for step in steps if step.get("name") == "Run nightly integration core or full suite"
-    )
+    jobs = workflow["jobs"]
+    collect = jobs["nightly-collect"]
+    lane = jobs["nightly-lane"]
+    gate = jobs["nightly-gate"]
 
     assert trigger_block["schedule"] == [{"cron": "0 18 * * 3"}]
     assert workflow_dispatch["inputs"]["run_full_suite"]["type"] == "boolean"
     assert workflow_dispatch["inputs"]["run_full_suite"]["default"] is False
-    assert "Run ruff ratchets" not in step_names
-    assert "Collect nightly lane summary" in step_names
-    assert "Write nightly selection summary" in step_names
-    assert "Upload nightly test artifacts" in step_names
-    assert (
-        "RUN_FULL_SUITE: ${{ github.event_name == 'workflow_dispatch' && inputs.run_full_suite || 'false' }}"
-        in workflow_path.read_text(encoding="utf-8")
-    )
-    assert '-m "integration" --run-integration -p no:cacheprovider' in collect_step["run"]
-    assert (
-        '-m "contract or fault or integration or soak or stress or scale_100m or e2e"'
-        in collect_step["run"]
-    )
-    assert (
-        '"mode": "manual-full" if run_full_suite else "weekly-integration-core"'
-        in summary_step["run"]
-    )
-    assert (
-        '-m "integration" --run-integration -p no:cacheprovider --junitxml test-artifacts/nightly-junit.xml'
-        in run_step["run"]
-    )
-    assert "--run-expensive --run-soak" in run_step["run"]
+    assert "manual-full" in workflow["env"]["NIGHTLY_MODE"]
+    assert "weekly-integration-core" in workflow["env"]["NIGHTLY_MODE"]
+    assert any("nightly_plan.py collect" in s.get("run", "") for s in collect["steps"])
+    assert lane["needs"] == "nightly-collect"
+    assert lane["strategy"]["fail-fast"] is False
+    execute = next(s["run"] for s in lane["steps"] if "run_pytest_manifest.py" in s.get("run", ""))
+    assert "--run-expensive" in execute and "--run-soak" in execute
+    assert "--execution-report" in execute and "--junitxml" in execute
+    assert gate["if"] == "${{ always() }}"
+    assert set(gate["needs"]) == {"nightly-collect", "nightly-lane"}
+    assert any("nightly_plan.py verify" in s.get("run", "") for s in gate["steps"])
+    for job in (collect, lane, gate):
+        uploads = [s for s in job["steps"] if s.get("uses", "").startswith("actions/upload-artifact@")]
+        assert uploads and all(s["with"]["if-no-files-found"] == "error" for s in uploads)
 
 
 @pytest.mark.contract

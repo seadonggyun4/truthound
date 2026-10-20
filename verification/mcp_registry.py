@@ -16,7 +16,7 @@ SCHEMA = "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schem
 
 def validate_metadata(document: dict, version: str, readmes: list[str]) -> None:
     schema = json.loads(
-        (ROOT / "verification/schemas/mcp-server-2025-12-11.schema.json").read_text()
+        (ROOT / "verification/schemas/mcp-server-2025-12-11.schema.json").read_text(encoding="utf-8")
     )
     Draft7Validator.check_schema(schema)
     Draft7Validator(schema, format_checker=FormatChecker()).validate(document)
@@ -76,10 +76,10 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--print-command", type=Path)
     args = parser.parse_args()
-    document = json.loads((ROOT / "server.json").read_text())
-    version = tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"]
+    document = json.loads((ROOT / "server.json").read_text(encoding="utf-8"))
+    version = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
     validate_metadata(
-        document, version, [(ROOT / name).read_text() for name in ("README.md", "README.en.md")]
+        document, version, [(ROOT / name).read_text(encoding="utf-8") for name in ("README.md", "README.en.md")]
     )
     print(
         json.dumps(

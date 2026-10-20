@@ -1,0 +1,160 @@
+"""Regressions for actual release blockers; no service or credential access."""
+
+import importlib.util
+import subprocess
+import sys
+from pathlib import Path
+from types import SimpleNamespace
+
+import pytest
+
+ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT / "verification/ci"))
+
+
+def load(name, path):
+    spec = importlib.util.spec_from_file_location(name, ROOT / path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def test_optional_metadata_does_not_erase_results_but_full_still_requires_sdk(monkeypatch):
+    nightly = load("nightly_diagnostic_test", "verification/ci/nightly_plan.py")
+    original = nightly.importlib.metadata.version
+
+    def missing(name):
+        if name == "mcp":
+            raise nightly.importlib.metadata.PackageNotFoundError(name)
+        return original(name)
+
+    monkeypatch.setattr(nightly.importlib.metadata, "version", missing)
+    observed = nightly.environment()
+    assert observed["mcp"] is None and observed["pytest"]
+    with pytest.raises(ValueError, match="missing_required"):
+        nightly.require_environment(observed)
+
+
+def test_collected_module_alias_is_rejected():
+    nightly = load("nightly_source_test", "verification/ci/nightly_plan.py")
+    item = SimpleNamespace(
+        path=ROOT / "tests/test_nightly_ci.py",
+        nodeid="tests/test_nightly_ci.py::test_x",
+        module=SimpleNamespace(__file__=str(ROOT / "tests/test_mcp_registry.py")),
+    )
+    with pytest.raises(ValueError, match="source_mismatch"):
+        nightly.source_identity(item)
+
+
+@pytest.mark.parametrize(
+    "mutation",
+    [None, "missing", "failure", "cancelled", "pending", "sha", "integration", "path", "event"],
+)
+def test_release_gate_uses_workflow_identity_not_mutable_titles(mutation):
+    gate = load("release_gate_test", "verification/mcp_publish_gate.py")
+    sha = "a" * 40
+    runs = [
+        dict(
+            path=path,
+            head_sha=sha,
+            status="completed",
+            conclusion="success",
+            name="custom title",
+            display_title="Nightly / manual-full",
+            event="workflow_dispatch",
+        )
+        for path in sorted(gate.REQUIRED_WORKFLOWS)
+    ]
+    full = next(r for r in runs if r["path"].endswith("/tests-nightly.yml"))
+    if mutation == "missing":
+        runs.remove(full)
+    elif mutation in {"failure", "cancelled"}:
+        full["conclusion"] = mutation
+    elif mutation == "pending":
+        full["status"] = "in_progress"
+    elif mutation == "sha":
+        full["head_sha"] = "b" * 40
+    elif mutation == "integration":
+        full["display_title"] = "Nightly / weekly-integration-core"
+    elif mutation == "path":
+        full["path"] = ".github/workflows/impostor.yml"
+    elif mutation == "event":
+        full["event"] = "schedule"
+    if mutation is None:
+        assert gate.validate_workflows(runs, sha) == [full]
+    else:
+        with pytest.raises(ValueError):
+            gate.validate_workflows(runs, sha)
+
+
+def test_scale_duplicate_oracle_is_equivalent_and_bounded():
+    from tests.test_100m_scale import _duplicate_candidates
+
+    seen = set(range(2500))
+    assert _duplicate_candidates(seen) == tuple(list(seen)[:1000])
+
+    class Bounded:
+        def __iter__(self):
+            yield from range(1000)
+            raise AssertionError("consumed beyond duplicate candidate bound")
+
+    assert _duplicate_candidates(Bounded()) == tuple(range(1000))
+
+
+def test_stress_summary_and_all_reports_complete_with_concurrent_recording(tmp_path):
+    code = """
+import json, sys
+from concurrent.futures import ThreadPoolExecutor
+from tests.stress.metrics import StressMetricsCollector
+from tests.stress.framework import StressTestConfig, StressTestResult
+from tests.stress.reports import ReportGenerator
+m = StressMetricsCollector(name="bounded")
+m.start()
+def record(i):
+    m.record_operation(success=i % 2 == 0, latency_ms=2.0)
+with ThreadPoolExecutor(max_workers=4) as pool:
+    futures = [pool.submit(record, i) for i in range(200)]
+    for _ in range(20):
+        s = m.get_summary()
+        assert s["operations"]["total"] == s["operations"]["successful"] + s["operations"]["failed"]
+    for f in futures:
+        f.result()
+m.stop()
+s = m.get_summary()
+assert s["operations"]["total"] == 200
+assert s["rates"]["success_rate"] == s["rates"]["failure_rate"] == 0.5
+r = StressTestResult(config=StressTestConfig(name="bounded"), total_operations=200, successful_operations=100, failed_operations=100)
+files = ReportGenerator(sys.argv[1]).generate(r, metrics=m, format="all")
+assert {p.suffix for p in files} == {".json", ".md", ".html"}
+data = json.loads(next(p for p in files if p.suffix == ".json").read_text())
+assert data["detailed_metrics"]["operations"]["total"] == 200
+print("bounded-summary-and-reports-pass")
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", code, str(tmp_path)],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode == 0, result.stderr
+    assert "bounded-summary-and-reports-pass" in result.stdout
+
+
+def test_missing_lz4_fails_explicitly_without_fallback(monkeypatch):
+    import builtins
+
+    from truthound.stores.compression.base import UnsupportedAlgorithmError
+    from truthound.stores.compression.providers import LZ4Compressor
+
+    original = builtins.__import__
+
+    def missing(name, *args, **kwargs):
+        if name == "lz4.frame":
+            raise ModuleNotFoundError("synthetic missing optional dependency")
+        return original(name, *args, **kwargs)
+
+    monkeypatch.setattr(LZ4Compressor, "_lz4", None)
+    monkeypatch.setattr(builtins, "__import__", missing)
+    with pytest.raises(UnsupportedAlgorithmError):
+        LZ4Compressor._get_lz4()

@@ -24,6 +24,7 @@ Design Principles:
 """
 
 import gc
+from itertools import islice
 import os
 import random
 import tempfile
@@ -37,6 +38,11 @@ import pytest
 
 import truthound as th
 from truthound.drift import compare
+
+
+def _duplicate_candidates(seen_ids):
+    """Match the old first-1000 oracle while consuming at most 1000 IDs."""
+    return tuple(islice(seen_ids, 1000))
 
 
 class TestHundredMillionRows:
@@ -296,7 +302,8 @@ class TestScalableValidators:
     def test_100m_uniqueness_check_streaming(self):
         """Test uniqueness validation on 100M rows using streaming.
 
-        Uses probabilistic data structures (HyperLogLog-like) for memory efficiency.
+        Uses an exact Python set oracle, not a probabilistic Core validator.
+        Duplicate candidates are bounded without copying the growing full set.
         """
         print("\n" + "=" * 70)
         print("100 MILLION ROWS UNIQUENESS CHECK (STREAMING)")
@@ -315,12 +322,13 @@ class TestScalableValidators:
 
         for chunk_idx in range(n_chunks):
             # Generate chunk with occasional duplicates
+            duplicate_candidates = _duplicate_candidates(seen_ids)
             chunk_ids = []
             for i in range(chunk_size):
                 if random.random() < 0.00001:  # 0.001% duplicates
                     # Generate duplicate
                     if seen_ids:
-                        chunk_ids.append(random.choice(list(seen_ids)[:1000]))
+                        chunk_ids.append(random.choice(duplicate_candidates))
                     else:
                         chunk_ids.append(chunk_idx * chunk_size + i)
                 else:

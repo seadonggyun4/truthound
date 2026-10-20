@@ -136,6 +136,15 @@ def verify_lane(
         raise ValueError("failed_or_mismatched_execution")
     if sorted(result["collected"]) != sorted(wanted):
         raise ValueError("execution_collection_drift")
+    expected_sources = {
+        r["nodeid"]: r["source"]
+        for r in plan["collection"]
+        if r["nodeid"] in wanted and "source" in r
+    }
+    if expected_sources and result.get("sources") != expected_sources:
+        raise ValueError("execution_source_identity_drift")
+    if result.get("collection_errors"):
+        raise ValueError("failed_collection")
     reports = {}
     for report in result["reports"]:
         key = (report["nodeid"], report["when"])
@@ -181,9 +190,32 @@ def verify_lane(
     return dict(selected=len(wanted), passed=len(wanted) - skipped, expected_skipped=skipped)
 
 
-def environment() -> dict[str, str]:
+def environment() -> dict[str, str | None]:
     names = ["pytest", "polars", "truthound", "mcp", "pytest-timeout"]
-    return {name: importlib.metadata.version(name) for name in names}
+    result = {}
+    for name in names:
+        try:
+            result[name] = importlib.metadata.version(name)
+        except importlib.metadata.PackageNotFoundError:
+            result[name] = None
+    return result
+
+
+def require_environment(observed):
+    if any(not value for value in observed.values()):
+        raise ValueError("missing_required_nightly_dependency")
+
+
+def source_identity(item):
+    root = Path(__file__).resolve().parents[2]
+    collected = Path(item.path).resolve()
+    module = Path(item.module.__file__).resolve()
+    if module != collected:
+        raise ValueError("collected_module_source_mismatch:" + item.nodeid)
+    return dict(
+        path=collected.relative_to(root).as_posix(),
+        sha256=hashlib.sha256(collected.read_bytes()).hexdigest(),
+    )
 
 
 class Collection:
@@ -202,6 +234,7 @@ class Collection:
                     nodeid=item.nodeid,
                     markers=sorted({m.name for m in item.iter_markers()}),
                     skip_reason=skip.reason if skip else None,
+                    source=source_identity(item),
                 )
             )
 
@@ -217,16 +250,32 @@ class Execution:
         self.plan, self.lane, self.output = plan, lane, output
         self.reports = []
         self.collected = []
+        self.sources = {}
+        self.collection_errors = []
         self.output.parent.mkdir(parents=True, exist_ok=True)
         self.stream = self.output.with_suffix(".ndjson").open("w", encoding="utf-8", buffering=1)
         self.pytest = pytest
 
     def pytest_collection_finish(self, session):
         self.collected = [item.nodeid for item in session.items]
+        # Preserve the original collection error instead of masking it in finally.
+        if session.testsfailed or self.collection_errors:
+            return
+        self.sources = {item.nodeid: source_identity(item) for item in session.items}
+        expected = {r["nodeid"]: r.get("source") for r in self.plan["collection"]}
+        if any(
+            expected[node] is not None and expected[node] != source
+            for node, source in self.sources.items()
+        ):
+            raise self.pytest.UsageError("nightly execution source identity differs from plan")
         if sorted(self.collected) != sorted(self.plan["lanes"][self.lane]["nodes"]):
             raise self.pytest.UsageError(
                 "nightly execution collection differs from approved manifest"
             )
+
+    def pytest_collectreport(self, report):
+        if report.failed:
+            self.collection_errors.append(report.nodeid)
 
     def pytest_runtest_logstart(self, nodeid, location):
         self.stream.write(json.dumps(dict(nodeid=nodeid, event="start")) + "\n")
@@ -258,6 +307,8 @@ class Execution:
                     plan_digest=self.plan["digest"],
                     lane=self.lane,
                     collected=self.collected,
+                    sources=self.sources,
+                    collection_errors=self.collection_errors,
                     reports=self.reports,
                     exit_code=int(exitstatus),
                     environment=environment(),
@@ -315,6 +366,7 @@ def main():
         if code != 0:
             return int(code)
         plan = build_plan(plugin.records, sha, args.mode)
+        require_environment(environment())
         (args.root / "plan.json").write_text(json.dumps(plan, indent=2), encoding="utf-8")
         (args.root / "collection-environment.json").write_text(
             json.dumps(dict(environment=environment(), module_skips=plugin.module_skips)),
@@ -352,6 +404,7 @@ def main():
         expected_environment = json.loads((args.root / "collection-environment.json").read_text())[
             "environment"
         ]
+        require_environment(expected_environment)
         summaries = {}
         for lane in plan["lanes"]:
             result = json.loads((args.root / f"execution-{lane}.json").read_text())

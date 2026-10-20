@@ -4361,6 +4361,7 @@ databricks = [
 dev = [
     { name = "jinja2" },
     { name = "jsonschema" },
+    { name = "lz4" },
     { name = "mypy" },
     { name = "openai" },
     { name = "pandas" },
@@ -4505,6 +4506,7 @@ requires-dist = [
     { name = "jinja2", marker = "extra == 'dev'", specifier = ">=3.0.0" },
     { name = "jinja2", marker = "extra == 'reports'", specifier = ">=3.0.0" },
     { name = "jsonschema", marker = "extra == 'dev'", specifier = ">=4.23.0,<5.0.0" },
+    { name = "lz4", marker = "extra == 'dev'", specifier = ">=4.3.0,<5.0.0" },
     { name = "mcp", marker = "extra == 'mcp'", specifier = ">=1.30.0,<2.0.0" },
     { name = "mkdocs", marker = "extra == 'docs'", specifier = ">=1.6.0" },
     { name = "mkdocs-material", marker = "extra == 'docs'", specifier = ">=9.5.0" },

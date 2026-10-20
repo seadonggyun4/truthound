@@ -35,3 +35,10 @@ just job exit codes. See [repository CI](../guides/ci-testing.md).
 The package README also carries the ownership marker for the version-matched
 [official Registry metadata](../guides/mcp.md#registry-metadata-and-installation).
 Valid metadata does not by itself establish a published Registry/marketplace listing.
+
+Release CI also checks actual imported test-source identity to prevent duplicate
+module basenames from substituting test bodies. Optional SDK diagnostics preserve
+the original result; full verification still requires the SDK. Registry text is
+read explicitly as UTF-8 on Windows. Test infrastructure fixes retain existing
+assertions and limits: explicit LZ4 installation, reentrant stress summary locking,
+and bounded duplicate-candidate extraction in the exact-set scale fixture.

@@ -22,6 +22,18 @@ already gain `soak` in the root conftest; overlapping markers are not separate
 executions. Contract owners reuse the PR file-grouping algorithm in four shards.
 The other four lanes isolate integration, soak/stress, fault/e2e and 100M scale.
 The plan proves exact union and zero intersection before any lane runs.
+The collector also requires each item's actual imported module file to equal its
+collected path and records the source file SHA-256. Each lane checks those source
+identities again; repeated basenames cannot silently substitute another module.
+Full jobs explicitly install LZ4 through the dev extra for encryption roundtrips.
+Optional dependency diagnostics record absence without erasing the original test
+result; the full collector/aggregate still rejects a missing mandatory MCP SDK.
+
+The stress metrics collector uses a reentrant snapshot lock for nested summary
+properties. Its bounded regression covers concurrent writes and JSON/Markdown/HTML
+reports. The scale uniqueness fixture retains 100 million rows and its existing
+300-second threshold. It uses an exact Python set (not a Core HLL validator) and
+takes the same first 1,000 prior IDs without repeatedly copying the entire set.
 
 A matrix runs at most three lanes concurrently with fail-fast disabled. Jobs
 have independent environments, filesystems and fixtures: session fixtures and

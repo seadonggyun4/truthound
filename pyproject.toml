@@ -224,6 +224,8 @@ all = [
 
 # Development dependencies
 dev = [
+    # Full encryption roundtrip contracts exercise the default LZ4 pipeline.
+    "lz4>=4.3.0,<5.0.0",
     # Lifecycle contracts observe real child PIDs and reaping, not mocked tasks.
     "psutil>=5.9.0,<8.0.0",
     "pydantic>=2.0.0,<3.0.0",
