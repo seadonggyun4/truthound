@@ -1,9 +1,19 @@
 """The required integration lane may not silently pass missing/optional coverage."""
 
 import importlib.metadata
+import importlib.util
+from pathlib import Path
 
 import pytest
-from verification import mcp_ci_gate
+
+# The manifest runner invokes pytest.main with verification/ci on sys.path,
+# unlike python -m pytest. Load this repository-owned helper by its file identity.
+spec = importlib.util.spec_from_file_location(
+    "truthound_mcp_ci_gate", Path(__file__).resolve().parents[1] / "verification/mcp_ci_gate.py"
+)
+assert spec is not None and spec.loader is not None
+mcp_ci_gate = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(mcp_ci_gate)
 
 pytestmark = pytest.mark.contract
 
