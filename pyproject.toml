@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "truthound"
-version = "3.1.22"
+version = "3.2.0"
 description = "Zero-Configuration Data Quality Framework Powered by Polars"
 readme = "README.md"
 license = "Apache-2.0"
@@ -40,6 +40,8 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Local MCP transport; Core remains usable without the SDK.
+mcp = ["mcp>=1.30.0,<2.0.0", "polars>=1.0.0,<2.0.0"]
 # Optional AI artifact and provider contract surface
 ai = [
     "pydantic>=2.0.0,<3.0.0",
@@ -286,6 +288,7 @@ rationale = "Baseline dashboard runtime only; no connector extras or public pack
 version_policy = "Tracks the Truthound patch version consumed by the current dashboard release line."
 
 [project.scripts]
+truthound-mcp = "truthound.mcp.__main__:main"
 truthound = "truthound.cli:app"
 
 [project.urls]

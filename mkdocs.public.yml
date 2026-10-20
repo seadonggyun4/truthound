@@ -257,6 +257,7 @@ nav:
                   - Streaming: guides/datasources/streaming.md
                   - Custom Sources: guides/datasources/custom-sources.md
                   - CLI Datasource Guide: guides/datasources/cli-datasource-guide.md
+                  - Local MCP: guides/mcp.md
           - Operations & Automation:
               - Checkpoint Family:
                   - Overview: guides/checkpoint/index.md

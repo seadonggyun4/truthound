@@ -87,6 +87,10 @@ class CLIModuleRegistry:
     # Built-in module definitions
     BUILTIN_MODULES: ClassVar[list[ModuleMetadata]] = [
         ModuleMetadata(
+            name="mcp", description="Local MCP integration",
+            module_path="truthound.cli_modules.mcp", priority=46,
+        ),
+        ModuleMetadata(
             name="core",
             description="Core data quality commands",
             module_path="truthound.cli_modules.core",

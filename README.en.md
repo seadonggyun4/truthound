@@ -245,6 +245,8 @@ The root package intentionally exposes a small API.
 
 ## Plugin Platform
 
+Install `truthound[mcp]` for local MCP tools and run `truthound-mcp serve --allow-dir /absolute/path/to/data`. The adapter reuses Core validation, profiling and PII APIs and can build a Claude Desktop `.mcpb`. See the [MCP guide and limits](docs/guides/mcp.md).
+
 Truthound uses a single lifecycle runtime.
 
 - `PluginManager` is the canonical plugin manager.

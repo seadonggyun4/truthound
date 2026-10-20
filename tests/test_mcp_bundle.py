@@ -1,0 +1,39 @@
+from __future__ import annotations
+
+import hashlib
+import json
+import tomllib
+import zipfile
+from pathlib import Path
+
+import pytest
+
+pytestmark = pytest.mark.contract
+
+def test_bundle_is_deterministic_versioned_and_private_free(tmp_path):
+    from truthound.mcp.bundle import build_bundle
+    first = build_bundle(tmp_path / "first.mcpb")
+    second = build_bundle(tmp_path / "second.mcpb")
+    assert hashlib.sha256(first.read_bytes()).digest() == hashlib.sha256(second.read_bytes()).digest()
+    with zipfile.ZipFile(first) as z:
+        assert set(z.namelist()) == {"manifest.json", "pyproject.toml", "server.py", "LICENSE"}
+        manifest = json.loads(z.read("manifest.json"))
+        assert manifest["server"]["type"] == "uv"
+        project = tomllib.loads(z.read("pyproject.toml").decode())
+        assert project["project"]["version"] == manifest["version"]
+        assert project["tool"]["uv"]["sources"]["truthound"]["path"] == "truthound.whl" if "tool" in project else True
+        assert any(d.startswith("truthound[mcp]==") for d in project["project"]["dependencies"])
+        assert manifest["user_config"]["allowed_directory"]["required"]
+        assert "default" not in manifest["user_config"]["allowed_directory"]
+
+def test_documentation_and_optional_dependency_contract():
+    root = Path(__file__).resolve().parents[1]
+    project = tomllib.loads((root / "pyproject.toml").read_text())
+    assert any(d.startswith("mcp>=") for d in project["project"]["optional-dependencies"]["mcp"])
+    assert not any(d.startswith("mcp") for d in project["project"]["dependencies"])
+    for path in ("docs/guides/mcp.md", "docs/locales/ko/guides/mcp.md"):
+        text = (root / path).read_text()
+        for term in ("truthound[mcp]", "--allow-dir", "check_file", "profile_file", "scan_pii", ".mcpb"):
+            assert term in text
+    for path in ("mkdocs.yml", "mkdocs.public.yml"):
+        assert "guides/mcp.md" in (root / path).read_text()
