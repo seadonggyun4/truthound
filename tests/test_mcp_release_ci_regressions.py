@@ -196,3 +196,44 @@ def test_paired_sampling_budget_still_detects_actual_slow_path():
     assert calls.count("sampled") == calls.count("full") == 8
     assert calls[2:6] == ["sampled", "full", "full", "sampled"]
     assert sampled_time > full_time * 5
+
+
+@pytest.mark.asyncio
+async def test_stress_failure_rate_matches_actual_early_stop():
+    import asyncio
+
+    from tests.stress.framework import LoadProfile, StressTestConfig, StressTestRunner
+
+    async def fail(operation_id):
+        return False
+
+    profile = LoadProfile(
+        warmup_seconds=0,
+        ramp_up_seconds=0,
+        steady_seconds=5,
+        ramp_down_seconds=0,
+        cooldown_seconds=0,
+        target_rate=500,
+    )
+    runner = StressTestRunner(
+        StressTestConfig(
+            name="bounded-early-stop", load_profile=profile, concurrency=4, stop_on_failure_rate=0.3
+        ),
+        fail,
+    )
+    result = await asyncio.wait_for(runner.run(), timeout=3)
+    assert result.total_operations > 100
+    assert result.failed_operations == result.total_operations
+    assert result.failure_rate == 1.0 and result.success_rate == 0.0
+    assert not result.passed
+
+
+def test_release_smoke_can_run_on_an_exact_final_ref_even_without_path_changes():
+    import yaml
+
+    workflow = yaml.safe_load(
+        (ROOT / ".github/workflows/benchmarks-pr.yml").read_text(encoding="utf-8")
+    )
+    trigger = workflow.get("on", workflow.get(True))
+    assert "workflow_dispatch" in trigger
+    assert workflow["jobs"]["benchmark-smoke"]["steps"]

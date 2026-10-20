@@ -5,6 +5,8 @@ MCP distribution의 9개 OS/Python 조합, SDK 필수·skip 금지 검증,
 실제 wheel/sdist/UV 설치 검증도 유지합니다. Core `src/**`, 공통 pytest 설정,
 lockfile 변경을 MCP 영향에서 제외하지 않습니다. PR 또는 MCP 통과만으로
 릴리스의 full 검증을 대체하지 않습니다.
+동일 benchmark smoke job은 수동 dispatch도 지원하므로 변경 경로가 자동 실행을
+유발하지 않아도 정확한 최종 revision을 검증할 수 있습니다.
 
 ## 원래 full 집합의 정확한 분할
 
@@ -18,6 +20,8 @@ lockfile 변경을 MCP 영향에서 제외하지 않습니다. PR 또는 MCP 통
 stress 지표는 중첩 property 조회가 가능한 재진입 잠금으로 일관된 summary를
 만들고, 동시 기록 및 JSON/Markdown/HTML 보고서를 제한된 자식 프로세스에서
 검증합니다. scale uniqueness fixture는 1억 행과 기존 300초 기준을 유지합니다.
+stress 결과의 실패율은 early-stop 경로를 포함한 실제 완료·실패 작업 수로
+계산하며 누락된 결과 속성 때문에 검사가 중단되지 않게 합니다.
 Core HLL 검사가 아닌 정확한 Python set oracle이며, 기존 첫 1,000개 후보를
 동일하게 사용하되 커지는 전체 set을 반복 복사하지 않습니다.
 HEAD/NONE 메모리 sampling 시간 검사는 기존 5배 overhead 기준을 유지하면서

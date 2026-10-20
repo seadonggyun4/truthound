@@ -1,6 +1,7 @@
 name: Benchmarks PR
 
 on:
+  workflow_dispatch:
   pull_request:
     paths:
       - ".github/workflows/benchmarks-pr.yml"

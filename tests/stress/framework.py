@@ -203,6 +203,13 @@ class StressTestResult:
         return self.successful_operations / self.total_operations
 
     @property
+    def failure_rate(self) -> float:
+        """Fraction of actually completed operations that failed."""
+        if self.total_operations == 0:
+            return 0.0
+        return self.failed_operations / self.total_operations
+
+    @property
     def throughput_per_second(self) -> float:
         """Get throughput in operations per second."""
         duration = self.duration_seconds

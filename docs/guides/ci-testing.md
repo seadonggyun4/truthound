@@ -6,6 +6,8 @@ OS/Python combinations, mandatory no-skip SDK tests and fresh wheel/sdist/UV
 installation checks. Core `src/**`, shared pytest settings and the lockfile
 remain MCP inputs. Neither a green PR lane nor an MCP matrix substitutes for
 full release verification.
+The unchanged benchmark smoke job also supports manual dispatch, so an exact
+final revision can be checked even when its changed paths do not trigger it.
 
 ## Exact full partition
 
@@ -32,7 +34,9 @@ result; the full collector/aggregate still rejects a missing mandatory MCP SDK.
 
 The stress metrics collector uses a reentrant snapshot lock for nested summary
 properties. Its bounded regression covers concurrent writes and JSON/Markdown/HTML
-reports. The scale uniqueness fixture retains 100 million rows and its existing
+reports. Stress result failure rates are derived from actual completed operation counts,
+including the early-stop path, rather than an absent result attribute.
+The scale uniqueness fixture retains 100 million rows and its existing
 300-second threshold. It uses an exact Python set (not a Core HLL validator) and
 takes the same first 1,000 prior IDs without repeatedly copying the entire set.
 The in-memory HEAD/NONE sampling timing test keeps its 5x overhead ceiling but
