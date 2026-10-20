@@ -32,7 +32,7 @@ async def run():
                     if result.isError and result.structuredContent["error"]["code"] == "worker_error":
                         # Metadata-only diagnostics for a fresh runtime failure. Never print
                         # raw stderr, data rows, environment values or absolute paths.
-                        env={k:v for k,v in os.environ.items() if k in {"PATH","SYSTEMROOT","WINDIR","TEMP","TMP"}}
+                        env={k:v for k,v in os.environ.items() if k in {"PATH","SYSTEMROOT","WINDIR","TEMP","TMP","PROCESSOR_ARCHITECTURE","PROCESSOR_ARCHITEW6432"}}
                         env.update(POLARS_MAX_THREADS="1",OMP_NUM_THREADS="1",OPENBLAS_NUM_THREADS="1")
                         request={"operation":"check","path":str(p),"max_items":100,"max_response_bytes":65536}
                         probe=subprocess.run([sys.executable,"-I","-m","truthound.mcp.worker"],input=json.dumps(request),capture_output=True,text=True,cwd=td,env=env,timeout=30)
@@ -40,7 +40,8 @@ async def run():
                         missing=re.findall(r"No module named '([A-Za-z0-9_.]+)'",probe.stderr)
                         frames=[{"file":Path(file).name,"line":int(line),"function":func} for file,line,func in re.findall(r'File "([^"]+)", line ([0-9]+), in ([A-Za-z0-9_<>]+)',probe.stderr)]
                         known={code: phrase in probe.stderr for code,phrase in {"missing_home":"Could not determine home directory","lost_stdin":"lost sys.stdin","lost_stdout":"lost sys.stdout","cpu_feature":"CPU feature"}.items()}
-                        print(json.dumps({"worker_returncode":probe.returncode,"exception_types":kinds,"missing_modules":missing,"frames":frames,"known_causes":known,"stderr_sha256":hashlib.sha256(probe.stderr.encode()).hexdigest()}),flush=True)
+                        flags=re.findall(r"unknown feature flag: '([A-Za-z0-9_.-]+)'",probe.stderr)
+                        print(json.dumps({"worker_returncode":probe.returncode,"exception_types":kinds,"missing_modules":missing,"frames":frames,"known_causes":known,"unknown_cpu_flags":flags,"stderr_sha256":hashlib.sha256(probe.stderr.encode()).hexdigest()}),flush=True)
                     assert not result.isError, result
                     assert result.structuredContent["data"]["row_count"]==3
                     assert "a@example.com" not in result.model_dump_json()

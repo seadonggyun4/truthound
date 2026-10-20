@@ -39,6 +39,8 @@ suite·플러그인·임의 검증 설정을 받지 않습니다. 품질 위반�
 `error`입니다. 오류 코드는 `access_denied`, `invalid_path`,
 `unsupported_format`, `file_too_large`, `timeout`, `busy`, `core_error`,
 `worker_error`, `response_too_large`이며 내부 예외 메시지는 노출하지 않습니다.
+worker는 실행·임시 경로와 Windows CPU 아키텍처 식별자만 허용 목록으로 전달하며,
+자격 증명이나 CPU 검사 우회 설정은 상속하지 않습니다.
 배열이 잘려도 전체 집계 수는 유지됩니다. PII 검사는 Core와 동일하게 컬럼별
 첫 1,000개 비결측값을 표본으로 사용하며 발견 건수는 추정치입니다.
 

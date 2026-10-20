@@ -51,7 +51,18 @@ class MCPService:
                 env = {
                     k: v
                     for k, v in os.environ.items()
-                    if k in {"PATH", "SYSTEMROOT", "WINDIR", "TEMP", "TMP"}
+                    if k
+                    in {
+                        "PATH",
+                        "SYSTEMROOT",
+                        "WINDIR",
+                        "TEMP",
+                        "TMP",
+                        # CPython 3.11/3.12 platform.machine() on Windows needs
+                        # these public OS identifiers for Polars CPU detection.
+                        "PROCESSOR_ARCHITECTURE",
+                        "PROCESSOR_ARCHITEW6432",
+                    }
                 }
                 env.update(POLARS_MAX_THREADS="1", OMP_NUM_THREADS="1", OPENBLAS_NUM_THREADS="1")
                 worker = subprocess.run(

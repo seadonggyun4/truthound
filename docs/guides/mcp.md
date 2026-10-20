@@ -52,6 +52,8 @@ Structured responses contain `schema_version=1`, `operation`, `ok`, `data`,
 `truncated` and `error`. Errors include `access_denied`, `invalid_path`,
 `unsupported_format`, `file_too_large`, `timeout`, `busy`, `core_error`,
 `worker_error` and `response_too_large`. Private exception messages are omitted.
+The worker retains only an allowlist of process/temporary-directory settings and
+Windows CPU architecture identifiers; it does not inherit credentials or a CPU-check bypass.
 Totals describe the full Core result even if a detail array is truncated.
 PII findings retain Core's first-1,000-non-null-values sampling and estimated counts.
 
