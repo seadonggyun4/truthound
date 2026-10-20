@@ -38,7 +38,9 @@ async def run():
                         probe=subprocess.run([sys.executable,"-I","-m","truthound.mcp.worker"],input=json.dumps(request),capture_output=True,text=True,cwd=td,env=env,timeout=30)
                         kinds=re.findall(r"([A-Za-z]+(?:Error|Exception)):",probe.stderr)
                         missing=re.findall(r"No module named '([A-Za-z0-9_.]+)'",probe.stderr)
-                        print(json.dumps({"worker_returncode":probe.returncode,"exception_types":kinds,"missing_modules":missing,"stderr_sha256":hashlib.sha256(probe.stderr.encode()).hexdigest()}),flush=True)
+                        frames=[{"file":Path(file).name,"line":int(line),"function":func} for file,line,func in re.findall(r'File "([^"]+)", line ([0-9]+), in ([A-Za-z0-9_<>]+)',probe.stderr)]
+                        known={code: phrase in probe.stderr for code,phrase in {"missing_home":"Could not determine home directory","lost_stdin":"lost sys.stdin","lost_stdout":"lost sys.stdout","cpu_feature":"CPU feature"}.items()}
+                        print(json.dumps({"worker_returncode":probe.returncode,"exception_types":kinds,"missing_modules":missing,"frames":frames,"known_causes":known,"stderr_sha256":hashlib.sha256(probe.stderr.encode()).hexdigest()}),flush=True)
                     assert not result.isError, result
                     assert result.structuredContent["data"]["row_count"]==3
                     assert "a@example.com" not in result.model_dump_json()
