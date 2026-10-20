@@ -11,7 +11,8 @@ lockfile 변경을 MCP 영향에서 제외하지 않습니다. PR 또는 MCP 통
 수집한 경로와 실제 import된 모듈 파일이 같은지 검사하고 소스 SHA-256을
 기록합니다. 각 lane도 동일한 identity를 재검사하여 같은 파일명 때문에 다른
 테스트가 대신 실행되지 않게 합니다. dev extra는 기본 압축 pipeline roundtrip에
-필요한 LZ4를 명시적으로 설치합니다. 선택 의존성의 진단 정보 조회는 원래 테스트
+필요한 LZ4 및 기본 키 저장소의 Argon2·cryptography를 명시적으로 설치합니다.
+선택 의존성의 진단 정보 조회는 원래 테스트
 결과를 지우지 않으며 full 수집·집계는 필수 MCP SDK 누락을 계속 거부합니다.
 
 stress 지표는 중첩 property 조회가 가능한 재진입 잠금으로 일관된 summary를

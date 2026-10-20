@@ -25,7 +25,8 @@ The plan proves exact union and zero intersection before any lane runs.
 The collector also requires each item's actual imported module file to equal its
 collected path and records the source file SHA-256. Each lane checks those source
 identities again; repeated basenames cannot silently substitute another module.
-Full jobs explicitly install LZ4 through the dev extra for encryption roundtrips.
+Full jobs explicitly install LZ4, Argon2 and cryptography through the dev extra
+for compression/encryption roundtrips and default password-protected key stores.
 Optional dependency diagnostics record absence without erasing the original test
 result; the full collector/aggregate still rejects a missing mandatory MCP SDK.
 

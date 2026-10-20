@@ -158,3 +158,21 @@ def test_missing_lz4_fails_explicitly_without_fallback(monkeypatch):
     monkeypatch.setattr(builtins, "__import__", missing)
     with pytest.raises(UnsupportedAlgorithmError):
         LZ4Compressor._get_lz4()
+
+
+def test_missing_argon2_is_an_explicit_error_not_a_weaker_kdf(monkeypatch):
+    import builtins
+
+    from truthound.stores.encryption.base import KeyDerivationError
+    from truthound.stores.encryption.keys import Argon2KeyDeriver
+
+    original = builtins.__import__
+
+    def missing(name, *args, **kwargs):
+        if name == "argon2.low_level":
+            raise ModuleNotFoundError("synthetic missing optional dependency")
+        return original(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", missing)
+    with pytest.raises(KeyDerivationError, match="argon2-cffi"):
+        Argon2KeyDeriver().derive("synthetic", b"x" * 16, 32)
