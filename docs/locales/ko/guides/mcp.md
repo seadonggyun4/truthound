@@ -91,6 +91,8 @@ timeout은 파일 복사 시간을 포함하지 않습니다. 압축 파일은 �
 
 ## Claude Desktop 설치 파일
 
+게시된 버전은 [3.2.0 MCPB 다운로드](https://github.com/seadonggyun4/truthound/releases/download/v3.2.0/truthound-3.2.0.mcpb) → **Settings → Extensions → Advanced settings → Install Extension…** → 파일 선택·허용 폴더 설정 순서로 설치합니다. [공식 설치 안내](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop)를 참고하세요. 이는 사용자 지정 확장 설치이며 Claude 공식 디렉터리 등재를 뜻하지 않습니다.
+
 ```bash
 truthound-mcp bundle --output truthound-3.2.0.mcpb
 ```
@@ -114,6 +116,8 @@ Anthropic 승인이나 GUI 검증을 주장하지 않습니다. 개발 환경·�
 [설계 문서](../adr/005-local-mcp.md)를 참고하세요.
 
 ## Registry 메타데이터와 설치
+
+[공식 MCP Registry](https://registry.modelcontextprotocol.io/)에서 `io.github.seadonggyun4/truthound`를 검색할 수 있으며 [3.2.0이 게시되어 있습니다](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.seadonggyun4%2Ftruthound/versions/3.2.0). 연동 클라이언트의 마켓플레이스에 표시되면 **Install**을 누르고 접근을 허용할 폴더를 지정합니다. Registry 등록만으로 모든 클라이언트의 마켓플레이스 노출·승인이 보장되지는 않습니다.
 
 저장소의 `server.json`은 `io.github.seadonggyun4/truthound`, 기존 PyPI 패키지
 `truthound` 버전 `3.2.0`과 로컬 stdio를 선언합니다. UV의 `--with`로 MCP

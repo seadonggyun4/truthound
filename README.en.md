@@ -39,6 +39,22 @@ and ends at the closing </p> of the badge block above.
 
 ---
 
+## Plugin Platform
+
+- **Find it in a marketplace**: Search for `io.github.seadonggyun4/truthound` in the [official MCP Registry](https://registry.modelcontextprotocol.io/). If a connected client's marketplace lists it, select **Install** and specify the data directory you allow it to access. [Published 3.2.0 metadata](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.seadonggyun4%2Ftruthound/versions/3.2.0)
+- **Claude Desktop**: [Download the MCPB](https://github.com/seadonggyun4/truthound/releases/download/v3.2.0/truthound-3.2.0.mcpb) → **Settings → Extensions → Advanced settings → Install Extension…** → select the file and allowed directory. [Official installation guide](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop)
+
+Registry publication is separate from each marketplace's review and visibility; a Claude official directory listing has not been confirmed. This is local stdio only and requires Python 3.11+, UV and network access on first setup. See the [MCP guide](docs/guides/mcp.md) for the three tools and security/runtime limits.
+
+Truthound uses a single lifecycle runtime.
+
+- `PluginManager` is the canonical plugin manager.
+- `EnterprisePluginManager` is an async, capability-driven facade over the same runtime.
+- Plugins register through stable ports such as `register_check_factory`, `register_data_asset_provider`, `register_reporter`, `register_hook`, and `register_capability`.
+- Reporter plugins should target the contract-v3 surface, where `ValidationRunResult` is the canonical render input and `RunPresentation` is the shared render projection.
+
+---
+
 ## Overview
 
 Truthound is an open-source framework for data validation and data quality workflows. Built around a Polars-first validation kernel, it lets teams declare schema checks, custom rules, quality checks, and anomaly detection in code, then manage the results reproducibly.
@@ -242,21 +258,6 @@ The root package intentionally exposes a small API.
 - ERD audit (in development): [`truthound.schema_audit`](docs/python-api/schema-audit.md) provides immutable models, JSON, digests, standards-to-design audit A, design-to-catalog audit B and bounded PG14/17 read-only collection. Console, connection authorization and approval authority remain separate.
 - Advanced systems: import by namespace, for example `truthound.ml`, `truthound.lineage`, `truthound.realtime`, `truthound.datadocs`
 - Optional AI layer: install `truthound[ai]`, then import `truthound.ai`
-
----
-
-## Plugin Platform
-
-Install `truthound[mcp]` for local MCP tools and run `truthound-mcp serve --allow-dir /absolute/path/to/data`. The adapter reuses Core validation, profiling and PII APIs and can build a Claude Desktop `.mcpb`. Profile dtypes return only type families, excluding category values and parameters. See the [MCP guide and limits](docs/guides/mcp.md).
-Both the base installation and MCP extra require Polars 1.x; Polars 2 is not yet supported.
-MCP runs over local stdio with explicitly allowed directories. Package installation neither registers it with an agent automatically nor provides a remote HTTP/OAuth server.
-
-Truthound uses a single lifecycle runtime.
-
-- `PluginManager` is the canonical plugin manager.
-- `EnterprisePluginManager` is an async, capability-driven facade over the same runtime.
-- Plugins register through stable ports such as `register_check_factory`, `register_data_asset_provider`, `register_reporter`, `register_hook`, and `register_capability`.
-- Reporter plugins should target the contract-v3 surface, where `ValidationRunResult` is the canonical render input and `RunPresentation` is the shared render projection.
 
 ---
 

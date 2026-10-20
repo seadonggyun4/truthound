@@ -39,6 +39,22 @@ and ends at the closing </p> of the badge block above.
 
 ---
 
+## 플러그인 플랫폼 (Plugin Platform)
+
+- **마켓플레이스에서 찾기**: [공식 MCP Registry](https://registry.modelcontextprotocol.io/)에서 `io.github.seadonggyun4/truthound`를 검색하세요. 연동 클라이언트의 마켓플레이스에 표시되면 **Install**을 누르고 접근을 허용할 데이터 폴더를 지정합니다. [등록된 3.2.0 정보](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.seadonggyun4%2Ftruthound/versions/3.2.0)
+- **Claude Desktop**: [MCPB 다운로드](https://github.com/seadonggyun4/truthound/releases/download/v3.2.0/truthound-3.2.0.mcpb) → **Settings → Extensions → Advanced settings → Install Extension…** → 파일 선택·허용 폴더 설정. [공식 설치 안내](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop)
+
+Registry 등록과 각 마켓플레이스의 심사·노출은 별개이며, Claude 공식 디렉터리 등재는 확인되지 않았습니다. 로컬 stdio 전용이며 Python 3.11+·UV·최초 설치 시 네트워크가 필요합니다. 세 도구와 보안·런타임 제약은 [MCP 가이드](docs/locales/ko/guides/mcp.md)를 참고하세요.
+
+Truthound는 단일 라이프사이클 런타임을 사용합니다.
+
+- `PluginManager`가 정식 플러그인 매니저입니다.
+- `EnterprisePluginManager`는 동일 런타임 위의 비동기·역량 기반 파사드입니다.
+- 플러그인은 `register_check_factory`, `register_data_asset_provider`, `register_reporter`, `register_hook`, `register_capability` 같은 안정 포트로 등록합니다.
+- 리포터 플러그인은 `ValidationRunResult`를 정식 렌더 입력으로, `RunPresentation`을 공유 렌더 프로젝션으로 사용하는 contract-v3 표면을 대상으로 합니다.
+
+---
+
 벤치마크 CLI는 `--size stress`(1억 행)를 지원하며 `--rows`로 행 수를 재정의할 수 있습니다. [벤치마크 명령](docs/cli/benchmark/run.md)을 참고하세요. 콘솔과 JSON 벤치마크 출력에는 선택적인 HTML 리포트 의존성이 필요하지 않습니다.
 
 ## 개요 (Overview)
@@ -251,21 +267,6 @@ Truthound는 프로젝트 루트에 `.truthound/` 워크스페이스를 자동�
 - ERD 감사(개발 중): [`truthound.schema_audit`](docs/python-api/schema-audit.md)의 불변 모델·JSON·digest, 표준→설계 감사 A, 설계→카탈로그 감사 B와 제한된 PG14/17 읽기 전용 수집기. Console·접속 인가·승인 권한은 별도입니다.
 - 고급 시스템: 네임스페이스로 임포트 (예: `truthound.ml`, `truthound.lineage`, `truthound.realtime`, `truthound.datadocs`)
 - 선택적 AI 레이어: `truthound[ai]` 설치 후 `truthound.ai` 임포트
-
----
-
-## 플러그인 플랫폼 (Plugin Platform)
-
-`pip install "truthound[mcp]"`로 로컬 MCP를 설치하고 `truthound-mcp serve --allow-dir /absolute/path/to/data`로 실행합니다. 기존 Core API의 검증·프로파일·PII 요약과 Claude Desktop용 `.mcpb` 생성을 제공합니다. 프로파일의 자료형은 범주값·매개변수를 제외한 타입 계열만 반환합니다. [MCP 사용법과 제한](docs/guides/mcp.md)을 확인하세요.
-기본 설치와 MCP extra 모두 Polars 1.x를 사용하며, Polars 2는 아직 지원하지 않습니다.
-MCP는 명시적으로 허용한 폴더에만 접근하는 로컬 stdio 서버입니다. pip 설치만으로 에이전트에 자동 등록되거나 HTTP/OAuth 원격 서버가 제공되지는 않습니다.
-
-Truthound는 단일 라이프사이클 런타임을 사용합니다.
-
-- `PluginManager`가 정식 플러그인 매니저입니다.
-- `EnterprisePluginManager`는 동일 런타임 위의 비동기·역량 기반 파사드입니다.
-- 플러그인은 `register_check_factory`, `register_data_asset_provider`, `register_reporter`, `register_hook`, `register_capability` 같은 안정 포트로 등록합니다.
-- 리포터 플러그인은 `ValidationRunResult`를 정식 렌더 입력으로, `RunPresentation`을 공유 렌더 프로젝션으로 사용하는 contract-v3 표면을 대상으로 합니다.
 
 ---
 

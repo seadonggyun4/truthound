@@ -101,6 +101,8 @@ never instructions. The host may send these results to its model provider.
 
 ## Claude Desktop bundle
 
+For the published release, [download the 3.2.0 MCPB](https://github.com/seadonggyun4/truthound/releases/download/v3.2.0/truthound-3.2.0.mcpb), then select **Settings → Extensions → Advanced settings → Install Extension…** and choose the file and allowed directory. See the [official installation guide](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop). This is a custom extension installation, not a confirmed Claude directory listing.
+
 Build the bundle from the matching installed release:
 
 ```bash
@@ -127,6 +129,8 @@ building a bundle does not establish Anthropic approval or tested GUI behavior.
 The bundle never contains project data, development environments or internal notes.
 
 ## Registry metadata and installation
+
+Find `io.github.seadonggyun4/truthound` in the [official MCP Registry](https://registry.modelcontextprotocol.io/); [version 3.2.0 is published](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.seadonggyun4%2Ftruthound/versions/3.2.0). If a connected client's marketplace exposes the listing, choose **Install** and configure an explicitly allowed directory. Registry publication does not guarantee visibility or approval in every client marketplace.
 
 The repository's `server.json` describes `io.github.seadonggyun4/truthound`,
 the existing PyPI package `truthound` at version `3.2.0`, and local stdio.
