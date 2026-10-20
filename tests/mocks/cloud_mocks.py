@@ -18,12 +18,24 @@ from typing import Any
 # =============================================================================
 
 
-class MockS3ClientError(Exception):
+try:
+    from botocore.exceptions import ClientError as _S3ClientError
+except ImportError:
+
+    class _S3ClientError(Exception):
+        """Keep the SDK response contract in the dev-only environment."""
+
+        def __init__(self, response, operation_name):
+            self.response = response
+            super().__init__(response["Error"]["Message"])
+
+
+class MockS3ClientError(_S3ClientError):
     """Mock for botocore.exceptions.ClientError."""
 
     def __init__(self, error_code: str, message: str = ""):
-        self.response = {"Error": {"Code": error_code, "Message": message}}
-        super().__init__(message)
+        response = {"Error": {"Code": error_code, "Message": message}}
+        super().__init__(response, "SyntheticS3Operation")
 
 
 @dataclass
@@ -275,11 +287,7 @@ class MockGCSBucket:
 
     def list_blobs(self, prefix: str = "") -> list[MockGCSBlob]:
         """List blobs with prefix."""
-        return [
-            MockGCSBlob(name, self)
-            for name in self._blobs
-            if name.startswith(prefix)
-        ]
+        return [MockGCSBlob(name, self) for name in self._blobs if name.startswith(prefix)]
 
 
 class MockGCSClient:

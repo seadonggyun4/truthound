@@ -665,6 +665,7 @@ class OpenTelemetryTracer(BaseTracer):
             with self._fallback.trace(name, context, kind, attributes) as span:
                 yield span
 
+    @contextmanager
     def _trace_otel(
         self,
         name: str,
@@ -707,11 +708,14 @@ class OpenTelemetryTracer(BaseTracer):
             try:
                 yield span
             except Exception as e:
+                span.record_exception(e)
                 otel_span.record_exception(e)
                 otel_span.set_status(
                     otel_trace.Status(otel_trace.StatusCode.ERROR, str(e))
                 )
                 raise
+            finally:
+                span.end()
 
     def inject_context(self, carrier: dict[str, str]) -> None:
         if self._initialized:

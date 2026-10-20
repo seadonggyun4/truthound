@@ -2,7 +2,9 @@
 
 Nightly는 native PDF 의존성과 실제 로컬 Redis·Elasticsearch 서비스를 사용합니다.
 SQLAlchemy queue pool 초기화의 `pool_timeout` 전달을 수정했고 native pytest
-subtest도 원래 collection 오류를 가리지 않고 별도로 집계합니다. 실계정 warehouse·
+subtest도 원래 collection 오류를 가리지 않고 별도로 집계합니다.
+OTEL SDK가 설치된 store tracing의 context manager 누락도 수정했으며 실제 SDK의
+in-memory exporter로 예외 전달과 span 종료를 검증합니다. 실계정 warehouse·
 유료 OpenAI 검증과 없는 선택적 소비자 snapshot은 SKIP/미검증으로 필수 PASS와
 구분합니다. 실계정 검증을 완료했다고 주장하지 않으며 KMS/TMS의 기존 mock 결과도
 mock 검증임을 명시합니다.

@@ -452,9 +452,10 @@ class TestStoreFactoryWithMocks:
         from truthound.stores.factory import get_store
         from truthound.stores.base import StoreError
 
-        with pytest.raises(StoreError) as exc_info:
-            # This will fail because sqlalchemy is not installed
-            get_store("database", connection_url="sqlite:///:memory:")
+        # Exercise a genuinely missing import even when the SDK is installed.
+        with patch.dict("sys.modules", {"sqlalchemy": None}):
+            with pytest.raises(StoreError) as exc_info:
+                get_store("database", connection_url="sqlite:///:memory:")
 
         assert "sqlalchemy" in str(exc_info.value).lower()
 

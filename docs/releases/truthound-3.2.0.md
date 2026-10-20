@@ -46,7 +46,10 @@ and bounded duplicate-candidate extraction in the exact-set scale fixture.
 Nightly verification includes native PDF prerequisites and actual local Redis and
 Elasticsearch services. SQLAlchemy queue-pool initialization now forwards the
 engine's `pool_timeout` option correctly. Native pytest subtests are independently
-accounted for without masking collection errors. Live warehouse/paid OpenAI
+accounted for without masking collection errors. Store OpenTelemetry tracing
+now supplies a real context manager on the installed-SDK path, including error
+propagation and span closure verified with an in-memory SDK exporter.
+Live warehouse/paid OpenAI
 checks and an unavailable optional consumer snapshot remain explicitly unverified
 SKIP, separate from mandatory PASS; this release does not claim live-account
 coverage. Existing KMS/TMS mock results are identified as mock coverage.
