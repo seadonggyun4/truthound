@@ -90,3 +90,28 @@ Claude Desktop 확장 설치 UI에서 파일을 설치하고 허용 데이터 �
 Anthropic 승인이나 GUI 검증을 주장하지 않습니다. 개발 환경·프로젝트 데이터·내부
 작업 기록은 포함하지 않습니다. 구현 경계와 연구 근거는
 [설계 문서](../adr/005-local-mcp.md)를 참고하세요.
+
+## Registry 메타데이터와 설치
+
+저장소의 `server.json`은 `io.github.seadonggyun4/truthound`, 기존 PyPI 패키지
+`truthound` 버전 `3.2.0`과 로컬 stdio를 선언합니다. UV의 `--with`로 MCP
+extra를 설치하고 기존 CLI 별칭을 실행합니다.
+
+```bash
+uvx --with "truthound[mcp]==3.2.0" truthound@3.2.0 mcp serve --allow-dir /absolute/path/to/data
+```
+
+GitHub namespace는 실제 저장소 소유자에 맞추며 README의 `mcp-name`도 정확히
+일치해야 합니다. dev 환경의 `python verification/mcp_registry.py`가 버전 고정
+공식 JSON Schema와 설치 계약을 검사합니다. 필수 디렉터리 입력에는 기본값이
+없으며 검색 목록 등록이 파일 접근 권한을 부여하지 않습니다. UV 격리 환경은
+무관한 CLI plugin 설치를 피하며, 수동 host 구성에서는 전용 `truthound-mcp`
+실행 파일을 계속 권장합니다.
+
+PyPI는 Python 산출물을 저장하고 pip/pipx/uvx는 이를 설치합니다. 공식 MCP
+Registry는 검색용 메타데이터 목록이지 패키지 저장소나 원격 검증 서버가 아닙니다.
+manifest 검증만으로 실제 등록·외부 marketplace 승인을 주장하지 않습니다.
+Registry 인증은 GitHub CLI 로그인과 별개이며 새 OAuth grant는 사용자가 직접
+승인합니다. 토큰·Trusted Publisher·계정을 자동 설정하지 않습니다.
+[공식 PyPI 소유권 규칙](https://modelcontextprotocol.io/registry/package-types)과
+[인증 가이드](https://modelcontextprotocol.io/registry/authentication)를 참고하세요.

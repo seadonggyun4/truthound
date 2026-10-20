@@ -57,9 +57,33 @@ def main() -> int:
             )
             suites = ET.parse(junit).getroot().findall("testsuite")
             assert run.returncode == 0 and suites
-            assert sum(int(s.get("tests", 0)) for s in suites) >= 37
+            assert sum(int(s.get("tests", 0)) for s in suites) >= 45
             assert all(int(s.get("skipped", 0)) == 0 for s in suites)
             results["api"] = "PASS"
+            ci_junit = Path(td) / "ci.xml"
+            ci_run = subprocess.run(
+                [
+                    str(root / ".venv/bin/python"),
+                    "-m",
+                    "pytest",
+                    "-q",
+                    "tests/test_nightly_ci.py",
+                    "tests/test_nightly_ci_runtime.py",
+                    "-p",
+                    "no:cacheprovider",
+                    f"--junitxml={ci_junit}",
+                ],
+                cwd=root,
+                capture_output=True,
+                timeout=15,
+            )
+            ci_cases = list(ET.parse(ci_junit).getroot().iter("testcase"))
+            assert ci_run.returncode == 0 and len(ci_cases) >= 21
+            assert not any(
+                case.find(tag) is not None
+                for case in ci_cases
+                for tag in ("skipped", "failure", "error")
+            )
         api = "https://api.github.com/repos/seadonggyun4/truthound"
         workflows = read_json(f"{api}/actions/runs?head_sha={args.commit}&per_page=100")[
             "workflow_runs"
@@ -81,6 +105,26 @@ def main() -> int:
             for run in workflows
             if run["name"] in required
         )
+        full_runs = [
+            run
+            for run in workflows
+            if run["name"] == "Tests Nightly" and "manual-full" in run.get("display_title", "")
+        ]
+        assert full_runs
+        required_jobs = {
+            "nightly-collect",
+            "nightly-gate",
+            "nightly / fault-e2e",
+            "nightly / integration",
+            "nightly / soak-stress",
+            "nightly / scale-100m",
+        } | {f"nightly / contract-{i}" for i in range(4)}
+        for full_run in full_runs:
+            jobs = read_json(f"{api}/actions/runs/{full_run['id']}/jobs?per_page=100")["jobs"]
+            assert required_jobs == {job["name"] for job in jobs}
+            assert all(
+                job["status"] == "completed" and job["conclusion"] == "success" for job in jobs
+            )
         results["safety"] = "PASS"
         package = read_json(f"https://pypi.org/pypi/truthound/{args.version}/json")
         assert package["info"]["version"] == args.version

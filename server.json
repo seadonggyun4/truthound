@@ -1,0 +1,23 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.seadonggyun4/truthound",
+  "title": "Truthound",
+  "description": "Validate local data files, summarize profiles and detect PII without returning raw values.",
+  "version": "3.2.0",
+  "repository": {"url": "https://github.com/seadonggyun4/truthound", "source": "github"},
+  "websiteUrl": "https://truthound.netlify.app/guides/mcp/",
+  "packages": [{
+    "registryType": "pypi",
+    "registryBaseUrl": "https://pypi.org",
+    "identifier": "truthound",
+    "version": "3.2.0",
+    "runtimeHint": "uvx",
+    "runtimeArguments": [{"type": "named", "name": "--with", "value": "truthound[mcp]==3.2.0"}],
+    "packageArguments": [
+      {"type": "positional", "value": "mcp"},
+      {"type": "positional", "value": "serve"},
+      {"type": "named", "name": "--allow-dir", "description": "An absolute local directory explicitly approved for data validation.", "format": "filepath", "isRequired": true}
+    ],
+    "transport": {"type": "stdio"}
+  }]
+}

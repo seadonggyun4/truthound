@@ -229,6 +229,8 @@ dev = [
     "pydantic>=2.0.0,<3.0.0",
     "openai>=1.35.0,<2.0.0",
     "pytest>=8.0.0",
+    "pytest-timeout>=2.4.0,<3.0.0",
+    "jsonschema>=4.23.0,<5.0.0",
     "pytest-cov>=4.0.0",
     "pytest-asyncio>=0.23.0",
     "ruff>=0.4.0",
@@ -308,7 +310,7 @@ packages = ["src/truthound"]
 
 [tool.hatch.build.targets.sdist]
 # Generated verification output is not source or a runtime package resource.
-exclude = ["/verification/**"]
+exclude = ["/verification/**", "**/__pycache__/**", "**/*.py[cod]"]
 
 [tool.hatch.build.targets.sdist.force-include]
 "src/truthound/ai/data/prompt_lexicon.ko.json" = "src/truthound/ai/data/prompt_lexicon.ko.json"

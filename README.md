@@ -4,6 +4,8 @@
 
 <h1 align="center">Truthound — Data Quality Workflow</h1>
 
+<!-- mcp-name: io.github.seadonggyun4/truthound -->
+
 <p align="center">
   <strong>Polars 기반 제로 설정 데이터 품질 프레임워크</strong> <br/>
   <strong>Zero-Configuration Data Quality Framework Powered by Polars</strong>

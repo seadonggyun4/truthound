@@ -1,107 +1,129 @@
 name: Tests Nightly
-
+run-name: Nightly / ${{ inputs.run_full_suite && 'manual-full' || 'weekly-integration-core' }}
 on:
   schedule:
     - cron: "0 18 * * 3"
   workflow_dispatch:
     inputs:
       run_full_suite:
-        description: "Run the full nightly marker suite"
+        description: "Run all original full nightly tests in disjoint resource lanes"
         required: false
         type: boolean
         default: false
-
+permissions:
+  contents: read
+# Do not silently cancel an in-flight release verification on a new push.
+concurrency:
+  group: nightly-${{ github.ref }}-${{ github.event_name }}
+  cancel-in-progress: false
+env:
+  PYTHONUNBUFFERED: "1"
+  POLARS_MAX_THREADS: "1"
+  OMP_NUM_THREADS: "1"
+  OPENBLAS_NUM_THREADS: "1"
+  MKL_NUM_THREADS: "1"
+  NUMEXPR_NUM_THREADS: "1"
+  LOKY_MAX_CPU_COUNT: "1"
+  TRUTHOUND_ML_N_JOBS: "1"
+  NIGHTLY_MODE: ${{ inputs.run_full_suite && 'manual-full' || 'weekly-integration-core' }}
 jobs:
-  nightly-chaos:
+  nightly-collect:
     runs-on: ubuntu-latest
-    env:
-      RUN_FULL_SUITE: ${{ github.event_name == 'workflow_dispatch' && inputs.run_full_suite || 'false' }}
+    timeout-minutes: 15
+    outputs:
+      matrix: ${{ steps.plan.outputs.matrix }}
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-
       - uses: astral-sh/setup-uv@v4
+      - run: uv sync --frozen --extra dev --extra mcp
+      - name: Collect and verify exact disjoint full partition
+        id: plan
+        run: uv run --frozen --extra dev --extra mcp python verification/ci/nightly_plan.py collect --mode "$NIGHTLY_MODE"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: truthound-nightly-plan
+          path: test-artifacts/nightly
+          if-no-files-found: error
+          retention-days: 7
 
-      - name: Install project with dev extras
-        run: uv pip install --system ".[dev]"
-
-      - name: Verify pytest collection
-        run: python -m pytest --collect-only -q tests
-
-      - name: Prepare nightly artifacts
+  nightly-lane:
+    name: nightly / ${{ matrix.lane }}
+    needs: nightly-collect
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: ${{ matrix.job_minutes }}
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix: ${{ fromJSON(needs.nightly-collect.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --frozen --extra dev --extra mcp
+      - uses: actions/download-artifact@v4
+        with:
+          name: truthound-nightly-plan
+          path: test-artifacts/nightly
+      - name: Record and check actual runner resources
+        run: uv run --frozen --extra dev --extra mcp python verification/ci/nightly_plan.py resources --lane "${{ matrix.lane }}"
+      - name: Execute exact manifest with soft stacks and hard test deadline
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p test-artifacts
-          if [[ "${RUN_FULL_SUITE}" == "true" ]]; then
-            printf "fault_seed=42\nrun_mode=nightly\nlane_mode=manual-full\n" > test-artifacts/run-metadata.txt
-          else
-            printf "fault_seed=42\nrun_mode=nightly\nlane_mode=weekly-integration-core\n" > test-artifacts/run-metadata.txt
+          flags=(--pytest-arg=--run-integration)
+          if [[ "$NIGHTLY_MODE" == "manual-full" ]]; then
+            flags+=(--pytest-arg=--run-expensive --pytest-arg=--run-soak)
           fi
-
-      - name: Collect nightly lane summary
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ "${RUN_FULL_SUITE}" == "true" ]]; then
-            python -m pytest --collect-only -q tests -m "contract or fault or integration or soak or stress or scale_100m or e2e" --run-integration --run-expensive --run-soak -p no:cacheprovider > test-artifacts/nightly-collect.txt
-          else
-            python -m pytest --collect-only -q tests -m "integration" --run-integration -p no:cacheprovider > test-artifacts/nightly-collect.txt
-          fi
-
-      - name: Write nightly selection summary
-        env:
-          RUN_FULL_SUITE: ${{ env.RUN_FULL_SUITE }}
-        run: |
-          python - <<'PY'
-          import os
-          import json
-          from pathlib import Path
-
-          collect_path = Path("test-artifacts/nightly-collect.txt")
-          nodeids = [
-              line.strip()
-              for line in collect_path.read_text(encoding="utf-8").splitlines()
-              if line.startswith("tests/") or line.startswith("tests\\")
-          ]
-          run_full_suite = os.environ["RUN_FULL_SUITE"] == "true"
-          summary = {
-              "selected_total": len(nodeids),
-              "mode": "manual-full" if run_full_suite else "weekly-integration-core",
-              "marker_expression": (
-                  "contract or fault or integration or soak or stress or scale_100m or e2e"
-                  if run_full_suite
-                  else "integration"
-              ),
-              "run_integration": True,
-              "run_expensive": run_full_suite,
-              "run_soak": run_full_suite,
-          }
-          Path("test-artifacts/nightly-summary.json").write_text(
-              json.dumps(summary, indent=2, sort_keys=True),
-              encoding="utf-8",
-          )
-          print("Nightly selection summary")
-          print(f"  mode: {summary['mode']}")
-          print(f"  selected total: {summary['selected_total']}")
-          PY
-
-      - name: Run nightly integration core or full suite
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ "${RUN_FULL_SUITE}" == "true" ]]; then
-            python -m pytest -q tests -m "contract or fault or integration or soak or stress or scale_100m or e2e" --run-integration --run-expensive --run-soak -p no:cacheprovider --junitxml test-artifacts/nightly-junit.xml
-          else
-            python -m pytest -q tests -m "integration" --run-integration -p no:cacheprovider --junitxml test-artifacts/nightly-junit.xml
-          fi
-
-      - name: Upload nightly test artifacts
-        if: always()
+          uv run --frozen --extra dev --extra mcp python verification/ci/run_pytest_manifest.py \
+            --manifest "test-artifacts/nightly/${{ matrix.lane }}.txt" \
+            --nightly-plan test-artifacts/nightly/plan.json \
+            --lane "${{ matrix.lane }}" \
+            --execution-report "test-artifacts/nightly/execution-${{ matrix.lane }}.json" \
+            --junitxml "test-artifacts/nightly/junit-${{ matrix.lane }}.xml" \
+            --pytest-arg=--durations=25 --pytest-arg=--durations-min=0.1 \
+            --pytest-arg=--timeout=${{ matrix.test_seconds }} --pytest-arg=--timeout-method=thread \
+            --pytest-arg=-o --pytest-arg=faulthandler_timeout=${{ matrix.stack_seconds }} \
+            "${flags[@]}"
+      - name: Preserve partial manifests and diagnostics even on failure
+        if: ${{ always() }}
         uses: actions/upload-artifact@v4
         with:
+          name: truthound-nightly-lane-${{ matrix.lane }}
+          path: |
+            test-artifacts/nightly/execution-${{ matrix.lane }}.*
+            test-artifacts/nightly/junit-${{ matrix.lane }}.xml
+            test-artifacts/nightly/resources-${{ matrix.lane }}.json
+          if-no-files-found: error
+          retention-days: 7
+
+  nightly-gate:
+    if: ${{ always() }}
+    needs: [nightly-collect, nightly-lane]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: truthound-nightly-*
+          path: test-artifacts/nightly
+          merge-multiple: true
+      - name: Require every same-SHA job, manifest, phase and JUnit result
+        env:
+          NIGHTLY_NEEDS: ${{ toJSON(needs) }}
+        run: python verification/ci/nightly_plan.py verify --mode "$NIGHTLY_MODE"
+      - uses: actions/upload-artifact@v4
+        if: ${{ always() }}
+        with:
           name: truthound-nightly-test-artifacts
-          path: test-artifacts
+          path: test-artifacts/nightly
+          if-no-files-found: error
+          retention-days: 7

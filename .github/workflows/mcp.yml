@@ -1,9 +1,9 @@
 name: MCP distribution
 on:
   pull_request:
-    paths: ["src/**", "tests/test_mcp*.py", "tests/test_polars_dependency_contract.py", "tests/fixtures/mcp_*.py", "verification/mcp*.py", "pyproject.toml", "uv.lock", ".github/workflows/mcp.yml"]
+    paths: ["src/**", "tests/test_mcp*.py", "tests/test_polars_dependency_contract.py", "tests/fixtures/mcp_*.py", "tests/conftest.py", "conftest.py", "pytest.ini", "setup.cfg", ".python-version", "verification/mcp*.py", "verification/schemas/**", "server.json", "README.md", "README.en.md", "pyproject.toml", "uv.lock", ".github/workflows/mcp.yml", ".github/workflows/release-pypi.yml"]
   push:
-    paths: ["src/**", "tests/test_mcp*.py", "tests/test_polars_dependency_contract.py", "tests/fixtures/mcp_*.py", "verification/mcp*.py", "pyproject.toml", "uv.lock", ".github/workflows/mcp.yml"]
+    paths: ["src/**", "tests/test_mcp*.py", "tests/test_polars_dependency_contract.py", "tests/fixtures/mcp_*.py", "tests/conftest.py", "conftest.py", "pytest.ini", "setup.cfg", ".python-version", "verification/mcp*.py", "verification/schemas/**", "server.json", "README.md", "README.en.md", "pyproject.toml", "uv.lock", ".github/workflows/mcp.yml", ".github/workflows/release-pypi.yml"]
   workflow_dispatch:
 permissions:
   contents: read

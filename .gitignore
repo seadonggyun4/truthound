@@ -86,6 +86,10 @@ Thumbs.db
 !pyproject.toml
 !tests/fixtures/
 !tests/fixtures/**
+tests/fixtures/**/__pycache__/
+tests/fixtures/**/*.py[cod]
+!server.json
+!verification/schemas/mcp-server-2025-12-11.schema.json
 !benchmarks/
 !benchmarks/constraints/
 !benchmarks/constraints/*.txt

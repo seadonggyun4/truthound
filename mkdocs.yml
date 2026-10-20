@@ -258,6 +258,7 @@ nav:
                   - CLI Datasource Guide: guides/datasources/cli-datasource-guide.md
                   - Local MCP: guides/mcp.md
           - Operations & Automation:
+              - Repository CI: guides/ci-testing.md
               - Checkpoint Family:
                   - Overview: guides/checkpoint/index.md
                   - Basics: guides/checkpoint/basics.md

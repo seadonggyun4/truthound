@@ -27,3 +27,11 @@ MCP profile `dtype` returns only an allowlisted type family: Enum category value
 nested type details and timezone/precision parameters are omitted. Unknown type
 text becomes `Unknown`; the Core Python API retains full type metadata. Real
 stdio and fresh installed-runtime regressions cover Enum Parquet value privacy.
+
+Release verification now preserves the original full nightly marker universe in
+disjoint contract, fault/e2e, integration, soak/stress and resource-checked scale
+lanes. Its final gate checks actual same-SHA execution manifests and JUnit, not
+just job exit codes. See [repository CI](../guides/ci-testing.md).
+The package README also carries the ownership marker for the version-matched
+[official Registry metadata](../guides/mcp.md#registry-metadata-and-installation).
+Valid metadata does not by itself establish a published Registry/marketplace listing.

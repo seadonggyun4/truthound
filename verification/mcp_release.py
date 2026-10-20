@@ -154,11 +154,15 @@ print("TRUTHOUND_RUNTIME_PROOF:"+json.dumps({
             "ai-context-docs",
             ".claude",
             ".codex",
+            "__pycache__",
         }
         assert not [n for n in inventory if forbidden.intersection(Path(n).parts)], (
             "Private distribution inventory"
         )
+        assert not [n for n in inventory if Path(n).suffix in {".pyc", ".pyo"}]
         assert any(n.endswith("truthound/mcp/server.py") for n in z.namelist())
+        metadata_name = next(n for n in z.namelist() if n.endswith(".dist-info/METADATA"))
+        assert "mcp-name: io.github.seadonggyun4/truthound" in z.read(metadata_name).decode("utf-8")
     version = tomllib.loads((root / "pyproject.toml").read_text(encoding="utf-8"))["project"][
         "version"
     ]
@@ -202,6 +206,14 @@ print("TRUTHOUND_RUNTIME_PROOF:"+json.dumps({
                 smoke([executable, "-I", "-c"], BASE_SMOKE, artifact, "base-install", td)
                 run([uv, "pip", "install", "--python", executable, str(artifact) + "[mcp]"])
                 smoke([executable, "-I", "-c"], SMOKE, artifact, "mcp-install", td)
+                registry_smoke = SMOKE.replace(
+                    '["-I","-m","truthound.mcp","serve","--allow-dir",td]',
+                    '["-I","-m","truthound.cli","mcp","serve","--allow-dir",td]',
+                )
+                assert registry_smoke != SMOKE
+                smoke(
+                    [executable, "-I", "-c"], registry_smoke, artifact, "registry-cli-install", td
+                )
         # Exercise the actual extracted launcher and UV source mapping before PyPI publishing.
         with tempfile.TemporaryDirectory(prefix="truthound-bundle-data-") as td:
             launcher_code = SMOKE.replace(

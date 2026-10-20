@@ -25,3 +25,10 @@ MCP 프로파일의 `dtype`은 허용 목록의 타입 계열만 반환합니다
 타입 상세·시간대·정밀도 매개변수는 제외하고 알 수 없는 문자열은 `Unknown`으로
 바꿉니다. Core Python의 전체 자료형 정보는 유지합니다. 실제 stdio와 새 설치
 런타임에서 Enum Parquet의 범주값 비노출을 회귀 검증합니다.
+
+릴리스 검증은 기존 full Nightly marker 집합을 contract, fault/e2e,
+integration, soak/stress, 실제 자원을 확인하는 scale lane으로 중복 없이 나눕니다.
+최종 gate는 동일 SHA의 실제 실행 manifest와 JUnit을 대조합니다.
+[저장소 CI 가이드](../guides/ci-testing.md)를 참고하세요.
+README에는 버전이 일치하는 공식 Registry 메타데이터의 소유권 marker도 포함합니다.
+유효한 메타데이터와 실제 Registry·marketplace 게시 완료는 구별합니다.

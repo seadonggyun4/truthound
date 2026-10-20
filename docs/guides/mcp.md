@@ -114,6 +114,32 @@ are separate steps. Directory listing/review is separate from file distribution;
 building a bundle does not establish Anthropic approval or tested GUI behavior.
 The bundle never contains project data, development environments or internal notes.
 
+## Registry metadata and installation
+
+The repository's `server.json` describes `io.github.seadonggyun4/truthound`,
+the existing PyPI package `truthound` at version `3.2.0`, and local stdio.
+It requests the MCP extra with UV's `--with` and starts the existing CLI alias:
+
+```bash
+uvx --with "truthound[mcp]==3.2.0" truthound@3.2.0 mcp serve --allow-dir /absolute/path/to/data
+```
+
+The Registry's GitHub namespace follows the actual repository owner; the package
+README's `mcp-name` must match exactly. The versioned official JSON Schema is
+checked locally by `python verification/mcp_registry.py` in the dev environment.
+A required directory input has no default: discovery never grants filesystem access.
+The isolated UV environment avoids unrelated installed CLI plugins; manual host
+configuration can continue to prefer the dedicated `truthound-mcp` executable.
+
+PyPI hosts Python artifacts; pip/pipx/uvx install them. The official MCP Registry
+hosts discovery metadata, not the package or a remote validation server. A valid
+manifest is not proof of a live listing or downstream marketplace approval.
+Publishing requires Registry authentication distinct from a GitHub CLI login.
+The user approves any new OAuth grant; release tooling does not configure tokens,
+trusted publishers or new accounts automatically. See the official
+[PyPI ownership rule](https://modelcontextprotocol.io/registry/package-types)
+and [authentication guide](https://modelcontextprotocol.io/registry/authentication).
+
 ## Extending the adapter
 
 Keep policy in `truthound.mcp.policy`, summaries in `projection`, Core invocation
