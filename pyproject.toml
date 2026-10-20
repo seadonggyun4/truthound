@@ -33,7 +33,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "polars>=1.0.0",
+    "polars>=1.0.0,<2.0.0",
     "pyyaml>=6.0.0",
     "rich>=13.0.0",
     "typer>=0.12.0",

@@ -4507,7 +4507,7 @@ requires-dist = [
     { name = "pandas", marker = "extra == 'all'", specifier = ">=2.0.0,<3.0.0" },
     { name = "pandas", marker = "extra == 'benchmarks'", specifier = ">=2.0.0,<3.0.0" },
     { name = "pandas", marker = "extra == 'dev'", specifier = ">=2.0.0,<3.0.0" },
-    { name = "polars", specifier = ">=1.0.0" },
+    { name = "polars", specifier = ">=1.0.0,<2.0.0" },
     { name = "polars", marker = "extra == 'mcp'", specifier = ">=1.0.0,<2.0.0" },
     { name = "psutil", marker = "extra == 'all'", specifier = ">=5.9.0,<8.0.0" },
     { name = "psutil", marker = "extra == 'benchmarks'", specifier = ">=5.9.0,<8.0.0" },

@@ -16,7 +16,7 @@ points. Use the dedicated `truthound-mcp` entry point in agent configuration to
 avoid unrelated CLI plugin discovery. No directories are granted by default.
 Repeat `--allow-dir` for additional roots; relative input paths use the first root.
 A host must start the executable from the Python environment where it was installed.
-The MCP extra currently selects Polars 1.x; Core's PII scanner uses APIs removed
+The base package and MCP extra require Polars 1.x; Core's PII scanner uses APIs removed
 in Polars 2. A fresh install is tested separately from the repository lockfile.
 
 Example manual host configuration (adapt to your client's format):

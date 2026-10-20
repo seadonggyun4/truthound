@@ -13,6 +13,21 @@ import tomllib
 import zipfile
 from pathlib import Path
 
+BASE_SMOKE = """
+import importlib.util, tempfile
+from pathlib import Path
+import truthound as th
+assert importlib.util.find_spec("mcp") is None
+with tempfile.TemporaryDirectory() as td:
+    p=Path(td)/"input.csv"
+    p.write_text("email,x\\na@example.com,1\\na@example.com,1\\n,2\\n",encoding="utf-8")
+    assert th.scan(str(p)).row_count==3
+    assert th.profile(str(p)).row_count==3
+    result=th.check(str(p),validators=["null","duplicate"])
+    assert result.row_count==3 and not result.success
+print("fresh-base-core-without-sdk-pass")
+"""
+
 SMOKE = """
 import asyncio, hashlib, json, os, re, subprocess, sys, tempfile
 from pathlib import Path
@@ -125,6 +140,8 @@ def main():
                 executable = venv / (
                     "Scripts/python.exe" if __import__("os").name == "nt" else "bin/python"
                 )
+                run([uv, "pip", "install", "--python", executable, artifact])
+                run([executable, "-I", "-c", BASE_SMOKE], cwd=td)
                 run([uv, "pip", "install", "--python", executable, str(artifact) + "[mcp]"])
                 run([executable, "-I", "-c", SMOKE], cwd=td)
         # Exercise the actual extracted launcher and UV source mapping before PyPI publishing.

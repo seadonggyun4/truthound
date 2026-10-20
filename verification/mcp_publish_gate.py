@@ -28,14 +28,18 @@ def read_json(url: str) -> dict:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--commit", required=True)
+    parser.add_argument("--commit", help="Exact commit; defaults to this source checkout HEAD")
     parser.add_argument("--version", default="3.2.0")
     args = parser.parse_args()
+    root = Path(__file__).resolve().parents[1]
+    if args.commit is None:
+        args.commit = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], cwd=root, text=True
+        ).strip()
     if not re.fullmatch(r"[0-9a-f]{40}", args.commit) or not re.fullmatch(
         r"\d+\.\d+\.\d+", args.version
     ):
         parser.error("Expected an immutable commit and stable numeric version")
-    root = Path(__file__).resolve().parents[1]
     results = dict.fromkeys(("api", "safety", "package", "docs"), "FAIL")
     try:
         with tempfile.TemporaryDirectory(prefix="truthound-release-contract-") as td:
@@ -49,6 +53,8 @@ def main() -> int:
                     "tests/test_mcp.py",
                     "tests/test_mcp_bundle.py",
                     "tests/test_mcp_faults.py",
+                    "tests/test_mcp_environment.py",
+                    "tests/test_polars_dependency_contract.py",
                     "-p",
                     "no:cacheprovider",
                     f"--junitxml={junit}",
@@ -59,7 +65,7 @@ def main() -> int:
             )
             suites = ET.parse(junit).getroot().findall("testsuite")
             assert run.returncode == 0 and suites
-            assert sum(int(s.get("tests", 0)) for s in suites) >= 20
+            assert sum(int(s.get("tests", 0)) for s in suites) >= 22
             assert all(int(s.get("skipped", 0)) == 0 for s in suites)
             results["api"] = "PASS"
         api = "https://api.github.com/repos/seadonggyun4/truthound"

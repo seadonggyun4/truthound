@@ -16,7 +16,7 @@ truthound-mcp serve --allow-dir /absolute/path/to/data
 허용 폴더는 기본값이 없으며 `--allow-dir`를 반복해 지정할 수 있습니다.
 상대 입력 경로는 첫 번째 허용 폴더 기준입니다. 에이전트는 설치된 Python
 환경의 실행 파일을 사용해야 하며 pip 설치만으로 자동 연결되지는 않습니다.
-MCP extra는 현재 Polars 1.x를 선택합니다. Core PII scanner가 Polars 2에서
+기본 패키지와 MCP extra는 Polars 1.x를 사용합니다. Core PII scanner가 Polars 2에서
 제거된 API를 사용하므로 저장소 lockfile과 별도로 클린 설치를 검증합니다.
 
 ## 도구와 결과
