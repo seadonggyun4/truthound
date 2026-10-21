@@ -12,6 +12,23 @@ from truthound.validators.base import Validator
 pytestmark = pytest.mark.contract
 
 
+def test_direct_dag_replacement_compatibility_and_explicit_instance_retention():
+    from truthound.validators.optimization.orchestrator import ValidatorDAG
+
+    first = get_validator("between")(columns=["x"], min_value=0)
+    second = get_validator("between")(columns=["x"], max_value=0)
+    legacy = ValidatorDAG()
+    legacy.add_validators([first, second])
+    assert len(legacy) == 1
+    assert legacy.nodes[second.name].validator is second
+    retained = ValidatorDAG(preserve_instances=True)
+    retained.add_validators([first, second])
+    assert [node.validator for node in retained.nodes.values()] == [first, second]
+    execution = retained.build_execution_plan().execute(pl.DataFrame({"x": [-1, 1]}).lazy())
+    assert execution.total_validators == 2
+    assert len(execution.all_issues) == 2
+
+
 @pytest.mark.parametrize("parallel", [False, True])
 @pytest.mark.parametrize("names", [("lower", "upper"), ("same", "same")])
 def test_repeated_algorithm_issues_belong_to_exact_suite_instances(parallel, names):

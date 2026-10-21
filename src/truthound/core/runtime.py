@@ -174,7 +174,7 @@ class ValidationRuntime:
             ValidatorDAG,
         )
 
-        dag = ValidatorDAG()
+        dag = ValidatorDAG(preserve_instances=True)
         dag.add_validators(validator_instances)
         plan = dag.build_execution_plan()
         if max_workers is not None:

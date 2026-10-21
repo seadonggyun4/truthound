@@ -68,7 +68,8 @@ def temp_duckdb():
 @pytest.fixture
 def duckdb_source(temp_duckdb):
     """Create a DuckDBDataSource for testing."""
-    return DuckDBDataSource(table="users", database=temp_duckdb)
+    with DuckDBDataSource(table="users", database=temp_duckdb) as source:
+        yield source
 
 
 # =============================================================================
@@ -114,6 +115,19 @@ class TestDuckDBDataSource:
         """Test connection validation."""
         assert duckdb_source.validate_connection() is True
 
+    def test_context_closes_native_connections_after_exception(self, temp_duckdb):
+        source = DuckDBDataSource(table="users", database=temp_duckdb)
+        with pytest.raises(RuntimeError, match="synthetic failure"):
+            with source:
+                with source._get_connection() as connection:
+                    assert connection.execute("SELECT COUNT(*) FROM users").fetchone() == (5,)
+                pool = source._pool
+                raise RuntimeError("synthetic failure")
+        assert source._pool is None
+        assert pool.available == 0
+        with pytest.raises(duckdb.ConnectionException):
+            connection.execute("SELECT COUNT(*) FROM users")
+
     def test_execute_query(self, duckdb_source):
         """Test raw query execution."""
         result = duckdb_source.execute_query("SELECT COUNT(*) as cnt FROM users")
@@ -145,11 +159,11 @@ class TestDuckDBDataSource:
 
         # Note: in-memory databases don't persist across connections
         # This test verifies the source can be created
-        source = DuckDBDataSource(
+        with DuckDBDataSource(
             database=":memory:",
             query="SELECT 1 as id, 'test' as value",
-        )
-        assert source.row_count == 1
+        ) as source:
+            assert source.row_count == 1
 
 
 class TestDuckDBQueryMode:
@@ -157,21 +171,21 @@ class TestDuckDBQueryMode:
 
     def test_query_mode(self, temp_duckdb):
         """Test query mode."""
-        source = DuckDBDataSource(
+        with DuckDBDataSource(
             database=temp_duckdb,
             query="SELECT id, name FROM users WHERE active = true",
-        )
-        assert source.row_count == 3
+        ) as source:
+            assert source.row_count == 3
 
     def test_query_with_aggregation(self, temp_duckdb):
         """Test query with aggregation."""
-        source = DuckDBDataSource(
+        with DuckDBDataSource(
             database=temp_duckdb,
             query="SELECT active, AVG(salary) as avg_salary FROM users GROUP BY active",
-        )
-        lf = source.to_polars_lazyframe()
-        df = lf.collect()
-        assert df.shape[0] == 2
+        ) as source:
+            lf = source.to_polars_lazyframe()
+            df = lf.collect()
+            assert df.shape[0] == 2
 
 
 class TestDuckDBHelperMethods:
@@ -205,9 +219,9 @@ class TestDuckDBFromDataFrame:
             "id": [1, 2, 3],
             "name": ["a", "b", "c"],
         })
-        source = DuckDBDataSource.from_dataframe(df, "test_table")
-        assert source.row_count == 3
-        assert "id" in source.columns
+        with DuckDBDataSource.from_dataframe(df, "test_table") as source:
+            assert source.row_count == 3
+            assert "id" in source.columns
 
     def test_from_polars_lazyframe(self):
         """Test creating from Polars LazyFrame."""
@@ -216,8 +230,8 @@ class TestDuckDBFromDataFrame:
             "id": [1, 2, 3],
             "value": [10.0, 20.0, 30.0],
         })
-        source = DuckDBDataSource.from_dataframe(lf, "test_lazy")
-        assert source.row_count == 3
+        with DuckDBDataSource.from_dataframe(lf, "test_lazy") as source:
+            assert source.row_count == 3
 
 
 class TestDuckDBFileReading:
@@ -236,8 +250,8 @@ class TestDuckDBFileReading:
         df.write_parquet(parquet_path)
 
         # Test reading
-        source = DuckDBDataSource.from_parquet(str(parquet_path))
-        assert source.row_count == 3
+        with DuckDBDataSource.from_parquet(str(parquet_path)) as source:
+            assert source.row_count == 3
 
     def test_from_csv(self, tmp_path):
         """Test reading from CSV file."""
@@ -252,8 +266,8 @@ class TestDuckDBFileReading:
         df.write_csv(csv_path)
 
         # Test reading
-        source = DuckDBDataSource.from_csv(str(csv_path))
-        assert source.row_count == 3
+        with DuckDBDataSource.from_csv(str(csv_path)) as source:
+            assert source.row_count == 3
 
 
 class TestDuckDBWithTruthound:

@@ -2,6 +2,12 @@
 
 Validator interface and registration system.
 
+Direct `ValidatorDAG()` callers retain name-based replacement: adding the same
+validator name again replaces its previous node. `ValidatorDAG(preserve_instances=True)`
+retains each instance with a distinct node identity. The validation kernel uses
+this mode so separately planned checks keep their own results even when they
+use the same algorithm or display name.
+
 Expression-based summary/complete failure frequencies sort by descending count.
 Equal frequencies retain first encounter order, including at the partial-count
 limit; the structured counts and human-readable top-failure details share that

@@ -790,7 +790,10 @@ class ValidatorDAG:
         result = plan.execute(lf)
     """
 
-    def __init__(self):
+    def __init__(self, *, preserve_instances: bool = False):
+        # Direct DAG callers retain name-based replacement compatibility.
+        # The kernel opts in because each planned CheckSpec is distinct work.
+        self._preserve_instances = preserve_instances
         self.nodes: dict[str, ValidatorNode] = {}
         self._dependency_graph: dict[str, set[str]] = {}
 
@@ -824,7 +827,7 @@ class ValidatorDAG:
         # Keep the original first ID for existing direct-node consumers.
         node_id = validator.name
         occurrence = 2
-        while node_id in self.nodes:
+        while self._preserve_instances and node_id in self.nodes:
             node_id = f"{validator.name}#{occurrence}"
             occurrence += 1
 
