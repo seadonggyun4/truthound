@@ -319,6 +319,7 @@ Issues = "https://github.com/seadonggyun4/Truthound/issues"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/truthound"]
+exclude = ["/internal-development/**", "/docs-private/**"]
 
 [tool.hatch.build.targets.wheel.force-include]
 "src/truthound/ai/data/prompt_lexicon.ko.json" = "truthound/ai/data/prompt_lexicon.ko.json"
@@ -327,7 +328,7 @@ packages = ["src/truthound"]
 
 [tool.hatch.build.targets.sdist]
 # Generated verification output is not source or a runtime package resource.
-exclude = ["/verification/**", "**/__pycache__/**", "**/*.py[cod]"]
+exclude = ["/verification/**", "/internal-development/**", "/docs-private/**", "**/__pycache__/**", "**/*.py[cod]"]
 
 [tool.hatch.build.targets.sdist.force-include]
 "src/truthound/ai/data/prompt_lexicon.ko.json" = "src/truthound/ai/data/prompt_lexicon.ko.json"

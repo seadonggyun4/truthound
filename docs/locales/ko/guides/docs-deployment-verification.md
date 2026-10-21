@@ -114,6 +114,11 @@
 
 ## Local Verification Commands
 
+full 참조 문서는 선택형 Core UI 문서를 유지합니다. 한국어 검사에 `--surface full`을
+사용하면 알려진 Core UI 세 경로의 링크만 허용합니다. 한국어 분량 기준이나 외부 UI 링크
+차단은 완화하지 않습니다. public 빌드는 기본 경로 정책과 공개 manifest의 제외 규칙을
+유지합니다. 다음 빌드가 `site/`를 덮어쓰기 전에 각 빌드의 검사를 실행하세요.
+
 ```bash
 sh scripts/fetch-external-docs.sh orchestration
 python docs/scripts/prepare_public_docs.py --mode full
@@ -121,6 +126,7 @@ python docs/scripts/prepare_public_docs.py --mode public
 python docs/scripts/check_links.py --mkdocs mkdocs.yml README.md CLAUDE.md build/full-docs
 python docs/scripts/check_links.py --mkdocs mkdocs.public.yml build/public-docs
 python -m mkdocs build --strict
+python docs/scripts/verify_korean_docs.py --site-dir site --surface full
 python -m mkdocs build --strict -f mkdocs.public.yml
 python docs/scripts/verify_public_surface.py --manifest docs/public_docs.yml --site-dir site
 ```

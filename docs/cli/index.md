@@ -225,13 +225,13 @@ Documentation generation:
 | [`docs generate`](docs/generate.md) | Generate HTML/PDF report |
 | [`docs themes`](docs/themes.md) | List available themes |
 
-### Data Docs reports
+### Local profile viewer
 
-Interactive data exploration:
+Optional local profile exploration; install the `dashboard` extra separately:
 
 | Command | Description |
 |---------|-------------|
-| Data Docs reports | Launch interactive dashboard |
+| [Local profile viewer](dashboard.md) | Inspect profiles in the optional Reflex UI; not static report generation |
 
 ### [Realtime Commands](realtime/index.md)
 

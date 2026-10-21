@@ -79,6 +79,8 @@ dmypy.json
 Thumbs.db
 
 # Project specific
+/internal-development/
+/docs-private/
 *.csv
 *.parquet
 *.json

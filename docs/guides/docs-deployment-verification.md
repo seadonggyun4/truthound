@@ -114,6 +114,12 @@ After a local or Netlify build, confirm all of the following under `site/`:
 
 ## Local Verification Commands
 
+The full reference build retains optional Core UI documentation. Its Korean
+check uses `--surface full`, which permits only the three known Core UI link
+targets; it does not relax language thresholds or allow external UI links.
+The public build keeps the default strict route policy and public manifest
+exclusions. Validate each build before overwriting `site/` with the next one.
+
 ```bash
 sh scripts/fetch-external-docs.sh orchestration
 python docs/scripts/prepare_public_docs.py --mode full
@@ -121,6 +127,7 @@ python docs/scripts/prepare_public_docs.py --mode public
 python docs/scripts/check_links.py --mkdocs mkdocs.yml README.md CLAUDE.md build/full-docs
 python docs/scripts/check_links.py --mkdocs mkdocs.public.yml build/public-docs
 python -m mkdocs build --strict
+python docs/scripts/verify_korean_docs.py --site-dir site --surface full
 python -m mkdocs build --strict -f mkdocs.public.yml
 python docs/scripts/verify_public_surface.py --manifest docs/public_docs.yml --site-dir site
 ```

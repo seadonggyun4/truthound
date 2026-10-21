@@ -67,6 +67,9 @@ jobs:
       - name: Build full docs
         run: mkdocs build --strict
 
+      - name: Verify full Korean docs including optional Core UI references
+        run: python docs/scripts/verify_korean_docs.py --site-dir site --surface full
+
       - name: Build public docs
         run: mkdocs build --strict -f mkdocs.public.yml
 

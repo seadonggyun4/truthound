@@ -7,9 +7,70 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 import yaml
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+
+
+def _korean_checker():
+    path = REPO_ROOT / "docs/scripts/verify_korean_docs.py"
+    spec = importlib.util.spec_from_file_location("truthound_korean_checker", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def _check_korean_site(tmp_path, monkeypatch, body: str, surface: str) -> int:
+    page = tmp_path / "dashboard/index.html"
+    page.parent.mkdir(parents=True, exist_ok=True)
+    page.write_text("<p>" + "한국어 기능 설명과 사용상 제약을 확인합니다. " * 30 + "</p>" + body, encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", ["verify_korean_docs", "--site-dir", str(tmp_path), "--surface", surface])
+    return _korean_checker().main()
+
+
+def test_full_korean_gate_accepts_only_actual_core_ui_links(tmp_path, monkeypatch):
+    body = '''<link rel="canonical" href="https://truthound.netlify.app/dashboard/">
+    <link rel="alternate" href="../en/dashboard/" hreflang="en">
+    <a href="../cli/dashboard/">명령어</a>
+    <a href="../guides/datadocs/dashboard/">사용법</a>
+    <a href="https://github.com/seadonggyun4/Truthound/edit/main/docs/ko/dashboard/index.md">편집</a>'''
+    assert _check_korean_site(tmp_path, monkeypatch, body, "full") == 0
+
+
+@pytest.mark.parametrize("surface,body", [
+    ("public", '<a href="https://truthound.netlify.app/dashboard/">UI</a>'),
+    ("full", '<a href="https://evil.example/dashboard/">외부</a>'),
+    ("full", '<a href="https://[invalid/dashboard/">잘못된 URL</a>'),
+    ("full", '<a href="https://truthound.netlify.app/other/dashboard/">미등록</a>'),
+    ("full", '<a href="https://truthound.netlify.app/dashboard/?redirect=external">질의</a>'),
+    ("full", '<p>/dashboard/</p>'),
+    ("full", '<script>const copied = \'<a href="https://truthound.netlify.app/dashboard/">UI</a>\';</script>'),
+    ("full", '<!-- <a href="https://truthound.netlify.app/dashboard/">UI</a> -->'),
+    ("full", '<a data-href="https://truthound.netlify.app/dashboard/">속성</a>'),
+    ("full", '''<a title="href='https://truthound.netlify.app/dashboard/'">제목</a>'''),
+    ("full", '''<a href="https://truthound.netlify.app/dashboard/" title="href='https://truthound.netlify.app/dashboard/'">제목</a>'''),
+    ("full", '<a href="https://truthound.netlify.app/dashboard/">허용</a><p>truthound-dashboard</p>'),
+    ("full", '<a href="https://truthound.netlify.app/depot/">차단</a>'),
+])
+def test_korean_route_policy_still_rejects_removed_or_untrusted_surfaces(tmp_path, monkeypatch, surface, body):
+    assert _check_korean_site(tmp_path, monkeypatch, body, surface) == 1
+
+
+def test_core_ui_link_permission_does_not_bypass_language_gate(tmp_path, monkeypatch):
+    page = tmp_path / "dashboard/index.html"
+    page.parent.mkdir()
+    page.write_text('<a href="https://truthound.netlify.app/dashboard/">English only</a>' * 40, encoding="utf-8")
+    monkeypatch.setattr(sys, "argv", ["verify_korean_docs", "--site-dir", str(tmp_path), "--surface", "full"])
+    assert _korean_checker().main() == 1
+
+
+@pytest.mark.parametrize("missing", [False, True])
+def test_korean_gate_rejects_empty_or_missing_site(tmp_path, monkeypatch, missing):
+    site_dir = tmp_path / "missing" if missing else tmp_path
+    monkeypatch.setattr(sys, "argv", ["verify_korean_docs", "--site-dir", str(site_dir)])
+    assert _korean_checker().main() == 1
 
 
 def _load_public_manifest_module():
