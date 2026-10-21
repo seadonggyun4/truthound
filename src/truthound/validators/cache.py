@@ -177,12 +177,20 @@ class NumericStatistics:
         # Ensure unique edges
         edges = np.unique(edges)
 
+        if len(edges) < 2:
+            # A point mass is not an empty histogram. Keep finite summary
+            # edges for strict JSON/persistence; consumers add their own tails.
+            if not np.isfinite(min_val):
+                raise ValueError("Numeric statistics require a finite reference range")
+            edges = np.unique(np.asarray([np.nextafter(min_val, -np.inf), min_val, np.nextafter(min_val, np.inf)]))
+            edges = edges[np.isfinite(edges)]
+
         if len(edges) >= 2:
             counts, _ = np.histogram(arr, bins=edges)
             total = counts.sum()
             frequencies = (counts / total).tolist() if total > 0 else [0.0] * (len(edges) - 1)
         else:
-            edges = [min_val, max_val] if min_val != max_val else [min_val]
+            edges = np.asarray([min_val, max_val] if min_val != max_val else [min_val])
             frequencies = [1.0] if len(edges) == 2 else []
 
         # Create hash for validation

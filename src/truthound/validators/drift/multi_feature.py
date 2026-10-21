@@ -146,7 +146,7 @@ class FeatureDriftValidator(DriftValidator, NumericDriftMixin, CategoricalDriftM
             # Create bins from reference
             percentiles = np.linspace(0, 100, self.n_bins + 1)
             bin_edges = np.percentile(ref_arr, percentiles)
-            bin_edges = sorted(set(bin_edges))
+            bin_edges = self._tail_histogram_edges(bin_edges)
 
             if len(bin_edges) < 2:
                 return 0.0

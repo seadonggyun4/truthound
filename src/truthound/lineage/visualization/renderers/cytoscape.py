@@ -110,7 +110,7 @@ class CytoscapeRenderer(IGraphRenderer):
                 subgraph_node_ids.add(node.id)
 
         # Build filtered node list
-        subgraph_nodes = [graph.get_node(nid) for nid in subgraph_node_ids]
+        subgraph_nodes = [node for node in graph.nodes if node.id in subgraph_node_ids]
 
         # Filter edges to only those within subgraph
         subgraph_edges = [

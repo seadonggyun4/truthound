@@ -1,5 +1,19 @@
 # 검증기
 
+표현식 기반 검증의 summary/complete 실패 빈도는 건수 내림차순이며,
+동률이면 원본에서 처음 나타난 순서를 유지합니다. 부분 빈도 제한 경계에서도
+구조화된 빈도와 상세 설명은 같은 순서이며 표본 행 순서나 전체 위반 건수는 바꾸지 않습니다.
+
+`ValidationDetail.from_dict()`는 `to_dict()`의 값 표현을 복원하며 실패 행 레코드는
+DataFrame으로 돌려줍니다. 행 레코드는 원래 물리적 dtype 스키마를 포함하지 않습니다.
+`ValidationRunResult.from_dict()`는 검사별·실행 전체 문제의 상세와 `ExceptionInfo`의
+분류·추적·재시도 필드를 보존하며 빈 표본 목록을 임의로 null로 바꾸지 않습니다.
+
+`referential_integrity`와 `streaming_referential_integrity`는 원본 열의 null을
+제외한 값이 참조 열에 존재하는지 검사합니다. 고아 값이 없으면 anti-join 결과가
+비어 있어도 문제 목록은 비어 있습니다. 위반 건수는 중복 고아 키를 포함한 **행 수**이며,
+반환 표본은 `sample_size`로 별도 제한되므로 위반 건수와 혼동하면 안 됩니다.
+
 Python API 사용에서 Validator을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
 
 ## 검증기 Base Class

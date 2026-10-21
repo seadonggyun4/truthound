@@ -45,3 +45,23 @@ def test_required_gate_rejects_missing_sdk_before_pytest(monkeypatch):
 def test_required_gate_rejects_wrong_python_before_pytest():
     with pytest.raises(ValueError, match="MCP_PYTHON_MISMATCH"):
         mcp_ci_gate.verify_runtime("0.0")
+
+
+def test_contract_generator_keeps_paths_blocked_across_python_implementation_moves():
+    import json
+
+    root = Path(__file__).resolve().parents[1]
+    descriptor = importlib.util.spec_from_file_location(
+        "truthound_mcp_contract_generator",
+        root / "verification/mcp_generate_validator_contracts.py",
+    )
+    assert descriptor is not None and descriptor.loader is not None
+    generator = importlib.util.module_from_spec(descriptor)
+    descriptor.loader.exec_module(generator)
+    expected = {"kind": "blocked", "reason": "<class 'pathlib.Path'>"}
+    assert generator.describe(Path) == expected
+    document = json.loads(
+        (root / "src/truthound/mcp/validator_contracts.json").read_text(encoding="utf-8")
+    )
+    alternatives = document["validators"]["polygon"]["fields"]["geojson_file"]["type"]["items"]
+    assert expected in alternatives

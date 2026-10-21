@@ -239,45 +239,107 @@ class PushdownValidationEngine:
         Returns:
             All validation issues found
         """
-        all_issues: list[ValidationIssue] = []
+        return [
+            issue
+            for outcome in self.validate_outcomes(validators, columns)
+            for issue in outcome.issues
+        ]
 
-        # Separate pushdown-capable and regular validators
-        pushdown_validators: list[Validator] = []
-        regular_validators: list[Validator] = []
+    def validate_outcomes(self, validators, columns=None):
+        """One complete outcome per input instance, including failed fallback.
 
-        for v in validators:
-            if isinstance(v, PushdownCapable) and v.pushdown_level != PushdownLevel.NONE:
-                pushdown_validators.append(v)
-            else:
-                regular_validators.append(v)
+        The flat compatibility API cannot express missing/partial execution.
+        Kernel consumers use these outcomes rather than guessing from an empty
+        issue list. No exception is silently converted into a successful check.
+        """
+        from truthound.types import Severity
+        from truthound.validators.base import (
+            ExceptionInfo,
+            ValidationIssue,
+            ValidationResult,
+            ValidatorExecutionResult,
+            _validate_safe,
+        )
 
-        # Get table and column info
-        table = self.datasource.full_table_name
-        target_columns = columns or self.datasource.columns
+        outcomes = []
+        for validator in validators:
+            config = getattr(validator, "config", None)
+            catch = getattr(config, "catch_exceptions", True)
+            log_errors = getattr(config, "log_errors", True)
+            try:
+                if (
+                    isinstance(validator, PushdownCapable)
+                    and validator.pushdown_level != PushdownLevel.NONE
+                ):
+                    try:
+                        queries = validator.get_pushdown_queries(
+                            self.datasource.full_table_name,
+                            columns or self.datasource.columns,
+                            self._dialect,
+                        )
+                        if queries:
+                            results = self._execute_queries(queries, self.datasource.row_count or 0)
+                            from collections import Counter
 
-        # Execute pushdown validators
-        if pushdown_validators:
-            pushdown_issues = self._execute_pushdown_validators(
-                pushdown_validators,
-                table,
-                target_columns,
-            )
-            all_issues.extend(pushdown_issues)
-
-        # Execute regular validators (client-side)
-        if regular_validators:
-            lf = self.datasource.to_polars_lazyframe()
-            for v in regular_validators:
-                try:
-                    issues = v.validate(lf)
-                    all_issues.extend(issues)
-                except Exception as e:
-                    import logging
-                    logging.getLogger("truthound.pushdown").warning(
-                        f"Validator {v.name} failed: {e}"
+                            if Counter(
+                                (item.column, item.check_type) for item in results
+                            ) != Counter((item.column, item.check_type) for item in queries):
+                                raise RuntimeError(
+                                    "Incomplete or mismatched pushdown query results"
+                                )
+                            issues = validator.process_pushdown_results(results)
+                            outcomes.append(
+                                ValidatorExecutionResult(
+                                    validator_name=validator.name,
+                                    status=ValidationResult.SUCCESS,
+                                    issues=list(issues),
+                                )
+                            )
+                            continue
+                        # Empty pushdown work still uses the native validator,
+                        # not an inferred all-pass result.
+                    except Exception:
+                        if not catch:
+                            raise
+                        # A valid native client-side fallback is permitted;
+                        # failure in that fallback remains a failed outcome.
+                lf = self.datasource.to_polars_lazyframe()
+                outcome = _validate_safe(
+                    validator,
+                    lf,
+                    skip_on_error=catch,
+                    log_errors=log_errors,
+                    max_retries=getattr(config, "max_retries", 0),
+                )
+            except Exception as exc:
+                if not catch:
+                    raise
+                info = ExceptionInfo.from_exception(exc, validator_name=validator.name)
+                outcome = ValidatorExecutionResult(
+                    validator_name=validator.name,
+                    status=ValidationResult.FAILED,
+                    issues=[],
+                    exception_info=info,
+                    error_message=info.exception_message,
+                )
+            if (
+                outcome.status != ValidationResult.SUCCESS or outcome.has_exception
+            ) and not outcome.issues:
+                # Also preserve failure in the legacy flat-list API. The
+                # structured kernel outcome remains authoritative for status.
+                outcome.issues.append(
+                    ValidationIssue(
+                        column="*",
+                        issue_type="validator_error",
+                        count=0,
+                        severity=Severity.LOW,
+                        validator_name=validator.name,
+                        details=outcome.error_message or "Validator execution incomplete.",
+                        exception_info=outcome.exception_info,
                     )
-
-        return all_issues
+                )
+            outcomes.append(outcome)
+        return outcomes
 
     def _execute_pushdown_validators(
         self,
@@ -285,48 +347,10 @@ class PushdownValidationEngine:
         table: str,
         columns: list[str],
     ) -> list[ValidationIssue]:
-        """Execute pushdown-capable validators."""
-        all_issues: list[ValidationIssue] = []
-
-        # Get total row count (needed for ratio calculations)
-        total_rows = self.datasource.row_count or 0
-
-        for validator in validators:
-            if not isinstance(validator, PushdownCapable):
-                continue
-
-            try:
-                # Generate queries
-                queries = validator.get_pushdown_queries(
-                    table,
-                    columns,
-                    self._dialect,
-                )
-
-                if not queries:
-                    continue
-
-                # Execute queries
-                results = self._execute_queries(queries, total_rows)
-
-                # Process results
-                issues = validator.process_pushdown_results(results)
-                all_issues.extend(issues)
-
-            except Exception as e:
-                import logging
-                logging.getLogger("truthound.pushdown").warning(
-                    f"Pushdown failed for {validator.name}, falling back: {e}"
-                )
-                # Fallback to client-side
-                try:
-                    lf = self.datasource.to_polars_lazyframe()
-                    issues = validator.validate(lf)
-                    all_issues.extend(issues)
-                except Exception:
-                    pass
-
-        return all_issues
+        """Compatibility helper sharing the complete failure-preserving path."""
+        if table != self.datasource.full_table_name:
+            raise ValueError("Pushdown table must match the bound datasource")
+        return self.validate(validators, columns)
 
     def _execute_queries(
         self,

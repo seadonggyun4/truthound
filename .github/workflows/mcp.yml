@@ -1,9 +1,9 @@
 name: MCP distribution
 on:
   pull_request:
-    paths: ["src/**", "tests/test_mcp*.py", "tests/test_polars_dependency_contract.py", "tests/fixtures/mcp_*.py", "tests/conftest.py", "conftest.py", "pytest.ini", "setup.cfg", ".python-version", "verification/mcp*.py", "verification/schemas/**", "server.json", "README.md", "README.en.md", "pyproject.toml", "uv.lock", ".github/workflows/mcp.yml", ".github/workflows/release-pypi.yml"]
+    paths: ["src/**", "tests/test_mcp*.py", "tests/mcp_*.py", "tests/test_core_*.py", "tests/test_reference_cache.py", "tests/test_validators_drift.py", "tests/unit/validators/test_pushdown_support.py", "tests/test_polars_dependency_contract.py", "tests/fixtures/mcp_*.py", "tests/conftest.py", "conftest.py", "pytest.ini", "setup.cfg", ".python-version", "verification/mcp*.py", "verification/schemas/**", "server.json", "README.md", "README.en.md", "pyproject.toml", "uv.lock", ".github/workflows/mcp.yml", ".github/workflows/release-pypi.yml"]
   push:
-    paths: ["src/**", "tests/test_mcp*.py", "tests/test_polars_dependency_contract.py", "tests/fixtures/mcp_*.py", "tests/conftest.py", "conftest.py", "pytest.ini", "setup.cfg", ".python-version", "verification/mcp*.py", "verification/schemas/**", "server.json", "README.md", "README.en.md", "pyproject.toml", "uv.lock", ".github/workflows/mcp.yml", ".github/workflows/release-pypi.yml"]
+    paths: ["src/**", "tests/test_mcp*.py", "tests/mcp_*.py", "tests/test_core_*.py", "tests/test_reference_cache.py", "tests/test_validators_drift.py", "tests/unit/validators/test_pushdown_support.py", "tests/test_polars_dependency_contract.py", "tests/fixtures/mcp_*.py", "tests/conftest.py", "conftest.py", "pytest.ini", "setup.cfg", ".python-version", "verification/mcp*.py", "verification/schemas/**", "server.json", "README.md", "README.en.md", "pyproject.toml", "uv.lock", ".github/workflows/mcp.yml", ".github/workflows/release-pypi.yml"]
   workflow_dispatch:
 permissions:
   contents: read
@@ -32,6 +32,7 @@ jobs:
           node-version: "22"
       - run: npx --yes @anthropic-ai/mcpb@2.1.2 validate dist/mcp/extension/manifest.json
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: truthound-mcp-${{ matrix.os }}-${{ matrix.python }}
           path: |
@@ -41,3 +42,4 @@ jobs:
             dist/mcp/SHA256SUMS
             dist/mcp/runtime-proofs.json
             test-artifacts/mcp.xml
+            test-artifacts/mcp.sources.json

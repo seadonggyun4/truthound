@@ -15,20 +15,20 @@ from truthound.core.execution_modes import (
     normalize_planned_execution_mode,
     normalize_runtime_execution_mode,
 )
-from truthound.types import ResultFormat, Severity
-from truthound.validators.base import ValidationIssue
+from truthound.types import ResultFormat, Severity, ValidationDetail
+from truthound.validators.base import ExceptionInfo, ValidationIssue
 
 
 def _get_reporter(name: str, **kwargs: Any) -> Any:
     """Load the reporter registry lazily from the outer adapter layer."""
 
-    return import_module('truthound.reporters').get_reporter(name, **kwargs)
+    return import_module("truthound.reporters").get_reporter(name, **kwargs)
 
 
 def _generate_validation_report(run_result: ValidationRunResult, **kwargs: Any) -> str:
     """Load validation docs generation lazily from the outer adapter layer."""
 
-    return import_module('truthound.datadocs').generate_validation_report(run_result, **kwargs)
+    return import_module("truthound.datadocs").generate_validation_report(run_result, **kwargs)
 
 
 @dataclass(frozen=True)
@@ -41,28 +41,28 @@ class ExecutionIssue:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            'check_name': self.check_name,
-            'message': self.message,
-            'exception_type': self.exception_type,
-            'failure_category': self.failure_category,
-            'retry_count': self.retry_count,
+            "check_name": self.check_name,
+            "message": self.message,
+            "exception_type": self.exception_type,
+            "failure_category": self.failure_category,
+            "retry_count": self.retry_count,
         }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ExecutionIssue:
         return cls(
-            check_name=str(data.get('check_name', '')),
-            message=str(data.get('message', '')),
-            exception_type=data.get('exception_type'),
-            failure_category=data.get('failure_category'),
-            retry_count=int(data.get('retry_count', 0)),
+            check_name=str(data.get("check_name", "")),
+            message=str(data.get("message", "")),
+            exception_type=data.get("exception_type"),
+            failure_category=data.get("failure_category"),
+            retry_count=int(data.get("retry_count", 0)),
         )
 
 
 @dataclass(frozen=True)
 class CheckResult:
     name: str
-    category: str = 'general'
+    category: str = "general"
     success: bool = True
     issue_count: int = 0
     issues: tuple[ValidationIssue, ...] = field(default_factory=tuple)
@@ -70,24 +70,24 @@ class CheckResult:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            'name': self.name,
-            'category': self.category,
-            'success': self.success,
-            'issue_count': self.issue_count,
-            'issues': [issue.to_dict() for issue in self.issues],
-            'metadata': self.metadata,
+            "name": self.name,
+            "category": self.category,
+            "success": self.success,
+            "issue_count": self.issue_count,
+            "issues": [issue.to_dict() for issue in self.issues],
+            "metadata": self.metadata,
         }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> CheckResult:
-        issues = tuple(_validation_issue_from_dict(issue) for issue in data.get('issues', []))
+        issues = tuple(_validation_issue_from_dict(issue) for issue in data.get("issues", []))
         return cls(
-            name=str(data.get('name', '')),
-            category=str(data.get('category', 'general')),
-            success=bool(data.get('success', False)),
-            issue_count=int(data.get('issue_count', len(issues))),
+            name=str(data.get("name", "")),
+            category=str(data.get("category", "general")),
+            success=bool(data.get("success", False)),
+            issue_count=int(data.get("issue_count", len(issues))),
             issues=issues,
-            metadata=dict(data.get('metadata', {})),
+            metadata=dict(data.get("metadata", {})),
         )
 
 
@@ -97,7 +97,9 @@ class ValidationRunResult:
     source: str
     row_count: int
     column_count: int
-    run_id: str = field(default_factory=lambda: f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid4().hex[:8]}")
+    run_id: str = field(
+        default_factory=lambda: f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid4().hex[:8]}"
+    )
     run_time: datetime = field(default_factory=datetime.now)
     result_format: ResultFormat = ResultFormat.SUMMARY
     execution_mode: str = RuntimeExecutionMode.SEQUENTIAL.value
@@ -128,6 +130,7 @@ class ValidationRunResult:
         planned_execution_mode: str | None = None,
         execution_issues: list[ExecutionIssue] | None = None,
         metadata: dict[str, Any] | None = None,
+        check_results: tuple[CheckResult, ...] | None = None,
     ) -> ValidationRunResult:
         by_check: dict[str, list[ValidationIssue]] = {}
         for issue in issues:
@@ -135,6 +138,7 @@ class ValidationRunResult:
             by_check.setdefault(check_name, []).append(issue)
 
         checks: list[CheckResult] = []
+        incomplete_checks = {item.check_name for item in execution_issues or ()}
         known_checks: set[str] = set()
         for spec in suite.checks:
             spec_issues = tuple(by_check.get(spec.name, []))
@@ -142,7 +146,7 @@ class ValidationRunResult:
                 CheckResult(
                     name=spec.name,
                     category=spec.category,
-                    success=len(spec_issues) == 0,
+                    success=len(spec_issues) == 0 and spec.name not in incomplete_checks,
                     issue_count=len(spec_issues),
                     issues=spec_issues,
                     metadata=dict(spec.metadata),
@@ -161,6 +165,16 @@ class ValidationRunResult:
                     issues=tuple(extra_issues),
                 )
             )
+
+        if check_results is not None:
+            if len(check_results) != len(suite.checks) or any(
+                result.name != spec.name or result.category != spec.category
+                for result, spec in zip(check_results, suite.checks, strict=True)
+            ):
+                raise ValueError("Execution outcomes do not match the planned suite")
+            # The runtime knows instance identity; grouping flattened issues by
+            # registry/display names cannot distinguish repeated algorithms.
+            checks = list(check_results)
 
         return cls(
             run_id=f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid4().hex[:8]}",
@@ -186,8 +200,10 @@ class ValidationRunResult:
     def has_failures(self) -> bool:
         # A redacted/summary-only result can retain a genuine failed check
         # without its issue details. Do not turn that failure into success.
-        return self.has_issues or bool(self.execution_issues) or any(
-            not check.success for check in self.checks
+        return (
+            self.has_issues
+            or bool(self.execution_issues)
+            or any(not check.success for check in self.checks)
         )
 
     @property
@@ -195,18 +211,18 @@ class ValidationRunResult:
         return not self.has_failures
 
     def filter_by_severity(self, min_severity: Severity) -> ValidationRunResult:
-        filtered_issues = tuple(
-            issue for issue in self.issues if issue.severity >= min_severity
-        )
+        incomplete_checks = {item.check_name for item in self.execution_issues}
+        filtered_issues = tuple(issue for issue in self.issues if issue.severity >= min_severity)
         filtered_checks = tuple(
             CheckResult(
                 name=check.name,
                 category=check.category,
-                success=not any(issue.severity >= min_severity for issue in check.issues),
+                success=not check.metadata.get(
+                    "_truthound_execution_incomplete", check.name in incomplete_checks
+                )
+                and not any(issue.severity >= min_severity for issue in check.issues),
                 issue_count=sum(1 for issue in check.issues if issue.severity >= min_severity),
-                issues=tuple(
-                    issue for issue in check.issues if issue.severity >= min_severity
-                ),
+                issues=tuple(issue for issue in check.issues if issue.severity >= min_severity),
                 metadata=dict(check.metadata),
             )
             for check in self.checks
@@ -249,25 +265,25 @@ class ValidationRunResult:
 
     def to_dict(self) -> dict[str, Any]:
         return {
-            'run_id': self.run_id,
-            'run_time': self.run_time.isoformat(),
-            'suite_name': self.suite_name,
-            'source': self.source,
-            'row_count': self.row_count,
-            'column_count': self.column_count,
-            'result_format': self.result_format.value,
-            'execution_mode': self.execution_mode,
-            'planned_execution_mode': self.planned_execution_mode,
-            'checks': [check.to_dict() for check in self.checks],
-            'issues': [issue.to_dict() for issue in self.issues],
-            'execution_issues': [issue.to_dict() for issue in self.execution_issues],
-            'metadata': self.metadata,
+            "run_id": self.run_id,
+            "run_time": self.run_time.isoformat(),
+            "suite_name": self.suite_name,
+            "source": self.source,
+            "row_count": self.row_count,
+            "column_count": self.column_count,
+            "result_format": self.result_format.value,
+            "execution_mode": self.execution_mode,
+            "planned_execution_mode": self.planned_execution_mode,
+            "checks": [check.to_dict() for check in self.checks],
+            "issues": [issue.to_dict() for issue in self.issues],
+            "execution_issues": [issue.to_dict() for issue in self.execution_issues],
+            "metadata": self.metadata,
         }
 
     def to_json(self, indent: int = 2) -> str:
         return json.dumps(self.to_dict(), indent=indent, default=str)
 
-    def render(self, format: str = 'console', **kwargs: Any) -> str:
+    def render(self, format: str = "console", **kwargs: Any) -> str:
         reporter = _get_reporter(format, **kwargs)
         return reporter.render(self)
 
@@ -282,55 +298,65 @@ class ValidationRunResult:
         if resolved_format is None and path:
             suffix = Path(path).suffix.lower()
             resolved_format = {
-                '.json': 'json',
-                '.html': 'html',
-                '.htm': 'html',
-                '.md': 'markdown',
-                '.markdown': 'markdown',
-                '.txt': 'console',
-            }.get(suffix, 'json')
-        reporter = _get_reporter(resolved_format or 'json', **kwargs)
+                ".json": "json",
+                ".html": "html",
+                ".htm": "html",
+                ".md": "markdown",
+                ".markdown": "markdown",
+                ".txt": "console",
+            }.get(suffix, "json")
+        reporter = _get_reporter(resolved_format or "json", **kwargs)
         return reporter.write(self, path)
 
     def build_docs(self, **kwargs: Any) -> str:
         return _generate_validation_report(self, **kwargs)
 
-    def print(self, format: str = 'console', **kwargs: Any) -> None:
+    def print(self, format: str = "console", **kwargs: Any) -> None:
         output = self.render(format=format, **kwargs)
         print(output)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ValidationRunResult:
         return cls(
-            run_id=str(data.get('run_id', '')),
-            run_time=datetime.fromisoformat(data['run_time']) if data.get('run_time') else datetime.now(),
-            suite_name=str(data.get('suite_name', '')),
-            source=str(data.get('source', '')),
-            row_count=int(data.get('row_count', 0)),
-            column_count=int(data.get('column_count', 0)),
-            result_format=ResultFormat(str(data.get('result_format', ResultFormat.SUMMARY.value))),
-            execution_mode=str(data.get('execution_mode', 'sequential')),
-            planned_execution_mode=data.get('planned_execution_mode'),
-            checks=tuple(CheckResult.from_dict(check) for check in data.get('checks', [])),
-            issues=tuple(_validation_issue_from_dict(issue) for issue in data.get('issues', [])),
+            run_id=str(data.get("run_id", "")),
+            run_time=datetime.fromisoformat(data["run_time"])
+            if data.get("run_time")
+            else datetime.now(),
+            suite_name=str(data.get("suite_name", "")),
+            source=str(data.get("source", "")),
+            row_count=int(data.get("row_count", 0)),
+            column_count=int(data.get("column_count", 0)),
+            result_format=ResultFormat(str(data.get("result_format", ResultFormat.SUMMARY.value))),
+            execution_mode=str(data.get("execution_mode", "sequential")),
+            planned_execution_mode=data.get("planned_execution_mode"),
+            checks=tuple(CheckResult.from_dict(check) for check in data.get("checks", [])),
+            issues=tuple(_validation_issue_from_dict(issue) for issue in data.get("issues", [])),
             execution_issues=tuple(
-                ExecutionIssue.from_dict(issue) for issue in data.get('execution_issues', [])
+                ExecutionIssue.from_dict(issue) for issue in data.get("execution_issues", [])
             ),
-            metadata=dict(data.get('metadata', {})),
+            metadata=dict(data.get("metadata", {})),
         )
 
 
 def _validation_issue_from_dict(data: dict[str, Any]) -> ValidationIssue:
-    severity = data.get('severity', Severity.LOW.value)
+    severity = data.get("severity", Severity.LOW.value)
     return ValidationIssue(
-        column=str(data.get('column', '_table_')),
-        issue_type=str(data.get('issue_type', 'unknown_issue')),
-        count=int(data.get('count', 0)),
+        column=str(data.get("column", "_table_")),
+        issue_type=str(data.get("issue_type", "unknown_issue")),
+        count=int(data.get("count", 0)),
         severity=Severity(str(severity).lower()),
-        details=data.get('details'),
-        expected=data.get('expected'),
-        actual=data.get('actual'),
-        sample_values=list(data.get('sample_values', [])) or None,
-        validator_name=data.get('validator_name'),
-        success=bool(data.get('success', False)),
+        details=data.get("details"),
+        expected=data.get("expected"),
+        actual=data.get("actual"),
+        sample_values=list(data["sample_values"])
+        if data.get("sample_values") is not None
+        else None,
+        validator_name=data.get("validator_name"),
+        success=bool(data.get("success", False)),
+        result=ValidationDetail.from_dict(data["result"])
+        if data.get("result") is not None
+        else None,
+        exception_info=ExceptionInfo.from_dict(data["exception_info"])
+        if data.get("exception_info") is not None
+        else None,
     )

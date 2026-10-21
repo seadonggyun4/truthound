@@ -42,7 +42,7 @@ POSIX의 `bin/truthound-mcp` 대신 설치 환경의 `Scripts/truthound-mcp.exe`
 
 ## 도구와 결과
 
-도구는 `path` 문자열 하나를 받습니다. `.csv`, `.parquet`, `.json`,
+기본 도구 세 개는 `path` 문자열 하나를 받습니다. `.csv`, `.parquet`, `.json`,
 `.ndjson`, `.jsonl`을 지원하며 마지막 두 형식은 줄 단위 JSON입니다.
 
 | 도구 | 기존 Core API | 반환 요약 |
@@ -88,6 +88,475 @@ timeout은 파일 복사 시간을 포함하지 않습니다. 압축 파일은 �
 원본 행·표본값·최솟값·최댓값·패턴 예시·파일 경로·내부 진단은 반환하지 않습니다.
 컬럼명과 집계값도 민감할 수 있으며 에이전트가 모델 제공자에 전달할 수 있습니다.
 반환 메타데이터는 명령이 아닌 신뢰하지 않는 데이터로 취급해야 합니다.
+
+## Core 프로파일: 아직 배포하지 않은 소스 기능
+
+현재 소스에는 선택형 `core` 프로파일이 추가됩니다. **이미 게시된 3.2.0 wheel,
+Registry 등록 정보, 버전이 고정된 마켓플레이스 플러그인에는 포함되지 않습니다.**
+수정한 소스를 별도 환경에 빌드·설치한 뒤 사용해야 합니다. 기본 프로파일의 기존
+도구 세 개와 버전 1 응답 계약은 바꾸지 않습니다.
+
+```bash
+truthound-mcp serve --allow-dir /absolute/path/to/data --profile core
+```
+
+다음 여덟 파일·조회 도구는 최초 호환 계약을 유지합니다. 보관 데이터용 추가
+도구는 아래에서 설명하며 각 입력·출력은 명시적인 형식으로 검사합니다.
+임의 Python 가져오기 경로, SQL, 셸 명령, 콜백이나 임의 키워드 인수는 받지 않습니다.
+
+| 도구 | 기존 기능 연결과 동작 |
+| --- | --- |
+| `capabilities_list` | 현재 설치된 기능 목록·사용 가능 상태·제약의 페이지 조회 |
+| `capability_describe` | 한 기능의 정확한 입력·출력 스키마와 효과 조회 |
+| `validation_check` | 자동 검증 묶음 또는 명시적인 검증 규칙, 인라인 스키마와 실행 옵션 |
+| `schema_learn` | 제약 추론 여부와 범주형 임계값을 지정하는 스키마 학습 |
+| `data_read` | 기존 읽기 API의 표본 선택과 크기가 제한된 원본 행 페이지 |
+| `data_mask` | 컬럼 선택, 가림·해시·가짜값 전략, 없는 컬럼의 엄격한 오류 처리 |
+| `data_profile` | 기존 프로파일의 요약 또는 전체 통계 |
+| `privacy_scan` | 기존 개인정보 검사의 요약 또는 전체 발견 정보, 추정 건수 유지 |
+
+예를 들어 범위 검증 도구에는 다음 입력을 전달합니다.
+
+```json
+{
+  "path": "example.csv",
+  "checks": [{"validator": "between", "columns": ["age"], "min_value": 0, "max_value": 120}],
+  "result_format": "summary",
+  "evidence": "summary"
+}
+```
+
+`checks`를 생략하면 Core 자동 검증 묶음을 사용합니다. 빈 배열은 검사 성공으로
+취급하지 않고 거부합니다. 명시적인 식별자는 `null`, `not_null`, `unique`,
+`duplicate`, `between`, `length`입니다. 인라인 `schema_spec`은 컬럼명을 키로
+사용하며 각 항목의 `name`, `dtype`이 있어야 합니다. 키와 이름이 다른 경우나
+알 수 없는 필드, 아직 검토하지 않은 정규식 패턴은 거부합니다. 정확한 입력 형식은
+기능 설명 조회 도구로 확인합니다. 병렬 실행과 최대 worker 수, pushdown, 최소
+심각도, 자동 스키마, 결과 형식, 예외 처리 여부, 재시도 수와 제외 컬럼을 전달합니다.
+context는 명시적으로 일시적인 것이며 영구 프로젝트 context를 대신하지 않습니다.
+자동 검증에 필요한 기준 스키마는 소유한 임시 작업공간에서 생성한 뒤 회수하며,
+안전한 요약처럼 보이게 하려고 기준 학습 자체를 끄지 않습니다.
+실제 계획·재시도·심각도 필터링은 Core가 수행합니다. 현재 병렬 실행 결과의 단계별
+오류·건너뜀 집계가 충분하지 않아 품질을 통과로 추정하지 않고 `unknown`으로 표시합니다.
+자동 검증 묶음도 대상별 실행 증거가 부족하므로 품질을 미확인으로 표시합니다.
+명시적인 규칙이라도 컬럼이 없거나 제외됐거나 자료형이 맞지 않아 적용되지 않았다면
+이슈가 없다는 이유로 통과시키지 않습니다. 적용 대상을 확인한 명시적 규칙은 실제
+결과에 따라 통과 또는 실패를 반환합니다.
+
+원본 행, 학습한 값 제약, `evidence="full"` 상세 결과는 폴더 권한 외에 운영자의
+추가 허용이 필요합니다. 운영자가 `--profile core --allow-sensitive-results`로
+재시작해야 하며 허용 전에는 파일을 읽기 전에 `approval_required`를 반환합니다.
+모델이 도구 인수에 `approved: true`를 넣어도 승인되지 않습니다. 이 시작 옵션은
+허용된 모든 파일의 민감한 값·상세 증거를 에이전트와 모델 문맥에 노출할 수 있도록
+허용하므로 좁고 신뢰할 수 있는 폴더에만 사용해야 합니다. 일부 컬럼을 마스킹해도
+나머지 컬럼이 안전해지는 것은 아닙니다. 원본 파일에 덮어쓰거나 외부로 내보내지 않습니다.
+
+새 응답은 실행 상태와 데이터 품질 상태를 분리하고 형식이 지정된 데이터·오류·검사
+범위·출처 정보를 제공합니다. 품질 위반 자체는 도구 실행 오류가 아닙니다. 실행 오류,
+검사 없음, 불완전한 집계를 통과로 표시하지 않습니다. 실제 임시 복사본 바이트의
+세션별 비밀키에 연결된 불투명 식별자를 기록하고, 콘텐츠 SHA-256은 운영자가 민감한
+결과를 허용한 경우에만 공개합니다. 경로명이나 파일 상태만으로 식별하지 않습니다. 전체 상세
+결과는 `tagged-v1` 표현입니다. 객체는 `{"$type":"object","entries":{...}}`로
+감싸고 소수·날짜·시간·바이너리·유한하지 않은 실수에는 명시적인 태그를 붙입니다.
+지원하지 않는 객체를 문자열로 바꾸지 않고 오류로 처리합니다.
+JavaScript의 정확한 정수 범위를 넘는 값에는 십진 문자열 태그를 사용합니다. 원본 행으로
+변환할 때 정밀도가 손실될 수 있는 나노초 날짜·기간과 시각 컬럼은 중첩 컬럼까지
+검사해 오류로 처리하며 조용히 반올림하지 않습니다. 허용한 상세 결과에는
+원본 값과 임시 파일·context 경로가 포함될 수 있습니다. 기존 요약 도구는 민감한
+결과를 허용해도 계속 값을 가립니다.
+
+원본 읽기와 마스킹은 `offset`, `limit`으로 페이지를 지정합니다. 기본 50행,
+최대 100행이며 운영자의 상세 항목 제한보다 커질 수 없습니다. 요청마다 별도
+복사본을 사용하므로 여러 페이지를 합칠 때는 출처 해시가 같은지 비교해야 합니다.
+무작위 표본과 가짜값 마스킹은 결과가 달라질 수 있어 후속 페이지를 제공하지 않고
+0이 아닌 시작 위치도 거부합니다. 안정적인 핸들은 아래의 보관 데이터 도구를 사용합니다.
+전체 결과가 응답 크기 제한보다 크면 오류를 반환하며 일부를 자르고 전체 결과라고
+표시하지 않습니다. 기존 파일·시간·동시 실행 제한과 메모리 한계는 그대로 적용됩니다.
+
+### 보관 데이터·검증기 설정·산출물
+
+같은 선택형 프로파일에서 다음 기능도 제공합니다.
+
+| 도구 | Core 연결과 동작 |
+| --- | --- |
+| `validators_list`, `validators_describe` | 실제 등록 검증기 목록·상속 설정·값 표현 규칙·고정된 소스 구문 트리 식별자 |
+| `assets_capture`, `assets_inline` | 파일 또는 형식을 지정한 메모리 테이블의 변경 불가 Arrow 스냅샷 |
+| `assets_sqlite` | 일관된 비공개 백업을 통해 Core SQLite 데이터소스로 테이블 읽기 |
+| `sources_open_sqlite` | 자원 한도에 포함되는 비공개 백업 위의 실제 상주 SQLite 데이터소스와 SQL 엔진 |
+| `sources_open_duckdb` | WAL 없는 크기 제한 비공개 복사본 위의 네이티브 DuckDB SQL 소스·읽기 전용 물리 테이블·외부 접근과 확장 차단 |
+| `streams_open`, `streams_next`, `streams_inspect` | 네이티브 CSV·JSONL·Parquet·Arrow 파일 스트림 커서·전체 배치·읽기 상태 |
+| `assets_validate` | 검증기별 설정·참조 테이블·보관 스키마를 사용한 Core 검증과 정식 결과 산출물 |
+| `assets_page`, `assets_sample`, `assets_mask` | 안정적인 무손실 행 페이지·시드 지정 Core 표본·마스킹 |
+| `assets_profile`, `assets_scan` | 전체 Core 프로파일·개인정보 검사 결과의 비공개 보관 |
+| `schemas_learn`, `schemas_create`, `schemas_inspect`, `schemas_export` | 학습·명시적 스키마와 승인된 조회·소유 JSON 및 원래 YAML 내보내기 |
+| `profilers_catalog`, `profilers_profile` | 고급 프로파일 전체 설정·컬럼 및 테이블 분석기·타입 추론기 |
+| `artifacts_export`, `artifacts_read` | 소유한 IPC·Parquet·CSV·JSON·NDJSON 산출물과 크기 제한 바이트 읽기 |
+| `artifacts_render`, `artifacts_datadocs` | 정식 결과 재진입, JSON·Markdown·콘솔·HTML 리포터와 영·한 검증 Data Docs |
+| `resources_describe`, `resources_release` | 세션 소유권·만료·무결성·현재 권한 확인과 파생 핸들 회수 |
+| `contexts_open`, `contexts_inspect`, `contexts_initialize`, `plans_status` | 별도 작업공간 권한에 따른 설정 조회·승인된 초기화·실행 의도 상태 |
+| `suites_create`, `suites_inspect`, `suites_validate` | 고유 검사 ID·스키마 핸들·태그·메타데이터·증거 및 심각도 정책을 가진 실제 커널 suite |
+| `contexts_execute` | 승인된 소스 추적·기준 스키마·적용 suite·결과 및 문서 저장·메트릭·작업공간 목록 조회 |
+| `sources_open_polars`, `sources_inspect`, `sources_sample` | 실제 상주 Polars 데이터소스·전체 네이티브 설정 및 메타데이터·Core 표본 추출 |
+| `sources_validate_connection`, `sources_validate_columns`, `sources_check_size_limits`, `sources_validate` | 실제 연결·필수 열·크기 검사와 Core의 `source=` 실행 경로를 통한 검증 |
+| `drift_compare` | 모든 공개 비교 메서드와 인수를 전달한 Core 데이터셋 비교 보고서 |
+| `drift_catalog`, `drift_detect` | 구체 드리프트 탐지기 13종의 전체 생성자 설정과 두 Series 컬럼 비교 |
+| `lineage_catalog`, `lineage_create`, `lineage_edit`, `lineage_query` | 네이티브 그래프 설정·불변 파생 편집·탐색 |
+| `lineage_impact`, `lineage_critical_paths`, `lineage_what_if_delete`, `lineage_schema_impact`, `lineage_dependency_chain` | 실제 Core 영향·의존성 분석 결과 보관 |
+| `models_catalog`, `models_create`, `models_inspect` | 구체 ML 알고리즘 12종의 설정과 상주 수명주기 상태 |
+| `models_fit`, `models_partial_fit`, `models_fit_predict`, `models_predict`, `models_score` | 기본 학습·지원되는 온라인 학습·학습과 예측·예측·이상 점수 |
+| `models_detect`, `models_learn_rules`, `models_rules`, `models_diagnostics` | 두 입력의 ML 드리프트·규칙 학습·원래 모델 진단의 산출물 보관 |
+
+파일 보관 후 받은 `data.resource_id`를 후속 도구의 `asset_id`로 전달합니다.
+커널 suite는 같은 알고리즘·표시 이름을 반복해도 실제 검사 인스턴스를 구분합니다.
+검사 메타데이터의 `_truthound_check_id`와 `_truthound_execution_incomplete`는
+런타임 예약 필드이므로 사용자 메타데이터가 덮어쓸 수 없습니다. suite 증거 정책은
+결과의 형식 표시에만 쓰지 않고 실제 검증기에 적용하며 factory의 보관 객체를
+변경하지 않습니다. 심각도 필터는 실제 실행 실패·의존성 스킵을 성공으로 바꾸지 않습니다.
+SQL fallback 실패나 쿼리 결과 누락·불일치도 빈 성공으로 처리하지 않습니다.
+정식 결과 재진입은 구조화된 상세·실패 행 레코드·예외 및 재시도 증거를 보존합니다.
+단, 네이티브 행 레코드 직렬화에는 원래 DataFrame의 물리적 dtype 스키마가 없으므로
+그 정보는 보관된 타입 지정 자산을 사용해야 합니다.
+
+`sources_open_polars`는 `asset_id`와 선택적 전체 `PolarsDataSourceConfig`인
+`config`를 받아 실제 상주 데이터소스를 엽니다. 반환 ID를 `source_id`로 사용합니다.
+`sources_validate`는 `asset_id`를 바꾸는 대신 실제 네이티브 객체를 Core의 `source=`로
+전달합니다. 연결 검사 결과가 거짓이면 `connected=false`로 남고 크기 제한 예외는
+실패입니다. 표본 추출은 새 상주 연결이 아닌 보관 Arrow 자산을 반환합니다.
+입력·소스 회수 시 파생 자원과 소유 worker도 회수하고 정상 종료는 원래 context manager의
+정리를 실행합니다. timeout·EOF·프로토콜 오류에서는 해당 소유 프로세스만 무효화합니다.
+소스 핸들 해시는 설정의 식별자이지 별도 데이터셋 스냅샷 해시는 아닙니다.
+
+`sources_open_sqlite`는 `path`, 리터럴 `table`명과 선택적 `config`를 받습니다.
+DataFrame 대체물이 아니라 일관된 비공개 백업 위의 실제 `SQLiteDataSource`를 엽니다.
+SQL·기본 설정을 전달하지만 `database`는 해당 백업에 고정하여 호출자가 URI를 바꿀 수
+없습니다. 백업은 파일·세션 크기 한도에 포함되며 그 해시는 실제 DB 바이트를 식별합니다.
+rollback journal DB와 실제 테이블만 받으며 WAL·뷰·모델이 작성한 SQL은 거부합니다.
+소스를 회수하면 소유 백업도 회수합니다. `assets_sqlite`는 별도의 메모리 변환 도구입니다.
+다른 SQL·클라우드·NoSQL·비동기 제공자의 동등성까지 증명하는 것은 아니며 네이티브
+설정은 운영체제 sandbox가 아닙니다.
+
+`sources_open_duckdb`는 `path`, 물리적 `table` 이름, 선택적 `config`를 받습니다.
+네이티브 기본·SQL·DuckDB 설정을 전달하되 `database`는 비공개 복사본에,
+`read_only`는 참으로 고정합니다. 이 미배포 체크아웃에서
+`pip install '.[mcp,duckdb]' 'duckdb>=1.4,<2'`로 설치합니다. 안정 버전
+DuckDB 1.4 이상·2 미만이 필요하며 구버전·사전 배포판은 `unsupported_dependency`입니다.
+Core의 실제 SQL 엔진과 표본 추출을 사용하며 메모리 DataFrame 엔진으로 대체하지 않습니다.
+WAL·뷰·임의 SQL은 거부하며 복사 도중 파일 상태나 WAL이 변하면 게시하지 않습니다.
+[DuckDB 보안 지침](https://duckdb.org/docs/current/operations_manual/securing_duckdb/overview)에 따라
+외부 파일 읽기, 확장 자동 설치·로딩, 커뮤니티·미서명 확장을 차단하고 설정을 잠급니다.
+스레드는 기본 1·명시 시 최대 16이며 메모리는 `memory_limit`이 없으면
+`max_memory_mb`를 MB 단위로 적용합니다. 연결 제어이지 OS sandbox나 전체 프로세스
+메모리 제한을 뜻하지 않습니다. `unsupported_table`·잘못된 DB·한도·취소 실패에서
+사용 가능한 소스를 게시하지 않습니다. 회수 시 소유 worker와 복사본만 정리하며
+원본은 삭제하거나 수정하지 않습니다.
+
+`streams_open`은 경로와 형식별 폐쇄형 `source`를 받습니다.
+
+```json
+{"path":"/approved/data.csv","source":{"format":"csv","config":{"chunk_size":1000,"columns":["age"],"skip_rows":0,"max_rows":10000,"separator":",","has_header":true}}}
+```
+
+형식은 `csv`, `jsonl`, `parquet`, `arrow`입니다. 공통 설정은 `chunk_size`, `columns`,
+`skip_rows`, `max_rows`이며 Parquet·Arrow는 `use_mmap`, CSV는 `separator`,
+`has_header`도 받습니다. CSV의 `skip_rows`는 네이티브 구현 그대로 헤더 앞의 물리적
+행을 건너뜁니다. Arrow는 PyArrow가 필요합니다. 반환 자원 ID를 `streams_inspect`와
+`streams_next`의 `stream_id`로 전달하며 진행마다 `idempotency_key`가 필요합니다.
+배치는 `{artifact: <Arrow 자산 메타데이터>, exhausted: false}`, 종료는
+`{artifact: null, exhausted: true}`를 반환합니다. 배치 ID를 `assets_validate` 등에
+전달합니다. **배치 단위** 검사이지 전역 고유성·배치 간 window·Kafka offset·연속
+실시간 검증이 아닙니다. 네이티브 배치 경계를 임의로 다시 나누지 않습니다.
+같은 키의 재요청은 같은 배치를 재생하고 커서를 다시 진행하지 않습니다. 세션별 receipt는
+`max_items`로 제한되며 서버 재시작 후 유지되는 영속 커서가 아닙니다. 진행 결과가
+불확실하면 worker를 무효화하며 추정 위치에서 재시도하지 않습니다. 스트림 회수 시
+입력 스냅샷과 배치도 회수합니다. 로컬 파일 스트림은 Kafka·Kinesis·PubSub 실계정이나
+전체 realtime 동등성의 증거가 아닙니다.
+
+예를 들어 보관 검증 입력은 다음과 같습니다. 예시 문자열 대신 실제 반환된 식별자를 사용합니다.
+
+```json
+{
+  "asset_id": "asset_<returned-session-token>",
+  "checks": [{"validator": "between", "settings": {"columns": ["age"], "min_value": 0, "max_value": 120}}]
+}
+```
+
+검증기 설명은 실제 등록된 구체 검증기 254개의 생성자와 상속된 `ValidatorConfig`,
+캐시·알고리즘별 설정을 보여줍니다. 알 수 없는 설정을 Core가 조용히 버리게 하지 않고
+전송 경계에서 거부합니다. **이 목록은 254종 전체의 동등성 검증 통과 증거가 아닙니다.**
+생성자 거부·네이티브 실행 오류·알고리즘 내부에서 잡힌 예외는 별도로 집계합니다.
+잘못된 생성자 설정은 원문 없이 `validator_configuration_error`를 반환합니다.
+승인된 신뢰 코드가 이미 시작된 뒤의 실패는 `outcome_unknown`을 유지하고 자동 재실행을
+금지합니다. 선택 의존성 부재도 품질 성공이 아니라 실패입니다. Polygon 연산에는
+`truthound[geospatial,mcp]`가 필요합니다. `column_consistency.rules`는 `when`,
+`then`, 선택적 `description`만 받으며 두 조건은 아래의 제한된 Polars 식을 사용합니다.
+Python 코드를 받지 않습니다.
+
+개발 소스의 Core 수정은 MCP에서도 알고리즘 동작에 반영됩니다. 숫자형 PSI·CSI와
+PSI 기반 feature drift는 기준 히스토그램 범위 밖의 관측치를 버리지 않고 집계합니다.
+PSI의 캐시·비캐시 경로에 같은 꼬리 집계 규칙을 적용하며 임계값은 바꾸지 않습니다.
+상수 기준분포도 빈 히스토그램으로 처리하지 않고 점질량을 보존합니다. 기본 참조 캐시는
+검증기 인스턴스별로 구분하며 같은 기준분포를 인스턴스 간 재사용하려면 버전을 구분한
+`cache_key`를 명시합니다.
+`online_svm`이 사용하는 `validators.memory.SGDOneClassSVM`은 합성 음성 레이블을
+넣는 이진 분류기 대신 scikit-learn의 실제 비지도 SGD one-class 추정기를 사용합니다.
+scaler와 kernel projection은 첫 배치에서 학습한 뒤 고정하며 이후 배치는 추정기를
+갱신합니다. 이전 이진 대체 모델의 예측과 동등하지 않습니다.
+이 구성은 [scikit-learn의 one-class SGD 안내](https://scikit-learn.org/stable/modules/outlier_detection.html#scaling-up-the-one-class-svm)를 따릅니다.
+미배포 소스 변경이며 이미 게시된 3.2.0 파일을 바꾼 것은 아닙니다.
+
+Core의 JSON 스키마 검증기는 선택 라이브러리가 있으면 Draft 7을 사용합니다.
+신뢰하지 않은 스키마 설정으로 외부 참조를 가져오지 않습니다. 전송 경계는 로컬
+포인터·앵커를 따라가며, 원래 리터럴 데이터였던 위치도 참조 대상이 되면 실제 스키마로
+검사합니다. 참조 분석에는 별도의 깊이·노드 예산이 있고, 초과하면 검증을 잘라내지 않고
+실패합니다. 일반 속성명 `id` 등은 데이터로 유지하며, 실행 가능한 정규식·외부 참조
+스키마는 검토된 운영자 바인딩이 필요합니다.
+신뢰하지 않는 SQL·콜백·호출자 파일 경로·제한 없는 정규식은
+`operator_configuration_required`를 반환합니다. 별도 운영자 승인 경계에서 정확한
+검증기 템플릿과 설치된 확장의 네이티브 객체를 연결할 수 있지만 모델의 실행 입력을
+신뢰하게 되는 것은 아닙니다. 인라인 JSON Schema의 `$ref`는
+`#` 내부 참조만 허용하며 파일이나 네트워크를 조회하지 않습니다. 지원하지 않는
+설정을 몰래 대체하지 않습니다.
+
+참조 DataFrame·LazyFrame 인수는 `{"asset_id":"<returned-id>"}` 형식이고,
+참조 테이블 사전은 이러한 값을 이름에 매핑합니다. 각각 권한을 재검사하고 결과의
+부모 핸들로 연결합니다. 문자열 아닌 키를 가진 사전은
+`{"entries":[{"key":1,"value":0.5}]}`로 키 자료형을 보존합니다.
+날짜·날짜시각은 `{"value":"2026-01-01T00:00:00"}` 또는 ISO 날짜,
+기간은 `{"value":1000000}`처럼 정수 마이크로초로 지정합니다. 자료형 설정은
+메모리 테이블의 폐쇄형 `DType` 입력과 같습니다. Polars 식은 제한된 구문 트리로 전달합니다.
+예를 들어 `{"op":"gt","left":{"op":"column","name":"age"},"right":{"op":"literal","value":120}}`입니다.
+컬럼·리터럴, 산술·비교·불리언, null 검사·절댓값, 합계·평균·최솟값·최댓값·개수·고유 개수
+노드를 지원하며 Python 표현식·SQL·직렬화된 실행 식은 받지 않습니다.
+
+파일 보관의 `options`는 `FileDataSourceConfig`의 전체 설정을 전달합니다.
+`options.sample_size`는 데이터소스 설정이고 최상위 `sample_size`는 별도의
+`th.read()` 표본 크기입니다. `.pq`도 허용합니다. SQLite는 허용 폴더의
+`.db`·`.sqlite`·`.sqlite3`와 실제 테이블명이 필요하며 SQL·뷰를 받지 않습니다.
+백업 크기와 Core 메모리 변환 행 수를 제한하고 연결을 회수합니다. 읽기 전용
+WAL 연결도 공유 메모리를 수정할 수 있으므로 WAL 데이터베이스는 거부합니다.
+이 로컬 연결을 다른 SQL·클라우드 제공자나 자격 증명 지원으로 해석하면 안 됩니다.
+
+핸들은 서버 세션에 귀속됩니다. 기본 제한은 128개·전체 1 GiB·수명 900초이며
+`--max-handles`, `--max-session-bytes`, `--handle-ttl-seconds`로 지정합니다.
+파생 핸들은 부모보다 오래 살 수 없고 부모를 회수하면 함께 무효화됩니다.
+접근할 때마다 권한과 바이트 무결성을 확인하며 입력 종료 시 소유 파일을 삭제합니다.
+영속 커서가 아닙니다. 보관 행 페이지는 물리값 태그로 중첩 나노초 시간 자료도 보존합니다.
+신뢰하지 않는 인라인 자료형은 중첩 16단계·값당 고정 스칼라 슬롯 524,288개까지입니다.
+네이티브 할당 전에 모든 행과 실제 중첩 리스트·구조체 원소의 스칼라 슬롯 합계에
+16바이트를 곱해 남은 세션 바이트 예산 안인지 검사합니다. 작은 중첩 배열·null
+선언이 거대한 버퍼를 요구하지 못하게 하는 보수적
+허용 검사이며 운영체제 메모리 샌드박스나 Core 알고리즘 기준 변경이 아닙니다.
+산출물 바이트 읽기는 최대 32 KiB의 base64 페이지·SHA-256·다음 위치를 반환합니다.
+원본 행·스키마·바이트를 읽으려면 `--allow-sensitive-results`가 필요합니다.
+산출물 생성만으로 그 내용이 공개되지는 않습니다. 렌더러는 출력·템플릿 경로를 받지
+않으며 브라우저나 대시보드를 실행하지 않습니다. HTML은 여전히 신뢰하지 않는
+콘텐츠이므로 호스트·브라우저에서 여는 행위는 별도로 판단해야 합니다.
+
+스키마 생성은 `schema_spec`의 명시적인 컬럼 제약과 통계를 보관합니다. 내보내기는
+`resource_id`, `format=json|yaml`을 받으며 기본은 YAML입니다. 에이전트가 지정한
+경로에 쓰지 않고 소유 산출물을 만듭니다. YAML은 실제 Core의 `Schema.save()`를
+사용하며 `Schema.load()`로 다시 읽을 수 있습니다. 인라인 정규식은 받지 않으며
+실행 가능한 스키마 패턴은 검토된 네이티브 검증기 바인딩으로 연결합니다.
+
+고급 프로파일 목록은 `ProfilerConfig`와 기본 구성 요소의 전체 생성자 설정을
+보여줍니다. 프로파일 실행 입력은 `asset_id`, `config`, `options`, 선택적인
+`column_analyzers`, `table_analyzers`, `type_inferrers`, 테이블의 `name`·`source` 표시명입니다.
+구성 요소는 예를 들어 `{"component":"CorrelationAnalyzer","settings":{"threshold":0.8}}`
+처럼 지정합니다. 컬럼 분석기 6종·테이블 분석기 3종·타입 추론기 3종을 연결합니다.
+Core에서 `config`와 상속된 `options`는 별개이므로 합치지 않습니다. 예를 들어
+DataProfiler의 실제 앞부분 표본은 `options.sample_size`가 지정하며
+`config.sample_size`와 독립적입니다. Core에서 사용하지 않는 설정이 알고리즘을
+바꾼다고 주장하지 않습니다. 알 수 없는 설정·임의 가져오기·사용자 정규식 정의는
+거부합니다. 임의 확장 구성·스트리밍 프로파일·생성 규칙 수명주기는 아직 별도 작업입니다.
+
+### 드리프트와 상주 ML 모델
+
+구체 탐지기의 설정은 `drift_catalog`에서 조회합니다. `drift_detect`는 `detector`,
+`settings`, `baseline_id`, `current_id`, `baseline_column`, 선택적인 다른
+`current_column`을 받아 해당 네이티브 탐지기의 `detect()`를 실행합니다. 비교
+퍼사드의 기본값으로 생성자 설정을 대체하지 않습니다.
+
+데이터셋 비교에는 `baseline_id`, `current_id`, 선택적인 `columns`, `threshold`,
+`sample_size`, `method`를 전달합니다. 메서드는 `auto`, `ks`, `psi`, `chi2`, `js`,
+`kl`, `wasserstein`, `cvm`, `anderson`, `hellinger`, `bhattacharyya`, `tv`
+및 그 별칭 `total_variation`, `energy`, `mmd`입니다. 계산과 표본 선택은 Core가
+수행하며 전체 보고서를 보관합니다. 두 스냅샷의 권한을 계속 확인합니다. Core가
+어떤 컬럼에도 적용하지 않은 결과를 MCP 품질 통과로 해석하지 않습니다.
+
+모델 목록은 최대 5종씩 실제 알고리즘명과 전체 설정을 보여줍니다. 모델 생성은
+`algorithm`, `config`를 받으며 앙상블은 중첩 `detectors`도 지정할 수 있습니다.
+ZScore·IQR·MAD·IsolationForest·Ensemble 이상 탐지, Distribution·Feature·Concept·
+Multivariate 드리프트 탐지, DataProfileRuleLearner·ConstraintMiner·PatternRuleLearner를
+연결합니다. 이름은 고정된 목록의 키이며 Python 가져오기 경로가 아닙니다. 모르는
+설정을 ML의 임의 인수로 넘겨 조용히 버리지 않습니다.
+
+생성 결과의 `model_id`와 `revision=0`을 받아 `asset_id`, `expected_revision=0`으로
+학습하면 성공 시 revision 1을 반환합니다. 예측·점수·상태 조회는 현재 revision이
+필요합니다. 규칙 학습·학습과 예측·두 입력 탐지도 revision을 증가시킵니다.
+명시적인 ML 드리프트 탐지는 일반 모델·데이터 입력에 `reference_id`와 선택적인
+`columns`를 추가합니다. 적용할 수 없는 메서드나 지원하지 않는 온라인 학습은
+실패이며 건너뜀이나 몰래 수행한 재학습으로 대체하지 않습니다.
+규칙과 진단 조회는 `model_id`, `expected_revision`이 필요합니다. 진단 산출물은
+원래 설정·정보와 해당 모델이 제공하는 통계·특성 중요도·프로파일·기준 상관관계·컬럼
+프로파일·학습 패턴·앙상블 이름과 가중치를 담으며 민감한 읽기 허용 후 확인합니다.
+
+모델은 소유한 별도 프로세스에서 실제 학습 상태를 유지합니다. 세션당 최대 4개이며
+핸들 제한도 적용합니다. 학습·기준 데이터 핸들은 계속 권한의 부모가 됩니다.
+revision이 다르면 Core를 실행하지 않습니다. 시간 초과·취소·프로토콜 오류는 소유
+프로세스를 종료·회수하고, 상태 변경 실패 시 불확실한 모델을 재사용하지 않습니다.
+만료·회수·권한 철회·세션 종료도 모델과 종속 핸들을 무효화합니다. 여전히 호스트의
+사용자 권한으로 실행되며 운영체제 수준 샌드박스는 아닙니다.
+
+ML 산출물에는 `encoding`, `model_algorithm`, `model_revision`과 태그로 표현한
+원래 `result`가 있습니다. Python 객체를 손실 직렬화하지 않고 사용한 모델 상태를
+구분합니다. Core의 JSON 저장·복원은 모든 모델의 학습 상태를 보존하지 않습니다.
+예를 들어 Isolation Forest는 트리를 복원하지 않으므로 영속 스냅샷·가져오기를
+완전한 복원처럼 제공하지 않습니다. 생성 후 앙상블 구성 변경·임의 플러그인 모델·
+메서드별 전체 수명주기 동등성은 남은 작업입니다.
+
+### 네이티브 계보 그래프
+
+네이티브 전체·부분 그래프 렌더링은 `lineage_render`로 제공합니다.
+
+계보 목록은 원래 설정·노드·엣지와 값 표현 규칙을 보여줍니다. 생성은 `config`,
+`nodes`, `edges`를 받고 호출자의 `persist_path`는 거부합니다. 편집은 `graph_id`와
+판별자 `edit`를 받습니다. 작업은 `add_node`, `remove_node`, `add_edge`,
+`remove_edge`, `clear`이며 원본을 변경하지 않고 새 그래프 핸들을 만듭니다.
+조회는 `graph_id`, `view`와 보기별 필드를 포함한 `query`를 받습니다. 보기는
+`graph`, `nodes`, `edges`, `roots`, `leaves`, `topological`, `node`, `has_node`,
+`node_edges`, `upstream`, `downstream`이며 탐색 깊이·엣지 방향을 명시합니다.
+
+영향 분석은 `graph_id`, `node_id`, 선택적인 네이티브 `impact_rules`를 받습니다.
+일반 영향 분석에는 `max_depth`, `include_validations`, 스키마 영향에는
+`new_schema`를 추가합니다. 의존성 연결 조회는 대신 `source_id`, `target_id`를
+받습니다. 전체 결과를 산출물로 보관하며 가상 삭제는 원본이나 외부 데이터를 지우지
+않습니다.
+
+`lineage_render`는 `graph_id`, `renderer=d3|cytoscape|graphviz|mermaid`,
+`settings`의 전체 폐쇄형 네이티브 `RenderConfig` 설정과 선택적인 `root_node_id`,
+`direction=upstream|downstream|both`를 받습니다. 부분 그래프의 탐색 깊이는
+`settings.max_depth`로 지정하며 프로세스가 달라도 원래 그래프의 노드 순서를
+유지합니다. 예시는 `{"graph_id":"graph_<token>","renderer":"mermaid","settings":{"orientation":"LR","theme":"dark"}}`입니다.
+결과는 D3·Cytoscape JSON 또는 DOT·Mermaid 텍스트의 소유 산출물입니다. 민감한
+결과 권한으로 `artifacts_read`에서 읽으며 원본 그래프 해제 시 파생 결과도
+무효화됩니다. 알 수 없는 루트·설정은 실패합니다. 출력 경로·외부 실행 파일을
+받거나 HTML·브라우저·이미지 변환을 실행하지 않습니다. 추적기·이력·대화형 HTML과
+이미지 렌더링·OpenLineage 게시는 아직 별도 미완료 영역입니다.
+
+### 영구 context와 운영자 승인
+
+`sources_open_polars`에 소유한 `asset_id`와 선택적인 전체 네이티브
+`PolarsDataSourceConfig` 설정을 `config`로 전달하면 `source` 리소스 ID가 반환됩니다.
+이를 `source_id`로 사용합니다. `sources_validate`는 `assets_validate`와 같은 검증
+설정을 받지만 호출자가 `asset_id`를 대체할 수 없습니다. 프레임으로 치환하지 않고
+실제 상주 데이터소스를 Core에 전달합니다. 조회·검사 결과는 보관 산출물이며 읽기에는
+민감정보 공개 허용이 필요합니다. 연결 실패 판정은 `connected=false`로 유지하고,
+네이티브 크기 gate 예외는 실패로 반환합니다. 표본 추출 결과는 새 상주 연결이 아닌
+Arrow 데이터 핸들입니다. 입력 데이터·소스를 해제하면 종속 핸들이 무효화되고 소유한
+worker가 종료됩니다. 정상 종료 시 네이티브 context-manager 정리를 허용하며 시간
+초과·EOF·프로토콜 실패 시 해당 소유 프로세스만 무효화·회수합니다. 소스 핸들의 해시는
+설정의 식별자이지 별도 데이터 스냅샷 해시가 아닙니다. 이 수명주기 연결은 현재
+**Polars만** 지원하며 SQL·클라우드·NoSQL·스트림·비동기 동등성은 아닙니다.
+`assets_sqlite`는 여전히 프레임 적재이고 상주 SQL 소스·pushdown 검증이 아닙니다.
+네이티브 설정은 운영체제 샌드박스가 아닙니다.
+
+`suites_create`는 Python 코드가 아닌 버전 1 검증 의도를 보관합니다. 각 검사는
+고유한 `check_id`, 구체 `validator`, 닫힌 `settings`와 선택적인 이름·분류·태그·
+메타데이터를 가집니다. `schema_id`로 보관 스키마를 참조할 수 있으며 스키마만
+있는 suite도 지원합니다. 이때 검사 ID `schema`는 예약됩니다. 스키마를 해제하면
+종속 suite와 결과도 무효화됩니다. `evidence_policy`·`severity_policy`는 실제
+커널 정책을 사용합니다. `suites_validate`에 `asset_id`·`suite_id`를 전달합니다.
+이는 자동 기준 스키마 추론이 아닌 명시적인 커널 suite입니다. 영구 실행에는
+`context_id`·멱등 키·정확한 운영자 승인이 추가로 필요합니다.
+
+`contexts_execute`는 `context_id`, `idempotency_key`, `action`으로 구분하는
+`operation` 객체를 받습니다. 지원 동작은 `resolve_source_key`,
+`resolve_fingerprint`, `track_asset`, `get_or_create_schema_baseline`,
+`read_applied_suite`, `write_applied_suite`, `persist_run`, `persist_docs`,
+`metric_get`, `metric_put`, `metric_append_history`, `list_runs`, `list_docs`,
+`list_baselines`, `list_applied_suites`입니다. 정확한 필드는 `capability_describe`로
+확인합니다. 네이티브 context 생성 자체가 폴더 생성·손상 기록 격리를 수행할 수
+있어 조회도 승인 대상입니다. 결과·문서 영구 저장은 소유한 정식 검증 산출물만
+허용하며 적용 suite의 행위자 메타데이터는 승인 권한이 아닙니다. context 핸들을
+해제해도 사용자 작업공간은 삭제하지 않습니다.
+
+입력 폴더와 작업공간 권한은 분리됩니다. 서버에 `--allow-dir` 외에도
+`--workspace-dir /absolute/project --control-dir /absolute/private-control`을 지정합니다.
+제어 폴더는 데이터·작업공간과 겹치지 않아야 하고 POSIX에서는 사용자 소유·권한
+`0700`이어야 합니다. `contexts_open`은 프로젝트 설정 또는 명시적인 `config`를
+읽을 뿐 `.truthound`를 만들지 않습니다. 반환된 `context_id`와 8–128자의
+`idempotency_key`로 초기화를 요청하거나, 두 값을 `assets_validate`에 전달해
+실제 Core 프로젝트 기록을 남기는 검증을 요청합니다.
+
+처음에는 승인 대기 계획이 반환됩니다. 운영자는 MCP 도구 밖에서 정확한 요청을
+검토한 뒤 직접 승인합니다. 다음 예시도 실제 반환된 계획 식별자로 바꿔야 합니다.
+
+```bash
+truthound-mcp review-plan --control-dir /absolute/private-control --plan-id plan_<returned-token>
+truthound-mcp approve-plan --control-dir /absolute/private-control --plan-id plan_<returned-token>
+```
+
+전용 CLI의 `revoke-plan`으로 취소할 수 있습니다. 승인은 기능·요청·세션·권한·작업공간
+상태·효과·만료에 결합됩니다. 승인 후 동일한 도구 요청을 다시 전달합니다. 권한이나
+작업공간이 바뀌거나 모델이 승인을 위조하면 거부합니다. 제어 폴더는 비공개 서명·승인
+상태를 포함하므로 공유하거나 MCP로 노출하지 않습니다. 이 경계는 같은 사용자 권한의
+악성 로컬 프로세스까지 막는 운영체제 샌드박스는 아닙니다.
+
+영구 검증은 실제 Core context의 설정에 따라 카탈로그·기준 스키마·실행 결과·메트릭
+이력·문서를 기록합니다. 완료된 실행 의도는 다시 기록하지 않고 영수증을 재생합니다.
+이전 세션 산출물이 만료됐다면 `artifact_available=false`로 명시하며 검증을 다시
+실행하지 않습니다. 효과 시작 후 시간 초과·취소는 `outcome_unknown`이며 성공한
+롤백이나 재시도 허가로 표시하지 않습니다. 자동 충돌 복구는 아직 구현하지 않았습니다.
+대상·건너뜀 집계의 완전성이 확인되기 전까지 보관 검증의 전체 품질은 `unknown`이며,
+정식 Core 판정과 상세 결과는 산출물에서 확인합니다.
+
+### 검토된 네이티브 검증기 바인딩
+
+운영자는 보호된 제어 폴더에 `bindings.json`을 둘 수 있습니다. POSIX에서는 사용자
+소유·권한 `0600`이어야 합니다. 데이터 폴더나 MCP 도구가 아닌 실행 설정입니다.
+
+```json
+{"validators":{"capital-a":{"validator":"regex","settings":{"pattern":"^A+$","columns":["code"]}}}}
+```
+
+`assets_validate`의 `checks`에 `{"validator":"regex","binding_id":"capital-a"}`와
+`idempotency_key`를 전달한 뒤 위 CLI로 검토·승인합니다. 에이전트는 고정 설정을
+덮어쓰거나 스스로 승인할 수 없습니다. 영속 요청·영수증은 원문 SQL·설정 대신
+생성자 다이제스트를 남깁니다. 승인은 정확한 파일·권한·세션·효과에 결합되며 파일이
+바뀌거나 철회되면 파생 산출물도 읽을 수 없습니다. 영수증 재생은 승인·설정 식별자를
+보존하지만 새로운 민감한 읽기 권한을 부여하지 않습니다.
+
+JSON으로 표현하지 못하는 값은 설치된 Core 플러그인으로 연결합니다. 같은 파일의
+`plugins`에 설치 배포명·정확한 버전·`truthound.plugins` 진입점 이름·파일 `sha256`·
+공개 capability 매핑과 선택적 플러그인 설정을 선언합니다. 코드를 가져오지 않고
+설치 파일 다이제스트를 확인하는 명령은 다음과 같습니다.
+
+```bash
+truthound-mcp plugin-fingerprint --distribution your-reviewed-distribution
+```
+
+타입이 콜백인 필드는 `{"operator_capability":"approved-capability-id"}`로 연결합니다.
+템플릿의 별도 `object_parameters`는 생성자 필드에 승인된 네이티브 capability 객체를
+연결합니다. 완전한 Polars 식·자료형 매핑·참조 프레임 등을 전달할 수 있습니다.
+고정 JSON·객체 매핑·호출자 설정은 중복할 수 없으며 일반 JSON을 실행 참조로
+해석하지 않습니다. 승인 전에는 확장을 가져오지 않습니다. 소유 작업 프로세스가
+배포·버전·파일을 다시 확인하고 실제 Core `PluginManager`의 로드·활성화·종료를
+사용합니다. 자동 탐색·설치는 비활성화됩니다. 패키지 변경은 실행을 막고 불확실한
+효과는 성공으로 재생하지 않습니다. 편집 가능 설치와 바이너리 전용 진입점은 지원하지
+않습니다. 확장은 호스트 사용자 권한으로 실행되며 **운영체제 샌드박스나 전이 의존성
+잠금이 아닙니다.** 승인 전에 코드와 데이터·네트워크 접근을 검토해야 합니다.
+
+이 구현은 **Core 전체 기능 동등성을 달성한 상태가 아닙니다.**
+알고리즘별 전체 동등성·모든 데이터소스 수명주기·임의 프로파일 구성·전체 기계학습 영속화·
+계보 추적기와 이력 및 대화형 렌더링·체크포인트·스트림·스토어·전체 플러그인 수명주기 도구·보안 관리·영속 작업은
+아직 완성하지 않았습니다. 기능 조회도 전체 동등성이 거짓임을 표시하며 누락을 열거한
+것이 구현이나 실계정 검증을 의미하지 않습니다. 원격 서버·자격 증명·유료 호출은
+추가하지 않습니다.
+
+동등성 증거는 생성자 거부·네이티브 실행 실패·알고리즘 내부에서 잡힌 예외를 구분합니다.
+예를 들어 Core 쿼리·표현식 검증기는 예외를 `ExecutionIssue` 대신 심각한 품질 문제로
+기록할 수 있으며 MCP는 이 구분과 전체 문제를 보존합니다. 모든 등록 검증기의 생성자
+거부를 확인했다고 알고리즘별 전체 런타임 오류 분기까지 증명한 것은 아닙니다.
 
 ## Claude Desktop 설치 파일
 

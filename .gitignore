@@ -85,6 +85,7 @@ Thumbs.db
 *.parquet
 *.json
 !src/truthound/schema_audit/schemas/document-v1.json
+!src/truthound/mcp/validator_contracts.json
 !pyproject.toml
 !tests/fixtures/
 !tests/fixtures/**

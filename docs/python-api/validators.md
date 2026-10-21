@@ -2,6 +2,23 @@
 
 Validator interface and registration system.
 
+Expression-based summary/complete failure frequencies sort by descending count.
+Equal frequencies retain first encounter order, including at the partial-count
+limit; the structured counts and human-readable top-failure details share that
+order. Sample row order and total violation counts are not changed.
+
+`ValidationDetail.from_dict()` restores the value representation produced by
+`to_dict()`, including failed-row records as a DataFrame. Row records do not
+encode the original physical dtype schema. `ValidationRunResult.from_dict()`
+retains that structured detail and `ExceptionInfo` classification/trace/retry
+fields for both per-check and run-level issues. Empty sample lists remain empty.
+
+`referential_integrity` and `streaming_referential_integrity` ignore null source
+values and validate the remaining values against the reference column. A dataset
+with no orphan values produces no issues, including when the anti-join is empty.
+Violations count orphan **rows**, including repeated orphan keys; the returned
+sample is independently bounded by `sample_size` and is not the violation count.
+
 ## Validator Base Class
 
 All validators inherit from the `Validator` base class.

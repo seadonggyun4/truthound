@@ -255,6 +255,21 @@ class ValidationDetail:
     # ------------------------------------------------------------------ #
 
     @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "ValidationDetail":
+        """Restore the native value representation emitted by ``to_dict``.
+
+        Failure rows are serialized as records by that API. This restores
+        those records, not an unavailable original physical dtype schema.
+        """
+        values = dict(data)
+        rows = values.get("unexpected_rows")
+        if rows is not None and not isinstance(rows, pl.DataFrame):
+            if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
+                raise TypeError("unexpected_rows must contain row records")
+            values["unexpected_rows"] = pl.DataFrame(rows)
+        return cls(**values)
+
+    @classmethod
     def from_aggregates(
         cls,
         *,

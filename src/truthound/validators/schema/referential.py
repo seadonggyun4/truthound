@@ -113,7 +113,7 @@ class ReferentialIntegrityValidator(Validator):
         # Count orphans and get samples in single query
         orphan_result = orphans.select(
             pl.len().alias("orphan_count"),
-            pl.col("_src_val").head(self.config.sample_size).alias("samples"),
+            pl.col("_src_val").head(self.config.sample_size).implode().alias("samples"),
         ).collect()
 
         orphan_count = orphan_result["orphan_count"][0]
@@ -126,7 +126,7 @@ class ReferentialIntegrityValidator(Validator):
             ratio = orphan_count / total_count
 
             # Get sample values (already limited by head())
-            sample_list = orphan_result["samples"].to_list()
+            sample_list = orphan_result["samples"].to_list()[0]
             sample_orphans = [str(v) for v in sample_list[:self.config.sample_size]]
 
             issues.append(
@@ -233,7 +233,7 @@ class StreamingReferentialIntegrityValidator(Validator):
         # Count orphan unique values
         orphan_unique_result = orphans.select(
             pl.len().alias("orphan_unique_count"),
-            pl.col("_src_val").head(self.config.sample_size),
+            pl.col("_src_val").head(self.config.sample_size).implode(),
         ).collect()
 
         orphan_unique_count = orphan_unique_result["orphan_unique_count"][0]
@@ -243,7 +243,7 @@ class StreamingReferentialIntegrityValidator(Validator):
 
         # Get sample values
         sample_orphans = [
-            str(v) for v in orphan_unique_result["_src_val"].to_list()
+            str(v) for v in orphan_unique_result["_src_val"].to_list()[0]
         ][:self.config.sample_size]
 
         # Count total orphan rows (not just unique values)

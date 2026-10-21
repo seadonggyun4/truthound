@@ -23,6 +23,10 @@ def normalize(value):
 
 
 def execute(request: dict) -> dict:
+    if "contract_version" in request:
+        from truthound.mcp.operations import execute as execute_operation
+
+        return execute_operation(request)
     import truthound as th
 
     operation, path = request["operation"], request["path"]
@@ -56,7 +60,16 @@ def execute(request: dict) -> dict:
 
 
 def main() -> None:
-    request = json.loads(sys.stdin.read(16384))
+    request = json.loads(sys.stdin.read(131072))
+    extended = "contract_version" in request
+
+    def failure(code):
+        if extended:
+            from truthound.mcp.operations import envelope
+
+            return envelope(request.get("operation", "unknown"), error=code)
+        return response(request.get("operation", "unknown"), error=code)
+
     # Third-party/Core console output must not contaminate protocol output.
     with (
         open(os.devnull, "w") as sink,
@@ -67,9 +80,17 @@ def main() -> None:
             result = execute(request)
             encoded = json.dumps(result, ensure_ascii=True, allow_nan=False)
             if len(encoded.encode()) > request["max_response_bytes"]:
-                result = response(request["operation"], error="response_too_large")
-        except Exception:
-            result = response(request.get("operation", "unknown"), error="core_error")
+                result = failure("response_too_large")
+        except Exception as exc:
+            from truthound.mcp.policy import MCPError
+
+            result = failure(
+                exc.code
+                if isinstance(exc, MCPError)
+                else "missing_dependency"
+                if isinstance(exc, ImportError)
+                else "core_error"
+            )
     sys.stdout.write(json.dumps(result, ensure_ascii=True, allow_nan=False))
 
 

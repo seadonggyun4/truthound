@@ -371,10 +371,33 @@ class ExecutionContext:
                 self.critical_columns.add(issue.column)
 
     def get_completed_execution_results(self) -> dict[str, ValidatorExecutionResult]:
-        """Return ``{node_id: ValidatorExecutionResult}`` for ``should_skip()``."""
-        return {
+        """Return instance results plus conservative validator-name aggregates.
+
+        Skip conditions address validator names. A later successful instance
+        must not hide an earlier failed instance with the same name.
+        """
+        results = {
             nid: nr.result for nid, nr in self.previous_results.items()
         }
+        grouped: dict[str, list[ValidatorExecutionResult]] = {}
+        for nr in self.previous_results.values():
+            grouped.setdefault(nr.result.validator_name, []).append(nr.result)
+        rank = {
+            ValidationResult.SUCCESS: 0, ValidationResult.PARTIAL: 1,
+            ValidationResult.SKIPPED: 2, ValidationResult.FAILED: 3,
+            ValidationResult.TIMEOUT: 4,
+        }
+        for name, instances in grouped.items():
+            if len(instances) > 1:
+                worst = max(instances, key=lambda item: rank[item.status])
+                results[name] = ValidatorExecutionResult(
+                    validator_name=name, status=worst.status,
+                    issues=[issue for item in instances for issue in item.issues],
+                    error_message=worst.error_message,
+                    exception_info=worst.exception_info,
+                    retry_count=worst.retry_count,
+                )
+        return results
 
     def is_column_critical(self, column: str) -> bool:
         return column in self.critical_columns
@@ -403,7 +426,7 @@ class SequentialExecutionStrategy(ExecutionStrategy):
             result = _validate_safe(
                 node.validator,
                 lf,
-                skip_on_error=context.skip_on_error,
+                skip_on_error=context.skip_on_error and getattr(v_cfg, "catch_exceptions", True),
                 log_errors=context.log_errors,
                 max_retries=getattr(v_cfg, "max_retries", 0) if v_cfg else 0,
             )
@@ -460,7 +483,7 @@ class ParallelExecutionStrategy(ExecutionStrategy):
                 result = _validate_safe(
                     node.validator,
                     lf,
-                    skip_on_error=context.skip_on_error,
+                    skip_on_error=context.skip_on_error and getattr(v_cfg, "catch_exceptions", True),
                     log_errors=context.log_errors,
                     max_retries=getattr(v_cfg, "max_retries", 0) if v_cfg else 0,
                 )
@@ -496,6 +519,10 @@ class ParallelExecutionStrategy(ExecutionStrategy):
                         node_results.append(node_result)
                         context.add_result(node_result)
                     except Exception as e:
+                        if not context.skip_on_error or not getattr(
+                            getattr(node.validator, "config", None), "catch_exceptions", True
+                        ):
+                            raise
                         logger.error(f"Error executing {node.node_id}: {e}")
                         exc_info = ExceptionInfo.from_exception(
                             e, validator_name=node.validator.name,
@@ -536,7 +563,7 @@ class ParallelExecutionStrategy(ExecutionStrategy):
         result = _validate_safe(
             node.validator,
             lf,
-            skip_on_error=skip_on_error,
+            skip_on_error=skip_on_error and getattr(v_cfg, "catch_exceptions", True),
             log_errors=log_errors,
             max_retries=getattr(v_cfg, "max_retries", 0) if v_cfg else 0,
         )
@@ -793,13 +820,19 @@ class ValidatorDAG:
         Returns:
             The created ValidatorNode
         """
+        # Each instance is work, including two configurations of one class.
+        # Keep the original first ID for existing direct-node consumers.
         node_id = validator.name
+        occurrence = 2
+        while node_id in self.nodes:
+            node_id = f"{validator.name}#{occurrence}"
+            occurrence += 1
 
         # Read class-level declarations when not overridden
         if dependencies is None:
             dependencies = getattr(validator, "dependencies", None) or set()
         if provides is None:
-            provides = getattr(validator, "provides", None) or {node_id}
+            provides = getattr(validator, "provides", None) or {validator.name}
         if priority is None:
             priority = getattr(validator, "priority", 100)
 
@@ -905,7 +938,13 @@ class ValidatorDAG:
         for node_id, node in self.nodes.items():
             deps: set[str] = set()
             for dep in node.dependencies:
-                if dep in self.nodes:
+                named_instances = {
+                    key for key, candidate in self.nodes.items()
+                    if candidate.validator.name == dep
+                }
+                if named_instances:
+                    deps.update(named_instances)
+                elif dep in self.nodes:
                     deps.add(dep)
                 elif dep in provides_map:
                     deps.update(provides_map[dep])

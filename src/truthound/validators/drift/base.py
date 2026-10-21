@@ -12,6 +12,7 @@ Key Features:
 
 from abc import abstractmethod
 from typing import Any
+from uuid import uuid4
 
 import polars as pl
 
@@ -88,6 +89,10 @@ class DriftValidator(Validator):
 
         self._cache_reference = cache_reference
         self._cache_key = cache_key
+        # A validator name/column is not a reference-data identity. Explicit
+        # cache_key still permits deliberate cross-instance reuse; defaults
+        # must never borrow statistics from another baseline.
+        self._reference_cache_identity = uuid4().hex
         self._cache: ReferenceCache | None = None
 
         if cache_config:
@@ -137,7 +142,7 @@ class DriftValidator(Validator):
             validator_name=self.name,
             column=getattr(self, 'column', '_all'),
             version="v1",
-            extra=suffix,
+            extra=f"{self._reference_cache_identity}:{suffix}",
         )
 
     def release_reference_data(self) -> None:
@@ -333,6 +338,27 @@ class ColumnDriftValidator(DriftValidator):
 
 class NumericDriftMixin:
     """Mixin for numeric column drift detection utilities."""
+
+    @staticmethod
+    def _tail_histogram_edges(edges) -> list[float]:
+        """Keep reference bins while adding empty, explicit support tails."""
+        import numpy as np
+
+        values = np.unique(np.asarray(edges, dtype=float))
+        if not len(values):
+            return []
+        if not np.isfinite(values).all():
+            raise ValueError("Numeric drift reference histogram requires finite edges")
+        # np.histogram's original last bin includes its upper endpoint. Move
+        # that endpoint by one representable value so existing cached counts
+        # remain valid when an explicit right-tail bin is appended.
+        upper = np.nextafter(values[-1], np.inf)
+        interior = values.tolist()
+        if len(interior) == 1:
+            interior.append(float(upper))
+        else:
+            interior[-1] = float(upper)
+        return sorted(set([-np.inf, *interior, np.inf]))
 
     @staticmethod
     def compute_histogram(

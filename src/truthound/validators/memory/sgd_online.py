@@ -277,7 +277,7 @@ class SGDOneClassSVM:
     This implementation uses:
     1. Kernel approximation (Nystroem or RBF Sampler) for scalability
     2. SGD optimization for online learning
-    3. Linear SVM in the approximated feature space
+    3. Unsupervised SGD One-Class SVM in the approximated feature space
 
     Memory: O(n_components × n_features) instead of O(n_samples²)
 
@@ -332,14 +332,22 @@ class SGDOneClassSVM:
     def _init_models(self, X: np.ndarray) -> None:
         """Initialize internal models on first fit."""
         from sklearn.kernel_approximation import Nystroem, RBFSampler
-        from sklearn.linear_model import SGDClassifier
+        from sklearn.linear_model import SGDOneClassSVM as NativeSGDOneClassSVM
 
         self._n_features = X.shape[1]
 
-        # Compute gamma if needed
+        # A fixed kernel projection and learned weights must share one
+        # coordinate system across partial_fit calls. Freeze the first-batch
+        # scaler rather than moving its basis under an already fitted kernel.
+        self._scaler = OnlineScaler()
+        self._scaler.partial_fit(X)
+        X_scaled = self._scaler.transform(X)
+
+        # Compute gamma in the same scaled space used to fit the kernel.
         gamma = self.gamma
         if gamma == "scale":
-            gamma = 1.0 / (self._n_features * X.var())
+            variance = X_scaled.var()
+            gamma = 1.0 / (self._n_features * variance) if variance > 0 else 1.0
         elif gamma == "auto":
             gamma = 1.0 / self._n_features
 
@@ -358,12 +366,8 @@ class SGDOneClassSVM:
                 random_state=self.random_state,
             )
 
-        # Initialize SGD classifier
-        # Use hinge loss for SVM-like behavior
-        self._sgd_classifier = SGDClassifier(
-            loss="hinge",
-            penalty="l2",
-            alpha=0.0001,
+        self._sgd_classifier = NativeSGDOneClassSVM(
+            nu=self.nu,
             learning_rate=self.learning_rate,
             eta0=self.eta0,
             random_state=self.random_state,
@@ -372,14 +376,11 @@ class SGDOneClassSVM:
             warm_start=True,
         )
 
-        # Initialize online scaler
-        self._scaler = OnlineScaler()
-
     def partial_fit(self, X: np.ndarray) -> "SGDOneClassSVM":
         """Incrementally fit the model on a batch.
 
-        For One-Class SVM, we generate synthetic outliers and train
-        a binary classifier to separate normal data from outliers.
+        Optimize the native unsupervised one-class objective. Synthetic
+        negative labels are not an equivalent one-class training objective.
 
         Args:
             X: Training data (n_samples, n_features)
@@ -394,52 +395,16 @@ class SGDOneClassSVM:
         if not self._is_fitted:
             self._init_models(X)
             # Fit kernel transformer on first batch
-            self._kernel_transformer.fit(X)
-
-        # Update scaler
-        self._scaler.partial_fit(X)
+            self._kernel_transformer.fit(self._scaler.transform(X))
         X_scaled = self._scaler.transform(X)
 
         # Transform to kernel space
         X_kernel = self._kernel_transformer.transform(X_scaled)
 
-        # Generate synthetic outliers
-        n_outliers = max(1, int(len(X) * self.nu / (1 - self.nu)))
-        outliers = self._generate_outliers(X_scaled, n_outliers)
-        outliers_kernel = self._kernel_transformer.transform(outliers)
-
-        # Combine normal and outliers
-        X_combined = np.vstack([X_kernel, outliers_kernel])
-        y_combined = np.array([1] * len(X) + [-1] * n_outliers)
-
-        # Partial fit SGD classifier
-        self._sgd_classifier.partial_fit(X_combined, y_combined, classes=[-1, 1])
+        self._sgd_classifier.partial_fit(X_kernel)
         self._is_fitted = True
 
         return self
-
-    def _generate_outliers(self, X: np.ndarray, n_outliers: int) -> np.ndarray:
-        """Generate synthetic outliers for training.
-
-        Uses uniform sampling in an expanded bounding box around the data.
-        """
-        rng = np.random.default_rng(self.random_state)
-
-        # Expand bounding box
-        min_vals = X.min(axis=0)
-        max_vals = X.max(axis=0)
-        ranges = max_vals - min_vals
-        ranges = np.where(ranges == 0, 1, ranges)
-
-        # Sample from expanded box
-        expansion = 1.5
-        outliers = rng.uniform(
-            min_vals - expansion * ranges,
-            max_vals + expansion * ranges,
-            size=(n_outliers, X.shape[1]),
-        )
-
-        return outliers
 
     def predict(self, X: np.ndarray) -> np.ndarray:
         """Predict if samples are outliers.

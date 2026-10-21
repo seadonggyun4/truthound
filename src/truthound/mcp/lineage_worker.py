@@ -1,0 +1,135 @@
+"""Core graph and analyzer bindings; JSON state only in owned session files."""
+
+import json
+from dataclasses import asdict
+from pathlib import Path
+
+from truthound.mcp.encoding import encode
+from truthound.mcp.policy import MCPError
+from truthound.mcp.resources import BoundedWriter
+from truthound.mcp.validator_wire import _known_type, contracts, convert
+
+
+def execute(request, arguments):
+    from truthound.lineage import ImpactLevel, NodeType
+
+    graph_type = _known_type("truthound.lineage.base.LineageGraph")
+    analyzer_type = _known_type("truthound.lineage.impact_analysis.ImpactAnalyzer")
+    operation = request["operation"]
+    definitions = contracts()["lineage"]
+    if operation == "lineage_create":
+        graph = graph_type(convert(definitions["config"], arguments.config, build=True))
+        for node in arguments.nodes:
+            graph.add_node(convert(definitions["node"], node, build=True))
+        for edge in arguments.edges:
+            graph.add_edge(convert(definitions["edge"], edge, build=True))
+    else:
+        saved = json.loads(Path(request["graph_path"]).read_text(encoding="utf-8"))
+        graph = graph_type.from_dict(
+            saved["graph"], convert(definitions["config"], saved["config"], build=True)
+        )
+    if operation == "lineage_edit":
+        edit = arguments.edit
+        if edit.action == "add_node":
+            graph.add_node(convert(definitions["node"], edit.node, build=True))
+        elif edit.action == "add_edge":
+            graph.add_edge(convert(definitions["edge"], edit.edge, build=True))
+        elif edit.action == "remove_node":
+            graph.remove_node(edit.node_id)
+        elif edit.action == "remove_edge":
+            graph.remove_edge(edit.source, edit.target)
+        elif edit.action == "clear":
+            graph.clear()
+    if operation == "lineage_render":
+        renderer = _known_type(definitions["renderers"][arguments.renderer])()
+        config = convert(definitions["render_config"], arguments.settings, build=True)
+        if arguments.root_node_id is None:
+            text = renderer.render(graph, config=config)
+        else:
+            graph.get_node(arguments.root_node_id)
+            text = renderer.render_subgraph(
+                graph,
+                arguments.root_node_id,
+                direction=arguments.direction,
+                max_depth=config.max_depth,
+                config=config,
+            )
+        with BoundedWriter(Path(request["output_path"]), request["output_budget"]) as sink:
+            sink.write(text.encode("utf-8"))
+        return {
+            "resource_created": True,
+            "media_type": "application/json"
+            if arguments.renderer in {"d3", "cytoscape"}
+            else "text/plain",
+            "row_count": None,
+            "column_count": None,
+        }
+    if operation in {"lineage_create", "lineage_edit"}:
+        result = {"graph": graph.to_dict(), "config": asdict(graph.config)}
+        media_type = "application/vnd.truthound.lineage-graph+json"
+    else:
+        if operation == "lineage_query":
+            query = arguments.query
+            if query.view == "graph":
+                result = graph.to_dict()
+            elif query.view == "nodes":
+                result = [node.to_dict() for node in graph.nodes]
+            elif query.view == "edges":
+                result = [edge.to_dict() for edge in graph.edges]
+            elif query.view == "roots":
+                result = [node.to_dict() for node in graph.get_roots()]
+            elif query.view == "leaves":
+                result = [node.to_dict() for node in graph.get_leaves()]
+            elif query.view == "topological":
+                result = [node.to_dict() for node in graph.topological_sort()]
+            elif query.view == "node":
+                result = graph.get_node(query.node_id).to_dict()
+            elif query.view == "has_node":
+                result = graph.has_node(query.node_id)
+            elif query.view == "upstream":
+                result = [node.to_dict() for node in graph.get_upstream(query.node_id, query.depth)]
+            elif query.view == "downstream":
+                result = [
+                    node.to_dict() for node in graph.get_downstream(query.node_id, query.depth)
+                ]
+            else:
+                result = [
+                    edge.to_dict()
+                    for edge in graph.get_edges_for_node(query.node_id, query.direction)
+                ]
+        else:
+            impact_rules = None
+            if getattr(arguments, "impact_rules", None) is not None:
+                impact_rules = {
+                    NodeType(key): ImpactLevel(value)
+                    for key, value in arguments.impact_rules.items()
+                }
+            analyzer = analyzer_type(graph, impact_rules=impact_rules)
+            if operation == "lineage_impact":
+                result = analyzer.analyze_impact(
+                    arguments.node_id, arguments.max_depth, arguments.include_validations
+                ).to_dict()
+            elif operation == "lineage_critical_paths":
+                result = [
+                    [node.to_dict() for node in path]
+                    for path in analyzer.find_critical_paths(arguments.node_id)
+                ]
+            elif operation == "lineage_what_if_delete":
+                result = analyzer.what_if_delete(arguments.node_id)
+            elif operation == "lineage_schema_impact":
+                result = analyzer.compare_schemas(arguments.node_id, arguments.new_schema)
+            elif operation == "lineage_dependency_chain":
+                chain = analyzer.get_dependency_chain(arguments.source_id, arguments.target_id)
+                result = [node.to_dict() for node in chain] if chain is not None else None
+            else:
+                raise MCPError("unknown_operation")
+        result = encode(result)
+        media_type = "application/vnd.truthound.lineage-result+json"
+    with BoundedWriter(Path(request["output_path"]), request["output_budget"]) as sink:
+        sink.write(json.dumps(result, allow_nan=False).encode())
+    return {
+        "resource_created": True,
+        "media_type": media_type,
+        "row_count": None,
+        "column_count": None,
+    }

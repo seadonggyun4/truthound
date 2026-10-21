@@ -129,8 +129,12 @@ class PSIValidator(ColumnDriftValidator, NumericDriftMixin, CategoricalDriftMixi
                         return
                 else:
                     if isinstance(stats, NumericStatistics):
-                        self._bin_edges = stats.histogram_edges
-                        self._ref_distribution = stats.histogram_counts
+                        if stats.count and stats.min_value == stats.max_value:
+                            self._bin_edges = self._tail_histogram_edges([stats.min_value])
+                            self._ref_distribution = np.histogram([stats.min_value], bins=self._bin_edges)[0].astype(float).tolist()
+                        else:
+                            self._bin_edges = self._tail_histogram_edges(stats.histogram_edges)
+                            self._ref_distribution = [0.0, *stats.histogram_counts, 0.0] if self._bin_edges else []
                         return
             except (ValueError, AttributeError):
                 # Fall back to computing from raw data
@@ -161,7 +165,9 @@ class PSIValidator(ColumnDriftValidator, NumericDriftMixin, CategoricalDriftMixi
             self._bin_edges = np.percentile(arr, percentiles).tolist()
 
             # Ensure unique bin edges
-            self._bin_edges = sorted(set(self._bin_edges))
+            self._bin_edges = self._tail_histogram_edges(self._bin_edges)
+            # Include observations outside the reference support. Dropping
+            # them makes a completely shifted population appear drift-free.
 
             # Compute reference frequencies
             counts, _ = np.histogram(arr, bins=self._bin_edges)
@@ -368,7 +374,7 @@ class CSIValidator(ColumnDriftValidator, NumericDriftMixin, CategoricalDriftMixi
         # Create bins
         percentiles = np.linspace(0, 100, self.n_bins + 1)
         bin_edges = np.percentile(ref_arr, percentiles)
-        bin_edges = sorted(set(bin_edges))
+        bin_edges = self._tail_histogram_edges(bin_edges)
 
         # Calculate frequencies
         ref_counts, _ = np.histogram(ref_arr, bins=bin_edges)

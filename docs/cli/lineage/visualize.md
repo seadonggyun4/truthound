@@ -2,6 +2,10 @@
 
 Generate visual representation of data lineage. This command creates interactive or static diagrams of your data flow.
 
+Native D3, Cytoscape, Graphviz and Mermaid subgraphs preserve the source graph's
+node insertion order across processes; selecting a focus does not reorder its
+nodes through hash-set iteration. This does not change traversal depth or filters.
+
 ## Synopsis
 
 ```bash

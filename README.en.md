@@ -41,18 +41,11 @@ and ends at the closing </p> of the badge block above.
 
 ## Plugin Platform
 
+Development sources extend the existing three MCP tools with an opt-in Core profile: closed validator settings, retained assets/results/schemas, native Polars/SQLite/DuckDB datasource lifecycle, local file-stream cursors, declarative kernel suites, advanced profiling, drift/ML/lineage (including native graph/subgraph JSON/DOT/Mermaid artifacts), reporting and separately approved persistent context lifecycle/native extension bindings. Sensitive reads require operator disclosure consent. **This is not full Core parity or part of the published 3.2.0 release.** [Current implementation, usage and limitations](docs/guides/mcp.md#core-profile-unreleased-source-checkout)
+
 - **Codex and ChatGPT desktop (plugin 0.1.2)**: Add the [Truthound repository marketplace](.agents/plugins/marketplace.json), then choose **Plugins → Truthound Plugins → Truthound Local → Install → Set up** and approve a data directory. One-time marketplace setup: `codex plugin marketplace add seadonggyun4/truthound --ref main`. [Installation, consent and official submission](docs/guides/mcp.md)
 - **Find it in a marketplace**: Search for `io.github.seadonggyun4/truthound` in the [official MCP Registry](https://registry.modelcontextprotocol.io/). If a connected client's marketplace lists it, select **Install** and specify the data directory you allow it to access. [Published 3.2.0 metadata](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.seadonggyun4%2Ftruthound/versions/3.2.0)
 - **Claude Desktop**: [Download the MCPB](https://github.com/seadonggyun4/truthound/releases/download/v3.2.0/truthound-3.2.0.mcpb) → **Settings → Extensions → Advanced settings → Install Extension…** → select the file and allowed directory. [Official installation guide](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop)
-
-Repository marketplace distribution is not an OpenAI public directory listing. Official local MCP submission requires an allowlisted organization, identity verification and review; approval has not been obtained. A Claude official directory listing is also unconfirmed. Local stdio only: Python 3.11–3.13, UV and first-install network access are required; ChatGPT web and remote hosting are not supported. Installation alone grants no file access.
-
-Truthound uses a single lifecycle runtime.
-
-- `PluginManager` is the canonical plugin manager.
-- `EnterprisePluginManager` is an async, capability-driven facade over the same runtime.
-- Plugins register through stable ports such as `register_check_factory`, `register_data_asset_provider`, `register_reporter`, `register_hook`, and `register_capability`.
-- Reporter plugins should target the contract-v3 surface, where `ValidationRunResult` is the canonical render input and `RunPresentation` is the shared render projection.
 
 ---
 

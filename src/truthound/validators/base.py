@@ -298,6 +298,11 @@ class ExceptionInfo:
     failure_category: str = "unknown"
 
     @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "ExceptionInfo":
+        """Restore all captured exception and retry fields without executing code."""
+        return cls(**dict(data))
+
+    @classmethod
     def from_exception(
         cls,
         exc: Exception,
@@ -2185,9 +2190,12 @@ class ExpressionValidatorMixin:
             try:
                 count_df = (
                     lf.filter(spec.filter_expr)
-                    .group_by(spec.column)
+                    .group_by(spec.column, maintain_order=True)
                     .agg(pl.len().alias("_count"))
-                    .sort("_count", descending=True)
+                    # Hash-group iteration is not a tie breaker. Preserve
+                    # first occurrence for equal counts, including values
+                    # that cannot be ordered against one another.
+                    .sort("_count", descending=True, maintain_order=True)
                     .head(fmt.partial_unexpected_count)
                     .collect()
                 )
