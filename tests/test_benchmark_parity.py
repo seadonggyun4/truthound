@@ -49,6 +49,8 @@ def test_sqlite_runtime_diagnostic_preserves_native_workload_and_gate(tmp_path):
     assert observed["correctness_passed"] and observed["observed_issue_count"] == 1
     assert len(observed["metadata"]["warm_durations_seconds"]) == 7
     assert observed["metadata"]["polars_thread_pool_size"] == 1
+    assert len(native["warm_wall_over_process_cpu"]) == 7
+    assert all(ratio is not None and ratio > 0 for ratio in native["warm_wall_over_process_cpu"])
     assert native["profile_functions"]
     import yaml
 

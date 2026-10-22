@@ -24,9 +24,10 @@ def diagnose():
     ):
         os.environ[name] = "1"
     os.environ["TRUTHOUND_BENCHMARK_WORKER_THREADS"] = "1"
+    import polars as pl
+
     from truthound.benchmark._parity_worker import _truthound_execute
     from truthound.benchmark.workloads import load_workload
-    import polars as pl
 
     if pl.thread_pool_size() != 1:
         raise RuntimeError("Diagnostic must start in a fresh single-thread-budget interpreter")
@@ -64,6 +65,14 @@ def diagnose():
     return {
         "diagnostic_only": True,
         "observation": asdict(observation),
+        "warm_wall_over_process_cpu": [
+            wall / cpu if cpu > 0 else None
+            for wall, cpu in zip(
+                observation.metadata["warm_durations_seconds"],
+                observation.metadata["warm_process_cpu_seconds"],
+                strict=True,
+            )
+        ],
         "profile_functions": functions[:40],
     }
 
