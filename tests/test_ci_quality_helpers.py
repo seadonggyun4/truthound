@@ -323,9 +323,7 @@ def test_tests_pr_workflow_uses_sharded_quality_gate():
     assert "docs/**" in on_section["push"]["paths"]
     assert "mkdocs.public.yml" in on_section["push"]["paths"]
     assert workflow["jobs"]["quality-contract"]["strategy"]["matrix"]["shard_id"] == [0, 1, 2, 3]
-    assert (
-        workflow["jobs"]["quality-ruff-ratchet"]["strategy"]["matrix"]["target"] == ratchet_targets
-    )
+    assert "strategy" not in workflow["jobs"]["quality-ruff-ratchet"]
     assert workflow["jobs"]["quality-gate"]["needs"] == [
         "quality-contract",
         "quality-fault-e2e",
@@ -357,7 +355,8 @@ def test_tests_pr_workflow_uses_sharded_quality_gate():
     assert "--pytest-arg=-m" in fault_run["run"]
     assert "fault or e2e" in fault_run["run"]
     assert "run_ruff_ratchet.py" in ratchet_run["run"]
-    assert "--target ${{ matrix.target }}" in ratchet_run["run"]
+    assert "for target in " + " ".join(ratchet_targets) + "; do" in ratchet_run["run"]
+    assert '--target "$target"' in ratchet_run["run"]
 
 
 @pytest.mark.contract
@@ -468,7 +467,9 @@ def test_tests_nightly_workflow_publishes_collect_summary():
     assert set(gate["needs"]) == {"nightly-collect", "nightly-lane"}
     assert any("nightly_plan.py verify" in s.get("run", "") for s in gate["steps"])
     for job in (collect, lane, gate):
-        uploads = [s for s in job["steps"] if s.get("uses", "").startswith("actions/upload-artifact@")]
+        uploads = [
+            s for s in job["steps"] if s.get("uses", "").startswith("actions/upload-artifact@")
+        ]
         assert uploads and all(s["with"]["if-no-files-found"] == "error" for s in uploads)
 
 
@@ -481,7 +482,9 @@ def test_benchmarks_nightly_workflow_is_manual_only():
     trigger_block = workflow.get("on") or workflow.get(True) or {}
 
     assert workflow["name"] == "Benchmarks Manual"
-    assert set(trigger_block) == {"workflow_dispatch"}
+    # Remains explicit-only: reuse by the manual release orchestrator is not
+    # a schedule or an automatic push/PR benchmark run.
+    assert set(trigger_block) == {"workflow_dispatch", "workflow_call"}
 
 
 @pytest.mark.contract
@@ -571,13 +574,16 @@ def test_release_pypi_workflow_is_manual_token_only_publish():
     assert "publish_mode" not in trigger_block["workflow_dispatch"]["inputs"]
     assert "environment" not in publish_job
     assert "Verify release version" in step_names
-    assert "Build wheel and source distribution" in step_names
+    assert "Verify and install the exact release candidate, without rebuilding" in step_names
+    assert "Require complete same-SHA release verification before publishing" in step_names
     assert "Check package metadata" in step_names
     assert "Run CLI and SQL provider release contracts" in step_names
     assert "Smoke install built wheel with AI and SQL provider extras" in step_names
     assert "Validate PyPI API token secret" in step_names
     assert "Publish to PyPI" in step_names
-    assert "uv build" in rendered
+    assert "uv build" not in rendered
+    assert "--from-artifacts canonical" in rendered
+    assert "verification_run_id" in trigger_block["workflow_dispatch"]["inputs"]
     assert "twine check" in rendered
     assert "[ai,sql-connectors]" in rendered
     for module_name in (
