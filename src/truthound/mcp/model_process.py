@@ -34,9 +34,15 @@ class OwnedModelProcess:
             }
         }
         environment.update(POLARS_MAX_THREADS="1", OMP_NUM_THREADS="1", OPENBLAS_NUM_THREADS="1")
+        executable = sys.executable
+        if sys.platform == "win32" and executable != sys._base_executable:
+            # Match multiprocessing's Windows venv launch: own the interpreter,
+            # not the redirector whose termination can precede its child's exit.
+            environment["__PYVENV_LAUNCHER__"] = executable
+            executable = sys._base_executable
         try:
             self.process = subprocess.Popen(
-                [sys.executable, "-I", "-m", self.worker_module],
+                [executable, "-I", "-m", self.worker_module],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,

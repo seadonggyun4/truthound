@@ -458,6 +458,9 @@ kills and reaps the owned worker; a failed mutation invalidates its model rather
 than reusing uncertain state. TTL expiry, release, revoked grants and session EOF
 also invalidate model workers and dependent handles. These processes still have
 the host user's OS privileges; the application policy is not an OS sandbox.
+On Windows virtual environments, workers launch the underlying interpreter
+directly while preserving the virtual environment. Shutdown waits for that
+interpreter, not an intermediate launcher, before removing its working directory.
 
 ML result artifacts contain `encoding`, `model_algorithm`, `model_revision` and
 the tagged native `result`. This records the model state used without lossy

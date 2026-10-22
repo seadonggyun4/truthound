@@ -348,13 +348,12 @@ def test_model_permissions_cross_session_unknown_constructor_and_online_skip_are
 
 def test_resident_timeout_kills_and_reaps_only_owned_child(tmp_path, monkeypatch):
     import subprocess
-    import sys
 
     original = subprocess.Popen
 
     def start_owned(*args, **kwargs):
         return original(
-            [sys.executable, "-I", "-c", "import sys,time;sys.stdin.readline();time.sleep(600)"],
+            [args[0][0], "-I", "-c", "import sys,time;sys.stdin.readline();time.sleep(600)"],
             **kwargs,
         )
 
@@ -369,3 +368,33 @@ def test_resident_timeout_kills_and_reaps_only_owned_child(tmp_path, monkeypatch
         assert not Path(worker.directory.name).exists()
     finally:
         worker.close()
+
+
+def test_resident_worker_owns_actual_interpreter_and_preserves_environment(monkeypatch):
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    original = subprocess.Popen
+
+    def start_owned(command, **kwargs):
+        program = (
+            "import json,os,sys;sys.stdin.readline();"
+            "print(json.dumps(dict(ok=True,pid=os.getpid(),prefix=sys.prefix,"
+            "isolated=sys.flags.isolated)),flush=True);sys.stdin.read()"
+        )
+        return original([command[0], "-I", "-c", program], **kwargs)
+
+    monkeypatch.setattr("truthound.mcp.model_process.subprocess.Popen", start_owned)
+    monkeypatch.setattr(OwnedModelProcess, "validate_reply", lambda self, reply: reply)
+    worker = OwnedModelProcess(30)
+    try:
+        reply = asyncio.run(worker.call({}, timeout=10))
+        assert reply["pid"] == worker.process.pid != os.getpid()
+        assert Path(reply["prefix"]).resolve() == Path(sys.prefix).resolve()
+        assert reply["isolated"] == 1
+    finally:
+        worker.close()
+    assert worker.process.poll() is not None
+    assert not Path(worker.directory.name).exists()
