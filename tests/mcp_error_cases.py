@@ -215,6 +215,22 @@ RUNTIME_SETTING_ERRORS = {
     "date_format": {"format": "%Y%Y"},
     "data_retention": {"retention_days": 10**12},
     "streaming_distinct_count": {"precision": 0},
+    "distribution": {"n_bins": 0},
+    "approximate_unique_ratio": {"min_ratio": 1e308},
+    "table_row_count_compare": {"tolerance_ratio": 1e308},
+    # Constructors accept this integer; the native bounded chunk iterator
+    # rejects it when converting the slice length, before allocating a chunk.
+    **dict.fromkeys(
+        (
+            "streaming_null",
+            "streaming_completeness",
+            "streaming_nan",
+            "streaming_range",
+            "streaming_positive",
+            "streaming_outlier",
+        ),
+        {"chunk_size": 2**64},
+    ),
 }
 
 
@@ -234,6 +250,30 @@ def attach(cases):
     )
     observed, result = set(), []
     for row in cases:
+        if row.validator in {"approximate_distinct_count", "default_value"}:
+            assert row.error is None and row.caught_error is None
+            result.append(
+                replace(
+                    row,
+                    error={"x": list(range(1000))}
+                    if row.validator == "approximate_distinct_count"
+                    else {"x": [1, 2, 3, 4]},
+                    error_overrides={"tolerance": 1e308}
+                    if row.validator == "approximate_distinct_count"
+                    else {"default_values": [2**256]},
+                )
+            )
+            continue
+        if row.validator == "column_mutual_exclusivity":
+            assert row.error is None and row.caught_error is None
+            result.append(
+                replace(
+                    row,
+                    caught_error=row.positive,
+                    error_overrides={"columns": list(row.positive) * 2},
+                )
+            )
+            continue
         if row.validator in RUNTIME_SETTING_ERRORS:
             assert row.error is None and row.caught_error is None
             result.append(

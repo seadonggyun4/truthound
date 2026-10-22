@@ -86,6 +86,213 @@ def frame_asset(adapter, frame):
     )["resource_id"]
 
 
+@pytest.mark.parametrize(
+    "algorithm", ["DataProfileRuleLearner", "ConstraintMiner", "PatternRuleLearner"]
+)
+def test_rule_result_operations_preserve_native_semantics_and_revision(adapter, algorithm):
+    import truthound.ml as ml
+
+    frame = pl.DataFrame(
+        {"x": list(range(120)), "email": [f"p{i}@example.test" for i in range(120)]}
+    )
+    direct = getattr(ml, algorithm)()
+    direct.fit(frame.lazy())
+    expected = direct.predict(frame.lazy())
+    asset = frame_asset(adapter, frame)
+    model = call(adapter, "models_create", algorithm=algorithm)["model_id"]
+    call(adapter, "models_fit", model_id=model, asset_id=asset, expected_revision=0)
+    for action, selectors, native in (
+        ("suite", {}, expected.to_validation_suite()),
+        ("validator_specs", {}, [rule.to_validator_spec() for rule in expected]),
+        (
+            "by_type",
+            {"rule_type": "range"},
+            [rule.to_dict() for rule in expected.get_rules_by_type("range")],
+        ),
+        (
+            "by_column",
+            {"column": "x"},
+            [rule.to_dict() for rule in expected.get_rules_for_column("x")],
+        ),
+        ("by_column", {"column": "missing"}, []),
+    ):
+        result = call(
+            adapter,
+            "models_rule_query",
+            model_id=model,
+            asset_id=asset,
+            expected_revision=1,
+            action=action,
+            **selectors,
+        )
+        actual = artifact(adapter, result["resource_id"])
+        assert actual["model_revision"] == 1
+        actual = decode(actual["result"])
+        if action == "suite":
+            from datetime import datetime
+
+            datetime.fromisoformat(actual.pop("generated_at"))
+            native.pop("generated_at")
+        assert actual == native
+    assert call(adapter, "models_inspect", model_id=model, expected_revision=1)["revision"] == 1
+    # All generated rule artifacts depend on both the model and prediction input.
+    call(adapter, "resources_release", resource_id=asset)
+    denied = invoke(adapter, "artifacts_read", resource_id=result["resource_id"])
+    assert denied["issues"] == [{"code": "invalid_handle"}]
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        {"action": "by_type"},
+        {"action": "by_column"},
+        {"action": "suite", "column": "x"},
+        {"action": "validator_specs", "rule_type": "range"},
+        {"action": "by_type", "rule_type": "range", "column": "x"},
+        {"action": "execute"},
+    ],
+)
+def test_rule_query_rejects_ambiguous_selectors(arguments):
+    from pydantic import ValidationError
+
+    from truthound.mcp.advanced_contracts import ModelRuleQuery
+
+    with pytest.raises(ValidationError):
+        ModelRuleQuery(
+            model_id="model_" + "a" * 32,
+            asset_id="asset_" + "b" * 32,
+            expected_revision=0,
+            **arguments,
+        )
+
+
+def test_rule_query_rejects_nonlearner_without_destroying_model(adapter):
+    model = call(adapter, "models_create", algorithm="ZScoreAnomalyDetector")["model_id"]
+    asset = frame_asset(adapter, pl.DataFrame({"x": list(range(120))}))
+    denied = invoke(
+        adapter,
+        "models_rule_query",
+        model_id=model,
+        asset_id=asset,
+        expected_revision=0,
+        action="suite",
+    )
+    assert denied["issues"] == [{"code": "unsupported_operation"}]
+    assert call(adapter, "models_inspect", model_id=model, expected_revision=0)["revision"] == 0
+
+
+def test_rule_query_untrained_and_stale_fail_without_changing_state(adapter):
+    from truthound.ml import DataProfileRuleLearner
+    from truthound.ml.base import ModelNotTrainedError
+
+    frame = pl.DataFrame({"x": list(range(120))})
+    with pytest.raises(ModelNotTrainedError):
+        DataProfileRuleLearner().predict(frame.lazy())
+    asset = frame_asset(adapter, frame)
+    model = call(adapter, "models_create", algorithm="DataProfileRuleLearner")["model_id"]
+    failed = invoke(
+        adapter,
+        "models_rule_query",
+        model_id=model,
+        asset_id=asset,
+        expected_revision=0,
+        action="suite",
+    )
+    assert failed["issues"] == [{"code": "core_error"}]
+    stale = invoke(
+        adapter,
+        "models_rule_query",
+        model_id=model,
+        asset_id=asset,
+        expected_revision=1,
+        action="suite",
+    )
+    assert stale["issues"] == [{"code": "stale_revision"}]
+    assert not call(adapter, "models_inspect", model_id=model, expected_revision=0)["trained"]
+
+
+@pytest.mark.parametrize(
+    "expression,after,error",
+    [
+        ("*/oops * * * *", "2024-01-01T00:00:00", ValueError),
+        ("@daily", "9999-12-31T23:59:59", OverflowError),
+    ],
+)
+def test_schedule_native_runtime_failure_is_not_valid_or_exhausted(
+    adapter, expression, after, error
+):
+    from datetime import datetime
+
+    from truthound.scheduling import CronExpression
+
+    with pytest.raises(error):
+        CronExpression.parse(expression).next_n(1, datetime.fromisoformat(after))
+    result = invoke(adapter, "schedules_preview", expression=expression, after=after, count=1)
+    assert result["execution_status"] == "failed"
+    assert result["quality_status"] == "unknown" and result["data"] is None
+    assert result["issues"] == [{"code": "core_error"}]
+
+
+@pytest.mark.parametrize(
+    "expression",
+    [
+        "*/15 * * * *",
+        "0 9 * * MON-FRI",
+        "0 0 L * *",
+        "0 0 15W * *",
+        "0 0 ? * 2#3",
+        "*/10 * * * * *",
+        "0 0 0 1 JAN * 2025",
+        "@monthly",
+        "0 0 29 FEB *",
+        "0 0 0 1 JAN * 2000",
+        "invalid",
+        "99 * * * *",
+    ],
+)
+@pytest.mark.parametrize("after", ["2024-01-01T00:00:00", "2024-01-01T09:00:00+09:00"])
+def test_schedule_preview_matches_native_parser_and_bounded_search(adapter, expression, after):
+    from datetime import datetime
+
+    from truthound.scheduling import CronExpression, validate_expression
+
+    start = datetime.fromisoformat(after)
+    errors = validate_expression(expression)
+    actual = call(adapter, "schedules_preview", expression=expression, after=after, count=3)
+    assert actual["errors"] == errors
+    assert actual["valid"] is (not errors)
+    if errors:
+        assert actual["next_times"] == []
+        assert actual["matches"] is None and actual["has_seconds"] is None
+        assert not actual["search_exhausted"]
+    else:
+        native = CronExpression.parse(expression)
+        expected = [value.isoformat() for value in native.next_n(3, start)]
+        assert actual["next_times"] == expected
+        assert actual["matches"] == native.matches(start)
+        assert actual["has_seconds"] == native.has_seconds
+        assert actual["search_exhausted"] == (len(expected) < 3)
+    assert actual["returned_count"] == len(actual["next_times"])
+    assert actual["requested_count"] == 3
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        {"count": 0},
+        {"count": 101},
+        {"after": "not-a-time"},
+        {"expression": "*" * 257},
+        {"execute": True},
+    ],
+)
+def test_schedule_preview_rejects_unbounded_or_execution_arguments(adapter, arguments):
+    inputs = {"expression": "@daily", "after": "2024-01-01T00:00:00", **arguments}
+    response = invoke(adapter, "schedules_preview", **inputs)
+    assert response["execution_status"] == "failed"
+    assert response["quality_status"] == "unknown"
+
+
 @pytest.mark.parametrize("algorithm", ALGORITHMS)
 def test_resident_fit_predict_matches_the_same_native_core_algorithm(adapter, algorithm):
     import truthound.ml as ml

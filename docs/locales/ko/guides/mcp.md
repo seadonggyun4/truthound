@@ -205,6 +205,8 @@ JavaScript의 정확한 정수 범위를 넘는 값에는 십진 문자열 태�
 | `models_catalog`, `models_create`, `models_inspect` | 구체 ML 알고리즘 12종의 설정과 상주 수명주기 상태 |
 | `models_fit`, `models_partial_fit`, `models_fit_predict`, `models_predict`, `models_score` | 기본 학습·지원되는 온라인 학습·학습과 예측·예측·이상 점수 |
 | `models_detect`, `models_learn_rules`, `models_rules`, `models_diagnostics` | 두 입력의 ML 드리프트·규칙 학습·원래 모델 진단의 산출물 보관 |
+| `models_rule_query` | 네이티브 학습 규칙 필터·suite/검증기 설정 변환, 자동 적용 없음 |
+| `schedules_preview` | 네이티브 cron 검증·일치·제한된 다음 시각 미리보기, 작업 등록 없음 |
 | `models_save`, `models_restore` | 네이티브 학습 상태 JSON 보관과 새 소유 모델 worker로 복원 |
 | `schema_audit_contract`, `schema_audit_create`, `schema_audit_inspect` | 엄격한 네이티브 메타데이터 문서·전체 JSON Schema·정규화 해시 |
 | `schema_audit_standards`, `schema_audit_implementation` | 표준·설계·카탈로그 감사의 전체 판정과 명시적인 미확인 범위 |
@@ -432,6 +434,28 @@ ML 산출물에는 `encoding`, `model_algorithm`, `model_revision`과 태그로 
 학습 데이터를 해제하면 함께 무효화됩니다. 세션 소유 산출물이며 세션 간 작업공간
 가져오기·내보내기는 아닙니다. 생성 후 앙상블 구성 변경·임의 플러그인 모델·
 메서드별 전체 수명주기 동등성은 남은 작업입니다.
+
+`models_rule_query`는 `model_id`, `expected_revision`, `asset_id`, `action`을
+받습니다. `action`은 `suite`, `validator_specs`, `by_type`(`rule_type` 필요),
+`by_column`(`column` 필요) 중 하나입니다. Core 규칙 학습기의 예측 결과와
+원래 변환·필터 메서드를 사용하며 모델 revision을 변경하지 않고 전체 결과를
+소유한 산출물에 보관합니다. 다른 action의 선택자를 함께 주면 거부합니다.
+알 수 없는 유형·컬럼은 원래 빈 목록으로 반환하며 검증 PASS를 뜻하지 않습니다.
+생성된 suite는 설정 데이터이며 자동 적용·실행하지 않습니다. 모델·입력 해제 시
+파생 산출물도 무효화되고, 규칙 학습기가 아닌 모델에서는 명시적으로 실패합니다.
+
+### 네이티브 스케줄 미리보기
+
+`schedules_preview`는 cron `expression`(최대 256자), 명시적인 ISO 일시 `after`,
+`count`(1–100, 기본 5)를 받습니다. 소유한 제한 시간 내 worker에서 Core의 파서,
+`matches`, `next_n`을 그대로 호출합니다. 5·6·7 필드, 프리셋과 특수 필드는
+네이티브 의미를 유지합니다. 시간대 없는 일시는 그대로 유지하고 명시적인 UTC
+오프셋도 서버 시간대로 변환하지 않습니다. IANA 시간대·일광절약 예약 지원은 아닙니다.
+
+잘못된 표현식은 `valid=false`와 원래 `errors`로, 유효하지만 Core의 4년 검색 범위
+안에 요청한 개수만큼 결과가 없으면 `search_exhausted=true`로 구분합니다.
+둘 다 데이터 품질 PASS가 아닙니다. 스케줄 등록·체크포인트 실행·외부 작업은
+수행하지 않습니다. 영구 예약과 작업 복구는 별도의 미구현 MCP 기능입니다.
 
 ### 네이티브 스키마 감사
 

@@ -493,6 +493,10 @@ class MCPSession:
             self._sources.reap()
         if self._streams is not None:
             self._streams.reap()
+        if name == "schedules_preview":
+            from truthound.mcp.scheduling import call as schedule_call
+
+            return await schedule_call(self, name, arguments)
         if name.startswith("streams_"):
             from truthound.mcp.streams import StreamSession
 

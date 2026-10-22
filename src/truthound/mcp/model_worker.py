@@ -149,6 +149,29 @@ def main():
                             if not isinstance(model, RuleLearner):
                                 raise MCPError("unsupported_operation")
                             result = [rule.to_dict() for rule in model.get_rules()]
+                        elif operation == "models_rule_query":
+                            from truthound.ml.base import RuleLearner
+
+                            if not isinstance(model, RuleLearner):
+                                raise MCPError("unsupported_operation")
+                            prediction = model.predict(frame)
+                            action = request["action"]
+                            if action == "suite":
+                                result = prediction.to_validation_suite()
+                            elif action == "by_type":
+                                result = [
+                                    rule.to_dict()
+                                    for rule in prediction.get_rules_by_type(request["rule_type"])
+                                ]
+                            elif action == "by_column":
+                                result = [
+                                    rule.to_dict()
+                                    for rule in prediction.get_rules_for_column(request["column"])
+                                ]
+                            elif action == "validator_specs":
+                                result = [rule.to_validator_spec() for rule in prediction]
+                            else:
+                                raise MCPError("invalid_arguments")
                         elif operation != "models_inspect":
                             raise MCPError("unknown_operation")
                         if result is not None:

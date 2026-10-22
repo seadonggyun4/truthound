@@ -91,6 +91,8 @@ async def core_profile():
                 required={"capabilities_list","capability_describe","validation_check","schema_learn","data_read","data_mask","data_profile","privacy_scan"}
                 required|={"assets_capture","assets_inline","assets_page","assets_sample","assets_mask","schemas_learn","schemas_inspect","artifacts_export","artifacts_read","resources_describe","resources_release","contexts_open","contexts_inspect","contexts_initialize","plans_status","validators_list","validators_describe","assets_validate","assets_sqlite","assets_profile","assets_scan","artifacts_render","artifacts_datadocs"}
                 required.add("drift_compare")
+                required.add("models_rule_query")
+                required.add("schedules_preview")
                 required|={"drift_catalog","drift_detect","profilers_catalog","profilers_profile","schemas_create","schemas_export"}
                 required|={"suites_create","suites_inspect","suites_validate","contexts_execute"}
                 required|={"sources_open_polars","sources_inspect","sources_sample","sources_validate_connection","sources_validate_columns","sources_check_size_limits","sources_validate"}
@@ -194,6 +196,8 @@ async def core_profile():
                 for name in ("assets_profile","assets_scan"):
                     assert (await invoke(name,{"asset_id":asset}))["bytes"]>0
                 training=(await invoke("assets_inline",{"columns":[{"name":"x","dtype":{"kind":"Float64"},"values":[float(i) for i in range(100)]}]}))["resource_id"]
+                schedule=await invoke("schedules_preview",{"expression":"@daily","after":"2024-01-01T00:00:00+09:00","count":2})
+                assert schedule["valid"] and schedule["next_times"]==["2024-01-02T00:00:00+09:00","2024-01-03T00:00:00+09:00"]
                 model=await invoke("models_create",{"algorithm":"ZScoreAnomalyDetector"})
                 fitted=await invoke("models_fit",{"model_id":model["model_id"],"asset_id":training,"expected_revision":0})
                 assert fitted["trained"] and fitted["revision"]==1
@@ -204,6 +208,12 @@ async def core_profile():
                 restored=await invoke("models_restore",{"resource_id":saved["resource_id"]})
                 restored_scores=await invoke("models_score",{"model_id":restored["model_id"],"asset_id":training,"expected_revision":1})
                 assert decode(json.loads(await artifact_bytes(scores["resource_id"]))["result"])==decode(json.loads(await artifact_bytes(restored_scores["resource_id"]))["result"])
+                learner=(await invoke("models_create",{"algorithm":"DataProfileRuleLearner"}))["model_id"]
+                await invoke("models_fit",{"model_id":learner,"asset_id":training,"expected_revision":0})
+                rule_suite=await invoke("models_rule_query",{"model_id":learner,"asset_id":training,"expected_revision":1,"action":"suite"})
+                rule_value=decode(json.loads(await artifact_bytes(rule_suite["resource_id"]))["result"])
+                assert rule_value["validators"] and rule_value["total_rules"]>0
+                await invoke("resources_release",{"resource_id":learner})
                 from truthound.schema_audit import VERSION,DesignRevision,Dialect,StandardRevision,NamingPolicy,dump_document,json_schema,semantic_digest,audit_standards
                 audit_contract=await invoke("schema_audit_contract",{})
                 assert decode(json.loads(await artifact_bytes(audit_contract["resource_id"])))==json_schema()

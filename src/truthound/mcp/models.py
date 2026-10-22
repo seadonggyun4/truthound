@@ -126,6 +126,10 @@ class ModelSession:
         if arguments.expected_revision != self.states[entry.id]["revision"]:
             raise MCPError("stale_revision")
         request = {"operation": name, "expected_revision": arguments.expected_revision}
+        if name == "models_rule_query":
+            request.update(
+                action=arguments.action, rule_type=arguments.rule_type, column=arguments.column
+            )
         parents = [entry.id]
         data = None
         if hasattr(arguments, "asset_id"):
@@ -150,6 +154,7 @@ class ModelSession:
                 "models_predict",
                 "models_score",
                 "models_rules",
+                "models_rule_query",
                 "models_fit_predict",
                 "models_learn_rules",
                 "models_detect",

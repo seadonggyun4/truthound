@@ -74,7 +74,7 @@ def test_actual_algorithm_matches_core_with_full_canonical_evidence(tmp_path, sc
             native_settings=scenario.native_negative_settings,
         )
     frame = pl.DataFrame(getattr(scenario, polarity))
-    if polarity == "error" and scenario.error_overrides is not None:
+    if polarity in {"error", "caught_error"} and scenario.error_overrides is not None:
         scenario = replace(
             scenario,
             native_settings={**native_settings(scenario, frame), **scenario.error_overrides},

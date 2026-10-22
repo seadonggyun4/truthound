@@ -13,6 +13,7 @@ def operations(descriptor):
         ModelDetect,
         ModelInspect,
         ModelRestore,
+        ModelRuleQuery,
         ModelSpec,
         ModelState,
     )
@@ -28,6 +29,7 @@ def operations(descriptor):
         SchemaImpact,
     )
     from truthound.mcp.profiling import Profile
+    from truthound.mcp.scheduling import SchedulePreview, ScheduleResult
     from truthound.mcp.schema_audit import (
         AuditCreate,
         AuditDocument,
@@ -47,6 +49,14 @@ def operations(descriptor):
     from truthound.mcp.suites import SuiteCreate, SuiteValidation
 
     rows = (
+        (
+            "schedules_preview",
+            "Validate and preview native cron matching and next times in an owned worker; does not register schedules or execute jobs.",
+            SchedulePreview,
+            "truthound.scheduling.CronExpression",
+            ScheduleResult,
+            False,
+        ),
         (
             "schema_audit_contract",
             "Retain the complete native schema-audit document JSON Schema.",
@@ -436,6 +446,14 @@ def operations(descriptor):
             "Retain native Core learned rules without serializing executable Python objects.",
             ModelInspect,
             "truthound.ml.base.RuleLearner.get_rules",
+            wire.ResourceInfo,
+            False,
+        ),
+        (
+            "models_rule_query",
+            "Query a native rule-learning prediction by type/column or convert it to validator specifications or a suite; never apply generated rules implicitly.",
+            ModelRuleQuery,
+            "truthound.ml.base.RuleLearningResult",
             wire.ResourceInfo,
             False,
         ),

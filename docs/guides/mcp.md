@@ -216,6 +216,8 @@ The same opt-in profile also exposes these named operations:
 | `models_catalog`, `models_create`, `models_inspect` | Closed configurations for the 12 concrete Core ML algorithms and resident lifecycle state |
 | `models_fit`, `models_partial_fit`, `models_fit_predict`, `models_predict`, `models_score` | Native training, supported online training, combined training/prediction, prediction and anomaly scoring |
 | `models_detect`, `models_learn_rules`, `models_rules`, `models_diagnostics` | Two-input ML drift detection, rule learning and native model diagnostics as owned artifacts |
+| `models_rule_query` | Native learned-rule filtering and suite/validator configuration conversion; no automatic application |
+| `schedules_preview` | Native cron validation, matching and bounded next-time preview; no job registration |
 | `models_save`, `models_restore` | Native trained-state JSON artifacts and new owned model workers restored from them |
 | `schema_audit_contract`, `schema_audit_create`, `schema_audit_inspect` | Strict native metadata documents, complete JSON Schema and canonical digests |
 | `schema_audit_standards`, `schema_audit_implementation` | Native standards/design/catalog audits with complete findings and explicit unknown coverage |
@@ -446,6 +448,14 @@ also advance the revision. `models_detect` adds `reference_id` and optional
 `columns` to the ordinary model/data input. Inapplicable methods and unsupported
 online learning are failures, never skips or implicit fallback retraining.
 `models_rules` and `models_diagnostics` require `model_id` and `expected_revision`.
+`models_rule_query` additionally requires `asset_id` and `action`: `suite`,
+`validator_specs`, `by_type` (with `rule_type`), or `by_column` (with `column`).
+It calls the native rule learner's prediction and result conversion/filtering
+methods, retaining the full output as an owned artifact without changing the
+model revision. Selectors for other actions are rejected. Unknown types/columns
+produce the native empty list, not a validation pass. The generated suite is
+configuration data; it is never implicitly applied or executed. Model and input
+revocation invalidate derived artifacts. Non-rule models fail explicitly.
 Diagnostics retain the native configuration/info plus applicable statistics,
 feature importance/profiles, reference correlations, column profiles, learned
 patterns and ensemble names/weights. Read their artifact under disclosure consent.
@@ -474,6 +484,21 @@ ready. Restored models inherit the saved artifact's authorization parents;
 releasing training data also revokes restored models. These are session-owned
 artifacts, not cross-session workspace import/export. Post-creation ensemble composition, arbitrary plugin models and
 complete method-by-method lifecycle equivalence remain outstanding.
+
+### Native schedule preview
+
+`schedules_preview` takes a cron `expression` (up to 256 characters), an explicit
+ISO datetime `after`, and `count` (1–100, default 5). It reuses Core's parser,
+`matches` and `next_n` in an owned, deadline-limited worker. Five/six/seven-field
+expressions, presets and special fields have the same native semantics. Naive
+times remain naive; explicit UTC offsets are retained, not converted to the
+server timezone. This is not IANA timezone/DST scheduling support.
+
+The result distinguishes invalid expressions (`valid=false`, native `errors`)
+from a valid expression whose native four-year search horizon yields fewer
+times (`search_exhausted=true`). Neither is a data-quality PASS. Preview does
+not register a schedule, start a checkpoint or execute any action. Persistent
+scheduling and job recovery remain separate, unimplemented MCP capabilities.
 
 ### Native schema audits
 
