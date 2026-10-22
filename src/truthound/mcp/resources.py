@@ -58,7 +58,9 @@ class SessionResources:
         from dataclasses import replace
 
         entry = self.get(identity, "model")
-        bound = [self.get(parent, "asset") for parent in parents]
+        bound = [self.get(parent) for parent in parents]
+        if any(item.kind not in {"asset", "artifact"} for item in bound):
+            raise MCPError("invalid_handle")
         if bound:
             self._entries[identity] = replace(
                 entry,

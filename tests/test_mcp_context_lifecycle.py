@@ -200,6 +200,137 @@ def test_durable_job_never_promotes_unexecuted_or_failed_work(tmp_path, fault):
         service.close()
 
 
+def test_repeated_occurrences_restart_independent_state_and_native_retention(tmp_path):
+    from datetime import datetime
+
+    from truthound.scheduling import CronExpression
+    from truthound.stores.retention.base import ItemMetadata
+    from truthound.stores.retention.policies import CountBasedPolicy
+
+    data, control = tmp_path / "data", tmp_path / "control"
+    data.mkdir()
+    control.mkdir(mode=0o700)
+    pl.DataFrame({"x": [1, None]}).write_parquet(data / "input.parquet")
+    policy = MCPPolicy(
+        (data,), profile="core", allow_sensitive_results=True, control_directory=control
+    )
+    service = MCPService(policy)
+
+    def approved(name, request):
+        pending = invoke(service, name, **request)
+        assert pending["issues"] == [{"code": "approval_required"}]
+        store = ApprovalStore(control)
+        try:
+            store.approve(pending["data"]["plan_id"])
+        finally:
+            store.close()
+        return call(service, name, **request)
+
+    try:
+        asset = call(service, "assets_capture", path=str(data / "input.parquet"))["resource_id"]
+        request = dict(
+            validation={"asset_id": asset, "checks": [{"validator": "not_null"}]},
+            schedule={"expression": "0 * * * *", "after": "2020-01-01T00:00:00+00:00", "count": 3},
+            idempotency_key="repeated-test-01",
+        )
+        queued = approved("jobs_submit", request)
+        assert call(service, "jobs_submit", **request) == queued
+        identities = queued["occurrence_ids"]
+        assert len(set(identities)) == 3
+        service.close()
+        service = MCPService(policy)
+        expected = CronExpression.parse("0 * * * *").next_n(
+            3, datetime.fromisoformat("2020-01-01T00:00:00+00:00")
+        )
+        for identity, due in zip(identities, expected, strict=True):
+            assert call(service, "jobs_status", job_id=identity)["due_at"] == due.timestamp()
+        assert set(
+            call(service, "storage_retention_preview", kind="jobs", max_count=1)["excluded"]
+        ) == set(identities)
+        assert invoke(
+            service,
+            "storage_delete",
+            identities=[identities[0]],
+            idempotency_key="active-delete-test",
+        )["issues"] == [{"code": "busy"}]
+        completed = call(service, "jobs_execute", job_id=identities[0])
+        assert completed["state"] == "succeeded"
+        assert call(service, "jobs_status", job_id=identities[1])["state"] == "queued"
+        for identity in identities[1:]:
+            assert call(service, "jobs_cancel", job_id=identity)["state"] == "cancelled"
+        preview = call(service, "storage_retention_preview", kind="jobs", max_count=1)
+        native = CountBasedPolicy(1)
+        # Equal creation timestamps have the same deterministic identity ordering.
+        items = [
+            ItemMetadata(identity, "jobs", datetime(2020, 1, 1)) for identity in sorted(identities)
+        ]
+        native.prepare_batch(items)
+        assert preview["candidates"] == [
+            item.item_id for item in items if not native.should_retain(item)
+        ]
+        retained = call(service, "jobs_result", job_id=identities[0])["artifact"]["resource_id"]
+        deletion = {"identities": identities, "idempotency_key": "delete-repeated-test"}
+        assert approved("storage_delete", deletion)["deleted"] == sorted(identities)
+        assert call(service, "storage_delete", **deletion)["deleted"] == sorted(identities)
+        assert invoke(service, "jobs_status", job_id=identities[0])["issues"] == [
+            {"code": "invalid_handle"}
+        ]
+        assert (
+            invoke(service, "artifacts_read", resource_id=retained)["execution_status"] == "failed"
+        )
+    finally:
+        service.close()
+
+
+def test_repeated_submission_rolls_back_every_occurrence_on_partial_write(tmp_path, monkeypatch):
+    from truthound.mcp import durable_jobs
+    from truthound.mcp.policy import MCPError
+
+    data, control = tmp_path / "data", tmp_path / "control"
+    data.mkdir()
+    control.mkdir(mode=0o700)
+    pl.DataFrame({"x": [1, 2]}).write_parquet(data / "input.parquet")
+    service = MCPService(
+        MCPPolicy((data,), profile="core", allow_sensitive_results=True, control_directory=control)
+    )
+    try:
+        asset = call(service, "assets_capture", path=str(data / "input.parquet"))["resource_id"]
+        args = {
+            "validation": {"asset_id": asset},
+            "idempotency_key": "atomic-series-test",
+            "schedule": {"expression": "@daily", "after": "2020-01-01T00:00:00+00:00", "count": 3},
+        }
+        pending = invoke(service, "jobs_submit", **args)
+        assert pending["issues"] == [{"code": "approval_required"}]
+        store = ApprovalStore(control)
+        try:
+            store.approve(pending["data"]["plan_id"])
+        finally:
+            store.close()
+        original = durable_jobs.write
+        writes = []
+
+        def interrupted(*arguments):
+            original(*arguments)
+            writes.append(arguments[1])
+            if len(writes) == 2:
+                raise MCPError("injected_partial_write")
+
+        monkeypatch.setattr(durable_jobs, "write", interrupted)
+        assert invoke(service, "jobs_submit", **args)["issues"] == [{"code": "outcome_unknown"}]
+        assert len(writes) == 2
+        assert (
+            service._session.approvals()
+            .connection.execute("SELECT COUNT(*) FROM validation_jobs")
+            .fetchone()[0]
+            == 0
+        )
+        assert invoke(service, "jobs_submit", **args)["issues"] == [{"code": "outcome_unknown"}]
+        assert len(writes) == 2
+    finally:
+        service.close()
+
+
 def invoke(service, name, **arguments):
     return asyncio.run(service.call_operation_async(name, arguments))
 

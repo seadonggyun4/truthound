@@ -1,4 +1,4 @@
-"""Bounded durable one-shot validation jobs, using native validation and cron.
+"""Bounded durable validation occurrences, using native validation and cron.
 
 There is no background daemon or automatic retry. A client explicitly pumps a
 due job. A lost execution lease becomes indeterminate, never successful.
@@ -37,11 +37,8 @@ class JobSubmit(WireModel):
         for check in value.checks or ():
             if check.binding_id or frame_handles(check.validator, check.settings):
                 raise ValueError("Durable jobs cannot persist provider bindings or frame handles")
-        if self.schedule and (
-            self.schedule.count != 1
-            or datetime.fromisoformat(self.schedule.after).utcoffset() is None
-        ):
-            raise ValueError("One-shot schedules require count=1 and an explicit UTC offset")
+        if self.schedule and datetime.fromisoformat(self.schedule.after).utcoffset() is None:
+            raise ValueError("Schedules require an explicit UTC offset")
         return self
 
 
@@ -63,6 +60,7 @@ class JobState(WireModel):
     lease_until: float | None
     result_sha256: str | None
     artifact: ResourceInfo | None = None
+    occurrence_ids: list[str] = Field(default_factory=list)
 
 
 def storage(session):
@@ -120,6 +118,7 @@ def info(identity, record):
         "job_id": identity,
         **{key: record[key] for key in ("state", "due_at", "lease_until", "result_sha256")},
         "artifact": None,
+        "occurrence_ids": record.get("occurrence_ids", []),
     }
 
 
@@ -137,14 +136,16 @@ async def call(session, name, arguments):
         ):
             raise MCPError("unsupported_operation")
         due = store.clock()
+        due_times = [due]
         if arguments.schedule:
             result = await session.call("schedules_preview", arguments.schedule)
             if result["execution_status"] != "succeeded":
                 return envelope(name, error="core_error")
             times = result["data"]["next_times"]
-            if not result["data"]["valid"] or len(times) != 1:
+            if not result["data"]["valid"] or len(times) != arguments.schedule.count:
                 raise MCPError("invalid_arguments")
-            due = datetime.fromisoformat(times[0]).timestamp()
+            due_times = [datetime.fromisoformat(value).timestamp() for value in times]
+            due = due_times[0]
         policy = session._policy_stamp()
         intent = {
             "arguments": arguments.model_dump(exclude={"idempotency_key"}),
@@ -169,7 +170,12 @@ async def call(session, name, arguments):
         if hashlib.sha256(payload).hexdigest() != entry.sha256:
             raise MCPError("resource_changed")
         identity = "job_" + store.digest({"plan": plan["plan_id"]})
+        occurrence_ids = [identity] + [
+            "job_" + store.digest({"plan": plan["plan_id"], "occurrence": index})
+            for index in range(1, len(due_times))
+        ]
         record = {
+            "created_at": store.clock(),
             "validation": arguments.validation.model_dump(),
             "policy": policy,
             "origins": sorted({str(origin) for item in inputs for origin in item.origins}),
@@ -178,6 +184,7 @@ async def call(session, name, arguments):
             "due_at": due,
             "lease_until": None,
             "result_sha256": None,
+            "occurrence_ids": occurrence_ids,
         }
         result = envelope(name, data=info(identity, record))
         store.begin(plan["plan_id"], session=session.identity, policy=session._policy_stamp())
@@ -188,9 +195,13 @@ async def call(session, name, arguments):
                 size, count = store.connection.execute(
                     "SELECT COALESCE(SUM(length(input)+COALESCE(length(output),0)),0),COUNT(*) FROM validation_jobs"
                 ).fetchone()
-                if count >= 128 or size + len(payload) > 16 * 1024**2:
+                if (
+                    count + len(due_times) > 128
+                    or size + len(payload) * len(due_times) > 16 * 1024**2
+                ):
                     raise MCPError("resource_exhausted")
-                write(store, identity, record, payload, None)
+                for occurrence_id, occurrence_due in zip(occurrence_ids, due_times, strict=True):
+                    write(store, occurrence_id, {**record, "due_at": occurrence_due}, payload, None)
                 store.finish_in_transaction(plan["plan_id"], result)
             return result
         except Exception:
@@ -301,6 +312,7 @@ async def call(session, name, arguments):
                     "durable_policy": record["policy"],
                     "durable_control": str(session.policy.control_directory),
                     "durable_workspaces": [],
+                    "durable_identity": identity,
                 },
             )
             result["artifact"] = session._info(retained)

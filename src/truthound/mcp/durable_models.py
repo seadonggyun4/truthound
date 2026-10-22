@@ -73,6 +73,7 @@ async def call(session, name, arguments, models):
         if any("binding_digest" in item.metadata for item in inputs):
             raise MCPError("unsupported_operation")
         metadata = {
+            "created_at": store.clock(),
             "specification": entry.metadata["model_specification"],
             "trained": entry.metadata.get("trained", True),
             "policy": policy,
@@ -97,7 +98,10 @@ async def call(session, name, arguments, models):
         plan = store.prepare(
             name,
             key=arguments.idempotency_key,
-            request={"source": entry.id, "snapshot": metadata},
+            request={
+                "source": entry.id,
+                "snapshot": {key: value for key, value in metadata.items() if key != "created_at"},
+            },
             policy=policy,
             session=session.identity,
             effects=["persistent_model_storage", "session_lifetime_transfer"],
@@ -180,6 +184,7 @@ async def call(session, name, arguments, models):
                 "durable_policy": policy,
                 "durable_control": str(session.policy.control_directory),
                 "durable_workspaces": metadata["workspaces"],
+                "durable_identity": snapshot_id,
             },
         )
         result = await models.call("models_restore", ModelRestore(resource_id=identity))

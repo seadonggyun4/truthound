@@ -43,6 +43,10 @@ class MCPSession:
             raise MCPError("access_denied")
         for root in metadata["durable_workspaces"]:
             self.policy.resolve_workspace(root)
+        if "durable_identity" in metadata:
+            from truthound.mcp.retention import read
+
+            read(self, metadata["durable_identity"])
 
     def _before_release(self, identity):
         # Windows cannot unlink SQLite or mapped stream inputs while their
@@ -512,6 +516,10 @@ class MCPSession:
             from truthound.mcp.durable_jobs import call as job_call
 
             return await job_call(self, name, arguments)
+        if name.startswith("storage_"):
+            from truthound.mcp.retention import call as retention_call
+
+            return await retention_call(self, name, arguments)
         if name.startswith("streams_"):
             from truthound.mcp.streams import StreamSession
 

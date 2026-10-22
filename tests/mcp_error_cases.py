@@ -252,6 +252,18 @@ def attach(cases):
     )
     observed, result = set(), []
     for row in cases:
+        if row.validator == "column_coexistence":
+            assert row.error is None and row.caught_error is None
+            # Native coexistence computes a failing-row sample with repeated
+            # projection names. Constructor succeeds; Core catches DuplicateError.
+            result.append(
+                replace(
+                    row,
+                    caught_error=row.negative,
+                    error_overrides={"columns": list(row.negative) * 2},
+                )
+            )
+            continue
         if row.validator in {"date_between", "future_date", "past_date"}:
             assert row.error is None and row.caught_error is None
             frame = pl.DataFrame(row.positive)

@@ -330,6 +330,145 @@ def test_approved_snapshot_survives_session_end_without_retraining(tmp_path, alg
         service.close()
 
 
+def test_existing_detector_copy_retains_learning_and_source_revocation(tmp_path):
+    from truthound.mcp.policy import MCPPolicy
+    from truthound.mcp.service import MCPService
+    from truthound.ml import ZScoreAnomalyDetector
+
+    frame = pl.DataFrame({"x": [float(i) for i in range(120)]})
+    frame.write_parquet(tmp_path / "input.parquet")
+    direct = ZScoreAnomalyDetector(contamination=0.2)
+    direct.fit(frame.lazy())
+    service = MCPService(MCPPolicy((tmp_path,), profile="core", allow_sensitive_results=True))
+    try:
+        asset = call(service, "assets_capture", path=str(tmp_path / "input.parquet"))["resource_id"]
+        child = call(
+            service,
+            "models_create",
+            algorithm="ZScoreAnomalyDetector",
+            config={"contamination": 0.2},
+        )["model_id"]
+        call(service, "models_fit", model_id=child, asset_id=asset, expected_revision=0)
+        parent = call(service, "models_create", algorithm="EnsembleAnomalyDetector")["model_id"]
+        stale = asyncio.run(
+            service.call_operation_async(
+                "models_ensemble_add",
+                {
+                    "model_id": parent,
+                    "expected_revision": 0,
+                    "source_model_id": child,
+                    "source_revision": 0,
+                },
+            )
+        )
+        assert stale["issues"] == [{"code": "stale_revision"}]
+        call(
+            service,
+            "models_ensemble_add",
+            model_id=parent,
+            expected_revision=0,
+            source_model_id=child,
+            source_revision=1,
+            weight=2.0,
+        )
+        detached = call(
+            service, "models_ensemble_remove", model_id=parent, expected_revision=1, index=0
+        )
+        restored = call(service, "models_restore", resource_id=detached["resource_id"])
+        scored = call(
+            service,
+            "models_score",
+            model_id=restored["model_id"],
+            expected_revision=1,
+            asset_id=asset,
+        )
+        assert (
+            artifact(service, scored["resource_id"])["result"]["values"]
+            == direct.score(frame.lazy()).to_list()
+        )
+        call(service, "resources_release", resource_id=child)
+        denied = asyncio.run(
+            service.call_operation_async(
+                "models_inspect",
+                {
+                    "model_id": parent,
+                    "expected_revision": 2,
+                },
+            )
+        )
+        assert denied["issues"] == [{"code": "invalid_handle"}]
+    finally:
+        service.close()
+
+
+@pytest.mark.parametrize("rollback", [False, True])
+def test_snapshot_delete_revokes_live_resume_and_preserves_atomic_receipt(
+    tmp_path, monkeypatch, rollback
+):
+    from truthound.mcp.approval import ApprovalStore
+    from truthound.mcp.policy import MCPError, MCPPolicy
+    from truthound.mcp.service import MCPService
+
+    data, control = tmp_path / "data", tmp_path / "control"
+    data.mkdir()
+    control.mkdir(mode=0o700)
+    pl.DataFrame({"x": [float(i) for i in range(120)]}).write_parquet(data / "input.parquet")
+    service = MCPService(
+        MCPPolicy((data,), profile="core", allow_sensitive_results=True, control_directory=control)
+    )
+
+    def approve(name, args):
+        pending = asyncio.run(service.call_operation_async(name, args))
+        assert pending["issues"] == [{"code": "approval_required"}]
+        store = ApprovalStore(control)
+        try:
+            store.approve(pending["data"]["plan_id"])
+        finally:
+            store.close()
+
+    try:
+        asset = call(service, "assets_capture", path=str(data / "input.parquet"))["resource_id"]
+        model = call(service, "models_create", algorithm="ZScoreAnomalyDetector")["model_id"]
+        call(service, "models_fit", model_id=model, asset_id=asset, expected_revision=0)
+        saved = call(service, "models_save", model_id=model, expected_revision=1)["resource_id"]
+        args = {"resource_id": saved, "idempotency_key": "persist-delete-test"}
+        approve("models_persist", args)
+        snapshot = call(service, "models_persist", **args)["snapshot_id"]
+        restored = call(service, "models_resume", snapshot_id=snapshot)["model_id"]
+        preview = call(service, "storage_retention_preview", kind="models", max_age_minutes=1)
+        assert preview == {"candidates": [], "preserved": [snapshot], "excluded": []}
+        deletion = {"identities": [snapshot], "idempotency_key": "delete-snapshot-test"}
+        approve("storage_delete", deletion)
+        if rollback:
+
+            def fail(*args):
+                raise MCPError("injected_commit_failure")
+
+            monkeypatch.setattr(service._session.approvals(), "finish_in_transaction", fail)
+            failed = asyncio.run(service.call_operation_async("storage_delete", deletion))
+            assert failed["execution_status"] == "outcome_unknown"
+            assert failed["issues"] == [{"code": "outcome_unknown"}]
+            assert asyncio.run(service.call_operation_async("storage_delete", deletion))[
+                "execution_status"
+            ] == "outcome_unknown"
+            assert call(service, "models_inspect", model_id=restored, expected_revision=1)[
+                "trained"
+            ]
+            assert call(service, "models_resume", snapshot_id=snapshot)["trained"]
+        else:
+            assert call(service, "storage_delete", **deletion)["deleted"] == [snapshot]
+            assert call(service, "storage_delete", **deletion)["deleted"] == [snapshot]
+            for operation, request in [
+                ("models_inspect", {"model_id": restored, "expected_revision": 1}),
+                ("models_resume", {"snapshot_id": snapshot}),
+            ]:
+                assert asyncio.run(service.call_operation_async(operation, request))["issues"] == [
+                    {"code": "invalid_handle"}
+                ]
+    finally:
+        service.close()
+
+
 def test_snapshot_and_receipt_roll_back_together_on_commit_failure(tmp_path, monkeypatch):
     from truthound.mcp.policy import MCPPolicy
     from truthound.mcp.service import MCPService

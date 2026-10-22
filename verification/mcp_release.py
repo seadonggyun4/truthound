@@ -94,6 +94,7 @@ async def core_profile():
                 required.add("models_rule_query")
                 required.add("schedules_preview")
                 required|={"models_ensemble_add","models_ensemble_remove","models_persist","models_resume","jobs_submit","jobs_execute","jobs_status","jobs_result","jobs_cancel","jobs_recover"}
+                required|={"storage_retention_preview","storage_delete"}
                 required|={"drift_catalog","drift_detect","profilers_catalog","profilers_profile","schemas_create","schemas_export"}
                 required|={"suites_create","suites_inspect","suites_validate","contexts_execute"}
                 required|={"sources_open_polars","sources_inspect","sources_sample","sources_validate_connection","sources_validate_columns","sources_check_size_limits","sources_validate"}
@@ -222,10 +223,11 @@ async def core_profile():
                 await invoke("models_ensemble_add",{"model_id":ensemble,"expected_revision":0,"detector":{"algorithm":"ZScoreAnomalyDetector"}})
                 await invoke("models_fit",{"model_id":ensemble,"asset_id":training,"expected_revision":1})
                 removed=await invoke("models_ensemble_remove",{"model_id":ensemble,"expected_revision":2,"index":0})
+                await invoke("models_ensemble_add",{"model_id":ensemble,"expected_revision":3,"source_model_id":model["model_id"],"source_revision":1})
                 detached=await invoke("models_restore",{"resource_id":removed["resource_id"]})
                 assert detached["trained"]
                 await invoke("resources_release",{"resource_id":ensemble})
-                job_args={"validation":{"asset_id":training,"checks":[{"validator":"not_null"}]},"idempotency_key":"installed-durable-job"}
+                job_args={"validation":{"asset_id":training,"checks":[{"validator":"not_null"}]},"idempotency_key":"installed-durable-job","schedule":{"expression":"@daily","after":"2020-01-01T00:00:00+00:00","count":2}}
                 pending=await client.call_tool("jobs_submit",job_args)
                 assert pending.isError and pending.structuredContent["issues"]==[{"code":"approval_required"}]
                 subprocess.run([sys.executable,"-I","-m","truthound.mcp","approve-plan","--control-dir",str(control),"--plan-id",pending.structuredContent["data"]["plan_id"]],check=True,capture_output=True)
@@ -238,6 +240,15 @@ async def core_profile():
                 assert (await invoke("jobs_cancel",job_id))["state"]=="succeeded"
                 result=await invoke("jobs_result",job_id)
                 assert result["artifact"]["bytes"]>0
+                assert len(job["occurrence_ids"])==2
+                assert (await invoke("jobs_cancel",{"job_id":job["occurrence_ids"][1]}))["state"]=="cancelled"
+                preview=await invoke("storage_retention_preview",{"kind":"jobs","max_count":1})
+                assert len(preview["candidates"])==1 and not preview["excluded"]
+                delete_args={"identities":job["occurrence_ids"]+[snapshot["snapshot_id"]],"idempotency_key":"installed-storage-delete"}
+                pending=await client.call_tool("storage_delete",delete_args)
+                assert pending.isError and pending.structuredContent["issues"]==[{"code":"approval_required"}]
+                subprocess.run([sys.executable,"-I","-m","truthound.mcp","approve-plan","--control-dir",str(control),"--plan-id",pending.structuredContent["data"]["plan_id"]],check=True,capture_output=True)
+                assert (await invoke("storage_delete",delete_args))["deleted"]==sorted(delete_args["identities"])
                 learner=(await invoke("models_create",{"algorithm":"DataProfileRuleLearner"}))["model_id"]
                 await invoke("models_fit",{"model_id":learner,"asset_id":training,"expected_revision":0})
                 rule_suite=await invoke("models_rule_query",{"model_id":learner,"asset_id":training,"expected_revision":1,"action":"suite"})

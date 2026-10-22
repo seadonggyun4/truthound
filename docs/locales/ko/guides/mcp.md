@@ -209,7 +209,8 @@ JavaScript의 정확한 정수 범위를 넘는 값에는 십진 문자열 태�
 | `schedules_preview` | 네이티브 cron 검증·일치·제한된 다음 시각 미리보기, 작업 등록 없음 |
 | `models_ensemble_add`, `models_ensemble_remove` | revision을 확인하는 네이티브 편집과 제거한 모델의 복원 가능한 산출물 |
 | `models_persist`, `models_resume` | 별도 승인된 비공개 모델 스냅샷과 새 세션 복원 |
-| `jobs_submit`, `jobs_execute`, `jobs_status`, `jobs_result`, `jobs_cancel`, `jobs_recover` | 승인된 영구 단발 검증 작업·결과 보존·불확정 lease 복구 |
+| `jobs_submit`, `jobs_execute`, `jobs_status`, `jobs_result`, `jobs_cancel`, `jobs_recover` | 승인된 영구 검증 회차·결과 보존·불확정 lease 복구 |
+| `storage_retention_preview`, `storage_delete` | 네이티브 시간·개수 보존 정책 조회와 별도 승인된 정확한 대상 삭제 |
 | `models_save`, `models_restore` | 네이티브 학습 상태 JSON 보관과 새 소유 모델 worker로 복원 |
 | `schema_audit_contract`, `schema_audit_create`, `schema_audit_inspect` | 엄격한 네이티브 메타데이터 문서·전체 JSON Schema·정규화 해시 |
 | `schema_audit_standards`, `schema_audit_implementation` | 표준·설계·카탈로그 감사의 전체 판정과 명시적인 미확인 범위 |
@@ -458,7 +459,7 @@ ML 산출물에는 `encoding`, `model_algorithm`, `model_revision`과 태그로 
 잘못된 표현식은 `valid=false`와 원래 `errors`로, 유효하지만 Core의 4년 검색 범위
 안에 요청한 개수만큼 결과가 없으면 `search_exhausted=true`로 구분합니다.
 둘 다 데이터 품질 PASS가 아닙니다. 스케줄 등록·체크포인트 실행·외부 작업은
-수행하지 않습니다. 영구 예약은 아래의 제한된 단발 검증 작업에서 별도로 제공합니다.
+수행하지 않습니다. 영구 예약은 아래의 제한된 검증 회차에서 별도로 제공합니다.
 
 ### 앙상블 편집과 세션 간 모델 복원
 
@@ -468,7 +469,11 @@ ML 산출물에는 `encoding`, `model_algorithm`, `model_revision`과 태그로 
 제거한 모델의 설정과 학습 상태를 복원 가능한 모델 산출물로 반환합니다. 학습 모델은
 revision 1, 미학습 모델은 revision 0으로 복원됩니다. 성공한 편집은 revision을
 한 번 증가시키고, 실패한 변경은 상주 핸들을 무효화합니다. 하위 모델은 최대 8개,
-중첩은 4단계이며 기존 상주 모델을 참조로 추가하는 기능은 지원하지 않습니다.
+중첩은 4단계입니다. `detector` 대신 `source_model_id`와 정확한 `source_revision`을
+주면 기존 학습 모델을 네이티브 데이터 전용 저장·복원으로 복사해 편입합니다. 재학습이나
+가변 Python 객체 공유는 하지 않으며 이후 원본 수정은 복사본에 반영되지 않습니다.
+자기 편입과 의존 순환은 거부합니다. 원본 권한·수명은 유지하므로 원본 핸들 해제 시
+파생 앙상블도 무효화됩니다. 오래된 원본 revision은 앙상블 변경 전에 거부합니다.
 
 `models_persist`에는 모델 산출물의 `resource_id`와 8~128자 `idempotency_key`를
 전달합니다. 운영자가 `approve-plan`으로 정확한 계획을 승인하기 전에는
@@ -482,20 +487,24 @@ revision 1, 미학습 모델은 revision 0으로 복원됩니다. 성공한 편�
 저장소는 클라우드나 작업공간 내보내기가 아닌 로컬 비공개 SQLite입니다. 최대 128개,
 개별 16 MiB·합계 32 MiB이며 파일 예산도 적용됩니다. 복원 시 서명된 메타데이터와
 바이트 해시를 검사하고 스냅샷과 성공 영수증은 한 트랜잭션으로 커밋합니다.
-아직 공개 스냅샷 삭제 API는 없으며 제어 DB를 수동으로 수정하면 안 됩니다.
+삭제는 아래의 별도 승인된 저장소 삭제 도구를 사용하며 제어 DB를 수동으로 수정하면 안 됩니다.
 
-### 영구 단발 검증 작업
+### 영구 검증 회차
 
 `jobs_submit`은 `validation`(`assets_validate` 요청), `idempotency_key`, 선택형
 `schedule`을 받습니다. 예약에는 `expression`, UTC offset이 있는 `after`,
-`count: 1`을 지정하며 다음 시각은 Core cron으로 계산합니다. 입력 보존과 지연 실행은
+`count`(1~100)를 지정하며 각 시각은 Core cron으로 계산합니다. 요청한 횟수 전체를
+찾지 못하면 부분 등록하지 않고 거부합니다. 입력 보존과 지연 실행은
 별도 운영자 계획 승인이 필요합니다. context/schema 핸들·참조 데이터 핸들·provider
 바인딩·외부 액션은 허용하지 않습니다. 인라인 `schema_spec`과 제한된 검증기 설정은
 사용할 수 있습니다.
 
-반환된 `job_id`로 `jobs_status`, `jobs_execute`, `jobs_result`, `jobs_cancel`,
+모든 회차를 한 트랜잭션으로 등록하거나 전혀 등록하지 않으며 첫 `job_id`와 전체
+`occurrence_ids`를 반환합니다. 회차마다 상태·실행 임대·결과가 독립적이며 한 회차를
+취소해도 다른 회차는 취소되지 않습니다. 입력 복사본 전체가 기존 저장 한도에 포함됩니다.
+무한 반복 규칙이 아닌 유한 반복입니다. 각 ID로 `jobs_status`, `jobs_execute`, `jobs_result`, `jobs_cancel`,
 `jobs_recover`를 호출합니다. 클라이언트가 실행 시각이 지난 작업을 명시적으로 실행해야
-하며 데몬·반복 스케줄러·유료 provider 호출·자동 재시도는 없습니다. 대기 입력과 완료된
+하며 데몬·무한 반복 스케줄러·유료 provider 호출·자동 재시도는 없습니다. 대기 입력과 완료된
 네이티브 결과는 세션 종료 후에도 보존되고 결과는 새로 승인된 세션 산출물로 읽습니다.
 실행 성공에도 품질 위반이 있을 수 있으며 Core 실행 오류는 `failed`로 남습니다.
 취소한 대기 작업은 실행하지 않고 실행 중 취소는 다른 프로세스를 중단했다고 주장하는
@@ -505,11 +514,32 @@ revision 1, 미학습 모델은 revision 0으로 복원됩니다. 성공한 편�
 트랜잭션 커밋이 끝나야 기록됩니다.
 
 비공개 저장소는 작업 최대 128개, 입력/결과 개별 8 MiB, 작업 바이트 합계 16 MiB이며
-기존 파일·세션 예산도 적용됩니다. 작업 삭제 API·자동 보존 정리는 아직 없습니다.
+기존 파일·세션 예산도 적용됩니다. 자동 보존 정리는 아직 없습니다.
 제출 성공 응답을 잃었다면 제출 이후 다섯 작업 도구에도 `job_id` 대신 원래
 `idempotency_key`를 전달할 수 있습니다. 둘 중 하나만 지정하며 새 작업을 중복 제출하지
 않고 기존 레코드를 조회한 뒤 권한을 다시 확인합니다.
-반복 작업·provider 작업이 없으므로 전체 스케줄링 동등성 완료를 뜻하지 않습니다.
+반복 제출의 원래 키는 첫 회차와 전체 ID 목록을 조회합니다. 상주 실행기·provider 작업은
+없으므로 전체 스케줄링 동등성 완료를 뜻하지 않습니다.
+
+### 영구 저장 보존 정책과 삭제
+
+`storage_retention_preview`에는 `kind`(`models` 또는 `jobs`)와 `max_age_minutes`
+(1~5,256,000) 또는 `max_count`(1~128) 중 하나 이상을 지정합니다. Core의
+`TimeBasedPolicy`·`CountBasedPolicy`를 재사용하며 모든 선택 정책을 만족해야 보존합니다.
+삭제 없이 `candidates`, `preserved`, `excluded` ID 목록을 반환합니다. 대기·실행 중·
+불확정 작업과 생성 시각이 없는 과거 레코드는 제외합니다. 동일 생성 시각은 ID 순서로
+정렬해 네이티브 개수 정책의 판정을 결정적으로 유지합니다.
+
+`storage_delete`에는 중복 없는 정확한 `identities`(스냅샷·작업 ID 1~128개)와
+`idempotency_key`를 지정합니다. 별도 운영자 승인이 필요하며 삭제 트랜잭션 안에서
+소유권·서명·현재 권한·비활성 상태를 다시 검사합니다. 활성·불확정 작업은 삭제하지 않습니다.
+대상 데이터 삭제와 성공 영수증을 원자적으로 커밋하고 재호출은 영수증만 반환합니다.
+영구 원본 삭제 후 기존 복원 모델·결과 핸들의 접근도 거부합니다. 승인 영수증은 감사와
+중복 실행 방지를 위해 남습니다. SQLite의 논리적 데이터 삭제이며 디스크 완전 소거를
+보장하지 않습니다. 정책은 호출마다 평가하며 자동 정책 저장·백그라운드 정리·아카이브·
+압축이나 전체 보존 하위 시스템 동등성을 주장하지 않습니다. 생성 시각 없는 과거 레코드도
+정확한 ID를 지정하면 승인 후 삭제할 수 있습니다. 같은 비공개 제어 저장소·운영자 정책과
+민감한 결과 허용이 필요합니다.
 
 ### 네이티브 스키마 감사
 

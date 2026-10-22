@@ -88,6 +88,8 @@ def main():
                                 child = build(request["detector"])
                                 if not isinstance(child, AnomalyDetector):
                                     raise MCPError("invalid_arguments")
+                                if "detector_state_path" in request:
+                                    child.load(request["detector_state_path"])
                                 model.add_detector(child, weight=request["weight"])
                             else:
                                 child = model.remove_detector(request["index"])
@@ -105,6 +107,10 @@ def main():
                             revision += 1
                         elif operation == "models_save":
                             save_bounded(model, request)
+                            detached = {
+                                "detached_spec": detector_spec(model),
+                                "detached_trained": model.is_trained,
+                            }
                         elif operation == "models_load":
                             model.load(request["state_path"])
                             revision += 1

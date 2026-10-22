@@ -33,6 +33,12 @@ def operations(descriptor):
         SchemaImpact,
     )
     from truthound.mcp.profiling import Profile
+    from truthound.mcp.retention import (
+        DeleteResult,
+        RetentionPreview,
+        RetentionResult,
+        StorageDelete,
+    )
     from truthound.mcp.scheduling import SchedulePreview, ScheduleResult
     from truthound.mcp.schema_audit import (
         AuditCreate,
@@ -54,8 +60,24 @@ def operations(descriptor):
 
     rows = (
         (
+            "storage_retention_preview",
+            "Evaluate native age/count policies without deletion; exclude active, indeterminate and undated legacy records.",
+            RetentionPreview,
+            "truthound.stores.retention",
+            RetentionResult,
+            True,
+        ),
+        (
+            "storage_delete",
+            "Delete exact authorized inactive durable payloads after separate approval; preserve intent receipts, revoke derived handles.",
+            StorageDelete,
+            "truthound.mcp.retention",
+            DeleteResult | wire.OperationPlan,
+            True,
+        ),
+        (
             "jobs_submit",
-            "Approve and persist one bounded native validation job, optionally at the next native cron time; no daemon or automatic retries.",
+            "Approve bounded native validation occurrences (up to 100 native cron times), atomically retaining each job; no daemon or automatic retries.",
             JobSubmit,
             "truthound.api.check",
             JobState | wire.OperationPlan,
@@ -104,7 +126,7 @@ def operations(descriptor):
         ),
         (
             "models_ensemble_add",
-            "Add an admitted fresh native anomaly detector with an explicit weight and revision. Does not train the child.",
+            "Add an admitted constructor or copy an existing trained detector at its exact revision; retain source authorization, never retrain or share mutable objects.",
             EnsembleAdd,
             "truthound.ml.anomaly_models.ensemble.EnsembleAnomalyDetector.add_detector",
             ModelState,
@@ -758,6 +780,7 @@ def operations(descriptor):
                 "jobs_execute",
                 "jobs_cancel",
                 "jobs_recover",
+                "storage_delete",
                 "models_restore",
                 "models_fit",
                 "models_partial_fit",
@@ -774,7 +797,7 @@ def operations(descriptor):
                 "sources_validate",
             },
             requires_workspaces=name.startswith("contexts_"),
-            requires_control=name.startswith("jobs_")
+            requires_control=name.startswith(("jobs_", "storage_"))
             or name
             in {
                 "contexts_initialize",

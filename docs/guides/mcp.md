@@ -219,7 +219,8 @@ The same opt-in profile also exposes these named operations:
 | `models_rule_query` | Native learned-rule filtering and suite/validator configuration conversion; no automatic application |
 | `models_ensemble_add`, `models_ensemble_remove` | Revision-checked native editing; detached children remain restorable artifacts |
 | `models_persist`, `models_resume` | Separately approved private model snapshots and new-session restoration |
-| `jobs_submit`, `jobs_execute`, `jobs_status`, `jobs_result`, `jobs_cancel`, `jobs_recover` | Approved durable one-shot validation, retained results and indeterminate lease recovery |
+| `jobs_submit`, `jobs_execute`, `jobs_status`, `jobs_result`, `jobs_cancel`, `jobs_recover` | Approved durable validation occurrences, retained results and indeterminate lease recovery |
+| `storage_retention_preview`, `storage_delete` | Native age/count retention preview and separately approved exact payload deletion |
 | `schedules_preview` | Native cron validation, matching and bounded next-time preview; no job registration |
 | `models_save`, `models_restore` | Native trained-state JSON artifacts and new owned model workers restored from them |
 | `schema_audit_contract`, `schema_audit_create`, `schema_audit_inspect` | Strict native metadata documents, complete JSON Schema and canonical digests |
@@ -495,8 +496,13 @@ it does not implicitly train the child. `models_ensemble_remove` takes an `index
 child's configuration and learned state. Restore produces revision 1 for a trained
 child or revision 0 for an untrained child. A successful edit advances the ensemble
 revision once; failed mutations invalidate the resident handle. Up to eight
-children and four nested levels are admitted. Adding an existing live model by
-reference is not supported.
+children and four nested levels are admitted. Instead of `detector`, supply
+`source_model_id` and its exact `source_revision` to copy an existing trained
+detector through native data-only save/load. This preserves learned state without
+retraining; it does not share mutable Python objects. Subsequent source edits do
+not change the copy. Self-inclusion and dependency cycles are rejected. The copy
+retains source authorization and lifetime: releasing the source invalidates its
+dependent ensemble. Stale source revisions fail before editing the ensemble.
 
 `models_persist` takes a model artifact `resource_id` and an `idempotency_key`
 (8–128 characters). It returns `approval_required` until the operator approves
@@ -512,8 +518,8 @@ without repeating persistence. Supply exactly one identity selector.
 Storage is private local SQLite, not a cloud service or workspace export: at most
 128 snapshots, 16 MiB per snapshot and 32 MiB total, additionally bounded by the
 file budget. Snapshot bytes and signed metadata are checked on restoration; the
-snapshot and successful intent receipt commit in one transaction. There is not
-yet a public snapshot deletion API; do not edit the control database manually.
+snapshot and successful intent receipt commit in one transaction. Use the approved
+storage deletion operation below; do not edit the control database manually.
 
 ### Native schedule preview
 
@@ -528,21 +534,26 @@ The result distinguishes invalid expressions (`valid=false`, native `errors`)
 from a valid expression whose native four-year search horizon yields fewer
 times (`search_exhausted=true`). Neither is a data-quality PASS. Preview does
 not register a schedule, start a checkpoint or execute any action. Persistent
-scheduling is available separately for bounded one-shot validation jobs below.
+scheduling is available separately for bounded validation occurrences below.
 
-### Durable one-shot validation jobs
+### Durable validation occurrences
 
 `jobs_submit` takes `validation` (an `assets_validate` request), an
 `idempotency_key`, and optionally `schedule` with `expression`, offset-aware
-`after`, and `count: 1`. The next due time uses native cron semantics. Submission
+`after`, and `count` (1–100). Due times use native cron semantics. All requested
+times must be found; partial cron search results are rejected. Submission
 requires separate operator plan approval to persist the captured input and
 authorize deferred computation. Context/schema handles, reference-frame handles,
 provider bindings and external actions are not admitted; inline `schema_spec`
 and closed validator settings remain available.
 
-Use the returned `job_id` with `jobs_status`, `jobs_execute`, `jobs_result`,
+Submission atomically persists all occurrences or none, returning the first
+`job_id` and the complete `occurrence_ids`. Each occurrence owns its own state,
+lease and result; cancelling one does not cancel the others. All input copies
+count against the unchanged storage quotas. These are a finite series, not an
+unbounded recurrence rule. Use each ID with `jobs_status`, `jobs_execute`, `jobs_result`,
 `jobs_cancel`, or `jobs_recover`. A client must explicitly execute a due job;
-there is no daemon, recurring scheduler, paid provider call or automatic retry.
+there is no daemon, unlimited recurring scheduler, paid provider call or automatic retry.
 Queued input survives session closure. Completed native results survive restart
 and can become newly authorized session artifacts. A completed execution can
 still contain data-quality violations; native execution failures remain `failed`.
@@ -557,10 +568,34 @@ The private store admits at most 128 jobs, 8 MiB per input/result and 16 MiB tot
 job payloads. To recover a lost submission reply, the five job operations after
 submission also accept the original `idempotency_key` instead of `job_id`; they
 resolve and reauthorize the existing record rather than submit another job.
-Supply exactly one selector. These limits remain
-subject to existing file/session budgets. No job deletion API or
-automatic retention pruning is provided yet. These restrictions and the absence
-of recurring/provider-backed jobs mean this is not full scheduling parity.
+For a series, the original key resolves the first occurrence and its complete
+ID list. Supply exactly one selector. These limits remain subject to existing
+file/session budgets. No unattended scheduler or provider-backed jobs are
+provided; this is not full scheduling parity.
+
+### Durable storage retention and deletion
+
+`storage_retention_preview` takes `kind` (`models` or `jobs`) and at least one of
+`max_age_minutes` (1–5,256,000) or `max_count` (1–128). It reuses Core
+`TimeBasedPolicy` and `CountBasedPolicy`; an item must satisfy every selected
+policy to be preserved. It returns `candidates`, `preserved` and `excluded`
+identity lists without deleting anything. Queued/running/indeterminate jobs and
+legacy records without a creation timestamp are excluded. Equal timestamps use
+identity ordering for deterministic native count-policy evaluation.
+
+`storage_delete` takes exact `identities` (1–128 unique snapshot/job IDs) and an
+`idempotency_key`. It requires separate operator approval and rechecks ownership,
+signatures, current grants and inactive state inside the deletion transaction.
+Active and indeterminate jobs cannot be deleted. All requested payloads and the
+successful receipt commit atomically; replay returns the receipt without deleting
+again. Existing resumed models/result handles are denied after their durable
+source is deleted. Approval receipts remain for audit and replay prevention.
+Deletion is logical SQLite payload removal, not guaranteed disk sanitization.
+Policies are explicitly evaluated per call: no persisted automatic cleanup rule,
+background pruning, archival, compression or full retention subsystem parity is
+claimed. Legacy undated records may still be explicitly selected for approved
+deletion. All operations require the same private control store and operator
+policy plus sensitive-result consent.
 
 ### Native schema audits
 

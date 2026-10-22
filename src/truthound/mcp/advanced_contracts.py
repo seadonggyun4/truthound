@@ -110,8 +110,20 @@ class ModelRestore(WireModel):
 
 
 class EnsembleAdd(ModelInspect):
-    detector: ModelSpec
+    detector: ModelSpec | None = None
+    source_model_id: Handle | None = None
+    source_revision: Annotated[int, Field(ge=0)] | None = None
     weight: Annotated[float, Field(allow_inf_nan=False)] = 1.0
+
+    @model_validator(mode="after")
+    def source(self):
+        if (self.detector is None) == (self.source_model_id is None):
+            raise ValueError("Select a constructor or an existing model, not both")
+        if (self.source_model_id is None) != (self.source_revision is None):
+            raise ValueError("Existing models require their exact revision")
+        if self.source_model_id == self.model_id:
+            raise ValueError("An ensemble cannot contain itself")
+        return self
 
 
 class EnsembleRemove(ModelInspect):

@@ -132,8 +132,27 @@ class ModelSession:
         if arguments.expected_revision != self.states[entry.id]["revision"]:
             raise MCPError("stale_revision")
         request = {"operation": name, "expected_revision": arguments.expected_revision}
+        source_snapshot = None
         if name == "models_ensemble_add":
-            request.update(detector=arguments.detector.model_dump(), weight=arguments.weight)
+            request["weight"] = arguments.weight
+            if arguments.source_model_id is not None:
+                from truthound.mcp.advanced_contracts import ModelInspect
+                from truthound.mcp.durable_models import ancestry
+
+                source = resources.get(arguments.source_model_id, "model")
+                if entry.id in {item.id for item in ancestry(resources, source)}:
+                    raise MCPError("invalid_arguments")
+                saved = await self.call(
+                    "models_save",
+                    ModelInspect(model_id=source.id, expected_revision=arguments.source_revision),
+                )
+                source_snapshot = resources.get(saved["data"]["resource_id"], "artifact")
+                request.update(
+                    detector=source_snapshot.metadata["model_specification"],
+                    detector_state_path=str(source_snapshot.path),
+                )
+            else:
+                request["detector"] = arguments.detector.model_dump()
         elif name == "models_ensemble_remove":
             request["index"] = arguments.index
         if name == "models_rule_query":
@@ -141,6 +160,8 @@ class ModelSession:
                 action=arguments.action, rule_type=arguments.rule_type, column=arguments.column
             )
         parents = [entry.id]
+        if source_snapshot is not None:
+            parents.append(source_snapshot.id)
         data = None
         if hasattr(arguments, "asset_id"):
             data = resources.get(arguments.asset_id, "asset")
@@ -204,9 +225,7 @@ class ModelSession:
                         "model_specification": state["detached_spec"],
                         "trained": state["detached_trained"],
                     }
-                    if name == "models_ensemble_remove"
-                    else {"model_specification": json.loads(entry.path.read_text(encoding="utf-8"))}
-                    if name == "models_save"
+                    if name in {"models_ensemble_remove", "models_save"}
                     else None,
                 )
                 return envelope(
@@ -220,7 +239,10 @@ class ModelSession:
                 worker.close()
                 self.workers.pop(entry.id, None)
                 self.states.pop(entry.id, None)
-                resources.release(entry.id)
+                if entry.id in resources._entries:
+                    resources.release(entry.id)
+            if source_snapshot is not None and source_snapshot.id in resources._entries:
+                resources.release(source_snapshot.id)
             raise
         finally:
             if output_id:
