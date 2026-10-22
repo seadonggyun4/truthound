@@ -12,6 +12,7 @@ def operations(descriptor):
         ModelData,
         ModelDetect,
         ModelInspect,
+        ModelRestore,
         ModelSpec,
         ModelState,
     )
@@ -27,6 +28,12 @@ def operations(descriptor):
         SchemaImpact,
     )
     from truthound.mcp.profiling import Profile
+    from truthound.mcp.schema_audit import (
+        AuditCreate,
+        AuditDocument,
+        AuditImplementation,
+        AuditStandards,
+    )
     from truthound.mcp.sources import (
         DuckDBSourceOpen,
         PolarsSourceOpen,
@@ -40,6 +47,62 @@ def operations(descriptor):
     from truthound.mcp.suites import SuiteCreate, SuiteValidation
 
     rows = (
+        (
+            "schema_audit_contract",
+            "Retain the complete native schema-audit document JSON Schema.",
+            wire.WireModel,
+            "truthound.schema_audit.json_schema",
+            wire.ResourceInfo,
+            False,
+        ),
+        (
+            "schema_audit_create",
+            "Validate strict native UTF-8 JSON metadata and retain an immutable document. Duplicate keys, unknown fields and invalid references fail.",
+            AuditCreate,
+            "truthound.schema_audit.load_document",
+            wire.ResourceInfo,
+            False,
+        ),
+        (
+            "schema_audit_inspect",
+            "Retain the native document, canonical serialization and raw/semantic digests.",
+            AuditDocument,
+            "truthound.schema_audit.semantic_digest",
+            wire.ResourceInfo,
+            False,
+        ),
+        (
+            "schema_audit_standards",
+            "Audit a standard against a design with all native findings. Operator term mappings require exact approval; unknown coverage stays unknown.",
+            AuditStandards,
+            "truthound.schema_audit.audit_standards",
+            wire.ResourceInfo | wire.OperationPlan,
+            False,
+        ),
+        (
+            "schema_audit_implementation",
+            "Compare design and captured catalog metadata using all native implementation checks; no database connection is performed.",
+            AuditImplementation,
+            "truthound.schema_audit.audit_implementation",
+            wire.ResourceInfo,
+            False,
+        ),
+        (
+            "models_save",
+            "Save complete native trained model state as an owned data-only JSON artifact, retaining source permissions and expiry.",
+            ModelInspect,
+            "truthound.ml.base.MLModel.save",
+            wire.ResourceInfo,
+            False,
+        ),
+        (
+            "models_restore",
+            "Restore a new native model worker from this session's verified model artifact; preserve learned state without retraining.",
+            ModelRestore,
+            "truthound.ml.base.MLModel.load",
+            ModelState,
+            False,
+        ),
         (
             "sources_open_duckdb",
             "Open a native DuckDB SQL datasource on a bounded WAL-free private copy and a literal physical table. Read-only connections disable external access and extension loading, and lock configuration.",
@@ -602,6 +665,7 @@ def operations(descriptor):
                 "assets_validate",
                 "suites_validate",
                 "models_create",
+                "models_restore",
                 "models_fit",
                 "models_partial_fit",
                 "models_fit_predict",

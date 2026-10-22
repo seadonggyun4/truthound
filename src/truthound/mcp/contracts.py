@@ -268,6 +268,15 @@ class CapabilityDetail(WireModel):
 
 
 class Coverage(WireModel):
+    target_count: int | None = None
+    counts: dict[Literal["PASS", "FAIL", "UNKNOWN", "NOT_APPLICABLE"], int] | None = None
+    rules: (
+        dict[
+            str,
+            dict[Literal["targets", "evaluated", "PASS", "FAIL", "UNKNOWN", "NOT_APPLICABLE"], int],
+        ]
+        | None
+    ) = None
     returned_checks: int | None = None
     total_checks: int | None = None
     execution_issue_count: int | None = None

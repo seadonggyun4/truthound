@@ -60,6 +60,8 @@ class DistributionDriftDetector(MLDriftDetector):
         >>> result = detector.detect(reference_data, current_data)
     """
 
+    _state_fields = ("_reference_stats", "_columns")
+
     def __init__(self, config: DistributionDriftConfig | None = None, **kwargs: Any):
         super().__init__(config, **kwargs)
         self._reference_stats: dict[str, dict] = {}

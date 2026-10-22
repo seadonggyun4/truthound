@@ -495,6 +495,8 @@ class MLModel(ABC, Generic[ConfigT]):
                 ...
     """
 
+    _state_fields: tuple[str, ...] = ()
+
     def __init__(self, config: ConfigT | None = None, **kwargs: Any):
         """Initialize the model.
 
@@ -600,9 +602,14 @@ class MLModel(ABC, Generic[ConfigT]):
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
 
-        model_data = self._serialize()
-        with open(path, "w") as f:
-            json.dump(model_data, f, indent=2, default=str)
+        from truthound.ml.serialization import encode
+
+        model_data = {"format": "truthound-ml", "version": 2,
+                      "model": self.info.name, "payload": encode(self._serialize())}
+        # Encode before opening the destination: unsupported values must not
+        # destroy a previously saved model or silently turn into repr strings.
+        content = json.dumps(model_data, indent=2, ensure_ascii=False, allow_nan=False)
+        path.write_text(content, encoding="utf-8")
 
     def load(self, path: str | Path) -> None:
         """Load the model from disk.
@@ -621,8 +628,24 @@ class MLModel(ABC, Generic[ConfigT]):
             )
 
         try:
-            with open(path) as f:
-                model_data = json.load(f)
+            from truthound.ml.serialization import reject_constant, unique_object
+
+            with open(path, encoding="utf-8") as f:
+                model_data = json.load(f, object_pairs_hook=unique_object,
+                                       parse_constant=reject_constant)
+            if not isinstance(model_data, dict):
+                raise ValueError("Model document must be an object")
+            if "format" in model_data:
+                from truthound.ml.serialization import decode
+
+                if (set(model_data) != {"format", "version", "model", "payload"}
+                        or model_data.get("format") != "truthound-ml"
+                        or model_data.get("version") != 2
+                        or model_data.get("model") != self.info.name):
+                    raise ValueError("Model format, version or identity mismatch")
+                model_data = decode(model_data["payload"])
+            if model_data.get("info", {}).get("name") != self.info.name:
+                raise ValueError("Model identity mismatch")
             self._deserialize(model_data)
             self._state = ModelState.READY
         except Exception as e:
@@ -638,8 +661,12 @@ class MLModel(ABC, Generic[ConfigT]):
 
         Override in subclasses to save model-specific state.
         """
+        from dataclasses import asdict
+
         return {
             "info": self.info.to_dict(),
+            "config": asdict(self.config),
+            "learned_state": {name: getattr(self, name) for name in self._state_fields},
             "state": self._state.value,
             "trained_at": self._trained_at.isoformat() if self._trained_at else None,
             "training_samples": self._training_samples,
@@ -650,6 +677,13 @@ class MLModel(ABC, Generic[ConfigT]):
 
         Override in subclasses to restore model-specific state.
         """
+        if "config" in data:
+            self._config = type(self._config)(**data["config"])
+        state = data.get("learned_state", {})
+        if set(state) != set(self._state_fields):
+            raise ValueError("Incomplete learned model state")
+        for name in self._state_fields:
+            setattr(self, name, state[name])
         self._trained_at = (
             datetime.fromisoformat(data["trained_at"])
             if data.get("trained_at")
@@ -921,6 +955,21 @@ class MLDriftDetector(MLModel[DriftConfig]):
     def _default_config(self) -> DriftConfig:
         return DriftConfig()
 
+    def _serialize(self) -> dict[str, Any]:
+        import io
+
+        result = super()._serialize()
+        buffer = io.BytesIO()
+        self._reference_data.collect().write_ipc(buffer)
+        result["reference_ipc"] = buffer.getvalue()
+        return result
+
+    def _deserialize(self, data: dict[str, Any]) -> None:
+        import io
+
+        super()._deserialize(data)
+        self._reference_data = pl.read_ipc(io.BytesIO(data["reference_ipc"]), memory_map=False).lazy()
+
 
 class RuleLearner(MLModel[RuleLearningConfig]):
     """Abstract base class for rule learning models.
@@ -1000,6 +1049,19 @@ class RuleLearner(MLModel[RuleLearningConfig]):
 
     def _default_config(self) -> RuleLearningConfig:
         return RuleLearningConfig()
+
+    def _serialize(self) -> dict[str, Any]:
+        from dataclasses import asdict
+
+        result = super()._serialize()
+        result["learned_rules"] = asdict(self._learned_rules)
+        return result
+
+    def _deserialize(self, data: dict[str, Any]) -> None:
+        super()._deserialize(data)
+        result = dict(data["learned_rules"])
+        result["rules"] = tuple(LearnedRule(**rule) for rule in result["rules"])
+        self._learned_rules = RuleLearningResult(**result)
 
 
 # =============================================================================

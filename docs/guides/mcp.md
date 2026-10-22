@@ -216,6 +216,9 @@ The same opt-in profile also exposes these named operations:
 | `models_catalog`, `models_create`, `models_inspect` | Closed configurations for the 12 concrete Core ML algorithms and resident lifecycle state |
 | `models_fit`, `models_partial_fit`, `models_fit_predict`, `models_predict`, `models_score` | Native training, supported online training, combined training/prediction, prediction and anomaly scoring |
 | `models_detect`, `models_learn_rules`, `models_rules`, `models_diagnostics` | Two-input ML drift detection, rule learning and native model diagnostics as owned artifacts |
+| `models_save`, `models_restore` | Native trained-state JSON artifacts and new owned model workers restored from them |
+| `schema_audit_contract`, `schema_audit_create`, `schema_audit_inspect` | Strict native metadata documents, complete JSON Schema and canonical digests |
+| `schema_audit_standards`, `schema_audit_implementation` | Native standards/design/catalog audits with complete findings and explicit unknown coverage |
 
 Explicit release and expiry close and reap owned native readers before deleting
 their snapshots, including SQLite connections and mapped Parquet/Arrow streams
@@ -458,11 +461,35 @@ the host user's OS privileges; the application policy is not an OS sandbox.
 
 ML result artifacts contain `encoding`, `model_algorithm`, `model_revision` and
 the tagged native `result`. This records the model state used without lossy
-Python object serialization. Core's JSON model save/load is not uniformly
-state-preserving (for example Isolation Forest does not restore trees); durable
-model snapshot/import is therefore not exposed as a successful full-state
-roundtrip. Post-creation ensemble composition, arbitrary plugin models and
+Python object serialization. `models_save` takes `model_id` and `expected_revision`
+and retains native JSON; `models_restore` takes that artifact's `resource_id`
+and returns a new model at revision 1. The twelve catalog algorithms preserve
+trained trees, ensemble children, drift reference data and learned rules. The
+versioned data-only format rejects executable types, duplicate JSON keys and
+mismatched model identities. Incomplete legacy states fail instead of becoming
+ready. Restored models inherit the saved artifact's authorization parents;
+releasing training data also revokes restored models. These are session-owned
+artifacts, not cross-session workspace import/export. Post-creation ensemble composition, arbitrary plugin models and
 complete method-by-method lifecycle equivalence remain outstanding.
+
+### Native schema audits
+
+`schema_audit_contract` retains the native document JSON Schema. Pass strict
+UTF-8 JSON as `document_json` to `schema_audit_create`; this produces an owned
+document artifact. The overall operation input limit remains 64 KiB. Unknown
+fields, duplicate keys, invalid references and wrong document kinds fail.
+`schema_audit_inspect` takes `resource_id` and returns canonical JSON and raw and
+semantic digests. `schema_audit_standards` takes `standard_id` and `design_id`;
+`schema_audit_implementation` takes `design_id` and `catalog_id`. All findings,
+rule coverage and native verdicts are retained, including UNKNOWN. Empty or
+incomplete coverage is not promoted to PASS. No database connection is made.
+
+Optional term mappings are operator-owned entries under `schema_audit` in the
+private `bindings.json`, not model-supplied approval claims. Using `binding_id`
+requires `idempotency_key` and approval of the exact plan. Input digests and
+the binding file identity are checked; changing the operator bindings revokes
+access to the resulting artifact. Documents and reports remain subject to
+session TTL, quotas, parent release and sensitive-result disclosure policy.
 
 ### Native lineage graphs
 

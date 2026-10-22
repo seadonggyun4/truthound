@@ -73,24 +73,43 @@ class ModelSession:
                     ),
                 },
             )
-        if name == "models_create":
+        if name in {"models_create", "models_restore"}:
             if len(self.workers) >= min(policy.max_handles, 4):
                 raise MCPError("resource_exhausted")
             identity, path = resources.reserve("model")
             worker = None
             try:
-                specification = arguments.model_dump()
+                source = None
+                if name == "models_restore":
+                    source = resources.get(arguments.resource_id, "artifact")
+                    if source.media_type != "application/vnd.truthound.model+json":
+                        raise MCPError("invalid_handle")
+                    specification = source.metadata["model_specification"]
+                else:
+                    specification = arguments.model_dump()
                 path.write_text(json.dumps(specification), encoding="utf-8")
                 worker = OwnedModelProcess(policy.handle_ttl_seconds)
                 state = await worker.call(
-                    {"operation": name, "spec": specification}, policy.timeout_seconds
+                    {"operation": "models_create", "spec": specification}, policy.timeout_seconds
                 )
+                if source is not None:
+                    state = await worker.call(
+                        {
+                            "operation": "models_load",
+                            "expected_revision": 0,
+                            "state_path": str(source.path),
+                        },
+                        policy.timeout_seconds,
+                    )
+                    resources.get(source.id, "artifact")
                 entry = resources.commit(
                     identity,
                     kind="model",
                     media_type="application/vnd.truthound.model-spec+json",
-                    metadata={"algorithm": arguments.algorithm},
+                    parents=(source.id,) if source else (),
+                    metadata={"algorithm": specification["algorithm"]},
                 )
+                worker.expire_after(entry.expires - resources.clock())
                 self.workers[identity] = worker
                 self.states[identity] = state
                 return envelope(name, data=self._state(entry, state))
@@ -135,6 +154,7 @@ class ModelSession:
                 "models_learn_rules",
                 "models_detect",
                 "models_diagnostics",
+                "models_save",
             }:
                 output_id, output = resources.reserve("artifact")
                 budget = resources.available_bytes
@@ -158,8 +178,15 @@ class ModelSession:
                 result = resources.commit(
                     output_id,
                     kind="artifact",
-                    media_type="application/vnd.truthound.ml-result+json",
+                    media_type="application/vnd.truthound.model+json"
+                    if name == "models_save"
+                    else "application/vnd.truthound.ml-result+json",
                     parents=tuple(parents),
+                    metadata={
+                        "model_specification": json.loads(entry.path.read_text(encoding="utf-8"))
+                    }
+                    if name == "models_save"
+                    else None,
                 )
                 return envelope(
                     name,

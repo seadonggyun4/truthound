@@ -114,6 +114,45 @@ class EnsembleAnomalyDetector(AnomalyDetector):
             tags=("ensemble", "meta-model"),
         )
 
+    def _serialize(self) -> dict[str, Any]:
+        result = super()._serialize()
+        result["detectors"] = [detector._serialize() for detector in self._detectors]
+        result["weights"] = list(self._detector_weights)
+        return result
+
+    def _deserialize(self, data: dict[str, Any]) -> None:
+        from truthound.ml.anomaly_models.isolation_forest import IsolationForestDetector
+        from truthound.ml.anomaly_models.statistical import (
+            IQRAnomalyDetector,
+            MADAnomalyDetector,
+            ZScoreAnomalyDetector,
+        )
+
+        super()._deserialize(data)
+        saved = data["detectors"]
+        if not saved or len(saved) != len(data["weights"]):
+            raise ValueError("Incomplete trained ensemble")
+        # Built-ins are a closed mapping. Custom children must be supplied by
+        # the caller; a file never chooses an import or activates an extension.
+        builtins = {cls().info.name: cls for cls in (
+            ZScoreAnomalyDetector, IQRAnomalyDetector, MADAnomalyDetector,
+            IsolationForestDetector, EnsembleAnomalyDetector,
+        )}
+        children = []
+        for index, item in enumerate(saved):
+            name = item["info"]["name"]
+            if index < len(self._detectors) and self._detectors[index].info.name == name:
+                child = self._detectors[index]
+            elif name in builtins:
+                child = builtins[name]()
+            else:
+                raise ValueError("Custom ensemble detector must be configured by the caller")
+            child._deserialize(item)
+            child._state = ModelState.READY
+            children.append(child)
+        self._detectors = children
+        self._detector_weights = list(data["weights"])
+
     def add_detector(
         self,
         detector: AnomalyDetector,

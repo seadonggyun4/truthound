@@ -99,6 +99,8 @@ class PatternRuleLearner(RuleLearner):
         ...     print(f"{rule.column}: {rule.condition}")
     """
 
+    _state_fields = ("_detected_patterns",)
+
     def __init__(self, config: PatternLearnerConfig | None = None, **kwargs: Any):
         super().__init__(config, **kwargs)
         self._detected_patterns: dict[str, list[dict]] = {}

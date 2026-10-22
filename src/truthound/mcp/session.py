@@ -505,6 +505,10 @@ class MCPSession:
             if self._sources is None:
                 self._sources = SourceSession(self)
             return await self._sources.call(name, arguments)
+        if name.startswith("schema_audit_"):
+            from truthound.mcp.schema_audit import call as audit_call
+
+            return await audit_call(self, name, arguments)
         if name == "lineage_catalog":
             from truthound.mcp.encoding import encode
             from truthound.mcp.validator_wire import contracts, record_definitions

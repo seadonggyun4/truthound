@@ -20,6 +20,10 @@ def execute(request: dict) -> dict:
 
     operation = request["operation"]
     arguments = CATALOG[operation].input_type.model_validate(request["arguments"])
+    if operation.startswith("schema_audit_"):
+        from truthound.mcp.schema_audit import execute as audit_execute
+
+        return audit_execute(request, arguments)
     if operation == "contexts_execute":
         from truthound.mcp.contexts import execute as execute_context
 

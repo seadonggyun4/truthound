@@ -68,6 +68,8 @@ class ConceptDriftDetector(MLDriftDetector):
         >>> result = detector.detect(reference_data, current_data)
     """
 
+    _state_fields = ("_reference_correlations", "_reference_target_dist", "_feature_columns")
+
     def __init__(self, config: ConceptDriftConfig | None = None, **kwargs: Any):
         super().__init__(config, **kwargs)
         self._reference_correlations: dict[str, float] = {}

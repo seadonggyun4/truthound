@@ -63,6 +63,8 @@ class ConstraintMiner(RuleLearner):
         ...     print(f"{rule.condition}")
     """
 
+    _state_fields = ("_functional_deps", "_value_constraints")
+
     def __init__(self, config: ConstraintMinerConfig | None = None, **kwargs: Any):
         super().__init__(config, **kwargs)
         self._functional_deps: list[tuple] = []

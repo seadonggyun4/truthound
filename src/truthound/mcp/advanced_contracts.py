@@ -91,6 +91,10 @@ class ModelInspect(ModelInput):
     expected_revision: Annotated[int, Field(ge=0)]
 
 
+class ModelRestore(WireModel):
+    resource_id: Handle
+
+
 class ModelState(WireModel):
     model_id: Handle
     algorithm: str

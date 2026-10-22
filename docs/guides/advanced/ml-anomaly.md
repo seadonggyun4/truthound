@@ -726,12 +726,25 @@ class MyDetector(AnomalyDetector):
 # Save trained model
 detector.save("my_detector.json")
 
-# Load model
-loaded = IsolationForestDetector.load("my_detector.json")
+# Load into a new instance of the same algorithm (load returns None)
+loaded = IsolationForestDetector()
+loaded.load("my_detector.json")
 
 # Use loaded model
 result = loaded.predict(new_data)
 ```
+
+Development sources write a versioned `truthound-ml` JSON envelope (version 2).
+It retains configuration and learned state, including isolation trees, ensemble
+children/weights, drift reference frames and learned rules. Rich values use
+data-only tags; no pickle or file-directed imports are supported. Loading a
+different algorithm, ambiguous JSON or incomplete legacy learned state raises
+`ModelLoadError` and does not mark the model ready. Complete legacy statistical
+states remain readable. Keep the original runtime/dependency versions when
+comparing numerical results; arbitrary cross-version compatibility is not promised.
+Custom ensemble children must be explicitly supplied by the application before
+loading. Drift model files contain the reference data and must be protected as
+sensitive data. These persistence repairs are not part of the published 3.2.0.
 
 ---
 

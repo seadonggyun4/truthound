@@ -98,6 +98,8 @@ class FeatureDriftDetector(MLDriftDetector):
         ...         print(f"{col} has drifted: {score:.2f}")
     """
 
+    _state_fields = ("_reference_profiles", "_columns", "_numeric_columns", "_categorical_columns")
+
     def __init__(self, config: FeatureDriftConfig | None = None, **kwargs: Any):
         super().__init__(config, **kwargs)
         self._reference_profiles: dict[str, dict] = {}

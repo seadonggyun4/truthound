@@ -44,7 +44,26 @@ def main():
 
                             frame = pl.scan_ipc(request["asset_path"], memory_map=False)
                         result = None
-                        if operation == "models_fit":
+                        if operation == "models_save":
+                            import tempfile
+
+                            with tempfile.TemporaryDirectory(
+                                prefix="truthound-model-save-"
+                            ) as directory:
+                                saved = Path(directory) / "model.json"
+                                model.save(saved)
+                                with (
+                                    BoundedWriter(
+                                        Path(request["output_path"]), request["output_budget"]
+                                    ) as output,
+                                    saved.open("rb") as source,
+                                ):
+                                    while chunk := source.read(65536):
+                                        output.write(chunk)
+                        elif operation == "models_load":
+                            model.load(request["state_path"])
+                            revision += 1
+                        elif operation == "models_fit":
                             model.fit(frame)
                             revision += 1
                         elif operation == "models_partial_fit":

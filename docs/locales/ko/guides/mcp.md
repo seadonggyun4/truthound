@@ -205,6 +205,9 @@ JavaScript의 정확한 정수 범위를 넘는 값에는 십진 문자열 태�
 | `models_catalog`, `models_create`, `models_inspect` | 구체 ML 알고리즘 12종의 설정과 상주 수명주기 상태 |
 | `models_fit`, `models_partial_fit`, `models_fit_predict`, `models_predict`, `models_score` | 기본 학습·지원되는 온라인 학습·학습과 예측·예측·이상 점수 |
 | `models_detect`, `models_learn_rules`, `models_rules`, `models_diagnostics` | 두 입력의 ML 드리프트·규칙 학습·원래 모델 진단의 산출물 보관 |
+| `models_save`, `models_restore` | 네이티브 학습 상태 JSON 보관과 새 소유 모델 worker로 복원 |
+| `schema_audit_contract`, `schema_audit_create`, `schema_audit_inspect` | 엄격한 네이티브 메타데이터 문서·전체 JSON Schema·정규화 해시 |
+| `schema_audit_standards`, `schema_audit_implementation` | 표준·설계·카탈로그 감사의 전체 판정과 명시적인 미확인 범위 |
 
 명시적 해제와 만료에서는 소유한 네이티브 reader를 먼저 종료·reap한 뒤
 스냅샷을 삭제합니다. Windows의 SQLite 연결과 메모리 매핑된 Parquet·Arrow
@@ -417,10 +420,33 @@ revision이 다르면 Core를 실행하지 않습니다. 시간 초과·취소·
 
 ML 산출물에는 `encoding`, `model_algorithm`, `model_revision`과 태그로 표현한
 원래 `result`가 있습니다. Python 객체를 손실 직렬화하지 않고 사용한 모델 상태를
-구분합니다. Core의 JSON 저장·복원은 모든 모델의 학습 상태를 보존하지 않습니다.
-예를 들어 Isolation Forest는 트리를 복원하지 않으므로 영속 스냅샷·가져오기를
-완전한 복원처럼 제공하지 않습니다. 생성 후 앙상블 구성 변경·임의 플러그인 모델·
+구분합니다. `models_save`는 `model_id`, `expected_revision`을 받아 네이티브 JSON을
+보관합니다. `models_restore`에 해당 산출물의 `resource_id`를 주면 revision 1인
+새 모델을 반환합니다. 목록의 12종은 학습 트리·앙상블 하위 모델·드리프트 기준
+데이터·학습 규칙을 보존합니다. 버전이 있는 데이터 전용 형식이며 실행 가능한 형식,
+중복 JSON 키, 모델 종류 불일치를 거부합니다. 불완전한 이전 저장 상태도 실패하며
+준비 완료로 표시하지 않습니다. 복원 모델은 산출물의 권한 부모를 상속하므로 원래
+학습 데이터를 해제하면 함께 무효화됩니다. 세션 소유 산출물이며 세션 간 작업공간
+가져오기·내보내기는 아닙니다. 생성 후 앙상블 구성 변경·임의 플러그인 모델·
 메서드별 전체 수명주기 동등성은 남은 작업입니다.
+
+### 네이티브 스키마 감사
+
+`schema_audit_contract`는 문서의 전체 네이티브 JSON Schema를 보관합니다.
+`schema_audit_create`의 `document_json`에 엄격한 UTF-8 JSON을 전달하면 소유한
+문서 산출물이 생깁니다. 전체 작업 입력 한도는 64 KiB입니다. 알 수 없는 필드,
+중복 키, 잘못된 참조·문서 종류는 실패합니다. `schema_audit_inspect`는
+`resource_id`를 받아 정규화 JSON과 원문·의미 해시를 제공합니다.
+`schema_audit_standards`는 `standard_id`, `design_id`를,
+`schema_audit_implementation`은 `design_id`, `catalog_id`를 받습니다.
+전체 발견 사항·규칙별 검증 범위·원래 판정을 보관하며 UNKNOWN을 유지합니다.
+비어 있거나 불완전한 검증을 PASS로 바꾸지 않으며 DB에 연결하지 않습니다.
+
+선택적인 용어 매핑은 비공개 `bindings.json`의 `schema_audit`에 운영자가 설정하며
+모델이 주장하는 승인 정보는 받지 않습니다. `binding_id` 사용에는
+`idempotency_key`와 정확한 계획의 승인이 필요합니다. 입력 해시와 바인딩 파일
+식별자를 확인하고 운영자 설정이 변경되면 결과 산출물 접근을 철회합니다.
+문서·결과에도 세션 만료·용량 제한·부모 해제·민감한 결과 공개 정책을 적용합니다.
 
 ### 네이티브 계보 그래프
 

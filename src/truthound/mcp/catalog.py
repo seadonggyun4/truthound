@@ -73,6 +73,11 @@ class Operation:
             + (["allow_sensitive_results"] if self.sensitive else []),
             "conditional_grants": {
                 **(
+                    {"binding_id supplied": ["control_directory", "operator_plan_approval"]}
+                    if self.operation_id == "schema_audit_standards"
+                    else {}
+                ),
+                **(
                     {"evidence=full": ["allow_sensitive_results"]}
                     if "evidence" in self.input_type.model_fields
                     else {}

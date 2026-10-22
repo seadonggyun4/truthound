@@ -726,12 +726,24 @@ class MyDetector(AnomalyDetector):
 # Save trained model
 detector.save("my_detector.json")
 
-# Load model
-loaded = IsolationForestDetector.load("my_detector.json")
+# 같은 알고리즘의 새 인스턴스에 복원합니다. load의 반환값은 None입니다.
+loaded = IsolationForestDetector()
+loaded.load("my_detector.json")
 
 # Use loaded model
 result = loaded.predict(new_data)
 ```
+
+개발 소스는 버전 2의 `truthound-ml` JSON 형식으로 설정과 학습 상태를 저장합니다.
+Isolation Forest 트리, 앙상블 하위 모델·가중치, 드리프트 기준 프레임과 학습 규칙을
+포함합니다. 특수 값은 데이터 전용 태그로 표현하며 pickle이나 파일이 지정한
+모듈 임포트를 지원하지 않습니다. 다른 알고리즘, 모호한 JSON, 불완전한 이전 학습
+상태를 읽으면 `ModelLoadError`가 발생하고 준비 완료 상태로 표시하지 않습니다.
+완전한 이전 통계 모델 상태는 읽을 수 있습니다. 수치 결과 비교에는 원래 런타임과
+의존성 버전을 유지하세요. 임의의 버전 간 호환성을 보장하지 않습니다. 사용자 정의
+앙상블 하위 모델은 복원 전에 애플리케이션에서 직접 구성해야 합니다. 드리프트 저장
+파일에는 기준 데이터가 포함되므로 민감 데이터로 보호해야 합니다. 이 저장·복원
+수정은 이미 게시된 3.2.0에는 포함되지 않습니다.
 
 실무 운영 가이드에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
 

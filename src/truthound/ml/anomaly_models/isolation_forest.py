@@ -429,15 +429,43 @@ class IsolationForestDetector(AnomalyDetector):
         base["columns"] = self._columns
         base["avg_path_length"] = self._avg_path_length
         base["n_trees"] = len(self._trees)
-        # Note: Full tree serialization would require more complex logic
+        def node(value):
+            if value is None:
+                return None
+            return {"split_feature": value.split_feature, "split_value": value.split_value,
+                    "size": value.size, "left": node(value.left), "right": node(value.right)}
+        base["trees"] = [{"max_depth": tree.max_depth, "n_features": tree.n_features,
+                          "root": node(tree.root)} for tree in self._trees]
         return base
 
     def _deserialize(self, data: dict[str, Any]) -> None:
         super()._deserialize(data)
         self._columns = data.get("columns", [])
         self._avg_path_length = data.get("avg_path_length", 0.0)
-        # Trees need to be retrained from data
-        self._trees = []
+        if not data.get("trees") or len(data["trees"]) != data["n_trees"]:
+            raise ValueError("Saved isolation forest is missing its trained trees")
+        def node(value):
+            if value is None:
+                return None
+            index = value["split_feature"]
+            if index is not None and (type(index) is not int or not 0 <= index < len(self._columns)):
+                raise ValueError("Invalid isolation tree feature")
+            if type(value["size"]) is not int or value["size"] < 0:
+                raise ValueError("Invalid isolation tree size")
+            if index is not None and (value["left"] is None or value["right"] is None):
+                raise ValueError("Incomplete isolation tree branch")
+            return IsolationTreeNode(index, value["split_value"], node(value["left"]), node(value["right"]), value["size"])
+        trees = []
+        for saved in data["trees"]:
+            tree = IsolationTree(saved["max_depth"], random.Random(self.config.random_seed))
+            tree.n_features = saved["n_features"]
+            if tree.n_features != len(self._columns):
+                raise ValueError("Isolation tree schema mismatch")
+            tree.root = node(saved["root"])
+            if tree.root is None:
+                raise ValueError("Missing isolation tree root")
+            trees.append(tree)
+        self._trees = trees
 
     def get_feature_importance(self) -> dict[str, float]:
         """Compute feature importance based on split frequency.

@@ -29,6 +29,8 @@ TEST_FILES = (
     "tests/test_mcp_validator_transport.py",
     "tests/test_mcp_core_artifacts.py",
     "tests/test_mcp_advanced.py",
+    "tests/test_mcp_model_persistence.py",
+    "tests/test_mcp_schema_audit.py",
     "tests/test_mcp_lineage.py",
     "tests/test_mcp_bindings.py",
     "tests/test_mcp_plugin_bindings.py",

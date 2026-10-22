@@ -69,6 +69,8 @@ class DataProfileRuleLearner(RuleLearner):
         >>> print(f"Learned {len(result.rules)} rules")
     """
 
+    _state_fields = ("_profiles",)
+
     def __init__(self, config: ProfileLearnerConfig | None = None, **kwargs: Any):
         super().__init__(config, **kwargs)
         self._profiles: dict[str, dict] = {}

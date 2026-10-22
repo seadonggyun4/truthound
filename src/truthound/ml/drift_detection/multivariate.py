@@ -62,6 +62,8 @@ class MultivariateDriftDetector(MLDriftDetector):
         >>> result = detector.detect(reference_data, current_data)
     """
 
+    _state_fields = ("_reference_corr_matrix", "_reference_means", "_reference_stds", "_columns", "_pca_components", "_pca_explained_var")
+
     def __init__(self, config: MultivariateDriftConfig | None = None, **kwargs: Any):
         super().__init__(config, **kwargs)
         self._reference_corr_matrix: list[list[float]] = []

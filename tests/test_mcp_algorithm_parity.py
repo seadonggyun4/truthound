@@ -74,6 +74,12 @@ def test_actual_algorithm_matches_core_with_full_canonical_evidence(tmp_path, sc
             native_settings=scenario.native_negative_settings,
         )
     frame = pl.DataFrame(getattr(scenario, polarity))
+    if polarity == "error" and scenario.error_overrides is not None:
+        scenario = replace(
+            scenario,
+            native_settings={**native_settings(scenario, frame), **scenario.error_overrides},
+            settings={**scenario.settings, **scenario.error_overrides},
+        )
     validator = get_validator(scenario.validator)(**native_settings(scenario, frame))
     # This is an independent constructor, not the production wire converter.
     direct = th.check(
@@ -87,7 +93,12 @@ def test_actual_algorithm_matches_core_with_full_canonical_evidence(tmp_path, sc
     elif polarity == "caught_error":
         assert not direct.execution_issues
         assert direct.issues and all(
-            issue.issue_type in {"query_execution_error", "expression_execution_error"}
+            issue.issue_type
+            in {
+                "query_execution_error",
+                "expression_execution_error",
+                "multi_column_validation_error",
+            }
             for issue in direct.issues
         ), "Prove an actual native caught-exception path, not an ordinary negative case"
     else:

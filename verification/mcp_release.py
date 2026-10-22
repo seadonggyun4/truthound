@@ -97,6 +97,7 @@ async def core_profile():
                 required|={"sources_open_sqlite","sources_open_duckdb","streams_open","streams_next","streams_inspect"}
                 required|={"lineage_catalog","lineage_create","lineage_edit","lineage_query","lineage_render","lineage_impact","lineage_critical_paths","lineage_what_if_delete","lineage_schema_impact","lineage_dependency_chain"}
                 required|={"models_catalog","models_create","models_inspect","models_fit","models_partial_fit","models_predict","models_score","models_rules","models_fit_predict","models_learn_rules","models_detect","models_diagnostics"}
+                required|={"models_save","models_restore","schema_audit_contract","schema_audit_create","schema_audit_inspect","schema_audit_standards","schema_audit_implementation"}
                 assert names==required|{"check_file","profile_file","scan_pii"}
                 import importlib.util
                 if importlib.util.find_spec("duckdb") is None:
@@ -198,6 +199,23 @@ async def core_profile():
                 assert fitted["trained"] and fitted["revision"]==1
                 prediction=await invoke("models_predict",{"model_id":model["model_id"],"asset_id":training,"expected_revision":1})
                 assert prediction["bytes"]>0
+                scores=await invoke("models_score",{"model_id":model["model_id"],"asset_id":training,"expected_revision":1})
+                saved=await invoke("models_save",{"model_id":model["model_id"],"expected_revision":1})
+                restored=await invoke("models_restore",{"resource_id":saved["resource_id"]})
+                restored_scores=await invoke("models_score",{"model_id":restored["model_id"],"asset_id":training,"expected_revision":1})
+                assert decode(json.loads(await artifact_bytes(scores["resource_id"]))["result"])==decode(json.loads(await artifact_bytes(restored_scores["resource_id"]))["result"])
+                from truthound.schema_audit import VERSION,DesignRevision,Dialect,StandardRevision,NamingPolicy,dump_document,json_schema,semantic_digest,audit_standards
+                audit_contract=await invoke("schema_audit_contract",{})
+                assert decode(json.loads(await artifact_bytes(audit_contract["resource_id"])))==json_schema()
+                design=DesignRevision(contract_version=VERSION,kind="DESIGN",id="installed-design",revision=1,dialect=Dialect(name="postgresql",major=17),tables=(),sources=())
+                standard=StandardRevision(contract_version=VERSION,kind="STANDARD",id="installed-standard",revision=1,dialect=design.dialect,words=(),terms=(),domains=(),naming_policy=NamingPolicy(separator="_",case="LOWER_ASCII",max_bytes=63),sources=())
+                design_id=(await invoke("schema_audit_create",{"document_json":dump_document(design).decode("utf-8")}))["resource_id"]
+                standard_id=(await invoke("schema_audit_create",{"document_json":dump_document(standard).decode("utf-8")}))["resource_id"]
+                inspected=await invoke("schema_audit_inspect",{"resource_id":design_id})
+                assert decode(json.loads(await artifact_bytes(inspected["resource_id"])))["semantic_digest"]==semantic_digest(design)
+                audited=await client.call_tool("schema_audit_standards",{"standard_id":standard_id,"design_id":design_id})
+                assert not audited.isError and audited.structuredContent["quality_status"]=="unknown"
+                assert decode(json.loads(await artifact_bytes(audited.structuredContent["data"]["resource_id"])))==audit_standards(standard,design).as_dict()
                 schema=(await invoke("schemas_learn",{"asset_id":asset}))["resource_id"]
                 assert (await invoke("schemas_inspect",{"resource_id":schema}))["encoding"]=="tagged-v1"
                 context=(await invoke("contexts_open",{"path":str(workspace)}))["context_id"]
@@ -335,6 +353,10 @@ print("TRUTHOUND_RUNTIME_PROOF:"+json.dumps({
     with zipfile.ZipFile(wheel) as z, tarfile.open(sdist) as t:
         inventory = z.namelist() + t.getnames()
         forbidden = {
+            ".git",
+            "internal-development",
+            "docs-private",
+            "mcp-full-core-design.md",
             ".golem",
             "AGENTS.md",
             "CLAUDE.md",

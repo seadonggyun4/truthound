@@ -9,6 +9,7 @@ from truthound.mcp.approval import private_read
 from truthound.mcp.contracts import Name, WireModel
 from truthound.mcp.plugin_bindings import PluginBinding
 from truthound.mcp.policy import MCPError
+from truthound.mcp.schema_audit import TermBinding
 from truthound.mcp.validator_wire import callback_handles, settings, spec
 
 
@@ -21,6 +22,7 @@ class ValidatorBinding(WireModel):
 class Bindings(WireModel):
     validators: dict[Name, ValidatorBinding] = Field(default_factory=dict)
     plugins: dict[Name, PluginBinding] = Field(default_factory=dict)
+    schema_audit: dict[Name, list[TermBinding]] = Field(default_factory=dict)
 
 
 def load(policy):

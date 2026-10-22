@@ -145,14 +145,110 @@ MISSING_COLUMNS = {
     "cascade_integrity": "fk",
 }
 
+# These native consent/erasure branches cast control values to text during
+# execution. Nested Arrow values are legal input data but cannot be cast by
+# Polars; preserve that real algorithm failure through the MCP result.
+NESTED_CONTROL_ERRORS = {
+    "gdpr_right_to_erasure": "deleted",
+    "ccpa_do_not_sell": "optout",
+    "consent_tracking": "consent",
+}
+
+DUPLICATE_TARGET_ERRORS = frozenset(
+    {
+        "empty_string",
+        "whitespace_only",
+        "nan",
+        "not_nan",
+        "nan_ratio",
+        "infinity",
+        "finite",
+        "unique",
+        "unique_ratio",
+        "distinct_count",
+        "mean_between",
+        "median_between",
+        "min_between",
+        "max_between",
+        "sum_between",
+        "std_between",
+        "variance_between",
+        "type",
+        "email",
+        "url",
+        "phone",
+        "ip_address",
+        "ipv6_address",
+        "uuid",
+        "json_parseable",
+        "length",
+        "quantile",
+        "outlier",
+        "zscore_outlier",
+        "format",
+        "regex",
+        "regex_list",
+        "not_match_regex",
+        "not_match_regex_list",
+    }
+)
+
+
+MULTI_COLUMN_CAUGHT_ERRORS = frozenset(
+    {
+        "column_comparison",
+        "column_chain_comparison",
+        "column_sum",
+        "column_product",
+        "column_difference",
+        "column_min",
+        "column_max",
+        "column_mean",
+        "column_implication",
+        "column_ratio",
+        "column_percentage",
+    }
+)
+
+RUNTIME_SETTING_ERRORS = {
+    "json_schema": {"column": "absent"},
+    "date_format": {"format": "%Y%Y"},
+    "data_retention": {"retention_days": 10**12},
+    "streaming_distinct_count": {"precision": 0},
+}
+
 
 def attach(cases):
     """Keep every original polarity, configuration, reference and sample count."""
+    assert (MULTI_COLUMN_CAUGHT_ERRORS | RUNTIME_SETTING_ERRORS.keys()) <= {
+        row.validator for row in cases
+    }
     assert len(MISSING_COLUMNS) == 65
     assert not NUMERIC_INPUT_ERRORS.intersection(MISSING_COLUMNS)
-    expected = NUMERIC_INPUT_ERRORS | {"geo_distance"} | set(MISSING_COLUMNS)
+    expected = (
+        NUMERIC_INPUT_ERRORS
+        | {"geo_distance"}
+        | set(MISSING_COLUMNS)
+        | set(NESTED_CONTROL_ERRORS)
+        | DUPLICATE_TARGET_ERRORS
+    )
     observed, result = set(), []
     for row in cases:
+        if row.validator in RUNTIME_SETTING_ERRORS:
+            assert row.error is None and row.caught_error is None
+            result.append(
+                replace(
+                    row, error=row.positive, error_overrides=RUNTIME_SETTING_ERRORS[row.validator]
+                )
+            )
+            continue
+        if row.validator in MULTI_COLUMN_CAUGHT_ERRORS:
+            assert row.error is None and row.caught_error is None
+            frame = pl.DataFrame(row.positive).with_columns(
+                pl.lit("invalid_numeric_input").alias("x")
+            )
+            result.append(replace(row, caught_error=frame.to_dict(as_series=False)))
+            continue
         if row.validator not in expected:
             result.append(row)
             continue
@@ -160,7 +256,18 @@ def attach(cases):
         assert row.error is None and row.caught_error is None
         observed.add(row.validator)
         frame = pl.DataFrame(row.positive)
-        if row.validator in MISSING_COLUMNS:
+        if row.validator in DUPLICATE_TARGET_ERRORS:
+            # Native constructors accept repeated targets; actual aggregation
+            # then fails on duplicate projection aliases. Do not replace its
+            # execution issue with adapter rejection or a successful empty run.
+            result.append(
+                replace(row, error=row.positive, error_overrides={"columns": frame.columns * 2})
+            )
+            continue
+        if row.validator in NESTED_CONTROL_ERRORS:
+            column = NESTED_CONTROL_ERRORS[row.validator]
+            frame = frame.with_columns(pl.Series(column, [[1, 2]] * frame.height))
+        elif row.validator in MISSING_COLUMNS:
             frame = frame.rename({MISSING_COLUMNS[row.validator]: "__absent_contract_input__"})
         elif row.validator == "geo_distance":
             frame = frame.head(0)
@@ -171,5 +278,5 @@ def attach(cases):
                 [pl.lit("invalid_numeric_input").alias(name) for name in numeric]
             )
         result.append(replace(row, error=frame.to_dict(as_series=False)))
-    assert observed == expected and len(observed) == 118
+    assert observed == expected and len(observed) == 155
     return result
