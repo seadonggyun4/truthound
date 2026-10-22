@@ -366,6 +366,9 @@ def test_docs_workflow_does_not_checkout_dashboard_repo() -> None:
     workflow = yaml.safe_load(workflow_path.read_text(encoding="utf-8"))
 
     assert workflow["name"] == "Docs"
+    triggers = workflow.get("on") or workflow.get(True) or {}
+    assert "workflow_dispatch" in triggers
+    assert {"push", "pull_request"} <= triggers.keys()
     steps = workflow["jobs"]["docs"]["steps"]
     rendered = yaml.safe_dump(steps, sort_keys=False)
 
