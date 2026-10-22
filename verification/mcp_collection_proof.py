@@ -9,6 +9,16 @@ from pathlib import Path
 import pytest
 
 
+def partition(nodes, count, index):
+    if not 1 <= count <= 16 or not 0 <= index < count:
+        raise ValueError("MCP_INVALID_SHARD")
+    return {
+        node: value
+        for node, value in nodes.items()
+        if int.from_bytes(hashlib.sha256(node.encode()).digest(), "big") % count == index
+    }
+
+
 def identity(item):
     path = Path(item.path).resolve()
     module = Path(item.module.__file__).resolve()
@@ -42,6 +52,8 @@ def supporting_sources():
 
 def pytest_addoption(parser):
     parser.addoption("--mcp-source-proof")
+    parser.addoption("--mcp-shard-count", type=int, default=1)
+    parser.addoption("--mcp-shard-index", type=int, default=0)
 
 
 def project_sources():
@@ -65,6 +77,9 @@ class Proof:
         self.project_before = project_sources()
         self.test_paths = {}
         self.invalid = False
+        self.full_collection = {}
+        self.shard_count = config.getoption("--mcp-shard-count")
+        self.shard_index = config.getoption("--mcp-shard-index")
 
     @pytest.hookimpl(trylast=True)
     def pytest_collection_modifyitems(self, session, config, items):
@@ -74,7 +89,14 @@ class Proof:
         try:
             if not nodes or len(set(nodes)) != len(nodes) or required != observed:
                 raise ValueError("MCP_TEST_COLLECTION_MISMATCH")
-            self.collected = {item.nodeid: identity(item) for item in items}
+            self.full_collection = {item.nodeid: identity(item) for item in items}
+            self.collected = partition(self.full_collection, self.shard_count, self.shard_index)
+            if not self.collected:
+                raise ValueError("MCP_EMPTY_SHARD")
+            rejected = [item for item in items if item.nodeid not in self.collected]
+            items[:] = [item for item in items if item.nodeid in self.collected]
+            if rejected:
+                config.hook.pytest_deselected(items=rejected)
             self.test_paths = {item.nodeid: Path(item.path).resolve() for item in items}
         except ValueError as exc:
             self.invalid = True
@@ -113,6 +135,9 @@ class Proof:
             "project_sources": self.project_before,
             "tests": len(self.collected),
             "execution_phases": len(self.phases),
+            "full_collection": self.full_collection,
+            "shard_count": self.shard_count,
+            "shard_index": self.shard_index,
         }
         Path(self.config.getoption("--mcp-source-proof")).write_text(
             json.dumps(proof, sort_keys=True), encoding="utf-8"

@@ -656,6 +656,12 @@ ZIP 생성·저장소 설치 성공을 allowlist·법적 동의·심사 승인·
 
 ## Registry 메타데이터와 설치
 
+MCP CI는 OS·Python 조합마다 전체 필수 테스트를 결정적인 4개 분할로 나누되
+15분 job 제한은 유지합니다. 모든 분할이 성공한 뒤에만 패키징을 시작합니다.
+합산 gate는 전체 수집 목록·소스 해시·setup/call/teardown 단계와 JUnit을 대조하고,
+누락·중복·SKIP·실패를 거부합니다. 일부 분할의 통과만으로 전체 검증 완료를
+선언하지 않습니다.
+
 [공식 MCP Registry](https://registry.modelcontextprotocol.io/)에서 `io.github.seadonggyun4/truthound`를 검색할 수 있으며 [3.2.0이 게시되어 있습니다](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.seadonggyun4%2Ftruthound/versions/3.2.0). 연동 클라이언트의 마켓플레이스에 표시되면 **Install**을 누르고 접근을 허용할 폴더를 지정합니다. Registry 등록만으로 모든 클라이언트의 마켓플레이스 노출·승인이 보장되지는 않습니다.
 
 저장소의 `server.json`은 `io.github.seadonggyun4/truthound`, 기존 PyPI 패키지

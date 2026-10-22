@@ -732,6 +732,13 @@ and [authentication guide](https://modelcontextprotocol.io/registry/authenticati
 
 ## Extending the adapter
 
+The MCP CI matrix keeps its 15-minute job limit and partitions the entire required
+test collection into four deterministic, disjoint shards for each OS/Python pair.
+Packaging starts only after every shard succeeds. The aggregate gate compares
+the full collection and source hashes, checks all setup/call/teardown phases and
+JUnit results, and rejects missing, overlapping, skipped or failed executions.
+Shard completion alone does not establish complete validation.
+
 Keep policy in `truthound.mcp.policy`, summaries in `projection`, Core invocation
 in `worker`, bounded request execution in `service`, and SDK registration in
 `server`. Introduce new tools with explicit input/result contracts and fault

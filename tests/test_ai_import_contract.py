@@ -21,6 +21,8 @@ def test_truthound_ai_namespace_requires_optional_dependency(monkeypatch):
 
     monkeypatch.setattr(builtins, "__import__", fake_import)
 
+    # Restore exact module objects afterwards: retained MCP BaseModel classes
+    # must not be mixed with FieldInfo objects from a re-imported Pydantic.
     for module_name in list(sys.modules):
         if (
             module_name == "truthound.ai"
@@ -28,7 +30,7 @@ def test_truthound_ai_namespace_requires_optional_dependency(monkeypatch):
             or module_name == "pydantic"
             or module_name.startswith("pydantic.")
         ):
-            sys.modules.pop(module_name, None)
+            monkeypatch.delitem(sys.modules, module_name, raising=False)
 
     assert importlib.import_module("truthound") is not None
     with pytest.raises(ImportError, match=r"truthound\[ai\]"):
@@ -60,7 +62,7 @@ def test_truthound_root_ai_support_probe_is_safe_without_optional_dependency(mon
             or module_name == "openai"
             or module_name.startswith("openai.")
         ):
-            sys.modules.pop(module_name, None)
+            monkeypatch.delitem(sys.modules, module_name, raising=False)
 
     truthound = importlib.import_module("truthound")
     status = truthound.get_ai_support_status()
@@ -101,7 +103,7 @@ def test_truthound_ai_cli_command_surfaces_install_hint_when_optional_dependency
             or module_name == "pydantic"
             or module_name.startswith("pydantic.")
         ):
-            sys.modules.pop(module_name, None)
+            monkeypatch.delitem(sys.modules, module_name, raising=False)
     data_path = tmp_path / "data.csv"
     data_path.write_text("id,value\n1,10\n", encoding="utf-8")
 

@@ -8,6 +8,12 @@ retains each instance with a distinct node identity. The validation kernel uses
 this mode so separately planned checks keep their own results even when they
 use the same algorithm or display name.
 
+SDK in-process memory, CPU and combined resource-limit contexts preserve the
+host hard limits, apply soft limits no looser than existing limits, and restore
+previous limits on exit, including exceptions. These limits are process-wide,
+not concurrent-task isolation. Platforms without the relevant OS facility use
+monitoring; separate subprocess sandbox hard limits are unchanged.
+
 Expression-based summary/complete failure frequencies sort by descending count.
 Equal frequencies retain first encounter order, including at the partial-count
 limit; the structured counts and human-readable top-failure details share that

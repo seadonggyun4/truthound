@@ -33,7 +33,7 @@ import sys
 import threading
 import time
 from abc import ABC, abstractmethod
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from enum import Enum, auto
@@ -371,10 +371,15 @@ class ResourceLimiter(ABC):
         pass
 
 
+def _bounded_soft_limit(requested: int, original: tuple[int, int]) -> int:
+    """Never relax an existing host limit or lower its irreversible hard cap."""
+    return min([requested, *(value for value in original if value >= 0)])
+
+
 class MemoryLimiter(ResourceLimiter):
     """Enforces memory limits using OS mechanisms.
 
-    On Linux, uses resource.setrlimit for hard limits.
+    Where supported, applies temporary OS soft limits without lowering host hard limits.
     On all platforms, monitors and raises exceptions.
     """
 
@@ -396,7 +401,10 @@ class MemoryLimiter(ResourceLimiter):
 
             max_bytes = self.max_memory_mb * 1024 * 1024
             self._original_limit = resource.getrlimit(resource.RLIMIT_AS)
-            resource.setrlimit(resource.RLIMIT_AS, (max_bytes, max_bytes))
+            resource.setrlimit(
+                resource.RLIMIT_AS,
+                (_bounded_soft_limit(max_bytes, self._original_limit), self._original_limit[1]),
+            )
         except (ImportError, ValueError, OSError) as e:
             logger.warning(f"Could not set memory limit: {e}")
 
@@ -416,19 +424,20 @@ class MemoryLimiter(ResourceLimiter):
         monitor = ResourceMonitor(limits)
 
         self._set_limit()
-        monitor.start()
-
         try:
-            yield monitor
+            monitor.start()
+            try:
+                yield monitor
+            finally:
+                monitor.stop()
         finally:
-            monitor.stop()
             self._restore_limit()
 
 
 class CPULimiter(ResourceLimiter):
     """Enforces CPU time limits.
 
-    Uses SIGXCPU on Unix systems for hard limits.
+    Uses SIGXCPU and temporary process soft limits on Unix systems.
     On all platforms, monitors and raises exceptions.
     """
 
@@ -451,7 +460,10 @@ class CPULimiter(ResourceLimiter):
 
             max_seconds = int(self.max_cpu_seconds)
             self._original_limit = resource.getrlimit(resource.RLIMIT_CPU)
-            resource.setrlimit(resource.RLIMIT_CPU, (max_seconds, max_seconds))
+            resource.setrlimit(
+                resource.RLIMIT_CPU,
+                (_bounded_soft_limit(max_seconds, self._original_limit), self._original_limit[1]),
+            )
 
             # Set up signal handler
             def handler(signum: int, frame: Any) -> None:
@@ -488,12 +500,13 @@ class CPULimiter(ResourceLimiter):
         monitor = ResourceMonitor(limits)
 
         self._set_limit()
-        monitor.start()
-
         try:
-            yield monitor
+            monitor.start()
+            try:
+                yield monitor
+            finally:
+                monitor.stop()
         finally:
-            monitor.stop()
             self._restore_limit()
 
 
@@ -532,33 +545,36 @@ class CombinedResourceLimiter(ResourceLimiter):
             on_exceeded=self._on_exceeded,
         )
 
-        # Set OS-level limits where possible
-        try:
-            import resource
-
-            # Memory limit
-            if self.limits.max_memory_mb > 0:
-                max_bytes = self.limits.max_memory_mb * 1024 * 1024
-                resource.setrlimit(resource.RLIMIT_AS, (max_bytes, max_bytes))
-
-            # CPU limit
-            if self.limits.max_cpu_seconds > 0:
-                max_seconds = int(self.limits.max_cpu_seconds)
-                resource.setrlimit(resource.RLIMIT_CPU, (max_seconds, max_seconds))
-
-            # File descriptor limit
-            if self.limits.max_file_descriptors > 0:
-                resource.setrlimit(
-                    resource.RLIMIT_NOFILE,
-                    (self.limits.max_file_descriptors, self.limits.max_file_descriptors),
-                )
-        except (ImportError, ValueError, OSError) as e:
-            logger.debug(f"Could not set OS resource limits: {e}")
-
-        monitor.start()
-        self._exceeded = False
-
-        try:
+        # In-process enforcement cannot irreversibly change its host. Keep
+        # hard caps, apply no looser soft caps, and restore on every exit,
+        # including partial setup or monitor startup failure.
+        with ExitStack() as cleanup:
+            try:
+                import resource
+            except ImportError:
+                resource = None
+            if resource is not None:
+                requested = {
+                    resource.RLIMIT_AS: self.limits.max_memory_mb * 1024 * 1024
+                        if self.limits.max_memory_mb > 0 else None,
+                    resource.RLIMIT_CPU: int(self.limits.max_cpu_seconds)
+                        if self.limits.max_cpu_seconds > 0 else None,
+                    resource.RLIMIT_NOFILE: self.limits.max_file_descriptors
+                        if self.limits.max_file_descriptors > 0 else None,
+                }
+                for key, value in requested.items():
+                    if value is None:
+                        continue
+                    try:
+                        original = resource.getrlimit(key)
+                        resource.setrlimit(key, (_bounded_soft_limit(value, original), original[1]))
+                    except (ValueError, OSError) as error:
+                        logger.debug(f"Could not set OS resource limit {key}: {error}")
+                    else:
+                        cleanup.callback(resource.setrlimit, key, original)
+            monitor.start()
+            cleanup.callback(monitor.stop)
+            self._exceeded = False
             yield monitor
 
             # Check if limits were exceeded during execution
@@ -571,8 +587,6 @@ class CombinedResourceLimiter(ResourceLimiter):
                     getattr(usage, f"{self._exceeded_type.name.lower()}_mb", 0)
                         if self._exceeded_type else 0,
                 )
-        finally:
-            monitor.stop()
 
 
 def with_resource_limits(

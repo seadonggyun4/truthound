@@ -8,7 +8,35 @@ on:
 permissions:
   contents: read
 jobs:
+  mcp-tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python: ["3.11", "3.12", "3.13"]
+        shard: [0, 1, 2, 3]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    env:
+      POLARS_MAX_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --python ${{ matrix.python }} --frozen --extra dev --extra mcp
+      - run: uv run --python ${{ matrix.python }} --frozen --extra dev --extra mcp python verification/mcp_ci_gate.py --expected-python ${{ matrix.python }} --shard-count 4 --shard-index ${{ matrix.shard }} --junitxml test-artifacts/mcp-${{ matrix.shard }}.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: truthound-mcp-tests-${{ matrix.os }}-${{ matrix.python }}-${{ matrix.shard }}
+          path: test-artifacts/*
+          if-no-files-found: error
   mcp:
+    needs: mcp-tests
     strategy:
       fail-fast: false
       matrix:
@@ -18,6 +46,8 @@ jobs:
     timeout-minutes: 15
     env:
       POLARS_MAX_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -25,7 +55,12 @@ jobs:
           python-version: ${{ matrix.python }}
       - uses: astral-sh/setup-uv@v4
       - run: uv sync --python ${{ matrix.python }} --frozen --extra dev --extra mcp
-      - run: uv run --python ${{ matrix.python }} --frozen --extra dev --extra mcp python verification/mcp_ci_gate.py --expected-python ${{ matrix.python }} --junitxml test-artifacts/mcp.xml
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: truthound-mcp-tests-${{ matrix.os }}-${{ matrix.python }}-*
+          path: test-artifacts/shards
+          merge-multiple: true
+      - run: uv run --python ${{ matrix.python }} --frozen --extra dev --extra mcp python verification/mcp_ci_gate.py --expected-python ${{ matrix.python }} --aggregate-dir test-artifacts/shards --shard-count 4 --junitxml test-artifacts/mcp.xml
       - run: uv run --python ${{ matrix.python }} --frozen --extra dev --extra mcp python verification/mcp_release.py --expected-python ${{ matrix.python }} --output dist/mcp --smoke
       - uses: actions/setup-node@v4
         with:

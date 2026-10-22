@@ -62,6 +62,44 @@ def approve(control, plan_id):
         store.close()
 
 
+def test_optional_dependency_probes_preserve_late_bound_pydantic_field_identity(operator, tmp_path):
+    import importlib.util
+    from pathlib import Path
+
+    import pydantic
+
+    original = pydantic
+    descriptor = importlib.util.spec_from_file_location(
+        "truthound_ai_optional_probe_cases", Path(__file__).with_name("test_ai_import_contract.py")
+    )
+    probes = importlib.util.module_from_spec(descriptor)
+    descriptor.loader.exec_module(probes)
+    for function in (
+        probes.test_truthound_ai_namespace_requires_optional_dependency,
+        probes.test_truthound_root_ai_support_probe_is_safe_without_optional_dependency,
+    ):
+        with pytest.MonkeyPatch.context() as patches:
+            function(patches)
+        assert __import__("pydantic") is original
+    with pytest.MonkeyPatch.context() as patches:
+        probes.test_truthound_ai_cli_command_surfaces_install_hint_when_optional_dependency_missing(
+            patches, tmp_path
+        )
+    assert __import__("pydantic") is original
+    from truthound.mcp.bindings import Bindings
+
+    assert Bindings().plugins == {}
+    adapter, _, _, asset = operator
+    response = invoke(
+        adapter,
+        "assets_validate",
+        asset_id=asset,
+        checks=[{"validator": "regex", "binding_id": "capital-a"}],
+        idempotency_key="after-optional-dependency-probes",
+    )
+    assert response["issues"] == [{"code": "approval_required"}]
+
+
 def test_regex_template_requires_exact_human_approval_then_real_core_run_and_revocation(operator):
     adapter, control, file, asset = operator
     request = {

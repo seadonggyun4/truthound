@@ -2,7 +2,9 @@
 
 import importlib.metadata
 import importlib.util
+import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -65,3 +67,116 @@ def test_contract_generator_keeps_paths_blocked_across_python_implementation_mov
     )
     alternatives = document["validators"]["polygon"]["fields"]["geojson_file"]["type"]["items"]
     assert expected in alternatives
+
+
+@pytest.fixture
+def shard_reports(tmp_path, monkeypatch):
+    import xml.etree.ElementTree as ET
+
+    helpers = mcp_ci_gate.proof_helpers()
+    full = {file + "::test_expected": "source-hash" for file in mcp_ci_gate.TEST_FILES}
+    identity = {
+        "package_sources": {"native.py": "hash"},
+        "test_and_verification_sources": {"test.py": "hash"},
+        "project_sources": {"uv.lock": "hash"},
+    }
+    monkeypatch.setattr(
+        mcp_ci_gate,
+        "proof_helpers",
+        lambda: SimpleNamespace(
+            partition=helpers.partition,
+            sources=lambda: identity["package_sources"],
+            supporting_sources=lambda: identity["test_and_verification_sources"],
+            project_sources=lambda: identity["project_sources"],
+        ),
+    )
+    union = {}
+    for index in range(4):
+        selected = helpers.partition(full, 4, index)
+        assert not union.keys() & selected.keys()
+        union.update(selected)
+        proof = {
+            "valid": True,
+            "full_collection": full,
+            "collection": selected,
+            "shard_count": 4,
+            "shard_index": index,
+            "tests": len(selected),
+            "execution_phases": 3 * len(selected),
+            **identity,
+        }
+        (tmp_path / f"mcp-{index}.sources.json").write_text(json.dumps(proof), encoding="utf-8")
+        suites = ET.Element("testsuites")
+        suite = ET.SubElement(suites, "testsuite")
+        for node in selected:
+            ET.SubElement(
+                suite,
+                "testcase",
+                classname=node.split("::")[0].removesuffix(".py").replace("/", "."),
+                name="test_expected",
+            )
+        ET.ElementTree(suites).write(tmp_path / f"mcp-{index}.xml", encoding="utf-8")
+    assert union == full
+    return tmp_path
+
+
+def test_required_shard_gate_assembles_only_complete_disjoint_execution(shard_reports):
+    destination = shard_reports / "complete.xml"
+    result = mcp_ci_gate.aggregate(shard_reports, 4, destination)
+    assert result["tests"] == len(mcp_ci_gate.TEST_FILES)
+    proof = json.loads(destination.with_suffix(".sources.json").read_text(encoding="utf-8"))
+    assert proof["valid"] and proof["execution_phases"] == 3 * result["tests"]
+
+
+@pytest.mark.parametrize(
+    "damage",
+    [
+        "missing",
+        "failed",
+        "duplicate",
+        "selection",
+        "phases",
+        "sources",
+        "universe",
+        "skip",
+        "junit_count",
+        "junit_duplicate",
+    ],
+)
+def test_required_shard_gate_rejects_incomplete_or_altered_evidence(shard_reports, damage):
+    path = shard_reports / "mcp-0.sources.json"
+    proof = json.loads(path.read_text(encoding="utf-8"))
+    if damage == "missing":
+        path.unlink()
+    elif damage in {"skip", "junit_count", "junit_duplicate"}:
+        import xml.etree.ElementTree as ET
+
+        report = shard_reports / "mcp-0.xml"
+        tree = ET.parse(report)
+        case = next(tree.getroot().iter("testcase"))
+        if damage == "skip":
+            ET.SubElement(case, "skipped")
+        elif damage == "junit_count":
+            tree.getroot()[0].remove(case)
+        else:
+            cases = list(tree.getroot().iter("testcase"))
+            cases[1].set("classname", case.get("classname"))
+            cases[1].set("name", case.get("name"))
+        tree.write(report, encoding="utf-8")
+    else:
+        if damage == "failed":
+            proof["valid"] = False
+        elif damage == "duplicate":
+            proof["shard_index"] = 1
+        elif damage == "selection":
+            proof["collection"].pop(next(iter(proof["collection"])))
+        elif damage == "phases":
+            proof["execution_phases"] -= 1
+        elif damage == "sources":
+            proof["package_sources"]["native.py"] = "changed"
+        elif damage == "universe":
+            proof["full_collection"]["tests/test_other.py::test_hidden"] = "changed"
+        path.write_text(json.dumps(proof), encoding="utf-8")
+    with pytest.raises(ValueError):
+        mcp_ci_gate.aggregate(shard_reports, 4, shard_reports / "complete.xml")
+    assert not (shard_reports / "complete.sources.json").exists()
