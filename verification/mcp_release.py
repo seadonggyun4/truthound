@@ -94,6 +94,7 @@ async def core_profile():
                 required.add("models_rule_query")
                 required.add("schedules_preview")
                 required.add("lineage_track")
+                required|={"lineage_load","lineage_export"}
                 required|={"models_ensemble_add","models_ensemble_remove","models_persist","models_resume","jobs_submit","jobs_execute","jobs_status","jobs_result","jobs_cancel","jobs_recover"}
                 required|={"storage_retention_preview","storage_delete"}
                 required|={"schedules_register","schedules_status","schedules_disable","storage_policy_register","storage_policy_status","storage_policy_disable"}
@@ -149,6 +150,15 @@ async def core_profile():
                     return b"".join(chunks)
                 snapshot=await invoke("lineage_query",{"query":{"graph_id":graph,"view":"graph"}})
                 native_graph=LineageGraph.from_dict(decode(json.loads(await artifact_bytes(snapshot["resource_id"]))))
+                graph_file=data/"lineage.json"
+                native_graph.save(graph_file)
+                payload=json.loads(graph_file.read_text(encoding="utf-8"))
+                payload["nodes"][0]["metadata"]["description"]="계보 재진입"
+                graph_file.write_text(json.dumps(payload,ensure_ascii=False),encoding="utf-8")
+                expected_json=json.dumps(LineageGraph.load(graph_file).to_dict(),indent=2).encode("utf-8")
+                imported=await invoke("lineage_load",{"path":str(graph_file)})
+                exported=await invoke("lineage_export",{"graph_id":imported["resource_id"]})
+                assert await artifact_bytes(exported["resource_id"])==expected_json
                 tracked=await invoke("lineage_track",{"graph_id":graph,"event":{"action":"transformation","name":"joined","sources":["a","b"],"operation":"join","column_mapping":{"x":[["a","x"]]}}})
                 tracked_result=await invoke("lineage_query",{"query":{"graph_id":tracked["resource_id"],"view":"graph"}})
                 tracked_graph=decode(json.loads(await artifact_bytes(tracked_result["resource_id"])))

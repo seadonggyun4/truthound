@@ -202,6 +202,7 @@ JavaScript의 정확한 정수 범위를 넘는 값에는 십진 문자열 태�
 | `drift_catalog`, `drift_detect` | 구체 드리프트 탐지기 13종의 전체 생성자 설정과 두 Series 컬럼 비교 |
 | `lineage_catalog`, `lineage_create`, `lineage_edit`, `lineage_query` | 네이티브 그래프 설정·불변 파생 편집·탐색 |
 | `lineage_track` | 실제 Core의 소스·변환·검증·출력 수동 추적을 파생 그래프로 보관 |
+| `lineage_load`, `lineage_export` | 승인된 로컬 네이티브 JSON 스냅샷 재진입과 Core JSON 산출물 |
 | `lineage_impact`, `lineage_critical_paths`, `lineage_what_if_delete`, `lineage_schema_impact`, `lineage_dependency_chain` | 실제 Core 영향·의존성 분석 결과 보관 |
 | `models_catalog`, `models_create`, `models_inspect` | 구체 ML 알고리즘 12종의 설정과 상주 수명주기 상태 |
 | `models_fit`, `models_partial_fit`, `models_fit_predict`, `models_predict`, `models_score` | 기본 학습·지원되는 온라인 학습·학습과 예측·예측·이상 점수 |
@@ -632,6 +633,18 @@ SIGINT/SIGTERM은 현재 제한된 작업을 마친 뒤 종료합니다. OS 서�
 않고 정확한 네이티브 메서드의 실제 예외와 정상 대조군을 관측한 뒤 Core/MCP 전체 결과를
 비교합니다. 이를 실행 실패나 데이터 품질 통과로 바꾸지 않으며 집계 품질은 여전히
 미확정입니다. critical 품질 이슈로 반환되는 예외와도 별도로 집계합니다.
+
+`lineage_load`는 승인된 로컬 `.json`의 `path`와 선택형 Core `config`를 받으며
+`persist_path`는 금지합니다. 크기 제한을 적용한 불변 파일 스냅샷을 만든 뒤
+`LineageGraph.load`를 호출합니다. 입력 노드 레코드는 1,000개, 엣지는 2,000개로
+제한하며 손상되거나 빈 네이티브 파일을 성공한 빈 그래프로 바꾸지 않습니다.
+불러오기와 내보내기는 모두 민감 결과 권한이 필요합니다. `lineage_export`는
+`graph_id`를 받아 Core `LineageTracker.export_to_json`의 정확한 UTF-8 바이트를
+소유권이 있는 `application/json` 산출물로 반환합니다. `lineage_query`의 태그형 값이
+아닌 네이티브 JSON입니다. `artifacts_read` 페이지를 Base64 디코딩해 이어 붙이고,
+나중에 Core/MCP에서 다시 읽을 파일에는 해당 바이트를 보존합니다. 호출자가 출력 경로를
+지정하거나 파일을 암묵적으로 게시하지 않습니다. 원본 권한 철회나 부모 해제는 파생
+접근도 무효화합니다.
 
 네이티브 전체·부분 그래프 렌더링은 `lineage_render`로 제공합니다.
 

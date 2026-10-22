@@ -27,6 +27,8 @@ def operations(descriptor):
         DependencyChain,
         GraphCreate,
         GraphEdit,
+        GraphInput,
+        GraphLoad,
         GraphQuery,
         GraphRender,
         GraphTrack,
@@ -61,6 +63,22 @@ def operations(descriptor):
     from truthound.mcp.suites import SuiteCreate, SuiteValidation
 
     rows = (
+        (
+            "lineage_load",
+            "Load an approved local Core lineage JSON snapshot into a private graph. No caller persist path or remote access.",
+            GraphLoad,
+            "truthound.lineage.LineageGraph.load",
+            wire.ResourceInfo,
+            True,
+        ),
+        (
+            "lineage_export",
+            "Export native tracker JSON bytes into an owned artifact, not a caller filesystem path.",
+            GraphInput,
+            "truthound.lineage.LineageTracker.export_to_json",
+            wire.ResourceInfo,
+            True,
+        ),
         (
             "lineage_track",
             "Apply native manual source/transformation/validation/output/dependency tracking to a new graph handle; locations are metadata, not file access or execution.",

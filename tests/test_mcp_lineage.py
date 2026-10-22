@@ -106,6 +106,84 @@ def test_actual_native_renderer_full_settings_and_subgraph_bytes(graph, renderer
     )
 
 
+def test_native_file_reentry_export_bytes_and_revoked_origin(graph, tmp_path):
+    from dataclasses import replace
+
+    from truthound.lineage import LineageTracker
+
+    adapter, _, native = graph
+    source = tmp_path / "lineage.json"
+    native.save(source)
+    payload = json.loads(source.read_text(encoding="utf-8"))
+    payload["nodes"][0]["metadata"]["description"] = "계보 재진입"
+    source.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    loaded = call(adapter, "lineage_load", path=str(source))["resource_id"]
+    artifact = call(adapter, "lineage_export", graph_id=loaded)["resource_id"]
+    tracker = LineageTracker()
+    tracker.load(str(source))
+    expected = tracker.export_to_json().encode("utf-8")
+    assert raw_artifact(adapter, artifact) == expected
+    assert json.loads(raw_artifact(adapter, artifact)) == LineageGraph.load(source).to_dict()
+    # Changes after admission cannot replace the owned graph snapshot.
+    source.write_text('{"nodes":[],"edges":[]}', encoding="utf-8")
+    assert raw_artifact(adapter, artifact) == expected
+    reentry = tmp_path / "exported.json"
+    reentry.write_bytes(expected)
+    again = call(adapter, "lineage_load", path=str(reentry))["resource_id"]
+    assert (
+        raw_artifact(adapter, call(adapter, "lineage_export", graph_id=again)["resource_id"])
+        == expected
+    )
+    denied_root = tmp_path / "new-grant"
+    denied_root.mkdir()
+    adapter.policy = replace(adapter.policy, allowed_directories=(denied_root,))
+    assert invoke(adapter, "lineage_export", graph_id=loaded)["execution_status"] == "failed"
+    assert invoke(adapter, "artifacts_read", resource_id=artifact)["execution_status"] == "failed"
+
+
+@pytest.mark.parametrize(
+    "content", ["", "{broken", '{"nodes":[{"id":"bad","node_type":"unknown"}]}']
+)
+def test_native_file_errors_are_not_empty_success(tmp_path, content):
+    source = tmp_path / "bad.json"
+    source.write_text(content, encoding="utf-8")
+    from truthound.lineage import LineageError
+
+    with pytest.raises((LineageError, ValueError)):
+        LineageGraph.load(source)
+    adapter = MCPService(MCPPolicy((tmp_path,), profile="core", allow_sensitive_results=True))
+    try:
+        result = invoke(adapter, "lineage_load", path=str(source))
+        assert result["execution_status"] == "failed"
+        assert result["data"] is None
+    finally:
+        adapter.close()
+
+
+def test_load_disclosure_paths_and_cardinality_do_not_bypass_policy(tmp_path):
+    path = tmp_path / "graph.json"
+    path.write_text('{"nodes":[],"edges":[]}', encoding="utf-8")
+    adapter = MCPService(MCPPolicy((tmp_path,), profile="core"))
+    try:
+        assert invoke(adapter, "lineage_load", path=str(path))["issues"] == [
+            {"code": "approval_required"}
+        ]
+    finally:
+        adapter.close()
+    adapter = MCPService(MCPPolicy((tmp_path,), profile="core", allow_sensitive_results=True))
+    try:
+        for args in (
+            {"path": "https://example.invalid/graph.json"},
+            {"path": str(path), "config": {"persist_path": str(tmp_path / "unapproved.json")}},
+        ):
+            assert invoke(adapter, "lineage_load", **args)["execution_status"] == "failed"
+        path.write_text(json.dumps({"nodes": [{}] * 1001}), encoding="utf-8")
+        assert invoke(adapter, "lineage_load", path=str(path))["execution_status"] == "failed"
+        assert not (tmp_path / "unapproved.json").exists()
+    finally:
+        adapter.close()
+
+
 @pytest.mark.fault
 def test_renderer_denies_missing_roots_external_programs_and_unknown_fields(graph):
     adapter, identity, native = graph

@@ -39,6 +39,18 @@ class GraphInput(WireModel):
     graph_id: Handle
 
 
+class GraphLoad(WireModel):
+    path: Annotated[str, Field(min_length=1, max_length=4096)]
+    config: dict[str, JsonValue] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def constructor(self):
+        if self.config.get("persist_path") is not None:
+            raise MCPError("operator_configuration_required")
+        lineage_fields("config", self.config)
+        return self
+
+
 class TrackingMetadata(WireModel):
     description: Annotated[str, Field(max_length=4096)] | None = None
     owner: Annotated[str, Field(max_length=256)] = ""

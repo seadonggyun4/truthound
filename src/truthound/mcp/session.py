@@ -769,6 +769,8 @@ class MCPSession:
             )
 
         producers = {
+            "lineage_load": "graph",
+            "lineage_export": "artifact",
             "lineage_create": "graph",
             "lineage_edit": "graph",
             "lineage_track": "graph",
@@ -810,7 +812,13 @@ class MCPSession:
         try:
             with tempfile.TemporaryDirectory(prefix="truthound-mcp-operation-") as directory:
                 if name.startswith("lineage_"):
-                    if name != "lineage_create":
+                    if name == "lineage_load":
+                        source = self.policy.resolve(arguments.path, suffixes={".json"})
+                        target = Path(directory) / "lineage.json"
+                        digest = (await capture(self.policy, source, target)).hexdigest()
+                        request["path"] = str(target)
+                        origins = (source,)
+                    elif name != "lineage_create":
                         handle = (
                             arguments.query.graph_id
                             if name == "lineage_query"

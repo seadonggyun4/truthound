@@ -791,7 +791,7 @@ class LineageGraph:
         """Save graph to file."""
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "w") as f:
+        with open(path, "w", encoding="utf-8") as f:
             json.dump(self.to_dict(), f, indent=2)
 
     @classmethod
@@ -823,7 +823,7 @@ class LineageGraph:
             )
 
         try:
-            with open(path) as f:
+            with open(path, encoding="utf-8") as f:
                 content = f.read().strip()
                 if not content:
                     raise LineageError(

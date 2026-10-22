@@ -212,6 +212,7 @@ The same opt-in profile also exposes these named operations:
 | `drift_catalog`, `drift_detect` | Full constructor settings of 13 concrete native drift detectors on two owned Series columns |
 | `lineage_catalog`, `lineage_create`, `lineage_edit`, `lineage_query` | Typed native graph configuration and immutable graph edits/traversals |
 | `lineage_track` | Native manual source, transformation, validation and output tracking into a derived graph |
+| `lineage_load`, `lineage_export` | Approved local native JSON snapshot re-entry and Core JSON artifacts |
 | `lineage_render` | Native whole/subgraph D3/Cytoscape JSON, Graphviz DOT or Mermaid text with full closed rendering configuration |
 | `lineage_impact`, `lineage_critical_paths`, `lineage_what_if_delete`, `lineage_schema_impact`, `lineage_dependency_chain` | Native impact and dependency analysis retained as artifacts |
 | `models_catalog`, `models_create`, `models_inspect` | Closed configurations for the 12 concrete Core ML algorithms and resident lifecycle state |
@@ -693,6 +694,19 @@ can raise a native `RecursionError` on deep schemas. MCP preserves that executio
 failure and canonical evidence rather than reporting a successful validation.
 Parity tests normalize only repeated traceback frame counts that differ with
 interpreter call-stack depth; exception types, messages and frames remain checked.
+
+`lineage_load` accepts an approved local `.json` `path` and optional native
+`config` (without `persist_path`). It captures an immutable, size-bounded file
+snapshot before calling `LineageGraph.load`; imported graphs are limited to
+1,000 node records and 2,000 edge records. Invalid/empty native files fail rather
+than becoming successful empty graphs. Both loading and exporting require
+sensitive-result permission. `lineage_export` takes `graph_id` and returns an
+owned `application/json` artifact with the exact UTF-8 bytes produced by
+`LineageTracker.export_to_json`. This is native JSON, **not** the tagged-value
+format of `lineage_query`. Use paged `artifacts_read`, Base64-decode and concatenate
+the bytes; preserve them when writing a file for later native/MCP re-entry.
+There is no caller-selected output path or implicit filesystem publication.
+Origin permission revocation and parent release invalidate derived access.
 
 `lineage_catalog` describes all native config/node/edge fields and rich record
 definitions. `lineage_create` accepts `config`, `nodes` and `edges`; caller

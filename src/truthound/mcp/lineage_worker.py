@@ -26,7 +26,18 @@ def execute(request, arguments):
     analyzer_type = _known_type("truthound.lineage.impact_analysis.ImpactAnalyzer")
     operation = request["operation"]
     definitions = contracts()["lineage"]
-    if operation == "lineage_create":
+    if operation == "lineage_load":
+        # Bound cardinality before native graph construction. The owned input
+        # snapshot already passed file size, regular-file and grant checks.
+        document = json.loads(Path(request["path"]).read_text(encoding="utf-8"))
+        if isinstance(document, dict) and (
+            len(document.get("nodes", [])) > 1000 or len(document.get("edges", [])) > 2000
+        ):
+            raise MCPError("resource_exhausted")
+        graph = graph_type.load(
+            request["path"], convert(definitions["config"], arguments.config, build=True)
+        )
+    elif operation == "lineage_create":
         graph = graph_type(convert(definitions["config"], arguments.config, build=True))
         for node in arguments.nodes:
             graph.add_node(convert(definitions["node"], node, build=True))
@@ -69,6 +80,15 @@ def execute(request, arguments):
 
             tracker.add_dependency(event.source_id, event.target_id, EdgeType(event.edge_type))
         graph = tracker.graph
+    if operation == "lineage_export":
+        with BoundedWriter(Path(request["output_path"]), request["output_budget"]) as sink:
+            sink.write(_tracker(graph).export_to_json().encode("utf-8"))
+        return {
+            "resource_created": True,
+            "media_type": "application/json",
+            "row_count": None,
+            "column_count": None,
+        }
     if operation == "lineage_render":
         renderer = _known_type(definitions["renderers"][arguments.renderer])()
         config = convert(definitions["render_config"], arguments.settings, build=True)
@@ -93,7 +113,7 @@ def execute(request, arguments):
             "row_count": None,
             "column_count": None,
         }
-    if operation in {"lineage_create", "lineage_edit", "lineage_track"}:
+    if operation in {"lineage_create", "lineage_edit", "lineage_track", "lineage_load"}:
         result = {"graph": graph.to_dict(), "config": asdict(graph.config)}
         media_type = "application/vnd.truthound.lineage-graph+json"
     else:
