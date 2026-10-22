@@ -201,6 +201,7 @@ JavaScript의 정확한 정수 범위를 넘는 값에는 십진 문자열 태�
 | `drift_compare` | 모든 공개 비교 메서드와 인수를 전달한 Core 데이터셋 비교 보고서 |
 | `drift_catalog`, `drift_detect` | 구체 드리프트 탐지기 13종의 전체 생성자 설정과 두 Series 컬럼 비교 |
 | `lineage_catalog`, `lineage_create`, `lineage_edit`, `lineage_query` | 네이티브 그래프 설정·불변 파생 편집·탐색 |
+| `lineage_track` | 실제 Core의 소스·변환·검증·출력 수동 추적을 파생 그래프로 보관 |
 | `lineage_impact`, `lineage_critical_paths`, `lineage_what_if_delete`, `lineage_schema_impact`, `lineage_dependency_chain` | 실제 Core 영향·의존성 분석 결과 보관 |
 | `models_catalog`, `models_create`, `models_inspect` | 구체 ML 알고리즘 12종의 설정과 상주 수명주기 상태 |
 | `models_fit`, `models_partial_fit`, `models_fit_predict`, `models_predict`, `models_score` | 기본 학습·지원되는 온라인 학습·학습과 예측·예측·이상 점수 |
@@ -559,8 +560,12 @@ SIGINT/SIGTERM은 현재 제한된 작업을 마친 뒤 종료합니다. OS 서�
 ### 영구 저장 보존 정책과 삭제
 
 `storage_retention_preview`에는 `kind`(`models` 또는 `jobs`)와 `max_age_minutes`
-(1~5,256,000) 또는 `max_count`(1~128) 중 하나 이상을 지정합니다. Core의
-`TimeBasedPolicy`·`CountBasedPolicy`를 재사용하며 모든 선택 정책을 만족해야 보존합니다.
+(1~5,256,000), `max_count`(1~128), `max_size_bytes`(1~33,554,432) 중 하나 이상을
+지정합니다. Core의 `TimeBasedPolicy`·`CountBasedPolicy`·`SizeBasedPolicy`·
+`CompositePolicy`를 재사용합니다. 기본 `mode="all"`은 모든 선택 정책이 보존해야
+남기고, `mode="any"`는 하나라도 보존하면 남깁니다. 크기는 실제 작업 입력·결과
+바이트 합계 또는 모델 payload 바이트이며 SQLite 파일 크기나 새 저장 한도가 아닙니다.
+영구 자동 정책도 같은 필드를 받으며 재시작 후 승인된 조합을 유지합니다.
 삭제 없이 `candidates`, `preserved`, `excluded` ID 목록을 반환합니다. 대기·실행 중·
 불확정 작업과 생성 시각이 없는 과거 레코드는 제외합니다. 동일 생성 시각은 ID 순서로
 정렬해 네이티브 개수 정책의 판정을 결정적으로 유지합니다.
@@ -596,6 +601,23 @@ SIGINT/SIGTERM은 현재 제한된 작업을 마친 뒤 종료합니다. OS 서�
 문서·결과에도 세션 만료·용량 제한·부모 해제·민감한 결과 공개 정책을 적용합니다.
 
 ### 네이티브 계보 그래프
+
+`lineage_track`는 `graph_id`와 `action`이 `source`, `transformation`, `validation`,
+`output`인 `event`를 받습니다. 해당 Core `LineageTracker.track_*`를 호출하고 원본과
+부모 소유권을 유지하는 새 그래프 핸들을 반환합니다. 모든 이벤트에 `name`, 선택형
+`description`, `owner`, `tags`, JSON `properties`를 지정하며 속성으로 정식 인자를
+덮어쓸 수 없습니다. 소스에는 `source_type`, `location`, `schema_spec`, 변환에는
+`sources`, `operation`, `location`, `schema_spec`, `column_mapping`을 지정합니다.
+열 매핑 값은 `[원본 노드, 원본 열]` 쌍의 목록입니다. 검증에는 `sources`, `validators`,
+`result_summary`, 출력에는 `sources`, `output_type`, `location`을 지정합니다.
+위치는 메타데이터일 뿐 파일·연결을 열거나 실행·게시하지 않습니다. 기존 노드 교체와
+없는 원본 ID의 엣지 생략, 자동 생성 시각 등 Core 의미를 보존합니다. 수동 추적이며
+자동 실행 이력·원격 전송이나 기록된 검증의 실제 실행을 증명하는 기능은 아닙니다.
+
+동등성 증거는 Core가 보고 없이 삼키는 내부 예외도 별도로 구분합니다. 실패를 주입하지
+않고 정확한 네이티브 메서드의 실제 예외와 정상 대조군을 관측한 뒤 Core/MCP 전체 결과를
+비교합니다. 이를 실행 실패나 데이터 품질 통과로 바꾸지 않으며 집계 품질은 여전히
+미확정입니다. critical 품질 이슈로 반환되는 예외와도 별도로 집계합니다.
 
 네이티브 전체·부분 그래프 렌더링은 `lineage_render`로 제공합니다.
 

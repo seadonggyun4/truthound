@@ -135,6 +135,132 @@ def test_renderer_denies_missing_roots_external_programs_and_unknown_fields(grap
     )
 
 
+def test_manual_native_tracking_chain_preserves_graphs_and_metadata(graph):
+    import copy
+
+    from truthound.lineage import LineageTracker
+
+    adapter, identity, native = graph
+    original = native.to_dict()
+    tracker = LineageTracker(native.config)
+    for node in native.nodes:
+        tracker.graph.add_node(node)
+    for edge in native.edges:
+        tracker.graph.add_edge(edge)
+    events = [
+        {
+            "action": "source",
+            "name": "source-2",
+            "source_type": "table",
+            "location": "metadata-only://no-connection",
+            "schema_spec": {"x": "Int64"},
+            "owner": "fixture",
+            "tags": ["test"],
+            "properties": {"revision": 2},
+        },
+        {
+            "action": "transformation",
+            "name": "transformed",
+            "sources": ["a", "source-2", "missing"],
+            "operation": "join",
+            "schema_spec": {"x": "Int64"},
+            "column_mapping": {"x": [["source-2", "x"]]},
+        },
+        {
+            "action": "validation",
+            "name": "checked",
+            "sources": ["transformed"],
+            "validators": ["not_null"],
+            "result_summary": {"count": 2},
+        },
+        {
+            "action": "output",
+            "name": "output",
+            "sources": ["checked"],
+            "output_type": "report",
+            "location": "not-written.html",
+        },
+        {"action": "source", "name": "a", "description": "Native replacement semantics"},
+    ]
+
+    def semantics(value):
+        value = copy.deepcopy(value)
+        # Only native-generated timestamps differ between independent runs.
+        for row in value["nodes"] + value["edges"]:
+            for target in (row, row["metadata"]):
+                for key in ("created_at", "updated_at"):
+                    if key in target:
+                        assert datetime.fromisoformat(target.pop(key))
+        return value
+
+    current = identity
+    for event in events:
+        args = {key: value for key, value in event.items() if key != "action"}
+        args.update(args.pop("properties", {}))
+        if "schema_spec" in args:
+            args["schema"] = args.pop("schema_spec")
+        methods = {
+            "source": tracker.track_source,
+            "transformation": tracker.track_transformation,
+            "validation": tracker.track_validation,
+            "output": tracker.track_output,
+        }
+        methods[event["action"]](**args)
+        current = call(adapter, "lineage_track", graph_id=current, event=event)["resource_id"]
+        actual = read(
+            adapter,
+            call(adapter, "lineage_query", query={"graph_id": current, "view": "graph"})[
+                "resource_id"
+            ],
+        )
+        assert semantics(actual) == semantics(tracker.graph.to_dict())
+    assert (
+        read(
+            adapter,
+            call(adapter, "lineage_query", query={"graph_id": identity, "view": "graph"})[
+                "resource_id"
+            ],
+        )
+        == original
+    )
+    # Parent ownership is retained transitively; releasing a source revokes all descendants.
+    call(adapter, "resources_release", resource_id=identity)
+    assert (
+        invoke(adapter, "lineage_query", query={"graph_id": current, "view": "graph"})[
+            "execution_status"
+        ]
+        == "failed"
+    )
+
+
+@pytest.mark.fault
+def test_manual_tracking_rejects_argument_smuggling_and_preserves_parent(graph):
+    adapter, identity, native = graph
+    for event in (
+        {"action": "source", "name": "new", "properties": {"schema": {"x": "Int64"}}},
+        {"action": "execute", "name": "new"},
+        {
+            "action": "transformation",
+            "name": "new",
+            "sources": ["a"],
+            "column_mapping": {"x": [["a"]]},
+        },
+    ):
+        assert (
+            invoke(adapter, "lineage_track", graph_id=identity, event=event)["execution_status"]
+            == "failed"
+        )
+    assert (
+        read(
+            adapter,
+            call(adapter, "lineage_query", query={"graph_id": identity, "view": "graph"})[
+                "resource_id"
+            ],
+        )
+        == native.to_dict()
+    )
+
+
 @pytest.fixture
 def graph(tmp_path):
     adapter = MCPService(MCPPolicy((tmp_path,), profile="core", allow_sensitive_results=True))

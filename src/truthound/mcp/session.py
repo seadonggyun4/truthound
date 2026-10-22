@@ -771,6 +771,7 @@ class MCPSession:
         producers = {
             "lineage_create": "graph",
             "lineage_edit": "graph",
+            "lineage_track": "graph",
             "lineage_query": "artifact",
             "lineage_render": "artifact",
             "lineage_impact": "artifact",

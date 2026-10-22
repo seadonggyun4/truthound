@@ -204,6 +204,7 @@ def generate():
     from truthound.drift import DriftDetector
     from truthound.lineage.base import LineageConfig, LineageEdge, LineageGraph, LineageNode
     from truthound.lineage.impact_analysis import ImpactAnalyzer
+    from truthound.lineage.tracker import LineageTracker
     from truthound.lineage.visualization import get_renderer
     from truthound.lineage.visualization.protocols import RenderConfig
     from truthound.ml.base import MLModel
@@ -266,7 +267,7 @@ def generate():
         for parent in cls.__mro__:
             if parent.__module__.startswith("truthound."):
                 source_types[reference(parent)] = identity(parent)
-    for cls in (LineageGraph, ImpactAnalyzer):
+    for cls in (LineageGraph, ImpactAnalyzer, LineageTracker):
         source_types[reference(cls)] = identity(cls)
     detectors = {}
     for name in drift.__all__:

@@ -19,10 +19,14 @@ class RetentionPreview(WireModel):
     kind: Literal["models", "jobs"]
     max_age_minutes: Annotated[int, Field(ge=1, le=5256000)] | None = None
     max_count: Annotated[int, Field(ge=1, le=128)] | None = None
+    max_size_bytes: Annotated[int, Field(ge=1, le=32 * 1024**2)] | None = None
+    mode: Literal["all", "any"] = "all"
 
     @model_validator(mode="after")
     def policy(self):
-        if self.max_age_minutes is None and self.max_count is None:
+        if all(
+            value is None for value in (self.max_age_minutes, self.max_count, self.max_size_bytes)
+        ):
             raise ValueError("At least one native retention policy is required")
         return self
 
@@ -85,8 +89,13 @@ async def call(session, name, arguments):
     from truthound.mcp.automation import pinned
     from truthound.mcp.durable_jobs import storage
     from truthound.mcp.durable_models import storage as model_storage
-    from truthound.stores.retention.base import ItemMetadata
-    from truthound.stores.retention.policies import CountBasedPolicy, TimeBasedPolicy
+    from truthound.stores.retention.base import ItemMetadata, PolicyMode
+    from truthound.stores.retention.policies import (
+        CompositePolicy,
+        CountBasedPolicy,
+        SizeBasedPolicy,
+        TimeBasedPolicy,
+    )
 
     store = storage(session)
     model_storage(session)
@@ -108,14 +117,14 @@ async def call(session, name, arguments):
         if arguments.max_age_minutes is not None:
             policies.append(TimeBasedPolicy(max_age_minutes=arguments.max_age_minutes))
         if arguments.max_count is not None:
-            count = CountBasedPolicy(arguments.max_count)
-            count.prepare_batch(items)
-            policies.append(count)
+            policies.append(CountBasedPolicy(arguments.max_count))
+        if arguments.max_size_bytes is not None:
+            policies.append(SizeBasedPolicy(max_size_bytes=arguments.max_size_bytes))
+        combined = CompositePolicy(policies, mode=PolicyMode(arguments.mode))
+        combined.prepare_batch(items)
         candidates, preserved = [], []
         for item in items:
-            (
-                preserved if all(policy.should_retain(item) for policy in policies) else candidates
-            ).append(item.item_id)
+            (preserved if combined.should_retain(item) else candidates).append(item.item_id)
         return envelope(
             name, data=dict(candidates=candidates, preserved=preserved, excluded=excluded)
         )

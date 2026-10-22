@@ -40,6 +40,27 @@ def execute(request, arguments):
             graph.remove_edge(edit.source, edit.target)
         elif edit.action == "clear":
             graph.clear()
+    if operation == "lineage_track":
+        tracker_type = _known_type("truthound.lineage.tracker.LineageTracker")
+        tracker = tracker_type(graph.config)
+        for node in graph.nodes:
+            tracker.graph.add_node(node)
+        for edge in graph.edges:
+            tracker.graph.add_edge(edge)
+        event = arguments.event
+        values = event.model_dump(exclude={"action"}, exclude_none=True)
+        values.update(values.pop("properties"))
+        if "schema_spec" in values:
+            values["schema"] = values.pop("schema_spec")
+        if event.action == "source":
+            tracker.track_source(**values)
+        elif event.action == "transformation":
+            tracker.track_transformation(**values)
+        elif event.action == "validation":
+            tracker.track_validation(**values)
+        elif event.action == "output":
+            tracker.track_output(**values)
+        graph = tracker.graph
     if operation == "lineage_render":
         renderer = _known_type(definitions["renderers"][arguments.renderer])()
         config = convert(definitions["render_config"], arguments.settings, build=True)
@@ -64,7 +85,7 @@ def execute(request, arguments):
             "row_count": None,
             "column_count": None,
         }
-    if operation in {"lineage_create", "lineage_edit"}:
+    if operation in {"lineage_create", "lineage_edit", "lineage_track"}:
         result = {"graph": graph.to_dict(), "config": asdict(graph.config)}
         media_type = "application/vnd.truthound.lineage-graph+json"
     else:

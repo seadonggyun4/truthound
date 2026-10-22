@@ -39,6 +39,62 @@ class GraphInput(WireModel):
     graph_id: Handle
 
 
+class TrackingMetadata(WireModel):
+    description: Annotated[str, Field(max_length=4096)] | None = None
+    owner: Annotated[str, Field(max_length=256)] = ""
+    tags: Annotated[list[Name], Field(max_length=64)] = Field(default_factory=list)
+    properties: Annotated[dict[Name, JsonValue], Field(max_length=64)] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def metadata_does_not_override_arguments(self):
+        if set(self.properties) & (set(type(self).model_fields) | {"schema"}):
+            raise MCPError("invalid_arguments")
+        return self
+
+
+class TrackSource(TrackingMetadata):
+    action: Literal["source"]
+    name: Name
+    source_type: Name = "file"
+    location: Annotated[str, Field(max_length=4096)] = ""
+    schema_spec: dict[Name, Name] | None = None
+
+
+class TrackTransformation(TrackingMetadata):
+    action: Literal["transformation"]
+    name: Name
+    sources: Annotated[list[Name], Field(max_length=1000)]
+    operation: Name = "transform"
+    location: Annotated[str, Field(max_length=4096)] = ""
+    schema_spec: dict[Name, Name] | None = None
+    column_mapping: (
+        dict[Name, list[Annotated[list[Name], Field(min_length=2, max_length=2)]]] | None
+    ) = None
+
+
+class TrackValidation(TrackingMetadata):
+    action: Literal["validation"]
+    name: Name
+    sources: Annotated[list[Name], Field(max_length=1000)]
+    validators: Annotated[list[Name], Field(max_length=260)] | None = None
+    result_summary: dict[Name, JsonValue] | None = None
+
+
+class TrackOutput(TrackingMetadata):
+    action: Literal["output"]
+    name: Name
+    sources: Annotated[list[Name], Field(max_length=1000)]
+    output_type: Name = "report"
+    location: Annotated[str, Field(max_length=4096)] = ""
+
+
+class GraphTrack(GraphInput):
+    event: Annotated[
+        TrackSource | TrackTransformation | TrackValidation | TrackOutput,
+        Field(discriminator="action"),
+    ]
+
+
 class GraphRender(GraphInput):
     renderer: Literal["d3", "cytoscape", "graphviz", "mermaid"]
     settings: dict[str, JsonValue] = Field(default_factory=dict)

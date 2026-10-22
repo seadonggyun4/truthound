@@ -131,6 +131,86 @@ def test_actual_algorithm_matches_core_with_full_canonical_evidence(tmp_path, sc
 
 
 @pytest.mark.parametrize(
+    ("name", "method", "error_type", "overrides"),
+    [
+        ("target_leakage", "_analyze_feature", ValueError, {}),
+        (
+            "feature_correlation_matrix",
+            "_compute_correlation_matrix",
+            TypeError,
+            {"numeric_only": False},
+        ),
+    ],
+    ids=["target_leakage", "feature_correlation_matrix"],
+)
+def test_swallowed_native_error_matches_core_with_observed_exception(
+    tmp_path, name, method, error_type, overrides
+):
+    """Observe real native exceptions without replacing or injecting computation.
+
+    These algorithms swallow the exception without an issue. Preserve that
+    result, but never infer exception coverage merely from an empty result.
+    """
+    from dataclasses import replace
+
+    import truthound as th
+    from truthound.validators import get_validator
+
+    scenario = next(row for row in SCENARIOS if row.validator == name)
+    scenario = replace(scenario, settings={**scenario.settings, **overrides})
+    validator = get_validator(name)(**scenario.settings)
+    code = getattr(validator, method).__func__.__code__
+    assert (
+        Path(code.co_filename)
+        .resolve()
+        .is_relative_to(Path(th.__file__).resolve().parent / "validators")
+    )
+    observed = []
+
+    def trace(frame, event, arg):
+        if frame.f_code is code and event == "exception":
+            observed.append(arg[0])
+        return trace
+
+    positive = pl.DataFrame({"x": list(range(40)), "y": list(range(40))})
+    failing = positive.with_columns(pl.Series("y", ["not_numeric"] * 40))
+    previous = sys.gettrace()
+    try:
+        sys.settrace(trace)
+        validator.validate(positive.lazy())
+        assert not observed, "The control must not enter the exceptional branch"
+        native_issues = validator.validate(failing.lazy())
+    finally:
+        sys.settrace(previous)
+    assert observed == [error_type]
+    assert not native_issues
+    direct = th.check(
+        failing,
+        validators=[get_validator(name)(**scenario.settings)],
+        result_format="complete",
+        context=_context(str(tmp_path / "direct/input.ipc")),
+    )
+    assert not direct.issues and not direct.execution_issues
+    response, actual = mcp_run(tmp_path, scenario, failing)
+    assert response["execution_status"] == "succeeded"
+    assert response["quality_status"] == "unknown"
+    expected = direct.to_dict()
+    for field in (
+        "checks",
+        "issues",
+        "execution_issues",
+        "row_count",
+        "column_count",
+        "result_format",
+        "execution_mode",
+        "planned_execution_mode",
+        "suite_name",
+        "source",
+    ):
+        assert actual[field] == expected[field], field
+
+
+@pytest.mark.parametrize(
     "scenario", [row for row in SCENARIOS if not row.trusted], ids=lambda row: row.validator
 )
 def test_actual_constructor_configuration_error_is_not_execution_coverage(tmp_path, scenario):

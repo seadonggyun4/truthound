@@ -29,6 +29,7 @@ def operations(descriptor):
         GraphEdit,
         GraphQuery,
         GraphRender,
+        GraphTrack,
         ImpactAnalyze,
         ImpactInput,
         SchemaImpact,
@@ -61,6 +62,14 @@ def operations(descriptor):
 
     rows = (
         (
+            "lineage_track",
+            "Apply native manual source/transformation/validation/output tracking to a new graph handle; locations are metadata, not file access or execution.",
+            GraphTrack,
+            "truthound.lineage.LineageTracker",
+            wire.ResourceInfo,
+            True,
+        ),
+        (
             "schedules_register",
             "Approve persistent native cron recurrence; count must be one. An operator-started worker advances successful occurrences only.",
             JobSubmit,
@@ -90,7 +99,7 @@ def operations(descriptor):
         ),
         (
             "storage_retention_preview",
-            "Evaluate native age/count policies without deletion; exclude active, indeterminate and undated legacy records.",
+            "Evaluate native age/count/size policies with ALL/ANY composition without deletion; exclude protected heads, active, indeterminate and undated records.",
             RetentionPreview,
             "truthound.stores.retention",
             RetentionResult,

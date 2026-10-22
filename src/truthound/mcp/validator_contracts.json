@@ -3683,6 +3683,7 @@
     "truthound.lineage.base.NodeType": "822d233f7740c829097f426eeba29659af89ed529d7ab63400bc4bb2782e60f5",
     "truthound.lineage.base.OperationType": "d0b08d48c20a2d65d156e29a6276b9eec824fa1269b910b92fe31e027e305dc4",
     "truthound.lineage.impact_analysis.ImpactAnalyzer": "fe7574eb66caa62c8b0006593dba485099b6e181aa5bd0226bf95cdf448e0334",
+    "truthound.lineage.tracker.LineageTracker": "5050fcfba8346ce9d331d44f0ada25ac16580a060e8b99434d4496385c90e9b0",
     "truthound.lineage.visualization.protocols.IGraphRenderer": "b4a56b09cf6bbfbb6d3a335fdc8c1dba6667b7b46d8ec29df11d931671dfe969",
     "truthound.lineage.visualization.protocols.RenderConfig": "5cb9c19311620e87852abeddcb917fe4754932578cfd78b1c17c470afab083b2",
     "truthound.lineage.visualization.protocols.RenderFormat": "ac489945f7217e366fe6dee0e75972fb4ec1036a6a57d4ccfd8b93609281e561",

@@ -211,6 +211,7 @@ The same opt-in profile also exposes these named operations:
 | `drift_compare` | Complete Core dataset-comparison report with all method choices and parameters |
 | `drift_catalog`, `drift_detect` | Full constructor settings of 13 concrete native drift detectors on two owned Series columns |
 | `lineage_catalog`, `lineage_create`, `lineage_edit`, `lineage_query` | Typed native graph configuration and immutable graph edits/traversals |
+| `lineage_track` | Native manual source, transformation, validation and output tracking into a derived graph |
 | `lineage_render` | Native whole/subgraph D3/Cytoscape JSON, Graphviz DOT or Mermaid text with full closed rendering configuration |
 | `lineage_impact`, `lineage_critical_paths`, `lineage_what_if_delete`, `lineage_schema_impact`, `lineage_dependency_chain` | Native impact and dependency analysis retained as artifacts |
 | `models_catalog`, `models_create`, `models_inspect` | Closed configurations for the 12 concrete Core ML algorithms and resident lifecycle state |
@@ -222,7 +223,7 @@ The same opt-in profile also exposes these named operations:
 | `jobs_submit`, `jobs_execute`, `jobs_status`, `jobs_result`, `jobs_cancel`, `jobs_recover` | Approved durable validation occurrences, retained results and indeterminate lease recovery |
 | `schedules_register`, `schedules_status`, `schedules_disable` | Approved persistent cron recurrence and lifecycle, executed by the local foreground worker |
 | `storage_policy_register`, `storage_policy_status`, `storage_policy_disable` | Approved persistent automatic age/count retention policies |
-| `storage_retention_preview`, `storage_delete` | Native age/count retention preview and separately approved exact payload deletion |
+| `storage_retention_preview`, `storage_delete` | Native age/count/size and ALL/ANY retention preview; separately approved exact payload deletion |
 | `schedules_preview` | Native cron validation, matching and bounded next-time preview; no job registration |
 | `models_save`, `models_restore` | Native trained-state JSON artifacts and new owned model workers restored from them |
 | `schema_audit_contract`, `schema_audit_create`, `schema_audit_inspect` | Strict native metadata documents, complete JSON Schema and canonical digests |
@@ -614,9 +615,14 @@ always-on OS service or add external provider execution.
 ### Durable storage retention and deletion
 
 `storage_retention_preview` takes `kind` (`models` or `jobs`) and at least one of
-`max_age_minutes` (1–5,256,000) or `max_count` (1–128). It reuses Core
-`TimeBasedPolicy` and `CountBasedPolicy`; an item must satisfy every selected
-policy to be preserved. It returns `candidates`, `preserved` and `excluded`
+`max_age_minutes` (1–5,256,000), `max_count` (1–128), or `max_size_bytes`
+(1–33,554,432). It reuses Core `TimeBasedPolicy`, `CountBasedPolicy`,
+`SizeBasedPolicy` and `CompositePolicy`. With `mode="all"` (default), every selected
+policy must retain an item; `mode="any"` lets any selected policy preserve it.
+Size is the actual stored input plus result bytes, or model payload bytes, not
+SQLite file size or a new storage quota. Persistent automatic policies accept
+the same fields and retain their approved composition after restart.
+It returns `candidates`, `preserved` and `excluded`
 identity lists without deleting anything. Queued/running/indeterminate jobs and
 legacy records without a creation timestamp are excluded. Equal timestamps use
 identity ordering for deterministic native count-policy evaluation.
@@ -655,6 +661,21 @@ access to the resulting artifact. Documents and reports remain subject to
 session TTL, quotas, parent release and sensitive-result disclosure policy.
 
 ### Native lineage graphs
+
+`lineage_track` takes `graph_id` and an `event` with `action` equal to `source`,
+`transformation`, `validation` or `output`. It calls the corresponding native
+`LineageTracker.track_*` method and returns a new graph handle, retaining the
+original and its ownership chain. All events take `name`, optional `description`,
+`owner`, `tags` and JSON `properties` (which cannot override named arguments).
+Sources take `source_type`, `location`, and `schema_spec`; transformations take
+`sources`, `operation`, `location`, `schema_spec`, and `column_mapping` whose values
+are lists of `[source_node, source_column]` pairs. Validations take `sources`,
+`validators` and `result_summary`; outputs take `sources`, `output_type` and
+`location`. Locations are metadata: nothing is opened, executed or published.
+Native node replacement and omission of edges from missing source IDs are
+preserved, not silently reinterpreted. Native-generated timestamps are retained.
+This is manual tracking, not automatic execution history, remote emission or a
+claim that the described validation actually ran.
 
 `lineage_catalog` describes all native config/node/edge fields and rich record
 definitions. `lineage_create` accepts `config`, `nodes` and `edges`; caller
@@ -784,7 +805,7 @@ dependency lock. Review extension code and data/network access before approving.
 
 This implementation is **not full Core parity**. Complete algorithm-by-algorithm
 equivalence, all datasource/provider lifecycles, custom profiler composition,
-complete ML persistence, lineage trackers/history/interactive rendering, checkpoints,
+complete ML persistence, automatic lineage tracking/history/interactive rendering, checkpoints,
 streams, stores, full plugin lifecycle tooling, administration and durable jobs
 remain incomplete. Discovery returns
 `full_core_parity=false`; listing gaps is not implementation/provider evidence.
@@ -796,6 +817,13 @@ may encode a query exception as a critical quality issue rather than an
 `ExecutionIssue`; MCP preserves that native distinction and the complete issue.
 Constructor rejection across every registry entry does not prove every
 algorithm-specific runtime error branch.
+
+Evidence also distinguishes native exceptions swallowed without a reported
+issue. Tests observe the real exception in the exact native method, with a
+nonexceptional control and no injected failure, then compare complete Core/MCP
+results. Such behavior is not relabelled as an execution failure or used to claim
+data quality passed; aggregate quality remains unknown. This is separate from
+exceptions returned as critical quality issues.
 
 ## Claude Desktop bundle
 

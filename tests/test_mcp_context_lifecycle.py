@@ -374,6 +374,14 @@ def test_persistent_automation_restart_native_cron_and_approved_retention(tmp_pa
             max_count=1,
             idempotency_key="automatic-retention-01",
         )
+        # An already-signed pre-composition policy must retain its original ALL
+        # semantics after an upgrade and restart; do not require re-registration.
+        from truthound.mcp import automation
+
+        legacy = automation.read(service._session, retention["control_id"])
+        legacy["retention"].pop("mode")
+        legacy["retention"].pop("max_size_bytes")
+        automation.write(service._session.approvals(), retention["control_id"], legacy)
         service.close()
         service = MCPService(policy)
         control_arg = {"control_id": schedule["control_id"]}
@@ -541,6 +549,111 @@ def test_foreground_worker_rejects_invalid_policy_and_stops_owned_process(tmp_pa
         if process.poll() is None:
             process.kill()
             process.communicate(timeout=10)
+
+
+@pytest.mark.parametrize("mode", ["all", "any"])
+@pytest.mark.parametrize("commit_fault", [False, True])
+def test_native_size_composite_retention_restart_and_atomic_cleanup(
+    tmp_path, monkeypatch, mode, commit_fault
+):
+    from datetime import datetime
+
+    from truthound.mcp import automation
+    from truthound.mcp.durable_jobs import read as job_read
+    from truthound.stores.retention.base import ItemMetadata, PolicyMode
+    from truthound.stores.retention.policies import (
+        CompositePolicy,
+        CountBasedPolicy,
+        SizeBasedPolicy,
+    )
+
+    data, control = tmp_path / "data", tmp_path / "control"
+    data.mkdir()
+    control.mkdir(mode=0o700)
+    policy = MCPPolicy(
+        (data,), profile="core", allow_sensitive_results=True, control_directory=control
+    )
+    service = MCPService(policy)
+
+    def approve(name, request):
+        pending = invoke(service, name, **request)
+        assert pending["issues"] == [{"code": "approval_required"}], pending
+        service._session.approvals().approve(pending["data"]["plan_id"])
+        return call(service, name, **request)
+
+    try:
+        asset = call(
+            service,
+            "assets_inline",
+            columns=[{"name": "x", "dtype": {"kind": "Int64"}, "values": [1, 2]}],
+        )["resource_id"]
+        series = approve(
+            "jobs_submit",
+            dict(
+                validation={"asset_id": asset},
+                schedule={
+                    "expression": "@hourly",
+                    "after": "2020-01-01T00:00:00+00:00",
+                    "count": 3,
+                },
+                idempotency_key="size-retention-series",
+            ),
+        )
+        items = []
+        for identity in sorted(series["occurrence_ids"]):
+            call(service, "jobs_cancel", job_id=identity)
+            record, payload, output = job_read(service._session.approvals(), identity)
+            items.append(
+                ItemMetadata(
+                    identity,
+                    "jobs",
+                    datetime.fromtimestamp(record["created_at"]),
+                    len(payload) + len(output or b""),
+                )
+            )
+        size = items[0].size_bytes * 2
+        native = CompositePolicy(
+            [CountBasedPolicy(1), SizeBasedPolicy(max_size_bytes=size)], mode=PolicyMode(mode)
+        )
+        native.prepare_batch(items)
+        candidates = [item.item_id for item in items if not native.should_retain(item)]
+        assert len(candidates) == (2 if mode == "all" else 1)
+        request = dict(kind="jobs", max_count=1, max_size_bytes=size, mode=mode)
+        assert call(service, "storage_retention_preview", **request)["candidates"] == candidates
+        saved = approve(
+            "storage_policy_register", {**request, "idempotency_key": "size-policy-register"}
+        )
+        service.close()
+        service = MCPService(policy)
+        call(service, "storage_policy_status", control_id=saved["control_id"])
+        if commit_fault:
+            original = automation.write
+
+            def interrupted(*args):
+                original(*args)
+                raise OSError("synthetic control write failure")
+
+            monkeypatch.setattr(automation, "write", interrupted)
+            with pytest.raises(OSError):
+                asyncio.run(automation.tick(service._session))
+            assert (
+                call(service, "storage_policy_status", control_id=saved["control_id"])["deleted"]
+                == 0
+            )
+            for identity in series["occurrence_ids"]:
+                assert call(service, "jobs_status", job_id=identity)["state"] == "cancelled"
+        else:
+            asyncio.run(automation.tick(service._session))
+            assert call(service, "storage_policy_status", control_id=saved["control_id"])[
+                "deleted"
+            ] == len(candidates)
+            for identity in series["occurrence_ids"]:
+                response = invoke(service, "jobs_status", job_id=identity)
+                assert response["execution_status"] == (
+                    "failed" if identity in candidates else "succeeded"
+                )
+    finally:
+        service.close()
 
 
 def invoke(service, name, **arguments):

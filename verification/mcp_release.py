@@ -93,6 +93,7 @@ async def core_profile():
                 required.add("drift_compare")
                 required.add("models_rule_query")
                 required.add("schedules_preview")
+                required.add("lineage_track")
                 required|={"models_ensemble_add","models_ensemble_remove","models_persist","models_resume","jobs_submit","jobs_execute","jobs_status","jobs_result","jobs_cancel","jobs_recover"}
                 required|={"storage_retention_preview","storage_delete"}
                 required|={"schedules_register","schedules_status","schedules_disable","storage_policy_register","storage_policy_status","storage_policy_disable"}
@@ -148,6 +149,10 @@ async def core_profile():
                     return b"".join(chunks)
                 snapshot=await invoke("lineage_query",{"query":{"graph_id":graph,"view":"graph"}})
                 native_graph=LineageGraph.from_dict(decode(json.loads(await artifact_bytes(snapshot["resource_id"]))))
+                tracked=await invoke("lineage_track",{"graph_id":graph,"event":{"action":"transformation","name":"joined","sources":["a","b"],"operation":"join","column_mapping":{"x":[["a","x"]]}}})
+                tracked_result=await invoke("lineage_query",{"query":{"graph_id":tracked["resource_id"],"view":"graph"}})
+                tracked_graph=decode(json.loads(await artifact_bytes(tracked_result["resource_id"])))
+                assert len(tracked_graph["nodes"])==3 and len(tracked_graph["edges"])==3
                 for renderer in ("d3","cytoscape","graphviz","mermaid"):
                     for subgraph in (False,True):
                         config=RenderConfig(theme="dark",max_depth=1)
@@ -252,7 +257,7 @@ async def core_profile():
                 assert (await invoke("storage_delete",delete_args))["deleted"]==sorted(delete_args["identities"])
                 recurring={**job_args,"idempotency_key":"installed-recurring-job","schedule":{**job_args["schedule"],"count":1}}
                 controls=[]
-                for operation,arguments in (("schedules_register",recurring),("storage_policy_register",{"kind":"jobs","max_count":1,"idempotency_key":"installed-retention-policy"})):
+                for operation,arguments in (("schedules_register",recurring),("storage_policy_register",{"kind":"jobs","max_count":1,"max_size_bytes":1024,"mode":"any","idempotency_key":"installed-retention-policy"})):
                     pending=await client.call_tool(operation,arguments)
                     assert pending.isError and pending.structuredContent["issues"]==[{"code":"approval_required"}]
                     subprocess.run([sys.executable,"-I","-m","truthound.mcp","approve-plan","--control-dir",str(control),"--plan-id",pending.structuredContent["data"]["plan_id"]],check=True,capture_output=True)

@@ -50,9 +50,16 @@ def coverage(proof):
     )
     constructor_prefix = "tests/test_mcp_algorithm_parity.py::test_actual_constructor_configuration_error_is_not_execution_coverage["
     constructor_errors = set()
+    swallowed_errors = set()
+    swallowed_prefix = "tests/test_mcp_algorithm_parity.py::test_swallowed_native_error_matches_core_with_observed_exception["
     uncertain_constructors = set()
     uncertain_prefix = "tests/test_mcp_algorithm_parity.py::test_approved_constructor_failure_preserves_uncertain_effects["
     for node in proof.get("collection", {}):
+        if node.startswith(swallowed_prefix) and node.endswith("]"):
+            name = node[len(swallowed_prefix) : -1]
+            if name not in registered or name in swallowed_errors:
+                raise ValueError("MCP_PARITY_INVALID_SWALLOWED_ERROR")
+            swallowed_errors.add(name)
         if (
             node
             == "tests/test_mcp_plugin_bindings.py::test_row_level_constructor_failure_is_effect_unknown"
@@ -77,13 +84,14 @@ def coverage(proof):
                 raise ValueError("MCP_PARITY_DUPLICATE_SCENARIO")
             exercised[polarity].add(name)
     paired = exercised["positive"] & exercised["negative"]
-    runtime_errors = exercised["error"] | exercised["caught_error"]
+    runtime_errors = exercised["error"] | exercised["caught_error"] | swallowed_errors
     complete = paired & runtime_errors
     return {
         "registered_algorithms": len(registered),
         "positive_negative_verified": len(paired),
         "error_path_verified": len(exercised["error"]),
         "caught_algorithm_error_verified_separately": len(exercised["caught_error"]),
+        "swallowed_algorithm_exception_observed_separately": len(swallowed_errors),
         "runtime_error_boundary_verified": len(runtime_errors),
         "constructor_configuration_error_verified_separately": len(constructor_errors),
         "native_constructor_rejection_with_uncertain_trusted_effects": len(uncertain_constructors),
