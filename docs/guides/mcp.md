@@ -308,10 +308,13 @@ For example, after capture, call `assets_validate` with:
 ```
 
 Use actual returned identifiers, not the placeholder. `validators_describe`
-documents the closed fields for each of the 254 concrete registered entries,
+documents the closed fields for each of the 260 concrete registered entries,
 including inherited `ValidatorConfig`, cache and algorithm options. Unknown
 settings are rejected instead of being silently dropped by the Core constructor.
-That inventory is **not** evidence that all 254 algorithms have passed parity.
+The inventory includes six native streaming validators (`streaming_null`,
+`streaming_completeness`, `streaming_nan`, `streaming_range`,
+`streaming_positive`, `streaming_outlier`), with their native `chunk_size` option.
+That inventory is **not** evidence that all 260 algorithms have passed parity.
 Constructor rejection, native execution failure and an exception deliberately
 caught by an algorithm are separate coverage categories. An invalid constructor
 returns `validator_configuration_error` without raw settings; after approved

@@ -16,6 +16,10 @@
 
 ## 빠른 시작
 
+네이티브 `streaming` 범주는 별도 스트리밍 모듈을 먼저 import하지 않아도 레지스트리에서
+탐색됩니다. null·완전성·NaN·범위·양수·IQR 이상치 검증기 6종이 `chunk_size` 설정과
+기존 청크 집계를 사용합니다. 이 검증기를 선택해도 원격 브로커가 활성화되지는 않습니다.
+
 ```python
 import truthound as th
 from truthound.validators import list_categories, list_validators

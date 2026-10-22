@@ -430,6 +430,13 @@ VALIDATOR_IMPORT_MAP: dict[str, str] = {
     "LGPDComplianceValidator": "truthound.validators.privacy.global_patterns",
     "PIPEDAComplianceValidator": "truthound.validators.privacy.global_patterns",
     "APPIComplianceValidator": "truthound.validators.privacy.global_patterns",
+    # === Native chunked streaming validators ===
+    "StreamingNullValidator": "truthound.validators.streaming.completeness",
+    "StreamingCompletenessValidator": "truthound.validators.streaming.completeness",
+    "StreamingNaNValidator": "truthound.validators.streaming.completeness",
+    "StreamingRangeValidator": "truthound.validators.streaming.range",
+    "StreamingOutlierValidator": "truthound.validators.streaming.range",
+    "StreamingPositiveValidator": "truthound.validators.streaming.range",
 }
 
 
@@ -439,6 +446,10 @@ VALIDATOR_IMPORT_MAP: dict[str, str] = {
 
 # Maps category name to submodules that should be loaded for that category
 CATEGORY_MODULES: dict[str, list[str]] = {
+    "streaming": [
+        "truthound.validators.streaming.completeness",
+        "truthound.validators.streaming.range",
+    ],
     "schema": [
         "truthound.validators.schema.column_exists",
         "truthound.validators.schema.column_count",

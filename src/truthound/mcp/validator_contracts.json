@@ -7,6 +7,7 @@
     "geo_base",
     "multi_column_base",
     "query_base",
+    "streaming_base",
     "table_base",
     "table_schema_base"
   ],
@@ -3984,6 +3985,13 @@
     "truthound.validators.schema.referential.ReferentialIntegrityValidator": "866e384d00869d656f1e124b39ccfd7e7984ac7986a95c2088b7a4312edb46e7",
     "truthound.validators.schema.referential.StreamingReferentialIntegrityValidator": "a4ac63ef6b6776770d0e61f94d5876a2c6b2dca3865e7bdb11932a2470dd2d8a",
     "truthound.validators.schema.table_schema.TableSchemaValidator": "af7419498d72343ba2cf152033cedb6e08849f20d56aaf090f749adeb37bf50c",
+    "truthound.validators.streaming.base.StreamingValidator": "f371e5854ea24cc56784632c546c0a2b11287164d5ffb86aa12a7e558dcf5beb",
+    "truthound.validators.streaming.completeness.StreamingCompletenessValidator": "82594bcff229aa034fde2aa1dff5d2e5c57bfb5663c5883bf4de2f39ac1d1bb1",
+    "truthound.validators.streaming.completeness.StreamingNaNValidator": "bda2f22190f4a2b38fa470fe552f4aef67e2462b007f61b476032ad7a303ab77",
+    "truthound.validators.streaming.completeness.StreamingNullValidator": "3503015b58d1a3e55be596a7e5892cc1d19bd50c1cedc01a45985956db6aa73d",
+    "truthound.validators.streaming.range.StreamingOutlierValidator": "7e2067099bdb3f4a69c56f5c076066643fecc63a221b4c7db8967f076bcba9a0",
+    "truthound.validators.streaming.range.StreamingPositiveValidator": "a679ca31a2dd097ebff0cbbd7073b80114e820889fd1657d64fc2de1ae0c40b9",
+    "truthound.validators.streaming.range.StreamingRangeValidator": "9ad1341112e293d774a0ca109235936f23dd1c319d56b6a0ffa28aed7ab01908",
     "truthound.validators.string.casing.ConsistentCasingValidator": "fed4361dac10e2b2f3e3e1a514993489d58a49e57ec537ea9c561dcb59bed889",
     "truthound.validators.string.charset.AlphanumericValidator": "4088bddf3af2944524761c689e49a9f4e583d8aa4507d596855802d782959524",
     "truthound.validators.string.format.EmailValidator": "81636307a009acc2e1baa50d794679fbb76d135e71e02a0fe016abd6668e9547",
@@ -18826,6 +18834,52 @@
       ],
       "target": "truthound.validators.aggregate.spread.StdBetweenValidator"
     },
+    "streaming_completeness": {
+      "category": "streaming",
+      "fields": {
+        "chunk_size": {
+          "required": false,
+          "type": {
+            "items": [
+              {
+                "kind": "int"
+              },
+              {
+                "kind": "null"
+              }
+            ],
+            "kind": "union"
+          }
+        },
+        "config": {
+          "required": false,
+          "type": {
+            "items": [
+              {
+                "kind": "record",
+                "target": "truthound.validators.base.ValidatorConfig"
+              },
+              {
+                "kind": "null"
+              }
+            ],
+            "kind": "union"
+          }
+        },
+        "min_ratio": {
+          "required": false,
+          "type": {
+            "kind": "float"
+          }
+        }
+      },
+      "source_types": [
+        "truthound.validators.streaming.completeness.StreamingCompletenessValidator",
+        "truthound.validators.streaming.base.StreamingValidator",
+        "truthound.validators.base.Validator"
+      ],
+      "target": "truthound.validators.streaming.completeness.StreamingCompletenessValidator"
+    },
     "streaming_distinct_count": {
       "category": "uniqueness",
       "fields": {
@@ -19020,6 +19074,246 @@
         "truthound.validators.drift.base.NumericDriftMixin"
       ],
       "target": "truthound.validators.drift.statistical.StreamingKSTestValidator"
+    },
+    "streaming_nan": {
+      "category": "streaming",
+      "fields": {
+        "chunk_size": {
+          "required": false,
+          "type": {
+            "items": [
+              {
+                "kind": "int"
+              },
+              {
+                "kind": "null"
+              }
+            ],
+            "kind": "union"
+          }
+        },
+        "config": {
+          "required": false,
+          "type": {
+            "items": [
+              {
+                "kind": "record",
+                "target": "truthound.validators.base.ValidatorConfig"
+              },
+              {
+                "kind": "null"
+              }
+            ],
+            "kind": "union"
+          }
+        }
+      },
+      "source_types": [
+        "truthound.validators.streaming.completeness.StreamingNaNValidator",
+        "truthound.validators.streaming.base.StreamingValidator",
+        "truthound.validators.base.Validator"
+      ],
+      "target": "truthound.validators.streaming.completeness.StreamingNaNValidator"
+    },
+    "streaming_null": {
+      "category": "streaming",
+      "fields": {
+        "chunk_size": {
+          "required": false,
+          "type": {
+            "items": [
+              {
+                "kind": "int"
+              },
+              {
+                "kind": "null"
+              }
+            ],
+            "kind": "union"
+          }
+        },
+        "config": {
+          "required": false,
+          "type": {
+            "items": [
+              {
+                "kind": "record",
+                "target": "truthound.validators.base.ValidatorConfig"
+              },
+              {
+                "kind": "null"
+              }
+            ],
+            "kind": "union"
+          }
+        }
+      },
+      "source_types": [
+        "truthound.validators.streaming.completeness.StreamingNullValidator",
+        "truthound.validators.streaming.base.StreamingValidator",
+        "truthound.validators.base.Validator"
+      ],
+      "target": "truthound.validators.streaming.completeness.StreamingNullValidator"
+    },
+    "streaming_outlier": {
+      "category": "streaming",
+      "fields": {
+        "chunk_size": {
+          "required": false,
+          "type": {
+            "items": [
+              {
+                "kind": "int"
+              },
+              {
+                "kind": "null"
+              }
+            ],
+            "kind": "union"
+          }
+        },
+        "config": {
+          "required": false,
+          "type": {
+            "items": [
+              {
+                "kind": "record",
+                "target": "truthound.validators.base.ValidatorConfig"
+              },
+              {
+                "kind": "null"
+              }
+            ],
+            "kind": "union"
+          }
+        },
+        "iqr_multiplier": {
+          "required": false,
+          "type": {
+            "kind": "float"
+          }
+        }
+      },
+      "source_types": [
+        "truthound.validators.streaming.range.StreamingOutlierValidator",
+        "truthound.validators.streaming.base.StreamingValidator",
+        "truthound.validators.base.Validator"
+      ],
+      "target": "truthound.validators.streaming.range.StreamingOutlierValidator"
+    },
+    "streaming_positive": {
+      "category": "streaming",
+      "fields": {
+        "chunk_size": {
+          "required": false,
+          "type": {
+            "items": [
+              {
+                "kind": "int"
+              },
+              {
+                "kind": "null"
+              }
+            ],
+            "kind": "union"
+          }
+        },
+        "config": {
+          "required": false,
+          "type": {
+            "items": [
+              {
+                "kind": "record",
+                "target": "truthound.validators.base.ValidatorConfig"
+              },
+              {
+                "kind": "null"
+              }
+            ],
+            "kind": "union"
+          }
+        }
+      },
+      "source_types": [
+        "truthound.validators.streaming.range.StreamingPositiveValidator",
+        "truthound.validators.streaming.base.StreamingValidator",
+        "truthound.validators.base.Validator"
+      ],
+      "target": "truthound.validators.streaming.range.StreamingPositiveValidator"
+    },
+    "streaming_range": {
+      "category": "streaming",
+      "fields": {
+        "chunk_size": {
+          "required": false,
+          "type": {
+            "items": [
+              {
+                "kind": "int"
+              },
+              {
+                "kind": "null"
+              }
+            ],
+            "kind": "union"
+          }
+        },
+        "config": {
+          "required": false,
+          "type": {
+            "items": [
+              {
+                "kind": "record",
+                "target": "truthound.validators.base.ValidatorConfig"
+              },
+              {
+                "kind": "null"
+              }
+            ],
+            "kind": "union"
+          }
+        },
+        "inclusive": {
+          "required": false,
+          "type": {
+            "kind": "bool"
+          }
+        },
+        "max_value": {
+          "required": false,
+          "type": {
+            "items": [
+              {
+                "kind": "float"
+              },
+              {
+                "kind": "null"
+              }
+            ],
+            "kind": "union"
+          }
+        },
+        "min_value": {
+          "required": false,
+          "type": {
+            "items": [
+              {
+                "kind": "float"
+              },
+              {
+                "kind": "null"
+              }
+            ],
+            "kind": "union"
+          }
+        }
+      },
+      "source_types": [
+        "truthound.validators.streaming.range.StreamingRangeValidator",
+        "truthound.validators.streaming.base.StreamingValidator",
+        "truthound.validators.base.Validator"
+      ],
+      "target": "truthound.validators.streaming.range.StreamingRangeValidator"
     },
     "streaming_referential_integrity": {
       "category": "schema",

@@ -12,6 +12,11 @@ The runtime validator registry exposes environment-dependent validator
 availability across registry-backed categories. Use the registry helpers to
 inspect the current installation instead of relying on hardcoded counts.
 
+The native `streaming` category is part of registry discovery without a prior
+streaming-module import. It includes null, completeness, NaN, range, positive
+and IQR outlier checks. These validators accept `chunk_size` and retain their
+native chunk aggregation; selecting them does not enable a remote broker.
+
 ---
 
 ## Quick Start

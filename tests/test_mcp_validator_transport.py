@@ -352,10 +352,17 @@ def test_schema_reference_walk_has_a_separate_bounded_depth_budget():
 def test_every_registered_concrete_source_has_an_exact_reviewable_contract():
     from truthound.validators.registry import registry
 
-    concrete = {
-        name: cls for name, cls in registry.list_all().items() if not inspect.isabstract(cls)
-    }
+    registered = registry.list_all()
+    concrete = {name: cls for name, cls in registered.items() if not inspect.isabstract(cls)}
     assert set(concrete) == set(contracts()["validators"])
-    assert len(concrete) == 254  # intentional inventory changes require review
+    assert len(concrete) == 260  # includes all six native streaming validators
+    from truthound.validators.streaming import completeness
+    from truthound.validators.streaming import range as streaming_range
+
+    for module in (completeness, streaming_range):
+        for cls in vars(module).values():
+            if inspect.isclass(cls) and cls.__module__ == module.__name__:
+                assert registry.get(cls.name) is cls
+    assert registry.list_all() == registered
     for name, cls in concrete.items():
         assert constructor(name) is cls

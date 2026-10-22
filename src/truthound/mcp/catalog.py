@@ -244,7 +244,7 @@ def discover(
         "full_core_parity": False,
         "limitations": [
             "Retained assets and operator-approved workspaces are available; provider/advanced completeness remains unverified.",
-            "File validation retains its six-rule compatibility contract; retained validation has closed constructor contracts for 254 concrete registry entries. That inventory is not a claim of complete configuration or error-path coverage.",
+            "File validation retains its six-rule compatibility contract; retained validation has closed constructor contracts for 260 concrete registry entries, including six native streaming validators. That inventory is not a claim of complete configuration or error-path coverage.",
             "Untrusted SQL, Python callables, filesystem paths and unrestricted regex require separate operator bindings; advanced subsystem parity remains incomplete.",
         ],
     }

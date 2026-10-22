@@ -285,9 +285,12 @@ WAL·뷰·임의 SQL은 거부하며 복사 도중 파일 상태나 WAL이 변�
 }
 ```
 
-검증기 설명은 실제 등록된 구체 검증기 254개의 생성자와 상속된 `ValidatorConfig`,
+검증기 설명은 실제 등록된 구체 검증기 260개의 생성자와 상속된 `ValidatorConfig`,
 캐시·알고리즘별 설정을 보여줍니다. 알 수 없는 설정을 Core가 조용히 버리게 하지 않고
-전송 경계에서 거부합니다. **이 목록은 254종 전체의 동등성 검증 통과 증거가 아닙니다.**
+전송 경계에서 거부합니다. 네이티브 스트리밍 검증기 6종(`streaming_null`,
+`streaming_completeness`, `streaming_nan`, `streaming_range`,
+`streaming_positive`, `streaming_outlier`)과 해당 `chunk_size` 설정도 포함합니다.
+**이 목록은 260종 전체의 동등성 검증 통과 증거가 아닙니다.**
 생성자 거부·네이티브 실행 오류·알고리즘 내부에서 잡힌 예외는 별도로 집계합니다.
 잘못된 생성자 설정은 원문 없이 `validator_configuration_error`를 반환합니다.
 승인된 신뢰 코드가 이미 시작된 뒤의 실패는 `outcome_unknown`을 유지하고 자동 재실행을

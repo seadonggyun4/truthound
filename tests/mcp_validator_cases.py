@@ -61,6 +61,16 @@ def scenarios():
 
     numeric = {"x": [1, 2, 3, 4]}
     repeats = {"x": [1, 1, 1, 2]}
+    for name, options, good, bad in (
+        ("streaming_null", {}, numeric, {"x": [1, None, None, 4]}),
+        ("streaming_completeness", {"min_ratio": 1.0}, numeric, {"x": [1, None, None, 4]}),
+        ("streaming_nan", {}, {"x": [1.0, 2.0, 3.0]}, {"x": [1.0, float("nan"), 3.0]}),
+        ("streaming_range", {"min_value": 0.0, "max_value": 5.0}, numeric, {"x": [1, 9, 3, -1]}),
+        ("streaming_positive", {}, numeric, {"x": [1, -2, 0, 4]}),
+        ("streaming_outlier", {}, {"x": [1, 2, 3, 4, 5]}, {"x": [1, 2, 3, 4, 1000]}),
+    ):
+        # Cross native chunk boundaries rather than testing only construction.
+        add(name, {"columns": ["x"], "chunk_size": 2, **options}, good, bad)
     for name, settings in {
         "null": {},
         "not_null": {},
