@@ -72,6 +72,13 @@ class StreamSession:
         self.workers = {}
         self.receipts = {}
 
+    def release(self, identity):
+        worker = self.workers.get(identity)
+        if worker is not None:
+            worker.close()
+            self.workers.pop(identity, None)
+        self.receipts = {key: value for key, value in self.receipts.items() if key[0] != identity}
+
     def close(self):
         for worker in self.workers.values():
             worker.close()
@@ -85,11 +92,7 @@ class StreamSession:
                 if worker.closed:
                     raise MCPError("invalid_handle")
             except MCPError:
-                worker.close()
-                self.workers.pop(identity, None)
-                self.receipts = {
-                    key: value for key, value in self.receipts.items() if key[0] != identity
-                }
+                self.release(identity)
                 with suppress(MCPError):
                     self.session.resources.release_owned(identity)
 

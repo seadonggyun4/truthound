@@ -14,6 +14,13 @@ class ModelSession:
         self.workers = {}
         self.states = {}
 
+    def release(self, identity):
+        worker = self.workers.get(identity)
+        if worker is not None:
+            worker.close()
+            self.workers.pop(identity, None)
+        self.states.pop(identity, None)
+
     def close(self):
         for worker in self.workers.values():
             worker.close()
@@ -27,9 +34,7 @@ class ModelSession:
                 if worker.closed:
                     raise MCPError("invalid_handle")
             except MCPError:
-                worker.close()
-                del self.workers[identity]
-                self.states.pop(identity, None)
+                self.release(identity)
                 with suppress(MCPError):
                     self.session.resources.release(identity)
 

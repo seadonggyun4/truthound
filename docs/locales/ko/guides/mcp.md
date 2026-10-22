@@ -206,6 +206,11 @@ JavaScript의 정확한 정수 범위를 넘는 값에는 십진 문자열 태�
 | `models_fit`, `models_partial_fit`, `models_fit_predict`, `models_predict`, `models_score` | 기본 학습·지원되는 온라인 학습·학습과 예측·예측·이상 점수 |
 | `models_detect`, `models_learn_rules`, `models_rules`, `models_diagnostics` | 두 입력의 ML 드리프트·규칙 학습·원래 모델 진단의 산출물 보관 |
 
+명시적 해제와 만료에서는 소유한 네이티브 reader를 먼저 종료·reap한 뒤
+스냅샷을 삭제합니다. Windows의 SQLite 연결과 메모리 매핑된 Parquet·Arrow
+스트림에도 같은 순서를 적용하며, 정리에는 새 읽기 권한이 아니라 세션 소유권을
+사용합니다. 파일 삭제 실패는 성공으로 처리하지 않고 후속 정리를 위해 추적합니다.
+
 파일 보관 후 받은 `data.resource_id`를 후속 도구의 `asset_id`로 전달합니다.
 커널 suite는 같은 알고리즘·표시 이름을 반복해도 실제 검사 인스턴스를 구분합니다.
 검사 메타데이터의 `_truthound_check_id`와 `_truthound_execution_incomplete`는

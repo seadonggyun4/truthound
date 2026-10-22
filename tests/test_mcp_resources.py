@@ -19,6 +19,90 @@ from truthound.mcp.service import MCPService
 pytestmark = pytest.mark.contract
 
 
+@pytest.mark.parametrize("provider", ["sqlite", "parquet", "arrow"])
+@pytest.mark.parametrize("expiry", [False, True])
+def test_owned_native_readers_close_before_snapshot_unlink(tmp_path, monkeypatch, provider, expiry):
+    import sqlite3
+    from pathlib import Path
+
+    adapter = MCPService(MCPPolicy((tmp_path,), profile="core", allow_sensitive_results=True))
+    try:
+        path = tmp_path / ("input." + provider)
+        if provider == "sqlite":
+            connection = sqlite3.connect(path)
+            try:
+                connection.execute("CREATE TABLE facts (x INTEGER)")
+                connection.execute("INSERT INTO facts VALUES (1)")
+                connection.commit()
+            finally:
+                connection.close()
+            identity = call(adapter, "sources_open_sqlite", path=str(path), table="facts")[
+                "resource_id"
+            ]
+            worker = adapter._session._sources.workers[identity]
+        else:
+            frame = pl.DataFrame({"x": [1, 2, 3]})
+            if provider == "parquet":
+                frame.write_parquet(path)
+            else:
+                frame.write_ipc(path)
+            identity = call(adapter, "streams_open", path=str(path), source={"format": provider})[
+                "resource_id"
+            ]
+            worker = adapter._session._streams.workers[identity]
+            call(adapter, "streams_next", stream_id=identity, idempotency_key="first-chunk")
+        resources = adapter._session.resources
+        snapshot = resources.get(resources.get(identity).metadata["owned_input"])
+        unlink = Path.unlink
+        observed = []
+
+        def deny_locked_file(value, *args, **kwargs):
+            if value == snapshot.path:
+                observed.append(worker.closed and worker.process.poll() is not None)
+                if not observed[-1]:
+                    raise PermissionError("synthetic Windows open-file sharing violation")
+            return unlink(value, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "unlink", deny_locked_file)
+        if expiry:
+            resources.clock = lambda: snapshot.expires + 1
+            with pytest.raises(MCPError, match="handle_expired"):
+                resources.get(snapshot.id)
+        else:
+            call(adapter, "resources_release", resource_id=snapshot.id)
+        assert observed == [True]
+        assert worker.closed and worker.process.poll() is not None
+        assert not snapshot.path.exists()
+    finally:
+        adapter.close()
+
+
+def test_failed_owned_file_deletion_keeps_cleanup_tracking(tmp_path, monkeypatch):
+    from pathlib import Path
+
+    resources = SessionResources(lambda: MCPPolicy((tmp_path,)))
+    identity, path = resources.reserve("artifact")
+    path.write_bytes(b"synthetic artifact")
+    resources.commit(identity, kind="artifact", media_type="text/plain")
+    unlink = Path.unlink
+
+    def denied(value, *args, **kwargs):
+        if value == path:
+            raise PermissionError("synthetic external open-file lock")
+        return unlink(value, *args, **kwargs)
+
+    try:
+        with monkeypatch.context() as patches:
+            patches.setattr(Path, "unlink", denied)
+            with pytest.raises(PermissionError):
+                resources.release(identity)
+            assert identity in resources._entries and path.exists()
+        resources.release(identity)
+        assert identity not in resources._entries and not path.exists()
+    finally:
+        resources.close()
+
+
 @pytest.mark.fault
 def test_tiny_nested_array_declarations_cannot_expand_before_budget_validation(monkeypatch):
     from truthound.mcp.session_contracts import InlineColumn

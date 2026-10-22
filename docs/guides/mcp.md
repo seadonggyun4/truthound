@@ -217,6 +217,11 @@ The same opt-in profile also exposes these named operations:
 | `models_fit`, `models_partial_fit`, `models_fit_predict`, `models_predict`, `models_score` | Native training, supported online training, combined training/prediction, prediction and anomaly scoring |
 | `models_detect`, `models_learn_rules`, `models_rules`, `models_diagnostics` | Two-input ML drift detection, rule learning and native model diagnostics as owned artifacts |
 
+Explicit release and expiry close and reap owned native readers before deleting
+their snapshots, including SQLite connections and mapped Parquet/Arrow streams
+on Windows. Cleanup needs session ownership, not a renewed data-read grant.
+A failed file deletion is reported as a failure and remains tracked for cleanup.
+
 Capture returns `data.resource_id`. Pass it as `asset_id` to retained-data tools.
 Kernel suites preserve actual check-instance identity even for repeated registry
 algorithms and identical display names. Check metadata reserves

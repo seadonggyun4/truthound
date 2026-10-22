@@ -31,9 +31,10 @@ class Resource:
 class SessionResources:
     """The service serializes access; ownership never comes from request arguments."""
 
-    def __init__(self, policy, *, clock=time.monotonic):
+    def __init__(self, policy, *, clock=time.monotonic, before_release=None):
         self.policy = policy
         self.clock = clock
+        self.before_release = before_release
         self._temporary = tempfile.TemporaryDirectory(prefix="truthound-mcp-session-")
         self.root = Path(self._temporary.name)
         self._entries: dict[str, Resource] = {}
@@ -189,8 +190,11 @@ class SessionResources:
         for child in [item.id for item in self._entries.values() if identity in item.parents]:
             if child in self._entries:
                 self.release(child)
-        entry = self._entries.pop(identity)
+        entry = self._entries[identity]
+        if self.before_release is not None:
+            self.before_release(identity)
         entry.path.unlink(missing_ok=True)
+        del self._entries[identity]
 
     def reap(self):
         for identity in [

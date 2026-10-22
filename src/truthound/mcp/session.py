@@ -20,7 +20,9 @@ from truthound.mcp.resources import SessionResources
 class MCPSession:
     def __init__(self, service):
         self.service = service
-        self.resources = SessionResources(lambda: service.policy)
+        self.resources = SessionResources(
+            lambda: service.policy, before_release=self._before_release
+        )
         self.identity = secrets.token_urlsafe(24)
         self._approvals = None
         self._models = None
@@ -30,6 +32,13 @@ class MCPSession:
     @property
     def policy(self):
         return self.service.policy
+
+    def _before_release(self, identity):
+        # Windows cannot unlink SQLite or mapped stream inputs while their
+        # native reader is alive. Cleanup uses ownership, not a fresh read grant.
+        for controller in (self._streams, self._sources, self._models):
+            if controller is not None:
+                controller.release(identity)
 
     def close(self):
         if self._streams is not None:

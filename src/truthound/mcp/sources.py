@@ -130,6 +130,12 @@ class SourceSession:
         self.session = session
         self.workers = {}
 
+    def release(self, identity):
+        worker = self.workers.get(identity)
+        if worker is not None:
+            worker.close()
+            self.workers.pop(identity, None)
+
     def close(self):
         for worker in self.workers.values():
             worker.close()
@@ -142,8 +148,7 @@ class SourceSession:
                 if worker.closed:
                     raise MCPError("invalid_handle")
             except MCPError:
-                worker.close()
-                self.workers.pop(identity, None)
+                self.release(identity)
                 with suppress(MCPError):
                     self.session.resources.release_owned(identity)
 
