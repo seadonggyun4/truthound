@@ -208,6 +208,7 @@ JavaScript의 정확한 정수 범위를 넘는 값에는 십진 문자열 태�
 | `models_fit`, `models_partial_fit`, `models_fit_predict`, `models_predict`, `models_score` | 기본 학습·지원되는 온라인 학습·학습과 예측·예측·이상 점수 |
 | `models_detect`, `models_learn_rules`, `models_rules`, `models_diagnostics` | 두 입력의 ML 드리프트·규칙 학습·원래 모델 진단의 산출물 보관 |
 | `models_rule_query` | 네이티브 학습 규칙 필터·suite/검증기 설정 변환, 자동 적용 없음 |
+| `models_result_query` | 네이티브 예측 점수 순회·이상치 필터·임계값별 드리프트 컬럼 조회 |
 | `schedules_preview` | 네이티브 cron 검증·일치·제한된 다음 시각 미리보기, 작업 등록 없음 |
 | `models_ensemble_add`, `models_ensemble_remove` | revision을 확인하는 네이티브 편집과 제거한 모델의 복원 가능한 산출물 |
 | `models_persist`, `models_resume` | 별도 승인된 비공개 모델 스냅샷과 새 세션 복원 |
@@ -442,6 +443,16 @@ ML 산출물에는 `encoding`, `model_algorithm`, `model_revision`과 태그로 
 학습 데이터를 해제하면 함께 무효화됩니다. 아래의 명시적 영구 저장 승인 전까지는
 세션 소유 산출물입니다. 임의 플러그인 모델·
 메서드별 전체 수명주기 동등성은 남은 작업입니다.
+
+`models_result_query`는 `model_id`, `expected_revision`, `asset_id`, `action`을
+받으며 `action`은 `all_scores`, `anomalies`, `drifted_columns` 중 하나입니다.
+네이티브 모델로 예측하고 Core 결과의 순회·필터 메서드를 호출하여 revision을
+증가시키지 않고 소유한 산출물에 보관합니다. `all_scores`는 일반 요약의 이상치뿐
+아니라 정상 행과 점수 메타데이터도 포함합니다. `drifted_columns`에만 유한한
+`threshold`를 지정할 수 있으며 기본값은 `0.5`입니다. Core의 경계값 포함 비교를
+유지합니다. 모델 종류 불일치·미학습 모델·오래된 revision은 명시적으로 실패합니다.
+산출물은 모델과 입력에 종속되며 읽기에는 공개 동의가 필요합니다. 매 호출은 새로
+예측하며 이전 예측 산출물을 조회하는 기능은 아닙니다.
 
 `models_rule_query`는 `model_id`, `expected_revision`, `asset_id`, `action`을
 받습니다. `action`은 `suite`, `validator_specs`, `by_type`(`rule_type` 필요),

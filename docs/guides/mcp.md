@@ -219,6 +219,7 @@ The same opt-in profile also exposes these named operations:
 | `models_fit`, `models_partial_fit`, `models_fit_predict`, `models_predict`, `models_score` | Native training, supported online training, combined training/prediction, prediction and anomaly scoring |
 | `models_detect`, `models_learn_rules`, `models_rules`, `models_diagnostics` | Two-input ML drift detection, rule learning and native model diagnostics as owned artifacts |
 | `models_rule_query` | Native learned-rule filtering and suite/validator configuration conversion; no automatic application |
+| `models_result_query` | Native prediction score iteration, anomaly filtering and threshold-based drift column queries |
 | `models_ensemble_add`, `models_ensemble_remove` | Revision-checked native editing; detached children remain restorable artifacts |
 | `models_persist`, `models_resume` | Separately approved private model snapshots and new-session restoration |
 | `jobs_submit`, `jobs_execute`, `jobs_status`, `jobs_result`, `jobs_cancel`, `jobs_recover` | Approved durable validation occurrences, retained results and indeterminate lease recovery |
@@ -456,6 +457,17 @@ also advance the revision. `models_detect` adds `reference_id` and optional
 `columns` to the ordinary model/data input. Inapplicable methods and unsupported
 online learning are failures, never skips or implicit fallback retraining.
 `models_rules` and `models_diagnostics` require `model_id` and `expected_revision`.
+`models_result_query` takes `model_id`, `expected_revision`, `asset_id`, and
+`action`: `all_scores`, `anomalies`, or `drifted_columns`. It predicts with the
+native model and calls the Core result iterator/filter, retaining the output in
+an owned artifact without incrementing revision. `all_scores` includes normal
+rows and their score metadata, not just the anomalies in the usual summary.
+Only `drifted_columns` accepts a finite `threshold` (default `0.5`); Core's
+inclusive comparison is preserved. A mismatched model type, untrained model or
+stale revision fails explicitly. Artifacts depend on both model and input, and
+reading them requires disclosure consent. Each call makes a fresh prediction;
+it does not query an earlier prediction artifact.
+
 `models_rule_query` additionally requires `asset_id` and `action`: `suite`,
 `validator_specs`, `by_type` (with `rule_type`), or `by_column` (with `column`).
 It calls the native rule learner's prediction and result conversion/filtering

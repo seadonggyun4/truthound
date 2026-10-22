@@ -261,6 +261,14 @@ def attach(cases):
     )
     observed, result = set(), []
     for row in cases:
+        if row.validator == "alphanumeric":
+            assert row.error is None and row.caught_error is None
+            # Only a real violation enters native sampling. The constructor
+            # accepts this integer, but Polars head() cannot represent it.
+            result.append(
+                replace(row, error=row.negative, error_overrides={"sample_size": 2**64})
+            )
+            continue
         if row.validator == "column_coexistence":
             assert row.error is None and row.caught_error is None
             # Native coexistence computes a failing-row sample with repeated

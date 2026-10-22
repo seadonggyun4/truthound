@@ -92,6 +92,7 @@ async def core_profile():
                 required|={"assets_capture","assets_inline","assets_page","assets_sample","assets_mask","schemas_learn","schemas_inspect","artifacts_export","artifacts_read","resources_describe","resources_release","contexts_open","contexts_inspect","contexts_initialize","plans_status","validators_list","validators_describe","assets_validate","assets_sqlite","assets_profile","assets_scan","artifacts_render","artifacts_datadocs"}
                 required.add("drift_compare")
                 required.add("models_rule_query")
+                required.add("models_result_query")
                 required.add("schedules_preview")
                 required.add("lineage_track")
                 required|={"lineage_load","lineage_export"}
@@ -227,6 +228,12 @@ async def core_profile():
                 assert fitted["trained"] and fitted["revision"]==1
                 prediction=await invoke("models_predict",{"model_id":model["model_id"],"asset_id":training,"expected_revision":1})
                 assert prediction["bytes"]>0
+                from truthound.ml import ZScoreAnomalyDetector
+                native_detector=ZScoreAnomalyDetector()
+                native_frame=pl.DataFrame({"x":[float(i) for i in range(100)]}).lazy()
+                native_detector.fit(native_frame)
+                result_query=await invoke("models_result_query",{"model_id":model["model_id"],"asset_id":training,"expected_revision":1,"action":"all_scores"})
+                assert decode(json.loads(await artifact_bytes(result_query["resource_id"]))["result"])==[score.to_dict() for score in native_detector.predict(native_frame)]
                 scores=await invoke("models_score",{"model_id":model["model_id"],"asset_id":training,"expected_revision":1})
                 saved=await invoke("models_save",{"model_id":model["model_id"],"expected_revision":1})
                 restored=await invoke("models_restore",{"resource_id":saved["resource_id"]})

@@ -155,6 +155,8 @@ class ModelSession:
                 request["detector"] = arguments.detector.model_dump()
         elif name == "models_ensemble_remove":
             request["index"] = arguments.index
+        if name == "models_result_query":
+            request.update(action=arguments.action, threshold=arguments.threshold)
         if name == "models_rule_query":
             request.update(
                 action=arguments.action, rule_type=arguments.rule_type, column=arguments.column
@@ -188,6 +190,7 @@ class ModelSession:
                 "models_score",
                 "models_rules",
                 "models_rule_query",
+                "models_result_query",
                 "models_fit_predict",
                 "models_learn_rules",
                 "models_detect",

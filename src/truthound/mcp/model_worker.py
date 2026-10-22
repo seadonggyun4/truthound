@@ -200,6 +200,32 @@ def main():
                             if not isinstance(model, RuleLearner):
                                 raise MCPError("unsupported_operation")
                             result = [rule.to_dict() for rule in model.get_rules()]
+                        elif operation == "models_result_query":
+                            from truthound.ml.base import AnomalyDetector, MLDriftDetector
+
+                            action = request["action"]
+                            if action == "drifted_columns":
+                                if not isinstance(model, MLDriftDetector):
+                                    raise MCPError("unsupported_operation")
+                                threshold = request["threshold"]
+                                prediction = model.predict(frame)
+                                result = prediction.get_drifted_columns(
+                                    0.5 if threshold is None else threshold
+                                )
+                            elif action in {"all_scores", "anomalies"}:
+                                if not isinstance(model, AnomalyDetector):
+                                    raise MCPError("unsupported_operation")
+                                prediction = model.predict(frame)
+                                result = [
+                                    score.to_dict()
+                                    for score in (
+                                        prediction
+                                        if action == "all_scores"
+                                        else prediction.get_anomalies()
+                                    )
+                                ]
+                            else:
+                                raise MCPError("invalid_arguments")
                         elif operation == "models_rule_query":
                             from truthound.ml.base import RuleLearner
 

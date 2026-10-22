@@ -86,6 +86,94 @@ def frame_asset(adapter, frame):
     )["resource_id"]
 
 
+@pytest.mark.parametrize("algorithm", ["ZScoreAnomalyDetector", "DistributionDriftDetector"])
+def test_prediction_result_queries_match_native_and_revoke(adapter, algorithm):
+    import truthound.ml as ml
+
+    training = pl.DataFrame({"x": list(range(120))})
+    frame = pl.DataFrame({"x": [0, 1, 2, 10000]})
+    direct = getattr(ml, algorithm)()
+    direct.fit(training.lazy())
+    native = direct.predict(frame.lazy())
+    asset = frame_asset(adapter, frame)
+    model = call(adapter, "models_create", algorithm=algorithm)["model_id"]
+    call(
+        adapter,
+        "models_fit",
+        model_id=model,
+        asset_id=frame_asset(adapter, training),
+        expected_revision=0,
+    )
+    cases = (
+        [
+            ("all_scores", None, [s.to_dict() for s in native]),
+            ("anomalies", None, [s.to_dict() for s in native.get_anomalies()]),
+        ]
+        if algorithm == "ZScoreAnomalyDetector"
+        else [
+            ("drifted_columns", t, native.get_drifted_columns(0.5 if t is None else t))
+            for t in (None, 0.0, 1.0, 2.0)
+        ]
+    )
+    for action, threshold, expected in cases:
+        result = call(
+            adapter,
+            "models_result_query",
+            model_id=model,
+            asset_id=asset,
+            expected_revision=1,
+            action=action,
+            threshold=threshold,
+        )
+        value = artifact(adapter, result["resource_id"])
+        assert value["model_revision"] == 1
+        assert decode(value["result"]) == expected
+    assert call(adapter, "models_inspect", model_id=model, expected_revision=1)["revision"] == 1
+    call(adapter, "resources_release", resource_id=asset)
+    assert invoke(adapter, "artifacts_read", resource_id=result["resource_id"])["issues"] == [
+        {"code": "invalid_handle"}
+    ]
+
+
+@pytest.mark.parametrize(
+    "action,threshold",
+    [("all_scores", 0.5), ("anomalies", 0.5), ("drifted_columns", float("inf")), ("execute", None)],
+)
+def test_prediction_result_query_rejects_invalid_selector(action, threshold):
+    from pydantic import ValidationError
+
+    from truthound.mcp.advanced_contracts import ModelResultQuery
+
+    with pytest.raises(ValidationError):
+        ModelResultQuery(
+            model_id="model_" + "a" * 32,
+            asset_id="asset_" + "b" * 32,
+            expected_revision=0,
+            action=action,
+            threshold=threshold,
+        )
+
+
+def test_prediction_result_query_faults_preserve_model(adapter):
+    model = call(adapter, "models_create", algorithm="ZScoreAnomalyDetector")["model_id"]
+    asset = frame_asset(adapter, pl.DataFrame({"x": list(range(120))}))
+    for action, revision, code in (
+        ("drifted_columns", 0, "unsupported_operation"),
+        ("all_scores", 0, "core_error"),
+        ("all_scores", 1, "stale_revision"),
+    ):
+        failed = invoke(
+            adapter,
+            "models_result_query",
+            model_id=model,
+            asset_id=asset,
+            expected_revision=revision,
+            action=action,
+        )
+        assert failed["issues"] == [{"code": code}]
+    assert not call(adapter, "models_inspect", model_id=model, expected_revision=0)["trained"]
+
+
 @pytest.mark.parametrize(
     "algorithm", ["DataProfileRuleLearner", "ConstraintMiner", "PatternRuleLearner"]
 )

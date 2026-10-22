@@ -41,7 +41,7 @@ and ends at the closing </p> of the badge block above.
 
 ## Plugin Platform
 
-The development Core profile also exposes native manual lineage tracking, dependency/path queries, JSON import/export and size-based, ALL/ANY composite retention; complete Core parity remains unverified.
+The development Core profile also exposes native manual lineage tracking, dependency/path queries, JSON import/export, ML prediction score/anomaly/drift-column queries and size-based, ALL/ANY composite retention; complete Core parity remains unverified.
 
 Development sources also provide separately approved persistent cron recurrence and automatic retention, driven by an operator-started foreground worker; these are not in the published 3.2.0 package.
 

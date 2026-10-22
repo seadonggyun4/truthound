@@ -87,6 +87,17 @@ class ModelDetect(ModelData):
     columns: Names | None = None
 
 
+class ModelResultQuery(ModelData):
+    action: Literal["all_scores", "anomalies", "drifted_columns"]
+    threshold: Annotated[float, Field(allow_inf_nan=False)] | None = None
+
+    @model_validator(mode="after")
+    def selector(self):
+        if self.threshold is not None and self.action != "drifted_columns":
+            raise ValueError("threshold is supported only for drifted_columns")
+        return self
+
+
 class ModelRuleQuery(ModelData):
     action: Literal["suite", "by_type", "by_column", "validator_specs"]
     rule_type: Name | None = None
