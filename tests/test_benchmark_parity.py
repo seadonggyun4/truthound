@@ -30,6 +30,43 @@ from truthound.benchmark.base import EnvironmentInfo
 from truthound.benchmark.workloads import workload_root
 
 
+@pytest.mark.contract
+def test_sqlite_runtime_diagnostic_preserves_native_workload_and_gate(tmp_path):
+    import subprocess
+    import sys
+
+    root = Path(__file__).resolve().parents[1]
+    report = tmp_path / "runtime.json"
+    child = subprocess.run(
+        [sys.executable, str(root / "verification/benchmark_runtime_diagnostic.py"), "--output", str(report)],
+        cwd=root, capture_output=True, text=True, encoding="utf-8", timeout=60,
+    )
+    assert child.returncode == 0, child.stderr
+    native = json.loads(report.read_text(encoding="utf-8"))
+    assert native["diagnostic_only"] is True
+    observed = native["observation"]
+    assert observed["workload_id"] == "sqlite-unique"
+    assert observed["correctness_passed"] and observed["observed_issue_count"] == 1
+    assert len(observed["metadata"]["warm_durations_seconds"]) == 7
+    assert observed["metadata"]["polars_thread_pool_size"] == 1
+    assert native["profile_functions"]
+    import yaml
+
+    workflow = yaml.safe_load(
+        (root / ".github/workflows/benchmarks-nightly.yml").read_text(encoding="utf-8")
+    )
+    steps = workflow["jobs"]["nightly-parity"]["steps"]
+    assert any(
+        "--suite nightly-sql" in step.get("run", "") and "--strict" in step["run"] for step in steps
+    )
+    assert (
+        next(step for step in steps if "benchmark_runtime_diagnostic.py" in step.get("run", ""))[
+            "if"
+        ]
+        == "always()"
+    )
+
+
 def _observation(
     *,
     framework: str,

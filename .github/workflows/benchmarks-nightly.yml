@@ -31,6 +31,10 @@ jobs:
       - name: Run DuckDB shadow suite
         run: python -m truthound.cli benchmark parity --suite nightly-sql --frameworks truthound --backend duckdb-shadow --output benchmark-artifacts/nightly-duckdb-shadow.json
 
+      - name: Record separate SQLite runtime profile without replacing gate measurements
+        if: always()
+        run: python verification/benchmark_runtime_diagnostic.py --output benchmark-artifacts/sqlite-runtime-diagnostic.json
+
       - name: Upload nightly benchmark artifacts
         if: always()
         uses: actions/upload-artifact@v4
