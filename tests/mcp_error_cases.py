@@ -1,6 +1,7 @@
 """Explicit natural runtime faults; no mocked validator or constructor failure."""
 
 from dataclasses import replace
+from datetime import time
 
 import polars as pl
 
@@ -211,6 +212,7 @@ MULTI_COLUMN_CAUGHT_ERRORS = frozenset(
 )
 
 RUNTIME_SETTING_ERRORS = {
+    "between": {"min_value": 2**256},
     "json_schema": {"column": "absent"},
     "date_format": {"format": "%Y%Y"},
     "data_retention": {"retention_days": 10**12},
@@ -250,6 +252,24 @@ def attach(cases):
     )
     observed, result = set(), []
     for row in cases:
+        if row.validator in {"date_between", "future_date", "past_date"}:
+            assert row.error is None and row.caught_error is None
+            frame = pl.DataFrame(row.positive)
+            frame = frame.with_columns(pl.Series(frame.columns[0], [time(12, 30)] * frame.height))
+            # Native datetime selection admits Time, but its calendar-date
+            # comparison cannot compare datetime.time to datetime.date.
+            result.append(replace(row, error=frame.to_dict(as_series=False)))
+            continue
+        if row.validator == "all_columns_unique_within_record":
+            assert row.error is None and row.caught_error is None
+            frame = pl.DataFrame(row.positive)
+            frame = frame.with_columns(pl.Series(frame.columns[0], [[1, 2]] * frame.height))
+            result.append(
+                replace(
+                    row, error=frame.to_dict(as_series=False), error_overrides={"type_safe": False}
+                )
+            )
+            continue
         if row.validator in {"approximate_distinct_count", "default_value"}:
             assert row.error is None and row.caught_error is None
             result.append(

@@ -96,12 +96,19 @@ class OwnedModelProcess:
         return self.validate_reply(result)
 
     def validate_reply(self, result):
+        extra = {"detached_spec", "detached_trained"} if "detached_spec" in result else set()
         if (
-            set(result) != {"ok", "revision", "state", "trained"}
+            set(result) != {"ok", "revision", "state", "trained"} | extra
             or type(result["revision"]) is not int
             or type(result["trained"]) is not bool
         ):
             raise MCPError("worker_error")
+        if extra:
+            from truthound.mcp.advanced_contracts import ModelSpec
+
+            ModelSpec.model_validate(result["detached_spec"])
+            if type(result["detached_trained"]) is not bool:
+                raise MCPError("worker_error")
         return result
 
     async def call(self, request, timeout):

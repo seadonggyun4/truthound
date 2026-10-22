@@ -18,6 +18,179 @@ from truthound.mcp.tables import decode
 pytestmark = pytest.mark.contract
 
 
+def test_durable_job_native_validation_restart_result_and_cancel(tmp_path):
+    import truthound as th
+    from truthound.mcp.operations import _context
+    from truthound.validators import get_validator
+
+    data, control = tmp_path / "data", tmp_path / "control"
+    data.mkdir()
+    control.mkdir(mode=0o700)
+    policy = MCPPolicy(
+        (data,), profile="core", allow_sensitive_results=True, control_directory=control
+    )
+    frame = pl.DataFrame({"x": [1, None, 3]})
+    frame.write_parquet(data / "input.parquet")
+    direct = th.check(
+        frame,
+        validators=[get_validator("not_null")()],
+        result_format="complete",
+        context=_context(str(tmp_path / "direct/input.ipc")),
+    ).to_dict()
+    service = MCPService(policy)
+    try:
+        asset = call(service, "assets_capture", path=str(data / "input.parquet"))["resource_id"]
+        request = {
+            "validation": {
+                "asset_id": asset,
+                "checks": [{"validator": "not_null"}],
+                "result_format": "complete",
+            },
+            "idempotency_key": "durable-job-01",
+        }
+        pending = invoke(service, "jobs_submit", **request)
+        assert pending["issues"] == [{"code": "approval_required"}]
+        store = ApprovalStore(control)
+        try:
+            store.approve(pending["data"]["plan_id"])
+        finally:
+            store.close()
+        queued = call(service, "jobs_submit", **request)
+        assert queued["state"] == "queued"
+        assert call(service, "jobs_submit", **request) == queued
+    finally:
+        service.close()
+    service = MCPService(policy)
+    try:
+        job = {"job_id": queued["job_id"]}
+        assert call(service, "jobs_status", **job)["state"] == "queued"
+        completed = call(service, "jobs_execute", **job)
+        assert completed["state"] == "succeeded"  # execution, NOT quality verdict
+        assert call(service, "jobs_execute", **job) == completed
+        saved = call(service, "jobs_result", **job)
+        actual = read(service, saved["artifact"]["resource_id"])
+        for field in ("checks", "issues", "execution_issues", "row_count", "column_count"):
+            assert actual[field] == direct[field], field
+    finally:
+        service.close()
+    service = MCPService(policy)
+    try:
+        again = call(service, "jobs_result", **job)
+        assert again["result_sha256"] == completed["result_sha256"]
+        assert read(service, again["artifact"]["resource_id"])["issues"] == direct["issues"]
+        assert call(service, "jobs_recover", **job)["state"] == "succeeded"
+    finally:
+        service.close()
+
+
+def test_durable_job_crash_lease_is_unknown_not_retryable_success(tmp_path):
+    from truthound.mcp.durable_jobs import storage, write
+    from truthound.mcp.session import MCPSession
+
+    data, control = tmp_path / "data", tmp_path / "control"
+    data.mkdir()
+    control.mkdir(mode=0o700)
+    policy = MCPPolicy(
+        (data,), profile="core", allow_sensitive_results=True, control_directory=control
+    )
+    service = MCPService(policy)
+    try:
+        # Fault injection at the persisted lease boundary, before any output
+        # commit. A different session must not infer success or repeat execution.
+        session = MCPSession(service)
+        service._session = session
+        store = storage(session)
+        import hashlib
+
+        identity = "job_" + "a" * 64
+        record = {
+            "state": "running",
+            "due_at": 0.0,
+            "lease_until": 0.0,
+            "result_sha256": None,
+            "input_sha256": hashlib.sha256(b"input").hexdigest(),
+            "policy": session._policy_stamp(),
+            "origins": [],
+        }
+        with store.transaction():
+            write(store, identity, record, b"input", None)
+    finally:
+        service.close()
+    service = MCPService(policy)
+    try:
+        state = call(service, "jobs_recover", job_id=identity)
+        assert state["state"] == "outcome_unknown" and state["artifact"] is None
+        assert call(service, "jobs_execute", job_id=identity) == state
+        assert call(service, "jobs_result", job_id=identity) == state
+    finally:
+        service.close()
+
+
+@pytest.mark.parametrize("fault", ["not_due", "cancel", "input_tamper", "runtime_error"])
+def test_durable_job_never_promotes_unexecuted_or_failed_work(tmp_path, fault):
+    data, control = tmp_path / "data", tmp_path / "control"
+    data.mkdir()
+    control.mkdir(mode=0o700)
+    service = MCPService(
+        MCPPolicy((data,), profile="core", allow_sensitive_results=True, control_directory=control)
+    )
+    try:
+        asset = call(
+            service,
+            "assets_inline",
+            columns=[{"name": "x", "dtype": {"kind": "Int64"}, "values": [1, 2, 3]}],
+        )["resource_id"]
+        check = (
+            {"validator": "between", "settings": {"min_value": 2**256}}
+            if fault == "runtime_error"
+            else {"validator": "not_null"}
+        )
+        request = {
+            "validation": {"asset_id": asset, "checks": [check]},
+            "idempotency_key": "job-fault-test-01",
+        }
+        if fault == "not_due":
+            request["schedule"] = {
+                "expression": "@daily",
+                "after": "2099-01-01T00:00:00+00:00",
+                "count": 1,
+            }
+        pending = invoke(service, "jobs_submit", **request)
+        assert pending["issues"] == [{"code": "approval_required"}]
+        store = ApprovalStore(control)
+        try:
+            store.approve(pending["data"]["plan_id"])
+        finally:
+            store.close()
+        queued = call(service, "jobs_submit", **request)
+        job = {"job_id": queued["job_id"]}
+        if fault == "cancel":
+            assert call(service, "jobs_cancel", **job)["state"] == "cancelled"
+            assert call(service, "jobs_execute", **job)["state"] == "cancelled"
+        elif fault == "not_due":
+            assert invoke(service, "jobs_execute", **job)["issues"] == [{"code": "job_not_due"}]
+            assert call(service, "jobs_status", **job)["state"] == "queued"
+        elif fault == "input_tamper":
+            store = ApprovalStore(control)
+            try:
+                store.connection.execute(
+                    "UPDATE validation_jobs SET input=? WHERE identity=?",
+                    (b"corrupt", job["job_id"]),
+                )
+            finally:
+                store.close()
+            assert invoke(service, "jobs_execute", **job)["issues"] == [
+                {"code": "invalid_control_state"}
+            ]
+        else:
+            assert call(service, "jobs_execute", **job)["state"] == "failed"
+            assert call(service, "jobs_recover", **job)["state"] == "failed"
+            result = call(service, "jobs_result", **job)
+            assert read(service, result["artifact"]["resource_id"])["execution_issues"]
+    finally:
+        service.close()
+
+
 def invoke(service, name, **arguments):
     return asyncio.run(service.call_operation_async(name, arguments))
 

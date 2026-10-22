@@ -157,6 +157,225 @@ def test_native_model_restores_nondefault_config_and_rejects_wrong_identity(tmp_
     assert other.state == ModelState.ERROR
 
 
+@pytest.mark.parametrize("trained", [False, True])
+def test_ensemble_edit_preserves_removed_native_detector_and_revocation(tmp_path, trained):
+    from truthound.mcp.policy import MCPPolicy
+    from truthound.mcp.service import MCPService
+    from truthound.ml import EnsembleAnomalyDetector, ZScoreAnomalyDetector
+
+    direct = EnsembleAnomalyDetector()
+    child = ZScoreAnomalyDetector(contamination=0.2)
+    direct.add_detector(child, weight=2.0)
+    frame = pl.DataFrame({"x": [float(i) for i in range(120)]})
+    frame.write_parquet(tmp_path / "input.parquet")
+    service = MCPService(MCPPolicy((tmp_path,), profile="core", allow_sensitive_results=True))
+    try:
+        asset = call(service, "assets_capture", path=str(tmp_path / "input.parquet"))["resource_id"]
+        model = call(service, "models_create", algorithm="EnsembleAnomalyDetector")["model_id"]
+        added = call(
+            service,
+            "models_ensemble_add",
+            model_id=model,
+            expected_revision=0,
+            detector={"algorithm": "ZScoreAnomalyDetector", "config": {"contamination": 0.2}},
+            weight=2.0,
+        )
+        assert added["revision"] == 1 and not added["trained"]
+        revision = 1
+        if trained:
+            direct.fit(frame.lazy())
+            call(service, "models_fit", model_id=model, asset_id=asset, expected_revision=revision)
+            revision += 1
+        removed = direct.remove_detector(0)
+        result = call(
+            service, "models_ensemble_remove", model_id=model, expected_revision=revision, index=0
+        )
+        restored = call(service, "models_restore", resource_id=result["resource_id"])
+        assert restored["trained"] == removed.is_trained
+        assert restored["revision"] == int(trained)
+        inspected = call(service, "models_inspect", model_id=model, expected_revision=revision + 1)
+        assert inspected["trained"] == direct.is_trained
+        if trained:
+            scored = call(
+                service,
+                "models_score",
+                model_id=restored["model_id"],
+                expected_revision=1,
+                asset_id=asset,
+            )
+            assert (
+                artifact(service, scored["resource_id"])["result"]["values"]
+                == removed.score(frame.lazy()).to_list()
+            )
+        call(service, "resources_release", resource_id=model)
+        response = asyncio.run(
+            service.call_operation_async(
+                "models_inspect",
+                {"model_id": restored["model_id"], "expected_revision": int(trained)},
+            )
+        )
+        assert response["issues"] == [{"code": "invalid_handle"}]
+    finally:
+        service.close()
+
+
+@pytest.mark.parametrize(
+    "operation,extra",
+    [
+        ("models_ensemble_remove", {"index": 0}),
+        ("models_ensemble_add", {"detector": {"algorithm": "DataProfileRuleLearner"}}),
+    ],
+)
+def test_ensemble_failed_mutation_invalidates_owned_state(tmp_path, operation, extra):
+    from truthound.mcp.policy import MCPPolicy
+    from truthound.mcp.service import MCPService
+
+    service = MCPService(MCPPolicy((tmp_path,), profile="core", allow_sensitive_results=True))
+    try:
+        model = call(service, "models_create", algorithm="EnsembleAnomalyDetector")["model_id"]
+        result = asyncio.run(
+            service.call_operation_async(
+                operation, {"model_id": model, "expected_revision": 0, **extra}
+            )
+        )
+        assert result["execution_status"] == "failed"
+        assert result["issues"] == [
+            {"code": "core_error" if operation.endswith("remove") else "invalid_arguments"}
+        ]
+        result = asyncio.run(
+            service.call_operation_async(
+                "models_inspect", {"model_id": model, "expected_revision": 0}
+            )
+        )
+        assert result["issues"] == [{"code": "invalid_handle"}]
+    finally:
+        service.close()
+
+
+@pytest.mark.parametrize("algorithm", ALGORITHMS)
+def test_approved_snapshot_survives_session_end_without_retraining(tmp_path, algorithm):
+    from truthound.mcp.approval import ApprovalStore
+    from truthound.mcp.policy import MCPPolicy
+    from truthound.mcp.service import MCPService
+
+    data, control = tmp_path / "data", tmp_path / "control"
+    data.mkdir()
+    control.mkdir(mode=0o700)
+    direct, config, training, query = specimen(algorithm)
+    direct.fit(training.lazy())
+    expected = semantic(direct.predict(query.lazy()))
+    training.write_parquet(data / "train.parquet")
+    query.write_parquet(data / "query.parquet")
+    policy = MCPPolicy(
+        (data,), profile="core", control_directory=control, allow_sensitive_results=True
+    )
+    service = MCPService(policy)
+    try:
+        asset = call(service, "assets_capture", path=str(data / "train.parquet"))["resource_id"]
+        model = call(service, "models_create", algorithm=algorithm, config=config)["model_id"]
+        call(service, "models_fit", model_id=model, asset_id=asset, expected_revision=0)
+        saved = call(service, "models_save", model_id=model, expected_revision=1)["resource_id"]
+        request = {"resource_id": saved, "idempotency_key": "persist-snapshot-01"}
+        pending = asyncio.run(service.call_operation_async("models_persist", request))
+        assert pending["issues"] == [{"code": "approval_required"}]
+        store = ApprovalStore(control)
+        try:
+            assert (
+                "session_lifetime_transfer"
+                in store.review(pending["data"]["plan_id"])["plan"]["effects"]
+            )
+            store.approve(pending["data"]["plan_id"])
+        finally:
+            store.close()
+        snapshot = call(service, "models_persist", **request)
+        assert call(service, "models_persist", **request) == snapshot
+    finally:
+        service.close()
+    service = MCPService(policy)
+    try:
+        result = asyncio.run(
+            service.call_operation_async(
+                "models_inspect", {"model_id": model, "expected_revision": 1}
+            )
+        )
+        assert result["issues"] == [{"code": "invalid_handle"}]
+        resumed = call(service, "models_resume", snapshot_id=snapshot["snapshot_id"])
+        assert resumed["model_id"] != model and resumed["trained"]
+        query_id = call(service, "assets_capture", path=str(data / "query.parquet"))["resource_id"]
+        result = call(
+            service,
+            "models_predict",
+            model_id=resumed["model_id"],
+            asset_id=query_id,
+            expected_revision=1,
+        )
+        assert semantic(artifact(service, result["resource_id"])["result"]) == expected
+        from dataclasses import replace
+
+        service.policy = replace(policy, max_items=policy.max_items + 1)
+        denied = asyncio.run(
+            service.call_operation_async(
+                "models_inspect", {"model_id": resumed["model_id"], "expected_revision": 1}
+            )
+        )
+        assert denied["execution_status"] == "failed"
+        denied = asyncio.run(
+            service.call_operation_async("models_resume", {"snapshot_id": snapshot["snapshot_id"]})
+        )
+        assert denied["issues"] == [{"code": "access_denied"}]
+    finally:
+        service.close()
+
+
+def test_snapshot_and_receipt_roll_back_together_on_commit_failure(tmp_path, monkeypatch):
+    from truthound.mcp.policy import MCPPolicy
+    from truthound.mcp.service import MCPService
+    from truthound.mcp.session import MCPSession
+
+    data, control = tmp_path / "data", tmp_path / "control"
+    data.mkdir()
+    control.mkdir(mode=0o700)
+    service = MCPService(
+        MCPPolicy((data,), profile="core", allow_sensitive_results=True, control_directory=control)
+    )
+    try:
+        session = MCPSession(service)
+        service._session = session
+        identity, path = session.resources.reserve("artifact")
+        path.write_bytes(b"{}")
+        session.resources.commit(
+            identity,
+            kind="artifact",
+            media_type="application/vnd.truthound.model+json",
+            metadata={
+                "model_specification": {"algorithm": "ZScoreAnomalyDetector"},
+                "trained": False,
+            },
+        )
+        request = {"resource_id": identity, "idempotency_key": "atomic-snapshot-fault"}
+        pending = asyncio.run(service.call_operation_async("models_persist", request))
+        assert pending["issues"] == [{"code": "approval_required"}]
+        store = session.approvals()
+        store.approve(pending["data"]["plan_id"])
+
+        def fail_receipt(*args):
+            raise RuntimeError("injected commit boundary failure")
+
+        monkeypatch.setattr(store, "finish_in_transaction", fail_receipt)
+        result = asyncio.run(service.call_operation_async("models_persist", request))
+        assert result["issues"] == [{"code": "outcome_unknown"}]
+        assert store.connection.execute("SELECT COUNT(*) FROM model_snapshots").fetchone()[0] == 0
+        assert (
+            store.status(pending["data"]["plan_id"], session=session.identity)["state"]
+            == "outcome_unknown"
+        )
+        assert asyncio.run(service.call_operation_async("models_persist", request))["issues"] == [
+            {"code": "outcome_unknown"}
+        ]
+    finally:
+        service.close()
+
+
 def test_incomplete_legacy_forest_is_rejected_instead_of_becoming_ready(tmp_path):
     from truthound.ml.base import ModelLoadError, ModelState
 

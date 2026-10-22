@@ -93,6 +93,7 @@ async def core_profile():
                 required.add("drift_compare")
                 required.add("models_rule_query")
                 required.add("schedules_preview")
+                required|={"models_ensemble_add","models_ensemble_remove","models_persist","models_resume","jobs_submit","jobs_execute","jobs_status","jobs_result","jobs_cancel","jobs_recover"}
                 required|={"drift_catalog","drift_detect","profilers_catalog","profilers_profile","schemas_create","schemas_export"}
                 required|={"suites_create","suites_inspect","suites_validate","contexts_execute"}
                 required|={"sources_open_polars","sources_inspect","sources_sample","sources_validate_connection","sources_validate_columns","sources_check_size_limits","sources_validate"}
@@ -208,6 +209,34 @@ async def core_profile():
                 restored=await invoke("models_restore",{"resource_id":saved["resource_id"]})
                 restored_scores=await invoke("models_score",{"model_id":restored["model_id"],"asset_id":training,"expected_revision":1})
                 assert decode(json.loads(await artifact_bytes(scores["resource_id"]))["result"])==decode(json.loads(await artifact_bytes(restored_scores["resource_id"]))["result"])
+                pending=await client.call_tool("models_persist",{"resource_id":saved["resource_id"],"idempotency_key":"installed-model-snapshot"})
+                assert pending.isError and pending.structuredContent["issues"]==[{"code":"approval_required"}]
+                subprocess.run([sys.executable,"-I","-m","truthound.mcp","approve-plan","--control-dir",str(control),"--plan-id",pending.structuredContent["data"]["plan_id"]],check=True,capture_output=True)
+                snapshot=await invoke("models_persist",{"resource_id":saved["resource_id"],"idempotency_key":"installed-model-snapshot"})
+                async with stdio_client(params) as (r2,w2):
+                    async with ClientSession(r2,w2) as other:
+                        await other.initialize()
+                        resumed=await other.call_tool("models_resume",{"snapshot_id":snapshot["snapshot_id"]})
+                        assert not resumed.isError and resumed.structuredContent["data"]["trained"]
+                ensemble=(await invoke("models_create",{"algorithm":"EnsembleAnomalyDetector"}))["model_id"]
+                await invoke("models_ensemble_add",{"model_id":ensemble,"expected_revision":0,"detector":{"algorithm":"ZScoreAnomalyDetector"}})
+                await invoke("models_fit",{"model_id":ensemble,"asset_id":training,"expected_revision":1})
+                removed=await invoke("models_ensemble_remove",{"model_id":ensemble,"expected_revision":2,"index":0})
+                detached=await invoke("models_restore",{"resource_id":removed["resource_id"]})
+                assert detached["trained"]
+                await invoke("resources_release",{"resource_id":ensemble})
+                job_args={"validation":{"asset_id":training,"checks":[{"validator":"not_null"}]},"idempotency_key":"installed-durable-job"}
+                pending=await client.call_tool("jobs_submit",job_args)
+                assert pending.isError and pending.structuredContent["issues"]==[{"code":"approval_required"}]
+                subprocess.run([sys.executable,"-I","-m","truthound.mcp","approve-plan","--control-dir",str(control),"--plan-id",pending.structuredContent["data"]["plan_id"]],check=True,capture_output=True)
+                job=await invoke("jobs_submit",job_args)
+                job_id={"job_id":job["job_id"]}
+                assert (await invoke("jobs_status",job_id))["state"]=="queued"
+                assert (await invoke("jobs_execute",job_id))["state"]=="succeeded"
+                assert (await invoke("jobs_recover",job_id))["state"]=="succeeded"
+                assert (await invoke("jobs_cancel",job_id))["state"]=="succeeded"
+                result=await invoke("jobs_result",job_id)
+                assert result["artifact"]["bytes"]>0
                 learner=(await invoke("models_create",{"algorithm":"DataProfileRuleLearner"}))["model_id"]
                 await invoke("models_fit",{"model_id":learner,"asset_id":training,"expected_revision":0})
                 rule_suite=await invoke("models_rule_query",{"model_id":learner,"asset_id":training,"expected_revision":1,"action":"suite"})

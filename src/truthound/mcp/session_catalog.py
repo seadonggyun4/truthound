@@ -8,6 +8,8 @@ def operations(descriptor):
     from truthound.mcp.advanced_contracts import (
         DriftCompare,
         DriftDetect,
+        EnsembleAdd,
+        EnsembleRemove,
         ModelCatalog,
         ModelData,
         ModelDetect,
@@ -18,6 +20,8 @@ def operations(descriptor):
         ModelState,
     )
     from truthound.mcp.contexts import ContextAction, ContextActionResult
+    from truthound.mcp.durable_jobs import JobInput, JobState, JobSubmit
+    from truthound.mcp.durable_models import ModelPersist, ModelResume, ModelSnapshot
     from truthound.mcp.lineage_contracts import (
         DependencyChain,
         GraphCreate,
@@ -49,6 +53,71 @@ def operations(descriptor):
     from truthound.mcp.suites import SuiteCreate, SuiteValidation
 
     rows = (
+        (
+            "jobs_submit",
+            "Approve and persist one bounded native validation job, optionally at the next native cron time; no daemon or automatic retries.",
+            JobSubmit,
+            "truthound.api.check",
+            JobState | wire.OperationPlan,
+            True,
+        ),
+        *(
+            (name, description, JobInput, "truthound.api.check", JobState, True)
+            for name, description in (
+                (
+                    "jobs_execute",
+                    "Explicitly execute a due approved job once, retaining native results transactionally.",
+                ),
+                (
+                    "jobs_status",
+                    "Read durable job state without treating failed or indeterminate execution as success.",
+                ),
+                (
+                    "jobs_result",
+                    "Restore an authorized durable native validation result into this session.",
+                ),
+                (
+                    "jobs_cancel",
+                    "Cancel a queued durable job; running execution is not falsely reported as cancelled.",
+                ),
+                (
+                    "jobs_recover",
+                    "Mark an expired execution lease indeterminate without retrying or inventing completion.",
+                ),
+            )
+        ),
+        (
+            "models_persist",
+            "Persist an owned model snapshot only after separate operator approval of its lifetime transfer; no pickle or provider bindings.",
+            ModelPersist,
+            "truthound.ml.base.MLModel.save",
+            ModelSnapshot | wire.OperationPlan,
+            True,
+        ),
+        (
+            "models_resume",
+            "Restore a new model worker from an approved persistent snapshot under the same operator policy, rechecking source grants.",
+            ModelResume,
+            "truthound.ml.base.MLModel.load",
+            ModelState,
+            True,
+        ),
+        (
+            "models_ensemble_add",
+            "Add an admitted fresh native anomaly detector with an explicit weight and revision. Does not train the child.",
+            EnsembleAdd,
+            "truthound.ml.anomaly_models.ensemble.EnsembleAnomalyDetector.add_detector",
+            ModelState,
+            False,
+        ),
+        (
+            "models_ensemble_remove",
+            "Remove a native detector by index, retaining its configuration and learned state in a restorable owned artifact.",
+            EnsembleRemove,
+            "truthound.ml.anomaly_models.ensemble.EnsembleAnomalyDetector.remove_detector",
+            wire.ResourceInfo,
+            False,
+        ),
         (
             "schedules_preview",
             "Validate and preview native cron matching and next times in an owned worker; does not register schedules or execute jobs.",
@@ -683,12 +752,20 @@ def operations(descriptor):
                 "assets_validate",
                 "suites_validate",
                 "models_create",
+                "models_persist",
+                "models_resume",
+                "jobs_submit",
+                "jobs_execute",
+                "jobs_cancel",
+                "jobs_recover",
                 "models_restore",
                 "models_fit",
                 "models_partial_fit",
                 "models_fit_predict",
                 "models_learn_rules",
                 "models_detect",
+                "models_ensemble_add",
+                "models_ensemble_remove",
                 "sources_open_polars",
                 "sources_open_sqlite",
                 "sources_open_duckdb",
@@ -697,7 +774,15 @@ def operations(descriptor):
                 "sources_validate",
             },
             requires_workspaces=name.startswith("contexts_"),
-            requires_control=name in {"contexts_initialize", "contexts_execute", "plans_status"},
+            requires_control=name.startswith("jobs_")
+            or name
+            in {
+                "contexts_initialize",
+                "contexts_execute",
+                "plans_status",
+                "models_persist",
+                "models_resume",
+            },
         )
         for name, description, input_type, target, output_type, sensitive in rows
     )

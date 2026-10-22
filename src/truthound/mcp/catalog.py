@@ -34,6 +34,15 @@ class Operation:
         )
 
     def describe(self) -> dict:
+        durable = self.operation_id.startswith("jobs_") or self.operation_id in {
+            "models_persist",
+            "models_resume",
+        }
+        approval = (
+            self.requires_control
+            and self.mutating
+            and (not durable or self.operation_id in {"models_persist", "jobs_submit"})
+        )
         discovery = self.operation_id in {
             "capabilities_list",
             "capability_describe",
@@ -55,8 +64,10 @@ class Operation:
             if discovery
             else ["compute", "sensitive_read"]
             + (
-                ["workspace_write"]
-                if self.requires_control and self.mutating
+                ["private_control_store_write"]
+                if durable and self.mutating and self.operation_id != "models_resume"
+                else ["workspace_write"]
+                if self.requires_control and self.mutating and self.operation_id != "models_resume"
                 else ["session_state_write"]
                 if self.mutating
                 else []
@@ -69,7 +80,7 @@ class Operation:
                 ]
             )
             + (["control_directory"] if self.requires_control else [])
-            + (["operator_plan_approval"] if self.requires_control and self.mutating else [])
+            + (["operator_plan_approval"] if approval else [])
             + (["allow_sensitive_results"] if self.sensitive else []),
             "conditional_grants": {
                 **(

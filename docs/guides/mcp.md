@@ -217,6 +217,9 @@ The same opt-in profile also exposes these named operations:
 | `models_fit`, `models_partial_fit`, `models_fit_predict`, `models_predict`, `models_score` | Native training, supported online training, combined training/prediction, prediction and anomaly scoring |
 | `models_detect`, `models_learn_rules`, `models_rules`, `models_diagnostics` | Two-input ML drift detection, rule learning and native model diagnostics as owned artifacts |
 | `models_rule_query` | Native learned-rule filtering and suite/validator configuration conversion; no automatic application |
+| `models_ensemble_add`, `models_ensemble_remove` | Revision-checked native editing; detached children remain restorable artifacts |
+| `models_persist`, `models_resume` | Separately approved private model snapshots and new-session restoration |
+| `jobs_submit`, `jobs_execute`, `jobs_status`, `jobs_result`, `jobs_cancel`, `jobs_recover` | Approved durable one-shot validation, retained results and indeterminate lease recovery |
 | `schedules_preview` | Native cron validation, matching and bounded next-time preview; no job registration |
 | `models_save`, `models_restore` | Native trained-state JSON artifacts and new owned model workers restored from them |
 | `schema_audit_contract`, `schema_audit_create`, `schema_audit_inspect` | Strict native metadata documents, complete JSON Schema and canonical digests |
@@ -482,8 +485,32 @@ versioned data-only format rejects executable types, duplicate JSON keys and
 mismatched model identities. Incomplete legacy states fail instead of becoming
 ready. Restored models inherit the saved artifact's authorization parents;
 releasing training data also revokes restored models. These are session-owned
-artifacts, not cross-session workspace import/export. Post-creation ensemble composition, arbitrary plugin models and
-complete method-by-method lifecycle equivalence remain outstanding.
+artifacts unless explicitly transferred to durable storage as described below.
+Arbitrary plugin models and complete method-by-method lifecycle equivalence remain outstanding.
+
+`models_ensemble_add` takes `model_id`, `expected_revision`, a fresh `detector`
+specification and finite `weight` (default 1.0). It invokes native `add_detector`;
+it does not implicitly train the child. `models_ensemble_remove` takes an `index`
+(-8 through 7) and invokes native removal. Its model artifact retains the removed
+child's configuration and learned state. Restore produces revision 1 for a trained
+child or revision 0 for an untrained child. A successful edit advances the ensemble
+revision once; failed mutations invalidate the resident handle. Up to eight
+children and four nested levels are admitted. Adding an existing live model by
+reference is not supported.
+
+`models_persist` takes a model artifact `resource_id` and an `idempotency_key`
+(8–128 characters). It returns `approval_required` until the operator approves
+the exact plan using `approve-plan`. This explicitly transfers the snapshot's
+lifetime beyond the session; merely saving a model does not do so. `models_resume`
+takes the resulting `snapshot_id` in a new session with the same private control
+directory and policy. It restores native JSON without retraining, rechecks source
+directory grants and creates new handles. Policy changes deny both restoration
+and access to derived handles. Provider-bound model snapshots are not admitted.
+Storage is private local SQLite, not a cloud service or workspace export: at most
+128 snapshots, 16 MiB per snapshot and 32 MiB total, additionally bounded by the
+file budget. Snapshot bytes and signed metadata are checked on restoration; the
+snapshot and successful intent receipt commit in one transaction. There is not
+yet a public snapshot deletion API; do not edit the control database manually.
 
 ### Native schedule preview
 
@@ -498,7 +525,35 @@ The result distinguishes invalid expressions (`valid=false`, native `errors`)
 from a valid expression whose native four-year search horizon yields fewer
 times (`search_exhausted=true`). Neither is a data-quality PASS. Preview does
 not register a schedule, start a checkpoint or execute any action. Persistent
-scheduling and job recovery remain separate, unimplemented MCP capabilities.
+scheduling is available separately for bounded one-shot validation jobs below.
+
+### Durable one-shot validation jobs
+
+`jobs_submit` takes `validation` (an `assets_validate` request), an
+`idempotency_key`, and optionally `schedule` with `expression`, offset-aware
+`after`, and `count: 1`. The next due time uses native cron semantics. Submission
+requires separate operator plan approval to persist the captured input and
+authorize deferred computation. Context/schema handles, reference-frame handles,
+provider bindings and external actions are not admitted; inline `schema_spec`
+and closed validator settings remain available.
+
+Use the returned `job_id` with `jobs_status`, `jobs_execute`, `jobs_result`,
+`jobs_cancel`, or `jobs_recover`. A client must explicitly execute a due job;
+there is no daemon, recurring scheduler, paid provider call or automatic retry.
+Queued input survives session closure. Completed native results survive restart
+and can become newly authorized session artifacts. A completed execution can
+still contain data-quality violations; native execution failures remain `failed`.
+Cancelled queued work is not executed. Cancelling a running job returns `busy`
+rather than claiming another process was stopped. After the execution deadline
+plus a 30-second cleanup allowance, explicit recovery marks an unfinished lease
+`outcome_unknown`, never PASS or an implicit retry. This allowance is not an
+extension of the native worker timeout. Successful receipts require computation,
+owned-resource cleanup and a transactional result commit.
+
+The private store admits at most 128 jobs, 8 MiB per input/result and 16 MiB total
+job payloads, subject to existing file/session budgets. No job deletion API or
+automatic retention pruning is provided yet. These restrictions and the absence
+of recurring/provider-backed jobs mean this is not full scheduling parity.
 
 ### Native schema audits
 

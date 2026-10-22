@@ -31,10 +31,13 @@ class Resource:
 class SessionResources:
     """The service serializes access; ownership never comes from request arguments."""
 
-    def __init__(self, policy, *, clock=time.monotonic, before_release=None):
+    def __init__(
+        self, policy, *, clock=time.monotonic, before_release=None, authorize_metadata=None
+    ):
         self.policy = policy
         self.clock = clock
         self.before_release = before_release
+        self.authorize_metadata = authorize_metadata
         self._temporary = tempfile.TemporaryDirectory(prefix="truthound-mcp-session-")
         self.root = Path(self._temporary.name)
         self._entries: dict[str, Resource] = {}
@@ -142,6 +145,10 @@ class SessionResources:
             raise MCPError("handle_expired")
         for origin in entry.origins:
             self.policy().authorize_origin(origin)
+        if "durable_policy" in entry.metadata:
+            if self.authorize_metadata is None:
+                raise MCPError("access_denied")
+            self.authorize_metadata(entry.metadata)
         if "workspace_root" in entry.metadata:
             self.policy().resolve_workspace(entry.metadata["workspace_root"])
         if "binding_digest" in entry.metadata:

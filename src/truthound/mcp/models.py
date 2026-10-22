@@ -39,6 +39,10 @@ class ModelSession:
                     self.session.resources.release(identity)
 
     async def call(self, name, arguments):
+        if name in {"models_persist", "models_resume"}:
+            from truthound.mcp.durable_models import call
+
+            return await call(self.session, name, arguments, self)
         resources, policy = self.session.resources, self.session.policy
         if name == "models_catalog":
             from truthound.mcp.encoding import encode
@@ -92,7 +96,7 @@ class ModelSession:
                 state = await worker.call(
                     {"operation": "models_create", "spec": specification}, policy.timeout_seconds
                 )
-                if source is not None:
+                if source is not None and source.metadata.get("trained", True):
                     state = await worker.call(
                         {
                             "operation": "models_load",
@@ -101,6 +105,8 @@ class ModelSession:
                         },
                         policy.timeout_seconds,
                     )
+                    resources.get(source.id, "artifact")
+                if source is not None:
                     resources.get(source.id, "artifact")
                 entry = resources.commit(
                     identity,
@@ -126,6 +132,10 @@ class ModelSession:
         if arguments.expected_revision != self.states[entry.id]["revision"]:
             raise MCPError("stale_revision")
         request = {"operation": name, "expected_revision": arguments.expected_revision}
+        if name == "models_ensemble_add":
+            request.update(detector=arguments.detector.model_dump(), weight=arguments.weight)
+        elif name == "models_ensemble_remove":
+            request["index"] = arguments.index
         if name == "models_rule_query":
             request.update(
                 action=arguments.action, rule_type=arguments.rule_type, column=arguments.column
@@ -148,6 +158,8 @@ class ModelSession:
             "models_fit_predict",
             "models_learn_rules",
             "models_detect",
+            "models_ensemble_add",
+            "models_ensemble_remove",
         }
         try:
             if name in {
@@ -160,6 +172,7 @@ class ModelSession:
                 "models_detect",
                 "models_diagnostics",
                 "models_save",
+                "models_ensemble_remove",
             }:
                 output_id, output = resources.reserve("artifact")
                 budget = resources.available_bytes
@@ -184,12 +197,15 @@ class ModelSession:
                     output_id,
                     kind="artifact",
                     media_type="application/vnd.truthound.model+json"
-                    if name == "models_save"
+                    if name in {"models_save", "models_ensemble_remove"}
                     else "application/vnd.truthound.ml-result+json",
                     parents=tuple(parents),
                     metadata={
-                        "model_specification": json.loads(entry.path.read_text(encoding="utf-8"))
+                        "model_specification": state["detached_spec"],
+                        "trained": state["detached_trained"],
                     }
+                    if name == "models_ensemble_remove"
+                    else {"model_specification": json.loads(entry.path.read_text(encoding="utf-8"))}
                     if name == "models_save"
                     else None,
                 )

@@ -207,6 +207,9 @@ JavaScript의 정확한 정수 범위를 넘는 값에는 십진 문자열 태�
 | `models_detect`, `models_learn_rules`, `models_rules`, `models_diagnostics` | 두 입력의 ML 드리프트·규칙 학습·원래 모델 진단의 산출물 보관 |
 | `models_rule_query` | 네이티브 학습 규칙 필터·suite/검증기 설정 변환, 자동 적용 없음 |
 | `schedules_preview` | 네이티브 cron 검증·일치·제한된 다음 시각 미리보기, 작업 등록 없음 |
+| `models_ensemble_add`, `models_ensemble_remove` | revision을 확인하는 네이티브 편집과 제거한 모델의 복원 가능한 산출물 |
+| `models_persist`, `models_resume` | 별도 승인된 비공개 모델 스냅샷과 새 세션 복원 |
+| `jobs_submit`, `jobs_execute`, `jobs_status`, `jobs_result`, `jobs_cancel`, `jobs_recover` | 승인된 영구 단발 검증 작업·결과 보존·불확정 lease 복구 |
 | `models_save`, `models_restore` | 네이티브 학습 상태 JSON 보관과 새 소유 모델 worker로 복원 |
 | `schema_audit_contract`, `schema_audit_create`, `schema_audit_inspect` | 엄격한 네이티브 메타데이터 문서·전체 JSON Schema·정규화 해시 |
 | `schema_audit_standards`, `schema_audit_implementation` | 표준·설계·카탈로그 감사의 전체 판정과 명시적인 미확인 범위 |
@@ -431,8 +434,8 @@ ML 산출물에는 `encoding`, `model_algorithm`, `model_revision`과 태그로 
 데이터·학습 규칙을 보존합니다. 버전이 있는 데이터 전용 형식이며 실행 가능한 형식,
 중복 JSON 키, 모델 종류 불일치를 거부합니다. 불완전한 이전 저장 상태도 실패하며
 준비 완료로 표시하지 않습니다. 복원 모델은 산출물의 권한 부모를 상속하므로 원래
-학습 데이터를 해제하면 함께 무효화됩니다. 세션 소유 산출물이며 세션 간 작업공간
-가져오기·내보내기는 아닙니다. 생성 후 앙상블 구성 변경·임의 플러그인 모델·
+학습 데이터를 해제하면 함께 무효화됩니다. 아래의 명시적 영구 저장 승인 전까지는
+세션 소유 산출물입니다. 임의 플러그인 모델·
 메서드별 전체 수명주기 동등성은 남은 작업입니다.
 
 `models_rule_query`는 `model_id`, `expected_revision`, `asset_id`, `action`을
@@ -455,7 +458,53 @@ ML 산출물에는 `encoding`, `model_algorithm`, `model_revision`과 태그로 
 잘못된 표현식은 `valid=false`와 원래 `errors`로, 유효하지만 Core의 4년 검색 범위
 안에 요청한 개수만큼 결과가 없으면 `search_exhausted=true`로 구분합니다.
 둘 다 데이터 품질 PASS가 아닙니다. 스케줄 등록·체크포인트 실행·외부 작업은
-수행하지 않습니다. 영구 예약과 작업 복구는 별도의 미구현 MCP 기능입니다.
+수행하지 않습니다. 영구 예약은 아래의 제한된 단발 검증 작업에서 별도로 제공합니다.
+
+### 앙상블 편집과 세션 간 모델 복원
+
+`models_ensemble_add`는 `model_id`, `expected_revision`, 새 `detector` 명세와
+유한한 `weight`(기본 1.0)를 받아 Core의 `add_detector`를 호출합니다. 하위 모델을
+자동으로 학습하지 않습니다. `models_ensemble_remove`는 `index`(-8~7)로 제거하며,
+제거한 모델의 설정과 학습 상태를 복원 가능한 모델 산출물로 반환합니다. 학습 모델은
+revision 1, 미학습 모델은 revision 0으로 복원됩니다. 성공한 편집은 revision을
+한 번 증가시키고, 실패한 변경은 상주 핸들을 무효화합니다. 하위 모델은 최대 8개,
+중첩은 4단계이며 기존 상주 모델을 참조로 추가하는 기능은 지원하지 않습니다.
+
+`models_persist`에는 모델 산출물의 `resource_id`와 8~128자 `idempotency_key`를
+전달합니다. 운영자가 `approve-plan`으로 정확한 계획을 승인하기 전에는
+`approval_required`입니다. 이 승인이 있어야 스냅샷 수명이 세션 밖으로 이전되며,
+단순 저장만으로 영구 보존되지 않습니다. `models_resume`에는 `snapshot_id`를
+전달합니다. 동일한 비공개 제어 디렉터리·정책의 새 세션에서 네이티브 JSON을
+재학습 없이 복원하고 새 핸들을 발급하며 원본 디렉터리 권한을 다시 검사합니다.
+정책이 바뀌면 복원과 파생 핸들 접근이 차단됩니다. provider 바인딩 모델은 제외됩니다.
+저장소는 클라우드나 작업공간 내보내기가 아닌 로컬 비공개 SQLite입니다. 최대 128개,
+개별 16 MiB·합계 32 MiB이며 파일 예산도 적용됩니다. 복원 시 서명된 메타데이터와
+바이트 해시를 검사하고 스냅샷과 성공 영수증은 한 트랜잭션으로 커밋합니다.
+아직 공개 스냅샷 삭제 API는 없으며 제어 DB를 수동으로 수정하면 안 됩니다.
+
+### 영구 단발 검증 작업
+
+`jobs_submit`은 `validation`(`assets_validate` 요청), `idempotency_key`, 선택형
+`schedule`을 받습니다. 예약에는 `expression`, UTC offset이 있는 `after`,
+`count: 1`을 지정하며 다음 시각은 Core cron으로 계산합니다. 입력 보존과 지연 실행은
+별도 운영자 계획 승인이 필요합니다. context/schema 핸들·참조 데이터 핸들·provider
+바인딩·외부 액션은 허용하지 않습니다. 인라인 `schema_spec`과 제한된 검증기 설정은
+사용할 수 있습니다.
+
+반환된 `job_id`로 `jobs_status`, `jobs_execute`, `jobs_result`, `jobs_cancel`,
+`jobs_recover`를 호출합니다. 클라이언트가 실행 시각이 지난 작업을 명시적으로 실행해야
+하며 데몬·반복 스케줄러·유료 provider 호출·자동 재시도는 없습니다. 대기 입력과 완료된
+네이티브 결과는 세션 종료 후에도 보존되고 결과는 새로 승인된 세션 산출물로 읽습니다.
+실행 성공에도 품질 위반이 있을 수 있으며 Core 실행 오류는 `failed`로 남습니다.
+취소한 대기 작업은 실행하지 않고 실행 중 취소는 다른 프로세스를 중단했다고 주장하는
+대신 `busy`를 반환합니다. 실행 제한시간과 30초 정리 여유가 지난 미완료 lease는
+명시적 복구로 `outcome_unknown`이 됩니다. 이는 PASS·자동 재시도가 아니며 30초는
+네이티브 작업의 timeout 확대도 아닙니다. 성공 영수증은 계산·소유 자원 정리·결과의
+트랜잭션 커밋이 끝나야 기록됩니다.
+
+비공개 저장소는 작업 최대 128개, 입력/결과 개별 8 MiB, 작업 바이트 합계 16 MiB이며
+기존 파일·세션 예산도 적용됩니다. 작업 삭제 API·자동 보존 정리는 아직 없습니다.
+반복 작업·provider 작업이 없으므로 전체 스케줄링 동등성 완료를 뜻하지 않습니다.
 
 ### 네이티브 스키마 감사
 

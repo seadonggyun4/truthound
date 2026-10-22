@@ -11,6 +11,35 @@ from truthound.mcp.policy import MCPError
 from truthound.mcp.resources import BoundedWriter
 
 
+def detector_spec(model):
+    """Describe only admitted constructors; never persist import names or objects."""
+    from dataclasses import asdict
+
+    from truthound.mcp.model_wire import validate_spec
+    from truthound.ml import EnsembleAnomalyDetector
+
+    value = {"algorithm": type(model).__name__, "config": asdict(model.config), "detectors": None}
+    if isinstance(model, EnsembleAnomalyDetector):
+        value["detectors"] = [detector_spec(child) for child in model._detectors]
+    value = json.loads(json.dumps(value, allow_nan=False))
+    validate_spec(value)
+    return value
+
+
+def save_bounded(model, request):
+    import tempfile
+
+    with tempfile.TemporaryDirectory(prefix="truthound-model-save-") as directory:
+        saved = Path(directory) / "model.json"
+        model.save(saved)
+        with (
+            BoundedWriter(Path(request["output_path"]), request["output_budget"]) as output,
+            saved.open("rb") as source,
+        ):
+            while chunk := source.read(65536):
+                output.write(chunk)
+
+
 def main():
     model, revision = None, 0
     wire = sys.stdout
@@ -21,6 +50,7 @@ def main():
                 break
             response = {"ok": False, "code": "worker_error"}
             try:
+                detached = {}
                 if len(line) > 131072 or not line.endswith(b"\n"):
                     raise MCPError("resource_exhausted")
                 request = json.loads(line)
@@ -44,22 +74,37 @@ def main():
 
                             frame = pl.scan_ipc(request["asset_path"], memory_map=False)
                         result = None
-                        if operation == "models_save":
-                            import tempfile
+                        if operation in {"models_ensemble_add", "models_ensemble_remove"}:
+                            from truthound.mcp.model_wire import build, validate_spec
+                            from truthound.ml import EnsembleAnomalyDetector
+                            from truthound.ml.base import AnomalyDetector
 
-                            with tempfile.TemporaryDirectory(
-                                prefix="truthound-model-save-"
-                            ) as directory:
-                                saved = Path(directory) / "model.json"
-                                model.save(saved)
-                                with (
-                                    BoundedWriter(
+                            if not isinstance(model, EnsembleAnomalyDetector):
+                                raise MCPError("unsupported_operation")
+                            if operation == "models_ensemble_add":
+                                specification = detector_spec(model)
+                                specification["detectors"].append(request["detector"])
+                                validate_spec(specification)
+                                child = build(request["detector"])
+                                if not isinstance(child, AnomalyDetector):
+                                    raise MCPError("invalid_arguments")
+                                model.add_detector(child, weight=request["weight"])
+                            else:
+                                child = model.remove_detector(request["index"])
+                                detached = {
+                                    "detached_spec": detector_spec(child),
+                                    "detached_trained": child.is_trained,
+                                }
+                                if child.is_trained:
+                                    save_bounded(child, request)
+                                else:
+                                    with BoundedWriter(
                                         Path(request["output_path"]), request["output_budget"]
-                                    ) as output,
-                                    saved.open("rb") as source,
-                                ):
-                                    while chunk := source.read(65536):
-                                        output.write(chunk)
+                                    ) as output:
+                                        output.write(b"{}")
+                            revision += 1
+                        elif operation == "models_save":
+                            save_bounded(model, request)
                         elif operation == "models_load":
                             model.load(request["state_path"])
                             revision += 1
@@ -194,6 +239,7 @@ def main():
                         "revision": revision,
                         "state": model.state.value,
                         "trained": model.is_trained,
+                        **detached,
                     }
             except Exception as exc:
                 response = {

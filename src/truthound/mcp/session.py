@@ -21,7 +21,9 @@ class MCPSession:
     def __init__(self, service):
         self.service = service
         self.resources = SessionResources(
-            lambda: service.policy, before_release=self._before_release
+            lambda: service.policy,
+            before_release=self._before_release,
+            authorize_metadata=self._authorize_metadata,
         )
         self.identity = secrets.token_urlsafe(24)
         self._approvals = None
@@ -32,6 +34,15 @@ class MCPSession:
     @property
     def policy(self):
         return self.service.policy
+
+    def _authorize_metadata(self, metadata):
+        if (
+            str(self.policy.control_directory) != metadata["durable_control"]
+            or self._policy_stamp() != metadata["durable_policy"]
+        ):
+            raise MCPError("access_denied")
+        for root in metadata["durable_workspaces"]:
+            self.policy.resolve_workspace(root)
 
     def _before_release(self, identity):
         # Windows cannot unlink SQLite or mapped stream inputs while their
@@ -497,6 +508,10 @@ class MCPSession:
             from truthound.mcp.scheduling import call as schedule_call
 
             return await schedule_call(self, name, arguments)
+        if name.startswith("jobs_"):
+            from truthound.mcp.durable_jobs import call as job_call
+
+            return await job_call(self, name, arguments)
         if name.startswith("streams_"):
             from truthound.mcp.streams import StreamSession
 

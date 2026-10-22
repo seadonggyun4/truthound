@@ -109,6 +109,15 @@ class ModelRestore(WireModel):
     resource_id: Handle
 
 
+class EnsembleAdd(ModelInspect):
+    detector: ModelSpec
+    weight: Annotated[float, Field(allow_inf_nan=False)] = 1.0
+
+
+class EnsembleRemove(ModelInspect):
+    index: Annotated[int, Field(ge=-8, le=7)]
+
+
 class ModelState(WireModel):
     model_id: Handle
     algorithm: str

@@ -254,18 +254,22 @@ class ApprovalStore:
 
     def finish(self, identity, result):
         with self.transaction():
-            plan = self.connection.execute(
-                "SELECT * FROM plans WHERE identity=? AND state='executing'", (identity,)
-            ).fetchone()
-            if plan is None:
-                raise MCPError("invalid_plan")
-            self.connection.execute(
-                "UPDATE intents SET state='succeeded',result=? WHERE identity=?",
-                (canonical(result), plan["intent"]),
-            )
-            self.connection.execute(
-                "UPDATE plans SET state='succeeded' WHERE identity=?", (identity,)
-            )
+            self.finish_in_transaction(identity, result)
+
+    def finish_in_transaction(self, identity, result):
+        """Commit an outcome with its local state in the caller's transaction."""
+        if not self.connection.in_transaction:
+            raise MCPError("invalid_control_state")
+        plan = self.connection.execute(
+            "SELECT * FROM plans WHERE identity=? AND state='executing'", (identity,)
+        ).fetchone()
+        if plan is None:
+            raise MCPError("invalid_plan")
+        self.connection.execute(
+            "UPDATE intents SET state='succeeded',result=? WHERE identity=?",
+            (canonical(result), plan["intent"]),
+        )
+        self.connection.execute("UPDATE plans SET state='succeeded' WHERE identity=?", (identity,))
 
     def uncertain(self, identity):
         with self.transaction():
