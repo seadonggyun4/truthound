@@ -256,6 +256,20 @@ class ApprovalStore:
         with self.transaction():
             self.finish_in_transaction(identity, result)
 
+    def committed_identity(self, key, operation, field):
+        """Resolve a lost successful reply; the caller must reauthorize its record."""
+        identity = self.digest({"idempotency_key": key})
+        intent = self.connection.execute(
+            "SELECT * FROM intents WHERE identity=?", (identity,)
+        ).fetchone()
+        if intent is None or intent["operation"] != operation:
+            raise MCPError("invalid_handle")
+        if intent["state"] in {"executing", "outcome_unknown"}:
+            raise MCPError("outcome_unknown")
+        if intent["state"] != "succeeded":
+            raise MCPError("approval_required")
+        return json.loads(intent["result"])["data"][field]
+
     def finish_in_transaction(self, identity, result):
         """Commit an outcome with its local state in the caller's transaction."""
         if not self.connection.in_transaction:

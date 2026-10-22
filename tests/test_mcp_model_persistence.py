@@ -301,6 +301,9 @@ def test_approved_snapshot_survives_session_end_without_retraining(tmp_path, alg
         assert result["issues"] == [{"code": "invalid_handle"}]
         resumed = call(service, "models_resume", snapshot_id=snapshot["snapshot_id"])
         assert resumed["model_id"] != model and resumed["trained"]
+        recovered = call(service, "models_resume", idempotency_key="persist-snapshot-01")
+        assert recovered["trained"] and recovered["model_id"] != resumed["model_id"]
+        call(service, "resources_release", resource_id=recovered["model_id"])
         query_id = call(service, "assets_capture", path=str(data / "query.parquet"))["resource_id"]
         result = call(
             service,
@@ -372,6 +375,11 @@ def test_snapshot_and_receipt_roll_back_together_on_commit_failure(tmp_path, mon
         assert asyncio.run(service.call_operation_async("models_persist", request))["issues"] == [
             {"code": "outcome_unknown"}
         ]
+        assert asyncio.run(
+            service.call_operation_async(
+                "models_resume", {"idempotency_key": request["idempotency_key"]}
+            )
+        )["issues"] == [{"code": "outcome_unknown"}]
     finally:
         service.close()
 

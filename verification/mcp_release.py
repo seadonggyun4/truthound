@@ -216,7 +216,7 @@ async def core_profile():
                 async with stdio_client(params) as (r2,w2):
                     async with ClientSession(r2,w2) as other:
                         await other.initialize()
-                        resumed=await other.call_tool("models_resume",{"snapshot_id":snapshot["snapshot_id"]})
+                        resumed=await other.call_tool("models_resume",{"idempotency_key":"installed-model-snapshot"})
                         assert not resumed.isError and resumed.structuredContent["data"]["trained"]
                 ensemble=(await invoke("models_create",{"algorithm":"EnsembleAnomalyDetector"}))["model_id"]
                 await invoke("models_ensemble_add",{"model_id":ensemble,"expected_revision":0,"detector":{"algorithm":"ZScoreAnomalyDetector"}})
@@ -232,6 +232,7 @@ async def core_profile():
                 job=await invoke("jobs_submit",job_args)
                 job_id={"job_id":job["job_id"]}
                 assert (await invoke("jobs_status",job_id))["state"]=="queued"
+                assert (await invoke("jobs_status",{"idempotency_key":"installed-durable-job"}))["job_id"]==job["job_id"]
                 assert (await invoke("jobs_execute",job_id))["state"]=="succeeded"
                 assert (await invoke("jobs_recover",job_id))["state"]=="succeeded"
                 assert (await invoke("jobs_cancel",job_id))["state"]=="succeeded"

@@ -506,6 +506,9 @@ takes the resulting `snapshot_id` in a new session with the same private control
 directory and policy. It restores native JSON without retraining, rechecks source
 directory grants and creates new handles. Policy changes deny both restoration
 and access to derived handles. Provider-bound model snapshots are not admitted.
+If the successful save reply was lost, `models_resume` accepts the original
+`idempotency_key` instead of `snapshot_id`; it resolves the committed receipt
+without repeating persistence. Supply exactly one identity selector.
 Storage is private local SQLite, not a cloud service or workspace export: at most
 128 snapshots, 16 MiB per snapshot and 32 MiB total, additionally bounded by the
 file budget. Snapshot bytes and signed metadata are checked on restoration; the
@@ -551,7 +554,11 @@ extension of the native worker timeout. Successful receipts require computation,
 owned-resource cleanup and a transactional result commit.
 
 The private store admits at most 128 jobs, 8 MiB per input/result and 16 MiB total
-job payloads, subject to existing file/session budgets. No job deletion API or
+job payloads. To recover a lost submission reply, the five job operations after
+submission also accept the original `idempotency_key` instead of `job_id`; they
+resolve and reauthorize the existing record rather than submit another job.
+Supply exactly one selector. These limits remain
+subject to existing file/session budgets. No job deletion API or
 automatic retention pruning is provided yet. These restrictions and the absence
 of recurring/provider-backed jobs mean this is not full scheduling parity.
 

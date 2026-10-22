@@ -64,7 +64,14 @@ def test_durable_job_native_validation_restart_result_and_cancel(tmp_path):
     try:
         job = {"job_id": queued["job_id"]}
         assert call(service, "jobs_status", **job)["state"] == "queued"
+        assert (
+            call(service, "jobs_status", idempotency_key="durable-job-01")["job_id"]
+            == job["job_id"]
+        )
         completed = call(service, "jobs_execute", **job)
+        assert invoke(service, "models_resume", idempotency_key="durable-job-01")["issues"] == [
+            {"code": "invalid_handle"}
+        ]
         assert completed["state"] == "succeeded"  # execution, NOT quality verdict
         assert call(service, "jobs_execute", **job) == completed
         saved = call(service, "jobs_result", **job)
@@ -77,6 +84,8 @@ def test_durable_job_native_validation_restart_result_and_cancel(tmp_path):
     try:
         again = call(service, "jobs_result", **job)
         assert again["result_sha256"] == completed["result_sha256"]
+        recovered = call(service, "jobs_result", idempotency_key="durable-job-01")
+        assert recovered["result_sha256"] == completed["result_sha256"]
         assert read(service, again["artifact"]["resource_id"])["issues"] == direct["issues"]
         assert call(service, "jobs_recover", **job)["state"] == "succeeded"
     finally:

@@ -46,7 +46,14 @@ class JobSubmit(WireModel):
 
 
 class JobInput(WireModel):
-    job_id: Annotated[str, Field(pattern=r"^job_[0-9a-f]{64}$")]
+    job_id: Annotated[str, Field(pattern=r"^job_[0-9a-f]{64}$")] | None = None
+    idempotency_key: Annotated[str, Field(min_length=8, max_length=128)] | None = None
+
+    @model_validator(mode="after")
+    def one_identity(self):
+        if (self.job_id is None) == (self.idempotency_key is None):
+            raise ValueError("Select exactly one job identity or original intent key")
+        return self
 
 
 class JobState(WireModel):
@@ -192,7 +199,9 @@ async def call(session, name, arguments):
         except BaseException:
             store.uncertain(plan["plan_id"])
             raise
-    identity = arguments.job_id
+    identity = arguments.job_id or store.committed_identity(
+        arguments.idempotency_key, "jobs_submit", "job_id"
+    )
     record, payload, output = read(store, identity)
     authorize(session, record)
     if name in {"jobs_cancel", "jobs_recover"}:

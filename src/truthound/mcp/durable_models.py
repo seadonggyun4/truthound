@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 from typing import Annotated
 
-from pydantic import Field
+from pydantic import Field, model_validator
 
 from truthound.mcp.advanced_contracts import ModelRestore, ModelSpec
 from truthound.mcp.approval import canonical
@@ -22,7 +22,14 @@ class ModelPersist(WireModel):
 
 
 class ModelResume(WireModel):
-    snapshot_id: Annotated[str, Field(pattern=r"^snapshot_[0-9a-f]{64}$")]
+    snapshot_id: Annotated[str, Field(pattern=r"^snapshot_[0-9a-f]{64}$")] | None = None
+    idempotency_key: Annotated[str, Field(min_length=8, max_length=128)] | None = None
+
+    @model_validator(mode="after")
+    def one_identity(self):
+        if (self.snapshot_id is None) == (self.idempotency_key is None):
+            raise ValueError("Select exactly one snapshot identity or original intent key")
+        return self
 
 
 class ModelSnapshot(WireModel):
@@ -135,8 +142,11 @@ async def call(session, name, arguments, models):
         except BaseException:
             store.uncertain(plan["plan_id"])
             raise
+    snapshot_id = arguments.snapshot_id or store.committed_identity(
+        arguments.idempotency_key, "models_persist", "snapshot_id"
+    )
     row = store.connection.execute(
-        "SELECT * FROM model_snapshots WHERE identity=?", (arguments.snapshot_id,)
+        "SELECT * FROM model_snapshots WHERE identity=?", (snapshot_id,)
     ).fetchone()
     if row is None:
         raise MCPError("invalid_handle")
