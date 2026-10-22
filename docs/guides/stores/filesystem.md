@@ -2,6 +2,14 @@
 
 Local storage backends for development, testing, and single-node deployments.
 
+For concurrent access, use `ConcurrentFileSystemStore` or
+`ConcurrentFileSystemExpectationStore` from
+`truthound.stores.backends.concurrent_filesystem`. First-use initialization is
+serialized per instance so competing threads share one initialized index and
+lock manager. Failed initialization remains retryable. This initialization lock
+does not replace inter-process file locking; retain the default `auto` lock
+strategy when multiple processes access the same store.
+
 ## FileSystem Store
 
 The `FileSystemStore` persists validation results as JSON files on the local filesystem. It requires no external dependencies and is the default backend.

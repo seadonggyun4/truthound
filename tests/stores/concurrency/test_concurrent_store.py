@@ -13,6 +13,7 @@ import pytest
 
 from truthound.stores.backends.concurrent_filesystem import (
     ConcurrentFileSystemStore,
+    ConcurrentFileSystemExpectationStore,
     ConcurrentFileSystemConfig,
     ConcurrencyConfig,
     LockStrategyType,
@@ -222,6 +223,74 @@ class TestConcurrency:
     These tests use NoOp locking for thread safety within the test process.
     For full multi-process concurrency testing, see integration tests.
     """
+
+    @pytest.mark.fault
+    @pytest.mark.parametrize(
+        "store_type", [ConcurrentFileSystemStore, ConcurrentFileSystemExpectationStore]
+    )
+    def test_first_use_initializes_once(self, tmp_path, monkeypatch, store_type):
+        """Hold the initializer until every contender has attempted its lock."""
+        target = store_type(base_path=str(tmp_path / "first-use"))
+        all_attempted = threading.Event()
+        counter_lock = threading.Lock()
+        actual_lock = threading.RLock()
+        attempts = 0
+        initializations = 0
+
+        class ObservedLock:
+            def __enter__(self):
+                nonlocal attempts
+                with counter_lock:
+                    attempts += 1
+                    if attempts == 5:
+                        all_attempted.set()
+                actual_lock.acquire()
+
+            def __exit__(self, *exc):
+                actual_lock.release()
+
+        original = target._do_initialize
+
+        def initialize():
+            nonlocal initializations
+            initializations += 1
+            assert all_attempted.wait(5), "All first-use callers must contend on the same lock"
+            original()
+
+        monkeypatch.setattr(target, "_initialization_lock", ObservedLock(), raising=False)
+        monkeypatch.setattr(target, "_do_initialize", initialize)
+        try:
+            with ThreadPoolExecutor(max_workers=5) as executor:
+                futures = [executor.submit(target.initialize) for _ in range(5)]
+                for future in futures:
+                    future.result(timeout=10)
+            assert attempts == 5
+            assert initializations == 1
+            assert target._initialized and target._index is not None
+        finally:
+            target.close()
+
+    @pytest.mark.fault
+    @pytest.mark.parametrize(
+        "store_type", [ConcurrentFileSystemStore, ConcurrentFileSystemExpectationStore]
+    )
+    def test_failed_initialization_can_retry(self, tmp_path, monkeypatch, store_type):
+        target = store_type(base_path=str(tmp_path / "retry"))
+        original = target._do_initialize
+
+        def failed():
+            raise OSError("initialization failed")
+
+        monkeypatch.setattr(target, "_do_initialize", failed)
+        with pytest.raises(OSError, match="initialization failed"):
+            target.initialize()
+        assert not target._initialized
+        monkeypatch.setattr(target, "_do_initialize", original)
+        try:
+            target.initialize()
+            assert target._initialized
+        finally:
+            target.close()
 
     def test_concurrent_saves(self, store: ConcurrentFileSystemStore) -> None:
         """Test concurrent save operations."""

@@ -2,6 +2,13 @@
 
 실무 운영 가이드에서 Local을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
 
+동시 접근에는 `truthound.stores.backends.concurrent_filesystem`의
+`ConcurrentFileSystemStore` 또는 `ConcurrentFileSystemExpectationStore`를
+사용합니다. 최초 사용 시 인스턴스별로 초기화를 직렬화하여 여러 스레드가
+하나의 초기화된 인덱스와 잠금 관리자를 공유합니다. 초기화 실패 후에는 재시도가
+가능합니다. 이 초기화 잠금은 프로세스 간 파일 잠금을 대체하지 않으므로,
+여러 프로세스가 같은 스토어에 접근한다면 기본 `auto` 잠금 전략을 유지하세요.
+
 ## FileSystem Store
 
 실무 운영 가이드에서 JSON, `FileSystemStore`, FileSystemStore을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.

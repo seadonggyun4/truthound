@@ -39,6 +39,7 @@ from __future__ import annotations
 import gzip
 import json
 import os
+import threading
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -255,7 +256,24 @@ class BatchContext:
         return len(self._pending_saves) + len(self._pending_deletes)
 
 
-class ConcurrentFileSystemStore(ValidationStore[ConcurrentFileSystemConfig]):
+class _ConcurrentInitialization:
+    """Publish one initialized index/lock manager per store instance."""
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        self._initialization_lock = threading.RLock()
+        super().__init__(*args, **kwargs)
+
+    def initialize(self) -> None:
+        # BaseStore's lazy flag alone is not a synchronization primitive.
+        # Keep failed initialization retryable; only BaseStore sets the flag
+        # after _do_initialize has completed successfully.
+        with self._initialization_lock:
+            super().initialize()
+
+
+class ConcurrentFileSystemStore(
+    _ConcurrentInitialization, ValidationStore[ConcurrentFileSystemConfig]
+):
     """Thread-safe and process-safe filesystem store.
 
     This store implementation provides full concurrency control for
@@ -700,7 +718,9 @@ class ConcurrentFileSystemStore(ValidationStore[ConcurrentFileSystemConfig]):
             self._lock_manager.release_all()
 
 
-class ConcurrentFileSystemExpectationStore(ExpectationStore[ConcurrentFileSystemConfig]):
+class ConcurrentFileSystemExpectationStore(
+    _ConcurrentInitialization, ExpectationStore[ConcurrentFileSystemConfig]
+):
     """Thread-safe filesystem expectation store.
 
     Similar to ConcurrentFileSystemStore but for expectation suites.
