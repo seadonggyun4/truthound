@@ -219,7 +219,10 @@ def test_kernel_suite_matches_native_policies_metadata_parallel_and_persistence(
     assert not completed["replayed"]
     assert call(service, "suites_validate", **request)["replayed"]
     paths = list((workspace / ".truthound/runs").glob("*.json"))
-    assert len(paths) == 1 and json.loads(paths[0].read_text())["suite_name"] == spec["name"]
+    assert (
+        len(paths) == 1
+        and json.loads(paths[0].read_text(encoding="utf-8"))["suite_name"] == spec["name"]
+    )
 
 
 @pytest.mark.fault

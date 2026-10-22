@@ -128,7 +128,7 @@ assert s["rates"]["success_rate"] == s["rates"]["failure_rate"] == 0.5
 r = StressTestResult(config=StressTestConfig(name="bounded"), total_operations=200, successful_operations=100, failed_operations=100)
 files = ReportGenerator(sys.argv[1]).generate(r, metrics=m, format="all")
 assert {p.suffix for p in files} == {".json", ".md", ".html"}
-data = json.loads(next(p for p in files if p.suffix == ".json").read_text())
+data = json.loads(next(p for p in files if p.suffix == ".json").read_text(encoding="utf-8"))
 assert data["detailed_metrics"]["operations"]["total"] == 200
 print("bounded-summary-and-reports-pass")
 """

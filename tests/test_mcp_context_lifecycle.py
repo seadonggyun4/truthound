@@ -152,11 +152,18 @@ def test_context_native_baseline_applied_suite_metric_history_and_artifact_lifec
         result = operation("persist_run", "persist-run-01", resource_id=run)
         assert result["relative_path"].startswith("runs/")
         assert (
-            json.loads((workspace / ".truthound" / result["relative_path"]).read_text())["checks"]
+            json.loads(
+                (workspace / ".truthound" / result["relative_path"]).read_text(encoding="utf-8")
+            )["checks"]
             == ValidationRunResult.from_dict(read(service, run)).to_dict()["checks"]
         )
         docs = operation("persist_docs", "persist-docs-01", resource_id=run)
-        assert "<html" in (workspace / ".truthound" / docs["relative_path"]).read_text().lower()
+        assert (
+            "<html"
+            in (workspace / ".truthound" / docs["relative_path"])
+            .read_text(encoding="utf-8")
+            .lower()
+        )
         assert operation("list_runs", "list-runs-01")["total"] == 1
         assert operation("list_docs", "list-docs-01")["total"] == 1
         call(service, "resources_release", resource_id=context)
