@@ -212,6 +212,12 @@ MULTI_COLUMN_CAUGHT_ERRORS = frozenset(
 )
 
 RUNTIME_SETTING_ERRORS = {
+    # A valid native integer boundary, accepted at construction. Formatting
+    # the minimum in validate() overflows float division; no large allocation.
+    "table_memory_size": {"min_size_bytes": 10**400},
+    # Explicit single-column selection bypasses automatic string selection;
+    # native collection succeeds, then get_column raises ColumnNotFoundError.
+    "consistent_casing": {"column": "absent"},
     "between": {"min_value": 2**256},
     "json_schema": {"column": "absent"},
     "date_format": {"format": "%Y%Y"},
