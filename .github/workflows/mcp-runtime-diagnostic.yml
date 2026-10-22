@@ -1,0 +1,32 @@
+name: MCP installed runtime diagnostic (not a release gate)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  windows-installed-runtime:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    env:
+      POLARS_MAX_THREADS: "1"
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --python 3.13 --frozen --extra dev --extra mcp
+      - run: uv run --python 3.13 --frozen --extra dev --extra mcp python verification/mcp_release.py --expected-python 3.13 --output dist/mcp --smoke
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: truthound-installed-runtime-diagnostic
+          path: |
+            dist/mcp/*.whl
+            dist/mcp/*.tar.gz
+            dist/mcp/*.mcpb
+            dist/mcp/runtime-proofs.json
+            dist/mcp/SHA256SUMS
+          if-no-files-found: error

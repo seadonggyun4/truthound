@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import shutil
 import subprocess
 import sys
@@ -224,6 +225,44 @@ def run(argv, **kwargs):
     subprocess.run(list(map(str, argv)), check=True, **kwargs)
 
 
+def runtime_failure_diagnostic(result):
+    """Bounded metadata only; never disclose captured output or data values."""
+    kinds = {
+        "AssertionError",
+        "RuntimeError",
+        "ValueError",
+        "TypeError",
+        "ImportError",
+        "ModuleNotFoundError",
+        "UnicodeDecodeError",
+        "ExceptionGroup",
+        "OSError",
+    }
+    diagnostic = {
+        "returncode": result.returncode,
+        "stdout_sha256": hashlib.sha256(result.stdout.encode("utf-8")).hexdigest(),
+        "stderr_sha256": hashlib.sha256(result.stderr.encode("utf-8")).hexdigest(),
+        "exception_types": sorted(kind for kind in kinds if kind in result.stderr),
+        "smoke_lines": [int(n) for n in re.findall(r'File "<string>", line (\d+)', result.stderr)][
+            :16
+        ],
+        "worker_error": "worker_error" in result.stderr,
+    }
+    allowed_causes = {"missing_home", "lost_stdin", "lost_stdout", "cpu_feature"}
+    for line in result.stdout.splitlines()[:16]:
+        if len(line) > 16384:
+            continue
+        try:
+            probe = json.loads(line)
+        except (ValueError, TypeError):
+            continue
+        if isinstance(probe, dict) and isinstance(probe.get("known_causes"), dict):
+            diagnostic["worker_known_causes"] = {
+                key: probe["known_causes"].get(key) is True for key in sorted(allowed_causes)
+            }
+    return diagnostic
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
@@ -256,8 +295,14 @@ print("TRUTHOUND_RUNTIME_PROOF:"+json.dumps({
             cwd=cwd,
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
         )
         if result.returncode:
+            print(
+                json.dumps({"stage": stage, "runtime_failure": runtime_failure_diagnostic(result)}),
+                flush=True,
+            )
             raise RuntimeError("INSTALLED_RUNTIME_SMOKE_FAILED:" + stage)
         lines = [
             line

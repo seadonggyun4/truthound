@@ -19,6 +19,41 @@ def load(name, path):
     return module
 
 
+def test_installed_runtime_failure_preserves_safe_diagnostics_not_captured_secrets():
+    import json
+
+    release = load("release_failure_diagnostic_test", "verification/mcp_release.py")
+    secret = "synthetic-private-output-never-publish"
+    child = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys; print(sys.argv[1]); raise AssertionError(sys.argv[1])",
+            secret,
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert child.returncode != 0
+    child.stdout += json.dumps({"known_causes": {"missing_home": True, secret: secret}}) + "\n"
+    observed = release.runtime_failure_diagnostic(child)
+    assert observed["exception_types"] == ["AssertionError"]
+    assert observed["smoke_lines"] == [1]
+    assert observed["worker_known_causes"]["missing_home"] is True
+    assert secret not in json.dumps(observed)
+    assert len(observed["stderr_sha256"]) == len(observed["stdout_sha256"]) == 64
+    import yaml
+
+    workflow = yaml.safe_load(
+        (ROOT / ".github/workflows/mcp-runtime-diagnostic.yml").read_text(encoding="utf-8")
+    )
+    assert set(workflow.get("on") or workflow.get(True)) == {"workflow_dispatch"}
+    assert workflow["permissions"] == {"contents": "read"}
+    assert workflow["jobs"]["windows-installed-runtime"]["runs-on"] == "windows-latest"
+    assert "not a release gate" in workflow["name"]
+
+
 def test_optional_metadata_does_not_erase_results_but_full_still_requires_sdk(monkeypatch):
     nightly = load("nightly_diagnostic_test", "verification/ci/nightly_plan.py")
     original = nightly.importlib.metadata.version
