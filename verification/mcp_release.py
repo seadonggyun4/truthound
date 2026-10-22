@@ -33,6 +33,7 @@ print("fresh-base-core-without-sdk-pass")
 
 SMOKE = """
 import asyncio, hashlib, json, os, re, subprocess, sys, tempfile
+from contextlib import closing
 from pathlib import Path
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -167,7 +168,7 @@ async def core_profile():
                 assert (await invoke("suites_validate",{"asset_id":asset,"suite_id":suite}))["artifact"]["bytes"]>0
                 import sqlite3
                 database=data/"native.db"
-                with sqlite3.connect(database) as connection:
+                with closing(sqlite3.connect(database)) as connection, connection:
                     connection.execute("CREATE TABLE items (age INTEGER)")
                     connection.executemany("INSERT INTO items VALUES (?)",[(10,),(None,)])
                 sql=(await invoke("sources_open_sqlite",{"path":str(database),"table":"items","config":{"name":"installed-sql"}}))["resource_id"]
@@ -237,6 +238,8 @@ def runtime_failure_diagnostic(result):
         "UnicodeDecodeError",
         "ExceptionGroup",
         "OSError",
+        "PermissionError",
+        "FileNotFoundError",
     }
     diagnostic = {
         "returncode": result.returncode,

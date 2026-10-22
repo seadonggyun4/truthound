@@ -54,6 +54,57 @@ def test_installed_runtime_failure_preserves_safe_diagnostics_not_captured_secre
     assert "not a release gate" in workflow["name"]
 
 
+def test_installed_sqlite_smoke_closes_its_actual_fixture_connection(tmp_path):
+    import ast
+    import contextlib
+    import sqlite3
+
+    release = load("release_sqlite_fixture_test", "verification/mcp_release.py")
+    statements = [
+        node
+        for node in ast.walk(ast.parse(release.SMOKE))
+        if isinstance(node, ast.With)
+        and any(
+            isinstance(child, ast.Call)
+            and isinstance(child.func, ast.Attribute)
+            and child.func.attr == "connect"
+            for item in node.items
+            for child in ast.walk(item.context_expr)
+        )
+    ]
+    assert len(statements) == 1
+    connections = []
+
+    def connect(*args, **kwargs):
+        connection = sqlite3.connect(*args, **kwargs)
+        connections.append(connection)
+        return connection
+
+    database = tmp_path / "native-smoke.sqlite"
+    try:
+        exec(
+            compile(
+                ast.Module(body=statements, type_ignores=[]), "<installed-sql-fixture>", "exec"
+            ),
+            {
+                "sqlite3": SimpleNamespace(connect=connect),
+                "closing": contextlib.closing,
+                "database": database,
+            },
+        )
+        assert len(connections) == 1
+        with pytest.raises(sqlite3.ProgrammingError, match="closed database"):
+            connections[0].execute("SELECT 1")
+        with contextlib.closing(sqlite3.connect(database)) as independent:
+            assert independent.execute("SELECT age FROM items ORDER BY rowid").fetchall() == [
+                (10,),
+                (None,),
+            ]
+    finally:
+        for connection in connections:
+            connection.close()
+
+
 def test_optional_metadata_does_not_erase_results_but_full_still_requires_sdk(monkeypatch):
     nightly = load("nightly_diagnostic_test", "verification/ci/nightly_plan.py")
     original = nightly.importlib.metadata.version
