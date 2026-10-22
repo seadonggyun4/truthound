@@ -220,6 +220,8 @@ The same opt-in profile also exposes these named operations:
 | `models_ensemble_add`, `models_ensemble_remove` | Revision-checked native editing; detached children remain restorable artifacts |
 | `models_persist`, `models_resume` | Separately approved private model snapshots and new-session restoration |
 | `jobs_submit`, `jobs_execute`, `jobs_status`, `jobs_result`, `jobs_cancel`, `jobs_recover` | Approved durable validation occurrences, retained results and indeterminate lease recovery |
+| `schedules_register`, `schedules_status`, `schedules_disable` | Approved persistent cron recurrence and lifecycle, executed by the local foreground worker |
+| `storage_policy_register`, `storage_policy_status`, `storage_policy_disable` | Approved persistent automatic age/count retention policies |
 | `storage_retention_preview`, `storage_delete` | Native age/count retention preview and separately approved exact payload deletion |
 | `schedules_preview` | Native cron validation, matching and bounded next-time preview; no job registration |
 | `models_save`, `models_restore` | Native trained-state JSON artifacts and new owned model workers restored from them |
@@ -553,7 +555,8 @@ lease and result; cancelling one does not cancel the others. All input copies
 count against the unchanged storage quotas. These are a finite series, not an
 unbounded recurrence rule. Use each ID with `jobs_status`, `jobs_execute`, `jobs_result`,
 `jobs_cancel`, or `jobs_recover`. A client must explicitly execute a due job;
-there is no daemon, unlimited recurring scheduler, paid provider call or automatic retry.
+`jobs_submit` itself does not install a daemon or authorize recurring execution.
+There are no paid provider calls or automatic retries.
 Queued input survives session closure. Completed native results survive restart
 and can become newly authorized session artifacts. A completed execution can
 still contain data-quality violations; native execution failures remain `failed`.
@@ -570,8 +573,43 @@ submission also accept the original `idempotency_key` instead of `job_id`; they
 resolve and reauthorize the existing record rather than submit another job.
 For a series, the original key resolves the first occurrence and its complete
 ID list. Supply exactly one selector. These limits remain subject to existing
-file/session budgets. No unattended scheduler or provider-backed jobs are
-provided; this is not full scheduling parity.
+file/session budgets. Provider-backed jobs remain unsupported; this is not full scheduling parity.
+
+### Persistent recurrence and foreground worker
+
+`schedules_register` takes the same validation request as `jobs_submit`, but requires
+a schedule with `count: 1`. Its separately approved plan authorizes captured-input
+storage and indefinite recurring execution. The definition and first occurrence
+commit atomically. `schedules_status` and `schedules_disable` accept either its
+`control_id` or original `idempotency_key`. Disabling cancels a queued head; work
+already running may finish. Failed, cancelled or indeterminate heads pause the
+definition without retrying. Successful heads advance by one native cron time per
+sweep, including missed times in order. A native cron search with no next time
+stops with an error, never a fabricated next occurrence.
+
+The operator must start the foreground process explicitly with the same grants
+and limits as the registering server (replace paths with existing local directories):
+
+```bash
+truthound-mcp worker --allow-dir /data --control-dir /private/control \
+  --profile core --allow-sensitive-results --poll-interval 5
+```
+
+`--once` performs one sweep; `--poll-interval` is an integer from 1 to 3600 seconds.
+SIGINT/SIGTERM stops after the current bounded operation. No system service is
+installed. Separate workers share transactional cursors and execution leases.
+Storage quotas do not increase: exhausted storage stops the worker. At most 64
+definitions, including disabled ones, are retained. Persistent retention policies
+can prune old completed payloads; current active/paused schedule heads are protected.
+Policy changes, corrupt records and uncertain outcomes are not silently retried.
+
+`storage_policy_register` accepts the preview policy plus an `idempotency_key` and
+requires separate approval for future automatic deletion. The worker evaluates
+approved policies before schedules on each sweep. `storage_policy_status` and
+`storage_policy_disable` accept a `control_id` or original `idempotency_key`.
+Disabling prevents later sweeps, not an already committed deletion. Policies and
+schedule cursors survive session/process restart. This does not install an
+always-on OS service or add external provider execution.
 
 ### Durable storage retention and deletion
 
@@ -591,9 +629,9 @@ successful receipt commit atomically; replay returns the receipt without deletin
 again. Existing resumed models/result handles are denied after their durable
 source is deleted. Approval receipts remain for audit and replay prevention.
 Deletion is logical SQLite payload removal, not guaranteed disk sanitization.
-Policies are explicitly evaluated per call: no persisted automatic cleanup rule,
-background pruning, archival, compression or full retention subsystem parity is
-claimed. Legacy undated records may still be explicitly selected for approved
+Explicit previews do not delete data; automatic cleanup requires the separate
+persistent policy approval and operator-started worker above. Archival, compression
+and full retention subsystem parity are not claimed. Legacy undated records may still be explicitly selected for approved
 deletion. All operations require the same private control store and operator
 policy plus sensitive-result consent.
 

@@ -82,6 +82,7 @@ def eligible(record):
 
 
 async def call(session, name, arguments):
+    from truthound.mcp.automation import pinned
     from truthound.mcp.durable_jobs import storage
     from truthound.mcp.durable_models import storage as model_storage
     from truthound.stores.retention.base import ItemMetadata
@@ -95,7 +96,7 @@ async def call(session, name, arguments):
         for row in store.connection.execute(f"SELECT identity FROM {table} ORDER BY identity"):
             identity = row[0]
             record, size, _ = read(session, identity)
-            if not eligible(record) or "created_at" not in record:
+            if not eligible(record) or "created_at" not in record or pinned(session, identity):
                 excluded.append(identity)
                 continue
             items.append(
@@ -132,7 +133,7 @@ async def call(session, name, arguments):
         return plan["committed_result"]
     for identity in identities:
         record, _, _ = read(session, identity)
-        if not eligible(record):
+        if not eligible(record) or pinned(session, identity):
             raise MCPError("busy")
     if plan["state"] != "approved":
         return envelope(name, data=plan, error="approval_required")
@@ -142,7 +143,7 @@ async def call(session, name, arguments):
         with store.transaction():
             for identity in identities:
                 record, _, table = read(session, identity)
-                if not eligible(record):
+                if not eligible(record) or pinned(session, identity):
                     raise MCPError("busy")
                 store.connection.execute(f"DELETE FROM {table} WHERE identity=?", (identity,))
             store.finish_in_transaction(plan["plan_id"], result)

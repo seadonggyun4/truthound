@@ -41,6 +41,8 @@ and ends at the closing </p> of the badge block above.
 
 ## Plugin Platform
 
+Development sources also provide separately approved persistent cron recurrence and automatic retention, driven by an operator-started foreground worker; these are not in the published 3.2.0 package.
+
 Development sources extend the existing three MCP tools with an opt-in Core profile: closed validator settings, retained assets/results/schemas, native Polars/SQLite/DuckDB datasource lifecycle, local file-stream cursors, declarative kernel suites, advanced profiling, drift/ML/lineage (including trained-model save/restore, ensemble editing, approved cross-session snapshots, learned-rule queries/conversion and graph/subgraph JSON/DOT/Mermaid artifacts), native cron previews, approved durable finite validation series, native age/count retention previews and approved deletion, schema audits, reporting and separately approved persistent context lifecycle/native extension bindings. Sensitive reads require operator disclosure consent. **This is not full Core parity or part of the published 3.2.0 release.** [Current implementation, usage and limitations](docs/guides/mcp.md#core-profile-unreleased-source-checkout)
 
 - **Codex and ChatGPT desktop (plugin 0.1.2)**: Add the [Truthound repository marketplace](.agents/plugins/marketplace.json), then choose **Plugins → Truthound Plugins → Truthound Local → Install → Set up** and approve a data directory. One-time marketplace setup: `codex plugin marketplace add seadonggyun4/truthound --ref main`. [Installation, consent and official submission](docs/guides/mcp.md)

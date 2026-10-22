@@ -19,6 +19,7 @@ def operations(descriptor):
         ModelSpec,
         ModelState,
     )
+    from truthound.mcp.automation import ControlInput, ControlState, PolicyRegister
     from truthound.mcp.contexts import ContextAction, ContextActionResult
     from truthound.mcp.durable_jobs import JobInput, JobState, JobSubmit
     from truthound.mcp.durable_models import ModelPersist, ModelResume, ModelSnapshot
@@ -59,6 +60,34 @@ def operations(descriptor):
     from truthound.mcp.suites import SuiteCreate, SuiteValidation
 
     rows = (
+        (
+            "schedules_register",
+            "Approve persistent native cron recurrence; count must be one. An operator-started worker advances successful occurrences only.",
+            JobSubmit,
+            "truthound.checkpoint.scheduling",
+            ControlState | wire.OperationPlan,
+            True,
+        ),
+        (
+            "storage_policy_register",
+            "Approve a persistent native age/count retention policy and future eligible payload deletion by the operator-started worker.",
+            PolicyRegister,
+            "truthound.stores.retention",
+            ControlState | wire.OperationPlan,
+            True,
+        ),
+        *(
+            (name, description, ControlInput, "truthound.mcp.automation", ControlState, True)
+            for name, description in (
+                ("schedules_status", "Read a persistent schedule cursor and state."),
+                (
+                    "schedules_disable",
+                    "Disable future recurrence and cancel the queued head; already running work may finish.",
+                ),
+                ("storage_policy_status", "Read persistent automatic retention state."),
+                ("storage_policy_disable", "Disable future automatic retention sweeps."),
+            )
+        ),
         (
             "storage_retention_preview",
             "Evaluate native age/count policies without deletion; exclude active, indeterminate and undated legacy records.",
@@ -777,6 +806,10 @@ def operations(descriptor):
                 "models_persist",
                 "models_resume",
                 "jobs_submit",
+                "schedules_register",
+                "schedules_disable",
+                "storage_policy_register",
+                "storage_policy_disable",
                 "jobs_execute",
                 "jobs_cancel",
                 "jobs_recover",
@@ -798,6 +831,7 @@ def operations(descriptor):
             },
             requires_workspaces=name.startswith("contexts_"),
             requires_control=name.startswith(("jobs_", "storage_"))
+            or name in {"schedules_register", "schedules_status", "schedules_disable"}
             or name
             in {
                 "contexts_initialize",

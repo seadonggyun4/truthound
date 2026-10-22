@@ -125,7 +125,14 @@ def info(identity, record):
 async def call(session, name, arguments):
     store = storage(session)
     resources = session.resources
-    if name == "jobs_submit":
+    if name in {"jobs_submit", "schedules_register"}:
+        recurring = name == "schedules_register"
+        if recurring:
+            from truthound.mcp import automation
+
+            automation.storage(session)
+            if arguments.schedule is None or arguments.schedule.count != 1:
+                raise MCPError("invalid_arguments")
         entry = resources.get(arguments.validation.asset_id, "asset")
         inputs = ancestry(resources, entry)
         if any(
@@ -158,7 +165,8 @@ async def call(session, name, arguments):
             request=intent,
             policy=policy,
             session=session.identity,
-            effects=["persistent_input_storage", "deferred_validation"],
+            effects=["persistent_input_storage", "deferred_validation"]
+            + (["unbounded_recurring_validation", "unattended_execution"] if recurring else []),
         )
         if "committed_result" in plan:
             return plan["committed_result"]
@@ -187,11 +195,26 @@ async def call(session, name, arguments):
             "occurrence_ids": occurrence_ids,
         }
         result = envelope(name, data=info(identity, record))
+        if recurring:
+            control_id = "automation_" + store.digest({"plan": plan["plan_id"]})
+            control = dict(
+                kind="schedule",
+                state="active",
+                job_id=identity,
+                generation=0,
+                schedule=arguments.schedule.model_dump(),
+                policy=policy,
+                origins=record["origins"],
+            )
+            result = envelope(name, data=automation.info(control_id, control))
         store.begin(plan["plan_id"], session=session.identity, policy=session._policy_stamp())
         try:
             for item in inputs:
                 resources.get(item.id)
             with store.transaction():
+                if recurring:
+                    automation.capacity(store)
+                    automation.write(store, control_id, control)
                 size, count = store.connection.execute(
                     "SELECT COALESCE(SUM(length(input)+COALESCE(length(output),0)),0),COUNT(*) FROM validation_jobs"
                 ).fetchone()

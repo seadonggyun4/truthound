@@ -37,13 +37,23 @@ class Operation:
         durable = self.operation_id.startswith(("jobs_", "storage_")) or self.operation_id in {
             "models_persist",
             "models_resume",
+            "schedules_register",
+            "schedules_status",
+            "schedules_disable",
         }
         approval = (
             self.requires_control
             and self.mutating
             and (
                 not durable
-                or self.operation_id in {"models_persist", "jobs_submit", "storage_delete"}
+                or self.operation_id
+                in {
+                    "models_persist",
+                    "jobs_submit",
+                    "storage_delete",
+                    "schedules_register",
+                    "storage_policy_register",
+                }
             )
         )
         discovery = self.operation_id in {

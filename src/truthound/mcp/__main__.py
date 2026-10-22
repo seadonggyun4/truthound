@@ -27,6 +27,14 @@ def main() -> None:
         action="store_true",
         help="Operator consent to disclose raw values and full Core evidence within allowed directories",
     )
+    worker = commands.add_parser(
+        "worker",
+        parents=[serve],
+        add_help=False,
+        help="Run approved local automation in the foreground",
+    )
+    worker.add_argument("--once", action="store_true")
+    worker.add_argument("--poll-interval", type=int, default=5)
     bundle = commands.add_parser("bundle", help="Build a Claude Desktop MCPB")
     bundle.add_argument("--output", required=True, type=Path)
     bundle.add_argument(
@@ -100,7 +108,7 @@ def main() -> None:
         print(build_bundle(args.output, wheel=args.wheel))
         return
     try:
-        from truthound.mcp.policy import MCPPolicy
+        from truthound.mcp.policy import MCPError, MCPPolicy
         from truthound.mcp.server import serve as run
 
         policy = MCPPolicy(
@@ -116,7 +124,12 @@ def main() -> None:
             max_session_bytes=args.max_session_bytes,
             handle_ttl_seconds=args.handle_ttl_seconds,
         )
-        asyncio.run(run(policy))
+        if args.command == "worker":
+            from truthound.mcp.automation import run as run_worker
+
+            asyncio.run(run_worker(policy, once=args.once, interval=args.poll_interval))
+        else:
+            asyncio.run(run(policy))
     except ModuleNotFoundError as exc:
         if exc.name and (exc.name == "mcp" or exc.name.startswith("mcp.")):
             print('Install the MCP extra: pip install "truthound[mcp]"', file=sys.stderr)
@@ -124,6 +137,8 @@ def main() -> None:
         raise
     except (ValueError, OSError):
         parser.error("Invalid MCP policy; provide existing allowed directories and valid limits")
+    except MCPError:
+        parser.error("MCP worker stopped; inspect approved control state before restarting")
 
 
 if __name__ == "__main__":

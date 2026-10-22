@@ -95,6 +95,7 @@ async def core_profile():
                 required.add("schedules_preview")
                 required|={"models_ensemble_add","models_ensemble_remove","models_persist","models_resume","jobs_submit","jobs_execute","jobs_status","jobs_result","jobs_cancel","jobs_recover"}
                 required|={"storage_retention_preview","storage_delete"}
+                required|={"schedules_register","schedules_status","schedules_disable","storage_policy_register","storage_policy_status","storage_policy_disable"}
                 required|={"drift_catalog","drift_detect","profilers_catalog","profilers_profile","schemas_create","schemas_export"}
                 required|={"suites_create","suites_inspect","suites_validate","contexts_execute"}
                 required|={"sources_open_polars","sources_inspect","sources_sample","sources_validate_connection","sources_validate_columns","sources_check_size_limits","sources_validate"}
@@ -249,6 +250,20 @@ async def core_profile():
                 assert pending.isError and pending.structuredContent["issues"]==[{"code":"approval_required"}]
                 subprocess.run([sys.executable,"-I","-m","truthound.mcp","approve-plan","--control-dir",str(control),"--plan-id",pending.structuredContent["data"]["plan_id"]],check=True,capture_output=True)
                 assert (await invoke("storage_delete",delete_args))["deleted"]==sorted(delete_args["identities"])
+                recurring={**job_args,"idempotency_key":"installed-recurring-job","schedule":{**job_args["schedule"],"count":1}}
+                controls=[]
+                for operation,arguments in (("schedules_register",recurring),("storage_policy_register",{"kind":"jobs","max_count":1,"idempotency_key":"installed-retention-policy"})):
+                    pending=await client.call_tool(operation,arguments)
+                    assert pending.isError and pending.structuredContent["issues"]==[{"code":"approval_required"}]
+                    subprocess.run([sys.executable,"-I","-m","truthound.mcp","approve-plan","--control-dir",str(control),"--plan-id",pending.structuredContent["data"]["plan_id"]],check=True,capture_output=True)
+                    controls.append(await invoke(operation,arguments))
+                worker_args=list(params.args)
+                worker_args[3]="worker"
+                subprocess.run([sys.executable,*worker_args,"--once"],check=True,capture_output=True)
+                recurrence=await invoke("schedules_status",{"idempotency_key":"installed-recurring-job"})
+                assert (await invoke("jobs_status",{"job_id":recurrence["job_id"]}))["state"]=="succeeded"
+                assert (await invoke("schedules_disable",{"control_id":controls[0]["control_id"]}))["state"]=="disabled"
+                assert (await invoke("storage_policy_disable",{"control_id":controls[1]["control_id"]}))["state"]=="disabled"
                 learner=(await invoke("models_create",{"algorithm":"DataProfileRuleLearner"}))["model_id"]
                 await invoke("models_fit",{"model_id":learner,"asset_id":training,"expected_revision":0})
                 rule_suite=await invoke("models_rule_query",{"model_id":learner,"asset_id":training,"expected_revision":1,"action":"suite"})

@@ -331,6 +331,218 @@ def test_repeated_submission_rolls_back_every_occurrence_on_partial_write(tmp_pa
         service.close()
 
 
+def test_persistent_automation_restart_native_cron_and_approved_retention(tmp_path):
+    from datetime import datetime
+
+    from truthound.mcp.automation import tick
+    from truthound.scheduling import CronExpression
+
+    data, control = tmp_path / "data", tmp_path / "control"
+    data.mkdir()
+    control.mkdir(mode=0o700)
+    policy = MCPPolicy(
+        (data,), profile="core", allow_sensitive_results=True, control_directory=control
+    )
+    service = MCPService(policy)
+
+    def approved(name, **request):
+        pending = invoke(service, name, **request)
+        assert pending["issues"] == [{"code": "approval_required"}], pending
+        store = ApprovalStore(control)
+        try:
+            store.approve(pending["data"]["plan_id"])
+        finally:
+            store.close()
+        return call(service, name, **request)
+
+    try:
+        asset = call(
+            service,
+            "assets_inline",
+            columns=[{"name": "x", "dtype": {"kind": "Int64"}, "values": [1, None]}],
+        )["resource_id"]
+        request = dict(
+            validation={"asset_id": asset, "checks": [{"validator": "not_null"}]},
+            schedule={"expression": "@hourly", "after": "2020-01-01T00:00:00+00:00", "count": 1},
+            idempotency_key="persistent-recurring-01",
+        )
+        schedule = approved("schedules_register", **request)
+        assert call(service, "schedules_register", **request) == schedule
+        retention = approved(
+            "storage_policy_register",
+            kind="jobs",
+            max_count=1,
+            idempotency_key="automatic-retention-01",
+        )
+        service.close()
+        service = MCPService(policy)
+        control_arg = {"control_id": schedule["control_id"]}
+        call(service, "schedules_status", **control_arg)
+        expected = CronExpression.parse("@hourly").next_n(
+            4, datetime.fromisoformat(request["schedule"]["after"])
+        )
+        for generation, due in enumerate(expected):
+            asyncio.run(tick(service._session))
+            state = call(service, "schedules_status", **control_arg)
+            assert state["generation"] == generation
+            job = call(service, "jobs_status", job_id=state["job_id"])
+            assert job["state"] == "succeeded" and job["due_at"] == due.timestamp()
+            assert invoke(
+                service,
+                "storage_delete",
+                identities=[job["job_id"]],
+                idempotency_key=f"protected-head-{generation}",
+            )["issues"] == [{"code": "busy"}]
+        other = MCPService(policy)
+        try:
+            call(other, "schedules_status", **control_arg)
+
+            async def competing_workers():
+                return await asyncio.gather(tick(service._session), tick(other._session))
+
+            asyncio.run(competing_workers())
+            concurrent = call(service, "schedules_status", **control_arg)
+            assert concurrent["generation"] == len(expected)
+            assert call(service, "jobs_status", job_id=concurrent["job_id"])["state"] == "succeeded"
+            state = concurrent
+        finally:
+            other.close()
+        assert (
+            call(service, "storage_policy_status", control_id=retention["control_id"])["deleted"]
+            >= 1
+        )
+        assert invoke(service, "storage_policy_disable", **control_arg)["issues"] == [
+            {"code": "invalid_handle"}
+        ]
+        assert call(service, "schedules_disable", **control_arg)["state"] == "disabled"
+        call(service, "storage_policy_disable", control_id=retention["control_id"])
+        assert asyncio.run(tick(service._session)) == 0
+        approved(
+            "storage_delete", identities=[state["job_id"]], idempotency_key="disabled-head-delete"
+        )
+        assert call(service, "schedules_disable", **control_arg)["state"] == "disabled"
+    finally:
+        service.close()
+
+
+@pytest.mark.parametrize("fault", ["partial_write", "expired_lease", "tamper", "policy_change"])
+def test_recurring_automation_faults_never_retry_or_advance(tmp_path, monkeypatch, fault):
+    from truthound.mcp import automation, durable_jobs
+    from truthound.mcp.policy import MCPError
+
+    data, control = tmp_path / "data", tmp_path / "control"
+    data.mkdir()
+    control.mkdir(mode=0o700)
+    policy = MCPPolicy(
+        (data,), profile="core", allow_sensitive_results=True, control_directory=control
+    )
+    service = MCPService(policy)
+    try:
+        asset = call(
+            service,
+            "assets_inline",
+            columns=[{"name": "x", "dtype": {"kind": "Int64"}, "values": [1]}],
+        )["resource_id"]
+        request = dict(
+            validation={"asset_id": asset},
+            schedule={"expression": "@hourly", "after": "2020-01-01T00:00:00+00:00", "count": 1},
+            idempotency_key="fault-recurring-01",
+        )
+        pending = invoke(service, "schedules_register", **request)
+        assert pending["issues"] == [{"code": "approval_required"}]
+        store = service._session.approvals()
+        store.approve(pending["data"]["plan_id"])
+        if fault == "partial_write":
+            original = durable_jobs.write
+
+            def interrupted(*args):
+                original(*args)
+                raise MCPError("injected_partial_write")
+
+            monkeypatch.setattr(durable_jobs, "write", interrupted)
+            assert invoke(service, "schedules_register", **request)["issues"] == [
+                {"code": "outcome_unknown"}
+            ]
+            for table in ("validation_jobs", "mcp_automations"):
+                assert store.connection.execute(f"SELECT COUNT(*) FROM {table}").fetchone()[0] == 0
+            return
+        state = call(service, "schedules_register", **request)
+        if fault == "expired_lease":
+            record, payload, output = durable_jobs.read(store, state["job_id"])
+            record.update(state="running", lease_until=0)
+            durable_jobs.write(store, state["job_id"], record, payload, output)
+            asyncio.run(automation.tick(service._session))
+            paused = call(service, "schedules_status", control_id=state["control_id"])
+            assert paused["state"] == "paused" and paused["generation"] == 0
+            assert (
+                call(service, "jobs_status", job_id=state["job_id"])["state"] == "outcome_unknown"
+            )
+            assert asyncio.run(automation.tick(service._session)) == 0
+        else:
+            if fault == "tamper":
+                store.connection.execute("UPDATE mcp_automations SET signature='corrupt'")
+            else:
+                service.close()
+                service = MCPService(
+                    MCPPolicy(
+                        (data,),
+                        profile="core",
+                        allow_sensitive_results=True,
+                        control_directory=control,
+                        max_items=99,
+                    )
+                )
+                invoke(service, "schedules_status", control_id=state["control_id"])
+            with pytest.raises(MCPError) as failure:
+                asyncio.run(automation.tick(service._session))
+            assert failure.value.code == (
+                "invalid_control_state" if fault == "tamper" else "access_denied"
+            )
+    finally:
+        service.close()
+
+
+@pytest.mark.fault
+def test_foreground_worker_rejects_invalid_policy_and_stops_owned_process(tmp_path):
+    import os
+    import subprocess
+    import sys
+    import time
+
+    data, control = tmp_path / "data", tmp_path / "control"
+    data.mkdir()
+    control.mkdir(mode=0o700)
+    args = [
+        sys.executable,
+        "-m",
+        "truthound.mcp",
+        "worker",
+        "--allow-dir",
+        str(data),
+        "--control-dir",
+        str(control),
+    ]
+    denied = subprocess.run([*args, "--once"], capture_output=True, timeout=30)
+    assert denied.returncode != 0
+    assert b"Traceback" not in denied.stderr
+    valid = [*args, "--profile", "core", "--allow-sensitive-results"]
+    assert subprocess.run([*valid, "--once"], capture_output=True, timeout=30).returncode == 0
+    if os.name == "nt":
+        # Windows terminate is not POSIX SIGTERM; use once to verify clean lifecycle there.
+        return
+    process = subprocess.Popen(valid, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    try:
+        time.sleep(1)
+        assert process.poll() is None
+        process.terminate()  # Only this test-owned foreground process.
+        _, stderr = process.communicate(timeout=30)
+        assert process.returncode == 0, stderr
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.communicate(timeout=10)
+
+
 def invoke(service, name, **arguments):
     return asyncio.run(service.call_operation_async(name, arguments))
 

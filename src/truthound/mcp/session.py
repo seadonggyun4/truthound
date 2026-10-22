@@ -512,10 +512,14 @@ class MCPSession:
             from truthound.mcp.scheduling import call as schedule_call
 
             return await schedule_call(self, name, arguments)
-        if name.startswith("jobs_"):
+        if name.startswith("jobs_") or name == "schedules_register":
             from truthound.mcp.durable_jobs import call as job_call
 
             return await job_call(self, name, arguments)
+        if name.startswith("storage_policy_") or name in {"schedules_status", "schedules_disable"}:
+            from truthound.mcp.automation import call as automation_call
+
+            return await automation_call(self, name, arguments)
         if name.startswith("storage_"):
             from truthound.mcp.retention import call as retention_call
 

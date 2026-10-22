@@ -220,6 +220,9 @@ RUNTIME_SETTING_ERRORS = {
     "distribution": {"n_bins": 0},
     "approximate_unique_ratio": {"min_ratio": 1e308},
     "table_row_count_compare": {"tolerance_ratio": 1e308},
+    # Both finite values are accepted by the native constructor; multiplying
+    # the reference count overflows during validate(), then int(inf) raises.
+    "cross_table_row_count_factor": {"factor": 1e308, "tolerance_ratio": -0.1},
     # Constructors accept this integer; the native bounded chunk iterator
     # rejects it when converting the slice length, before allocating a chunk.
     **dict.fromkeys(
