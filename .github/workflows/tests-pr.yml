@@ -1,6 +1,7 @@
 name: Tests PR
 
 on:
+  merge_group:
   pull_request:
     paths:
       - ".github/workflows/tests-pr.yml"
@@ -18,6 +19,7 @@ on:
       - "tests/**"
       - "verification/**"
   push:
+    branches: [main]
     paths:
       - ".github/workflows/tests-pr.yml"
       - ".github/workflows/tests-nightly.yml"
@@ -218,13 +220,8 @@ jobs:
             test-artifacts/junit-fault-e2e.xml
 
   quality-ruff-ratchet:
-    name: quality-ruff-ratchet / ${{ matrix.target }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        target: [reporters, checkpoint-top-level, datasets-private]
     steps:
       - uses: actions/checkout@v4
 
@@ -239,8 +236,9 @@ jobs:
 
       - name: Run ruff ratchet target
         run: |
-          uv run --frozen --extra dev python verification/ci/run_ruff_ratchet.py \
-            --target ${{ matrix.target }}
+          for target in reporters checkpoint-top-level datasets-private; do
+            uv run --frozen --extra dev python verification/ci/run_ruff_ratchet.py --target "$target"
+          done
 
   quality-gate:
     if: ${{ always() }}

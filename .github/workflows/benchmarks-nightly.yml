@@ -1,6 +1,7 @@
 name: Benchmarks Manual
 
 on:
+  workflow_call:
   workflow_dispatch:
 
 jobs:

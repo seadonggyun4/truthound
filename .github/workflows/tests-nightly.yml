@@ -1,6 +1,11 @@
 name: Tests Nightly
-run-name: Nightly / ${{ inputs.run_full_suite && 'manual-full' || 'weekly-integration-core' }}
+run-name: Nightly / ${{ (github.event_name == 'schedule' || inputs.run_full_suite) && 'manual-full' || 'weekly-integration-core' }}
 on:
+  workflow_call:
+    inputs:
+      run_full_suite:
+        type: boolean
+        default: true
   schedule:
     - cron: "0 18 * * 3"
   workflow_dispatch:
@@ -25,7 +30,7 @@ env:
   NUMEXPR_NUM_THREADS: "1"
   LOKY_MAX_CPU_COUNT: "1"
   TRUTHOUND_ML_N_JOBS: "1"
-  NIGHTLY_MODE: ${{ inputs.run_full_suite && 'manual-full' || 'weekly-integration-core' }}
+  NIGHTLY_MODE: ${{ (github.event_name == 'schedule' || inputs.run_full_suite) && 'manual-full' || 'weekly-integration-core' }}
   TRUTHOUND_DATADOCS_REQUIRE_PDF_SMOKE: "1"
   TRUTHOUND_DATADOCS_REQUIRE_PDF_RENDER: "1"
 jobs:

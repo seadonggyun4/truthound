@@ -284,10 +284,34 @@ def runtime_failure_diagnostic(result):
     return diagnostic
 
 
+def copy_verified_artifacts(source: Path, output: Path):
+    """Consume the canonical build without rebuilding or trusting archive paths."""
+    entries = {}
+    for line in (source / "SHA256SUMS").read_text(encoding="utf-8").splitlines():
+        digest, name = line.split("  ", 1)
+        if (
+            not re.fullmatch(r"[0-9a-f]{64}", digest)
+            or not re.fullmatch(r"truthound-[A-Za-z0-9_.-]+\.(whl|tar\.gz|mcpb)", name)
+            or name in entries
+        ):
+            raise ValueError("INVALID_CANONICAL_INVENTORY")
+        entries[name] = digest
+    expected = {p.name for p in source.iterdir() if p.suffix in {".whl", ".gz", ".mcpb"}}
+    if len(entries) != 4 or set(entries) != expected:
+        raise ValueError("INCOMPLETE_CANONICAL_INVENTORY")
+    for name, digest in entries.items():
+        path = source / name
+        if path.is_symlink() or hashlib.sha256(path.read_bytes()).hexdigest() != digest:
+            raise ValueError("CANONICAL_ARTIFACT_HASH_MISMATCH")
+    for name in entries:
+        shutil.copyfile(source / name, output / name)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--smoke", action="store_true")
+    parser.add_argument("--from-artifacts", type=Path)
     parser.add_argument(
         "--expected-python", default=f"{sys.version_info.major}.{sys.version_info.minor}"
     )
@@ -347,7 +371,10 @@ print("TRUTHOUND_RUNTIME_PROOF:"+json.dumps({
     uv = shutil.which("uv")
     if not uv:
         raise SystemExit("uv is required")
-    run([uv, "build", "--out-dir", output], cwd=root)
+    if args.from_artifacts:
+        copy_verified_artifacts(args.from_artifacts.resolve(), output)
+    else:
+        run([uv, "build", "--out-dir", output], cwd=root)
     wheel = next(output.glob("*.whl"))
     sdist = next(output.glob("*.tar.gz"))
     with zipfile.ZipFile(wheel) as z, tarfile.open(sdist) as t:
@@ -379,23 +406,8 @@ print("TRUTHOUND_RUNTIME_PROOF:"+json.dumps({
         "version"
     ]
     python = sys.executable
-    run(
-        [python, "-m", "truthound.mcp", "bundle", "--output", output / f"truthound-{version}.mcpb"],
-        cwd=root,
-    )
-    run(
-        [
-            python,
-            "-m",
-            "truthound.mcp",
-            "bundle",
-            "--wheel",
-            wheel,
-            "--output",
-            output / f"truthound-{version}-local.mcpb",
-        ],
-        cwd=root,
-    )
+    if not args.from_artifacts:
+        build_bundles(python, root, output, version, wheel)
     with zipfile.ZipFile(output / f"truthound-{version}-local.mcpb") as z:
         # This is our own allowlisted generated archive, not an uploaded bundle.
         assert set(z.namelist()) == {
@@ -405,49 +417,10 @@ print("TRUTHOUND_RUNTIME_PROOF:"+json.dumps({
             "LICENSE",
             "wheels/" + wheel.name,
         }
+        assert z.read("wheels/" + wheel.name) == wheel.read_bytes()
         z.extractall(output / "extension")
     if args.smoke:
-        for artifact in (wheel, sdist):
-            with tempfile.TemporaryDirectory(prefix="truthound-install-") as td:
-                venv = Path(td) / "venv"
-                run([uv, "venv", "--python", args.expected_python, venv])
-                executable = venv / (
-                    "Scripts/python.exe" if __import__("os").name == "nt" else "bin/python"
-                )
-                run([uv, "pip", "install", "--python", executable, artifact])
-                smoke([executable, "-I", "-c"], BASE_SMOKE, artifact, "base-install", td)
-                run([uv, "pip", "install", "--python", executable, str(artifact) + "[mcp]"])
-                smoke([executable, "-I", "-c"], SMOKE, artifact, "mcp-install", td)
-                registry_smoke = SMOKE.replace(
-                    '["-I","-m","truthound.mcp","serve","--allow-dir",td]',
-                    '["-I","-m","truthound.cli","mcp","serve","--allow-dir",td]',
-                )
-                assert registry_smoke != SMOKE
-                smoke(
-                    [executable, "-I", "-c"], registry_smoke, artifact, "registry-cli-install", td
-                )
-        # Exercise the actual extracted launcher and UV source mapping before PyPI publishing.
-        with tempfile.TemporaryDirectory(prefix="truthound-bundle-data-") as td:
-            launcher_code = SMOKE.replace(
-                '["-I","-m","truthound.mcp","serve","--allow-dir",td]',
-                '[str(Path.cwd()/"server.py"),"serve","--allow-dir",td]',
-            )
-            smoke(
-                [
-                    uv,
-                    "run",
-                    "--directory",
-                    output / "extension",
-                    "--python",
-                    args.expected_python,
-                    "python",
-                    "-c",
-                ],
-                launcher_code,
-                output / f"truthound-{version}-local.mcpb",
-                "uv-launcher",
-                output / "extension",
-            )
+        smoke_artifacts(args, output, wheel, sdist, version, uv, smoke)
     (output / "runtime-proofs.json").write_text(json.dumps(proofs, indent=2), encoding="utf-8")
     inventory = [
         p for p in output.iterdir() if p.is_file() and p.suffix in {".whl", ".gz", ".mcpb"}
@@ -467,6 +440,68 @@ print("TRUTHOUND_RUNTIME_PROOF:"+json.dumps({
             }
         )
     )
+
+
+def build_bundles(python, root, output, version, wheel):
+    run(
+        [python, "-m", "truthound.mcp", "bundle", "--output", output / f"truthound-{version}.mcpb"],
+        cwd=root,
+    )
+    run(
+        [
+            python,
+            "-m",
+            "truthound.mcp",
+            "bundle",
+            "--wheel",
+            wheel,
+            "--output",
+            output / f"truthound-{version}-local.mcpb",
+        ],
+        cwd=root,
+    )
+
+
+def smoke_artifacts(args, output, wheel, sdist, version, uv, smoke):
+    for artifact in (wheel, sdist):
+        with tempfile.TemporaryDirectory(prefix="truthound-install-") as td:
+            venv = Path(td) / "venv"
+            run([uv, "venv", "--python", args.expected_python, venv])
+            executable = venv / (
+                "Scripts/python.exe" if __import__("os").name == "nt" else "bin/python"
+            )
+            run([uv, "pip", "install", "--python", executable, artifact])
+            smoke([executable, "-I", "-c"], BASE_SMOKE, artifact, "base-install", td)
+            run([uv, "pip", "install", "--python", executable, str(artifact) + "[mcp]"])
+            smoke([executable, "-I", "-c"], SMOKE, artifact, "mcp-install", td)
+            registry_smoke = SMOKE.replace(
+                '["-I","-m","truthound.mcp","serve","--allow-dir",td]',
+                '["-I","-m","truthound.cli","mcp","serve","--allow-dir",td]',
+            )
+            assert registry_smoke != SMOKE
+            smoke([executable, "-I", "-c"], registry_smoke, artifact, "registry-cli-install", td)
+    # Exercise the actual extracted launcher and UV source mapping before PyPI publishing.
+    with tempfile.TemporaryDirectory(prefix="truthound-bundle-data-") as td:
+        launcher_code = SMOKE.replace(
+            '["-I","-m","truthound.mcp","serve","--allow-dir",td]',
+            '[str(Path.cwd()/"server.py"),"serve","--allow-dir",td]',
+        )
+        smoke(
+            [
+                uv,
+                "run",
+                "--directory",
+                output / "extension",
+                "--python",
+                args.expected_python,
+                "python",
+                "-c",
+            ],
+            launcher_code,
+            output / f"truthound-{version}-local.mcpb",
+            "uv-launcher",
+            output / "extension",
+        )
 
 
 if __name__ == "__main__":

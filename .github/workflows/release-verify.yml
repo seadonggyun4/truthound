@@ -1,0 +1,51 @@
+name: Release verification
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: release-verification-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  full:
+    uses: ./.github/workflows/tests-nightly.yml
+    with:
+      run_full_suite: true
+  mcp:
+    uses: ./.github/workflows/mcp.yml
+    with:
+      full_compatibility: true
+  docs:
+    uses: ./.github/workflows/docs.yml
+  performance:
+    uses: ./.github/workflows/benchmarks-release.yml
+  benchmark-contracts:
+    uses: ./.github/workflows/benchmarks-nightly.yml
+  plugin:
+    uses: ./.github/workflows/openai-plugin.yml
+  release-ready:
+    if: always()
+    needs: [full, mcp, docs, performance, benchmark-contracts, plugin]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Require every release verification on this revision
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          python - <<'PY'
+          import json, os
+          results = json.loads(os.environ['RESULTS'])
+          assert set(results) == {'full', 'mcp', 'docs', 'performance', 'benchmark-contracts', 'plugin'}
+          assert all(value['result'] == 'success' for value in results.values()), results
+          PY
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@v4
+      - name: Preserve every lint ratchet without three separate environments
+        run: |
+          uv sync --frozen --extra dev
+          for target in reporters checkpoint-top-level datasets-private; do
+            uv run --frozen --extra dev python verification/ci/run_ruff_ratchet.py --target "$target"
+          done

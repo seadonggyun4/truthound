@@ -1,23 +1,43 @@
 # Repository CI and full nightly verification
 
-PR checks retain four file-balanced contract shards, fault/e2e, lint ratchets and
-their aggregate gate. The separate MCP distribution workflow retains nine
-OS/Python combinations, mandatory no-skip SDK tests and fresh wheel/sdist/UV
-installation checks. Core `src/**`, shared pytest settings and the lockfile
-remain MCP inputs. Neither a green PR lane nor an MCP matrix substitutes for
-full release verification.
-The unchanged benchmark smoke job also supports manual dispatch, so an exact
-final revision can be checked even when its changed paths do not trigger it.
-Each MCP OS/Python combination executes the same complete test universe in eight
-deterministic, disjoint shards. Each retains its 15-minute job limit; the aggregate
-requires all eight matching source/execution proofs and rejects missing, duplicate,
-failed or skipped cases. Test-start logs identify progress when a job is terminated;
-they never substitute for completed JUnit and source proofs.
+Development workflows run on PRs, merge queues and main pushes, not every branch
+push. Main validation remains enabled while direct pushes are allowed. Superseded
+PR executions may be cancelled; cancellation is never evidence of success.
+Contract tests retain four shards and fault/e2e; the three lint targets share one
+job without removing checks. Documentation retains full/public strict builds,
+Korean checks and public-surface exclusions.
+
+MCP semantic coverage retains all 40 mandatory files in four disjoint Linux
+Python 3.11 shards. No algorithm case is removed. The source/execution aggregate
+still rejects missing, duplicate, failed or skipped tests. Platform boundary
+contracts cover subprocess cleanup, permissions, UTF-8, resources, persistence
+and approval on other selected runtimes. Boundary results cannot substitute for
+the full partition. Both retain their original 15-minute job deadlines.
+
+The canonical wheel, sdist and two MCPBs are built once. Every installation job
+verifies SHA256SUMS and installs those exact files; the embedded wheel must match
+the canonical wheel byte-for-byte. All seven fresh installation/launcher checks
+remain. Development uses Linux 3.11/3.13 and Windows/macOS 3.11 (10 total MCP jobs).
+Weekly and release verification use all nine supported OS/Python combinations
+(15 jobs). Platform-independent semantic cases are not repeated nine times.
+Shared source, test, configuration and dependency changes remain conservative MCP
+inputs. This is not a claim of complete Core capability parity.
+
+`release-verify.yml` explicitly coordinates full Nightly, full MCP compatibility,
+strict documentation, plugin installation, benchmark contracts, lint ratchets and
+the unchanged fixed-runner performance gate on one SHA.
+It never publishes. `release-pypi.yml` requires its successful run ID on the exact
+checkout SHA, downloads its canonical artifacts and rechecks installed behavior
+before publication, without rebuilding or repeating the full source test suite.
+The post-publication verifier reads the release execution receipts instead of
+re-running the entire MCP suite under an obsolete short diagnostic deadline.
+Diagnostic and live-account workflows remain manual, not development gates.
 
 ## Exact full partition
 
-`Tests Nightly` defaults to the existing integration-only scheduled scope.
-For release verification, dispatch `run_full_suite=true`. The collector uses
+`Tests Nightly` runs the full configured scope weekly. An integration-only manual
+diagnostic remains available; it cannot satisfy release verification. The release
+orchestrator calls it with `run_full_suite=true`. The collector uses
 the unchanged expression `contract or fault or integration or soak or stress or
 scale_100m or e2e` with all three opt-ins: `--run-integration`, `--run-expensive`
 and `--run-soak`. This is that configured marker universe, not a claim that every

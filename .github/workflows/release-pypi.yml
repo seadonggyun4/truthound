@@ -3,6 +3,10 @@ name: Release PyPI
 on:
   workflow_dispatch:
     inputs:
+      verification_run_id:
+        description: Successful Release verification run for this exact commit
+        required: true
+        type: string
       version:
         description: Version to publish. Must match pyproject.toml.
         required: true
@@ -11,12 +15,26 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Require complete same-SHA release verification before publishing
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERIFICATION_RUN: ${{ inputs.verification_run_id }}
+        run: python verification/ci/release_candidate.py --run-id "$VERIFICATION_RUN"
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: truthound-mcp-canonical
+          run-id: ${{ inputs.verification_run_id }}
+          github-token: ${{ github.token }}
+          path: canonical
 
       - uses: actions/setup-python@v5
         with:
@@ -78,8 +96,11 @@ jobs:
             tests/datadocs/test_pdf_pattern_wrapping.py \
             -p no:cacheprovider
 
-      - name: Build wheel and source distribution
-        run: uv build
+      - name: Verify and install the exact release candidate, without rebuilding
+        run: |
+          uv run --python 3.11 --frozen --extra dev --extra mcp python verification/mcp_release.py --expected-python 3.11 --from-artifacts canonical --output verified-candidate --smoke
+          mkdir -p dist
+          cp verified-candidate/*.whl verified-candidate/*.tar.gz dist/
 
       - uses: actions/upload-artifact@v4
         with:
@@ -90,12 +111,8 @@ jobs:
 
       - name: Verify local MCP distribution contracts
         run: |
-          uv run --python 3.11 --frozen --extra dev --extra mcp python verification/mcp_ci_gate.py \
-            --expected-python 3.11 --junitxml test-artifacts/mcp.xml
           mkdir -p mcp-bundles
-          uv run --frozen --extra mcp truthound-mcp bundle \
-            --wheel "dist/truthound-${{ inputs.version }}-py3-none-any.whl" \
-            --output "mcp-bundles/truthound-${{ inputs.version }}-local.mcpb"
+          cp verified-candidate/*.mcpb verified-candidate/SHA256SUMS mcp-bundles/
 
       - uses: actions/upload-artifact@v4
         with:

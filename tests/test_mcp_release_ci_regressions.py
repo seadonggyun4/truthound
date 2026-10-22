@@ -151,7 +151,7 @@ def test_release_gate_uses_workflow_identity_not_mutable_titles(mutation):
         )
         for path in sorted(gate.REQUIRED_WORKFLOWS)
     ]
-    full = next(r for r in runs if r["path"].endswith("/tests-nightly.yml"))
+    full = next(r for r in runs if r["path"].endswith("/release-verify.yml"))
     if mutation == "missing":
         runs.remove(full)
     elif mutation in {"failure", "cancelled"}:

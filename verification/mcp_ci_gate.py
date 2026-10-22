@@ -56,6 +56,27 @@ TEST_FILES = (
     "tests/unit/validators/test_pushdown_support.py",
 )
 
+# Platform-sensitive regression contracts. Full semantic coverage stays in
+# TEST_FILES on the representative Linux runtime; this is not a replacement.
+BOUNDARY_FILES = tuple(
+    "tests/" + name + ".py"
+    for name in (
+        "test_mcp",
+        "test_mcp_bundle",
+        "test_mcp_faults",
+        "test_mcp_environment",
+        "test_mcp_lifecycle",
+        "test_mcp_dtype_privacy",
+        "test_mcp_registry",
+        "test_mcp_resources",
+        "test_mcp_approval",
+        "test_mcp_model_persistence",
+        "test_mcp_context_lifecycle",
+        "test_mcp_bindings",
+        "test_mcp_plugin_bindings",
+    )
+)
+
 
 def verify_runtime(expected_python: str | None = None) -> dict:
     actual = f"{sys.version_info.major}.{sys.version_info.minor}"
@@ -182,8 +203,12 @@ def main() -> int:
     parser.add_argument("--shard-count", type=int, default=1)
     parser.add_argument("--shard-index", type=int, default=0)
     parser.add_argument("--aggregate-dir", type=Path)
+    parser.add_argument("--scope", choices=("full", "boundary"), default="full")
     args = parser.parse_args()
     try:
+        selected_files = TEST_FILES if args.scope == "full" else BOUNDARY_FILES
+        if args.scope != "full" and (args.aggregate_dir or args.shard_count != 1):
+            raise ValueError("MCP_BOUNDARY_IS_NOT_FULL_PARTITION")
         runtime = verify_runtime(args.expected_python)
         if args.aggregate_dir is not None:
             result = aggregate(args.aggregate_dir, args.shard_count, args.junitxml)
@@ -196,7 +221,7 @@ def main() -> int:
                 "-m",
                 "pytest",
                 "-q",
-                *TEST_FILES,
+                *selected_files,
                 "-p",
                 "no:cacheprovider",
                 "-p",
@@ -229,7 +254,7 @@ def main() -> int:
                             }
                         )
                         if args.shard_count != 1
-                        else TEST_FILES,
+                        else selected_files,
                     ),
                 }
             )

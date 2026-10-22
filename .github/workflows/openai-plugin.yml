@@ -1,12 +1,19 @@
 name: OpenAI local plugin
 on:
+  workflow_call:
+  merge_group:
   push:
+    branches: [main]
     paths: ["plugins/truthound/**", ".agents/plugins/marketplace.json", "verification/openai_plugin.py", "verification/schemas/agent-plugins-1.0.0-*.schema.json", "tests/test_openai_plugin.py", ".github/workflows/openai-plugin.yml"]
   pull_request:
     paths: ["plugins/truthound/**", ".agents/plugins/marketplace.json", "verification/openai_plugin.py", "verification/schemas/agent-plugins-1.0.0-*.schema.json", "tests/test_openai_plugin.py", ".github/workflows/openai-plugin.yml"]
   workflow_dispatch:
 permissions:
   contents: read
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   local-plugin:
     strategy:

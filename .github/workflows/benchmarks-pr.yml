@@ -1,6 +1,7 @@
 name: Benchmarks PR
 
 on:
+  merge_group:
   workflow_dispatch:
   pull_request:
     paths:
@@ -17,6 +18,7 @@ on:
       - "tests/test_release_package_benchmark.py"
       - "tests/cli_modules/test_benchmark_parity_cli.py"
   push:
+    branches: [main]
     paths:
       - ".github/workflows/benchmarks-pr.yml"
       - ".github/workflows/benchmarks-release.yml"
@@ -30,6 +32,10 @@ on:
       - "tests/test_benchmark*.py"
       - "tests/test_release_package_benchmark.py"
       - "tests/cli_modules/test_benchmark_parity_cli.py"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   benchmark-smoke:

@@ -24,17 +24,35 @@ Elasticsearch 로그 fixture는 기존 100행을 유지하고 datetime 연산으
 거부하며 Elasticsearch의 destructive-action 이름 보호 설정은 끄지 않습니다.
 정리에 실패해도 fixture 종료는 실행하고, 정리 실패를 PASS로 숨기지 않습니다.
 
-PR의 contract 4개 shard, fault/e2e, lint ratchet과 최종 gate를 유지합니다.
-MCP distribution의 9개 OS/Python 조합, SDK 필수·skip 금지 검증,
-실제 wheel/sdist/UV 설치 검증도 유지합니다. Core `src/**`, 공통 pytest 설정,
-lockfile 변경을 MCP 영향에서 제외하지 않습니다. PR 또는 MCP 통과만으로
-릴리스의 full 검증을 대체하지 않습니다.
-동일 benchmark smoke job은 수동 dispatch도 지원하므로 변경 경로가 자동 실행을
-유발하지 않아도 정확한 최종 revision을 검증할 수 있습니다.
-각 MCP OS/Python 조합은 같은 전체 테스트 집합을 결정적인 8개 분할로 실행합니다.
-각 job의 15분 제한을 유지하며 집계는 8개 모두의 소스·실행 증명 일치를 요구합니다.
-누락·중복·실패·skip은 거부합니다. 테스트 시작 로그로 강제 종료 시 진행 위치를
-확인할 수 있지만 완료된 JUnit·소스 증명을 대체하지는 않습니다.
+개발 검증은 PR·병합 큐·main push에서 실행하며 일반 작업 브랜치 push의 중복
+실행은 제거합니다. 직접 push가 가능한 동안 main 검증은 유지합니다. 이전 PR
+실행은 취소할 수 있지만 취소를 PASS로 기록하지 않습니다. contract 4개 분할과
+fault/e2e는 유지하고 lint 3개 대상은 한 job에서 모두 검사합니다. 문서는
+full/public strict 빌드·한국어·공개 제외 검사를 유지합니다.
+
+MCP 전체 40개 필수 테스트 파일은 Linux Python 3.11에서 4개 분할로 실행합니다.
+알고리즘 사례는 제거하지 않습니다. 소스·실행 증명 집계는 누락·중복·실패·skip을
+거부합니다. 다른 환경에서는 프로세스 정리·권한·UTF-8·자원·영속성·승인 경계
+검증을 수행하며 이를 전체 의미 동등성 검증으로 대체하지 않습니다. 기존 job의
+15분 제한을 유지합니다.
+
+wheel·sdist·MCPB 2종은 한 번 빌드합니다. 각 설치 job은 SHA256SUMS를 검사하고
+동일 파일을 설치하며 MCPB 내장 wheel도 원본과 바이트 단위로 같아야 합니다.
+기존 7개 새 환경 설치·실행기 검증은 모두 유지합니다. 개발 환경은 Linux
+3.11/3.13과 Windows/macOS 3.11로 MCP job 총 10개입니다. 주간·릴리스에서는
+지원 OS/Python 9개 조합을 모두 검증하여 총 15개 job을 실행합니다. OS 독립적
+의미 검증 전체를 9번 반복하지 않습니다. 공통 소스·테스트·설정·의존성 변경은
+보수적으로 MCP 영향에 포함합니다. 이 구성이 전체 Core 기능 동등성을 의미하지는
+않습니다.
+
+`release-verify.yml`은 같은 SHA의 full Nightly·전체 MCP 호환성·strict 문서·기존
+고정 runner 성능 gate·플러그인 설치·벤치마크 계약·lint ratchet을 모아 실행하며
+게시하지 않습니다. `release-pypi.yml`은
+정확히 같은 SHA에서 성공한 검증 run ID를 요구하고 해당 canonical 산출물을
+다운로드하여 설치를 재확인한 뒤 게시합니다. 소스 재빌드와 전체 MCP 테스트의
+중복 실행은 하지 않습니다. 게시 후 검사도 과거의 짧은 진단 제한 시간으로 전체
+테스트를 재실행하지 않고 실제 릴리스 실행 증거를 확인합니다. 진단·실계정 검증은
+수동 실행으로 유지하며 개발 필수 gate가 아닙니다.
 
 ## 원래 full 집합의 정확한 분할
 
@@ -70,8 +88,9 @@ HEAD/NONE 메모리 sampling 시간 검사는 기존 5배 overhead 기준을 유
 거부되는 반례를 둡니다. cold-start가 아닌 warm 상대 overhead 검증이며,
 통과할 때까지 반복하거나 별도 고정 runner 릴리스 성능 기준을 바꾸지 않습니다.
 
-예약 Nightly는 기존 integration-only 범위입니다. 릴리스 검증에는
-`run_full_suite=true`로 수동 실행합니다. 원래 marker 식
+예약 Nightly는 주 1회 전체 설정 범위를 실행합니다. integration-only 수동 진단은
+유지하되 릴리스 증거가 될 수 없습니다. 릴리스 검증 워크플로는
+`run_full_suite=true`로 호출합니다. 원래 marker 식
 `contract or fault or integration or soak or stress or scale_100m or e2e`와
 `--run-integration --run-expensive --run-soak`를 그대로 사용합니다.
 이는 설정된 marker 집합이며 저장소 모든 테스트를 선택한다는 뜻은 아닙니다.
