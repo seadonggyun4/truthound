@@ -10,6 +10,15 @@ from truthound.mcp.resources import BoundedWriter
 from truthound.mcp.validator_wire import _known_type, contracts, convert
 
 
+def _tracker(graph):
+    tracker = _known_type("truthound.lineage.tracker.LineageTracker")(graph.config)
+    for node in graph.nodes:
+        tracker.graph.add_node(node)
+    for edge in graph.edges:
+        tracker.graph.add_edge(edge)
+    return tracker
+
+
 def execute(request, arguments):
     from truthound.lineage import ImpactLevel, NodeType
 
@@ -41,15 +50,10 @@ def execute(request, arguments):
         elif edit.action == "clear":
             graph.clear()
     if operation == "lineage_track":
-        tracker_type = _known_type("truthound.lineage.tracker.LineageTracker")
-        tracker = tracker_type(graph.config)
-        for node in graph.nodes:
-            tracker.graph.add_node(node)
-        for edge in graph.edges:
-            tracker.graph.add_edge(edge)
+        tracker = _tracker(graph)
         event = arguments.event
         values = event.model_dump(exclude={"action"}, exclude_none=True)
-        values.update(values.pop("properties"))
+        values.update(values.pop("properties", {}))
         if "schema_spec" in values:
             values["schema"] = values.pop("schema_spec")
         if event.action == "source":
@@ -60,6 +64,10 @@ def execute(request, arguments):
             tracker.track_validation(**values)
         elif event.action == "output":
             tracker.track_output(**values)
+        elif event.action == "dependency":
+            from truthound.lineage import EdgeType
+
+            tracker.add_dependency(event.source_id, event.target_id, EdgeType(event.edge_type))
         graph = tracker.graph
     if operation == "lineage_render":
         renderer = _known_type(definitions["renderers"][arguments.renderer])()
@@ -107,6 +115,11 @@ def execute(request, arguments):
                 result = graph.get_node(query.node_id).to_dict()
             elif query.view == "has_node":
                 result = graph.has_node(query.node_id)
+            elif query.view == "tracked_lineage":
+                result = _tracker(graph).get_lineage(query.node_id, query.direction)
+            elif query.view == "tracked_path":
+                path = _tracker(graph).get_path(query.source_id, query.target_id)
+                result = None if path is None else [node.to_dict() for node in path]
             elif query.view == "upstream":
                 result = [node.to_dict() for node in graph.get_upstream(query.node_id, query.depth)]
             elif query.view == "downstream":

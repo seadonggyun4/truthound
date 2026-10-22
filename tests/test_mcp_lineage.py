@@ -135,6 +135,103 @@ def test_renderer_denies_missing_roots_external_programs_and_unknown_fields(grap
     )
 
 
+@pytest.mark.parametrize("direction", ["upstream", "downstream", "both"])
+def test_tracker_queries_preserve_native_direction_and_missing_path(graph, direction):
+    from truthound.lineage import LineageTracker
+
+    adapter, identity, native = graph
+    tracker = LineageTracker(native.config)
+    for node in native.nodes:
+        tracker.graph.add_node(node)
+    for edge in native.edges:
+        tracker.graph.add_edge(edge)
+    result = call(
+        adapter,
+        "lineage_query",
+        query={
+            "graph_id": identity,
+            "view": "tracked_lineage",
+            "node_id": "b",
+            "direction": direction,
+        },
+    )
+    assert read(adapter, result["resource_id"]) == tracker.get_lineage("b", direction)
+    for source, target in [("a", "b"), ("b", "a"), ("absent", "b"), ("a", "a")]:
+        path = tracker.get_path(source, target)
+        artifact = call(
+            adapter,
+            "lineage_query",
+            query={
+                "graph_id": identity,
+                "view": "tracked_path",
+                "source_id": source,
+                "target_id": target,
+            },
+        )
+        assert read(adapter, artifact["resource_id"]) == (
+            None if path is None else [node.to_dict() for node in path]
+        )
+    missing = invoke(
+        adapter,
+        "lineage_query",
+        query={
+            "graph_id": identity,
+            "view": "tracked_lineage",
+            "node_id": "absent",
+        },
+    )
+    assert missing["execution_status"] == "failed"
+    call(adapter, "resources_release", resource_id=identity)
+    assert (
+        invoke(adapter, "artifacts_read", resource_id=result["resource_id"])["execution_status"]
+        == "failed"
+    )
+
+
+@pytest.mark.fault
+def test_tracker_dependency_rejects_cycle_without_mutating_parent(graph):
+    from truthound.lineage import CyclicDependencyError, LineageTracker, NodeNotFoundError
+
+    adapter, identity, native = graph
+    original = native.to_dict()
+    tracker = LineageTracker(native.config)
+    for node in native.nodes:
+        tracker.graph.add_node(node)
+    for edge in native.edges:
+        tracker.graph.add_edge(edge)
+    for source, target, exception in [
+        ("b", "a", CyclicDependencyError),
+        ("absent", "b", NodeNotFoundError),
+    ]:
+        with pytest.raises(exception):
+            tracker.add_dependency(source, target)
+        failed = invoke(
+            adapter,
+            "lineage_track",
+            graph_id=identity,
+            event={
+                "action": "dependency",
+                "source_id": source,
+                "target_id": target,
+            },
+        )
+        assert failed["execution_status"] == "failed"
+    assert (
+        read(
+            adapter,
+            call(
+                adapter,
+                "lineage_query",
+                query={
+                    "graph_id": identity,
+                    "view": "graph",
+                },
+            )["resource_id"],
+        )
+        == original
+    )
+
+
 def test_manual_native_tracking_chain_preserves_graphs_and_metadata(graph):
     import copy
 
@@ -181,6 +278,12 @@ def test_manual_native_tracking_chain_preserves_graphs_and_metadata(graph):
             "location": "not-written.html",
         },
         {"action": "source", "name": "a", "description": "Native replacement semantics"},
+        {
+            "action": "dependency",
+            "source_id": "a",
+            "target_id": "output",
+            "edge_type": "depends_on",
+        },
     ]
 
     def semantics(value):
@@ -199,11 +302,14 @@ def test_manual_native_tracking_chain_preserves_graphs_and_metadata(graph):
         args.update(args.pop("properties", {}))
         if "schema_spec" in args:
             args["schema"] = args.pop("schema_spec")
+        if "edge_type" in args:
+            args["edge_type"] = EdgeType(args["edge_type"])
         methods = {
             "source": tracker.track_source,
             "transformation": tracker.track_transformation,
             "validation": tracker.track_validation,
             "output": tracker.track_output,
+            "dependency": tracker.add_dependency,
         }
         methods[event["action"]](**args)
         current = call(adapter, "lineage_track", graph_id=current, event=event)["resource_id"]

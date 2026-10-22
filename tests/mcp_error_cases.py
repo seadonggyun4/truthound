@@ -309,6 +309,34 @@ def attach(cases):
                 )
             )
             continue
+        if row.validator in {"circular_reference", "cascade_depth"}:
+            from truthound.validators.referential.base import ForeignKeyRelation
+
+            # An ordinary, acyclic schema exceeding the native recursive DFS
+            # depth. No recursion-limit change, injected exception or bad type.
+            relations = [
+                {
+                    "child_table": f"t{i}",
+                    "child_columns": ["id"],
+                    "parent_table": f"t{i + 1}",
+                    "parent_columns": ["id"],
+                }
+                for i in range(1200)
+            ]
+            assert row.error is None and row.caught_error is None
+            result.append(
+                replace(
+                    row,
+                    error=row.positive,
+                    error_overrides={"relations": relations},
+                    native_error_settings={
+                        **row.native_settings,
+                        "relations": [ForeignKeyRelation(**item) for item in relations],
+                    },
+                    error_binding=True,
+                )
+            )
+            continue
         if row.validator in RUNTIME_SETTING_ERRORS:
             assert row.error is None and row.caught_error is None
             result.append(

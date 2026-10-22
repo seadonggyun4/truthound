@@ -153,6 +153,12 @@ async def core_profile():
                 tracked_result=await invoke("lineage_query",{"query":{"graph_id":tracked["resource_id"],"view":"graph"}})
                 tracked_graph=decode(json.loads(await artifact_bytes(tracked_result["resource_id"])))
                 assert len(tracked_graph["nodes"])==3 and len(tracked_graph["edges"])==3
+                dependency=await invoke("lineage_track",{"graph_id":tracked["resource_id"],"event":{"action":"dependency","source_id":"a","target_id":"joined"}})
+                path_result=await invoke("lineage_query",{"query":{"graph_id":dependency["resource_id"],"view":"tracked_path","source_id":"a","target_id":"joined"}})
+                path_nodes=decode(json.loads(await artifact_bytes(path_result["resource_id"])))
+                assert path_nodes[0]["id"]=="a" and path_nodes[-1]["id"]=="joined"
+                lineage_result=await invoke("lineage_query",{"query":{"graph_id":dependency["resource_id"],"view":"tracked_lineage","node_id":"joined"}})
+                assert decode(json.loads(await artifact_bytes(lineage_result["resource_id"]))) ["node"]["id"]=="joined"
                 for renderer in ("d3","cytoscape","graphviz","mermaid"):
                     for subgraph in (False,True):
                         config=RenderConfig(theme="dark",max_depth=1)

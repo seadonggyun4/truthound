@@ -677,6 +677,23 @@ preserved, not silently reinterpreted. Native-generated timestamps are retained.
 This is manual tracking, not automatic execution history, remote emission or a
 claim that the described validation actually ran.
 
+The additional `dependency` event takes only `source_id`, `target_id`, and
+`edge_type` (default `depends_on`), calling `LineageTracker.add_dependency`.
+Missing nodes and cycles fail without modifying the original graph.
+`lineage_query` also accepts `view: "tracked_lineage"` with `node_id` and
+`direction` (`upstream`, `downstream`, or `both`, the default), or
+`view: "tracked_path"` with `source_id` and `target_id`. These call the native
+tracker query methods without reinterpreting their edge-direction behavior;
+an absent path, including a missing endpoint, is JSON `null`, not an empty graph.
+All resulting artifacts retain parent ownership and revocation checks.
+
+Large relation schemas can be provided through approved operator validator
+bindings; the 64 KB tool-request limit is unchanged. Recursive relation traversal
+can raise a native `RecursionError` on deep schemas. MCP preserves that execution
+failure and canonical evidence rather than reporting a successful validation.
+Parity tests normalize only repeated traceback frame counts that differ with
+interpreter call-stack depth; exception types, messages and frames remain checked.
+
 `lineage_catalog` describes all native config/node/edge fields and rich record
 definitions. `lineage_create` accepts `config`, `nodes` and `edges`; caller
 `persist_path` is rejected. `lineage_edit` takes `graph_id` and a discriminated

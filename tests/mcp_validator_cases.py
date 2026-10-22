@@ -26,6 +26,8 @@ class Scenario:
     native_negative_settings: dict | None = None
     caught_error: dict | None = None
     error_overrides: dict | None = None
+    native_error_settings: dict | None = None
+    error_binding: bool = False
 
 
 def scenarios():

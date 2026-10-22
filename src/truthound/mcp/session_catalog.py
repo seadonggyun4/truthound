@@ -63,7 +63,7 @@ def operations(descriptor):
     rows = (
         (
             "lineage_track",
-            "Apply native manual source/transformation/validation/output tracking to a new graph handle; locations are metadata, not file access or execution.",
+            "Apply native manual source/transformation/validation/output/dependency tracking to a new graph handle; locations are metadata, not file access or execution.",
             GraphTrack,
             "truthound.lineage.LineageTracker",
             wire.ResourceInfo,

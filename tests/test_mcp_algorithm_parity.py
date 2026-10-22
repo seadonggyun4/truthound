@@ -4,6 +4,7 @@ import asyncio
 import base64
 import importlib.util
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -77,8 +78,10 @@ def test_actual_algorithm_matches_core_with_full_canonical_evidence(tmp_path, sc
     if polarity in {"error", "caught_error"} and scenario.error_overrides is not None:
         scenario = replace(
             scenario,
-            native_settings={**native_settings(scenario, frame), **scenario.error_overrides},
+            native_settings=scenario.native_error_settings
+            or {**native_settings(scenario, frame), **scenario.error_overrides},
             settings={**scenario.settings, **scenario.error_overrides},
+            trusted=scenario.trusted or scenario.error_binding,
         )
     validator = get_validator(scenario.validator)(**native_settings(scenario, frame))
     # This is an independent constructor, not the production wire converter.
@@ -115,6 +118,29 @@ def test_actual_algorithm_matches_core_with_full_canonical_evidence(tmp_path, sc
     else:
         assert response["execution_status"] == "succeeded", response
     expected = direct.to_dict()
+    if polarity == "error" and scenario.error_binding:
+        # Interpreter stack depth differs in pytest versus the owned worker.
+        # Compare every traceback frame/message, normalizing only its repeated
+        # frame count; never discard exception evidence or alter recursion limits.
+        def recursive_trace_counts(value):
+            if isinstance(value, dict):
+                return {
+                    key: re.sub(r"(?<=\[Previous line repeated )\d+(?= more times\])", "N", item)
+                    if key == "exception_traceback" and isinstance(item, str)
+                    else recursive_trace_counts(item)
+                    for key, item in value.items()
+                }
+            if isinstance(value, list):
+                return [recursive_trace_counts(item) for item in value]
+            return value
+
+        for result in (expected, actual):
+            info = result["checks"][0]["issues"][0]["exception_info"]
+            assert info["exception_type"] == "RecursionError"
+            assert re.search(
+                r"\[Previous line repeated \d+ more times\]", info["exception_traceback"]
+            )
+        expected, actual = map(recursive_trace_counts, (expected, actual))
     for field in (
         "checks",
         "issues",
@@ -284,6 +310,10 @@ def mcp_run(tmp_path, scenario, frame):
 
         check = {"validator": scenario.validator, "settings": wire(scenario.settings)}
         arguments = {"asset_id": asset, "checks": [check], "result_format": "complete"}
+        if scenario.error_binding and scenario.trusted:
+            rejected = asyncio.run(service.call_operation_async("assets_validate", arguments))
+            assert rejected["execution_status"] == "failed"
+            assert rejected["issues"] == [{"code": "resource_exhausted"}]
         if scenario.trusted:
             binding = control / "bindings.json"
             binding.write_text(

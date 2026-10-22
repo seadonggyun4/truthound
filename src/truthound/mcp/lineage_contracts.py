@@ -88,9 +88,25 @@ class TrackOutput(TrackingMetadata):
     location: Annotated[str, Field(max_length=4096)] = ""
 
 
+class TrackDependency(WireModel):
+    action: Literal["dependency"]
+    source_id: Name
+    target_id: Name
+    edge_type: Literal[
+        "derived_from",
+        "validated_by",
+        "used_by",
+        "transformed_to",
+        "joined_with",
+        "aggregated_to",
+        "filtered_to",
+        "depends_on",
+    ] = "depends_on"
+
+
 class GraphTrack(GraphInput):
     event: Annotated[
-        TrackSource | TrackTransformation | TrackValidation | TrackOutput,
+        TrackSource | TrackTransformation | TrackValidation | TrackOutput | TrackDependency,
         Field(discriminator="action"),
     ]
 
@@ -169,8 +185,23 @@ class NodeEdges(GraphInput):
     direction: Literal["incoming", "outgoing", "both"] = "both"
 
 
+class TrackerLineage(GraphInput):
+    view: Literal["tracked_lineage"]
+    node_id: Name
+    direction: Literal["upstream", "downstream", "both"] = "both"
+
+
+class TrackerPath(GraphInput):
+    view: Literal["tracked_path"]
+    source_id: Name
+    target_id: Name
+
+
 class GraphQuery(WireModel):
-    query: Annotated[QueryAll | QueryNode | NodeLookup | NodeEdges, Field(discriminator="view")]
+    query: Annotated[
+        QueryAll | QueryNode | NodeLookup | NodeEdges | TrackerLineage | TrackerPath,
+        Field(discriminator="view"),
+    ]
 
 
 class ImpactInput(GraphInput):
