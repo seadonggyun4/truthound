@@ -8,6 +8,11 @@ remain MCP inputs. Neither a green PR lane nor an MCP matrix substitutes for
 full release verification.
 The unchanged benchmark smoke job also supports manual dispatch, so an exact
 final revision can be checked even when its changed paths do not trigger it.
+Each MCP OS/Python combination executes the same complete test universe in eight
+deterministic, disjoint shards. Each retains its 15-minute job limit; the aggregate
+requires all eight matching source/execution proofs and rejects missing, duplicate,
+failed or skipped cases. Test-start logs identify progress when a job is terminated;
+they never substitute for completed JUnit and source proofs.
 
 ## Exact full partition
 
@@ -21,7 +26,13 @@ test in the repository is selected. All jobs use the same frozen dev/MCP extras.
 Each collected node ID has exactly one owner, in this precedence:
 scale, soak/stress, integration, fault/e2e, then contract. Stress-directory tests
 already gain `soak` in the root conftest; overlapping markers are not separate
-executions. Contract owners reuse the PR file-grouping algorithm in four shards.
+executions. Contract owners use four shards. Ordinary files retain the PR
+file-grouping algorithm. The independently executable parameter cases in
+`test_mcp_algorithm_parity.py` are spread evenly across those same four shards,
+as they already are in the mandatory MCP matrix. This prevents one large native
+parity module from monopolizing a lane; no case, native computation, fixture row,
+assertion or deadline is removed or reduced. The split allowlist is explicit;
+other files keep their fixture locality. Collection order does not affect the plan.
 The other four lanes isolate integration, soak/stress, fault/e2e and 100M scale.
 The plan proves exact union and zero intersection before any lane runs.
 The collector also requires each item's actual imported module file to equal its

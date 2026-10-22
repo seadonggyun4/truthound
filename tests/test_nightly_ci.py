@@ -99,6 +99,37 @@ def test_overlapping_markers_have_one_cost_owner_and_four_contract_shards():
     assert plan == nightly.build_plan(list(reversed(collection())), SHA)
 
 
+def test_independent_algorithm_cases_do_not_concentrate_in_one_full_lane():
+    prefix = "tests/test_mcp_algorithm_parity.py::test_native_parity"
+    cases = [
+        {"nodeid": f"{prefix}[{i}]", "markers": ["contract"], "skip_reason": None}
+        for i in range(971)
+    ]
+    ordinary = [
+        {
+            "nodeid": f"tests/test_other.py::test_case[{i}]",
+            "markers": ["contract"],
+            "skip_reason": None,
+        }
+        for i in range(120)
+    ]
+    records = collection() + cases + ordinary
+    plan = nightly.build_plan(records, SHA)
+    nightly.validate_plan(plan)
+    lanes = [v for k, v in plan["lanes"].items() if k.startswith("contract-")]
+    counts = [sum(n.startswith(prefix) for n in lane["nodes"]) for lane in lanes]
+    assert sorted(counts) == [242, 243, 243, 243]
+    assert all(lane["job_minutes"] == 35 and lane["test_seconds"] == 120 for lane in lanes)
+    assert (
+        sum(any(n.startswith("tests/test_other.py::") for n in lane["nodes"]) for lane in lanes)
+        == 1
+    )
+    assigned = [n for lane in plan["lanes"].values() for n in lane["nodes"]]
+    assert len(assigned) == len(set(assigned)) == len(records)
+    assert set(assigned) == {r["nodeid"] for r in records}
+    assert plan == nightly.build_plan(list(reversed(records)), SHA)
+
+
 @pytest.mark.parametrize("mutation", ["missing", "duplicate", "extra", "wrong-sha", "empty"])
 def test_corrupt_or_unbound_plan_never_passes(mutation):
     plan = nightly.build_plan(collection(), SHA)

@@ -6,7 +6,10 @@ import sys
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 
 def _extract_nodeids(path: Path) -> list[str]:
@@ -76,6 +79,7 @@ def _build_contract_shards(
     contract_nodeids: list[str],
     *,
     shard_count: int,
+    independent_files: frozenset[str] = frozenset(),
 ) -> list[ContractShard]:
     if shard_count < 1:
         raise ValueError("contract shard count must be at least 1")
@@ -89,6 +93,14 @@ def _build_contract_shards(
         )
 
     shards = [ContractShard(shard_id=index) for index in range(shard_count)]
+    # Only explicitly reviewed, independently executable cases may cross file
+    # boundaries. All other files retain their original fixture lifecycle.
+    for file_path in sorted(independent_files.intersection(grouped)):
+        for index, nodeid in enumerate(sorted(grouped.pop(file_path))):
+            target = shards[index % shard_count]
+            if file_path not in target.files:
+                target.files.append(file_path)
+            target.nodeids.append(nodeid)
     for file_path, nodeids in sorted(grouped.items(), key=lambda item: (-len(item[1]), item[0])):
         target = min(shards, key=lambda shard: (shard.node_count, shard.shard_id))
         target.files.append(file_path)

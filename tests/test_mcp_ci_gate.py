@@ -69,8 +69,8 @@ def test_contract_generator_keeps_paths_blocked_across_python_implementation_mov
     assert expected in alternatives
 
 
-@pytest.fixture
-def shard_reports(tmp_path, monkeypatch):
+@pytest.fixture(params=[4, 8])
+def shard_reports(tmp_path, monkeypatch, request):
     import xml.etree.ElementTree as ET
 
     helpers = mcp_ci_gate.proof_helpers()
@@ -91,15 +91,16 @@ def shard_reports(tmp_path, monkeypatch):
         ),
     )
     union = {}
-    for index in range(4):
-        selected = helpers.partition(full, 4, index)
+    count = request.param
+    for index in range(count):
+        selected = helpers.partition(full, count, index)
         assert not union.keys() & selected.keys()
         union.update(selected)
         proof = {
             "valid": True,
             "full_collection": full,
             "collection": selected,
-            "shard_count": 4,
+            "shard_count": count,
             "shard_index": index,
             "tests": len(selected),
             "execution_phases": 3 * len(selected),
@@ -117,12 +118,13 @@ def shard_reports(tmp_path, monkeypatch):
             )
         ET.ElementTree(suites).write(tmp_path / f"mcp-{index}.xml", encoding="utf-8")
     assert union == full
-    return tmp_path
+    return tmp_path, count
 
 
 def test_required_shard_gate_assembles_only_complete_disjoint_execution(shard_reports):
+    shard_reports, count = shard_reports
     destination = shard_reports / "complete.xml"
-    result = mcp_ci_gate.aggregate(shard_reports, 4, destination)
+    result = mcp_ci_gate.aggregate(shard_reports, count, destination)
     assert result["tests"] == len(mcp_ci_gate.TEST_FILES)
     proof = json.loads(destination.with_suffix(".sources.json").read_text(encoding="utf-8"))
     assert proof["valid"] and proof["execution_phases"] == 3 * result["tests"]
@@ -144,6 +146,7 @@ def test_required_shard_gate_assembles_only_complete_disjoint_execution(shard_re
     ],
 )
 def test_required_shard_gate_rejects_incomplete_or_altered_evidence(shard_reports, damage):
+    shard_reports, count = shard_reports
     path = shard_reports / "mcp-0.sources.json"
     proof = json.loads(path.read_text(encoding="utf-8"))
     if damage == "missing":
@@ -178,5 +181,5 @@ def test_required_shard_gate_rejects_incomplete_or_altered_evidence(shard_report
             proof["full_collection"]["tests/test_other.py::test_hidden"] = "changed"
         path.write_text(json.dumps(proof), encoding="utf-8")
     with pytest.raises(ValueError):
-        mcp_ci_gate.aggregate(shard_reports, 4, shard_reports / "complete.xml")
+        mcp_ci_gate.aggregate(shard_reports, count, shard_reports / "complete.xml")
     assert not (shard_reports / "complete.sources.json").exists()

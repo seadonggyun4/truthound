@@ -22,6 +22,9 @@ from build_quality_shards import _build_contract_shards
 
 FULL = "contract or fault or integration or soak or stress or scale_100m or e2e"
 FLAGS = ["--run-integration", "--run-expensive", "--run-soak"]
+# These cases already run independently in the mandatory MCP OS/Python matrix.
+# Keep their native algorithms, rows, assertions and function-scoped state intact.
+INDEPENDENT_CONTRACT_FILES = frozenset({"tests/test_mcp_algorithm_parity.py"})
 BUDGETS = {
     "contract": (35, 120),
     "fault-e2e": (25, 180),
@@ -87,7 +90,11 @@ def build_plan(
             count = min(4, len({n.split("::")[0] for n in nodes}))
             partitions = {
                 f"contract-{s.shard_id}": s.nodeids
-                for s in _build_contract_shards(nodes, shard_count=count)
+                for s in _build_contract_shards(
+                    nodes,
+                    shard_count=count,
+                    independent_files=INDEPENDENT_CONTRACT_FILES,
+                )
             }
         else:
             partitions = {key: nodes}

@@ -31,6 +31,10 @@ lockfile 변경을 MCP 영향에서 제외하지 않습니다. PR 또는 MCP 통
 릴리스의 full 검증을 대체하지 않습니다.
 동일 benchmark smoke job은 수동 dispatch도 지원하므로 변경 경로가 자동 실행을
 유발하지 않아도 정확한 최종 revision을 검증할 수 있습니다.
+각 MCP OS/Python 조합은 같은 전체 테스트 집합을 결정적인 8개 분할로 실행합니다.
+각 job의 15분 제한을 유지하며 집계는 8개 모두의 소스·실행 증명 일치를 요구합니다.
+누락·중복·실패·skip은 거부합니다. 테스트 시작 로그로 강제 종료 시 진행 위치를
+확인할 수 있지만 완료된 JUnit·소스 증명을 대체하지는 않습니다.
 
 ## 원래 full 집합의 정확한 분할
 
@@ -75,8 +79,13 @@ HEAD/NONE 메모리 sampling 시간 검사는 기존 5배 overhead 기준을 유
 
 node ID는 scale → soak/stress → integration → fault/e2e → contract 순서로
 단 하나의 lane에 배정됩니다. stress 경로에는 root conftest가 이미 soak를
-붙이므로 marker별 독립 명령을 단순 나열하지 않습니다. contract는 기존 PR의
-파일 단위 균형 배정 알고리즘으로 4개 shard에 나누고 나머지 네 목적별 lane은
+붙이므로 marker별 독립 명령을 단순 나열하지 않습니다. contract는 4개 shard를
+사용하고 일반 파일은 기존 PR의 파일 단위 균형 배정을 유지합니다.
+`test_mcp_algorithm_parity.py`의 독립 실행 가능한 파라미터 사례만 기존 MCP
+매트릭스처럼 같은 네 shard에 균등 분산합니다. 큰 네이티브 동등성 모듈 하나가
+한 lane에 몰리지 않게 하며 테스트·네이티브 계산·fixture 행·assertion·시간
+제한은 제거하거나 축소하지 않습니다. 분할 허용 목록은 명시적이고 나머지 파일의
+fixture 지역성은 유지하며 수집 순서가 계획을 바꾸지 않습니다. 나머지 네 목적별 lane은
 별도로 실행합니다. 수집 집합과 분할의 합집합 일치·교집합 0을 먼저 검증합니다.
 
 동시에 최대 3개 lane만 실행하고 fail-fast는 끕니다. 각 job의 파일시스템,

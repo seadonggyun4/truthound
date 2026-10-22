@@ -102,6 +102,11 @@ class Proof:
             self.invalid = True
             raise pytest.UsageError(str(exc)) from exc
 
+    def pytest_runtest_logstart(self, nodeid, location):
+        # Job termination can prevent final JUnit/proof output. This is progress
+        # evidence only; an unfinished shard still cannot pass the aggregate.
+        print(f"MCP_START {nodeid}", flush=True)
+
     def pytest_runtest_logreport(self, report):
         self.phases.append(
             (report.nodeid, report.when, report.outcome, bool(getattr(report, "wasxfail", False)))

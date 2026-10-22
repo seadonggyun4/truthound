@@ -14,7 +14,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python: ["3.11", "3.12", "3.13"]
-        shard: [0, 1, 2, 3]
+        shard: [0, 1, 2, 3, 4, 5, 6, 7]
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     env:
@@ -28,7 +28,7 @@ jobs:
           python-version: ${{ matrix.python }}
       - uses: astral-sh/setup-uv@v4
       - run: uv sync --python ${{ matrix.python }} --frozen --extra dev --extra mcp
-      - run: uv run --python ${{ matrix.python }} --frozen --extra dev --extra mcp python verification/mcp_ci_gate.py --expected-python ${{ matrix.python }} --shard-count 4 --shard-index ${{ matrix.shard }} --junitxml test-artifacts/mcp-${{ matrix.shard }}.xml
+      - run: uv run --python ${{ matrix.python }} --frozen --extra dev --extra mcp python verification/mcp_ci_gate.py --expected-python ${{ matrix.python }} --shard-count 8 --shard-index ${{ matrix.shard }} --junitxml test-artifacts/mcp-${{ matrix.shard }}.xml
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -60,7 +60,7 @@ jobs:
           pattern: truthound-mcp-tests-${{ matrix.os }}-${{ matrix.python }}-*
           path: test-artifacts/shards
           merge-multiple: true
-      - run: uv run --python ${{ matrix.python }} --frozen --extra dev --extra mcp python verification/mcp_ci_gate.py --expected-python ${{ matrix.python }} --aggregate-dir test-artifacts/shards --shard-count 4 --junitxml test-artifacts/mcp.xml
+      - run: uv run --python ${{ matrix.python }} --frozen --extra dev --extra mcp python verification/mcp_ci_gate.py --expected-python ${{ matrix.python }} --aggregate-dir test-artifacts/shards --shard-count 8 --junitxml test-artifacts/mcp.xml
       - run: uv run --python ${{ matrix.python }} --frozen --extra dev --extra mcp python verification/mcp_release.py --expected-python ${{ matrix.python }} --output dist/mcp --smoke
       - uses: actions/setup-node@v4
         with:
