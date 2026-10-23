@@ -11,8 +11,10 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import threading
 import tomllib
 import zipfile
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 BASE_SMOKE = """
@@ -531,6 +533,7 @@ def main():
     if args.expected_python != f"{sys.version_info.major}.{sys.version_info.minor}":
         parser.error("Source interpreter does not match intended matrix Python")
     proofs = []
+    proof_lock = threading.Lock()
 
     def smoke(command, code, artifact, stage, cwd):
         # Assertions and metadata execute in the installed interpreter, not its parent.
@@ -567,8 +570,9 @@ print("TRUTHOUND_RUNTIME_PROOF:"+json.dumps({
             sha256=hashlib.sha256(artifact.read_bytes()).hexdigest(),
             expected_python=args.expected_python,
         )
-        proofs.append(proof)
-        print(json.dumps(proof), flush=True)
+        with proof_lock:
+            proofs.append(proof)
+            print(json.dumps(proof), flush=True)
 
     root = Path(__file__).resolve().parents[1]
     output = args.output.resolve()
@@ -668,7 +672,7 @@ def build_bundles(python, root, output, version, wheel):
 
 
 def smoke_artifacts(args, output, wheel, sdist, version, uv, smoke):
-    for artifact in (wheel, sdist):
+    def verify_artifact(artifact):
         with tempfile.TemporaryDirectory(prefix="truthound-install-") as td:
             venv = Path(td) / "venv"
             run([uv, "venv", "--python", args.expected_python, venv])
@@ -685,8 +689,13 @@ def smoke_artifacts(args, output, wheel, sdist, version, uv, smoke):
             )
             assert registry_smoke != SMOKE
             smoke([executable, "-I", "-c"], registry_smoke, artifact, "registry-cli-install", td)
+
+    # Independent venvs keep base/extra isolation intact. Await both branches:
+    # either failure aborts proof publication, after both owned branches finish.
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        list(executor.map(verify_artifact, (wheel, sdist)))
     # Exercise the actual extracted launcher and UV source mapping before PyPI publishing.
-    with tempfile.TemporaryDirectory(prefix="truthound-bundle-data-") as td:
+    with tempfile.TemporaryDirectory(prefix="truthound-bundle-data-"):
         launcher_code = SMOKE.replace(
             '["-I","-m","truthound.mcp","serve","--allow-dir",td]',
             '[str(Path.cwd()/"server.py"),"serve","--allow-dir",td]',

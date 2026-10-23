@@ -19,11 +19,74 @@ pytestmark = pytest.mark.fault
 GRACE_SECONDS = 5
 
 
+@pytest.mark.parametrize("failed_artifact", [None, "wheel.whl", "source.tar.gz"])
+def test_artifact_smoke_parallel_isolation_and_failure_barrier(tmp_path, monkeypatch, failed_artifact):
+    """All seven stages survive concurrency; either branch failure blocks the launcher."""
+    import importlib.util
+    from types import SimpleNamespace
+
+    path = Path(__file__).resolve().parents[1] / "verification/mcp_release.py"
+    spec = importlib.util.spec_from_file_location("parallel_install_contract", path)
+    release = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(release)
+    wheel, sdist = tmp_path / "wheel.whl", tmp_path / "source.tar.gz"
+    barrier = threading.Barrier(2, timeout=GRACE_SECONDS)
+    stages, directories, installs = {}, {}, []
+    lock = threading.Lock()
+
+    def install(command, **kwargs):
+        with lock:
+            installs.append(list(map(str, command)))
+
+    def smoke(command, code, artifact, stage, cwd):
+        if stage == "uv-launcher":
+            assert failed_artifact is None
+            assert all(not directory.exists() for directory in directories.values())
+            assert all(value == ["base-install", "mcp-install", "registry-cli-install"]
+                       for value in stages.values())
+            stages["launcher"] = [stage]
+            return
+        with lock:
+            stages.setdefault(artifact.name, []).append(stage)
+            directories[artifact.name] = Path(cwd)
+        assert Path(cwd).is_dir()
+        assert Path(command[0]).is_relative_to(Path(cwd) / "venv")
+        if stage == "base-install":
+            assert code == release.BASE_SMOKE
+            barrier.wait()  # Serial execution must fail rather than silently regress.
+        elif stage == "mcp-install":
+            assert code == release.SMOKE
+            if artifact.name == failed_artifact:
+                raise RuntimeError("synthetic installed artifact failure")
+        else:
+            assert '"truthound.cli"' in code and code != release.SMOKE
+
+    monkeypatch.setattr(release, "run", install)
+    args = SimpleNamespace(expected_python="3.11")
+    if failed_artifact:
+        with pytest.raises(RuntimeError, match="synthetic installed artifact failure"):
+            release.smoke_artifacts(args, tmp_path, wheel, sdist, "3.2.0", "uv", smoke)
+        assert "launcher" not in stages
+    else:
+        release.smoke_artifacts(args, tmp_path, wheel, sdist, "3.2.0", "uv", smoke)
+        assert stages.pop("launcher") == ["uv-launcher"]
+    assert set(stages) == {wheel.name, sdist.name}
+    assert len(set(directories.values())) == 2
+    assert all(not directory.exists() for directory in directories.values())
+    assert len(installs) == 6  # Both independent venv/base/extra installs complete.
+    for artifact in (wheel, sdist):
+        expected = ["base-install", "mcp-install"]
+        if artifact.name != failed_artifact:
+            expected.append("registry-cli-install")
+        assert stages[artifact.name] == expected
+
+
 def test_installed_smoke_owns_actual_interpreter_and_preserves_venv(tmp_path):
     """A Windows redirector PID is not the interpreter whose locks we await."""
     import ast
     import importlib.util
     import os
+
     from mcp import StdioServerParameters
 
     path = Path(__file__).resolve().parents[1] / "verification/mcp_release.py"
