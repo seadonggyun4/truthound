@@ -12,11 +12,11 @@ from truthound.mcp.contracts import WireModel
 from truthound.mcp.operations import envelope
 from truthound.mcp.policy import MCPError
 
-Identity = Annotated[str, Field(pattern=r"^(snapshot|job)_[0-9a-f]{64}$")]
+Identity = Annotated[str, Field(pattern=r"^(snapshot|job|historysnapshot)_[0-9a-f]{64}$")]
 
 
 class RetentionPreview(WireModel):
-    kind: Literal["models", "jobs"]
+    kind: Literal["models", "jobs", "histories"]
     max_age_minutes: Annotated[int, Field(ge=1, le=5256000)] | None = None
     max_count: Annotated[int, Field(ge=1, le=128)] | None = None
     max_size_bytes: Annotated[int, Field(ge=1, le=32 * 1024**2)] | None = None
@@ -58,6 +58,11 @@ def read(session, identity):
     from truthound.mcp.durable_models import storage
 
     store = storage(session)
+    if identity.startswith("historysnapshot_"):
+        from truthound.mcp.durable_history import read as read_history
+
+        metadata, payload = read_history(session, identity)
+        return metadata, len(payload), "history_snapshots"
     if identity.startswith("job_"):
         record, payload, output = read_job(store, identity)
         authorize(session, record)
@@ -99,8 +104,15 @@ async def call(session, name, arguments):
 
     store = storage(session)
     model_storage(session)
+    from truthound.mcp.durable_history import storage as history_storage
+
+    history_storage(session)
     if name == "storage_retention_preview":
-        table = "model_snapshots" if arguments.kind == "models" else "validation_jobs"
+        table = {
+            "models": "model_snapshots",
+            "jobs": "validation_jobs",
+            "histories": "history_snapshots",
+        }[arguments.kind]
         excluded, items = [], []
         for row in store.connection.execute(f"SELECT identity FROM {table} ORDER BY identity"):
             identity = row[0]

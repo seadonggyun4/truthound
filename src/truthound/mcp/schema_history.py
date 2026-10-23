@@ -16,6 +16,7 @@ from truthound.mcp.session_contracts import Handle, ResourceInfo
 class HistoryCreate(WireModel):
     max_versions: Annotated[int, Field(ge=1, le=1000)] = 100
     strategy: Literal["semantic", "incremental", "timestamp", "git_like"] = "semantic"
+    backend: Literal["memory", "file"] = "memory"
 
 
 class Save(WireModel):
@@ -65,11 +66,41 @@ class Diff(WireModel):
     target_id: Annotated[str, Field(min_length=1, max_length=128)] | None = None
 
 
+class WatchAsset(WireModel):
+    action: Literal["watch_add", "watch_check"]
+    name: Annotated[str, Field(min_length=1, max_length=128)]
+    asset_id: Handle
+
+
+class WatchRemove(WireModel):
+    action: Literal["watch_remove"]
+    name: Annotated[str, Field(min_length=1, max_length=128)]
+
+
+class MonitorRead(WireModel):
+    action: Literal["watch_status", "alerts", "alert_stats", "snapshot"]
+
+
+class AlertAction(WireModel):
+    action: Literal["alert_get", "alert_acknowledge", "alert_resolve"]
+    alert_id: Annotated[str, Field(pattern=r"^ALERT-[0-9]{6,}$")]
+
+
 class HistoryAction(WireModel):
     history_id: Handle
     expected_revision: Annotated[int, Field(ge=0)]
     command: Annotated[
-        Save | VersionAction | Rollback | Latest | ByVersion | ListVersions | Diff,
+        Save
+        | VersionAction
+        | Rollback
+        | Latest
+        | ByVersion
+        | ListVersions
+        | Diff
+        | WatchAsset
+        | WatchRemove
+        | MonitorRead
+        | AlertAction,
         Field(discriminator="action"),
     ]
 
@@ -116,9 +147,13 @@ class HistorySession:
                 with suppress(MCPError):
                     self.session.resources.release_owned(identity)
 
-    async def call(self, operation, arguments):
+    async def call(self, operation, arguments, *, restore=None):
         session = self.session
         resources, policy = session.resources, session.policy
+        if operation in {"schema_history_persist", "schema_history_resume"}:
+            from truthound.mcp.durable_history import call
+
+            return await call(session, operation, arguments, self)
         if operation == "schema_history_create":
             if arguments.max_versions > policy.max_items:
                 raise MCPError("resource_exhausted")
@@ -127,11 +162,22 @@ class HistorySession:
             try:
                 path.write_text(arguments.model_dump_json(), encoding="utf-8")
                 worker = HistoryProcess(policy.handle_ttl_seconds)
-                await worker.call({"create": arguments.model_dump()}, policy.timeout_seconds)
+                await worker.call(
+                    {
+                        "create": arguments.model_dump(),
+                        "restore_path": str(restore.path) if restore else None,
+                        "storage_budget": min(
+                            policy.max_file_bytes, policy.max_session_bytes, 16 * 1024**2
+                        ),
+                    },
+                    policy.timeout_seconds,
+                )
                 entry = resources.commit(
                     identity,
                     kind="history",
                     media_type="application/vnd.truthound.schema-history+json",
+                    parents=(restore.id,) if restore else (),
+                    metadata={"history_configuration": arguments.model_dump()},
                 )
                 worker.expire_after(max(0, entry.expires - resources.clock()))
                 self.workers[identity], self.revisions[identity] = worker, 0
@@ -149,7 +195,7 @@ class HistorySession:
         if arguments.expected_revision != self.revisions[entry.id]:
             raise MCPError("revision_conflict")
         asset = None
-        if arguments.command.action == "save":
+        if isinstance(arguments.command, (Save, WatchAsset)):
             asset = resources.get(arguments.command.asset_id, "asset")
             entry = resources.bind_resident_inputs(entry.id, (asset.id,), kind="history")
             worker.expire_after(max(0, entry.expires - resources.clock()))
@@ -170,6 +216,7 @@ class HistorySession:
                 kind="artifact",
                 parents=(entry.id,),
                 media_type="application/vnd.truthound.schema-history-result+json",
+                metadata={"history_configuration": entry.metadata["history_configuration"]},
             )
             self.revisions[entry.id] = result["revision"]
             return envelope(

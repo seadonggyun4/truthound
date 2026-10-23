@@ -23,6 +23,7 @@ def operations(descriptor):
     from truthound.mcp.approved_sources import SourceBindingOpen
     from truthound.mcp.automation import ControlInput, ControlState, PolicyRegister
     from truthound.mcp.contexts import ContextAction, ContextActionResult
+    from truthound.mcp.durable_history import HistoryPersist, HistoryResume
     from truthound.mcp.durable_jobs import JobInput, JobState, JobSubmit
     from truthound.mcp.durable_models import ModelPersist, ModelResume, ModelSnapshot
     from truthound.mcp.lineage_contracts import (
@@ -73,8 +74,24 @@ def operations(descriptor):
 
     rows = (
         (
+            "schema_history_persist",
+            "Checkpoint native file history and local alerts into approved signed durable storage. Exact operator approval required; no shared writer or caller path.",
+            HistoryPersist,
+            "truthound.profiler.evolution.history.FileSchemaHistory",
+            ModelSnapshot | wire.OperationPlan,
+            True,
+        ),
+        (
+            "schema_history_resume",
+            "Restore a private native file history and local alerts from an approved checkpoint, rechecking source grants. New handle at revision zero; watcher registrations are not resumed.",
+            HistoryResume,
+            "truthound.profiler.evolution.history.FileSchemaHistory",
+            HistoryState,
+            True,
+        ),
+        (
             "schema_history_create",
-            "Create owned in-memory native schema history with bounded retention and a built-in version strategy. Session lifetime only; not an external or persistent store.",
+            "Create owned native memory or private file history with bounded retention and a built-in version strategy. Cross-session checkpoints require separate approval.",
             HistoryCreate,
             "truthound.profiler.evolution.history.InMemorySchemaHistory",
             HistoryState,
@@ -82,7 +99,7 @@ def operations(descriptor):
         ),
         (
             "schema_history_execute",
-            "Save an owned asset schema, query/list/diff versions, rollback or delete in native in-memory history. Expected revision prevents duplicate mutation. Full result is an owned artifact; releasing any observed input revokes the history.",
+            "Save/query/diff/rollback/delete native history, check registered schema snapshots and inspect/acknowledge/resolve local alerts. Revision prevents duplicate mutation; observed input release revokes history. No external notification or autonomous polling.",
             HistoryAction,
             "truthound.profiler.evolution.history.InMemorySchemaHistory",
             HistoryState,
@@ -925,6 +942,8 @@ def operations(descriptor):
                 "sources_open_polars",
                 "schema_history_create",
                 "schema_history_execute",
+                "schema_history_persist",
+                "schema_history_resume",
                 "sources_open_binding",
                 "sources_open_sqlite",
                 "sources_open_duckdb",
@@ -943,6 +962,8 @@ def operations(descriptor):
                 "models_persist",
                 "models_resume",
                 "sources_open_binding",
+                "schema_history_persist",
+                "schema_history_resume",
             },
         )
         for name, description, input_type, target, output_type, sensitive in rows

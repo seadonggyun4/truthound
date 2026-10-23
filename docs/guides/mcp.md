@@ -511,8 +511,9 @@ authorization; releasing that asset also prevents reading its rule artifact.
 
 ### Session-owned schema history
 
-`schema_history_create` constructs Core `InMemorySchemaHistory` in an owned
-resident worker. Choose `strategy`: `semantic` (default), `incremental`,
+`schema_history_create` constructs Core `InMemorySchemaHistory` (`backend="memory"`,
+default) or `FileSchemaHistory` (`backend="file"`) in an owned private worker.
+Choose `strategy`: `semantic` (default), `incremental`,
 `timestamp` or `git_like`; `max_versions` defaults to 100 and must be between 1
 and the operator's `max_items` (at most 1,000). The result contains `history`
 (resource information) and `revision=0`.
@@ -533,6 +534,11 @@ and an `artifact`; read the complete native result with `artifacts_read`.
 | `diff` | `source_id`, optional `target_id` (ID or version string) | Native changes and summary; target defaults to latest; null if absent |
 | `rollback` | `version_id` (ID or version string), optional `reason` | New copied version with native rollback metadata, or null |
 | `delete` | `version_id` | Whether a version was removed |
+| `watch_add`, `watch_check` | `name`, `asset_id` | Register an initial schema, or update its snapshot and run native `SchemaWatcher.check_now`; status or change events |
+| `watch_remove`, `watch_status` | `name` for removal only | Removal result or native source status |
+| `alerts`, `alert_stats` | None | Native local alert history or statistics |
+| `alert_get`, `alert_acknowledge`, `alert_resolve` | `alert_id` | Native alert or acknowledgement/resolution result |
+| `snapshot` | None | File backend only: closed native JSON file checkpoint; an artifact, not durable storage approval |
 
 Example commands, using the returned identifiers:
 
@@ -552,8 +558,45 @@ Use timezone-naive filters for the Core's timezone-naive creation timestamps;
 an aware/naive comparison fails as it does in Core. UUIDs, creation/diff times
 and timestamp/hash version strategies retain native nondeterminism.
 
-This history is **session-only**, not `FileSchemaHistory`, an external store or
-cross-session recovery. Its resource hash describes the creation configuration,
+Watch add/check/remove and alert acknowledgement/resolution also advance revision.
+The watcher compares explicitly supplied immutable asset schemas; it does not poll
+external files or start a background thread. Initial registration is a baseline,
+not a saved version. Changes pass through native `HistoryEventHandler` and
+`AlertingEventHandler`: changed schemas become versions and breaking changes become
+local alerts. Read events/alerts through artifacts; no email, webhook or remote
+notification is sent. Source and alert counts are bounded by `max_versions`;
+reaching the alert cap rejects further checks rather than silently losing alerts.
+Native logged storage/watcher failures are failures at the MCP boundary.
+
+For cross-session recovery, create with `backend="file"`, then call
+`schema_history_persist` with `history_id`, `expected_revision`, and an
+`idempotency_key`. It requires the existing operator approval flow and control
+directory. The immutable signed checkpoint contains the native version files,
+index and local alerts, including acknowledgement/resolution state. It stores no
+rows. Save returns `snapshot_id`, `sha256`, and `bytes`. Repeating the same approved
+intent at the same revision returns the original result.
+
+```json
+{"history_id":"<history.resource_id>","expected_revision":1,"idempotency_key":"history-checkpoint-01"}
+```
+
+Call `schema_history_resume` in a new session with exactly one of `snapshot_id` or
+the original `idempotency_key`. It revalidates signatures, file hashes, operator
+policy and original source/workspace grants, and creates a new private history
+handle at revision zero. Native version IDs, dates, schemas and alerts survive;
+old session handles and watcher registrations do not. Each resume is an independent
+working copy, not a shared mutable directory; subsequent edits require a new
+approved checkpoint to survive session termination. There is no automatic crash
+recovery of uncheckpointed edits. Operator-installed executable source bindings
+cannot be transferred through this snapshot path.
+
+Checkpoints are limited to 16 MiB (or the smaller operator file limit), 128 records
+and 32 MiB total. `storage_retention_preview` and approved automatic retention
+accept `kind="histories"`; `storage_delete` accepts the returned snapshot IDs.
+Deletion also revokes active restored handles. Private working files are removed
+on release/expiry; approved checkpoints remain until explicit/approved retention
+deletion. Arbitrary directories, archives and compressed-history imports are not
+accepted. The history resource hash describes the creation configuration,
 not mutable history contents. Save observes schema only, but all observed asset
 grants and handles remain dependencies, even after version deletion/eviction.
 Release, expiry, revoked input grants or worker failure invalidate the history
@@ -821,12 +864,12 @@ always-on OS service or add external provider execution.
 
 ### Durable storage retention and deletion
 
-`storage_retention_preview` takes `kind` (`models` or `jobs`) and at least one of
+`storage_retention_preview` takes `kind` (`models`, `jobs` or `histories`) and at least one of
 `max_age_minutes` (1–5,256,000), `max_count` (1–128), or `max_size_bytes`
 (1–33,554,432). It reuses Core `TimeBasedPolicy`, `CountBasedPolicy`,
 `SizeBasedPolicy` and `CompositePolicy`. With `mode="all"` (default), every selected
 policy must retain an item; `mode="any"` lets any selected policy preserve it.
-Size is the actual stored input plus result bytes, or model payload bytes, not
+Size is the actual stored input plus result bytes, or model/history checkpoint payload bytes, not
 SQLite file size or a new storage quota. Persistent automatic policies accept
 the same fields and retain their approved composition after restart.
 It returns `candidates`, `preserved` and `excluded`

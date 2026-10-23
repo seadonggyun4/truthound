@@ -322,6 +322,7 @@ def generate():
 
     for name in (
         "InMemorySchemaHistory",
+        "FileSchemaHistory",
         "SchemaHistory",
         "SchemaVersion",
         "SchemaDiff",
@@ -331,6 +332,19 @@ def generate():
         "GitLikeVersionStrategy",
     ):
         record_source(getattr(history, name))
+
+    from truthound.profiler.evolution import breaking_alerts, watcher
+
+    for name in (
+        "SchemaWatcher",
+        "DictSchemaSource",
+        "HistoryEventHandler",
+        "AlertingEventHandler",
+        "WatchEvent",
+    ):
+        record_source(getattr(watcher, name))
+    for name in ("BreakingChangeAlertManager", "BreakingChangeAlert", "ImpactAnalyzer"):
+        record_source(getattr(breaking_alerts, name))
 
     for name in (
         "SchemaCompatibilityAnalyzer",

@@ -106,7 +106,7 @@ async def core_profile():
                 required.add("profilers_column_renames")
                 required.add("profilers_schema_compatibility")
                 required.add("sources_open_binding")
-                required.update({"schema_history_create", "schema_history_execute"})
+                required.update({"schema_history_create", "schema_history_execute", "schema_history_persist", "schema_history_resume"})
                 required.add("models_rule_query")
                 required.add("models_result_query")
                 required.add("schedules_preview")
@@ -272,13 +272,23 @@ async def core_profile():
                 compatibility=await invoke("profilers_schema_compatibility",{"baseline_id":training,"current_id":evolved})
                 native_compatibility=SchemaCompatibilityAnalyzer().analyze({"x":pl.Float64},{"new_column":pl.Float64})
                 assert decode(json.loads(await artifact_bytes(compatibility["resource_id"])))=={"is_compatible":native_compatibility.is_compatible,"level":native_compatibility.level.value,"issues":[issue.to_dict() for issue in native_compatibility.issues],"rules_checked":native_compatibility.rules_checked}
-                history=await invoke("schema_history_create",{"strategy":"incremental","max_versions":2})
+                history=await invoke("schema_history_create",{"strategy":"incremental","max_versions":2,"backend":"file"})
                 history_id=history["history"]["resource_id"]
                 saved=await invoke("schema_history_execute",{"history_id":history_id,"expected_revision":0,"command":{"action":"save","asset_id":training}})
                 version=decode(json.loads(await artifact_bytes(saved["artifact"]["resource_id"])))
                 assert saved["revision"]==1 and version["version"]=="1" and version["schema"]=={"x":"Float64"}
                 latest=await invoke("schema_history_execute",{"history_id":history_id,"expected_revision":1,"command":{"action":"latest"}})
                 assert decode(json.loads(await artifact_bytes(latest["artifact"]["resource_id"])))==version
+                await invoke("schema_history_execute",{"history_id":history_id,"expected_revision":1,"command":{"action":"watch_add","name":"installed-schema","asset_id":training}})
+                changed=await invoke("schema_history_execute",{"history_id":history_id,"expected_revision":2,"command":{"action":"watch_check","name":"installed-schema","asset_id":evolved}})
+                events=decode(json.loads(await artifact_bytes(changed["artifact"]["resource_id"])))
+                assert len(events)==1 and events[0]["source"]=="installed-schema"
+                await invoke("schema_history_execute",{"history_id":history_id,"expected_revision":3,"command":{"action":"alert_acknowledge","alert_id":"ALERT-000001"}})
+                history_args={"history_id":history_id,"expected_revision":4,"idempotency_key":"installed-history-snapshot"}
+                pending_history=await client.call_tool("schema_history_persist",history_args)
+                assert pending_history.isError and pending_history.structuredContent["issues"]==[{"code":"approval_required"}]
+                subprocess.run([sys.executable,"-I","-m","truthound.mcp","approve-plan","--control-dir",str(control),"--plan-id",pending_history.structuredContent["data"]["plan_id"]],check=True,capture_output=True)
+                await invoke("schema_history_persist",history_args)
                 await invoke("resources_release",{"resource_id":history_id})
                 schedule=await invoke("schedules_preview",{"expression":"@daily","after":"2024-01-01T00:00:00+09:00","count":2})
                 assert schedule["valid"] and schedule["next_times"]==["2024-01-02T00:00:00+09:00","2024-01-03T00:00:00+09:00"]
@@ -307,6 +317,13 @@ async def core_profile():
                         await other.initialize()
                         resumed=await other.call_tool("models_resume",{"idempotency_key":"installed-model-snapshot"})
                         assert not resumed.isError and resumed.structuredContent["data"]["trained"]
+                        resumed_history=await other.call_tool("schema_history_resume",{"idempotency_key":"installed-history-snapshot"})
+                        assert not resumed_history.isError
+                        new_history=resumed_history.structuredContent["data"]["history"]["resource_id"]
+                        history_count=await other.call_tool("schema_history_execute",{"history_id":new_history,"expected_revision":0,"command":{"action":"count"}})
+                        assert not history_count.isError
+                        history_bytes=await other.call_tool("artifacts_read",{"resource_id":history_count.structuredContent["data"]["artifact"]["resource_id"]})
+                        assert not history_bytes.isError and json.loads(base64.b64decode(history_bytes.structuredContent["data"]["base64"]))==2
                 ensemble=(await invoke("models_create",{"algorithm":"EnsembleAnomalyDetector"}))["model_id"]
                 await invoke("models_ensemble_add",{"model_id":ensemble,"expected_revision":0,"detector":{"algorithm":"ZScoreAnomalyDetector"}})
                 await invoke("models_fit",{"model_id":ensemble,"asset_id":training,"expected_revision":1})

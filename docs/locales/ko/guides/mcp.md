@@ -466,7 +466,8 @@ DataProfiler의 실제 앞부분 표본은 `options.sample_size`가 지정하며
 
 ### 세션 소유 스키마 이력
 
-`schema_history_create`는 소유한 상주 작업자에서 Core `InMemorySchemaHistory`를
+`schema_history_create`는 전용 작업자에서 Core `InMemorySchemaHistory`
+(`backend="memory"`, 기본값) 또는 `FileSchemaHistory`(`backend="file"`)를
 생성합니다. `strategy`는 `semantic`(기본), `incremental`, `timestamp`, `git_like` 중
 선택합니다. `max_versions` 기본값은 100이며 1부터 운영자의 `max_items`까지
 (최대 1,000) 허용합니다. 결과에는 `history` 리소스 정보와 `revision=0`이 포함됩니다.
@@ -487,6 +488,11 @@ DataProfiler의 실제 앞부분 표본은 `options.sample_size`가 지정하며
 | `diff` | `source_id`, 선택적 `target_id`(ID 또는 버전 문자열) | 네이티브 변경·요약, 대상 기본값은 최신 버전이며 버전이 없으면 null |
 | `rollback` | `version_id`(ID 또는 버전 문자열), 선택적 `reason` | 네이티브 롤백 메타데이터가 포함된 새 복사 버전 또는 null |
 | `delete` | `version_id` | 삭제 여부 |
+| `watch_add`, `watch_check` | `name`, `asset_id` | 최초 스키마 등록 또는 스냅샷 갱신과 네이티브 즉시 검사; 상태 또는 변경 이벤트 |
+| `watch_remove`, `watch_status` | 삭제 시에만 `name` | 삭제 결과 또는 네이티브 소스 상태 |
+| `alerts`, `alert_stats` | 없음 | 네이티브 로컬 알림 이력 또는 통계 |
+| `alert_get`, `alert_acknowledge`, `alert_resolve` | `alert_id` | 네이티브 알림 또는 확인·해결 결과 |
+| `snapshot` | 없음 | 파일 방식의 네이티브 JSON 체크포인트 산출물; 영구 저장 승인은 아님 |
 
 반환된 식별자를 사용하는 호출 예시입니다.
 
@@ -506,7 +512,41 @@ Core 생성 시각에 맞춰 시간대 없는 날짜 필터를 사용하세요. 
 시각의 비교는 Core와 마찬가지로 실패합니다. UUID·생성/비교 시각과 timestamp/hash
 버전 전략의 비결정적 값은 네이티브 동작을 유지합니다.
 
-이 기능은 **세션 전용**이며 `FileSchemaHistory`, 외부 저장소, 세션 간 복구가 아닙니다.
+감시 등록·검사·삭제와 알림 확인·해결도 revision을 증가시킵니다. 감시는 명시적으로
+전달한 불변 자산의 스키마를 비교하며 외부 파일을 자동으로 읽거나 백그라운드
+스레드를 시작하지 않습니다. 최초 등록은 기준 스키마이며 이력 버전을 저장하지
+않습니다. 변경은 네이티브 `HistoryEventHandler`·`AlertingEventHandler`를 통해
+버전으로 저장되고, 호환성을 깨는 변경은 로컬 알림이 됩니다. 이벤트·알림은
+산출물로 읽으며 이메일·웹훅·외부 알림은 보내지 않습니다. 소스와 알림 수는
+`max_versions`로 제한하며 알림 한도에 도달하면 조용히 삭제하지 않고 검사를
+거부합니다. Core가 로그로만 보고하는 저장·감시 실패도 MCP에서는 실패입니다.
+
+세션 간 복구에는 `backend="file"`로 생성한 뒤 `schema_history_persist`에
+`history_id`·`expected_revision`·`idempotency_key`를 전달합니다. 기존 운영자
+승인 절차와 제어 디렉터리가 필요합니다. 서명한 불변 체크포인트에는 네이티브
+버전 파일·색인·로컬 알림과 확인·해결 상태가 포함되며 데이터 행은 저장하지
+않습니다. 결과는 `snapshot_id`·`sha256`·`bytes`입니다. 같은 revision의 승인된
+요청을 재전송하면 최초 저장 결과를 반환합니다.
+
+```json
+{"history_id":"<history.resource_id>","expected_revision":1,"idempotency_key":"history-checkpoint-01"}
+```
+
+새 세션에서 `schema_history_resume`에 `snapshot_id` 또는 최초 `idempotency_key`
+중 하나만 전달합니다. 서명·파일 해시·운영자 정책·원본 소스와 작업공간 권한을
+다시 확인하고 revision 0의 새 전용 이력 핸들을 생성합니다. 버전 ID·시각·스키마와
+알림은 보존하지만 이전 핸들·감시 등록은 복구하지 않습니다. 복구본은 서로 독립된
+작업 복사본이며 공유 쓰기 디렉터리가 아닙니다. 후속 변경을 보존하려면 새
+체크포인트를 승인·저장해야 하며, 저장하지 않은 변경의 자동 장애 복구는 없습니다.
+설치된 실행 코드 소스 바인딩은 이 저장 경로로 권한을 이전할 수 없습니다.
+
+체크포인트는 건당 16 MiB(운영자 파일 제한이 더 작으면 그 값), 최대 128건·총
+32 MiB입니다. `storage_retention_preview`와 승인된 자동 보존 정책의
+`kind="histories"`, `storage_delete`의 체크포인트 ID 삭제를 지원합니다. 삭제하면
+활성 복구 핸들도 무효화됩니다. 전용 작업 파일은 해제·만료 시 제거되며 승인한
+체크포인트는 명시적 삭제 또는 승인한 보존 정책의 삭제 전까지 유지됩니다.
+임의 디렉터리·아카이브·압축 이력 가져오기는 허용하지 않습니다.
+
 리소스 해시는 생성 설정을 나타내며 변경되는 이력 내용의 해시가 아닙니다.
 행을 저장하지 않지만 관찰한 모든 자산의 권한과 핸들은 버전 삭제·보존 만료 후에도
 의존성으로 유지됩니다. 해제·만료·입력 권한 철회·작업자 실패는 이력과 파생 결과를
@@ -748,12 +788,12 @@ SIGINT/SIGTERM은 현재 제한된 작업을 마친 뒤 종료합니다. OS 서�
 
 ### 영구 저장 보존 정책과 삭제
 
-`storage_retention_preview`에는 `kind`(`models` 또는 `jobs`)와 `max_age_minutes`
+`storage_retention_preview`에는 `kind`(`models`·`jobs`·`histories`)와 `max_age_minutes`
 (1~5,256,000), `max_count`(1~128), `max_size_bytes`(1~33,554,432) 중 하나 이상을
 지정합니다. Core의 `TimeBasedPolicy`·`CountBasedPolicy`·`SizeBasedPolicy`·
 `CompositePolicy`를 재사용합니다. 기본 `mode="all"`은 모든 선택 정책이 보존해야
 남기고, `mode="any"`는 하나라도 보존하면 남깁니다. 크기는 실제 작업 입력·결과
-바이트 합계 또는 모델 payload 바이트이며 SQLite 파일 크기나 새 저장 한도가 아닙니다.
+바이트 합계 또는 모델·이력 체크포인트의 payload 바이트이며 SQLite 파일 크기나 새 저장 한도가 아닙니다.
 영구 자동 정책도 같은 필드를 받으며 재시작 후 승인된 조합을 유지합니다.
 삭제 없이 `candidates`, `preserved`, `excluded` ID 목록을 반환합니다. 대기·실행 중·
 불확정 작업과 생성 시각이 없는 과거 레코드는 제외합니다. 동일 생성 시각은 ID 순서로
