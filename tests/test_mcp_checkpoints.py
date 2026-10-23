@@ -1,6 +1,7 @@
 """Real installed factories, native Checkpoint parity, approval and lifecycle."""
 
 import json
+import subprocess
 import sys
 from dataclasses import replace
 from types import SimpleNamespace
@@ -164,3 +165,63 @@ def test_uncertain_checkpoint_is_not_reexecuted(runtime, monkeypatch, tmp_path, 
     assert created[0].process.poll() is not None
     if marker.exists():
         assert "checkpoint-action" not in marker.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("signal", ["eof", "extra-command"])
+def test_parent_pipe_allows_native_child_launch_and_revokes_worker(signal):
+    command = (
+        "import sys,subprocess,time; "
+        "from truthound.mcp.parent_pipe import watch_parent; "
+        "watch_parent(sys.stdin.fileno()); "
+        "subprocess.run([sys.executable,'-c','print(123,flush=True)'],check=True,timeout=5); "
+        "time.sleep(30)"
+    )
+    process = subprocess.Popen(
+        [sys.executable, "-I", "-c", command],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    try:
+        # Communicate the revocation after the inherited-pipe child completes.
+        import concurrent.futures
+
+        with concurrent.futures.ThreadPoolExecutor() as executor:
+            future = executor.submit(process.stdout.readline)
+            try:
+                assert future.result(timeout=10).strip() == b"123"
+            except BaseException:
+                process.kill()
+                raise
+        if signal == "extra-command":
+            process.stdin.write(b"x")
+            process.stdin.flush()
+        else:
+            process.stdin.close()
+        assert process.wait(timeout=5) == 75
+    finally:
+        if process.poll() is None:
+            process.kill()
+        process.wait(timeout=5)
+        for stream in (process.stdin, process.stdout, process.stderr):
+            if stream:
+                stream.close()
+
+
+@pytest.mark.parametrize("signal", ["eof", "extra-command"])
+def test_windows_pipe_wait_does_not_issue_blocking_read(signal):
+    from truthound.mcp.parent_pipe import wait_windows_pipe
+
+    calls, pauses = [], []
+
+    def peek(handle):
+        assert handle == 42
+        calls.append(handle)
+        if len(calls) == 1:
+            return (0, 0)
+        if signal == "eof":
+            raise BrokenPipeError
+        return (1, 0)
+
+    wait_windows_pipe(42, peek, pauses.append)
+    assert calls == [42, 42] and pauses == [0.05]

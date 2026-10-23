@@ -5,11 +5,11 @@ import hashlib
 import json
 import os
 import sys
-import threading
 from pathlib import Path
 
 from truthound.mcp.approval import private_read
 from truthound.mcp.encoding import encode
+from truthound.mcp.parent_pipe import watch_parent
 from truthound.mcp.plugin_bindings import approved_capabilities, fingerprint
 from truthound.mcp.policy import MCPError
 from truthound.mcp.resources import BoundedWriter
@@ -52,11 +52,7 @@ def main():
             raise MCPError("resource_exhausted")
         request = json.loads(line)
 
-        def parent_disconnected():
-            os.read(sys.stdin.fileno(), 1)
-            os._exit(75)
-
-        threading.Thread(target=parent_disconnected, daemon=True).start()
+        watch_parent(sys.stdin.fileno())
         with (
             open(os.devnull, "w") as sink,
             contextlib.redirect_stdout(sink),
