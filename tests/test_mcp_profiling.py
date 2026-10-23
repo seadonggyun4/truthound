@@ -124,7 +124,12 @@ def test_rule_generation_rejects_unreviewed_configuration(tmp_path, arguments):
             )
         )
         assert result["execution_status"] != "succeeded"
-        assert result["issues"]
+        expected_code = (
+            "unknown_component"
+            if arguments["generator"]["component"] == "os.system"
+            else "invalid_arguments"
+        )
+        assert result["issues"] == [{"code": expected_code}]
     finally:
         adapter.close()
 
