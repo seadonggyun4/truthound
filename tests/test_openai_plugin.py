@@ -90,7 +90,7 @@ def test_package_builder_never_sweeps_generated_or_private_files(tmp_path):
 
         icon = archive.read("assets/icon.png")
         assert hashlib.sha256(icon).hexdigest() == (
-            "71b4fa143cb480773eeab55bb7f7e7b06424a9b27eb71aed7a7ec8c1b765cd9c"
+            "5ceb2314e1e6763e0c75ee22cd54199e3c20efa30d5e5993e0fbde58197e87c7"
         )
         for name in ("plugin.json", ".codex-plugin/plugin.json"):
             manifest = json.loads(archive.read(name))

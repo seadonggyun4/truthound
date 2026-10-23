@@ -954,7 +954,7 @@ The bundle never contains project data, development environments or internal not
 
 ## OpenAI local plugin and repository marketplace
 
-The standalone OpenAI plugin is version `0.1.3`, pins the published Core
+The standalone OpenAI plugin is version `0.1.4`, pins the published Core
 `truthound[mcp]==3.2.0`, and includes a frozen UV dependency lock. It is local
 desktop software, not a hosted service or a ChatGPT web connector. Install UV
 and make it available on the desktop application's PATH. First setup needs
@@ -978,7 +978,9 @@ The MCP command uses a plugin-relative `cwd` instead of depending on host-specif
 argument placeholder interpolation. Version 0.1.1 fixes 0.1.0 startup on Codex 0.141.0.
 Version 0.1.2 uses the standard `./` prefix, with both portable manifests checked
 against vendored official Agent Plugins 1.0.0 schemas before ZIP creation.
-Version 0.1.3 updates the bundled icon and logo; existing installations may keep
+Version 0.1.4 fills the square icon and logo canvas with orange, without the
+previous gray surround or baked-in rounded tile. The host controls its own
+corner clipping and padding. Existing installations may keep
 the previous image until the plugin is updated and the client refreshes its cache.
 The OS validation workflow checks actual Codex installation and normalized runtime
 configuration as well as the frozen UV launch. On Windows, verification invokes
