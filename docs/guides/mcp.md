@@ -456,6 +456,24 @@ authorization; releasing that asset also prevents reading its rule artifact.
 
 ### Drift and resident ML
 
+`profilers_schema_evolution` compares the native schemas of two owned assets
+using `baseline_id` and `current_id`. Optional `detect_renames` (default `true`)
+and `rename_similarity_threshold` (default `0.8`) are passed to Core's
+`SchemaEvolutionDetector`. The owned artifact contains all native change
+records and the native compatibility summary, including its detection timestamp.
+Change ordering follows Core's unordered column-set iteration. This binding
+detects additions, removals, inferred renames and type changes; it does not infer
+constraint/nullability changes or persist a baseline, start a watcher, or apply
+migrations. Artifact reads require sensitive-result permission and both source
+assets to remain authorized and live.
+
+Native panics are distinct from ordinary validation failures: when a native
+extension aborts a worker without returning a canonical result, MCP reports
+`worker_error` without a successful or partial result artifact. For example,
+Polars timestamps outside Python's datetime range can trigger this during
+privacy-validator value conversion. This is failure isolation, not a repaired
+Core result or a successful privacy assessment.
+
 For concrete detector configuration, use `drift_catalog` and `drift_detect` with
 `detector`, `settings`, `baseline_id`, `current_id`, `baseline_column` and an
 optional different `current_column`. This calls the selected native detector's

@@ -313,6 +313,11 @@ def generate():
     record_source(profiler.ColumnProfiler)
     record_source(profiler.GeneratedRule)
     record_source(profiler.TableProfile)
+    from truthound.profiler.evolution.changes import SchemaChange, SchemaChangeSummary
+    from truthound.profiler.evolution.detector import SchemaEvolutionDetector
+
+    for cls in (SchemaEvolutionDetector, SchemaChange, SchemaChangeSummary):
+        record_source(cls)
     suite = {
         "evidence_policy": describe(EvidencePolicy),
         "severity_policy": describe(SeverityPolicy),

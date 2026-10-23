@@ -6,13 +6,33 @@ from pydantic import Field, JsonValue, model_validator
 
 from truthound.mcp.contracts import Name, WireModel
 from truthound.mcp.policy import MCPError
-from truthound.mcp.session_contracts import AssetInput
+from truthound.mcp.session_contracts import AssetInput, Handle
 from truthound.mcp.validator_wire import _known_type, contracts, fields, record_fields
 
 
 class Component(WireModel):
     component: Name
     settings: dict[str, JsonValue] = Field(default_factory=dict)
+
+
+class SchemaEvolution(WireModel):
+    baseline_id: Handle
+    current_id: Handle
+    detect_renames: bool = True
+    rename_similarity_threshold: float = 0.8
+
+
+def schema_evolution(arguments, baseline, current):
+    detector = _known_type("truthound.profiler.evolution.detector.SchemaEvolutionDetector")(
+        **arguments.model_dump(exclude={"baseline_id", "current_id"})
+    )
+    _known_type("truthound.profiler.evolution.changes.SchemaChange")
+    _known_type("truthound.profiler.evolution.changes.SchemaChangeSummary")
+    changes = detector.detect_changes(current.schema, baseline.schema)
+    return {
+        "changes": [change.to_dict() for change in changes],
+        "summary": detector.get_change_summary(changes).to_dict(),
+    }
 
 
 def component(group, value, *, build=False):

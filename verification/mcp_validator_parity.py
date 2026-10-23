@@ -51,10 +51,17 @@ def coverage(proof):
     constructor_prefix = "tests/test_mcp_algorithm_parity.py::test_actual_constructor_configuration_error_is_not_execution_coverage["
     constructor_errors = set()
     swallowed_errors = set()
+    panic_errors = set()
+    panic_prefix = "tests/test_mcp_algorithm_parity.py::test_native_privacy_panic_preserves_failed_worker_boundary["
     swallowed_prefix = "tests/test_mcp_algorithm_parity.py::test_swallowed_native_error_matches_core_with_observed_exception["
     uncertain_constructors = set()
     uncertain_prefix = "tests/test_mcp_algorithm_parity.py::test_approved_constructor_failure_preserves_uncertain_effects["
     for node in proof.get("collection", {}):
+        if node.startswith(panic_prefix) and node.endswith("]"):
+            name = node[len(panic_prefix) : -1]
+            if name not in registered or name in panic_errors:
+                raise ValueError("MCP_PARITY_INVALID_NATIVE_PANIC")
+            panic_errors.add(name)
         if node.startswith(swallowed_prefix) and node.endswith("]"):
             name = node[len(swallowed_prefix) : -1]
             if name not in registered or name in swallowed_errors:
@@ -84,7 +91,9 @@ def coverage(proof):
                 raise ValueError("MCP_PARITY_DUPLICATE_SCENARIO")
             exercised[polarity].add(name)
     paired = exercised["positive"] & exercised["negative"]
-    runtime_errors = exercised["error"] | exercised["caught_error"] | swallowed_errors
+    runtime_errors = (
+        exercised["error"] | exercised["caught_error"] | swallowed_errors | panic_errors
+    )
     complete = paired & runtime_errors
     return {
         "registered_algorithms": len(registered),
@@ -92,6 +101,7 @@ def coverage(proof):
         "error_path_verified": len(exercised["error"]),
         "caught_algorithm_error_verified_separately": len(exercised["caught_error"]),
         "swallowed_algorithm_exception_observed_separately": len(swallowed_errors),
+        "native_panic_boundary_verified_separately": len(panic_errors),
         "runtime_error_boundary_verified": len(runtime_errors),
         "constructor_configuration_error_verified_separately": len(constructor_errors),
         "native_constructor_rejection_with_uncertain_trusted_effects": len(uncertain_constructors),
@@ -103,7 +113,11 @@ def coverage(proof):
         and complete == registered
         and (constructor_errors | uncertain_constructors) == registered,
         "full_core_parity": False,
-        "limits": "Validator parity cannot establish datasource or advanced-domain parity.",
+        "limits": (
+            "Validator parity cannot establish datasource or advanced-domain parity. "
+            "Native panic coverage proves failed-worker isolation and recovery, "
+            "not a canonical validation result or a repaired native algorithm."
+        ),
     }
 
 

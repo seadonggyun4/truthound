@@ -37,7 +37,7 @@ def operations(descriptor):
         ImpactInput,
         SchemaImpact,
     )
-    from truthound.mcp.profiling import GenerateRules, Profile
+    from truthound.mcp.profiling import GenerateRules, Profile, SchemaEvolution
     from truthound.mcp.retention import (
         DeleteResult,
         RetentionPreview,
@@ -410,6 +410,14 @@ def operations(descriptor):
             "Generate native table or selected-column rules or validator configurations from a fresh composed profile using one explicit built-in generator; retain an artifact without executing rules.",
             GenerateRules,
             "truthound.profiler.generators.base.RuleGenerator.generate",
+            wire.ResourceInfo,
+            False,
+        ),
+        (
+            "profilers_schema_evolution",
+            "Compare two owned asset schemas through the native evolution detector; retain complete changes and compatibility summary without baseline persistence.",
+            SchemaEvolution,
+            "truthound.profiler.evolution.SchemaEvolutionDetector.detect_changes",
             wire.ResourceInfo,
             False,
         ),

@@ -786,6 +786,7 @@ class MCPSession:
             "assets_profile": "artifact",
             "profilers_profile": "artifact",
             "profilers_generate_rules": "artifact",
+            "profilers_schema_evolution": "artifact",
             "assets_scan": "artifact",
             "artifacts_render": "artifact",
             "artifacts_datadocs": "artifact",
@@ -828,7 +829,7 @@ class MCPSession:
                         entry = self.resources.get(handle, "graph")
                         request["graph_path"] = str(entry.path)
                         parents, origins, digest = (entry.id,), entry.origins, entry.sha256
-                elif name in {"drift_compare", "drift_detect"}:
+                elif name in {"drift_compare", "drift_detect", "profilers_schema_evolution"}:
                     baseline = self.resources.get(arguments.baseline_id, "asset")
                     current = self.resources.get(arguments.current_id, "asset")
                     request.update(baseline_path=str(baseline.path), current_path=str(current.path))

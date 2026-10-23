@@ -238,6 +238,16 @@ async def core_profile():
                 configs=await invoke("profilers_generate_rules",{"asset_id":training,"generator":{"component":"SchemaRuleGenerator"},"column":"x","representation":"validator_configs","options":{"parallel":False}})
                 expected_configs=[{"validator_class":rule.validator_class,"config":rule.to_validator_config()} for rule in SchemaRuleGenerator().generate_for_column(native_profile["x"],Strictness.MEDIUM)]
                 assert expected_configs and decode(json.loads(await artifact_bytes(configs["resource_id"])))==expected_configs
+                from truthound.profiler.evolution import SchemaEvolutionDetector
+                evolved=(await invoke("assets_inline",{"columns":[{"name":"new_column","dtype":{"kind":"Float64"},"values":[1.0]}]}))["resource_id"]
+                evolution=await invoke("profilers_schema_evolution",{"baseline_id":training,"current_id":evolved,"detect_renames":False})
+                actual_evolution=decode(json.loads(await artifact_bytes(evolution["resource_id"])))
+                native_detector=SchemaEvolutionDetector(detect_renames=False)
+                changes=native_detector.detect_changes({"new_column":pl.Float64},{"x":pl.Float64})
+                expected_summary=native_detector.get_change_summary(changes).to_dict()
+                assert actual_evolution["summary"].pop("detected_at") and expected_summary.pop("detected_at")
+                assert actual_evolution["summary"]==expected_summary and len(changes)==2
+                assert sorted(json.dumps(c,sort_keys=True) for c in actual_evolution["changes"])==sorted(json.dumps(c.to_dict(),sort_keys=True) for c in changes)
                 schedule=await invoke("schedules_preview",{"expression":"@daily","after":"2024-01-01T00:00:00+09:00","count":2})
                 assert schedule["valid"] and schedule["next_times"]==["2024-01-02T00:00:00+09:00","2024-01-03T00:00:00+09:00"]
                 model=await invoke("models_create",{"algorithm":"ZScoreAnomalyDetector"})

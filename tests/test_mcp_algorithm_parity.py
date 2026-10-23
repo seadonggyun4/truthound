@@ -31,6 +31,46 @@ SCENARIOS = _cases.SCENARIOS
 pytestmark = pytest.mark.contract
 
 
+@pytest.mark.parametrize(
+    "name",
+    [
+        "gdpr_compliance",
+        "ccpa_compliance",
+        "global_privacy",
+        "lgpd_compliance",
+        "pipeda_compliance",
+        "appi_compliance",
+    ],
+)
+def test_native_privacy_panic_preserves_failed_worker_boundary(tmp_path, name):
+    from dataclasses import replace
+
+    import truthound as th
+    from truthound.validators import get_validator
+
+    scenario = next(row for row in SCENARIOS if row.validator == name)
+    scenario = replace(scenario, settings={**scenario.settings, "columns": ["x"]})
+    # Year 10000 is representable in Arrow/Polars but not Python datetime.
+    # Keep the native typed buffer, never a preconverted Python datetime.
+    frame = pl.DataFrame(
+        {"x": pl.Series([253402300800000000], dtype=pl.Int64).cast(pl.Datetime("us"))}
+    )
+    validator = get_validator(name)(**scenario.settings)
+    with pytest.raises(pl.exceptions.PanicException, match="year 10000 is out of range"):
+        validator.validate(frame.lazy())
+    with pytest.raises(pl.exceptions.PanicException, match="year 10000 is out of range"):
+        th.check(
+            frame,
+            validators=[validator],
+            result_format="complete",
+            context=_context(str(tmp_path / "direct/input.ipc")),
+        )
+    response, actual = mcp_run(tmp_path, scenario, frame, verify_recovery=True)
+    assert response["execution_status"] == "failed"
+    assert response["issues"] == [{"code": "worker_error"}]
+    assert actual is None, "A native panic cannot become successful or partial canonical evidence"
+
+
 def native_settings(scenario, frame):
     settings = scenario.native_settings
     return settings(frame) if callable(settings) else settings or scenario.settings
@@ -277,7 +317,7 @@ def test_approved_constructor_failure_preserves_uncertain_effects(tmp_path, scen
     assert artifact is None
 
 
-def mcp_run(tmp_path, scenario, frame):
+def mcp_run(tmp_path, scenario, frame, verify_recovery=False):
     data = tmp_path / "data"
     data.mkdir()
     path = data / "input.parquet"
@@ -352,6 +392,14 @@ def mcp_run(tmp_path, scenario, frame):
             if result and result.get("artifact")
             else None
         )
+        if verify_recovery:
+            recovered = invoke(
+                service,
+                "assets_validate",
+                asset_id=asset,
+                checks=[{"validator": "column_exists", "settings": {"columns": ["x"]}}],
+            )
+            assert recovered["summary"]["success"] is True
         return response, actual
     finally:
         service.close()

@@ -35,6 +35,73 @@ def normalize(value):
 
 
 @pytest.mark.parametrize(
+    "renames,threshold,released", [(True, 0.8, 0), (False, 0.8, 1), (True, 1.0, 0)]
+)
+def test_schema_evolution_matches_native_and_requires_both_parents(
+    tmp_path, renames, threshold, released
+):
+    from datetime import datetime
+
+    from truthound.profiler.evolution import SchemaEvolutionDetector
+
+    baseline = pl.DataFrame(
+        {
+            "account_code": [1],
+            "obsolete": [1],
+            "widen": pl.Series([1], dtype=pl.Int32),
+            "narrow": [1.0],
+        }
+    )
+    current = pl.DataFrame({"account_codes": [1], "new": [1], "widen": [1], "narrow": [1]})
+    native = SchemaEvolutionDetector(detect_renames=renames, rename_similarity_threshold=threshold)
+    changes = native.detect_changes(current.schema, baseline.schema)
+    expected = native.get_change_summary(changes).to_dict()
+    assert expected["breaking_changes"] > 0 and expected["type_changes"] == 2
+    service = MCPService(MCPPolicy((tmp_path,), profile="core", allow_sensitive_results=True))
+    try:
+        handles = [
+            call(
+                service,
+                "assets_inline",
+                columns=[
+                    {"name": name, "dtype": {"kind": str(dtype)}, "values": frame[name].to_list()}
+                    for name, dtype in frame.schema.items()
+                ],
+            )["resource_id"]
+            for frame in (baseline, current)
+        ]
+        args = {
+            "baseline_id": handles[0],
+            "current_id": handles[1],
+            "detect_renames": renames,
+            "rename_similarity_threshold": threshold,
+        }
+        artifact = call(service, "profilers_schema_evolution", **args)["resource_id"]
+        parts, offset = [], 0
+        while offset is not None:
+            chunk = call(service, "artifacts_read", resource_id=artifact, offset=offset)
+            parts.append(base64.b64decode(chunk["base64"]))
+            offset = chunk["next_offset"]
+        actual = decode(json.loads(b"".join(parts)))
+        # Native set iteration is unordered; compare all change fields as a multiset.
+        assert sorted(json.dumps(c, sort_keys=True) for c in actual["changes"]) == sorted(
+            json.dumps(c.to_dict(), sort_keys=True) for c in changes
+        )
+        assert datetime.fromisoformat(actual["summary"].pop("detected_at"))
+        expected.pop("detected_at")
+        assert actual["summary"] == expected
+        call(service, "resources_release", resource_id=handles[released])
+        for operation, arguments in (
+            ("artifacts_read", {"resource_id": artifact}),
+            ("profilers_schema_evolution", args),
+        ):
+            denied = asyncio.run(service.call_operation_async(operation, arguments))
+            assert denied["execution_status"] == "failed" and not denied.get("data")
+    finally:
+        service.close()
+
+
+@pytest.mark.parametrize(
     "generator",
     [
         "SchemaRuleGenerator",

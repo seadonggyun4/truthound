@@ -417,6 +417,22 @@ DataProfiler의 실제 앞부분 표본은 `options.sample_size`가 지정하며
 
 ### 드리프트와 상주 ML 모델
 
+`profilers_schema_evolution`은 `baseline_id`와 `current_id`로 지정한 두 자산의
+네이티브 스키마를 비교합니다. `detect_renames`(기본 `true`)와
+`rename_similarity_threshold`(기본 `0.8`)를 Core의 `SchemaEvolutionDetector`에
+전달합니다. 산출물에는 모든 네이티브 변경 레코드와 탐지 시각을 포함한 호환성
+요약이 들어갑니다. 변경 순서는 Core의 정렬되지 않은 컬럼 집합 순회를 따릅니다.
+컬럼 추가·삭제·이름 변경 추정·타입 변경을 탐지하며 제약·널 허용 여부의 변경은
+추론하지 않습니다. 기준 스키마 저장·감시 실행·마이그레이션 적용도 하지 않습니다.
+산출물을 읽으려면 민감 결과 허용과 두 원본 자산의 유효한 접근 권한이 필요하며,
+어느 원본이든 해제하면 읽을 수 없습니다.
+
+네이티브 panic은 일반 검증 실패와 다릅니다. 네이티브 확장이 canonical 결과를
+반환하지 못하고 worker를 종료하면 MCP는 성공·부분 결과 산출물 없이
+`worker_error`를 반환합니다. 예를 들어 Python 날짜 범위를 벗어나는 Polars
+타임스탬프를 개인정보 검증기가 Python 값으로 변환할 때 발생할 수 있습니다.
+이는 실패 격리이며 Core 결과를 복구하거나 개인정보 검증에 성공했다는 뜻이 아닙니다.
+
 구체 탐지기의 설정은 `drift_catalog`에서 조회합니다. `drift_detect`는 `detector`,
 `settings`, `baseline_id`, `current_id`, `baseline_column`, 선택적인 다른
 `current_column`을 받아 해당 네이티브 탐지기의 `detect()`를 실행합니다. 비교
