@@ -63,7 +63,17 @@ def test_column_rules_match_native_without_table_rules(tmp_path, generator, stri
     assert_generated_rules(tmp_path, generator, strictness, column=column)
 
 
-def assert_generated_rules(tmp_path, generator, strictness, column=None):
+@pytest.mark.parametrize(
+    "generator",
+    ["SchemaRuleGenerator", "StatsRuleGenerator", "PatternRuleGenerator", "MLRuleGenerator"],
+)
+@pytest.mark.parametrize("strictness", ["loose", "medium", "strict"])
+def test_generated_validator_configs_match_native(tmp_path, generator, strictness):
+    column = "email" if generator == "PatternRuleGenerator" else "amount"
+    assert_generated_rules(tmp_path, generator, strictness, column, "validator_configs")
+
+
+def assert_generated_rules(tmp_path, generator, strictness, column=None, representation="rules"):
     import truthound.profiler as core
 
     frame = pl.DataFrame(
@@ -85,7 +95,14 @@ def assert_generated_rules(tmp_path, generator, strictness, column=None):
         if column is None
         else native.generate_for_column(profile[column], core.Strictness(strictness))
     )
-    expected = [rule.to_dict() for rule in rules]
+    expected = (
+        [rule.to_dict() for rule in rules]
+        if representation == "rules"
+        else [
+            {"validator_class": rule.validator_class, "config": rule.to_validator_config()}
+            for rule in rules
+        ]
+    )
     assert expected, "Exercise real rule generation, not an empty result"
     adapter = MCPService(MCPPolicy((tmp_path,), profile="core", allow_sensitive_results=True))
     try:
@@ -106,6 +123,7 @@ def assert_generated_rules(tmp_path, generator, strictness, column=None):
             generator={"component": generator, "settings": settings},
             strictness=strictness,
             column=column,
+            representation=representation,
         )["resource_id"]
         parts, offset = [], 0
         while offset is not None:
@@ -114,7 +132,7 @@ def assert_generated_rules(tmp_path, generator, strictness, column=None):
             offset = chunk["next_offset"]
         assert decode(json.loads(b"".join(parts))) == expected
         if column is not None:
-            assert all(rule["columns"] == [column] for rule in expected)
+            assert all(rule.columns == (column,) for rule in rules)
             with pytest.raises(KeyError):
                 native.generate_for_column(profile["absent"], core.Strictness(strictness))
             failed = asyncio.run(
@@ -124,6 +142,7 @@ def assert_generated_rules(tmp_path, generator, strictness, column=None):
                         "asset_id": asset,
                         "generator": {"component": generator},
                         "column": "absent",
+                        "representation": representation,
                     },
                 )
             )
@@ -146,6 +165,7 @@ def assert_generated_rules(tmp_path, generator, strictness, column=None):
         {"generator": {"component": "os.system"}},
         {"generator": {"component": "SchemaRuleGenerator", "settings": {"typo": True}}},
         {"generator": {"component": "SchemaRuleGenerator"}, "strictness": "unknown"},
+        {"generator": {"component": "SchemaRuleGenerator"}, "representation": "execute"},
     ],
 )
 def test_rule_generation_rejects_unreviewed_configuration(tmp_path, arguments):

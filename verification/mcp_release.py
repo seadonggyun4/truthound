@@ -235,6 +235,9 @@ async def core_profile():
                 column_rules=await invoke("profilers_generate_rules",{"asset_id":training,"generator":{"component":"SchemaRuleGenerator"},"column":"x","options":{"parallel":False}})
                 expected_column_rules=[rule.to_dict() for rule in SchemaRuleGenerator().generate_for_column(native_profile["x"],Strictness.MEDIUM)]
                 assert expected_column_rules and decode(json.loads(await artifact_bytes(column_rules["resource_id"])))==expected_column_rules
+                configs=await invoke("profilers_generate_rules",{"asset_id":training,"generator":{"component":"SchemaRuleGenerator"},"column":"x","representation":"validator_configs","options":{"parallel":False}})
+                expected_configs=[{"validator_class":rule.validator_class,"config":rule.to_validator_config()} for rule in SchemaRuleGenerator().generate_for_column(native_profile["x"],Strictness.MEDIUM)]
+                assert expected_configs and decode(json.loads(await artifact_bytes(configs["resource_id"])))==expected_configs
                 schedule=await invoke("schedules_preview",{"expression":"@daily","after":"2024-01-01T00:00:00+09:00","count":2})
                 assert schedule["valid"] and schedule["next_times"]==["2024-01-02T00:00:00+09:00","2024-01-03T00:00:00+09:00"]
                 model=await invoke("models_create",{"algorithm":"ZScoreAnomalyDetector"})

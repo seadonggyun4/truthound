@@ -407,7 +407,7 @@ def operations(descriptor):
         ),
         (
             "profilers_generate_rules",
-            "Generate native table or selected-column rules from a fresh composed profile using one explicit built-in generator; retain an artifact without executing rules.",
+            "Generate native table or selected-column rules or validator configurations from a fresh composed profile using one explicit built-in generator; retain an artifact without executing rules.",
             GenerateRules,
             "truthound.profiler.generators.base.RuleGenerator.generate",
             wire.ResourceInfo,

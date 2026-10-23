@@ -41,13 +41,13 @@ and ends at the closing </p> of the badge block above.
 
 ## 플러그인 플랫폼 (Plugin Platform)
 
-개발 Core 프로파일은 네이티브 수동 계보 추적·의존성/경로 조회·영향 요약 및 수준/유형별 필터·JSON 입출력, 테이블·컬럼별 프로파일 기반 규칙 생성(자동 적용 제외), ML 예측 점수·이상치·드리프트 컬럼 조회와 크기 기반·ALL/ANY 복합 보존 정책도 제공합니다. 전체 Core 동등성은 아직 미검증입니다.
+개발 Core 프로파일은 네이티브 수동 계보 추적·의존성/경로 조회·영향 요약 및 수준/유형별 필터·JSON 입출력, 테이블·컬럼별 프로파일 기반 규칙 생성과 검증기 설정 내보내기(자동 적용 제외), ML 예측 점수·이상치·드리프트 컬럼 조회와 크기 기반·ALL/ANY 복합 보존 정책도 제공합니다. 전체 Core 동등성은 아직 미검증입니다.
 
 개발 소스에는 별도 승인된 영구 cron 반복 예약과 자동 보존 정책, 운영자가 직접 시작하는 포그라운드 실행기도 포함됩니다. 게시된 3.2.0 패키지의 기능은 아닙니다.
 
 개발 소스에서는 기존 3개 MCP 도구를 유지하면서 선택형 Core 프로파일을 확장하고 있습니다. 검증기 설정, 데이터·결과·스키마 핸들, 네이티브 Polars·SQLite·DuckDB 데이터소스 수명주기, 로컬 파일 스트림 커서, 선언형 커널 suite, 고급 프로파일, 드리프트·기계학습·계보(학습 모델 저장·복원, 앙상블 편집, 승인된 세션 간 스냅샷, 학습 규칙 조회·변환과 전체·부분 그래프 JSON·DOT·Mermaid 산출물 포함), 네이티브 cron 미리보기·승인된 영구·유한 반복 검증 작업과 시간·개수 보존 정책·승인 삭제·스키마 감사, 리포트와 별도 승인된 영구 context 수명주기·네이티브 확장 바인딩을 연결하며 민감한 읽기에는 운영자의 허용이 필요합니다. **아직 전체 Core 동등성이나 게시된 3.2.0의 기능이 아닙니다.** [현재 구현·실행 방법과 남은 제약](docs/locales/ko/guides/mcp.md#core-프로파일-아직-배포하지-않은-소스-기능)
 
-- **Codex·ChatGPT 데스크톱 (플러그인 0.1.2)**: [Truthound 저장소 마켓플레이스](.agents/plugins/marketplace.json)를 추가한 뒤 **Plugins → Truthound Plugins → Truthound Local → Install → Set up**에서 허용 폴더를 지정합니다. 최초 마켓플레이스 추가: `codex plugin marketplace add seadonggyun4/truthound --ref main`. [설치·권한·공식 등재 절차](docs/locales/ko/guides/mcp.md)
+- **Codex·ChatGPT 데스크톱 (플러그인 0.1.3)**: [Truthound 저장소 마켓플레이스](.agents/plugins/marketplace.json)를 추가한 뒤 **Plugins → Truthound Plugins → Truthound Local → Install → Set up**에서 허용 폴더를 지정합니다. 최초 마켓플레이스 추가: `codex plugin marketplace add seadonggyun4/truthound --ref main`. [설치·권한·공식 등재 절차](docs/locales/ko/guides/mcp.md)
 - **마켓플레이스에서 찾기**: [공식 MCP Registry](https://registry.modelcontextprotocol.io/)에서 `io.github.seadonggyun4/truthound`를 검색하세요. 연동 클라이언트의 마켓플레이스에 표시되면 **Install**을 누르고 접근을 허용할 데이터 폴더를 지정합니다. [등록된 3.2.0 정보](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.seadonggyun4%2Ftruthound/versions/3.2.0)
 - **Claude Desktop**: [MCPB 다운로드](https://github.com/seadonggyun4/truthound/releases/download/v3.2.0/truthound-3.2.0.mcpb) → **Settings → Extensions → Advanced settings → Install Extension…** → 파일 선택·허용 폴더 설정. [공식 설치 안내](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop)
 

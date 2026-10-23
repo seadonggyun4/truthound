@@ -86,6 +86,21 @@ def test_package_builder_never_sweeps_generated_or_private_files(tmp_path):
     with zipfile.ZipFile(output) as archive:
         assert set(archive.namelist()) == set(api["FILES"])
         assert "permissions.json" not in archive.namelist()
+        import hashlib
+
+        icon = archive.read("assets/icon.png")
+        assert hashlib.sha256(icon).hexdigest() == (
+            "71b4fa143cb480773eeab55bb7f7e7b06424a9b27eb71aed7a7ec8c1b765cd9c"
+        )
+        for name in ("plugin.json", ".codex-plugin/plugin.json"):
+            manifest = json.loads(archive.read(name))
+            interface = (
+                manifest["interface"]
+                if name.startswith(".")
+                else manifest["extensions"]["com.openai"]["interface"]
+            )
+            for field in ("composerIcon", "logo"):
+                assert archive.read(interface[field].removeprefix("./")) == icon
     with pytest.raises(FileExistsError):
         api["build_zip"](plugin, output)
 

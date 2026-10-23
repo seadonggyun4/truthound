@@ -269,6 +269,18 @@ def attach(cases):
     )
     observed, result = set(), []
     for row in cases:
+        if row.validator == "ccpa_consumer_rights":
+            assert row.error is None and row.caught_error is None
+            # A real column name is also a regex selector; native filtering
+            # expands to two predicates and fails after construction.
+            result.append(
+                replace(
+                    row,
+                    error={"^.*delete.*$": [1, 2], "delete": [1, 2]},
+                    error_overrides={"deletion_request_column": "^.*delete.*$"},
+                )
+            )
+            continue
         if row.validator in {"column_type", "table_schema"}:
             assert row.error is None and row.caught_error is None
             key = "expected_types" if row.validator == "column_type" else "expected_schema"

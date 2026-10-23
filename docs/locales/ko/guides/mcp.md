@@ -400,6 +400,12 @@ DataProfiler의 실제 앞부분 표본은 `options.sample_size`가 지정하며
 목록에는 `StatsRuleGenerator`, `PatternRuleGenerator`, `MLRuleGenerator`도
 있습니다. 선택한 네이티브 생성기 하나가 새 원본 프로파일을 받아 전체
 `GeneratedRule.to_dict()` 결과를 소유권이 있는 산출물로 보관합니다.
+`representation`을 `validator_configs`로 지정하면 대신
+`{"validator_class": "...", "config": {...}}` 목록을 보관합니다. 각 설정은
+요약에서 추론하지 않고 네이티브 `GeneratedRule.to_validator_config()`를 직접
+호출하여 컬럼과 `mostly`까지 포함합니다. 기본값 `rules`의 결과는 그대로입니다.
+내보내기는 검증기를 생성·승인·실행하지 않으며 이후 사용에도 기존 설정 검증과
+접근 권한 검사가 필요합니다.
 `column`을 생략하거나 `null`로 지정하면 테이블 전체 규칙을 생성합니다.
 `"column":"amount"`처럼 실제 컬럼명을 지정하면 새 프로파일의 해당 컬럼에
 네이티브 `generate_for_column()`을 호출합니다. 전체 규칙을 나중에 거르는
@@ -854,7 +860,7 @@ Anthropic 승인이나 GUI 검증을 주장하지 않습니다. 개발 환경·�
 
 ## OpenAI 로컬 플러그인과 저장소 마켓플레이스
 
-OpenAI 플러그인은 Core와 별도인 버전 `0.1.2`이며 공개 PyPI의
+OpenAI 플러그인은 Core와 별도인 버전 `0.1.3`이며 공개 PyPI의
 `truthound[mcp]==3.2.0`과 고정된 UV dependency lock을 사용합니다.
 로컬 데스크톱용이며 원격 서비스나 ChatGPT 웹 커넥터가 아닙니다.
 UV를 설치해 데스크톱 앱의 PATH에서 사용할 수 있어야 하며 최초 설치에는
@@ -877,6 +883,8 @@ MCP 명령은 host별 인자 placeholder 치환에 의존하지 않고 플러그
 `cwd`를 사용합니다. 0.1.1은 Codex 0.141.0에서 0.1.0의 시작 문제를 수정합니다.
 0.1.2는 표준 `./` 접두사를 사용하고, ZIP 생성 전에 두 portable manifest를
 저장소에 고정한 공식 Agent Plugins 1.0.0 schema로 검증합니다.
+0.1.3은 패키지의 아이콘과 로고를 갱신합니다. 기존 설치에서는 플러그인을
+업데이트하고 클라이언트 캐시를 새로고침하기 전까지 이전 이미지가 보일 수 있습니다.
 OS별 CI는 실제 Codex 설치·정규화된 실행 설정과 frozen UV 실행을 함께 검사합니다.
 Windows 검증기는 `.cmd` shim을 shell 평가하지 않고 npm의 Codex JS 진입점을
 Node로 직접 실행합니다.

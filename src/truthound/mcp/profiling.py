@@ -55,6 +55,7 @@ class GenerateRules(Profile):
     generator: Component
     strictness: Literal["loose", "medium", "strict"] = "medium"
     column: Name | None = None
+    representation: Literal["rules", "validator_configs"] = "rules"
 
     @model_validator(mode="after")
     def generator_configuration(self):
@@ -77,6 +78,11 @@ def generate_rules(arguments, frame):
         if arguments.column is None
         else generator.generate_for_column(profile[arguments.column], strictness)
     )
+    if arguments.representation == "validator_configs":
+        return [
+            {"validator_class": rule.validator_class, "config": rule.to_validator_config()}
+            for rule in rules
+        ]
     return [rule.to_dict() for rule in rules]
 
 
