@@ -54,6 +54,105 @@ def test_disconnected_parent_reaps_blocked_one_shot_worker(tmp_path):
             stream.close()
 
 
+@pytest.mark.parametrize("mode", ["sync", "async"])
+@pytest.mark.parametrize("kind", ["polars", "json"])
+def test_restored_native_types_preserve_core_detection_and_version_history(mode, kind):
+    import asyncio
+
+    import polars as pl
+
+    from truthound.mcp.durable_schema_worker import checkpoint, restore
+    from truthound.mcp.schema_monitor_runtime import MonitorRuntime
+    from truthound.profiler.evolution.breaking_alerts import BreakingChangeAlertManager
+    from truthound.profiler.evolution.history import InMemorySchemaHistory, SchemaHistory
+    from truthound.profiler.evolution.watcher import (
+        AlertingEventHandler,
+        AsyncSchemaWatcher,
+        HistoryEventHandler,
+        SchemaWatcher,
+    )
+
+    class Source:
+        name = "typed-source"
+        revision = 0
+
+        def get_schema(self):
+            return self.schema.copy()
+
+        def get_checksum(self):
+            return str(self.revision)
+
+    source = Source()
+    first, second, nested = (
+        (pl.Int32, pl.Int64, pl.List(pl.Struct({"at": pl.Datetime("ns", "UTC")})))
+        if kind == "polars"
+        else (1, 2, ["a", {"z": 2}])
+    )
+    source.schema = {"x": first, "nested": nested, "gone": "String"}
+    direct = SchemaWatcher() if mode == "sync" else AsyncSchemaWatcher()
+    history, alerts = InMemorySchemaHistory(), BreakingChangeAlertManager()
+    direct.add_source(source)
+    for handler in (HistoryEventHandler(SchemaHistory(history)), AlertingEventHandler(alerts)):
+        direct.add_handler(handler if mode == "sync" else handler.handle)
+
+    def new_runtime():
+        return MonitorRuntime(
+            source, None, mode=mode, interval=1, max_events=10, budget=1024**2, guard=lambda: None
+        )
+
+    saved = json.loads(json.dumps(checkpoint(new_runtime())))
+    for index, schema in enumerate(
+        ({"x": second, "nested": nested, "gone": "String"}, {"x": second, "nested": nested}), 1
+    ):
+        source.schema, source.revision = schema, index
+        resumed = new_runtime()
+        restore(resumed, saved)
+        expected = direct.check_now() if mode == "sync" else asyncio.run(direct.check_now())
+        actual = (
+            resumed.watcher.check_now()
+            if mode == "sync"
+            else asyncio.run(resumed.watcher.check_now())
+        )
+        assert resumed.error is None and len(expected) == len(actual) == 1
+        assert [change.to_dict() for change in actual[0].changes] == [
+            change.to_dict() for change in expected[0].changes
+        ]
+        assert [change.column for change in actual[0].changes] == ["x" if index == 1 else "gone"]
+        for left, right in zip(
+            resumed.history.list_versions(), history.list_versions(), strict=True
+        ):
+            assert left.schema == right.schema
+            assert left.version == right.version
+            assert [change.to_dict() for change in left.changes_from_parent] == [
+                change.to_dict() for change in right.changes_from_parent
+            ]
+        assert len(resumed.alerts.get_alert_history()) == len(alerts.get_alert_history())
+        saved = json.loads(json.dumps(checkpoint(resumed)))
+
+
+@pytest.mark.parametrize("failure", ["unsupported-object", "corrupt-ipc"])
+def test_checkpoint_type_codec_rejects_unsafe_or_corrupt_state(failure):
+    import base64
+
+    from truthound.mcp.durable_schema_worker import pack_schema, unpack_schema
+    from truthound.mcp.policy import MCPError
+
+    if failure == "unsupported-object":
+        from enum import Enum
+
+        class CustomType(Enum):
+            VALUE = "not-a-string-type"
+
+        for value in (object(), CustomType.VALUE):
+            with pytest.raises(MCPError):
+                pack_schema({"x": value})
+    else:
+        import polars as pl
+
+        with pytest.raises((OSError, pl.exceptions.PolarsError)):
+            unpack_schema({"x": {"kind": "polars", "ipc": base64.b64encode(b"not-arrow").decode()}})
+
+
 def register(runtime, monkeypatch, tmp_path, mode="sync", **options):
     from truthound.mcp import model_process
 

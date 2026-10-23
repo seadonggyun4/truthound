@@ -206,7 +206,6 @@ async def tick(session, stop=None):
         identity = row[0]
         with store.transaction():
             record = read(store, identity)
-            binding, plugins = authorize(session, record)
             busy = record["busy"]
             if busy:
                 if alive(busy):
@@ -217,6 +216,11 @@ async def tick(session, stop=None):
             if store.clock() >= record["expires_at"] and record["state"] == "active":
                 record["state"] = "expired"
             if record["state"] != "active":
+                write(store, identity, record)
+                continue
+            binding, plugins = authorize(session, record)
+            if record["checkpoint"] is not None and record["checkpoint"].get("schema_format") != 2:
+                record["state"] = "failed"
                 write(store, identity, record)
                 continue
             pending = next(

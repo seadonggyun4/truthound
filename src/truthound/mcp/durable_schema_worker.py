@@ -1,8 +1,10 @@
 """One isolated native poll or delivery; persistent authority stays in the parent."""
 
 import asyncio
+import base64
 import contextlib
 import hashlib
+import io
 import json
 import logging
 import os
@@ -11,11 +13,56 @@ import threading
 from pathlib import Path
 
 from truthound.mcp.approval import private_read
+from truthound.mcp.encoding import encode
 from truthound.mcp.plugin_bindings import approved_capabilities, fingerprint
 from truthound.mcp.policy import MCPError
 from truthound.mcp.resources import BoundedWriter
 from truthound.mcp.schema_history_worker import FailClosed
 from truthound.mcp.schema_monitor_runtime import MonitorRuntime
+from truthound.mcp.tables import decode
+
+
+def pack_schema(schema):
+    """Lossless closed values and native Arrow dtype metadata, never pickle/eval."""
+    import polars as pl
+
+    packed = {}
+    for name, value in schema.items():
+        if type(name) is not str:
+            raise MCPError("unsupported_value")
+        if isinstance(value, pl.DataType) or (
+            isinstance(value, type) and issubclass(value, pl.DataType)
+        ):
+            buffer = io.BytesIO()
+            pl.DataFrame(schema={"value": value}).write_ipc(buffer)
+            raw = buffer.getvalue()
+            if pl.read_ipc(io.BytesIO(raw)).schema["value"] != value:
+                raise MCPError("unsupported_value")
+            packed[name] = {"kind": "polars", "ipc": base64.b64encode(raw).decode("ascii")}
+        else:
+            encoded = encode(value)
+            restored = decode(encoded)
+            if type(restored) is not type(value) or restored != value:
+                raise MCPError("unsupported_value")
+            packed[name] = {"kind": "value", "value": encoded}
+    return packed
+
+
+def unpack_schema(schema):
+    import polars as pl
+
+    restored = {}
+    for name, value in schema.items():
+        if value["kind"] == "value":
+            restored[name] = decode(value["value"])
+        elif value["kind"] == "polars":
+            frame = pl.read_ipc(io.BytesIO(base64.b64decode(value["ipc"], validate=True)))
+            if frame.shape != (0, 1) or frame.columns != ["value"]:
+                raise MCPError("invalid_control_state")
+            restored[name] = frame.schema["value"]
+        else:
+            raise MCPError("invalid_control_state")
+    return restored
 
 
 def execute(request):
@@ -64,15 +111,21 @@ def execute(request):
             asyncio.run(runtime.watcher.check_now())
         if runtime.error:
             raise MCPError("monitor_execution_failed")
-        snapshot = runtime.snapshot()
-        return {
-            **snapshot,
-            "schemas": {
-                name: {key: str(value) for key, value in schema.items()}
-                for name, schema in runtime.watcher._last_schemas.items()
-            },
-            "checksums": runtime.watcher._last_checksums,
-        }
+        return checkpoint(runtime)
+
+
+def checkpoint(runtime):
+    return {
+        **runtime.snapshot(),
+        "schema_format": 2,
+        "schemas": {
+            name: pack_schema(schema) for name, schema in runtime.watcher._last_schemas.items()
+        },
+        "version_schemas": {
+            item.version_id: pack_schema(item.schema) for item in runtime.history.list_versions()
+        },
+        "checksums": runtime.watcher._last_checksums,
+    }
 
 
 def restore(runtime, previous):
@@ -81,13 +134,17 @@ def restore(runtime, previous):
     from truthound.profiler.evolution.history import SchemaVersion
 
     watcher = runtime.watcher
-    if set(previous["schemas"]) != set(watcher._sources):
+    if previous.get("schema_format") != 2 or set(previous["schemas"]) != set(watcher._sources):
         raise MCPError("invalid_control_state")
-    watcher._last_schemas = previous["schemas"]
+    watcher._last_schemas = {
+        name: unpack_schema(schema) for name, schema in previous["schemas"].items()
+    }
     watcher._last_checksums = previous["checksums"]
     watcher._event_counter = runtime.events = previous["events"]
     runtime.polls = previous["polls"]
     versions = [SchemaVersion.from_dict(item) for item in reversed(previous["versions"])]
+    for item in versions:
+        item.schema = unpack_schema(previous["version_schemas"][item.version_id])
     runtime.history._versions = {item.version_id: item for item in versions}
     runtime.history._order = [item.version_id for item in versions]
     runtime.alerts._alerts = [BreakingChangeAlert.from_dict(item) for item in previous["alerts"]]

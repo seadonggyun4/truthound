@@ -591,8 +591,13 @@ poll interval also depends on the worker interval and backlog.
 
 Native sync/async `check_now`, version serialization and breaking-alert creation
 are reused. A signed SQLite transaction commits the last schema/checksum,
-native history/counters and newly queued alerts together. Schema types use
-Core history's string serialization. Changes while the worker is stopped are
+native history/counters and newly queued alerts together. Internal schema state
+preserves closed rich values losslessly and native Polars dtype metadata through
+empty Arrow IPC; unsupported or lossy values fail instead of being stringified.
+Native history/alert presentation still uses Core serialization. Earlier
+unversioned development checkpoints fail closed and retain their evidence; they
+require a new approved registration rather than an implicit migration.
+Changes while the worker is stopped are
 compared against the last committed baseline when it resumes; intermediate
 changes between polls cannot be reconstructed. This is separate from the
 `schema_history_*` checkpoint API.
