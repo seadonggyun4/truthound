@@ -319,6 +319,8 @@ def test_approved_native_source_preserves_engine_results_sampling_and_owned_clea
         )
         assert result["execution_status"] == "succeeded", result
         actual = source_artifact(adapter, result["data"]["artifact"]["resource_id"])
+        assert result["provenance"].get("input_sha256") is None
+        assert result["provenance"].get("input_identity") is None
         for key in (
             "checks",
             "issues",

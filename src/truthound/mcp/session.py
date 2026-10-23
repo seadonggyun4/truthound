@@ -270,6 +270,13 @@ class MCPSession:
         if arguments.checks is not None and len(arguments.checks) > self.policy.max_items:
             raise MCPError("resource_exhausted")
         asset = self.resources.get(arguments.asset_id, source_input_kind)
+        # A live provider's descriptor is not a snapshot of its database rows.
+        # Preserve unknown input content identity rather than hashing a binding label.
+        input_digest = (
+            None
+            if source_entry is not None and "source_binding" in source_entry.metadata
+            else asset.sha256
+        )
         entries = {asset.id: asset}
         if source_entry is not None:
             entries[source_entry.id] = source_entry
@@ -359,7 +366,7 @@ class MCPSession:
                 }
                 response["provenance"] = {
                     **receipt_identity,
-                    **self._provenance(asset.sha256),
+                    **self._provenance(input_digest),
                     "context_mode": "persistent" if context else "retained",
                 }
                 response["data"]["replayed"] = True
@@ -407,7 +414,7 @@ class MCPSession:
                     "output_budget": budget,
                     "max_items": self.policy.max_items,
                     "max_response_bytes": self.policy.max_response_bytes,
-                    "provenance": self._provenance(asset.sha256),
+                    "provenance": self._provenance(input_digest),
                 }
                 if schema:
                     request["schema_path"] = str(schema.path)
@@ -455,7 +462,7 @@ class MCPSession:
                 quality="unknown",
                 error="core_execution_failed" if result["core_execution_failed"] else None,
                 coverage=result["coverage"],
-                provenance=self._provenance(asset.sha256),
+                provenance=self._provenance(input_digest),
             )
             if context:
                 response["provenance"]["context_mode"] = "persistent"

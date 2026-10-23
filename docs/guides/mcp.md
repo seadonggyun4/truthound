@@ -291,6 +291,8 @@ The returned source works with `sources_inspect`, `sources_validate_connection`,
 Inspection deliberately returns `config=null` for bound sources to avoid exposing
 connection configuration. Native data freshness/caching and engine behavior remain
 the provider's semantics; this is not an immutable snapshot or a reconnect service.
+Validation leaves `input_sha256` and `input_identity` unknown for a live binding;
+the source handle's resource hash describes its binding label, not database rows.
 Async-only providers and arbitrary protocol objects are not accepted.
 
 Repeated successful opens with the same key return the same live handle, never a
