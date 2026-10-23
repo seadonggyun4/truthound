@@ -108,6 +108,7 @@ async def core_profile():
                 required.add("profilers_column_renames")
                 required.add("profilers_schema_compatibility")
                 required.add("sources_open_binding")
+                required.add("checkpoints_run")
                 required.update({"schema_history_create", "schema_history_execute", "schema_history_persist", "schema_history_resume"})
                 required.update({"schema_monitor_open", "schema_monitor_status", "schema_monitor_stop"})
                 required.update({"schema_watch_register", "schema_watch_status", "schema_watch_disable", "schema_watch_update"})

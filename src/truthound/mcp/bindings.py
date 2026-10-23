@@ -29,6 +29,7 @@ class Bindings(WireModel):
     plugins: dict[Name, PluginBinding] = Field(default_factory=dict)
     schema_audit: dict[Name, list[TermBinding]] = Field(default_factory=dict)
     sources: dict[Name, Name] = Field(default_factory=dict)
+    checkpoints: dict[Name, Name] = Field(default_factory=dict)
     schema_monitors: dict[Name, MonitorBinding] = Field(default_factory=dict)
 
 

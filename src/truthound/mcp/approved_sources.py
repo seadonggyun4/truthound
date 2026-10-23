@@ -18,9 +18,9 @@ class SourceBindingOpen(WireModel):
     idempotency_key: Annotated[str, Field(min_length=8, max_length=128)]
 
 
-def resolve(policy, binding_id):
+def resolve(policy, binding_id, *, checkpoint=False):
     document, digest = load(policy)
-    capability = document.sources.get(binding_id)
+    capability = (document.checkpoints if checkpoint else document.sources).get(binding_id)
     matches = [
         (name, spec)
         for name, spec in document.plugins.items()

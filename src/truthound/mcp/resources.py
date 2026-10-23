@@ -154,7 +154,8 @@ class SessionResources:
         for origin in entry.origins:
             self.policy().authorize_origin(origin)
         if any(
-            key in entry.metadata for key in ("durable_policy", "source_binding", "monitor_binding")
+            key in entry.metadata
+            for key in ("durable_policy", "source_binding", "monitor_binding", "checkpoint_binding")
         ):
             if self.authorize_metadata is None:
                 raise MCPError("access_denied")

@@ -1,0 +1,75 @@
+"""Isolated installed factory; no wire-selected imports or connection settings."""
+
+import contextlib
+import hashlib
+import json
+import os
+import sys
+import threading
+from pathlib import Path
+
+from truthound.mcp.approval import private_read
+from truthound.mcp.encoding import encode
+from truthound.mcp.plugin_bindings import approved_capabilities, fingerprint
+from truthound.mcp.policy import MCPError
+from truthound.mcp.resources import BoundedWriter
+
+
+def execute(request):
+    from truthound.checkpoint import Checkpoint
+
+    def guard():
+        raw = private_read(Path(request["control"]) / "bindings.json", 1024**2)
+        if hashlib.sha256(raw).hexdigest() != request["digest"]:
+            raise MCPError("access_denied")
+        for spec in request["plugins"].values():
+            package, digest, _ = fingerprint(spec["distribution"])
+            if package.version != spec["version"] or digest != spec["sha256"]:
+                raise MCPError("plugin_identity_mismatch")
+
+    guard()
+    # A bare Checkpoint has no general resource-close contract. Its factory
+    # must explicitly own datasource and action cleanup in a context manager.
+    with (
+        approved_capabilities(request["plugins"]) as capabilities,
+        capabilities[request["capability"]]() as checkpoint,
+    ):
+        if not isinstance(checkpoint, Checkpoint):
+            raise MCPError("invalid_binding")
+        guard()
+        result = checkpoint.run(run_id=request["run_id"], use_router=request["use_router"])
+        guard()
+        packed = encode(result.to_dict())
+    guard()
+    return packed
+
+
+def main():
+    wire = sys.stdout
+    try:
+        line = sys.stdin.buffer.readline(2 * 1024**2 + 1)
+        if len(line) > 2 * 1024**2 or not line.endswith(b"\n"):
+            raise MCPError("resource_exhausted")
+        request = json.loads(line)
+
+        def parent_disconnected():
+            os.read(sys.stdin.fileno(), 1)
+            os._exit(75)
+
+        threading.Thread(target=parent_disconnected, daemon=True).start()
+        with (
+            open(os.devnull, "w") as sink,
+            contextlib.redirect_stdout(sink),
+            contextlib.redirect_stderr(sink),
+        ):
+            result = execute(request)
+        with BoundedWriter(Path(request["output_path"]), request["budget"]) as output:
+            output.write(json.dumps(result, allow_nan=False).encode())
+        wire.write('{"ok":true}\n')
+    except Exception:
+        wire.write('{"ok":false,"code":"checkpoint_execution_failed"}\n')
+    wire.flush()
+
+
+if __name__ == "__main__":
+    main()

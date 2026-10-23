@@ -22,6 +22,7 @@ def operations(descriptor):
     )
     from truthound.mcp.approved_sources import SourceBindingOpen
     from truthound.mcp.automation import ControlInput, ControlState, PolicyRegister
+    from truthound.mcp.checkpoints import CheckpointRun
     from truthound.mcp.contexts import ContextAction, ContextActionResult
     from truthound.mcp.durable_history import HistoryPersist, HistoryResume
     from truthound.mcp.durable_jobs import JobInput, JobState, JobSubmit
@@ -76,6 +77,14 @@ def operations(descriptor):
     from truthound.mcp.suites import SuiteCreate, SuiteValidation
 
     rows = (
+        (
+            "checkpoints_run",
+            "Approve one native Checkpoint run from a pinned operator factory, including configured actions, routing and native retries. Artifact contains native outcome; transport success is not validation success. Unknown effects are never automatically retried.",
+            CheckpointRun,
+            "truthound.checkpoint.Checkpoint.run",
+            wire.ResourceInfo | wire.OperationPlan,
+            True,
+        ),
         (
             "schema_watch_update",
             "Approve revision-bound pause/resume, operator reconciliation or explicit duplicate-risk retry of unknown alerts, and terminal queue retention. Never extends expiry or automatically retries unknown sends.",
@@ -978,6 +987,7 @@ def operations(descriptor):
                 "contexts_execute",
                 "assets_validate",
                 "suites_validate",
+                "checkpoints_run",
                 "models_create",
                 "models_persist",
                 "models_resume",
@@ -1021,6 +1031,7 @@ def operations(descriptor):
             or name
             in {
                 "contexts_initialize",
+                "checkpoints_run",
                 "contexts_execute",
                 "plans_status",
                 "models_persist",

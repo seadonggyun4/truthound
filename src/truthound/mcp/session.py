@@ -32,12 +32,18 @@ class MCPSession:
         self._streams = None
         self._histories = None
         self._monitors = None
+        self._checkpoint_workers = set()
 
     @property
     def policy(self):
         return self.service.policy
 
     def _authorize_metadata(self, metadata):
+        if "checkpoint_binding" in metadata:
+            from truthound.mcp.checkpoints import authorize
+
+            authorize(self, metadata)
+            return
         if "monitor_binding" in metadata:
             from truthound.mcp.schema_monitor import authorize
 
@@ -74,6 +80,8 @@ class MCPSession:
                 controller.release(identity)
 
     def close(self):
+        for worker in tuple(self._checkpoint_workers):
+            worker.close()
         if self._monitors is not None:
             self._monitors.close()
         if self._histories is not None:
@@ -531,6 +539,10 @@ class MCPSession:
     async def call(self, name, arguments):
         from truthound.mcp.catalog import CATALOG
 
+        if name == "checkpoints_run":
+            from truthound.mcp.checkpoints import run
+
+            return await run(self, arguments)
         if name.startswith("schema_watch_"):
             from truthound.mcp.durable_schema import call
 

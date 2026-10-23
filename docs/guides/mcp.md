@@ -926,6 +926,48 @@ file budget. Snapshot bytes and signed metadata are checked on restoration; the
 snapshot and successful intent receipt commit in one transaction. Use the approved
 storage deletion operation below; do not edit the control database manually.
 
+### Approved native Checkpoint execution
+
+Development Core profiles expose `checkpoints_run`. Unlike validation jobs,
+this calls `truthound.checkpoint.Checkpoint.run` itself, including configured
+actions, notification conditions, action retries and optional routing. It is
+not part of the published 3.2.0 package.
+
+An operator installs a trusted plugin and pins its distribution version, hash
+and entry point in private `bindings.json`. Add
+`"checkpoints": {"daily": "checkpoint-factory"}` and expose that capability
+through the existing `plugins` binding. The zero-argument capability must return
+a synchronous context manager yielding a native `Checkpoint`. That owner must
+close its datasources and action resources on exit. Never place credentials in
+model arguments or public plugin metadata. This executes trusted installed code
+with the host user's privileges, not sandboxed code.
+
+```json
+{"binding_id":"daily","use_router":true,"idempotency_key":"daily-reviewed-run-01"}
+```
+
+The first call returns an approval plan before importing the plugin. Review it
+through the existing operator approval CLI; approval includes the pinned
+factory's actions, external notifications and configured native retries. Repeat
+the exact request after approval. Changing the binding, package or policy
+invalidates authority. Arbitrary imports, data connections, actions and context
+objects cannot be supplied over this wire contract.
+
+The response is a sensitive artifact handle containing the rich-value encoded
+native `CheckpointResult.to_dict()`, including `validation_run`, `action_results`,
+status and error. Read it through `artifacts_read`. Transport success only means
+the result was retained; inspect the native status and action results to judge
+validation/delivery success. Operator permission for sensitive results is
+required; native diagnostics may contain private information.
+
+Replay returns the retained result without rerunning actions. Timeout, shutdown,
+revocation during execution or an unconfirmed failure is `outcome_unknown` and
+is never automatically retried. Native action retries are different: they are
+explicitly included in the approved configuration and can repeat external
+effects. Terminating a worker cannot undo an effect or guarantee graceful
+third-party cleanup. This operation does not start triggers, a Checkpoint
+scheduler or an escalation service. Remote services remain unverified.
+
 ### Native schedule preview
 
 `schedules_preview` takes a cron `expression` (up to 256 characters), an explicit
