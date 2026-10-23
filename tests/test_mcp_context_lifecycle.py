@@ -513,9 +513,11 @@ def test_recurring_automation_faults_never_retry_or_advance(tmp_path, monkeypatc
 @pytest.mark.fault
 def test_foreground_worker_rejects_invalid_policy_and_stops_owned_process(tmp_path):
     import os
+    import sqlite3
     import subprocess
     import sys
     import time
+    from contextlib import closing
 
     data, control = tmp_path / "data", tmp_path / "control"
     data.mkdir()
@@ -538,12 +540,44 @@ def test_foreground_worker_rejects_invalid_policy_and_stops_owned_process(tmp_pa
     if os.name == "nt":
         # Windows terminate is not POSIX SIGTERM; use once to verify clean lifecycle there.
         return
-    process = subprocess.Popen(valid, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    # A fixed startup sleep can signal the interpreter before the worker has
+    # installed its handlers. Use a fresh control store to observe the real
+    # first tick, and deliberately delay startup to exercise that boundary.
+    live_control = tmp_path / "live-control"
+    live_control.mkdir(mode=0o700)
+    background = [
+        sys.executable,
+        "-c",
+        "import time, runpy; time.sleep(2); runpy.run_module('truthound.mcp', run_name='__main__')",
+        *[str(live_control) if item == str(control) else item for item in valid[3:]],
+    ]
+    process = subprocess.Popen(background, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    deadline = time.monotonic() + 30  # Preserve the existing total shutdown budget.
     try:
-        time.sleep(1)
+        database = live_control / "control.sqlite3"
+        ready = False
+        while time.monotonic() < deadline:
+            assert process.poll() is None, process.communicate(timeout=1)
+            if database.exists():
+                try:
+                    with closing(
+                        sqlite3.connect(database.as_uri() + "?mode=ro", uri=True, timeout=0.1)
+                    ) as connection:
+                        ready = (
+                            connection.execute(
+                                "SELECT 1 FROM sqlite_master WHERE type='table' AND name='mcp_automations'"
+                            ).fetchone()
+                            is not None
+                        )
+                except sqlite3.OperationalError:
+                    ready = False
+                if ready:
+                    break
+            time.sleep(0.01)
+        assert ready, "worker did not reach its native first tick within the existing budget"
         assert process.poll() is None
         process.terminate()  # Only this test-owned foreground process.
-        _, stderr = process.communicate(timeout=30)
+        _, stderr = process.communicate(timeout=max(0.01, deadline - time.monotonic()))
         assert process.returncode == 0, stderr
     finally:
         if process.poll() is None:
