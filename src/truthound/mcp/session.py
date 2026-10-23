@@ -30,6 +30,7 @@ class MCPSession:
         self._models = None
         self._sources = None
         self._streams = None
+        self._histories = None
 
     @property
     def policy(self):
@@ -56,11 +57,13 @@ class MCPSession:
     def _before_release(self, identity):
         # Windows cannot unlink SQLite or mapped stream inputs while their
         # native reader is alive. Cleanup uses ownership, not a fresh read grant.
-        for controller in (self._streams, self._sources, self._models):
+        for controller in (self._streams, self._sources, self._models, self._histories):
             if controller is not None:
                 controller.release(identity)
 
     def close(self):
+        if self._histories is not None:
+            self._histories.close()
         if self._streams is not None:
             self._streams.close()
         if self._sources is not None:
@@ -514,12 +517,20 @@ class MCPSession:
     async def call(self, name, arguments):
         from truthound.mcp.catalog import CATALOG
 
+        if self._histories is not None:
+            self._histories.reap()
         if self._models is not None:
             self._models.reap()
         if self._sources is not None:
             self._sources.reap()
         if self._streams is not None:
             self._streams.reap()
+        if name.startswith("schema_history_"):
+            from truthound.mcp.schema_history import HistorySession
+
+            if self._histories is None:
+                self._histories = HistorySession(self)
+            return await self._histories.call(name, arguments)
         if name == "schedules_preview":
             from truthound.mcp.scheduling import call as schedule_call
 
@@ -737,6 +748,8 @@ class MCPSession:
             # Destruction requires session ownership, not renewed permission
             # to read denied or damaged input bytes.
             self.resources.release_owned(arguments.resource_id)
+            if self._histories is not None:
+                self._histories.reap()
             if self._streams is not None:
                 self._streams.reap()
             if self._sources is not None:

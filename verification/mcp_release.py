@@ -106,6 +106,7 @@ async def core_profile():
                 required.add("profilers_column_renames")
                 required.add("profilers_schema_compatibility")
                 required.add("sources_open_binding")
+                required.update({"schema_history_create", "schema_history_execute"})
                 required.add("models_rule_query")
                 required.add("models_result_query")
                 required.add("schedules_preview")
@@ -271,6 +272,14 @@ async def core_profile():
                 compatibility=await invoke("profilers_schema_compatibility",{"baseline_id":training,"current_id":evolved})
                 native_compatibility=SchemaCompatibilityAnalyzer().analyze({"x":pl.Float64},{"new_column":pl.Float64})
                 assert decode(json.loads(await artifact_bytes(compatibility["resource_id"])))=={"is_compatible":native_compatibility.is_compatible,"level":native_compatibility.level.value,"issues":[issue.to_dict() for issue in native_compatibility.issues],"rules_checked":native_compatibility.rules_checked}
+                history=await invoke("schema_history_create",{"strategy":"incremental","max_versions":2})
+                history_id=history["history"]["resource_id"]
+                saved=await invoke("schema_history_execute",{"history_id":history_id,"expected_revision":0,"command":{"action":"save","asset_id":training}})
+                version=decode(json.loads(await artifact_bytes(saved["artifact"]["resource_id"])))
+                assert saved["revision"]==1 and version["version"]=="1" and version["schema"]=={"x":"Float64"}
+                latest=await invoke("schema_history_execute",{"history_id":history_id,"expected_revision":1,"command":{"action":"latest"}})
+                assert decode(json.loads(await artifact_bytes(latest["artifact"]["resource_id"])))==version
+                await invoke("resources_release",{"resource_id":history_id})
                 schedule=await invoke("schedules_preview",{"expression":"@daily","after":"2024-01-01T00:00:00+09:00","count":2})
                 assert schedule["valid"] and schedule["next_times"]==["2024-01-02T00:00:00+09:00","2024-01-03T00:00:00+09:00"]
                 model=await invoke("models_create",{"algorithm":"ZScoreAnomalyDetector"})

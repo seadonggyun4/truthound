@@ -509,6 +509,61 @@ Exceptions fail the operation rather than silently returning partial rules.
 Artifact reads require sensitive-result permission and retain the source asset's
 authorization; releasing that asset also prevents reading its rule artifact.
 
+### Session-owned schema history
+
+`schema_history_create` constructs Core `InMemorySchemaHistory` in an owned
+resident worker. Choose `strategy`: `semantic` (default), `incremental`,
+`timestamp` or `git_like`; `max_versions` defaults to 100 and must be between 1
+and the operator's `max_items` (at most 1,000). The result contains `history`
+(resource information) and `revision=0`.
+
+`schema_history_execute` takes `history_id`, `expected_revision` and one closed
+`command`. Its result contains the history information, the current revision
+and an `artifact`; read the complete native result with `artifacts_read`.
+
+| Command action | Fields | Native result |
+| --- | --- | --- |
+| `save` | `asset_id`, optional `version`, `metadata` | New version using the owned asset's schema, not its rows |
+| `get` | `version_id` | Version or null |
+| `latest`, `baseline` | None | Newest or oldest retained version, or null |
+| `count` | None | Native retained version count |
+| `breaking_since` | `version_id` (ID or version string) | Native breaking-change comparison against latest |
+| `by_version` | `version` | Version with that version string, or null |
+| `list` | Optional `limit`, `since`, `until` | Newest-first versions; ISO datetime filters are exclusive |
+| `diff` | `source_id`, optional `target_id` (ID or version string) | Native changes and summary; target defaults to latest; null if absent |
+| `rollback` | `version_id` (ID or version string), optional `reason` | New copied version with native rollback metadata, or null |
+| `delete` | `version_id` | Whether a version was removed |
+
+Example commands, using the returned identifiers:
+
+```json
+{"history_id":"<history.resource_id>","expected_revision":0,"command":{"action":"save","asset_id":"<asset.resource_id>","metadata":{"author":"operator"}}}
+```
+
+```json
+{"history_id":"<history.resource_id>","expected_revision":1,"command":{"action":"list","limit":10}}
+```
+
+`save`, `delete` and `rollback` advance the revision even when a missing version
+produces false/null. Queries do not advance it. Stale revisions fail before
+mutation. Retention evicts the oldest native versions; rollback creates a new
+version rather than overwriting history. Native `limit=0` means no limit.
+Use timezone-naive filters for the Core's timezone-naive creation timestamps;
+an aware/naive comparison fails as it does in Core. UUIDs, creation/diff times
+and timestamp/hash version strategies retain native nondeterminism.
+
+This history is **session-only**, not `FileSchemaHistory`, an external store or
+cross-session recovery. Its resource hash describes the creation configuration,
+not mutable history contents. Save observes schema only, but all observed asset
+grants and handles remain dependencies, even after version deletion/eviction.
+Release, expiry, revoked input grants or worker failure invalidate the history
+and derived results. A worker/output failure after a command starts invalidates
+the handle instead of claiming rollback or permitting an ambiguous retry.
+Reaping occurs on the next session operation, and an owned lifetime timer bounds
+idle workers. Use `resources_release` to close explicitly. Output bytes and
+retained resources remain subject to session quotas. Custom strategies, caller
+paths, arbitrary code and remote/paid services are not accepted.
+
 ### Drift and resident ML
 
 `profilers_schema_evolution` compares the native schemas of two owned assets

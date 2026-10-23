@@ -58,6 +58,7 @@ def operations(descriptor):
         AuditImplementation,
         AuditStandards,
     )
+    from truthound.mcp.schema_history import HistoryAction, HistoryCreate, HistoryState
     from truthound.mcp.sources import (
         DuckDBSourceOpen,
         PolarsSourceOpen,
@@ -71,6 +72,22 @@ def operations(descriptor):
     from truthound.mcp.suites import SuiteCreate, SuiteValidation
 
     rows = (
+        (
+            "schema_history_create",
+            "Create owned in-memory native schema history with bounded retention and a built-in version strategy. Session lifetime only; not an external or persistent store.",
+            HistoryCreate,
+            "truthound.profiler.evolution.history.InMemorySchemaHistory",
+            HistoryState,
+            True,
+        ),
+        (
+            "schema_history_execute",
+            "Save an owned asset schema, query/list/diff versions, rollback or delete in native in-memory history. Expected revision prevents duplicate mutation. Full result is an owned artifact; releasing any observed input revokes the history.",
+            HistoryAction,
+            "truthound.profiler.evolution.history.InMemorySchemaHistory",
+            HistoryState,
+            True,
+        ),
         (
             "sources_open_binding",
             "Open an operator-pinned installed plugin native datasource factory after explicit approval. Connection configuration stays operator-side; owned synchronous source lifecycle only, not a sandbox or guaranteed read-only connection.",
@@ -906,6 +923,8 @@ def operations(descriptor):
                 "models_ensemble_add",
                 "models_ensemble_remove",
                 "sources_open_polars",
+                "schema_history_create",
+                "schema_history_execute",
                 "sources_open_binding",
                 "sources_open_sqlite",
                 "sources_open_duckdb",

@@ -55,9 +55,13 @@ class SessionResources:
 
     def bind_model_inputs(self, identity, parents):
         """Resident model state must retain and reauthorize all training inputs."""
+        return self.bind_resident_inputs(identity, parents, kind="model")
+
+    def bind_resident_inputs(self, identity, parents, *, kind):
+        """Keep native resident state dependent on all observed input grants."""
         from dataclasses import replace
 
-        entry = self.get(identity, "model")
+        entry = self.get(identity, kind)
         bound = [self.get(parent) for parent in parents]
         if any(item.kind not in {"asset", "artifact"} for item in bound):
             raise MCPError("invalid_handle")
@@ -86,6 +90,7 @@ class SessionResources:
             "model",
             "source",
             "suite",
+            "history",
         }:
             raise MCPError("invalid_resource_kind")
         identity = kind + "_" + secrets.token_urlsafe(24)

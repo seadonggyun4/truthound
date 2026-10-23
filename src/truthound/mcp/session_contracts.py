@@ -18,7 +18,7 @@ from truthound.mcp.contracts import (
 
 Handle = Annotated[
     str,
-    Field(pattern=r"^(asset|artifact|schema|context|source|graph|model|suite)_[A-Za-z0-9_-]{32}$"),
+    Field(pattern=r"^(asset|artifact|schema|context|source|graph|model|suite|history)_[A-Za-z0-9_-]{32}$"),
 ]
 
 

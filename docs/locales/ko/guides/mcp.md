@@ -464,6 +464,58 @@ DataProfiler의 실제 앞부분 표본은 `options.sample_size`가 지정하며
 반환하지 않습니다. 산출물 읽기에는 민감 결과 허용이 필요하고 원본 자산의 접근
 권한을 유지하므로, 원본을 해제하면 규칙 산출물도 읽을 수 없습니다.
 
+### 세션 소유 스키마 이력
+
+`schema_history_create`는 소유한 상주 작업자에서 Core `InMemorySchemaHistory`를
+생성합니다. `strategy`는 `semantic`(기본), `incremental`, `timestamp`, `git_like` 중
+선택합니다. `max_versions` 기본값은 100이며 1부터 운영자의 `max_items`까지
+(최대 1,000) 허용합니다. 결과에는 `history` 리소스 정보와 `revision=0`이 포함됩니다.
+
+`schema_history_execute`는 `history_id`, `expected_revision`, 명시적인 `command`를
+받습니다. 결과에는 이력 정보·현재 revision·`artifact`가 있으며, 완전한 네이티브
+결과는 `artifacts_read`로 읽습니다.
+
+| command의 action | 입력 필드 | 네이티브 결과 |
+| --- | --- | --- |
+| `save` | `asset_id`, 선택적 `version`, `metadata` | 자산의 행이 아닌 스키마로 생성한 새 버전 |
+| `get` | `version_id` | 버전 또는 null |
+| `latest`, `baseline` | 없음 | 보존된 최신·최초 버전 또는 null |
+| `count` | 없음 | 네이티브 보존 버전 수 |
+| `breaking_since` | `version_id`(ID 또는 버전 문자열) | 최신 버전과 비교한 네이티브 호환성 파괴 여부 |
+| `by_version` | `version` | 버전 문자열에 해당하는 버전 또는 null |
+| `list` | 선택적 `limit`, `since`, `until` | 최신순 목록, ISO 날짜 필터 경계는 제외 |
+| `diff` | `source_id`, 선택적 `target_id`(ID 또는 버전 문자열) | 네이티브 변경·요약, 대상 기본값은 최신 버전이며 버전이 없으면 null |
+| `rollback` | `version_id`(ID 또는 버전 문자열), 선택적 `reason` | 네이티브 롤백 메타데이터가 포함된 새 복사 버전 또는 null |
+| `delete` | `version_id` | 삭제 여부 |
+
+반환된 식별자를 사용하는 호출 예시입니다.
+
+```json
+{"history_id":"<history.resource_id>","expected_revision":0,"command":{"action":"save","asset_id":"<asset.resource_id>","metadata":{"author":"operator"}}}
+```
+
+```json
+{"history_id":"<history.resource_id>","expected_revision":1,"command":{"action":"list","limit":10}}
+```
+
+`save`·`delete`·`rollback`은 없는 버전 때문에 false/null을 반환해도 revision을
+증가시킵니다. 조회는 증가시키지 않으며 오래된 revision은 변경 전에 거부됩니다.
+보존 수 초과 시 가장 오래된 네이티브 버전을 제거합니다. 롤백은 과거 이력을
+덮어쓰지 않고 새 버전을 생성합니다. 네이티브 `limit=0`은 제한 없음을 의미합니다.
+Core 생성 시각에 맞춰 시간대 없는 날짜 필터를 사용하세요. 시간대 유무가 다른
+시각의 비교는 Core와 마찬가지로 실패합니다. UUID·생성/비교 시각과 timestamp/hash
+버전 전략의 비결정적 값은 네이티브 동작을 유지합니다.
+
+이 기능은 **세션 전용**이며 `FileSchemaHistory`, 외부 저장소, 세션 간 복구가 아닙니다.
+리소스 해시는 생성 설정을 나타내며 변경되는 이력 내용의 해시가 아닙니다.
+행을 저장하지 않지만 관찰한 모든 자산의 권한과 핸들은 버전 삭제·보존 만료 후에도
+의존성으로 유지됩니다. 해제·만료·입력 권한 철회·작업자 실패는 이력과 파생 결과를
+무효화합니다. 명령 시작 후 작업자나 출력이 실패하면 롤백을 주장하거나 불확실한
+재시도를 허용하지 않고 핸들을 무효화합니다. 다음 세션 작업에서 정리하고, 수명
+타이머가 유휴 작업자의 존속 시간을 제한합니다. 명시적 종료는 `resources_release`를
+사용합니다. 출력과 보관 리소스에는 세션 용량 제한이 적용됩니다. 사용자 경로,
+임의 코드·버전 전략, 원격·유료 서비스는 허용하지 않습니다.
+
 ### 드리프트와 상주 ML 모델
 
 `profilers_schema_evolution`은 `baseline_id`와 `current_id`로 지정한 두 자산의

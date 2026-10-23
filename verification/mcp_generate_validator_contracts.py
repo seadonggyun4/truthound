@@ -318,7 +318,19 @@ def generate():
 
     for cls in (SchemaEvolutionDetector, SchemaChange, SchemaChangeSummary):
         record_source(cls)
-    from truthound.profiler.evolution import compatibility, rename_detector
+    from truthound.profiler.evolution import compatibility, history, rename_detector
+
+    for name in (
+        "InMemorySchemaHistory",
+        "SchemaHistory",
+        "SchemaVersion",
+        "SchemaDiff",
+        "SemanticVersionStrategy",
+        "IncrementalVersionStrategy",
+        "TimestampVersionStrategy",
+        "GitLikeVersionStrategy",
+    ):
+        record_source(getattr(history, name))
 
     for name in (
         "SchemaCompatibilityAnalyzer",
