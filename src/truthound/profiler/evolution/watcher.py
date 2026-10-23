@@ -638,7 +638,10 @@ class SchemaWatcher:
             timeout: Maximum time to wait for thread to stop.
         """
         with self._state_lock:
-            if self._state not in (WatcherState.RUNNING, WatcherState.PAUSED):
+            if self._state not in (
+                WatcherState.STARTING, WatcherState.RUNNING,
+                WatcherState.PAUSED, WatcherState.ERROR,
+            ):
                 return
             self._state = WatcherState.STOPPING
 

@@ -31,12 +31,18 @@ class MCPSession:
         self._sources = None
         self._streams = None
         self._histories = None
+        self._monitors = None
 
     @property
     def policy(self):
         return self.service.policy
 
     def _authorize_metadata(self, metadata):
+        if "monitor_binding" in metadata:
+            from truthound.mcp.schema_monitor import authorize
+
+            authorize(self, metadata)
+            return
         if "source_binding" in metadata:
             from truthound.mcp.approved_sources import authorize
 
@@ -57,11 +63,19 @@ class MCPSession:
     def _before_release(self, identity):
         # Windows cannot unlink SQLite or mapped stream inputs while their
         # native reader is alive. Cleanup uses ownership, not a fresh read grant.
-        for controller in (self._streams, self._sources, self._models, self._histories):
+        for controller in (
+            self._streams,
+            self._sources,
+            self._models,
+            self._histories,
+            self._monitors,
+        ):
             if controller is not None:
                 controller.release(identity)
 
     def close(self):
+        if self._monitors is not None:
+            self._monitors.close()
         if self._histories is not None:
             self._histories.close()
         if self._streams is not None:
@@ -517,6 +531,14 @@ class MCPSession:
     async def call(self, name, arguments):
         from truthound.mcp.catalog import CATALOG
 
+        if self._monitors is not None:
+            self._monitors.reap()
+        if name.startswith("schema_monitor_"):
+            from truthound.mcp.schema_monitor import MonitorSession
+
+            if self._monitors is None:
+                self._monitors = MonitorSession(self)
+            return await self._monitors.call(name, arguments)
         if self._histories is not None:
             self._histories.reap()
         if self._models is not None:

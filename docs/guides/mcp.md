@@ -509,6 +509,65 @@ Exceptions fail the operation rather than silently returning partial rules.
 Artifact reads require sensitive-result permission and retain the source asset's
 authorization; releasing that asset also prevents reading its rule artifact.
 
+### Approved continuous schema monitoring
+
+`schema_monitor_open` runs native `SchemaWatcher` or `AsyncSchemaWatcher` in a
+session-owned process. It accepts `binding_id`, `mode` (`sync` default or `async`),
+`poll_interval` (0.1–3,600 seconds, default 60), `max_events` (1–1,000, default 100,
+also bounded by operator `max_items`) and `idempotency_key`. Core determines
+changes, versions and breaking alerts; this adapter does not implement a second
+schema comparison algorithm.
+
+The operator privately configures `bindings.json`, alongside installed plugin
+distribution/version/entrypoint/SHA-256 pins:
+
+```json
+{"schema_monitors":{"orders-watch":{"source":"orders-schema-factory","notifier":"orders-alert-factory"}}}
+```
+
+Both names must be exposed by the pinned plugins' `capabilities` maps. Each is a
+zero-argument factory: the source returns Core's `SchemaSource` protocol (for
+example `FileSchemaSource`); the optional notifier returns `AlertNotifier` with
+`send(alert) -> bool`. A native `CallbackNotifier` can adapt an operator-owned
+HTTP/email implementation. There is no built-in hosted endpoint, model-selected
+URL, import string or credential input. Destination, credentials and connection
+policy remain operator-side. Installed plugins are trusted code, not sandboxed.
+Alerts contain schema details and source identifiers, which may include local
+paths; approving sending authorizes disclosure to that fixed destination.
+
+```json
+{"binding_id":"orders-watch","mode":"async","poll_interval":60,"max_events":100,"idempotency_key":"orders-watch-01"}
+```
+
+Opening first returns an approval plan for installed extension execution,
+continuous schema reads and, when configured, external schema alert sending.
+Use the existing operator approval flow, then repeat the exact request. No plugin
+imports, reads or sends occur before approval. The returned `resource_id` is the
+`monitor_id` for `schema_monitor_status` and `schema_monitor_stop`. Both return
+an artifact resource; read it with `artifacts_read` for state, error, poll/event
+counts, successful send count, native versions and alerts. Initial registration
+is a baseline; only breaking changes send alerts. Sync polling begins after the
+interval; the native async poller checks immediately after starting.
+
+Monitoring continues without further tool calls, until stopped, released, expired
+or the session closes. Stop joins the native poller and shuts down the plugin;
+release/expiry/timeout force-reap only this owned worker. Session termination is
+not a graceful delivery guarantee. Binding and package identities are rechecked
+before each poll and send; a parent-side supervisor also reaps the worker on
+operator policy changes without waiting for another tool call (0.1-second checks).
+A failed source, rejected/unknown send, revoked binding or exhausted event/byte
+budget stops further effects and exposes `state="failed"`, never healthy status.
+The status read itself can succeed while the reported monitor is failed. No
+automatic notification retry is attempted: a network error may follow a remote
+effect. Bytes are bounded by the smaller operator file/session limit and 16 MiB.
+Replaying an approved open returns its existing handle, not a replacement worker.
+
+This monitoring history is private in-memory state, separate from
+`schema_history_*` checkpoints. There is no autonomous cross-session restart,
+durable delivery queue, exactly-once delivery, monitor pause/resume or transfer of
+source execution authority. Local real HTTP transport and sync/async native parity
+are tested; actual cloud, email and broker services remain unverified.
+
 ### Session-owned schema history
 
 `schema_history_create` constructs Core `InMemorySchemaHistory` (`backend="memory"`,

@@ -527,6 +527,22 @@ def runtime(tmp_path, monkeypatch):
         "def slow_source_factory():\n"
         "    import time\n"
         "    note('factory-blocked'); time.sleep(10); return source_factory()\n"
+        "from truthound.profiler.evolution.watcher import FileSchemaSource\n"
+        "from truthound.profiler.evolution.breaking_alerts import CallbackNotifier\n"
+        "def schema_factory():\n"
+        "    note('schema-create')\n"
+        f"    return FileSchemaSource({str(tmp_path / 'schema.json')!r})\n"
+        "def alert_factory():\n"
+        "    import json, urllib.request\n"
+        "    def send(alert):\n"
+        "        note('send')\n"
+        f"        target = Path({str(tmp_path / 'endpoint.txt')!r}).read_text(encoding='utf-8')\n"
+        "        request = urllib.request.Request(target, data=json.dumps(alert.to_dict()).encode(), headers={'Content-Type':'application/json'})\n"
+        "        with urllib.request.urlopen(request, timeout=2) as response:\n"
+        "            assert response.status == 200\n"
+        "    return CallbackNotifier(send)\n"
+        "class FalseNotifier:\n"
+        "    def send(self, alert): note('send-false'); return False\n"
         "class FixturePlugin(Plugin):\n"
         "    @property\n"
         "    def info(self): return PluginInfo(name='mcp-operator-fixture', version='1.0.0', plugin_type=PluginType.CUSTOM)\n"
@@ -544,7 +560,11 @@ def runtime(tmp_path, monkeypatch):
         "        manager.register_capability('bad-table_schema_compare', object())\n"
         "        manager.register_capability('source-factory', source_factory)\n"
         "        manager.register_capability('failed-source', failed_source_factory)\n"
-        "        manager.register_capability('slow-source', slow_source_factory)\n",
+        "        manager.register_capability('slow-source', slow_source_factory)\n"
+        "        manager.register_capability('schema-factory', schema_factory)\n"
+        "        manager.register_capability('alert-factory', alert_factory)\n"
+        "        manager.register_capability('false-notifier', FalseNotifier)\n",
+        # Keep the fixture an installed distribution, including the new factories.
         encoding="utf-8",
     )
     metadata = build / "truthound_mcp_operator_fixture-1.0.0.dist-info"

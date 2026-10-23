@@ -91,6 +91,7 @@ class SessionResources:
             "source",
             "suite",
             "history",
+            "monitor",
         }:
             raise MCPError("invalid_resource_kind")
         identity = kind + "_" + secrets.token_urlsafe(24)
@@ -152,7 +153,9 @@ class SessionResources:
             raise MCPError("handle_expired")
         for origin in entry.origins:
             self.policy().authorize_origin(origin)
-        if "durable_policy" in entry.metadata or "source_binding" in entry.metadata:
+        if any(
+            key in entry.metadata for key in ("durable_policy", "source_binding", "monitor_binding")
+        ):
             if self.authorize_metadata is None:
                 raise MCPError("access_denied")
             self.authorize_metadata(entry.metadata)

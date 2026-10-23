@@ -60,6 +60,7 @@ def operations(descriptor):
         AuditStandards,
     )
     from truthound.mcp.schema_history import HistoryAction, HistoryCreate, HistoryState
+    from truthound.mcp.schema_monitor import MonitorInput, MonitorOpen
     from truthound.mcp.sources import (
         DuckDBSourceOpen,
         PolarsSourceOpen,
@@ -73,6 +74,30 @@ def operations(descriptor):
     from truthound.mcp.suites import SuiteCreate, SuiteValidation
 
     rows = (
+        (
+            "schema_monitor_open",
+            "Start session-owned native sync/async schema polling using operator-pinned source and optional notifier factories, only after explicit approval. External sends may have unknown outcomes; no automatic retries or cross-session restart.",
+            MonitorOpen,
+            "truthound.profiler.evolution.watcher.SchemaWatcher",
+            wire.ResourceInfo | wire.OperationPlan,
+            True,
+        ),
+        (
+            "schema_monitor_status",
+            "Read bounded native history/alerts and monitor state. A failed state is not successful monitoring; live service delivery is not implied.",
+            MonitorInput,
+            "truthound.profiler.evolution.watcher.SchemaWatcher",
+            wire.ResourceInfo,
+            True,
+        ),
+        (
+            "schema_monitor_stop",
+            "Stop and join the owned native poller before returning its final status artifact. Does not retry failed notification delivery.",
+            MonitorInput,
+            "truthound.profiler.evolution.watcher.SchemaWatcher",
+            wire.ResourceInfo,
+            True,
+        ),
         (
             "schema_history_persist",
             "Checkpoint native file history and local alerts into approved signed durable storage. Exact operator approval required; no shared writer or caller path.",
@@ -941,6 +966,8 @@ def operations(descriptor):
                 "models_ensemble_remove",
                 "sources_open_polars",
                 "schema_history_create",
+                "schema_monitor_open",
+                "schema_monitor_stop",
                 "schema_history_execute",
                 "schema_history_persist",
                 "schema_history_resume",
@@ -952,7 +979,7 @@ def operations(descriptor):
                 "sources_validate",
             },
             requires_workspaces=name.startswith("contexts_"),
-            requires_control=name.startswith(("jobs_", "storage_"))
+            requires_control=name.startswith(("jobs_", "storage_", "schema_monitor_"))
             or name in {"schedules_register", "schedules_status", "schedules_disable"}
             or name
             in {

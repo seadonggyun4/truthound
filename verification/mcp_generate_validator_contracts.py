@@ -337,6 +337,7 @@ def generate():
 
     for name in (
         "SchemaWatcher",
+        "AsyncSchemaWatcher",
         "DictSchemaSource",
         "HistoryEventHandler",
         "AlertingEventHandler",
