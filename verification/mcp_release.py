@@ -104,6 +104,8 @@ async def core_profile():
                 required.add("drift_compare")
                 required.add("profilers_schema_evolution")
                 required.add("profilers_column_renames")
+                required.add("profilers_schema_compatibility")
+                required.add("sources_open_binding")
                 required.add("models_rule_query")
                 required.add("models_result_query")
                 required.add("schedules_preview")
@@ -265,6 +267,10 @@ async def core_profile():
                 renamed=await invoke("profilers_column_renames",rename_args)
                 expected_renames=ColumnRenameDetector(calculator=NgramSimilarity(n=2),low_confidence_threshold=0.0).detect({"new_column":pl.Float64},{"x":pl.Float64}).to_dict()
                 assert decode(json.loads(await artifact_bytes(renamed["resource_id"])))==expected_renames
+                from truthound.profiler.evolution.compatibility import SchemaCompatibilityAnalyzer
+                compatibility=await invoke("profilers_schema_compatibility",{"baseline_id":training,"current_id":evolved})
+                native_compatibility=SchemaCompatibilityAnalyzer().analyze({"x":pl.Float64},{"new_column":pl.Float64})
+                assert decode(json.loads(await artifact_bytes(compatibility["resource_id"])))=={"is_compatible":native_compatibility.is_compatible,"level":native_compatibility.level.value,"issues":[issue.to_dict() for issue in native_compatibility.issues],"rules_checked":native_compatibility.rules_checked}
                 schedule=await invoke("schedules_preview",{"expression":"@daily","after":"2024-01-01T00:00:00+09:00","count":2})
                 assert schedule["valid"] and schedule["next_times"]==["2024-01-02T00:00:00+09:00","2024-01-03T00:00:00+09:00"]
                 model=await invoke("models_create",{"algorithm":"ZScoreAnomalyDetector"})

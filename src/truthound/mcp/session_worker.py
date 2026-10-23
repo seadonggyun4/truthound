@@ -41,10 +41,15 @@ def execute(request: dict) -> dict:
         "drift_detect",
         "profilers_schema_evolution",
         "profilers_column_renames",
+        "profilers_schema_compatibility",
     }:
         baseline = pl.read_ipc(request["baseline_path"], memory_map=False)
         current = pl.read_ipc(request["current_path"], memory_map=False)
-        if operation == "profilers_column_renames":
+        if operation == "profilers_schema_compatibility":
+            from truthound.mcp.profiling import schema_compatibility
+
+            payload = schema_compatibility(arguments, baseline, current)
+        elif operation == "profilers_column_renames":
             from truthound.mcp.profiling import column_renames
 
             payload = column_renames(arguments, baseline, current)
@@ -69,13 +74,19 @@ def execute(request: dict) -> dict:
                 baseline.get_column(arguments.baseline_column),
                 current.get_column(arguments.current_column or arguments.baseline_column),
             )
-        if operation not in {"profilers_schema_evolution", "profilers_column_renames"}:
+        if operation not in {
+            "profilers_schema_evolution",
+            "profilers_column_renames",
+            "profilers_schema_compatibility",
+        }:
             payload = result.to_dict()
         with BoundedWriter(Path(request["output_path"]), request["output_budget"]) as sink:
             sink.write(json.dumps(encode(payload), allow_nan=False).encode())
         return {
             "resource_created": True,
-            "media_type": "application/vnd.truthound.column-renames+json"
+            "media_type": "application/vnd.truthound.schema-compatibility+json"
+            if operation == "profilers_schema_compatibility"
+            else "application/vnd.truthound.column-renames+json"
             if operation == "profilers_column_renames"
             else "application/vnd.truthound.schema-evolution+json"
             if operation == "profilers_schema_evolution"

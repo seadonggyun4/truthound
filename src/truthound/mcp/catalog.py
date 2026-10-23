@@ -75,6 +75,16 @@ class Operation:
             "public_target": self.public_target,
             "effects": []
             if discovery
+            else [
+                "compute",
+                "sensitive_read",
+                "private_control_store_write",
+                "installed_extension_execute",
+                "native_datasource_connect",
+                "native_datasource_read",
+                "native_datasource_close",
+            ]
+            if self.operation_id == "sources_open_binding"
             else ["compute", "sensitive_read"]
             + (
                 ["private_control_store_write"]

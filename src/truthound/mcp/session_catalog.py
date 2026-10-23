@@ -20,6 +20,7 @@ def operations(descriptor):
         ModelSpec,
         ModelState,
     )
+    from truthound.mcp.approved_sources import SourceBindingOpen
     from truthound.mcp.automation import ControlInput, ControlState, PolicyRegister
     from truthound.mcp.contexts import ContextAction, ContextActionResult
     from truthound.mcp.durable_jobs import JobInput, JobState, JobSubmit
@@ -37,7 +38,13 @@ def operations(descriptor):
         ImpactInput,
         SchemaImpact,
     )
-    from truthound.mcp.profiling import ColumnRenames, GenerateRules, Profile, SchemaEvolution
+    from truthound.mcp.profiling import (
+        ColumnRenames,
+        GenerateRules,
+        Profile,
+        SchemaCompatibility,
+        SchemaEvolution,
+    )
     from truthound.mcp.retention import (
         DeleteResult,
         RetentionPreview,
@@ -64,6 +71,14 @@ def operations(descriptor):
     from truthound.mcp.suites import SuiteCreate, SuiteValidation
 
     rows = (
+        (
+            "sources_open_binding",
+            "Open an operator-pinned installed plugin native datasource factory after explicit approval. Connection configuration stays operator-side; owned synchronous source lifecycle only, not a sandbox or guaranteed read-only connection.",
+            SourceBindingOpen,
+            "truthound.datasources.base.BaseDataSource",
+            wire.ResourceInfo | wire.OperationPlan,
+            True,
+        ),
         (
             "lineage_load",
             "Load an approved local Core lineage JSON snapshot into a private graph. No caller persist path or remote access.",
@@ -426,6 +441,14 @@ def operations(descriptor):
             "Analyze added and removed asset columns using native rename candidates, confidence and configurable similarity algorithms; does not rename data.",
             ColumnRenames,
             "truthound.profiler.evolution.ColumnRenameDetector.detect",
+            wire.ResourceInfo,
+            False,
+        ),
+        (
+            "profilers_schema_compatibility",
+            "Analyze two owned schemas with native ordered built-in compatibility rules; retain all issues, compatibility level and evaluated rule names. Native nullability checking is a no-op and strict currently has no effect.",
+            SchemaCompatibility,
+            "truthound.profiler.evolution.compatibility.SchemaCompatibilityAnalyzer.analyze",
             wire.ResourceInfo,
             False,
         ),
@@ -883,6 +906,7 @@ def operations(descriptor):
                 "models_ensemble_add",
                 "models_ensemble_remove",
                 "sources_open_polars",
+                "sources_open_binding",
                 "sources_open_sqlite",
                 "sources_open_duckdb",
                 "streams_open",
@@ -899,6 +923,7 @@ def operations(descriptor):
                 "plans_status",
                 "models_persist",
                 "models_resume",
+                "sources_open_binding",
             },
         )
         for name, description, input_type, target, output_type, sensitive in rows

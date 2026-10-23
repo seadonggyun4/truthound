@@ -22,6 +22,38 @@ class SchemaEvolution(WireModel):
     rename_similarity_threshold: float = 0.8
 
 
+class SchemaCompatibility(WireModel):
+    baseline_id: Handle
+    current_id: Handle
+    rules: list[Literal["types", "nullability", "column_presence"]] | None = Field(
+        default=None, max_length=16
+    )
+    strict: bool = False
+
+
+def schema_compatibility(arguments, baseline, current):
+    prefix = "truthound.profiler.evolution.compatibility."
+    targets = {
+        "types": "TypeCompatibilityChecker",
+        "nullability": "NullabilityCompatibilityChecker",
+        "column_presence": "ColumnPresenceChecker",
+    }
+    classes = {key: _known_type(prefix + value) for key, value in targets.items()}
+    _known_type(prefix + "CompatibilityResult")
+    _known_type("truthound.profiler.evolution.changes.SchemaChange")
+    analyzer = _known_type(prefix + "SchemaCompatibilityAnalyzer")(
+        rules=None if arguments.rules is None else [classes[name]() for name in arguments.rules],
+        strict=arguments.strict,
+    )
+    result = analyzer.analyze(baseline.schema, current.schema)
+    return {
+        "is_compatible": result.is_compatible,
+        "level": result.level.value,
+        "issues": [issue.to_dict() for issue in result.issues],
+        "rules_checked": result.rules_checked,
+    }
+
+
 class EditSimilarity(WireModel):
     kind: Literal["levenshtein", "token"]
 

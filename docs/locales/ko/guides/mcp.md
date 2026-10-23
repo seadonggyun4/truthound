@@ -173,6 +173,53 @@ JavaScript의 정확한 정수 범위를 넘는 값에는 십진 문자열 태�
 전체 결과가 응답 크기 제한보다 크면 오류를 반환하며 일부를 자르고 전체 결과라고
 표시하지 않습니다. 기존 파일·시간·동시 실행 제한과 메모리 한계는 그대로 적용됩니다.
 
+### 승인된 네이티브 데이터소스 팩토리
+
+`sources_open_binding`은 `binding_id`와 `idempotency_key`만 받습니다. Core 프로파일,
+민감 결과 허용, 비공개 제어 디렉토리가 필요합니다. 운영자는 아래의 설치 확장 바인딩
+계약으로 플러그인을 설치·고정하고, 인자 없는 팩토리를 capability로 노출한 뒤
+비공개 `bindings.json`에 다음 매핑을 추가합니다. 저장소나 배포물에 넣지 않습니다.
+
+```json
+{"sources":{"orders":"orders-factory"}}
+```
+
+이는 기존 `plugins` 설정에 합칠 조각이며 완성된 바인딩 파일이 아닙니다.
+고정된 플러그인 하나만 `orders-factory`를 노출해야 합니다. 팩토리는
+`name="orders"`인 동기 Core `BaseDataSource`를 반환해야 합니다. 예를 들어 검토한
+플러그인은 `SQLiteDataSource(table="orders", database=operator_selected_path,
+config=SQLiteDataSourceConfig(name="orders"))`를 반환할 수 있습니다.
+안정 포트인 `register_capability`로 팩토리를 등록합니다. 의존성과 자격증명 참조는
+운영자가 구성합니다. MCP는 플러그인 설치, 연결 문자열·import 경로·설정 입력,
+임의 환경변수 전달을 제공하지 않습니다. 자격증명을 플러그인 설정·이름·메타데이터·
+데이터 컬럼·로그에 넣지 마세요.
+
+```json
+{"binding_id":"orders","idempotency_key":"orders-session-001"}
+```
+
+첫 호출은 플러그인을 import하지 않고 승인 계획을 반환합니다. 기존 운영자 CLI로
+정확한 계획을 승인한 뒤 같은 요청을 반복합니다. 승인은 해당 세션 핸들의 신뢰된
+확장 실행·네이티브 연결·읽기·종료에 적용됩니다. **OS 샌드박스나 읽기 전용 SQL
+보증이 아닙니다.** 팩토리를 검토하고 최소 권한 DB 계정을 사용해야 합니다.
+로컬 SQLite 검증으로 원격 공급자나 유료 서비스의 검증을 대신하지 않습니다.
+
+반환된 소스는 `sources_inspect`, `sources_validate_connection`,
+`sources_validate_columns`, `sources_check_size_limits`, `sources_sample`,
+`sources_validate`에 사용할 수 있습니다. 검증은 실제 상주 소스를 Core의
+`source=` 경로에 전달하며 DataFrame 복사본으로 대체하지 않습니다. 연결 설정 노출을
+막기 위해 바인딩 소스의 조회 결과는 `config=null`입니다. 데이터 최신성·캐시·엔진은
+네이티브 공급자의 의미를 따르며 불변 스냅샷이나 자동 재연결 서비스가 아닙니다.
+비동기 전용 공급자와 임의 프로토콜 객체는 받지 않습니다.
+
+같은 키의 성공 재호출은 기존 유효 핸들을 반환하며 새 연결을 만들지 않습니다.
+실행 시작 후 팩토리 실패·취소는 `outcome_unknown`으로 기록해 같은 키로 재실행하지
+않습니다. 해제·만료된 핸들은 재호출로 복원되지 않습니다. 해제·세션 종료 시 소스를
+먼저 닫고 플러그인을 종료합니다. 시간 초과나 제한된 정리 시간 초과 시 소유 worker를
+강제 종료할 수 있으며 공급자 수준 정리는 보장하지 않습니다. 바인딩·패키지 identity·
+정책 변경은 다음 확인에서 소스와 파생 산출물 권한을 회수하며 TTL이 유휴 worker의
+수명을 제한합니다. 별도 감시 프로세스를 시작하지 않습니다.
+
 ### 보관 데이터·검증기 설정·산출물
 
 같은 선택형 프로파일에서 다음 기능도 제공합니다.
@@ -446,6 +493,22 @@ DataProfiler의 실제 앞부분 표본은 `options.sample_size`가 지정하며
 스키마 변경 탐지와 마찬가지로 결과 읽기에는 민감 결과 허용과 두 부모 자산의 유효한
 접근 권한이 필요합니다. 순서와 매칭은 Core 동작을 따릅니다. 이름 변경 추정이지
 두 컬럼의 의미가 같다는 증명은 아닙니다.
+
+`profilers_schema_compatibility`는 두 소유 자산 스키마에 Core의
+`SchemaCompatibilityAnalyzer`를 실행합니다. 입력은 `baseline_id`, `current_id`,
+`rules` (`types`, `nullability`, `column_presence` 이름의 순서 있는 목록), `strict`입니다.
+`rules` 생략·`null`·빈 목록은 모두 Core의 기본 세 규칙을 유지합니다.
+전체 산출물에는 `is_compatible`, `level`, `issues`, `rules_checked`가 포함됩니다.
+읽기에는 민감 결과 허용과 두 부모 자산의 유효한 권한이 필요하며 임의 Python 규칙은
+받지 않습니다. 현재 Core는 `strict` 값을 저장하지만 분석 동작에는 사용하지 않습니다.
+또한 Polars 스키마에 null 허용 메타데이터가 없으므로 nullability 규칙은 문제를
+반환하지 않습니다. 이를 실제 데이터의 null 허용 여부 검증으로 해석하면 안 됩니다.
+Core는 규칙 예외를 기록하고 건너뛰기도 합니다. `rules_checked`는 평가된 규칙 목록이지
+요청한 모든 규칙의 완료 보증이 아닙니다.
+
+```json
+{"baseline_id":"<baseline-handle>","current_id":"<current-handle>","rules":["types","column_presence"],"strict":false}
+```
 
 네이티브 panic은 일반 검증 실패와 다릅니다. 네이티브 확장이 canonical 결과를
 반환하지 못하고 worker를 종료하면 MCP는 성공·부분 결과 산출물 없이

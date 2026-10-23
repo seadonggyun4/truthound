@@ -36,6 +36,11 @@ class MCPSession:
         return self.service.policy
 
     def _authorize_metadata(self, metadata):
+        if "source_binding" in metadata:
+            from truthound.mcp.approved_sources import authorize
+
+            authorize(self, metadata)
+            return
         if (
             str(self.policy.control_directory) != metadata["durable_control"]
             or self._policy_stamp() != metadata["durable_policy"]
@@ -788,6 +793,7 @@ class MCPSession:
             "profilers_generate_rules": "artifact",
             "profilers_schema_evolution": "artifact",
             "profilers_column_renames": "artifact",
+            "profilers_schema_compatibility": "artifact",
             "assets_scan": "artifact",
             "artifacts_render": "artifact",
             "artifacts_datadocs": "artifact",
@@ -835,6 +841,7 @@ class MCPSession:
                     "drift_detect",
                     "profilers_schema_evolution",
                     "profilers_column_renames",
+                    "profilers_schema_compatibility",
                 }:
                     baseline = self.resources.get(arguments.baseline_id, "asset")
                     current = self.resources.get(arguments.current_id, "asset")

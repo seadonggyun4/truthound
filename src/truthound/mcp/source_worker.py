@@ -13,6 +13,8 @@ from truthound.mcp.resources import BoundedWriter
 
 def main():
     source = None
+    plugins = contextlib.ExitStack()
+    bound = False
     wire = sys.stdout
     try:
         with open(os.devnull, "w") as sink:
@@ -25,7 +27,27 @@ def main():
                     request = json.loads(line)
                     with contextlib.redirect_stdout(sink), contextlib.redirect_stderr(sink):
                         operation = request["operation"]
-                        if operation == "sources_open_polars":
+                        if operation == "sources_open_binding":
+                            if source is not None or bound:
+                                raise MCPError("invalid_arguments")
+                            from truthound.datasources.base import BaseDataSource
+                            from truthound.mcp.plugin_bindings import approved_capabilities
+
+                            bound = True
+                            capabilities = plugins.enter_context(
+                                approved_capabilities(request["plugins"])
+                            )
+                            factory = capabilities[request["capability"]]
+                            if not callable(factory):
+                                raise MCPError("invalid_binding")
+                            source = factory()
+                            if not isinstance(source, BaseDataSource):
+                                source = None
+                                raise MCPError("invalid_binding")
+                            if source.name != request["public_name"]:
+                                raise MCPError("invalid_binding")
+                            source.__enter__()
+                        elif operation == "sources_open_polars":
                             if source is not None:
                                 raise MCPError("invalid_arguments")
                             import polars as pl
@@ -100,7 +122,7 @@ def main():
 
                                 result = {
                                     "name": source.name,
-                                    "config": asdict(source.config),
+                                    "config": None if bound else asdict(source.config),
                                     "schema": {k: v.value for k, v in source.schema.items()},
                                     "columns": source.columns,
                                     "row_count": source.row_count,
@@ -141,8 +163,16 @@ def main():
                 wire.write(json.dumps(response) + "\n")
                 wire.flush()
     finally:
-        if source is not None:
-            source.__exit__(None, None, None)
+        with (
+            open(os.devnull, "w") as sink,
+            contextlib.redirect_stdout(sink),
+            contextlib.redirect_stderr(sink),
+        ):
+            try:
+                if source is not None:
+                    source.__exit__(None, None, None)
+            finally:
+                plugins.close()
 
 
 if __name__ == "__main__":

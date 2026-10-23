@@ -35,6 +35,92 @@ def normalize(value):
 
 
 @pytest.mark.parametrize(
+    "rules",
+    [
+        None,
+        [],
+        ["types"],
+        ["column_presence"],
+        ["nullability"],
+        ["column_presence", "types", "types"],
+    ],
+)
+@pytest.mark.parametrize("strict", [False, True])
+@pytest.mark.parametrize("change", ["same", "widen", "narrow", "added", "removed"])
+def test_schema_compatibility_complete_native_result(tmp_path, rules, strict, change):
+    from truthound.profiler.evolution import compatibility as native
+
+    baseline = pl.DataFrame({"x": pl.Series([1], dtype=pl.Int32)})
+    current = {
+        "same": baseline,
+        "widen": baseline.cast({"x": pl.Int64}),
+        "narrow": baseline.cast({"x": pl.Int8}),
+        "added": baseline.with_columns(pl.lit(1).alias("y")),
+        "removed": baseline.rename({"x": "y"}),
+    }[change]
+    classes = {
+        "types": native.TypeCompatibilityChecker,
+        "column_presence": native.ColumnPresenceChecker,
+        "nullability": native.NullabilityCompatibilityChecker,
+    }
+    expected = native.SchemaCompatibilityAnalyzer(
+        rules=None if rules is None else [classes[name]() for name in rules],
+        strict=strict,
+    ).analyze(baseline.schema, current.schema)
+    service = MCPService(MCPPolicy((tmp_path,), profile="core", allow_sensitive_results=True))
+    try:
+        handles = []
+        for index, frame in enumerate((baseline, current)):
+            path = tmp_path / f"compatibility-{index}.parquet"
+            frame.write_parquet(path)
+            handles.append(call(service, "assets_capture", path=str(path))["resource_id"])
+        args = dict(baseline_id=handles[0], current_id=handles[1], rules=rules, strict=strict)
+        artifact = call(service, "profilers_schema_compatibility", **args)
+        assert artifact["media_type"] == "application/vnd.truthound.schema-compatibility+json"
+        part = call(service, "artifacts_read", resource_id=artifact["resource_id"])
+        assert part["next_offset"] is None
+        actual = decode(json.loads(base64.b64decode(part["base64"])))
+        assert actual == {
+            "is_compatible": expected.is_compatible,
+            "level": expected.level.value,
+            "issues": [issue.to_dict() for issue in expected.issues],
+            "rules_checked": expected.rules_checked,
+        }
+        call(service, "resources_release", resource_id=handles[int(strict)])
+        for operation, arguments in (
+            ("artifacts_read", {"resource_id": artifact["resource_id"]}),
+            ("profilers_schema_compatibility", args),
+        ):
+            result = asyncio.run(service.call_operation_async(operation, arguments))
+            assert result["execution_status"] == "failed" and not result.get("data")
+    finally:
+        service.close()
+
+
+def test_schema_compatibility_rejects_unreviewed_rules(tmp_path):
+    service = MCPService(MCPPolicy((tmp_path,), profile="core", allow_sensitive_results=True))
+    try:
+        path = tmp_path / "input.csv"
+        path.write_text("x\n1\n", encoding="utf-8")
+        identity = call(service, "assets_capture", path=str(path))["resource_id"]
+        for rules in (["arbitrary.module"], ["types"] * 17, [{"class": "os.system"}]):
+            result = asyncio.run(
+                service.call_operation_async(
+                    "profilers_schema_compatibility",
+                    {
+                        "baseline_id": identity,
+                        "current_id": identity,
+                        "rules": rules,
+                    },
+                )
+            )
+            assert result["issues"] == [{"code": "invalid_arguments"}]
+            assert result["execution_status"] == "failed" and not result.get("data")
+    finally:
+        service.close()
+
+
+@pytest.mark.parametrize(
     "calculator,options",
     [
         (None, {}),

@@ -294,6 +294,10 @@ class SourceSession:
                 resources.discard(identity)
 
     async def call(self, operation, arguments):
+        if operation == "sources_open_binding":
+            from truthound.mcp.approved_sources import open_source
+
+            return await open_source(self, arguments)
         if operation == "sources_open_sqlite":
             return await self.open_sqlite(arguments)
         if operation == "sources_open_duckdb":

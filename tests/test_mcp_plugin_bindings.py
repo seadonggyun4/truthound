@@ -45,8 +45,9 @@ def test_native_runtime_type_error_is_rejected_before_ordinary_mcp_execution(
     runtime, name, parameter, value, error
 ):
     import polars as pl
-    from truthound.validators import get_validator
+
     from truthound.mcp.validator_wire import settings
+    from truthound.validators import get_validator
 
     validator = get_validator(name)(**{parameter: value})
     with pytest.raises(error):
@@ -74,11 +75,13 @@ def test_approved_object_runtime_failure_matches_core_without_reexecution(
     runtime, tmp_path, name, parameter, value, error
 ):
     import base64
+
     import polars as pl
+
     import truthound as th
-    from truthound.validators import get_validator
     from truthound.mcp.operations import _context
     from truthound.mcp.tables import decode
+    from truthound.validators import get_validator
 
     native = get_validator(name)(**{parameter: value})
     with pytest.raises(error):
@@ -228,8 +231,259 @@ def invoke(adapter, name, **arguments):
     return asyncio.run(adapter.call_operation_async(name, arguments))
 
 
+def prepare_source(runtime, monkeypatch, capability="source-factory"):
+    from types import SimpleNamespace
+
+    from truthound.mcp import model_process
+
+    adapter, control, marker, _, _ = runtime
+    monkeypatch.setattr(
+        model_process,
+        "sys",
+        SimpleNamespace(
+            executable=adapter._worker_argv()[0],
+            platform=sys.platform,
+            _base_executable=sys._base_executable,
+        ),
+    )
+    path = control / "bindings.json"
+    config = json.loads(path.read_text(encoding="utf-8"))
+    config["plugins"]["fixture"]["capabilities"]["source-factory"] = capability
+    config["sources"] = {"approved-source": "source-factory"}
+    path.write_text(json.dumps(config), encoding="utf-8")
+    request = {"binding_id": "approved-source", "idempotency_key": "approved-source-open"}
+    pending = invoke(adapter, "sources_open_binding", **request)
+    assert pending["issues"] == [{"code": "approval_required"}], pending
+    assert not marker.exists()
+    assert set(pending["data"]["effects"]) == {
+        "installed_extension_execute",
+        "native_datasource_connect",
+        "native_datasource_read",
+        "native_datasource_close",
+    }
+    store = ApprovalStore(control)
+    try:
+        store.approve(pending["data"]["plan_id"])
+    finally:
+        store.close()
+    return request
+
+
+def source_artifact(adapter, identity):
+    import base64
+
+    from truthound.mcp.tables import decode
+
+    chunks, offset = [], 0
+    while offset is not None:
+        response = invoke(adapter, "artifacts_read", resource_id=identity, offset=offset)
+        assert response["execution_status"] == "succeeded", response
+        chunks.append(base64.b64decode(response["data"]["base64"]))
+        offset = response["data"]["next_offset"]
+    return decode(json.loads(b"".join(chunks)))
+
+
+def test_approved_native_source_preserves_engine_results_sampling_and_owned_cleanup(
+    runtime, monkeypatch, tmp_path
+):
+    import truthound as th
+    from truthound.datasources.sql.sqlite import SQLiteDataSource, SQLiteDataSourceConfig
+    from truthound.mcp.operations import _context
+    from truthound.mcp.tables import decode
+    from truthound.validators import get_validator
+
+    adapter, _, marker, _, _ = runtime
+    request = prepare_source(runtime, monkeypatch)
+    opened = invoke(adapter, "sources_open_binding", **request)
+    assert opened["execution_status"] == "succeeded", opened
+    source = opened["data"]["resource_id"]
+    assert invoke(adapter, "sources_open_binding", **request) == opened
+    worker = adapter._session._sources.workers[source]
+    with SQLiteDataSource(
+        database=str(tmp_path / "operator.db"),
+        table="items",
+        config=SQLiteDataSourceConfig(name="approved-source"),
+    ) as native:
+        direct = th.check(
+            source=native,
+            validators=[get_validator("null")(columns=["x"])],
+            result_format="complete",
+            context=_context(str(tmp_path / "direct/input.ipc")),
+        ).to_dict()
+        result = invoke(
+            adapter,
+            "sources_validate",
+            source_id=source,
+            checks=[{"validator": "null", "settings": {"columns": ["x"]}}],
+            result_format="complete",
+        )
+        assert result["execution_status"] == "succeeded", result
+        actual = source_artifact(adapter, result["data"]["artifact"]["resource_id"])
+        for key in (
+            "checks",
+            "issues",
+            "execution_issues",
+            "source",
+            "row_count",
+            "column_count",
+            "execution_mode",
+            "planned_execution_mode",
+            "result_format",
+        ):
+            assert actual[key] == direct[key], key
+        assert direct["issues"]
+        inspected = invoke(adapter, "sources_inspect", source_id=source)
+        info = source_artifact(adapter, inspected["data"]["resource_id"])
+        assert info["config"] is None and info["name"] == native.name
+        assert info["schema"] == {key: value.value for key, value in native.schema.items()}
+        assert info["row_count"] == native.row_count
+        assert str(tmp_path / "operator.db") not in json.dumps(info)
+        for op, args, expected in (
+            ("sources_validate_connection", {}, {"connected": native.validate_connection()}),
+            (
+                "sources_validate_columns",
+                {"required_columns": ["missing", "x"]},
+                {"missing_columns": native.validate_columns(["missing", "x"])},
+            ),
+            ("sources_check_size_limits", {}, {"within_limits": True}),
+        ):
+            response = invoke(adapter, op, source_id=source, **args)
+            assert response["execution_status"] == "succeeded", response
+            assert source_artifact(adapter, response["data"]["resource_id"]) == expected
+        sample = invoke(adapter, "sources_sample", source_id=source, n=2, seed=42)
+        assert sample["execution_status"] == "succeeded", sample
+        page = invoke(adapter, "assets_page", asset_id=sample["data"]["resource_id"])
+        sampled = native.sample(2, seed=42)
+        try:
+            assert (
+                decode(page["data"]["rows"]) == sampled.to_polars_lazyframe().collect().to_dicts()
+            )
+        finally:
+            sampled.__exit__(None, None, None)
+    assert marker.read_text(encoding="utf-8").splitlines() == [
+        "import",
+        "setup",
+        "source-create",
+        "source-enter",
+    ]
+    assert (
+        invoke(adapter, "resources_release", resource_id=source)["execution_status"] == "succeeded"
+    )
+    assert worker.closed and worker.process.poll() is not None
+    assert marker.read_text(encoding="utf-8").splitlines()[-2:] == ["source-close", "teardown"]
+    assert (
+        invoke(adapter, "artifacts_read", resource_id=inspected["data"]["resource_id"])[
+            "execution_status"
+        ]
+        == "failed"
+    )
+    assert invoke(adapter, "sources_open_binding", **request)["execution_status"] == "failed"
+    assert marker.read_text(encoding="utf-8").count("source-create") == 1
+
+
+@pytest.mark.parametrize("change", ["binding", "package", "policy", "close", "expiry"])
+def test_approved_source_revocation_and_shutdown_reap_native_lifecycle(
+    runtime, monkeypatch, change
+):
+    from dataclasses import replace
+
+    adapter, control, marker, code, _ = runtime
+    request = prepare_source(runtime, monkeypatch)
+    result = invoke(adapter, "sources_open_binding", **request)
+    assert result["execution_status"] == "succeeded", result
+    identity = result["data"]["resource_id"]
+    worker = adapter._session._sources.workers[identity]
+    artifact = invoke(adapter, "sources_inspect", source_id=identity)["data"]["resource_id"]
+    if change == "binding":
+        (control / "bindings.json").write_text("{}", encoding="utf-8")
+    elif change == "package":
+        code.write_text(code.read_text(encoding="utf-8") + "\n# changed\n", encoding="utf-8")
+    elif change == "policy":
+        adapter.policy = replace(adapter.policy, max_items=99)
+    elif change == "expiry":
+        expires = adapter._session.resources.get(identity).expires
+        adapter._session.resources.clock = lambda: expires + 1
+    else:
+        adapter.close()
+    assert invoke(adapter, "artifacts_read", resource_id=artifact)["execution_status"] == "failed"
+    assert worker.closed and worker.process.poll() is not None
+    assert marker.read_text(encoding="utf-8").splitlines()[-2:] == ["source-close", "teardown"]
+
+
+def test_approved_source_factory_failure_is_not_retried_or_exposed(runtime, monkeypatch):
+    adapter, _, marker, _, _ = runtime
+    request = prepare_source(runtime, monkeypatch, "failed-source")
+    for _ in range(2):
+        result = invoke(adapter, "sources_open_binding", **request)
+        assert result["issues"] == [{"code": "outcome_unknown"}], result
+        assert "synthetic-connection-secret" not in json.dumps(result)
+    assert marker.read_text(encoding="utf-8").splitlines() == [
+        "import",
+        "setup",
+        "factory-failed",
+        "teardown",
+    ]
+    assert not adapter._session._sources.workers
+
+
+def test_revoked_source_plan_and_untyped_authority_never_import_plugin(runtime, monkeypatch):
+    adapter, control, marker, _, _ = runtime
+    request = prepare_source(runtime, monkeypatch)
+    store = ApprovalStore(control)
+    try:
+        plan_id = store.connection.execute(
+            "SELECT identity FROM plans WHERE state='approved'"
+        ).fetchone()[0]
+        store.revoke(plan_id)
+    finally:
+        store.close()
+    result = invoke(adapter, "sources_open_binding", **request)
+    assert result["issues"] == [{"code": "approval_required"}]
+    for extra in (
+        {"connection_string": "secret://value"},
+        {"factory": "os.system"},
+        {"settings": {"database": "private"}},
+    ):
+        result = invoke(adapter, "sources_open_binding", **request, **extra)
+        assert result["issues"] == [{"code": "invalid_arguments"}]
+    assert not marker.exists()
+
+
+def test_approved_source_timeout_reaps_owned_worker_and_blocks_retry(runtime, monkeypatch):
+    from dataclasses import replace
+
+    from truthound.mcp import sources
+
+    adapter, _, marker, _, _ = runtime
+    adapter.policy = replace(adapter.policy, timeout_seconds=1)
+    request = prepare_source(runtime, monkeypatch, "slow-source")
+    created = []
+    original = sources.SourceProcess
+
+    def tracked(ttl):
+        worker = original(ttl)
+        created.append(worker)
+        return worker
+
+    monkeypatch.setattr(sources, "SourceProcess", tracked)
+    for _ in range(2):
+        result = invoke(adapter, "sources_open_binding", **request)
+        assert result["issues"] == [{"code": "outcome_unknown"}], result
+    assert len(created) == 1 and created[0].closed
+    assert created[0].process.poll() is not None
+    assert not adapter._session._sources.workers
+    if marker.exists():
+        assert "source-enter" not in marker.read_text(encoding="utf-8")
+
+
 @pytest.fixture
 def runtime(tmp_path, monkeypatch):
+    import sqlite3
+
+    database = tmp_path / "operator.db"
+    with sqlite3.connect(database) as connection:
+        connection.execute("CREATE TABLE items (x INTEGER)")
+        connection.executemany("INSERT INTO items VALUES (?)", [(-1,), (1,), (None,)])
     root = tmp_path / "runtime"
     venv.EnvBuilder(with_pip=False, symlinks=os.name != "nt").create(root)
     python = root / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
@@ -257,6 +511,20 @@ def runtime(tmp_path, monkeypatch):
         "def note(text):\n"
         "    with MARKER.open('a', encoding='utf-8') as stream: stream.write(text+'\\n')\n"
         "note('import')\n"
+        "from truthound.datasources.sql.sqlite import SQLiteDataSource, SQLiteDataSourceConfig\n"
+        "class NativeSource(SQLiteDataSource):\n"
+        "    def __enter__(self): note('source-enter'); return super().__enter__()\n"
+        "    def __exit__(self, *args):\n"
+        "        try: return super().__exit__(*args)\n"
+        "        finally: note('source-close')\n"
+        "def source_factory():\n"
+        "    note('source-create')\n"
+        f"    return NativeSource(database={str(database)!r}, table='items', config=SQLiteDataSourceConfig(name='approved-source'))\n"
+        "def failed_source_factory():\n"
+        "    note('factory-failed'); raise RuntimeError('synthetic-connection-secret')\n"
+        "def slow_source_factory():\n"
+        "    import time\n"
+        "    note('factory-blocked'); time.sleep(10); return source_factory()\n"
         "class FixturePlugin(Plugin):\n"
         "    @property\n"
         "    def info(self): return PluginInfo(name='mcp-operator-fixture', version='1.0.0', plugin_type=PluginType.CUSTOM)\n"
@@ -271,7 +539,10 @@ def runtime(tmp_path, monkeypatch):
         "        manager.register_capability('bad-table_row_count_range', 'wrong')\n"
         "        manager.register_capability('bad-column_exists', [['x']])\n"
         "        manager.register_capability('bad-table_column_types', {'x': None})\n"
-        "        manager.register_capability('bad-table_schema_compare', object())\n",
+        "        manager.register_capability('bad-table_schema_compare', object())\n"
+        "        manager.register_capability('source-factory', source_factory)\n"
+        "        manager.register_capability('failed-source', failed_source_factory)\n"
+        "        manager.register_capability('slow-source', slow_source_factory)\n",
         encoding="utf-8",
     )
     metadata = build / "truthound_mcp_operator_fixture-1.0.0.dist-info"

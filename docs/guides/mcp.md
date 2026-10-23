@@ -194,6 +194,7 @@ The same opt-in profile also exposes these named operations:
 | `assets_sqlite` | Core SQLite table materialization from a private transaction-consistent backup |
 | `sources_open_sqlite` | Actual resident native SQLite datasource and SQL engine over a private quota-accounted backup |
 | `sources_open_duckdb` | Native DuckDB SQL datasource on a bounded private WAL-free copy; read-only physical tables with external access/extensions disabled |
+| `sources_open_binding` | Explicitly approved installed-plugin factory returning a resident native synchronous datasource; configuration stays operator-side |
 | `streams_open`, `streams_next`, `streams_inspect` | Native CSV/JSONL/Parquet/Arrow file-stream cursors, complete retained batches and native read state |
 | `sources_open_polars`, `sources_inspect`, `sources_sample` | Owned resident native Polars datasource, complete native config/metadata and Core sampling into a retained asset |
 | `sources_validate_connection`, `sources_validate_columns`, `sources_check_size_limits`, `sources_validate` | Actual connection/column/size checks and validation through Core's native `source=` execution path |
@@ -248,6 +249,58 @@ query results are preserved, never interpreted as an empty successful result.
 Canonical re-entry retains structured detail, failed-row records and captured
 exception/retry evidence. Native row-record serialization does not carry the
 original physical dataframe dtype schema; use retained typed assets for that.
+
+#### Approved native datasource factories
+
+`sources_open_binding` takes only `binding_id` and `idempotency_key`. It requires
+the Core profile, sensitive-result permission and a private control directory.
+An operator installs and pins a plugin using the installed-extension binding
+contract below, exposes a zero-argument factory as a capability, and adds this
+mapping to private `bindings.json` (never a repository or release artifact):
+
+```json
+{"sources":{"orders":"orders-factory"}}
+```
+
+This is a fragment to merge with the existing `plugins` configuration, not a
+complete binding file. Exactly one pinned plugin must expose `orders-factory`.
+The factory must return a synchronous Core `BaseDataSource` with `name="orders"`.
+For example, a reviewed plugin can return `SQLiteDataSource(table="orders",
+database=operator_selected_path, config=SQLiteDataSourceConfig(name="orders"))`.
+Use the stable `register_capability` plugin port to register the factory.
+Provider dependencies and credential references are configured by the operator;
+MCP does not install plugins, accept connection strings, forward arbitrary
+environment variables, or accept import paths/settings in the tool request.
+Do not put credentials into plugin settings, names, metadata, data columns or logs.
+
+```json
+{"binding_id":"orders","idempotency_key":"orders-session-001"}
+```
+
+The first call returns an approval plan without importing the plugin. Approve
+the exact plan using the existing operator CLI, then repeat the request. Approval
+covers trusted extension execution, native connection, reads and cleanup for that
+owned session handle. This is **not an OS sandbox or a read-only SQL guarantee**;
+review the factory and use least-privileged database credentials. Remote providers
+and paid services have not been validated by local SQLite evidence.
+
+The returned source works with `sources_inspect`, `sources_validate_connection`,
+`sources_validate_columns`, `sources_check_size_limits`, `sources_sample` and
+`sources_validate`. Validation passes the actual resident source to Core's
+`source=` path; it does not replace the provider with a captured DataFrame.
+Inspection deliberately returns `config=null` for bound sources to avoid exposing
+connection configuration. Native data freshness/caching and engine behavior remain
+the provider's semantics; this is not an immutable snapshot or a reconnect service.
+Async-only providers and arbitrary protocol objects are not accepted.
+
+Repeated successful opens with the same key return the same live handle, never a
+new connection. Factory failures/cancellation after execution begins are recorded
+as `outcome_unknown` and cannot be blindly retried with that key. Released or expired
+handles cannot be resurrected by replay. Release and session shutdown close the
+source before plugin teardown; timeout/failed bounded cleanup may require killing
+the owned worker and cannot guarantee provider-level cleanup. Binding changes,
+package identity changes and policy changes revoke the source and derived artifacts
+when next checked; TTL bounds idle workers. No monitoring process is started.
 
 `sources_open_polars` takes an owned `asset_id` and optional complete native
 `PolarsDataSourceConfig` under `config`; it returns a `source` resource ID.
@@ -488,6 +541,23 @@ are preserved; no arbitrary calculator code is accepted. For example:
 As with schema evolution, reading results requires sensitive-result permission
 and both live, authorized parent assets. Column ordering and matching follow
 Core; this is rename inference, not proof that two columns have the same meaning.
+
+`profilers_schema_compatibility` calls Core's `SchemaCompatibilityAnalyzer`
+on two owned asset schemas. Input fields are `baseline_id`, `current_id`,
+`rules` (ordered names `types`, `nullability`, `column_presence`) and `strict`.
+Omitting `rules`, setting it to `null`, or supplying `[]` preserves Core's
+default three rules. The complete artifact includes `is_compatible`, `level`,
+`issues`, and `rules_checked`; reading it requires sensitive-result permission
+and both live parent assets. Custom Python rules are not accepted.
+Core currently stores `strict` without changing analysis, and its nullability
+rule returns no issues because Polars schemas contain no nullability metadata.
+Do not interpret that rule's result as validation of nullable data. Core also
+logs and skips rule exceptions; `rules_checked` records evaluated rules, not
+a guarantee that every requested rule completed.
+
+```json
+{"baseline_id":"<baseline-handle>","current_id":"<current-handle>","rules":["types","column_presence"],"strict":false}
+```
 
 Native panics are distinct from ordinary validation failures: when a native
 extension aborts a worker without returning a canonical result, MCP reports

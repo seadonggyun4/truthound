@@ -147,7 +147,7 @@ class SessionResources:
             raise MCPError("handle_expired")
         for origin in entry.origins:
             self.policy().authorize_origin(origin)
-        if "durable_policy" in entry.metadata:
+        if "durable_policy" in entry.metadata or "source_binding" in entry.metadata:
             if self.authorize_metadata is None:
                 raise MCPError("access_denied")
             self.authorize_metadata(entry.metadata)

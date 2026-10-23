@@ -23,6 +23,7 @@ class Bindings(WireModel):
     validators: dict[Name, ValidatorBinding] = Field(default_factory=dict)
     plugins: dict[Name, PluginBinding] = Field(default_factory=dict)
     schema_audit: dict[Name, list[TermBinding]] = Field(default_factory=dict)
+    sources: dict[Name, Name] = Field(default_factory=dict)
 
 
 def load(policy):

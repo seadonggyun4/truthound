@@ -318,7 +318,16 @@ def generate():
 
     for cls in (SchemaEvolutionDetector, SchemaChange, SchemaChangeSummary):
         record_source(cls)
-    from truthound.profiler.evolution import rename_detector
+    from truthound.profiler.evolution import compatibility, rename_detector
+
+    for name in (
+        "SchemaCompatibilityAnalyzer",
+        "CompatibilityResult",
+        "TypeCompatibilityChecker",
+        "NullabilityCompatibilityChecker",
+        "ColumnPresenceChecker",
+    ):
+        record_source(getattr(compatibility, name))
 
     for name in (
         "ColumnRenameDetector",
