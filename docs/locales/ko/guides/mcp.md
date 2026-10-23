@@ -906,6 +906,41 @@ ML 산출물에는 `encoding`, `model_algorithm`, `model_revision`과 태그로 
 알림 목적지는 운영자가 구성하며 요청으로 편집하지 않습니다. 외부 알림·저장소
 실서비스는 미검증입니다. 게시된 3.2.0이 아닌 개발 소스의 기능입니다.
 
+추가 승인 기반 관리 명령은 네이티브 서비스 메서드를 재사용합니다.
+
+- 실행기의 `run_once`는 `checkpoint_name`을 받고 `run_all`은 등록된 전체
+  체크포인트를 실행합니다. 네이티브 액션과 결과 콜백도 실행하며 결과는 예약
+  결과 대기열이 아닌 산출물로 반환합니다. `remove_checkpoint`는
+  `checkpoint_name`을 받아 네이티브 삭제 여부를 반환합니다. 이미 실행 중인
+  체크포인트를 취소하지는 않습니다.
+- 에스컬레이션의 `policy`, `policy_remove`는 `policy_name`을 받으며 없는
+  정책은 null/false를 반환합니다. 정책 제거가 기존 사건을 해결하지는 않습니다.
+  `active_records`는 선택적인 `policy_name` 필터를, `incident_records`는
+  필수 `incident_id`를 받습니다. 전체 네이티브 목록을 산출물 바이트 한도 내에서
+  반환하며 결과를 조용히 잘라내지 않습니다.
+- `policy_update`는 `policy_name`과 비어 있지 않은 `policy_update` 객체를
+  받습니다. 기존 정책의 `enabled`, `severity_filter`, `max_escalations`,
+  `cooldown_minutes`, `business_hours_only`, `business_hours_start`,
+  `business_hours_end`, `business_days`, `timezone`을 수정합니다. 생략한
+  설정은 유지하며 명시적 null과 알 수 없는 필드는 거부합니다. 수준·목적지·조건·
+  트리거·메타데이터는 유지합니다. 등록된 네이티브 정책을 교체하는 것이며 기존
+  기록·예약 작업을 재작성하지 않습니다. 이후 정책 참조 시점도 Core 동작을 따릅니다.
+  Core는 `policy_name` 명시 조회에서 활성화·심각도 선택 조건을 우회합니다.
+  따라서 정책 비활성화는 자동 선택에 적용되며 명시 호출을 막지는 않습니다.
+  업무 시간 강제 여부도 Core를 따르며 현재는 권고 동작입니다.
+  시간대 문자열은 그대로 전달하며 Core는 조회 실패를 업무 시간으로 취급합니다.
+  따라서 이 설정은 권한 통제 수단이 아닙니다.
+
+```json
+{"binding_id":"incident-engine","service_id":"monitor_<returned-id>","command":"policy_update","policy_name":"approved-policy","policy_update":{"enabled":false,"cooldown_minutes":30},"idempotency_key":"policy-disable-01"}
+```
+
+조회도 포함한 모든 명령은 정확한 요청별 승인이 필요합니다. 캐시 재생은 제거한
+체크포인트를 재실행하거나 제거한 정책을 복원하지 않습니다. 잘못된 요청 형식은
+실행 전에 차단하며 실행 시작 후 네이티브 예외·응답 유실은 안전한 재시도가 아닌
+`outcome_unknown`으로 남습니다. 새 정책 생성·목적지/수준 편집·영구 서비스 복구는
+아직 제공하지 않습니다.
+
 ### 네이티브 스케줄 미리보기
 
 `schedules_preview`는 cron `expression`(최대 256자), 명시적인 ISO 일시 `after`,

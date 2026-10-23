@@ -1025,6 +1025,42 @@ new policies and notification targets are operator-configured, not wire-editable
 Real external notification and store services remain unverified. These tools
 are development-source features, not part of published 3.2.0.
 
+Additional approved management commands reuse the native service methods:
+
+- Runner `run_once` takes `checkpoint_name`; `run_all` executes every registered
+  checkpoint. Native actions and result callbacks run; results are returned in
+  artifacts, not inserted into the scheduled-result queue. `remove_checkpoint`
+  takes `checkpoint_name` and returns the native removal boolean. Removal does
+  not cancel an already executing checkpoint.
+- Escalation `policy` and `policy_remove` take `policy_name`. Missing policies
+  return null/false. Removing a policy does not resolve existing incidents.
+  `active_records` optionally filters by `policy_name`; `incident_records`
+  requires `incident_id`. Results are complete native lists subject to the
+  artifact byte budget, not silently truncated.
+- `policy_update` requires `policy_name` and a nonempty `policy_update` object.
+  It updates an existing policy's `enabled`, `severity_filter`,
+  `max_escalations`, `cooldown_minutes`, `business_hours_only`,
+  `business_hours_start`, `business_hours_end`, `business_days` or `timezone`.
+  Omitted settings are preserved; explicit nulls and unknown fields are rejected.
+  Levels, destinations, conditions, triggers and metadata remain unchanged.
+  This replaces the registered native policy, not existing records or scheduled
+  jobs. Subsequent native execution decides when it consults that policy.
+  Core's explicit `policy_name` lookup bypasses enabled/severity selection;
+  disabling a policy affects automatic selection, not explicit triggering.
+  Business-hours enforcement is also Core-defined (currently advisory).
+  Timezone strings are passed through: Core treats timezone lookup failure as
+  within business hours. This setting is not an authorization boundary.
+
+```json
+{"binding_id":"incident-engine","service_id":"monitor_<returned-id>","command":"policy_update","policy_name":"approved-policy","policy_update":{"enabled":false,"cooldown_minutes":30},"idempotency_key":"policy-disable-01"}
+```
+
+Every command, including reads, needs its own exact-request approval. Cached
+replay never re-executes a removed checkpoint or restores a removed policy.
+Invalid command shapes are rejected before execution. A native exception or
+lost receipt after execution starts remains `outcome_unknown`, not safe retry.
+New policies, target/level editing and durable service recovery remain unavailable.
+
 ### Native schedule preview
 
 `schedules_preview` takes a cron `expression` (up to 256 characters), an explicit

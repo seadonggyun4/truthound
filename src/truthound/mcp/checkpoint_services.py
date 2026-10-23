@@ -8,7 +8,7 @@ from pydantic import Field, model_validator
 
 from truthound.mcp.approved_sources import SourceBindingOpen, resolve
 from truthound.mcp.checkpoints import authorize
-from truthound.mcp.contracts import Name
+from truthound.mcp.contracts import Name, WireModel
 from truthound.mcp.operations import envelope
 from truthound.mcp.policy import MCPError
 from truthound.mcp.schema_monitor import MonitorProcess, MonitorSession
@@ -17,6 +17,28 @@ from truthound.mcp.session_contracts import Handle
 
 class CheckpointServiceOpen(SourceBindingOpen):
     kind: Literal["runner", "escalation"]
+
+
+class EscalationPolicyUpdate(WireModel):
+    """Edit policy timing/filtering without replacing trusted targets or callbacks."""
+
+    enabled: bool | None = None
+    severity_filter: list[Literal["critical", "high", "medium", "low", "info"]] | None = None
+    max_escalations: Annotated[int, Field(ge=0)] | None = None
+    cooldown_minutes: Annotated[int, Field(ge=0)] | None = None
+    business_hours_only: bool | None = None
+    business_hours_start: Annotated[int, Field(ge=0, le=23)] | None = None
+    business_hours_end: Annotated[int, Field(ge=0, le=23)] | None = None
+    business_days: list[Annotated[int, Field(ge=0, le=6)]] | None = None
+    timezone: Name | None = None
+
+    @model_validator(mode="after")
+    def supplied(self):
+        if not self.model_fields_set or any(
+            getattr(self, k) is None for k in self.model_fields_set
+        ):
+            raise ValueError("supply at least one non-null policy setting")
+        return self
 
 
 class CheckpointServiceCommand(SourceBindingOpen):
@@ -34,10 +56,20 @@ class CheckpointServiceCommand(SourceBindingOpen):
         "resolve",
         "cancel",
         "escalate",
+        "run_once",
+        "run_all",
+        "remove_checkpoint",
+        "policy",
+        "policy_update",
+        "policy_remove",
+        "active_records",
+        "incident_records",
     ]
     record_id: Name | None = None
     incident_id: Name | None = None
     policy_name: Name | None = None
+    checkpoint_name: Name | None = None
+    policy_update: EscalationPolicyUpdate | None = None
     max_results: Annotated[int, Field(ge=1, le=1000)] = 100
 
     @model_validator(mode="after")
@@ -45,10 +77,22 @@ class CheckpointServiceCommand(SourceBindingOpen):
         record = self.command in {"record", "acknowledge", "resolve", "cancel", "escalate"}
         if record != (self.record_id is not None):
             raise ValueError("record_id is required only for record commands")
-        if (self.command == "trigger") != (self.incident_id is not None):
-            raise ValueError("incident_id is required only for trigger")
-        if self.policy_name is not None and self.command != "trigger":
-            raise ValueError("policy_name is only supported by trigger")
+        if (self.command in {"trigger", "incident_records"}) != (self.incident_id is not None):
+            raise ValueError("incident_id is required only for incident commands")
+        policy_commands = {"policy", "policy_update", "policy_remove"}
+        if self.command in policy_commands and self.policy_name is None:
+            raise ValueError("policy_name is required")
+        if self.policy_name is not None and self.command not in policy_commands | {
+            "trigger",
+            "active_records",
+        }:
+            raise ValueError("policy_name is not supported by this command")
+        if (self.command == "policy_update") != (self.policy_update is not None):
+            raise ValueError("policy_update is required only for policy_update")
+        if (self.command in {"run_once", "remove_checkpoint"}) != (
+            self.checkpoint_name is not None
+        ):
+            raise ValueError("checkpoint_name is required only for named runner commands")
         if "max_results" in self.model_fields_set and self.command != "results":
             raise ValueError("max_results is only supported by results")
         return self
@@ -72,9 +116,21 @@ class CheckpointServices(MonitorSession):
             if metadata.get("checkpoint_binding") != arguments.binding_id:
                 raise MCPError("invalid_binding")
             allowed = {"start", "stop", "status"} | (
-                {"results"}
+                {"results", "run_once", "run_all", "remove_checkpoint"}
                 if metadata["service_kind"] == "runner"
-                else {"trigger", "record", "acknowledge", "resolve", "cancel", "escalate"}
+                else {
+                    "trigger",
+                    "record",
+                    "acknowledge",
+                    "resolve",
+                    "cancel",
+                    "escalate",
+                    "policy",
+                    "policy_update",
+                    "policy_remove",
+                    "active_records",
+                    "incident_records",
+                }
             )
             if arguments.command not in allowed:
                 raise MCPError("invalid_arguments")

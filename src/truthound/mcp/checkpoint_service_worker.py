@@ -57,7 +57,15 @@ async def requests():
 async def execute(service, kind, args):
     command = args["command"]
     if kind == "runner":
-        if command == "start":
+        if command == "run_once":
+            result = await asyncio.to_thread(service.run_once, args["checkpoint_name"])
+            return {"result": result.to_dict()}
+        elif command == "run_all":
+            results = await asyncio.to_thread(service.run_all)
+            return {"results": [result.to_dict() for result in results]}
+        elif command == "remove_checkpoint":
+            return {"removed": service.remove_checkpoint(args["checkpoint_name"])}
+        elif command == "start":
             service.start()
         elif command == "stop":
             await asyncio.to_thread(service.stop)
@@ -69,7 +77,32 @@ async def execute(service, kind, args):
         elif command != "status":
             raise MCPError("invalid_arguments")
         return {"running": service.running, "checkpoints": list(service.checkpoints)}
-    if command == "start":
+    if command in {"policy", "policy_update"}:
+        policy = service.get_policy(args["policy_name"])
+        if command == "policy_update":
+            if policy is None:
+                raise MCPError("invalid_arguments")
+            from dataclasses import replace
+
+            from truthound.mcp.checkpoint_services import EscalationPolicyUpdate
+
+            update = EscalationPolicyUpdate.model_validate(
+                {key: value for key, value in args["policy_update"].items() if value is not None}
+            )
+            policy = replace(policy, **update.model_dump(exclude_none=True))
+            service.register_policy(policy)
+        return {"policy": policy.to_dict() if policy is not None else None}
+    elif command == "policy_remove":
+        return {"removed": service.unregister_policy(args["policy_name"])}
+    elif command == "active_records":
+        return {
+            "records": [r.to_dict() for r in service.get_active_escalations(args["policy_name"])]
+        }
+    elif command == "incident_records":
+        return {
+            "records": [r.to_dict() for r in service.get_records_for_incident(args["incident_id"])]
+        }
+    elif command == "start":
         await service.start()
     elif command == "stop":
         await service.stop()
