@@ -100,7 +100,7 @@ async def core_profile():
                 required|={"models_ensemble_add","models_ensemble_remove","models_persist","models_resume","jobs_submit","jobs_execute","jobs_status","jobs_result","jobs_cancel","jobs_recover"}
                 required|={"storage_retention_preview","storage_delete"}
                 required|={"schedules_register","schedules_status","schedules_disable","storage_policy_register","storage_policy_status","storage_policy_disable"}
-                required|={"drift_catalog","drift_detect","profilers_catalog","profilers_profile","schemas_create","schemas_export"}
+                required|={"drift_catalog","drift_detect","profilers_catalog","profilers_profile","profilers_generate_rules","schemas_create","schemas_export"}
                 required|={"suites_create","suites_inspect","suites_validate","contexts_execute"}
                 required|={"sources_open_polars","sources_inspect","sources_sample","sources_validate_connection","sources_validate_columns","sources_check_size_limits","sources_validate"}
                 required|={"sources_open_sqlite","sources_open_duckdb","streams_open","streams_next","streams_inspect"}
@@ -225,6 +225,13 @@ async def core_profile():
                 for name in ("assets_profile","assets_scan"):
                     assert (await invoke(name,{"asset_id":asset}))["bytes"]>0
                 training=(await invoke("assets_inline",{"columns":[{"name":"x","dtype":{"kind":"Float64"},"values":[float(i) for i in range(100)]}]}))["resource_id"]
+                from truthound.profiler import DataProfiler, ColumnProfiler, ProfilerConfig, SchemaRuleGenerator, Strictness
+                rules=await invoke("profilers_generate_rules",{"asset_id":training,"generator":{"component":"SchemaRuleGenerator"},"options":{"parallel":False}})
+                import polars as pl
+                native_config=ProfilerConfig()
+                native_profile=DataProfiler(config=native_config,column_profiler=ColumnProfiler(config=native_config),parallel=False).profile(pl.DataFrame({"x":[float(i) for i in range(100)]}).lazy())
+                expected_rules=[rule.to_dict() for rule in SchemaRuleGenerator().generate(native_profile,Strictness.MEDIUM)]
+                assert expected_rules and decode(json.loads(await artifact_bytes(rules["resource_id"])))==expected_rules
                 schedule=await invoke("schedules_preview",{"expression":"@daily","after":"2024-01-01T00:00:00+09:00","count":2})
                 assert schedule["valid"] and schedule["next_times"]==["2024-01-02T00:00:00+09:00","2024-01-03T00:00:00+09:00"]
                 model=await invoke("models_create",{"algorithm":"ZScoreAnomalyDetector"})

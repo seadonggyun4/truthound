@@ -34,6 +34,101 @@ def normalize(value):
     return value
 
 
+@pytest.mark.parametrize(
+    "generator",
+    [
+        "SchemaRuleGenerator",
+        "StatsRuleGenerator",
+        "PatternRuleGenerator",
+        "MLRuleGenerator",
+    ],
+)
+@pytest.mark.parametrize("strictness", ["loose", "medium", "strict"])
+def test_generated_rules_match_complete_native_result(tmp_path, generator, strictness):
+    import truthound.profiler as core
+
+    frame = pl.DataFrame(
+        {
+            "amount": [float(i) for i in range(30)],
+            "email": ["person@example.test"] * 30,
+        }
+    )
+    config = core.ProfilerConfig(include_distributions=True, include_patterns=True)
+    profile = core.DataProfiler(
+        config=config,
+        column_profiler=core.ColumnProfiler(config=config),
+        parallel=False,
+    ).profile(frame.lazy())
+    settings = {"correlation_threshold": 0.8} if generator == "MLRuleGenerator" else {}
+    expected = [
+        rule.to_dict()
+        for rule in getattr(core, generator)(**settings).generate(
+            profile,
+            core.Strictness(strictness),
+        )
+    ]
+    assert expected, "Exercise real rule generation, not an empty result"
+    adapter = MCPService(MCPPolicy((tmp_path,), profile="core", allow_sensitive_results=True))
+    try:
+        asset = call(
+            adapter,
+            "assets_inline",
+            columns=[
+                {"name": name, "dtype": {"kind": str(dtype)}, "values": frame[name].to_list()}
+                for name, dtype in frame.schema.items()
+            ],
+        )["resource_id"]
+        output = call(
+            adapter,
+            "profilers_generate_rules",
+            asset_id=asset,
+            config={"include_distributions": True, "include_patterns": True},
+            options={"parallel": False},
+            generator={"component": generator, "settings": settings},
+            strictness=strictness,
+        )["resource_id"]
+        parts, offset = [], 0
+        while offset is not None:
+            chunk = call(adapter, "artifacts_read", resource_id=output, offset=offset)
+            parts.append(base64.b64decode(chunk["base64"]))
+            offset = chunk["next_offset"]
+        assert decode(json.loads(b"".join(parts))) == expected
+        call(adapter, "resources_release", resource_id=asset)
+        denied = asyncio.run(
+            adapter.call_operation_async("artifacts_read", {"resource_id": output})
+        )
+        assert denied["execution_status"] != "succeeded"
+    finally:
+        adapter.close()
+
+
+@pytest.mark.fault
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        {"generator": {"component": "os.system"}},
+        {"generator": {"component": "SchemaRuleGenerator", "settings": {"typo": True}}},
+        {"generator": {"component": "SchemaRuleGenerator"}, "strictness": "unknown"},
+    ],
+)
+def test_rule_generation_rejects_unreviewed_configuration(tmp_path, arguments):
+    adapter = MCPService(MCPPolicy((tmp_path,), profile="core"))
+    try:
+        result = asyncio.run(
+            adapter.call_operation_async(
+                "profilers_generate_rules",
+                {
+                    "asset_id": "asset_" + "a" * 32,
+                    **arguments,
+                },
+            )
+        )
+        assert result["execution_status"] != "succeeded"
+        assert result["issues"]
+    finally:
+        adapter.close()
+
+
 @pytest.mark.parametrize("parallel", [False, True])
 def test_full_profiler_configuration_and_selected_components_match_native_core(tmp_path, parallel):
     import truthound.profiler as core

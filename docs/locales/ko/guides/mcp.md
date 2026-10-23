@@ -189,7 +189,7 @@ JavaScript의 정확한 정수 범위를 넘는 값에는 십진 문자열 태�
 | `assets_page`, `assets_sample`, `assets_mask` | 안정적인 무손실 행 페이지·시드 지정 Core 표본·마스킹 |
 | `assets_profile`, `assets_scan` | 전체 Core 프로파일·개인정보 검사 결과의 비공개 보관 |
 | `schemas_learn`, `schemas_create`, `schemas_inspect`, `schemas_export` | 학습·명시적 스키마와 승인된 조회·소유 JSON 및 원래 YAML 내보내기 |
-| `profilers_catalog`, `profilers_profile` | 고급 프로파일 전체 설정·컬럼 및 테이블 분석기·타입 추론기 |
+| `profilers_catalog`, `profilers_profile`, `profilers_generate_rules` | 고급 프로파일 전체 설정·분석 구성 요소·프로파일 기반 규칙 생성 |
 | `artifacts_export`, `artifacts_read` | 소유한 IPC·Parquet·CSV·JSON·NDJSON 산출물과 크기 제한 바이트 읽기 |
 | `artifacts_render`, `artifacts_datadocs` | 정식 결과 재진입, JSON·Markdown·콘솔·HTML 리포터와 영·한 검증 Data Docs |
 | `resources_describe`, `resources_release` | 세션 소유권·만료·무결성·현재 권한 확인과 파생 핸들 회수 |
@@ -392,7 +392,17 @@ Core에서 `config`와 상속된 `options`는 별개이므로 합치지 않습�
 DataProfiler의 실제 앞부분 표본은 `options.sample_size`가 지정하며
 `config.sample_size`와 독립적입니다. Core에서 사용하지 않는 설정이 알고리즘을
 바꾼다고 주장하지 않습니다. 알 수 없는 설정·임의 가져오기·사용자 정규식 정의는
-거부합니다. 임의 확장 구성·스트리밍 프로파일·생성 규칙 수명주기는 아직 별도 작업입니다.
+거부합니다. 임의 확장 구성·스트리밍 프로파일·생성 규칙 적용 수명주기는 아직 별도 작업입니다.
+
+`profilers_generate_rules`는 동일한 프로파일 입력에 필수 `generator`와
+`strictness`(`loose`, `medium`, `strict`, 기본 `medium`)를 추가합니다.
+예를 들어 `{"component":"SchemaRuleGenerator","settings":{}}`를 지정합니다.
+목록에는 `StatsRuleGenerator`, `PatternRuleGenerator`, `MLRuleGenerator`도
+있습니다. 선택한 네이티브 생성기 하나가 새 원본 프로파일을 받아 전체
+`GeneratedRule.to_dict()` 결과를 소유권이 있는 산출물로 보관합니다.
+검증기를 실행하거나 suite를 적용하지 않으며, 예외를 숨겨 부분 규칙을 성공으로
+반환하지 않습니다. 산출물 읽기에는 민감 결과 허용이 필요하고 원본 자산의 접근
+권한을 유지하므로, 원본을 해제하면 규칙 산출물도 읽을 수 없습니다.
 
 ### 드리프트와 상주 ML 모델
 

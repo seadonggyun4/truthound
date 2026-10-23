@@ -150,19 +150,32 @@ def execute(request: dict) -> dict:
             "row_count": run.row_count,
             "column_count": run.column_count,
         }
-    if operation in {"assets_profile", "assets_scan", "profilers_profile"}:
-        if operation == "profilers_profile":
+    if operation in {
+        "assets_profile",
+        "assets_scan",
+        "profilers_profile",
+        "profilers_generate_rules",
+    }:
+        if operation == "profilers_generate_rules":
+            from truthound.mcp.profiling import generate_rules
+
+            payload = generate_rules(arguments, frame)
+        elif operation == "profilers_profile":
             from truthound.mcp.profiling import execute as profile
 
             result = profile(arguments, frame)
         else:
             result = th.profile(frame) if operation == "assets_profile" else th.scan(frame)
+        if operation != "profilers_generate_rules":
+            payload = result.to_dict()
         with BoundedWriter(Path(request["output_path"]), request["output_budget"]) as sink:
-            sink.write(json.dumps(encode(result.to_dict()), allow_nan=False).encode())
+            sink.write(json.dumps(encode(payload), allow_nan=False).encode())
         media_type = (
             "application/vnd.truthound."
             + (
-                "advanced-profile"
+                "generated-rules"
+                if operation == "profilers_generate_rules"
+                else "advanced-profile"
                 if operation == "profilers_profile"
                 else "profile"
                 if operation == "assets_profile"

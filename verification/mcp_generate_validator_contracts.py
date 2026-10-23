@@ -297,6 +297,12 @@ def generate():
             "CardinalityTypeInferrer",
         ),
         "profiler": ("DataProfiler",),
+        "rule_generators": (
+            "SchemaRuleGenerator",
+            "StatsRuleGenerator",
+            "PatternRuleGenerator",
+            "MLRuleGenerator",
+        ),
     }.items():
         profiling["components"][group] = {}
         for name in names:
@@ -305,6 +311,7 @@ def generate():
             source_types.update(sources)
             profiling["components"][group][name] = {"target": reference(cls), "fields": options}
     record_source(profiler.ColumnProfiler)
+    record_source(profiler.GeneratedRule)
     suite = {
         "evidence_policy": describe(EvidencePolicy),
         "severity_policy": describe(SeverityPolicy),

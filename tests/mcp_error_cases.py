@@ -269,6 +269,19 @@ def attach(cases):
     )
     observed, result = set(), []
     for row in cases:
+        if row.validator in {"null", "not_null", "positive", "non_negative", "range"}:
+            assert row.error is None and row.caught_error is None
+            # A real column name is also a Polars regex selector. Native
+            # aggregation expands it to two columns with identical aliases.
+            frame = pl.DataFrame(row.negative)
+            column = "^.*age.*$"
+            frame = frame.rename({frame.columns[0]: column}).with_columns(pl.lit(3).alias("age"))
+            result.append(
+                replace(
+                    row, error=frame.to_dict(as_series=False), error_overrides={"columns": [column]}
+                )
+            )
+            continue
         if row.validator in INTEGER_FORMAT_ERRORS:
             assert row.error is None and row.caught_error is None
             # Native constructors accept finite integers. Actual validation

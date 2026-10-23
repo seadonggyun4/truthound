@@ -202,7 +202,7 @@ The same opt-in profile also exposes these named operations:
 | `assets_page`, `assets_sample`, `assets_mask` | Stable lossless pages, seeded Core sampling and masking |
 | `assets_profile`, `assets_scan` | Complete Core profile and PII reports retained privately |
 | `schemas_learn`, `schemas_create`, `schemas_inspect`, `schemas_export` | Learned or explicit typed schemas, authorized inspection and owned JSON/native YAML export |
-| `profilers_catalog`, `profilers_profile` | Advanced native profiler configuration, table/column analyzers and type inferrers |
+| `profilers_catalog`, `profilers_profile`, `profilers_generate_rules` | Advanced native profiler configuration, analysis components and profile-based rule generation |
 | `artifacts_export`, `artifacts_read` | Owned IPC/Parquet/CSV/JSON/NDJSON files and bounded byte reads |
 | `artifacts_render`, `artifacts_datadocs` | Canonical validation re-entry, JSON/Markdown/console/HTML reporters and English/Korean validation Data Docs |
 | `resources_describe`, `resources_release` | Session ownership, expiry, integrity, current grants and descendant cleanup |
@@ -429,7 +429,18 @@ controls its head sample, independently of `config.sample_size`. The adapter
 does not merge these settings or pretend currently unused Core fields change
 an algorithm. Unknown fields, arbitrary component imports and custom regex
 pattern definitions are rejected. Full custom extension composition, streaming
-profilers and generated-rule lifecycle are not covered by this binding.
+profilers and generated-rule application lifecycle are not covered by this binding.
+
+`profilers_generate_rules` accepts the same profile inputs plus a required
+`generator`, for example `{"component":"SchemaRuleGenerator","settings":{}}`,
+and `strictness` (`loose`, `medium`, or `strict`, default `medium`). The closed
+catalog also includes `StatsRuleGenerator`, `PatternRuleGenerator` and
+`MLRuleGenerator`. One selected native generator receives the fresh native
+profile; its complete `GeneratedRule.to_dict()` results are retained as an
+owned artifact. Generation does not execute validators or apply a suite.
+Exceptions fail the operation rather than silently returning partial rules.
+Artifact reads require sensitive-result permission and retain the source asset's
+authorization; releasing that asset also prevents reading its rule artifact.
 
 ### Drift and resident ML
 

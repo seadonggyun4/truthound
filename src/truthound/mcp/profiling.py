@@ -1,6 +1,6 @@
 """Closed native profiling composition; results remain owned full artifacts."""
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import Field, JsonValue, model_validator
 
@@ -49,6 +49,29 @@ class Profile(AssetInput):
             for value in getattr(self, group) or ():
                 component(group, value)
         return self
+
+
+class GenerateRules(Profile):
+    generator: Component
+    strictness: Literal["loose", "medium", "strict"] = "medium"
+
+    @model_validator(mode="after")
+    def generator_configuration(self):
+        component("rule_generators", self.generator)
+        return self
+
+
+def generate_rules(arguments, frame):
+    from truthound.profiler import Strictness
+
+    profile = execute(arguments, frame)
+    generator = component("rule_generators", arguments.generator, build=True)
+    _known_type("truthound.profiler.generators.base.GeneratedRule")
+    # Call one explicit generator: the native suite aggregator suppresses
+    # generator exceptions, which would hide an incomplete result here.
+    return [
+        rule.to_dict() for rule in generator.generate(profile, Strictness(arguments.strictness))
+    ]
 
 
 def execute(arguments, frame):

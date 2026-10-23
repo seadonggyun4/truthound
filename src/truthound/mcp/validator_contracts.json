@@ -882,6 +882,43 @@
           "target": "truthound.profiler.table_profiler.DataProfiler"
         }
       },
+      "rule_generators": {
+        "MLRuleGenerator": {
+          "fields": {
+            "correlation_threshold": {
+              "required": false,
+              "type": {
+                "kind": "float"
+              }
+            },
+            "iqr_multiplier": {
+              "required": false,
+              "type": {
+                "kind": "float"
+              }
+            },
+            "z_score_threshold": {
+              "required": false,
+              "type": {
+                "kind": "float"
+              }
+            }
+          },
+          "target": "truthound.profiler.generators.ml_rules.MLRuleGenerator"
+        },
+        "PatternRuleGenerator": {
+          "fields": {},
+          "target": "truthound.profiler.generators.pattern_rules.PatternRuleGenerator"
+        },
+        "SchemaRuleGenerator": {
+          "fields": {},
+          "target": "truthound.profiler.generators.schema_rules.SchemaRuleGenerator"
+        },
+        "StatsRuleGenerator": {
+          "fields": {},
+          "target": "truthound.profiler.generators.stats_rules.StatsRuleGenerator"
+        }
+      },
       "table_analyzers": {
         "CorrelationAnalyzer": {
           "fields": {
@@ -3739,6 +3776,12 @@
     "truthound.profiler.column_profiler.PhysicalTypeInferrer": "e90ddb0fabefabb2808d9f8bc5124e4a2492d51bc89359a1fc58f996c677664a",
     "truthound.profiler.column_profiler.StringAnalyzer": "e4c6c45b3a22b1fa1461cd47d0af04d81cb67ed5ca9bd86528bebc6a340545fe",
     "truthound.profiler.column_profiler.ValueFrequencyAnalyzer": "351cc512986b1c4d8fa0d10b1315148cd52d172cb7a6e6173cb0cee129247d34",
+    "truthound.profiler.generators.base.GeneratedRule": "a4ec429d9a4f18ed1325c2f0dad805936c84eddca806eafcebfc5e95293ca062",
+    "truthound.profiler.generators.base.RuleGenerator": "b51ea2b14da41ba0d75fb0e115826e74775648017d4d665e467effeed4154f04",
+    "truthound.profiler.generators.ml_rules.MLRuleGenerator": "684d16a160afb989be30f62ac8a564d184c9c4f0adf2b2af17afcdfa5437b8b8",
+    "truthound.profiler.generators.pattern_rules.PatternRuleGenerator": "89eb00e6882849b3d364674e719972d46711d0f1c7703e811e28d17979b7733c",
+    "truthound.profiler.generators.schema_rules.SchemaRuleGenerator": "c53211cb9ef95d57caf9592c5913f019a1030cb0834ccf373ecd33ca5ba5ee38",
+    "truthound.profiler.generators.stats_rules.StatsRuleGenerator": "9798b48672448e0ef3b7c5aab7aac0b30ed47c0765e2767c03a2220538875327",
     "truthound.profiler.table_profiler.CorrelationAnalyzer": "991a3df32c189657848a977db30aa8d1c2883a76ae028203c5f84bf2f2534d0e",
     "truthound.profiler.table_profiler.DataProfiler": "49060378743e1bf6055fba0403d72a2bdc66529f5e93b13cc6ee2ae1a0860928",
     "truthound.profiler.table_profiler.DuplicateRowAnalyzer": "d127002a184afaed9b9a7800454ee8c5e7b7990fe0f15f97115576a48028f26a",

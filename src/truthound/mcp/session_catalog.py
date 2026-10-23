@@ -37,7 +37,7 @@ def operations(descriptor):
         ImpactInput,
         SchemaImpact,
     )
-    from truthound.mcp.profiling import Profile
+    from truthound.mcp.profiling import GenerateRules, Profile
     from truthound.mcp.retention import (
         DeleteResult,
         RetentionPreview,
@@ -402,6 +402,14 @@ def operations(descriptor):
             "Compose native table/column analyzers and type inferrers with full config and retain the complete advanced profile.",
             Profile,
             "truthound.profiler.DataProfiler.profile",
+            wire.ResourceInfo,
+            False,
+        ),
+        (
+            "profilers_generate_rules",
+            "Generate complete native rules from a fresh composed profile using one explicit built-in generator; retain an artifact without executing rules.",
+            GenerateRules,
+            "truthound.profiler.generators.base.RuleGenerator.generate",
             wire.ResourceInfo,
             False,
         ),

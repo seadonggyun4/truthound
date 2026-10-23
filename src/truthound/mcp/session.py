@@ -785,6 +785,7 @@ class MCPSession:
             "drift_detect": "artifact",
             "assets_profile": "artifact",
             "profilers_profile": "artifact",
+            "profilers_generate_rules": "artifact",
             "assets_scan": "artifact",
             "artifacts_render": "artifact",
             "artifacts_datadocs": "artifact",
