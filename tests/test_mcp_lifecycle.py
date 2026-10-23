@@ -19,6 +19,41 @@ pytestmark = pytest.mark.fault
 GRACE_SECONDS = 5
 
 
+def test_installed_smoke_owns_actual_interpreter_and_preserves_venv(tmp_path):
+    """A Windows redirector PID is not the interpreter whose locks we await."""
+    import ast
+    import importlib.util
+    import os
+    from mcp import StdioServerParameters
+
+    path = Path(__file__).resolve().parents[1] / "verification/mcp_release.py"
+    spec = importlib.util.spec_from_file_location("installed_ownership_contract", path)
+    release = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(release)
+    function = next(node for node in ast.parse(release.SMOKE).body
+                    if isinstance(node, ast.FunctionDef) and node.name == "installed_server_parameters")
+    namespace = {"sys": sys, "StdioServerParameters": StdioServerParameters}
+    exec(compile(ast.Module(body=[function], type_ignores=[]), "<installed-owner>", "exec"), namespace)
+    program = ("import os,sys,json; held=open('owned-file','w'); "
+               "print(json.dumps([os.getpid(),sys.prefix]),flush=True); sys.stdin.read()")
+    params = namespace["installed_server_parameters"](["-I", "-c", program])
+    child = subprocess.Popen([params.command, *params.args], stdin=subprocess.PIPE,
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                             text=True, env={**os.environ, **params.env}, cwd=tmp_path)
+    try:
+        pid, prefix = json.loads(child.stdout.readline())
+        assert pid == child.pid  # Fails for the Windows venv redirector.
+        assert Path(prefix).resolve() == Path(sys.prefix).resolve()
+    finally:
+        child.kill()
+        child.wait(timeout=GRACE_SECONDS)
+        for stream in (child.stdin, child.stdout, child.stderr):
+            stream.close()
+    # On Windows an open file denies deletion. Awaiting the real interpreter
+    # must release it immediately, without retry, sleep or ignored cleanup.
+    (tmp_path / "owned-file").unlink()
+
+
 def wait_until(predicate, seconds=GRACE_SECONDS):
     end = time.monotonic() + seconds
     while time.monotonic() < end:

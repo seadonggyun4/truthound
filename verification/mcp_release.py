@@ -37,11 +37,21 @@ from contextlib import closing
 from pathlib import Path
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
+def installed_server_parameters(args):
+    # Own the interpreter rather than the Windows venv redirector. Waiting on
+    # the latter after forced shutdown does not prove its child's file handles
+    # have closed. Preserve the installed venv, as CPython multiprocessing does.
+    executable=sys.executable
+    environment={}
+    if sys.platform=="win32" and executable!=sys._base_executable:
+        environment["__PYVENV_LAUNCHER__"]=executable
+        executable=sys._base_executable
+    return StdioServerParameters(command=executable,args=args,env=environment)
 async def run():
     with tempfile.TemporaryDirectory() as td:
         p=Path(td)/"input.csv"
         p.write_text("email,x\\na@example.com,1\\na@example.com,1\\n,2\\n")
-        params=StdioServerParameters(command=sys.executable,args=["-I","-m","truthound.mcp","serve","--allow-dir",td])
+        params=installed_server_parameters(["-I","-m","truthound.mcp","serve","--allow-dir",td])
         async with stdio_client(params) as (r,w):
             async with ClientSession(r,w) as client:
                 initialized=await client.initialize()
@@ -84,7 +94,7 @@ async def core_profile():
         for root in (data,workspace,control): root.mkdir(mode=0o700)
         p=data/"input.csv"
         p.write_text("email,age\\na@example.com,10\\na@example.com,150\\n",encoding="utf-8")
-        params=StdioServerParameters(command=sys.executable,args=["-I","-m","truthound.mcp","serve","--allow-dir",str(data),"--workspace-dir",str(workspace),"--control-dir",str(control),"--profile","core","--allow-sensitive-results"])
+        params=installed_server_parameters(["-I","-m","truthound.mcp","serve","--allow-dir",str(data),"--workspace-dir",str(workspace),"--control-dir",str(control),"--profile","core","--allow-sensitive-results"])
         async with stdio_client(params) as (r,w):
             async with ClientSession(r,w) as client:
                 await client.initialize()
