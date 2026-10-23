@@ -78,6 +78,7 @@ async def run():
                 assert not (Path(td)/".truthound").exists()
 asyncio.run(run())
 async def core_profile():
+    import polars as pl
     with tempfile.TemporaryDirectory() as td:
         data,workspace,control=(Path(td)/name for name in ("data","workspace","control"))
         for root in (data,workspace,control): root.mkdir(mode=0o700)

@@ -54,6 +54,17 @@ def test_installed_runtime_failure_preserves_safe_diagnostics_not_captured_secre
     assert "not a release gate" in workflow["name"]
 
 
+@pytest.mark.parametrize("script", ["BASE_SMOKE", "SMOKE"])
+def test_installed_smoke_scripts_resolve_names_in_their_own_scopes(script):
+    release = load("release_smoke_scope_test", "verification/mcp_release.py")
+    result = subprocess.run(
+        [sys.executable, "-m", "ruff", "check", "--isolated", "--select", "F821",
+         "--stdin-filename", "installed_smoke.py", "-"],
+        input=getattr(release, script), capture_output=True, text=True, encoding="utf-8",
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
 def test_installed_sqlite_smoke_closes_its_actual_fixture_connection(tmp_path):
     import ast
     import contextlib
