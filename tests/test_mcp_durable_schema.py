@@ -248,6 +248,272 @@ def state(adapter, identity):
     return result["data"], source_artifact(adapter, result["data"]["artifact"]["resource_id"])
 
 
+def control_request(runtime, identity, action, **options):
+    import uuid
+
+    current = invoke(runtime[0], "schema_watch_status", watch_id=identity)
+    return dict(
+        watch_id=identity,
+        expected_revision=current["data"]["revision"],
+        action=action,
+        idempotency_key=str(uuid.uuid4()),
+        **options,
+    )
+
+
+def approve_update(runtime, request):
+    plan = invoke(runtime[0], "schema_watch_update", **request)
+    assert plan["issues"] == [{"code": "approval_required"}], plan
+    store = ApprovalStore(runtime[1])
+    try:
+        store.approve(plan["data"]["plan_id"])
+    finally:
+        store.close()
+    return invoke(runtime[0], "schema_watch_update", **request)
+
+
+@pytest.mark.parametrize("mode", ["sync", "async"])
+def test_pause_resume_preserves_native_baseline_across_processes(
+    runtime, monkeypatch, tmp_path, receiver, mode
+):
+    from truthound.profiler.evolution.detector import SchemaEvolutionDetector
+
+    identity = register(runtime, monkeypatch, tmp_path, mode)
+    assert worker(runtime).returncode == 0
+    before, saved = state(runtime[0], identity)
+    request = control_request(runtime, identity, "pause")
+    result = approve_update(runtime, request)
+    assert result["data"]["state"] == "paused"
+    assert invoke(runtime[0], "schema_watch_update", **request) == result
+    change(tmp_path, {"x": "Int64"})
+    assert worker(runtime).returncode == 0
+    paused, snapshot = state(runtime[0], identity)
+    assert snapshot == saved and paused["polls"] == before["polls"] and not receiver[0]
+    assert (
+        approve_update(runtime, control_request(runtime, identity, "resume"))["data"]["expires_at"]
+        == before["expires_at"]
+    )
+    assert worker(runtime).returncode == 0
+    _, snapshot = state(runtime[0], identity)
+    expected = SchemaEvolutionDetector().detect_changes(
+        {"x": "Int64"}, {"x": "Int64", "y": "String", "z": "String"}
+    )
+    # Core history starts at the first changed schema, so its first parent diff
+    # is empty. The native alert carries the initial-baseline change evidence.
+    actual = snapshot["checkpoint"]["alerts"][0]["changes"]
+    assert snapshot["checkpoint"]["versions"][0]["schema"] == {"x": "Int64"}
+    assert sorted(actual, key=lambda item: item["column"]) == sorted(
+        [item.to_dict() for item in expected], key=lambda item: item["column"]
+    )
+    assert worker(runtime).returncode == 0
+    assert receiver[0] == [snapshot["outbox"][0]["alert"]]
+
+
+@pytest.mark.parametrize("action", ["retry", "confirm_delivery", "discard"])
+def test_unknown_operator_decision_survives_restart_without_hidden_resend(
+    runtime, monkeypatch, tmp_path, receiver, action
+):
+    identity = register(runtime, monkeypatch, tmp_path)
+    assert worker(runtime).returncode == 0
+    change(tmp_path, {"x": "Int64"})
+    assert worker(runtime).returncode == 0
+    assert worker(runtime, crash_after_send=True).returncode == 73
+    assert worker(runtime).returncode == 0
+    _, snapshot = state(runtime[0], identity)
+    alert = snapshot["outbox"][0]["alert"]
+    assert snapshot["outbox"][0]["state"] == "unknown" and receiver[0] == [alert]
+    request = control_request(
+        runtime,
+        identity,
+        action,
+        alert_id=alert["alert_id"],
+        evidence_reference="operator-case-001",
+        accept_duplicate_risk=action == "retry",
+    )
+    result = approve_update(runtime, request)
+    assert result["execution_status"] == "succeeded", result
+    assert invoke(runtime[0], "schema_watch_update", **request) == result
+    assert worker(runtime).returncode == 0
+    _, snapshot = state(runtime[0], identity)
+    item = snapshot["outbox"][0]
+    assert (
+        item["state"]
+        == {"retry": "sent", "confirm_delivery": "confirmed", "discard": "discarded"}[action]
+    )
+    assert item["decisions"][0]["evidence_reference"] == "operator-case-001"
+    assert receiver[0] == [alert] * (2 if action == "retry" else 1)
+    assert worker(runtime).returncode == 0
+    assert len(receiver[0]) == (2 if action == "retry" else 1)
+
+
+@pytest.mark.parametrize("failure", ["stale", "busy", "expired", "revoked", "quota"])
+def test_approved_watch_updates_fail_closed_and_transactionally(
+    runtime, monkeypatch, tmp_path, failure
+):
+    from truthound.mcp.durable_schema import read, storage, write
+
+    identity = register(runtime, monkeypatch, tmp_path)
+    request = control_request(runtime, identity, "pause")
+    if failure != "stale":
+        store = storage(runtime[0]._session)
+        with store.transaction():
+            record = read(store, identity)
+            if failure == "busy":
+                record["state"] = "paused"
+                record["busy"] = {"pid": 1, "created": 0, "task": "poll", "index": None}
+            elif failure == "expired":
+                record["expires_at"] = 0
+            elif failure == "quota":
+                record["budget"] = len(json.dumps(record)) + 100
+            write(store, identity, record)
+        request = control_request(
+            runtime,
+            identity,
+            "resume" if failure == "busy" else "retention" if failure == "quota" else "pause",
+            **({"retention": {"max_count": 1}} if failure == "quota" else {}),
+        )
+    plan = invoke(runtime[0], "schema_watch_update", **request)
+    assert plan["issues"] == [{"code": "approval_required"}]
+    store = ApprovalStore(runtime[1])
+    try:
+        store.approve(plan["data"]["plan_id"])
+    finally:
+        store.close()
+    if failure == "stale":
+        invoke(runtime[0], "schema_watch_disable", watch_id=identity)
+    elif failure == "revoked":
+        path = runtime[1] / "bindings.json"
+        path.write_text(path.read_text(encoding="utf-8") + "\n", encoding="utf-8")
+    elif failure == "quota":
+        # Inject a storage failure after approval; neither intent nor state may commit.
+        monkeypatch.setattr(
+            "truthound.mcp.schema_watch_control.prune",
+            lambda record: record.update(over_budget="x" * 10000),
+        )
+    result = invoke(runtime[0], "schema_watch_update", **request)
+    assert result["execution_status"] != "succeeded", result
+    record = read(storage(runtime[0]._session), identity)
+    assert "over_budget" not in record and record.get("retention") is None
+
+
+@pytest.mark.parametrize("mode", ["all", "any"])
+def test_queue_retention_matches_native_and_preserves_unresolved(mode):
+    import copy
+    from datetime import datetime, timedelta
+
+    from truthound.mcp.schema_watch_control import prune
+    from truthound.stores.retention.base import ItemMetadata, PolicyMode
+    from truthound.stores.retention.policies import (
+        CompositePolicy,
+        CountBasedPolicy,
+        TimeBasedPolicy,
+    )
+
+    now = datetime.now()
+    items = [
+        ItemMetadata(str(i), "schema-outbox", now - timedelta(minutes=20 - i * 5)) for i in range(4)
+    ]
+    native = CompositePolicy(
+        [TimeBasedPolicy(max_age_minutes=12), CountBasedPolicy(2)], mode=PolicyMode(mode)
+    )
+    native.prepare_batch(items)
+    expected = {item.item_id for item in items if native.should_retain(item)}
+    protected = [
+        {"state": state, "alert": {"alert_id": state}, "resolved_at": 0}
+        for state in ("pending", "sending", "unknown")
+    ]
+    protected.append({"state": "sent", "alert": {"alert_id": "legacy"}})
+    record = {
+        "busy": None,
+        "retention": {"max_age_minutes": 12, "max_count": 2, "mode": mode},
+        "outbox": [
+            {
+                "state": "sent",
+                "alert": {"alert_id": item.item_id},
+                "resolved_at": item.created_at.timestamp(),
+            }
+            for item in items
+        ]
+        + copy.deepcopy(protected),
+    }
+    prune(record)
+    assert {item["alert"]["alert_id"] for item in record["outbox"]} == expected | {
+        item["alert"]["alert_id"] for item in protected
+    }
+    assert record["pruned_notifications"] == 4 - len(expected)
+    saved = copy.deepcopy(record)
+    prune(record)
+    assert record == saved
+
+
+def test_approved_retention_runs_after_restart_and_can_be_disabled(runtime, monkeypatch, tmp_path):
+    from truthound.mcp.durable_schema import read, storage, write
+
+    identity = register(runtime, monkeypatch, tmp_path)
+    assert (
+        approve_update(runtime, control_request(runtime, identity, "pause"))["execution_status"]
+        == "succeeded"
+    )
+    request = control_request(runtime, identity, "retention", retention={"max_age_minutes": 1})
+    assert approve_update(runtime, request)["execution_status"] == "succeeded"
+    store = storage(runtime[0]._session)
+
+    def seed():
+        with store.transaction():
+            record = read(store, identity)
+            record["outbox"] = [
+                {"state": status, "alert": {"alert_id": status}, "resolved_at": 0}
+                for status in ("sent", "confirmed", "discarded", "unknown", "pending")
+            ]
+            write(store, identity, record)
+
+    seed()
+    assert worker(runtime).returncode == 0
+    info, snapshot = state(runtime[0], identity)
+    assert info["state"] == "paused" and info["pruned_notifications"] == 3
+    assert {item["state"] for item in snapshot["outbox"]} == {"unknown", "pending"}
+    assert (
+        approve_update(runtime, control_request(runtime, identity, "retention", retention=None))[
+            "execution_status"
+        ]
+        == "succeeded"
+    )
+    seed()
+    assert worker(runtime).returncode == 0
+    assert len(state(runtime[0], identity)[1]["outbox"]) == 5
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"action": "retry", "alert_id": "a", "evidence_reference": "case"},
+        {"action": "retry", "alert_id": "a", "accept_duplicate_risk": True},
+        {
+            "action": "confirm_delivery",
+            "alert_id": "a",
+            "evidence_reference": "case",
+            "accept_duplicate_risk": True,
+        },
+        {"action": "pause", "alert_id": "a"},
+        {"action": "retention", "retention": {}},
+    ],
+)
+def test_watch_update_rejects_missing_or_misplaced_consent(fields):
+    from pydantic import ValidationError
+
+    from truthound.mcp.schema_watch_control import WatchUpdate
+
+    with pytest.raises(ValidationError):
+        WatchUpdate.model_validate(
+            {
+                "watch_id": "watch_" + "a" * 64,
+                "expected_revision": "b" * 64,
+                "idempotency_key": "operator-request",
+                **fields,
+            }
+        )
+
+
 @pytest.mark.parametrize("mode", ["sync", "async"])
 def test_restart_checkpoint_outbox_matches_native_core(
     runtime, monkeypatch, tmp_path, receiver, mode

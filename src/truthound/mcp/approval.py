@@ -231,8 +231,12 @@ class ApprovalStore:
             "effects": json.loads(plan["effects"]),
         }
 
-    def begin(self, identity, *, session, policy):
-        with self.transaction():
+    def begin(self, identity, *, session, policy, in_transaction=False):
+        from contextlib import nullcontext
+
+        if in_transaction and not self.connection.in_transaction:
+            raise MCPError("invalid_control_state")
+        with nullcontext() if in_transaction else self.transaction():
             plan = self.connection.execute(
                 "SELECT * FROM plans WHERE identity=? AND session=?", (identity, session)
             ).fetchone()

@@ -62,6 +62,7 @@ def operations(descriptor):
     )
     from truthound.mcp.schema_history import HistoryAction, HistoryCreate, HistoryState
     from truthound.mcp.schema_monitor import MonitorInput, MonitorOpen
+    from truthound.mcp.schema_watch_control import WatchUpdate
     from truthound.mcp.sources import (
         DuckDBSourceOpen,
         PolarsSourceOpen,
@@ -75,6 +76,14 @@ def operations(descriptor):
     from truthound.mcp.suites import SuiteCreate, SuiteValidation
 
     rows = (
+        (
+            "schema_watch_update",
+            "Approve revision-bound pause/resume, operator reconciliation or explicit duplicate-risk retry of unknown alerts, and terminal queue retention. Never extends expiry or automatically retries unknown sends.",
+            WatchUpdate,
+            "truthound.profiler.evolution.watcher.SchemaWatcher",
+            WatchState | wire.OperationPlan,
+            True,
+        ),
         (
             "schema_watch_register",
             "Approve durable native schema monitoring and a bounded notification outbox. Operator worker restart resumes pending reads/sends until expiry; unknown sends are never automatically retried.",
@@ -994,6 +1003,7 @@ def operations(descriptor):
                 "schema_monitor_open",
                 "schema_watch_register",
                 "schema_watch_disable",
+                "schema_watch_update",
                 "schema_monitor_stop",
                 "schema_history_execute",
                 "schema_history_persist",

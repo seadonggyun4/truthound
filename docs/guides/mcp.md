@@ -622,6 +622,45 @@ remain enforced. Exhaustion fails closed, not by silently dropping notifications
 Real loopback HTTP, separate-process restart and crash-after-send are tested;
 cloud/email/broker accounts remain unverified. These are unreleased source features.
 
+#### Approved pause, reconciliation and queue retention
+
+`schema_watch_update` requires `watch_id`, the current status `revision` as
+`expected_revision`, a new `idempotency_key`, and `action`. Review its operator
+plan, approve through the existing CLI, then repeat the exact request. Changes
+since review make the plan stale; obtain fresh status and use a new key. Retrying
+a committed request returns its saved result, not another transition.
+
+- `pause` stops new polls and sends while keeping the baseline and queue.
+  In-flight work may finish. `resume` requires a paused, unexpired watch and
+  does not extend consent. Changes during the pause are compared to the last
+  baseline, not replayed as intermediate events. Disabled/failed/expired watches
+  cannot be resumed. These are durable scheduling controls over Core polling,
+  not a claim that the native async watcher exposes a pause method.
+- `confirm_delivery`, `discard`, or `retry` require an **unknown** `alert_id`
+  and `evidence_reference` from operator-side destination reconciliation.
+  Use a non-secret case identifier, not credentials or raw data. Confirmation
+  records an operator assertion (`confirmed`), not a successful observed send;
+  discard records `discarded`, not delivery. Retry additionally requires
+  `accept_duplicate_risk: true` and explicitly approved possible duplicate
+  external delivery. It queues the same native alert for one new attempt, never
+  sends during the approval call, and remains paused if the watch is paused.
+  Every decision records its plan, reference and time; attempts are counted.
+- `retention` accepts `retention: {"max_age_minutes": 1440, "max_count": 100,
+  "mode": "all"}`; at least one age/count limit is required. Native Core
+  `TimeBasedPolicy`, `CountBasedPolicy` and `CompositePolicy` choose retained
+  entries (`all`: retain only if all rules retain; `any`: if any rule retains).
+  `retention: null` disables future cleanup. Approval authorizes immediate and
+  subsequent worker-sweep removal of timestamped terminal queue entries only
+  (`sent`, `confirmed`, `discarded`). Pending/sending/unknown and legacy entries
+  without resolution timestamps are protected. No active lease is reordered.
+  Status exposes the policy and cumulative `pruned_notifications` count.
+
+Retention runs on worker sweeps, including paused or disabled watches, under
+unchanged authority. It does not erase native checkpoint history, approvals,
+external copies or free definition slots, and is not secure physical erasure.
+History/event/byte budgets still apply. No service-side delivery lookup or
+exactly-once guarantee is implied. Real external services remain unverified.
+
 ### Session-owned schema history
 
 `schema_history_create` constructs Core `InMemorySchemaHistory` (`backend="memory"`,

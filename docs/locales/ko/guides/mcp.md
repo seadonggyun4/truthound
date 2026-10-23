@@ -563,6 +563,42 @@ Core 동기·비동기 `check_now`, 버전 직렬화와 호환성 파괴 알림 
 로컬 실제 HTTP·별도 프로세스 재시작·전송 직후 충돌을 검증하며 클라우드·이메일·
 브로커 실계정은 미검증입니다. 아직 게시된 패키지에 포함되지 않은 개발 기능입니다.
 
+#### 승인 기반 일시중지·대사·대기열 보존
+
+`schema_watch_update`에는 `watch_id`, 현재 상태의 `revision`을 넣은
+`expected_revision`, 새 `idempotency_key`, `action`이 필요합니다. 운영자 CLI로
+계획을 검토·승인한 뒤 같은 요청을 반복합니다. 검토 후 상태가 바뀌면 오래된
+계획은 거부되므로 상태를 다시 조회하고 새 키로 요청합니다. 완료 요청 재전송은
+저장된 결과를 반환하며 작업을 반복하지 않습니다.
+
+- `pause`는 기준 스키마와 대기열을 유지하고 새 검사·전송을 막습니다. 진행 중
+  작업은 끝날 수 있습니다. `resume`은 만료되지 않은 일시중지 감시만 재개하며
+  승인 기간을 연장하지 않습니다. 중간 변경을 재생하지 않고 마지막 기준과
+  비교합니다. disabled/failed/expired 상태는 재개하지 않습니다. Core 검사를
+  감싸는 영구 스케줄 제어이며 네이티브 비동기 감시에 pause 메서드가 있다는
+  뜻은 아닙니다.
+- `confirm_delivery`·`discard`·`retry`에는 unknown 상태의 `alert_id`와 대상 측
+  확인을 나타내는 `evidence_reference`가 필요합니다. 비밀정보·원시 데이터가
+  아닌 사례 식별자를 사용합니다. confirmed는 운영자 확인이지 관측된 전송
+  성공이 아니며 discarded는 폐기이지 전달이 아닙니다. retry는 추가로
+  `accept_duplicate_risk: true`와 중복 외부 전송 가능성에 대한 승인이 필요합니다.
+  같은 네이티브 알림을 한 번 더 시도하도록 대기시키며 승인 호출에서 전송하지
+  않습니다. 감시가 일시중지 상태면 그대로 대기합니다. 결정별 계획·참조·시각과
+  전송 시도 횟수를 기록합니다.
+- `retention`은 `retention: {"max_age_minutes": 1440, "max_count": 100,
+  "mode": "all"}`을 받으며 나이·개수 중 하나 이상이 필요합니다. Core의
+  TimeBasedPolicy·CountBasedPolicy·CompositePolicy를 재사용합니다. all은 모든
+  규칙이 보존할 때, any는 하나라도 보존할 때 유지합니다. `retention: null`은
+  이후 정리를 해제합니다. 승인 시점과 후속 worker 순회에서 해결 시각이 있는
+  sent/confirmed/discarded 항목만 삭제합니다. pending/sending/unknown 및 해결
+  시각이 없는 기존 항목은 보호하며 진행 중 대기열은 재정렬하지 않습니다.
+  상태에 정책과 누적 `pruned_notifications` 수를 제공합니다.
+
+보존 정리는 동일한 권한 아래 worker 순회에서 일시중지·비활성 감시에도 적용됩니다.
+네이티브 체크포인트 이력·승인 기록·외부 사본은 지우지 않고 정의 슬롯도 반환하지
+않으며 물리적 보안 삭제도 아닙니다. 기존 이력·이벤트·용량 한도는 유지됩니다.
+대상 서비스 자동 조회나 정확히 한 번 전달을 보장하지 않으며 실서비스는 미검증입니다.
+
 ### 세션 소유 스키마 이력
 
 `schema_history_create`는 전용 작업자에서 Core `InMemorySchemaHistory`

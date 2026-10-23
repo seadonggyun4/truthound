@@ -29,7 +29,10 @@ class WatchInput(WireModel):
 
 class WatchState(WireModel):
     watch_id: str
-    state: Literal["active", "disabled", "failed", "expired"]
+    state: Literal["active", "paused", "disabled", "failed", "expired"]
+    revision: str
+    retention: dict | None = None
+    pruned_notifications: int = 0
     expires_at: float
     polls: int
     notifications: dict[str, int]
@@ -81,10 +84,13 @@ def authorize(session, record):
     return binding, plugins
 
 
-def info(identity, record):
+def info(identity, record, store):
     return dict(
         watch_id=identity,
         state=record["state"],
+        revision=store.digest(record),
+        retention=record.get("retention"),
+        pruned_notifications=record.get("pruned_notifications", 0),
         expires_at=record["expires_at"],
         polls=(record["checkpoint"] or {}).get("polls", 0),
         notifications=dict(Counter(item["state"] for item in record["outbox"])),
@@ -93,6 +99,10 @@ def info(identity, record):
 
 
 async def call(session, name, arguments):
+    if name == "schema_watch_update":
+        from truthound.mcp.schema_watch_control import update
+
+        return await update(session, arguments)
     store = storage(session)
     if name == "schema_watch_register":
         if arguments.max_events > session.policy.max_items:
@@ -130,7 +140,7 @@ async def call(session, name, arguments):
             busy=None,
             budget=min(1024**2, session.policy.max_file_bytes, session.policy.max_session_bytes),
         )
-        result = envelope(name, data=info(identity, record))
+        result = envelope(name, data=info(identity, record, store))
         store.begin(plan["plan_id"], session=session.identity, policy=stamp)
         try:
             with store.transaction():
@@ -153,7 +163,7 @@ async def call(session, name, arguments):
         if name == "schema_watch_disable":
             record["state"] = "disabled"
             write(store, arguments.watch_id, record)
-    result = info(arguments.watch_id, record)
+    result = info(arguments.watch_id, record, store)
     if arguments.include_snapshot:
         resources = session.resources
         identity, path = resources.reserve("artifact")
@@ -197,6 +207,8 @@ async def tick(session, stop=None):
     """Bounded sweep. Lease owner identity prevents simultaneous poll/send attempts."""
     import psutil
 
+    from truthound.mcp.schema_watch_control import prune
+
     store = storage(session)
     for row in store.connection.execute(
         "SELECT identity FROM mcp_schema_watches ORDER BY identity"
@@ -213,7 +225,10 @@ async def tick(session, stop=None):
                 if busy["task"] == "deliver":
                     record["outbox"][busy["index"]]["state"] = "unknown"
                 record["busy"] = None
-            if store.clock() >= record["expires_at"] and record["state"] == "active":
+            if record.get("retention"):
+                authorize(session, record)
+                prune(record)
+            if store.clock() >= record["expires_at"] and record["state"] in {"active", "paused"}:
                 record["state"] = "expired"
             if record["state"] != "active":
                 write(store, identity, record)
@@ -236,6 +251,9 @@ async def tick(session, stop=None):
             record["busy"] = busy
             if pending is not None:
                 record["outbox"][pending]["state"] = "sending"
+                record["outbox"][pending]["attempts"] = (
+                    record["outbox"][pending].get("attempts", 0) + 1
+                )
             write(store, identity, record)  # Commit sending BEFORE attempting external delivery.
         policy = session.policy
         worker = None
@@ -267,6 +285,7 @@ async def tick(session, stop=None):
                     if result != {"delivered": True}:
                         raise MCPError("notification_delivery_unknown")
                     latest["outbox"][pending]["state"] = "sent"
+                    latest["outbox"][pending]["resolved_at"] = store.clock()
                 else:
                     previous_ids = {
                         alert["alert_id"]
