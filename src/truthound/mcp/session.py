@@ -531,6 +531,10 @@ class MCPSession:
     async def call(self, name, arguments):
         from truthound.mcp.catalog import CATALOG
 
+        if name.startswith("schema_watch_"):
+            from truthound.mcp.durable_schema import call
+
+            return await call(self, name, arguments)
         if self._monitors is not None:
             self._monitors.reap()
         if name.startswith("schema_monitor_"):

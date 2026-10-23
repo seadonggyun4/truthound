@@ -110,6 +110,7 @@ async def core_profile():
                 required.add("sources_open_binding")
                 required.update({"schema_history_create", "schema_history_execute", "schema_history_persist", "schema_history_resume"})
                 required.update({"schema_monitor_open", "schema_monitor_status", "schema_monitor_stop"})
+                required.update({"schema_watch_register", "schema_watch_status", "schema_watch_disable"})
                 required.add("models_rule_query")
                 required.add("models_result_query")
                 required.add("schedules_preview")

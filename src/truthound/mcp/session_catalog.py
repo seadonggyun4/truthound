@@ -26,6 +26,7 @@ def operations(descriptor):
     from truthound.mcp.durable_history import HistoryPersist, HistoryResume
     from truthound.mcp.durable_jobs import JobInput, JobState, JobSubmit
     from truthound.mcp.durable_models import ModelPersist, ModelResume, ModelSnapshot
+    from truthound.mcp.durable_schema import WatchInput, WatchRegister, WatchState
     from truthound.mcp.lineage_contracts import (
         DependencyChain,
         GraphCreate,
@@ -74,6 +75,30 @@ def operations(descriptor):
     from truthound.mcp.suites import SuiteCreate, SuiteValidation
 
     rows = (
+        (
+            "schema_watch_register",
+            "Approve durable native schema monitoring and a bounded notification outbox. Operator worker restart resumes pending reads/sends until expiry; unknown sends are never automatically retried.",
+            WatchRegister,
+            "truthound.profiler.evolution.watcher.SchemaWatcher",
+            WatchState | wire.OperationPlan,
+            True,
+        ),
+        (
+            "schema_watch_status",
+            "Inspect signed durable monitor and delivery states, optionally exporting a sensitive checkpoint/queue artifact. Requires unchanged operator policy and pinned binding.",
+            WatchInput,
+            "truthound.profiler.evolution.watcher.SchemaWatcher",
+            WatchState,
+            True,
+        ),
+        (
+            "schema_watch_disable",
+            "Permanently disable future monitor polls and deliveries. In-flight sends cannot be undone; queued/unknown evidence is retained.",
+            WatchInput,
+            "truthound.profiler.evolution.watcher.SchemaWatcher",
+            WatchState,
+            True,
+        ),
         (
             "schema_monitor_open",
             "Start session-owned native sync/async schema polling using operator-pinned source and optional notifier factories, only after explicit approval. External sends may have unknown outcomes; no automatic retries or cross-session restart.",
@@ -967,6 +992,8 @@ def operations(descriptor):
                 "sources_open_polars",
                 "schema_history_create",
                 "schema_monitor_open",
+                "schema_watch_register",
+                "schema_watch_disable",
                 "schema_monitor_stop",
                 "schema_history_execute",
                 "schema_history_persist",
@@ -979,7 +1006,7 @@ def operations(descriptor):
                 "sources_validate",
             },
             requires_workspaces=name.startswith("contexts_"),
-            requires_control=name.startswith(("jobs_", "storage_", "schema_monitor_"))
+            requires_control=name.startswith(("jobs_", "storage_", "schema_monitor_", "schema_watch_"))
             or name in {"schedules_register", "schedules_status", "schedules_disable"}
             or name
             in {

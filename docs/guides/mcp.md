@@ -565,8 +565,56 @@ Replaying an approved open returns its existing handle, not a replacement worker
 This monitoring history is private in-memory state, separate from
 `schema_history_*` checkpoints. There is no autonomous cross-session restart,
 durable delivery queue, exactly-once delivery, monitor pause/resume or transfer of
-source execution authority. Local real HTTP transport and sync/async native parity
+source execution authority through these session-owned operations. Local real HTTP transport and sync/async native parity
 are tested; actual cloud, email and broker services remain unverified.
+
+### Durable schema recovery and notification outbox
+
+For separately approved restartable monitoring, call `schema_watch_register`
+with the same binding/mode/interval/event settings plus `lifetime_seconds`
+(1–2,592,000 seconds, default 86,400) and a new `idempotency_key`. Review and
+approve the returned plan using the operator CLI, then repeat the exact request.
+This consent explicitly covers persistent plugin execution, automatic restart
+reads and, when a notifier is configured, persistent external notification delivery.
+Registration does not load plugins or poll. The returned `watch_id` is durable,
+not a session handle. There is no model-selected URL or credential.
+
+Run the existing `python -m truthound.mcp worker` with the **same** Core profile,
+sensitive-result consent, allowed directories, private control directory and
+limits as registration. `--once` performs one bounded sweep; otherwise the
+foreground worker continues until stopped. Restarting that worker recovers
+registered watches without another MCP session or approval, until the approved
+expiry, disablement, policy/binding change or failure. Nothing installs an OS
+service or starts itself at boot. Each sweep performs at most one queued send
+or due native poll per watch; queued delivery takes priority, so the effective
+poll interval also depends on the worker interval and backlog.
+
+Native sync/async `check_now`, version serialization and breaking-alert creation
+are reused. A signed SQLite transaction commits the last schema/checksum,
+native history/counters and newly queued alerts together. Schema types use
+Core history's string serialization. Changes while the worker is stopped are
+compared against the last committed baseline when it resumes; intermediate
+changes between polls cannot be reconstructed. This is separate from the
+`schema_history_*` checkpoint API.
+
+The outbox uses `pending → sending → sent | unknown`. A send is marked durably
+before calling the pinned native notifier. Only an explicit `True` response
+counts as sent. Exceptions, false responses or a crashed sender leave `unknown`;
+these entries are never automatically retried. A dead poll owner can be recovered,
+but concurrent workers cannot claim a live owner's work. This is **at most one
+automatic attempt**, not guaranteed delivery or exactly-once remote effects.
+Operator-side notifiers must not hide their own retries. Unknown outcomes need
+destination-side reconciliation; no automated reconciliation is provided.
+
+`schema_watch_status` and `schema_watch_disable` accept `watch_id` and optional
+`include_snapshot: true`. Status reports state, expiry, poll and delivery counts;
+the optional artifact exposes sensitive native history and outbox payloads via
+`artifacts_read`. Disable prevents future claims but cannot undo an in-flight
+send. Evidence is retained. Storage is bounded to 32 definitions and at most
+1 MiB per definition (also bounded by operator file/session limits); event limits
+remain enforced. Exhaustion fails closed, not by silently dropping notifications.
+Real loopback HTTP, separate-process restart and crash-after-send are tested;
+cloud/email/broker accounts remain unverified. These are unreleased source features.
 
 ### Session-owned schema history
 

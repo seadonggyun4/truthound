@@ -298,6 +298,9 @@ async def run(policy, *, once=False, interval=5):
             previous[signum] = signal.signal(signum, lambda *_: stop.set())
         while not stop.is_set():
             await tick(session, stop)
+            from truthound.mcp.durable_schema import tick as schema_tick
+
+            await schema_tick(session, stop)
             if once:
                 return
             with suppress(TimeoutError):

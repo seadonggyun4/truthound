@@ -4592,6 +4592,7 @@ mcp = [
     { name = "anyio" },
     { name = "mcp" },
     { name = "polars" },
+    { name = "psutil" },
     { name = "pydantic" },
 ]
 mongodb = [
@@ -4733,6 +4734,7 @@ requires-dist = [
     { name = "psutil", marker = "extra == 'all'", specifier = ">=5.9.0,<8.0.0" },
     { name = "psutil", marker = "extra == 'benchmarks'", specifier = ">=5.9.0,<8.0.0" },
     { name = "psutil", marker = "extra == 'dev'", specifier = ">=5.9.0,<8.0.0" },
+    { name = "psutil", marker = "extra == 'mcp'", specifier = ">=5.9.0,<8.0.0" },
     { name = "psycopg2-binary", marker = "extra == 'all'", specifier = ">=2.9.9" },
     { name = "psycopg2-binary", marker = "extra == 'postgresql'", specifier = ">=2.9.9" },
     { name = "psycopg2-binary", marker = "extra == 'sql-connectors'", specifier = ">=2.9.9" },

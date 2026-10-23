@@ -69,7 +69,18 @@ class ApprovalStore:
         if not database.exists():
             with suppress(FileExistsError):
                 os.close(os.open(database, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600))
-        private_read(database, 64 * 1024**2)
+        # Do not open/close another descriptor for a database already in use in
+        # this process: POSIX close() releases that process's SQLite file locks,
+        # allowing another process to replace WAL state under a cached reader.
+        # The private directory remains the authority boundary; reject links and
+        # unsafe metadata without touching SQLite's owned descriptors.
+        info = database.lstat()
+        if (
+            not stat.S_ISREG(info.st_mode)
+            or info.st_size > 64 * 1024**2
+            or (os.name != "nt" and (info.st_uid != os.getuid() or info.st_mode & 0o077))
+        ):
+            raise MCPError("invalid_control_state")
         self.connection = sqlite3.connect(database, isolation_level=None, timeout=5.0)
         self.connection.row_factory = sqlite3.Row
         self.connection.execute("PRAGMA journal_mode=WAL")
