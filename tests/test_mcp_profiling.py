@@ -35,6 +35,109 @@ def normalize(value):
 
 
 @pytest.mark.parametrize(
+    "calculator,options",
+    [
+        (None, {}),
+        ({"kind": "levenshtein"}, {"allow_compatible_types": False}),
+        ({"kind": "jaro_winkler", "prefix_scale": 0.9}, {}),
+        ({"kind": "ngram", "n": 3}, {"similarity_threshold": 0.99}),
+        ({"kind": "token"}, {"require_type_match": False}),
+        ({"kind": "composite", "calculators": []}, {}),
+        (
+            {
+                "kind": "composite",
+                "calculators": [
+                    {"calculator": {"kind": "ngram", "n": 2}, "weight": 0.6},
+                    {"calculator": {"kind": "jaro_winkler", "prefix_scale": 0.2}, "weight": 0.4},
+                ],
+            },
+            {"high_confidence_threshold": 0.95, "low_confidence_threshold": 0.2},
+        ),
+    ],
+)
+def test_column_rename_analysis_matches_native_and_revokes_parent(tmp_path, calculator, options):
+    from truthound.profiler.evolution import rename_detector as native
+
+    def build(value):
+        if value is None:
+            return None
+        settings = {key: val for key, val in value.items() if key != "kind"}
+        if value["kind"] == "composite" and settings.get("calculators") is not None:
+            settings["calculators"] = [
+                (build(item["calculator"]), item["weight"]) for item in value["calculators"]
+            ]
+        classes = {
+            "levenshtein": native.LevenshteinSimilarity,
+            "token": native.TokenSimilarity,
+            "jaro_winkler": native.JaroWinklerSimilarity,
+            "ngram": native.NgramSimilarity,
+            "composite": native.CompositeSimilarity,
+        }
+        return classes[value["kind"]](**settings)
+
+    baseline = pl.DataFrame(
+        {"customer_name": pl.Series([1], dtype=pl.Int32), "memo": ["a"], "same": [1]}
+    )
+    current = pl.DataFrame({"customer_names": [1], "unrelated": [1.0], "same": [1]})
+    expected = (
+        native.ColumnRenameDetector(calculator=build(calculator), **options)
+        .detect(
+            {name: dtype for name, dtype in current.schema.items() if name not in baseline.schema},
+            {name: dtype for name, dtype in baseline.schema.items() if name not in current.schema},
+        )
+        .to_dict()
+    )
+    service = MCPService(MCPPolicy((tmp_path,), profile="core", allow_sensitive_results=True))
+    try:
+        handles = []
+        for index, frame in enumerate((baseline, current)):
+            path = tmp_path / f"schema-{index}.parquet"
+            frame.write_parquet(path)
+            handles.append(call(service, "assets_capture", path=str(path))["resource_id"])
+        args = dict(baseline_id=handles[0], current_id=handles[1], calculator=calculator, **options)
+        artifact = call(service, "profilers_column_renames", **args)["resource_id"]
+        part = call(service, "artifacts_read", resource_id=artifact)
+        assert part["next_offset"] is None
+        assert decode(json.loads(base64.b64decode(part["base64"]))) == expected
+        call(service, "resources_release", resource_id=handles[1])
+        for operation, arguments in (
+            ("artifacts_read", {"resource_id": artifact}),
+            ("profilers_column_renames", args),
+        ):
+            denied = asyncio.run(service.call_operation_async(operation, arguments))
+            assert denied["execution_status"] == "failed" and not denied.get("data")
+    finally:
+        service.close()
+
+
+def test_column_rename_analysis_rejects_unreviewed_calculator_configuration(tmp_path):
+    service = MCPService(MCPPolicy((tmp_path,), profile="core", allow_sensitive_results=True))
+    try:
+        path = tmp_path / "input.csv"
+        path.write_text("x\n1\n", encoding="utf-8")
+        identity = call(service, "assets_capture", path=str(path))["resource_id"]
+        for calculator in (
+            {"kind": "python", "module": "os"},
+            {"kind": "token", "prefix_scale": 0.1},
+            {"kind": "jaro_winkler", "prefix_scale": float("inf")},
+        ):
+            response = asyncio.run(
+                service.call_operation_async(
+                    "profilers_column_renames",
+                    {
+                        "baseline_id": identity,
+                        "current_id": identity,
+                        "calculator": calculator,
+                    },
+                )
+            )
+            assert response["execution_status"] == "failed" and not response.get("data")
+            assert response["issues"] == [{"code": "invalid_arguments"}]
+    finally:
+        service.close()
+
+
+@pytest.mark.parametrize(
     "renames,threshold,released", [(True, 0.8, 0), (False, 0.8, 1), (True, 1.0, 0)]
 )
 def test_schema_evolution_matches_native_and_requires_both_parents(

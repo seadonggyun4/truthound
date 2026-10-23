@@ -37,7 +37,7 @@ def operations(descriptor):
         ImpactInput,
         SchemaImpact,
     )
-    from truthound.mcp.profiling import GenerateRules, Profile, SchemaEvolution
+    from truthound.mcp.profiling import ColumnRenames, GenerateRules, Profile, SchemaEvolution
     from truthound.mcp.retention import (
         DeleteResult,
         RetentionPreview,
@@ -418,6 +418,14 @@ def operations(descriptor):
             "Compare two owned asset schemas through the native evolution detector; retain complete changes and compatibility summary without baseline persistence.",
             SchemaEvolution,
             "truthound.profiler.evolution.SchemaEvolutionDetector.detect_changes",
+            wire.ResourceInfo,
+            False,
+        ),
+        (
+            "profilers_column_renames",
+            "Analyze added and removed asset columns using native rename candidates, confidence and configurable similarity algorithms; does not rename data.",
+            ColumnRenames,
+            "truthound.profiler.evolution.ColumnRenameDetector.detect",
             wire.ResourceInfo,
             False,
         ),

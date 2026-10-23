@@ -36,10 +36,19 @@ def execute(request: dict) -> dict:
         from truthound.mcp.lineage_worker import execute as lineage_execute
 
         return lineage_execute(request, arguments)
-    if operation in {"drift_compare", "drift_detect", "profilers_schema_evolution"}:
+    if operation in {
+        "drift_compare",
+        "drift_detect",
+        "profilers_schema_evolution",
+        "profilers_column_renames",
+    }:
         baseline = pl.read_ipc(request["baseline_path"], memory_map=False)
         current = pl.read_ipc(request["current_path"], memory_map=False)
-        if operation == "profilers_schema_evolution":
+        if operation == "profilers_column_renames":
+            from truthound.mcp.profiling import column_renames
+
+            payload = column_renames(arguments, baseline, current)
+        elif operation == "profilers_schema_evolution":
             from truthound.mcp.profiling import schema_evolution
 
             payload = schema_evolution(arguments, baseline, current)
@@ -60,13 +69,15 @@ def execute(request: dict) -> dict:
                 baseline.get_column(arguments.baseline_column),
                 current.get_column(arguments.current_column or arguments.baseline_column),
             )
-        if operation != "profilers_schema_evolution":
+        if operation not in {"profilers_schema_evolution", "profilers_column_renames"}:
             payload = result.to_dict()
         with BoundedWriter(Path(request["output_path"]), request["output_budget"]) as sink:
             sink.write(json.dumps(encode(payload), allow_nan=False).encode())
         return {
             "resource_created": True,
-            "media_type": "application/vnd.truthound.schema-evolution+json"
+            "media_type": "application/vnd.truthound.column-renames+json"
+            if operation == "profilers_column_renames"
+            else "application/vnd.truthound.schema-evolution+json"
             if operation == "profilers_schema_evolution"
             else "application/vnd.truthound.drift+json",
             "row_count": current.height,

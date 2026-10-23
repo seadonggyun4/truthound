@@ -467,6 +467,28 @@ constraint/nullability changes or persist a baseline, start a watcher, or apply
 migrations. Artifact reads require sensitive-result permission and both source
 assets to remain authorized and live.
 
+`profilers_column_renames` analyzes only columns added/removed between two assets
+through Core's `ColumnRenameDetector`. It returns all confirmed and possible
+candidates, similarity/confidence, type compatibility, reasons, metadata and
+unmatched names in an owned artifact. It does not rename columns or migrate data.
+Inputs are `baseline_id`, `current_id`, `similarity_threshold=0.8`,
+`require_type_match=true`, `allow_compatible_types=true`,
+`high_confidence_threshold=0.9` and `low_confidence_threshold=0.7`.
+An omitted `calculator` preserves Core's default composite. Explicit calculator
+kinds are `levenshtein`, `token`, `jaro_winkler` (`prefix_scale=0.1`), `ngram`
+(`n=2`), and `composite` (up to 16 weighted, non-nested calculators).
+Composite `calculators=null` keeps native defaults; `[]` deliberately preserves
+the native empty-weight behavior. Finite weights/thresholds and native clamping
+are preserved; no arbitrary calculator code is accepted. For example:
+
+```json
+{"baseline_id":"<baseline-handle>","current_id":"<current-handle>","calculator":{"kind":"composite","calculators":[{"calculator":{"kind":"ngram","n":2},"weight":0.6},{"calculator":{"kind":"token"},"weight":0.4}]}}
+```
+
+As with schema evolution, reading results requires sensitive-result permission
+and both live, authorized parent assets. Column ordering and matching follow
+Core; this is rename inference, not proof that two columns have the same meaning.
+
 Native panics are distinct from ordinary validation failures: when a native
 extension aborts a worker without returning a canonical result, MCP reports
 `worker_error` without a successful or partial result artifact. For example,

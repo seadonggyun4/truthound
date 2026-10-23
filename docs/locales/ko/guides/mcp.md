@@ -427,6 +427,26 @@ DataProfiler의 실제 앞부분 표본은 `options.sample_size`가 지정하며
 산출물을 읽으려면 민감 결과 허용과 두 원본 자산의 유효한 접근 권한이 필요하며,
 어느 원본이든 해제하면 읽을 수 없습니다.
 
+`profilers_column_renames`는 두 자산 사이에서 추가·삭제된 컬럼만 Core의
+`ColumnRenameDetector`로 분석합니다. 확정·가능 후보, 유사도·신뢰도, 타입 호환성,
+판정 이유·메타데이터·미매칭 이름을 모두 소유 산출물에 보존합니다. 실제 컬럼 이름을
+바꾸거나 데이터를 마이그레이션하지 않습니다. 입력은 `baseline_id`, `current_id`,
+`similarity_threshold=0.8`, `require_type_match=true`, `allow_compatible_types=true`,
+`high_confidence_threshold=0.9`, `low_confidence_threshold=0.7`입니다.
+`calculator`를 생략하면 Core의 기본 복합 계산기를 사용합니다. 명시적 종류는
+`levenshtein`, `token`, `jaro_winkler`(`prefix_scale=0.1`), `ngram`(`n=2`),
+`composite`(중첩 없는 가중 계산기 최대 16개)입니다. 복합 계산기의
+`calculators=null`은 네이티브 기본값, `[]`는 네이티브 빈 가중치 동작을 유지합니다.
+유한 가중치·임계값과 네이티브 값 보정 동작을 보존하며 임의 계산기 코드는 받지 않습니다.
+
+```json
+{"baseline_id":"<baseline-handle>","current_id":"<current-handle>","calculator":{"kind":"composite","calculators":[{"calculator":{"kind":"ngram","n":2},"weight":0.6},{"calculator":{"kind":"token"},"weight":0.4}]}}
+```
+
+스키마 변경 탐지와 마찬가지로 결과 읽기에는 민감 결과 허용과 두 부모 자산의 유효한
+접근 권한이 필요합니다. 순서와 매칭은 Core 동작을 따릅니다. 이름 변경 추정이지
+두 컬럼의 의미가 같다는 증명은 아닙니다.
+
 네이티브 panic은 일반 검증 실패와 다릅니다. 네이티브 확장이 canonical 결과를
 반환하지 못하고 worker를 종료하면 MCP는 성공·부분 결과 산출물 없이
 `worker_error`를 반환합니다. 예를 들어 Python 날짜 범위를 벗어나는 Polars

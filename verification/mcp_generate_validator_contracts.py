@@ -318,6 +318,19 @@ def generate():
 
     for cls in (SchemaEvolutionDetector, SchemaChange, SchemaChangeSummary):
         record_source(cls)
+    from truthound.profiler.evolution import rename_detector
+
+    for name in (
+        "ColumnRenameDetector",
+        "RenameCandidate",
+        "RenameDetectionResult",
+        "LevenshteinSimilarity",
+        "TokenSimilarity",
+        "JaroWinklerSimilarity",
+        "NgramSimilarity",
+        "CompositeSimilarity",
+    ):
+        record_source(getattr(rename_detector, name))
     suite = {
         "evidence_policy": describe(EvidencePolicy),
         "severity_policy": describe(SeverityPolicy),

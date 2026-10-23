@@ -22,6 +22,89 @@ class SchemaEvolution(WireModel):
     rename_similarity_threshold: float = 0.8
 
 
+class EditSimilarity(WireModel):
+    kind: Literal["levenshtein", "token"]
+
+
+class JaroSimilarity(WireModel):
+    kind: Literal["jaro_winkler"]
+    prefix_scale: float = 0.1
+
+
+class NgramSimilarity(WireModel):
+    kind: Literal["ngram"]
+    n: int = 2
+
+
+Similarity = Annotated[
+    EditSimilarity | JaroSimilarity | NgramSimilarity, Field(discriminator="kind")
+]
+
+
+class WeightedSimilarity(WireModel):
+    calculator: Similarity
+    weight: float
+
+
+class CompositeSimilarity(WireModel):
+    kind: Literal["composite"]
+    calculators: Annotated[list[WeightedSimilarity], Field(max_length=16)] | None = None
+
+
+class ColumnRenames(WireModel):
+    baseline_id: Handle
+    current_id: Handle
+    similarity_threshold: float = 0.8
+    require_type_match: bool = True
+    allow_compatible_types: bool = True
+    high_confidence_threshold: float = 0.9
+    low_confidence_threshold: float = 0.7
+    calculator: (
+        Annotated[
+            EditSimilarity | JaroSimilarity | NgramSimilarity | CompositeSimilarity,
+            Field(discriminator="kind"),
+        ]
+        | None
+    ) = None
+
+
+def column_renames(arguments, baseline, current):
+    prefix = "truthound.profiler.evolution.rename_detector."
+
+    def calculator(value):
+        targets = {
+            "levenshtein": "LevenshteinSimilarity",
+            "token": "TokenSimilarity",
+            "jaro_winkler": "JaroWinklerSimilarity",
+            "ngram": "NgramSimilarity",
+            "composite": "CompositeSimilarity",
+        }
+        options = value.model_dump(exclude={"kind"})
+        if value.kind == "composite" and value.calculators is not None:
+            options["calculators"] = [
+                (calculator(item.calculator), item.weight) for item in value.calculators
+            ]
+        return _known_type(prefix + targets[value.kind])(**options)
+
+    options = arguments.model_dump(exclude={"baseline_id", "current_id", "calculator"})
+    for name in (
+        "RenameCandidate",
+        "RenameDetectionResult",
+        "CompositeSimilarity",
+        "LevenshteinSimilarity",
+        "JaroWinklerSimilarity",
+        "TokenSimilarity",
+        "NgramSimilarity",
+    ):
+        _known_type(prefix + name)
+    detector = _known_type(prefix + "ColumnRenameDetector")(
+        **options, calculator=calculator(arguments.calculator) if arguments.calculator else None
+    )
+    added = {name: dtype for name, dtype in current.schema.items() if name not in baseline.schema}
+    removed = {name: dtype for name, dtype in baseline.schema.items() if name not in current.schema}
+    return detector.detect(added, removed).to_dict()
+
+
 def schema_evolution(arguments, baseline, current):
     detector = _known_type("truthound.profiler.evolution.detector.SchemaEvolutionDetector")(
         **arguments.model_dump(exclude={"baseline_id", "current_id"})

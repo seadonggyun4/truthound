@@ -103,6 +103,7 @@ async def core_profile():
                 required|={"assets_capture","assets_inline","assets_page","assets_sample","assets_mask","schemas_learn","schemas_inspect","artifacts_export","artifacts_read","resources_describe","resources_release","contexts_open","contexts_inspect","contexts_initialize","plans_status","validators_list","validators_describe","assets_validate","assets_sqlite","assets_profile","assets_scan","artifacts_render","artifacts_datadocs"}
                 required.add("drift_compare")
                 required.add("profilers_schema_evolution")
+                required.add("profilers_column_renames")
                 required.add("models_rule_query")
                 required.add("models_result_query")
                 required.add("schedules_preview")
@@ -259,6 +260,11 @@ async def core_profile():
                 assert actual_evolution["summary"].pop("detected_at") and expected_summary.pop("detected_at")
                 assert actual_evolution["summary"]==expected_summary and len(changes)==2
                 assert sorted(json.dumps(c,sort_keys=True) for c in actual_evolution["changes"])==sorted(json.dumps(c.to_dict(),sort_keys=True) for c in changes)
+                from truthound.profiler.evolution.rename_detector import ColumnRenameDetector, NgramSimilarity
+                rename_args={"baseline_id":training,"current_id":evolved,"calculator":{"kind":"ngram","n":2},"low_confidence_threshold":0.0}
+                renamed=await invoke("profilers_column_renames",rename_args)
+                expected_renames=ColumnRenameDetector(calculator=NgramSimilarity(n=2),low_confidence_threshold=0.0).detect({"new_column":pl.Float64},{"x":pl.Float64}).to_dict()
+                assert decode(json.loads(await artifact_bytes(renamed["resource_id"])))==expected_renames
                 schedule=await invoke("schedules_preview",{"expression":"@daily","after":"2024-01-01T00:00:00+09:00","count":2})
                 assert schedule["valid"] and schedule["next_times"]==["2024-01-02T00:00:00+09:00","2024-01-03T00:00:00+09:00"]
                 model=await invoke("models_create",{"algorithm":"ZScoreAnomalyDetector"})
