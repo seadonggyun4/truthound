@@ -90,6 +90,23 @@ def test_installed_runtime_failure_preserves_safe_diagnostics_not_captured_secre
     assert "not a release gate" in workflow["name"]
 
 
+def test_cleanup_diagnostic_preserves_numeric_cause_without_disclosing_paths():
+    release = load("cleanup_failure_diagnostic_test", "verification/mcp_release.py")
+    result = SimpleNamespace(returncode=1, stdout="", stderr=(
+        '  File "C:\\private-user\\Lib\\tempfile.py", line 895, in cleanup\n'
+        '  File "C:\\private-user\\Lib\\shutil.py", line 621, in _rmtree_unsafe\n'
+        "PermissionError: [WinError 32] private-message: 'C:\\private-user\\workspace\\private-data.db'\n"
+    ))
+    diagnostic = release.runtime_failure_diagnostic(result)
+    assert diagnostic["os_error_numbers"] == [32]
+    assert diagnostic["locked_fixture_components"] == ["workspace"]
+    assert diagnostic["cleanup_frames"] == [
+        {"module": "tempfile", "function": "cleanup", "line": 895},
+        {"module": "shutil", "function": "_rmtree_unsafe", "line": 621},
+    ]
+    assert "private" not in str(diagnostic)
+
+
 @pytest.mark.parametrize("script", ["BASE_SMOKE", "SMOKE"])
 def test_installed_smoke_scripts_resolve_names_in_their_own_scopes(script):
     release = load("release_smoke_scope_test", "verification/mcp_release.py")
