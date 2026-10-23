@@ -25,6 +25,43 @@ from truthound.mcp.service import MCPService
 pytestmark = pytest.mark.contract
 
 
+def test_installed_smoke_expected_catalog_tracks_actual_core_operations():
+    import ast
+    import runpy
+    from pathlib import Path
+
+    release = runpy.run_path(
+        str(Path(__file__).resolve().parents[1] / "verification/mcp_release.py")
+    )
+    statements = []
+    for node in ast.walk(ast.parse(release["SMOKE"])):
+        if (
+            isinstance(node, ast.Assign)
+            and any(
+                isinstance(target, ast.Name) and target.id == "required" for target in node.targets
+            )
+            or (
+                isinstance(node, ast.AugAssign)
+                and isinstance(node.target, ast.Name)
+                and node.target.id == "required"
+            )
+        ):
+            statements.append(node)
+        elif isinstance(node, ast.Expr) and isinstance(node.value, ast.Call):
+            fn = node.value.func
+            if (
+                isinstance(fn, ast.Attribute)
+                and isinstance(fn.value, ast.Name)
+                and fn.value.id == "required"
+            ):
+                statements.append(node)
+    assert statements
+    program = ast.Module(body=sorted(statements, key=lambda node: node.lineno), type_ignores=[])
+    scope = {}
+    exec(compile(program, "installed_catalog_contract", "exec"), scope)
+    assert scope["required"] == set(CATALOG)
+
+
 @pytest.fixture
 def dataset(tmp_path):
     path = tmp_path / "synthetic.csv"

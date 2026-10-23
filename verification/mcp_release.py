@@ -92,6 +92,7 @@ async def core_profile():
                 required={"capabilities_list","capability_describe","validation_check","schema_learn","data_read","data_mask","data_profile","privacy_scan"}
                 required|={"assets_capture","assets_inline","assets_page","assets_sample","assets_mask","schemas_learn","schemas_inspect","artifacts_export","artifacts_read","resources_describe","resources_release","contexts_open","contexts_inspect","contexts_initialize","plans_status","validators_list","validators_describe","assets_validate","assets_sqlite","assets_profile","assets_scan","artifacts_render","artifacts_datadocs"}
                 required.add("drift_compare")
+                required.add("profilers_schema_evolution")
                 required.add("models_rule_query")
                 required.add("models_result_query")
                 required.add("schedules_preview")
