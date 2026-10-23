@@ -1,4 +1,4 @@
-"""Real Core plugin entrypoint/lifecycle in a separate installed-layout worker.
+"""Real Core plugin entrypoint/lifecycle from an installed wheel in a private worker.
 
 The synthetic distribution lives only in a private test venv. No production
 environment is installed into or changed; no plugin is loaded before approval.
@@ -7,9 +7,12 @@ environment is installed into or changed; no plugin is loaded before approval.
 import asyncio
 import json
 import os
+import shutil
+import subprocess
 import sys
 import sysconfig
 import venv
+import zipfile
 from pathlib import Path
 
 import pytest
@@ -22,6 +25,125 @@ from truthound.mcp.policy import MCPError, MCPPolicy
 from truthound.mcp.service import MCPService
 
 pytestmark = pytest.mark.contract
+
+
+# Wrongly typed operator objects can survive native construction. These are
+# separate from natural failures admitted by the ordinary JSON contract.
+OBJECT_FAILURES = [
+    ("column_count", "min_count", "wrong", TypeError),
+    ("table_row_count_range", "min_rows", "wrong", TypeError),
+    ("column_exists", "columns", [["x"]], TypeError),
+    ("table_column_types", "column_types", {"x": None}, TypeError),
+    ("table_schema_compare", "reference_table", object(), AttributeError),
+]
+
+
+@pytest.mark.parametrize(
+    "name,parameter,value,error", OBJECT_FAILURES, ids=[r[0] for r in OBJECT_FAILURES]
+)
+def test_native_runtime_type_error_is_rejected_before_ordinary_mcp_execution(
+    runtime, name, parameter, value, error
+):
+    import polars as pl
+    from truthound.validators import get_validator
+    from truthound.mcp.validator_wire import settings
+
+    validator = get_validator(name)(**{parameter: value})
+    with pytest.raises(error):
+        validator.validate(pl.DataFrame({"x": [-1, 1]}).lazy())
+    # object() itself cannot be JSON. A JSON object is also not an asset handle.
+    wire_value = {} if parameter == "reference_table" else value
+    with pytest.raises(MCPError, match="invalid_arguments"):
+        settings(name, {parameter: wire_value})
+    adapter, _, marker, _, asset = runtime
+    failed = invoke(
+        adapter,
+        "assets_validate",
+        asset_id=asset,
+        checks=[{"validator": name, "settings": {parameter: wire_value}}],
+    )
+    assert failed["execution_status"] == "failed"
+    assert failed["issues"] == [{"code": "invalid_arguments"}]
+    assert not failed.get("data") and not marker.exists()
+
+
+@pytest.mark.parametrize(
+    "name,parameter,value,error", OBJECT_FAILURES, ids=[r[0] for r in OBJECT_FAILURES]
+)
+def test_approved_object_runtime_failure_matches_core_without_reexecution(
+    runtime, tmp_path, name, parameter, value, error
+):
+    import base64
+    import polars as pl
+    import truthound as th
+    from truthound.validators import get_validator
+    from truthound.mcp.operations import _context
+    from truthound.mcp.tables import decode
+
+    native = get_validator(name)(**{parameter: value})
+    with pytest.raises(error):
+        native.validate(pl.DataFrame({"x": [-1, 1]}).lazy())
+    direct = th.check(
+        pl.DataFrame({"x": [-1, 1]}),
+        validators=[native],
+        result_format="complete",
+        context=_context(str(tmp_path / "direct/input.ipc")),
+    ).to_dict()
+    assert direct["execution_issues"]
+    adapter, control, marker, _, asset = runtime
+    path = control / "bindings.json"
+    config = json.loads(path.read_text(encoding="utf-8"))
+    capability = "bad-" + name
+    config["plugins"]["fixture"]["capabilities"][capability] = capability
+    config["validators"]["invalid-object"] = {
+        "validator": name,
+        "object_parameters": {parameter: capability},
+    }
+    path.write_text(json.dumps(config), encoding="utf-8")
+    request = dict(
+        asset_id=asset,
+        checks=[{"validator": name, "binding_id": "invalid-object"}],
+        result_format="complete",
+        idempotency_key="object-failure-" + name,
+    )
+    pending = invoke(adapter, "assets_validate", **request)
+    assert pending["issues"] == [{"code": "approval_required"}]
+    assert "installed_extension_execute" in pending["data"]["effects"]
+    assert not marker.exists()
+    store = ApprovalStore(control)
+    try:
+        store.approve(pending["data"]["plan_id"])
+    finally:
+        store.close()
+    failed = invoke(adapter, "assets_validate", **request)
+    assert failed["execution_status"] == "failed", failed
+    assert failed["issues"] == [{"code": "core_execution_failed"}]
+    identity = failed["data"]["artifact"]["resource_id"]
+    chunks, offset = [], 0
+    while offset is not None:
+        part = invoke(adapter, "artifacts_read", resource_id=identity, offset=offset)
+        assert part["execution_status"] == "succeeded"
+        chunks.append(base64.b64decode(part["data"]["base64"]))
+        offset = part["data"]["next_offset"]
+    actual = decode(json.loads(b"".join(chunks)))
+    for key in (
+        "checks",
+        "issues",
+        "execution_issues",
+        "row_count",
+        "column_count",
+        "result_format",
+        "execution_mode",
+        "planned_execution_mode",
+        "suite_name",
+        "source",
+    ):
+        assert actual[key] == direct[key], key
+    assert marker.read_text(encoding="utf-8").splitlines() == ["import", "setup", "teardown"]
+    replay = invoke(adapter, "assets_validate", **request)
+    assert replay["execution_status"] == "failed"
+    assert replay["data"]["replayed"]
+    assert marker.read_text(encoding="utf-8").splitlines() == ["import", "setup", "teardown"]
 
 
 @pytest.mark.parametrize(
@@ -121,7 +243,9 @@ def runtime(tmp_path, monkeypatch):
     # Only package/code directories, never admitted customer-data directories.
     paths = [str(Path(item).resolve()) for item in sys.path if item and Path(item).is_dir()]
     (site / "test-runtime.pth").write_text("\n".join(paths) + "\n", encoding="utf-8")
-    module = site / "mcp_operator_fixture"
+    build = tmp_path / "fixture-build"
+    build.mkdir()
+    module = build / "mcp_operator_fixture"
     module.mkdir()
     marker = tmp_path / "plugin-effects.txt"
     source = module / "__init__.py"
@@ -142,10 +266,15 @@ def runtime(tmp_path, monkeypatch):
         "        manager.register_capability('row-positive', lambda row: row['x'] > 0)\n"
         "        manager.register_capability('expr-positive', pl.col('x') > 0)\n"
         "        manager.register_capability('expected-types', {'x': pl.Int64})\n"
-        "        manager.register_capability('reference-frame', pl.DataFrame({'x': [-1, 1]}))\n",
+        "        manager.register_capability('reference-frame', pl.DataFrame({'x': [-1, 1]}))\n"
+        "        manager.register_capability('bad-column_count', 'wrong')\n"
+        "        manager.register_capability('bad-table_row_count_range', 'wrong')\n"
+        "        manager.register_capability('bad-column_exists', [['x']])\n"
+        "        manager.register_capability('bad-table_column_types', {'x': None})\n"
+        "        manager.register_capability('bad-table_schema_compare', object())\n",
         encoding="utf-8",
     )
-    metadata = site / "truthound_mcp_operator_fixture-1.0.0.dist-info"
+    metadata = build / "truthound_mcp_operator_fixture-1.0.0.dist-info"
     metadata.mkdir()
     (metadata / "METADATA").write_text(
         "Metadata-Version: 2.1\nName: truthound-mcp-operator-fixture\nVersion: 1.0.0\n",
@@ -154,11 +283,35 @@ def runtime(tmp_path, monkeypatch):
     (metadata / "entry_points.txt").write_text(
         "[truthound.plugins]\nfixture = mcp_operator_fixture:FixturePlugin\n", encoding="utf-8"
     )
-    records = [source, metadata / "METADATA", metadata / "entry_points.txt", metadata / "RECORD"]
-    (metadata / "RECORD").write_text(
-        "\n".join(path.relative_to(site).as_posix() + ",," for path in records) + "\n",
+    (metadata / "WHEEL").write_text(
+        "Wheel-Version: 1.0\nGenerator: truthound-test\nRoot-Is-Purelib: true\nTag: py3-none-any\n",
         encoding="utf-8",
     )
+    records = [
+        source,
+        metadata / "METADATA",
+        metadata / "entry_points.txt",
+        metadata / "WHEEL",
+        metadata / "RECORD",
+    ]
+    (metadata / "RECORD").write_text(
+        "\n".join(path.relative_to(build).as_posix() + ",," for path in records) + "\n",
+        encoding="utf-8",
+    )
+    wheel = tmp_path / "truthound_mcp_operator_fixture-1.0.0-py3-none-any.whl"
+    with zipfile.ZipFile(wheel, "w") as bundle:
+        for path in records:
+            bundle.write(path, path.relative_to(build).as_posix())
+    uv = shutil.which("uv")
+    assert uv, "The mandatory plugin test requires the development uv installer"
+    subprocess.run(
+        [uv, "pip", "install", "--python", str(python), "--no-index", "--no-deps", str(wheel)],
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    source = site / "mcp_operator_fixture/__init__.py"
+    assert source.read_bytes() == (module / "__init__.py").read_bytes()
     monkeypatch.syspath_prepend(str(site))
     _, digest, _ = fingerprint("truthound-mcp-operator-fixture")
     assert not marker.exists()  # fingerprint is metadata-only

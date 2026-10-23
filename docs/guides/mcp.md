@@ -923,6 +923,15 @@ packages and binary-only entry points are unsupported. Approved extensions run
 with the host user's privileges; this is **not an OS sandbox** or a transitive
 dependency lock. Review extension code and data/network access before approving.
 
+Approval does not make an object type-correct for its constructor field.
+Ordinary malformed JSON settings are rejected before execution; an approved
+native object can instead be accepted by a Core constructor and fail during
+validation. A captured Core execution failure remains `core_execution_failed`,
+with its canonical result preserved; retrying its idempotency key does not
+execute the extension again. This is distinct from constructor rejection or
+uncertain effects, and approved-object error coverage does not establish
+ordinary-input algorithm error coverage.
+
 This implementation is **not full Core parity**. Complete algorithm-by-algorithm
 equivalence, all datasource/provider lifecycles, custom profiler composition,
 complete ML persistence, automatic lineage tracking/history/interactive rendering, checkpoints,

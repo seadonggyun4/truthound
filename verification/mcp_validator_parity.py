@@ -51,12 +51,19 @@ def coverage(proof):
     constructor_prefix = "tests/test_mcp_algorithm_parity.py::test_actual_constructor_configuration_error_is_not_execution_coverage["
     constructor_errors = set()
     swallowed_errors = set()
+    approved_object_errors = set()
+    approved_object_prefix = "tests/test_mcp_plugin_bindings.py::test_approved_object_runtime_failure_matches_core_without_reexecution["
     panic_errors = set()
     panic_prefix = "tests/test_mcp_algorithm_parity.py::test_native_privacy_panic_preserves_failed_worker_boundary["
     swallowed_prefix = "tests/test_mcp_algorithm_parity.py::test_swallowed_native_error_matches_core_with_observed_exception["
     uncertain_constructors = set()
     uncertain_prefix = "tests/test_mcp_algorithm_parity.py::test_approved_constructor_failure_preserves_uncertain_effects["
     for node in proof.get("collection", {}):
+        if node.startswith(approved_object_prefix) and node.endswith("]"):
+            name = node[len(approved_object_prefix) : -1]
+            if name not in registered or name in approved_object_errors:
+                raise ValueError("MCP_PARITY_INVALID_APPROVED_OBJECT_ERROR")
+            approved_object_errors.add(name)
         if node.startswith(panic_prefix) and node.endswith("]"):
             name = node[len(panic_prefix) : -1]
             if name not in registered or name in panic_errors:
@@ -103,6 +110,9 @@ def coverage(proof):
         "swallowed_algorithm_exception_observed_separately": len(swallowed_errors),
         "native_panic_boundary_verified_separately": len(panic_errors),
         "runtime_error_boundary_verified": len(runtime_errors),
+        # Operator-supplied objects bypass ordinary JSON typing. Do not use
+        # their failures to close the natural admitted-input coverage gap.
+        "approved_object_runtime_error_verified_separately": len(approved_object_errors),
         "constructor_configuration_error_verified_separately": len(constructor_errors),
         "native_constructor_rejection_with_uncertain_trusted_effects": len(uncertain_constructors),
         "full_constructor_failure_boundary_verified": (constructor_errors | uncertain_constructors)
