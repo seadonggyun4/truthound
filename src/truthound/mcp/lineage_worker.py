@@ -160,9 +160,23 @@ def execute(request, arguments):
                 }
             analyzer = analyzer_type(graph, impact_rules=impact_rules)
             if operation == "lineage_impact":
-                result = analyzer.analyze_impact(
+                impact = analyzer.analyze_impact(
                     arguments.node_id, arguments.max_depth, arguments.include_validations
-                ).to_dict()
+                )
+                if arguments.view == "full":
+                    result = impact.to_dict()
+                elif arguments.view == "summary":
+                    result = impact.summary()
+                elif arguments.view == "critical":
+                    result = [node.to_dict() for node in impact.get_critical_nodes()]
+                elif arguments.view == "by_level":
+                    result = [
+                        node.to_dict() for node in impact.get_by_level(ImpactLevel(arguments.level))
+                    ]
+                else:
+                    result = [
+                        node.to_dict() for node in impact.get_by_type(NodeType(arguments.node_type))
+                    ]
             elif operation == "lineage_critical_paths":
                 result = [
                     [node.to_dict() for node in path]

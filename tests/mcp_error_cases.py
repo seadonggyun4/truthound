@@ -245,11 +245,19 @@ RUNTIME_SETTING_ERRORS = {
 }
 
 
+INTEGER_FORMAT_ERRORS = {
+    "completeness_ratio": {"min_ratio": 10**400},
+    "feature_scale": {"max_magnitude": -(10**400)},
+    "feature_null_impact": {"max_null_ratio": -(10**400)},
+    "gdpr_data_minimization": {"max_null_ratio": -(10**400)},
+}
+
+
 def attach(cases):
     """Keep every original polarity, configuration, reference and sample count."""
-    assert (MULTI_COLUMN_CAUGHT_ERRORS | RUNTIME_SETTING_ERRORS.keys()) <= {
-        row.validator for row in cases
-    }
+    assert (
+        MULTI_COLUMN_CAUGHT_ERRORS | RUNTIME_SETTING_ERRORS.keys() | INTEGER_FORMAT_ERRORS.keys()
+    ) <= {row.validator for row in cases}
     assert len(MISSING_COLUMNS) == 65
     assert not NUMERIC_INPUT_ERRORS.intersection(MISSING_COLUMNS)
     expected = (
@@ -261,13 +269,21 @@ def attach(cases):
     )
     observed, result = set(), []
     for row in cases:
+        if row.validator in INTEGER_FORMAT_ERRORS:
+            assert row.error is None and row.caught_error is None
+            # Native constructors accept finite integers. Actual validation
+            # formats the threshold as a float and raises OverflowError.
+            result.append(
+                replace(
+                    row, error=row.negative, error_overrides=INTEGER_FORMAT_ERRORS[row.validator]
+                )
+            )
+            continue
         if row.validator == "alphanumeric":
             assert row.error is None and row.caught_error is None
             # Only a real violation enters native sampling. The constructor
             # accepts this integer, but Polars head() cannot represent it.
-            result.append(
-                replace(row, error=row.negative, error_overrides={"sample_size": 2**64})
-            )
+            result.append(replace(row, error=row.negative, error_overrides={"sample_size": 2**64}))
             continue
         if row.validator == "column_coexistence":
             assert row.error is None and row.caught_error is None

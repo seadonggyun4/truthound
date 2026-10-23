@@ -20,6 +20,17 @@ from truthound.mcp.validator_wire import constructor, contracts, settings
 pytestmark = pytest.mark.contract
 
 
+def test_float_contract_preserves_finite_integers_without_coercion():
+    from truthound.mcp.validator_wire import convert
+
+    for value in (10**400, -(10**400), 1, 0.25):
+        actual = convert({"kind": "float"}, value, build=True)
+        assert actual == value and type(actual) is type(value)
+    for value in (float("inf"), float("-inf"), float("nan"), True, "1"):
+        with pytest.raises(MCPError, match="invalid_arguments"):
+            convert({"kind": "float"}, value, build=True)
+
+
 def test_polygon_files_need_operator_binding_before_native_or_filesystem_access():
     with pytest.raises(MCPError, match="operator_configuration_required"):
         settings(

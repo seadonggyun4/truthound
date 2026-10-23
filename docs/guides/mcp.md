@@ -325,6 +325,10 @@ Use actual returned identifiers, not the placeholder. `validators_describe`
 documents the closed fields for each of the 260 concrete registered entries,
 including inherited `ValidatorConfig`, cache and algorithm options. Unknown
 settings are rejected instead of being silently dropped by the Core constructor.
+Numeric constructor fields retain finite Python integers without coercion to
+float, including integers outside floating-point range. Native constructor or
+execution errors remain errors; NaN, infinity and booleans are not accepted as
+numeric settings. This does not increase resource or response budgets.
 The inventory includes six native streaming validators (`streaming_null`,
 `streaming_completeness`, `streaming_nan`, `streaming_range`,
 `streaming_positive`, `streaming_outlier`), with their native `chunk_size` option.
@@ -735,6 +739,16 @@ Impact tools take `graph_id`, `node_id` and optional native `impact_rules`.
 `lineage_schema_impact` adds `new_schema`. `lineage_dependency_chain` instead
 takes `source_id` and `target_id`. All queries/analyses retain full native
 artifacts. Hypothetical deletion never deletes the graph or external data.
+`lineage_impact` defaults to `view="full"`. `view="summary"` delegates to
+native `ImpactResult.summary()`, `critical` to `get_critical_nodes()`,
+`by_level` requires `level=none|low|medium|high|critical`, and `by_type` requires
+the native `node_type` (for example `validation`). Selectors not applicable to
+the chosen view are rejected. Each call analyzes the captured graph anew with
+the same depth, validation-inclusion and impact-rule settings; it does not
+filter a previously stored result. Text and node lists remain owned sensitive
+artifacts, and releasing the source graph revokes them. For example,
+`{"graph_id":"graph_<token>","node_id":"a","view":"by_level","level":"high"}`.
+
 `lineage_render` takes `graph_id`, `renderer=d3|cytoscape|graphviz|mermaid`,
 closed native `RenderConfig` fields in `settings`, optional `root_node_id` and
 `direction=upstream|downstream|both`. For subgraphs, `settings.max_depth` controls

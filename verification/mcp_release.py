@@ -152,6 +152,9 @@ async def core_profile():
                     return b"".join(chunks)
                 snapshot=await invoke("lineage_query",{"query":{"graph_id":graph,"view":"graph"}})
                 native_graph=LineageGraph.from_dict(decode(json.loads(await artifact_bytes(snapshot["resource_id"]))))
+                from truthound.lineage import ImpactAnalyzer
+                impact=await invoke("lineage_impact",{"graph_id":graph,"node_id":"a","view":"summary"})
+                assert decode(json.loads(await artifact_bytes(impact["resource_id"])))==ImpactAnalyzer(native_graph).analyze_impact("a").summary()
                 graph_file=data/"lineage.json"
                 native_graph.save(graph_file)
                 payload=json.loads(graph_file.read_text(encoding="utf-8"))

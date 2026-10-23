@@ -633,6 +633,71 @@ def test_impact_paths_schema_changes_and_dependency_chain_match_core(graph):
     ) == [node.to_dict() for node in analyzer.get_dependency_chain("a", "c")]
 
 
+def test_impact_result_views_match_native_filters_and_revoke(graph):
+    from truthound.lineage import ImpactLevel
+    from truthound.lineage.base import NodeNotFoundError
+
+    adapter, identity, native = graph
+    before = call(adapter, "resources_describe", resource_id=identity)["sha256"]
+    rules = {NodeType.TRANSFORMATION: ImpactLevel.CRITICAL, NodeType.VALIDATION: ImpactLevel.LOW}
+    analyzer = ImpactAnalyzer(native, impact_rules=rules)
+    for depth, include in ((2, True), (1, False), (0, True)):
+        result = analyzer.analyze_impact("a", max_depth=depth, include_validations=include)
+        cases = [
+            ({"view": "summary"}, result.summary()),
+            ({"view": "critical"}, [n.to_dict() for n in result.get_critical_nodes()]),
+            (
+                {"view": "by_level", "level": "low"},
+                [n.to_dict() for n in result.get_by_level(ImpactLevel.LOW)],
+            ),
+            (
+                {"view": "by_type", "node_type": "validation"},
+                [n.to_dict() for n in result.get_by_type(NodeType.VALIDATION)],
+            ),
+        ]
+        for selector, expected in cases:
+            artifact = call(
+                adapter,
+                "lineage_impact",
+                graph_id=identity,
+                node_id="a",
+                max_depth=depth,
+                include_validations=include,
+                impact_rules={k.value: v.value for k, v in rules.items()},
+                **selector,
+            )["resource_id"]
+            assert read(adapter, artifact) == expected
+    assert call(adapter, "resources_describe", resource_id=identity)["sha256"] == before
+    with pytest.raises(NodeNotFoundError):
+        analyzer.analyze_impact("missing")
+    failed = invoke(adapter, "lineage_impact", graph_id=identity, node_id="missing", view="summary")
+    assert failed["execution_status"] == "failed" and failed["quality_status"] == "unknown"
+    call(adapter, "resources_release", resource_id=identity)
+    assert invoke(adapter, "artifacts_read", resource_id=artifact)["issues"] == [
+        {"code": "invalid_handle"}
+    ]
+
+
+@pytest.mark.parametrize(
+    "selector",
+    [
+        {"view": "by_level"},
+        {"view": "by_type"},
+        {"view": "summary", "level": "high"},
+        {"view": "critical", "node_type": "table"},
+        {"view": "by_level", "level": "high", "node_type": "table"},
+        {"view": "by_type", "node_type": "unknown"},
+    ],
+)
+def test_impact_result_selector_rejects_ambiguous_or_invalid_filters(selector):
+    from pydantic import ValidationError
+
+    from truthound.mcp.lineage_contracts import ImpactAnalyze
+
+    with pytest.raises(ValidationError):
+        ImpactAnalyze(graph_id="graph_" + "a" * 32, node_id="a", **selector)
+
+
 def test_edits_are_atomic_derivations_and_cycles_cannot_corrupt_original(graph):
     adapter, identity, native = graph
     before = call(adapter, "resources_describe", resource_id=identity)["sha256"]

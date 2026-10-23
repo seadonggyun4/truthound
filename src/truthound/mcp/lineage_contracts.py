@@ -216,31 +216,40 @@ class GraphQuery(WireModel):
     ]
 
 
+NodeKind = Literal[
+    "source",
+    "table",
+    "file",
+    "stream",
+    "transformation",
+    "validation",
+    "model",
+    "report",
+    "external",
+    "virtual",
+]
+ImpactSeverity = Literal["none", "low", "medium", "high", "critical"]
+
+
 class ImpactInput(GraphInput):
     node_id: Name
-    impact_rules: (
-        dict[
-            Literal[
-                "source",
-                "table",
-                "file",
-                "stream",
-                "transformation",
-                "validation",
-                "model",
-                "report",
-                "external",
-                "virtual",
-            ],
-            Literal["none", "low", "medium", "high", "critical"],
-        ]
-        | None
-    ) = None
+    impact_rules: dict[NodeKind, ImpactSeverity] | None = None
 
 
 class ImpactAnalyze(ImpactInput):
     max_depth: Annotated[int, Field(ge=-1, le=1000)] = -1
     include_validations: bool = True
+    view: Literal["full", "summary", "critical", "by_level", "by_type"] = "full"
+    level: ImpactSeverity | None = None
+    node_type: NodeKind | None = None
+
+    @model_validator(mode="after")
+    def selector(self):
+        if (self.view == "by_level") != (self.level is not None):
+            raise ValueError("level is required only for by_level")
+        if (self.view == "by_type") != (self.node_type is not None):
+            raise ValueError("node_type is required only for by_type")
+        return self
 
 
 class SchemaImpact(ImpactInput):

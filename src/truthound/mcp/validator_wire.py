@@ -246,7 +246,9 @@ def convert(shape, value, *, frames=None, build=False, depth=0, trusted=False, c
         valid = type(value) is {"str": str, "int": int, "float": float, "bool": bool}[kind]
         if kind == "float" and type(value) is int:
             valid = True
-        if valid and (kind != "float" or math.isfinite(value)):
+        # Python integers are finite even when float(value) would overflow.
+        # Preserve native numeric arguments rather than coercing them here.
+        if valid and (kind != "float" or type(value) is int or math.isfinite(value)):
             return value
     elif kind in ("literal", "enum"):
         if any(type(value) is type(option) and value == option for option in shape["values"]):

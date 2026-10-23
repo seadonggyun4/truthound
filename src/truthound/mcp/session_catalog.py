@@ -463,7 +463,7 @@ def operations(descriptor):
         ),
         (
             "lineage_impact",
-            "Run native Core impact analysis including explicit depth, validation inclusion and impact rules.",
+            "Run native Core impact analysis with depth, validation inclusion and impact rules; retain full results, summary, critical nodes or level/type filters.",
             ImpactAnalyze,
             "truthound.lineage.ImpactAnalyzer.analyze_impact",
             wire.ResourceInfo,

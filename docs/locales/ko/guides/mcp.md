@@ -301,7 +301,10 @@ WAL·뷰·임의 SQL은 거부하며 복사 도중 파일 상태나 WAL이 변�
 
 검증기 설명은 실제 등록된 구체 검증기 260개의 생성자와 상속된 `ValidatorConfig`,
 캐시·알고리즘별 설정을 보여줍니다. 알 수 없는 설정을 Core가 조용히 버리게 하지 않고
-전송 경계에서 거부합니다. 네이티브 스트리밍 검증기 6종(`streaming_null`,
+전송 경계에서 거부합니다. 수치 생성자 필드는 float 범위를 넘는 유한한 Python 정수도
+강제 변환하지 않고 보존합니다. 네이티브 생성자·실행 오류는 그대로 실패이며,
+NaN·무한대·불리언은 수치 설정으로 허용하지 않습니다. 자원·응답 예산은 늘리지 않습니다.
+네이티브 스트리밍 검증기 6종(`streaming_null`,
 `streaming_completeness`, `streaming_nan`, `streaming_range`,
 `streaming_positive`, `streaming_outlier`)과 해당 `chunk_size` 설정도 포함합니다.
 **이 목록은 260종 전체의 동등성 검증 통과 증거가 아닙니다.**
@@ -668,6 +671,15 @@ SIGINT/SIGTERM은 현재 제한된 작업을 마친 뒤 종료합니다. OS 서�
 `node_edges`, `upstream`, `downstream`이며 탐색 깊이·엣지 방향을 명시합니다.
 
 영향 분석은 `graph_id`, `node_id`, 선택적인 네이티브 `impact_rules`를 받습니다.
+`lineage_impact`의 기본값은 `view="full"`입니다. `summary`는 네이티브
+`ImpactResult.summary()`, `critical`은 `get_critical_nodes()`를 호출합니다.
+`by_level`은 `level=none|low|medium|high|critical`, `by_type`은
+`node_type`(예: `validation`)이 필수이며 다른 보기에는 해당 필드를 넣을 수
+없습니다. 호출마다 캡처된 그래프와 깊이·검증 포함·영향 규칙으로 새 분석을
+수행하며 이전 산출물을 필터링하지 않습니다. 텍스트·노드 목록도 민감 결과 권한이
+필요한 소유 산출물이며 원본 그래프를 해제하면 접근이 취소됩니다.
+예: `{"graph_id":"graph_<token>","node_id":"a","view":"by_level","level":"high"}`.
+
 일반 영향 분석에는 `max_depth`, `include_validations`, 스키마 영향에는
 `new_schema`를 추가합니다. 의존성 연결 조회는 대신 `source_id`, `target_id`를
 받습니다. 전체 결과를 산출물로 보관하며 가상 삭제는 원본이나 외부 데이터를 지우지
