@@ -19,6 +19,41 @@ runtime = monitor_tests.runtime
 receiver = monitor_tests.receiver
 
 
+def test_disconnected_parent_reaps_blocked_one_shot_worker(tmp_path):
+    import time
+
+    marker = tmp_path / "entered"
+    program = (
+        "from pathlib import Path; import time; "
+        "from truthound.mcp import durable_schema_worker as worker\n"
+        "def blocked(request):\n"
+        f"    Path({str(marker)!r}).write_text('entered', encoding='utf-8')\n"
+        "    while True: time.sleep(0.01)\n"
+        "worker.execute = blocked\nworker.main()\n"
+    )
+    process = subprocess.Popen(
+        [sys.executable, "-I", "-c", program],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    try:
+        process.stdin.write(b"{}\n")
+        process.stdin.flush()
+        deadline = time.monotonic() + 5
+        while not marker.exists() and time.monotonic() < deadline:
+            time.sleep(0.02)
+        assert marker.exists() and process.poll() is None
+        process.stdin.close()  # Actual parent pipe loss during a blocked operation.
+        assert process.wait(timeout=5) == 75
+    finally:
+        if process.poll() is None:
+            process.kill()
+        process.wait(timeout=5)
+        for stream in (process.stdin, process.stdout, process.stderr):
+            stream.close()
+
+
 def register(runtime, monkeypatch, tmp_path, mode="sync", **options):
     from truthound.mcp import model_process
 

@@ -601,7 +601,8 @@ The outbox uses `pending → sending → sent | unknown`. A send is marked durab
 before calling the pinned native notifier. Only an explicit `True` response
 counts as sent. Exceptions, false responses or a crashed sender leave `unknown`;
 these entries are never automatically retried. A dead poll owner can be recovered,
-but concurrent workers cannot claim a live owner's work. This is **at most one
+but concurrent workers cannot claim a live owner's work. The isolated child exits
+when its parent's pipe closes, including while a plugin is blocked. This is **at most one
 automatic attempt**, not guaranteed delivery or exactly-once remote effects.
 Operator-side notifiers must not hide their own retries. Unknown outcomes need
 destination-side reconciliation; no automated reconciliation is provided.

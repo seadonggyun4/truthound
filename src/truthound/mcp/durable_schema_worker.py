@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import sys
+import threading
 from pathlib import Path
 
 from truthound.mcp.approval import private_read
@@ -104,6 +105,15 @@ def main():
         if len(line) > 2 * 1024**2 or not line.endswith(b"\n"):
             raise MCPError("resource_exhausted")
         request = json.loads(line)
+
+        def parent_disconnected():
+            # The owner keeps stdin open until it consumes our reply. EOF (or
+            # an unexpected second command) revokes this one-shot process even
+            # if a trusted plugin blocks forever. Never kill another process.
+            os.read(sys.stdin.fileno(), 1)
+            os._exit(75)
+
+        threading.Thread(target=parent_disconnected, daemon=True).start()
         with (
             open(os.devnull, "w") as sink,
             contextlib.redirect_stdout(sink),
