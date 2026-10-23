@@ -89,8 +89,31 @@ jobs:
           path: test-artifacts/mcp.*
           if-no-files-found: error
           retention-days: 7
+  platform-contracts:
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON((github.event_name == 'schedule' || inputs.full_compatibility) && '[{"os":"ubuntu-latest","python":"3.12"},{"os":"ubuntu-latest","python":"3.13"},{"os":"windows-latest","python":"3.11"},{"os":"windows-latest","python":"3.12"},{"os":"windows-latest","python":"3.13"},{"os":"macos-latest","python":"3.11"},{"os":"macos-latest","python":"3.12"},{"os":"macos-latest","python":"3.13"}]' || '[{"os":"ubuntu-latest","python":"3.13"},{"os":"windows-latest","python":"3.11"},{"os":"macos-latest","python":"3.11"}]') }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --python ${{ matrix.python }} --frozen --extra dev --extra mcp
+      - name: Verify platform-sensitive contracts with source and execution identity
+        run: uv run --python ${{ matrix.python }} --frozen --extra dev --extra mcp python verification/mcp_ci_gate.py --scope boundary --expected-python ${{ matrix.python }} --junitxml test-artifacts/boundary.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: truthound-mcp-boundary-${{ matrix.os }}-${{ matrix.python }}
+          path: test-artifacts/boundary.*
+          if-no-files-found: error
+          retention-days: 7
   compatibility:
-    needs: build
+    needs: [build, platform-contracts]
     strategy:
       fail-fast: false
       matrix:
@@ -104,9 +127,11 @@ jobs:
           python-version: ${{ matrix.python }}
       - uses: astral-sh/setup-uv@v4
       - run: uv sync --python ${{ matrix.python }} --frozen --extra dev --extra mcp
-      - name: Verify platform-sensitive contracts with source and execution identity
+      - uses: actions/download-artifact@v4
         if: matrix.os != 'ubuntu-latest' || matrix.python != '3.11'
-        run: uv run --python ${{ matrix.python }} --frozen --extra dev --extra mcp python verification/mcp_ci_gate.py --scope boundary --expected-python ${{ matrix.python }} --junitxml test-artifacts/boundary.xml
+        with:
+          name: truthound-mcp-boundary-${{ matrix.os }}-${{ matrix.python }}
+          path: test-artifacts
       - uses: actions/download-artifact@v4
         with:
           name: truthound-mcp-canonical
@@ -125,7 +150,7 @@ jobs:
           retention-days: 7
   mcp-gate:
     if: always()
-    needs: [mcp-tests, build, compatibility]
+    needs: [mcp-tests, build, platform-contracts, compatibility]
     runs-on: ubuntu-latest
     steps:
       - name: Reject failed, cancelled or missing required execution
@@ -135,6 +160,6 @@ jobs:
           python - <<'PY'
           import json, os
           results = json.loads(os.environ['RESULTS'])
-          assert set(results) == {'mcp-tests', 'build', 'compatibility'}
+          assert set(results) == {'mcp-tests', 'build', 'platform-contracts', 'compatibility'}
           assert all(job['result'] == 'success' for job in results.values()), results
           PY

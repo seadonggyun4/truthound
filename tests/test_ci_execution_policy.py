@@ -41,6 +41,35 @@ def test_full_universe_is_preserved_and_boundary_cannot_impersonate_it():
         for python in ("3.11", "3.12", "3.13")
     }
     assert len(full) == 9 and len(development) == 4
+    jobs = workflow["jobs"]
+    boundary = jobs["platform-contracts"]
+    boundary_full, boundary_dev = [
+        json.loads(value)
+        for value in boundary["strategy"]["matrix"]["include"].split("'")
+        if value.startswith("[{")
+    ]
+    for installs, contracts in ((full, boundary_full), (development, boundary_dev)):
+        expected = {(row["os"], row["python"]) for row in installs} - {("ubuntu-latest", "3.11")}
+        assert {(row["os"], row["python"]) for row in contracts} == expected
+        assert len(contracts) == len(expected)
+    assert "needs" not in boundary
+    assert jobs["compatibility"]["needs"] == ["build", "platform-contracts"]
+    assert set(jobs["mcp-gate"]["needs"]) == {
+        "mcp-tests",
+        "build",
+        "platform-contracts",
+        "compatibility",
+    }
+    assert boundary["timeout-minutes"] == jobs["compatibility"]["timeout-minutes"] == "15"
+    assert sum("--scope boundary" in step.get("run", "") for step in boundary["steps"]) == 1
+    assert not any(
+        "--scope boundary" in step.get("run", "") for step in jobs["compatibility"]["steps"]
+    )
+    assert any(
+        step.get("with", {}).get("name")
+        == "truthound-mcp-boundary-${{ matrix.os }}-${{ matrix.python }}"
+        for step in jobs["compatibility"]["steps"]
+    )
     assert workflow["jobs"]["mcp-tests"]["strategy"]["matrix"] == {"shard": ["0", "1", "2", "3"]}
 
 
