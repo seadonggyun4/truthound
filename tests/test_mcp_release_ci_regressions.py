@@ -19,6 +19,42 @@ def load(name, path):
     return module
 
 
+def test_installed_smoke_long_program_uses_complete_utf8_file_and_cleans_up(tmp_path, monkeypatch):
+    release = load("release_long_smoke_test", "verification/mcp_release.py")
+    directory = tmp_path / "검증 경로"
+    directory.mkdir()
+    monkeypatch.setattr(release.tempfile, "tempdir", str(directory))
+    original_run = subprocess.run
+    seen = []
+    code = "# padding\n" * 10000 + "import sys; assert sys.flags.isolated; print('검증 완료')\n"
+
+    def observe(command, **kwargs):
+        assert command[:2] == [sys.executable, "-I"]
+        assert len(command) == 3
+        script = Path(command[-1])
+        assert script.read_text(encoding="utf-8") == code
+        seen.append(script)
+        return original_run(command, **kwargs)
+
+    monkeypatch.setattr(release.subprocess, "run", observe)
+    result = release.run_smoke_program([sys.executable, "-I", "-c"], code, directory)
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "검증 완료"
+    assert len(seen) == 1 and not seen[0].exists()
+
+
+def test_installed_smoke_file_failure_retains_safe_line_diagnostics(tmp_path):
+    release = load("release_file_failure_test", "verification/mcp_release.py")
+    result = release.run_smoke_program(
+        [sys.executable, "-I", "-c"], "# fixture\nraise AssertionError('private')\n", tmp_path
+    )
+    observed = release.runtime_failure_diagnostic(result)
+    assert observed["returncode"] != 0
+    assert observed["smoke_lines"] == [2]
+    assert observed["exception_types"] == ["AssertionError"]
+    assert "private" not in str(observed)
+
+
 def test_installed_runtime_failure_preserves_safe_diagnostics_not_captured_secrets():
     import json
 

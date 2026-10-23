@@ -352,6 +352,23 @@ def run(argv, **kwargs):
     subprocess.run(list(map(str, argv)), check=True, **kwargs)
 
 
+def run_smoke_program(command, code, cwd):
+    """Execute complete smoke source without platform command-line size limits."""
+    if command[-1] != "-c":
+        raise ValueError("SMOKE_COMMAND_REQUIRES_CODE_FLAG")
+    with tempfile.TemporaryDirectory(prefix="truthound-smoke-") as directory:
+        script = Path(directory) / "installed_smoke.py"
+        script.write_text(code, encoding="utf-8")
+        return subprocess.run(
+            list(map(str, command[:-1])) + [str(script)],
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+        )
+
+
 def runtime_failure_diagnostic(result):
     """Bounded metadata only; never disclose captured output or data values."""
     kinds = {
@@ -372,9 +389,13 @@ def runtime_failure_diagnostic(result):
         "stdout_sha256": hashlib.sha256(result.stdout.encode("utf-8")).hexdigest(),
         "stderr_sha256": hashlib.sha256(result.stderr.encode("utf-8")).hexdigest(),
         "exception_types": sorted(kind for kind in kinds if kind in result.stderr),
-        "smoke_lines": [int(n) for n in re.findall(r'File "<string>", line (\d+)', result.stderr)][
-            :16
-        ],
+        "smoke_lines": [
+            int(n)
+            for n in re.findall(
+                r'File "(?:<string>|[^"\n]*[/\\]installed_smoke\.py)", line (\d+)',
+                result.stderr,
+            )
+        ][:16],
         "worker_error": "worker_error" in result.stderr,
     }
     allowed_causes = {"missing_home", "lost_stdin", "lost_stdout", "cpu_feature"}
@@ -443,14 +464,7 @@ print("TRUTHOUND_RUNTIME_PROOF:"+json.dumps({
     "polars": metadata.version("polars"), "truthound": metadata.version("truthound")
 }))
 """
-        result = subprocess.run(
-            list(map(str, command)) + [prefix + code + suffix],
-            cwd=cwd,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-        )
+        result = run_smoke_program(command, prefix + code + suffix, cwd)
         if result.returncode:
             print(
                 json.dumps({"stage": stage, "runtime_failure": runtime_failure_diagnostic(result)}),
