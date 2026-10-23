@@ -968,6 +968,63 @@ effects. Terminating a worker cannot undo an effect or guarantee graceful
 third-party cleanup. This operation does not start triggers, a Checkpoint
 scheduler or an escalation service. Remote services remain unverified.
 
+`checkpoints_run_async` separately approves the native `AsyncCheckpoint.run_async`
+path. It accepts `binding_id` and `idempotency_key`, without `use_router`. The
+bound zero-argument factory must return an **asynchronous context manager**
+yielding `AsyncCheckpoint`, and close its executor, sources and actions on exit.
+The same result-artifact, revocation and unknown-outcome rules apply; this is
+not a conversion of the synchronous Checkpoint into a thread wrapper.
+
+### Native Checkpoint services
+
+Development Core profiles also expose `checkpoint_services_open` and
+`checkpoint_services_execute`. Use private `checkpoints` bindings for these
+factories as well. For `kind="runner"`, the factory returns a synchronous
+context manager yielding a stopped native `CheckpointRunner`, with its
+Checkpoints, triggers, callbacks and queue limits configured by the operator.
+For `kind="escalation"`, it returns an asynchronous context manager yielding a
+stopped native `EscalationEngine`, with operator-selected policies, store,
+scheduler and notification handler. Owners must stop services and close all
+resources on exit. No factory, credentials, notification destination, arbitrary
+context or Python object is accepted from the model.
+
+```json
+{"binding_id":"daily-runner","kind":"runner","idempotency_key":"runner-open-01"}
+```
+
+Approve the returned plan with the operator approval CLI, then repeat exactly
+the same request. The returned `monitor_...` handle belongs to this MCP session.
+Opening does not start native scheduling. Each command, including status and
+queue consumption, requires its own handle-bound approval:
+
+```json
+{"binding_id":"daily-runner","service_id":"monitor_<returned-id>","command":"start","idempotency_key":"runner-start-01"}
+```
+
+- Both kinds support `start`, `stop` and `status`.
+- A runner additionally supports `results`, with `max_results` (1–1000,
+  default 100, also bounded by policy). This **consumes** the native result
+  queue. Replaying the approved request returns the retained artifact without
+  draining again. Native queue capacity/drop behavior is unchanged.
+- An escalation engine supports `trigger` with `incident_id` and optional
+  `policy_name`; `record`, `acknowledge`, `resolve`, `cancel` and `escalate`
+  require `record_id`. Acknowledgment/resolution/cancellation record
+  `mcp-approved-operator`, not a model-provided person's identity. Escalation
+  does not force otherwise-disallowed transitions. Native failure results are
+  retained, not rewritten as successful delivery. Stats encode integer-keyed
+  `escalations_by_level` as `[{"level":1,"count":2}]` to preserve key types.
+
+Read command results through `artifacts_read`; they remain sensitive and tied
+to the service grant. `stop` stops native execution but retains the owner and
+its native in-memory state for a later approved `start`. Releasing the handle,
+closing the session, expiry, revocation or a failed exchange terminates the
+worker. Unknown command effects are never automatically retried. Termination
+cannot retract notifications or guarantee third-party cleanup. These are
+session-owned services, **not durable restart recovery**: scheduling definitions,
+new policies and notification targets are operator-configured, not wire-editable.
+Real external notification and store services remain unverified. These tools
+are development-source features, not part of published 3.2.0.
+
 ### Native schedule preview
 
 `schedules_preview` takes a cron `expression` (up to 256 characters), an explicit

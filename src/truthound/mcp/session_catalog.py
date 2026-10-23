@@ -22,6 +22,7 @@ def operations(descriptor):
     )
     from truthound.mcp.approved_sources import SourceBindingOpen
     from truthound.mcp.automation import ControlInput, ControlState, PolicyRegister
+    from truthound.mcp.checkpoint_services import CheckpointServiceCommand, CheckpointServiceOpen
     from truthound.mcp.checkpoints import CheckpointRun
     from truthound.mcp.contexts import ContextAction, ContextActionResult
     from truthound.mcp.durable_history import HistoryPersist, HistoryResume
@@ -77,6 +78,30 @@ def operations(descriptor):
     from truthound.mcp.suites import SuiteCreate, SuiteValidation
 
     rows = (
+        (
+            "checkpoint_services_open",
+            "Approve a pinned operator-owned native CheckpointRunner or EscalationEngine. Opens stopped; start requires a separate command approval. Session expiry/revocation terminates the owner process.",
+            CheckpointServiceOpen,
+            "truthound.checkpoint.runner.CheckpointRunner",
+            wire.ResourceInfo | wire.OperationPlan,
+            True,
+        ),
+        (
+            "checkpoint_services_execute",
+            "Approve a native runner or escalation lifecycle command bound to its live handle. Scheduled actions/notifications can have external effects; unknown outcomes are never automatically retried. Native failures remain in the sensitive artifact.",
+            CheckpointServiceCommand,
+            "truthound.checkpoint.escalation.engine.EscalationEngine",
+            wire.ResourceInfo | wire.OperationPlan,
+            True,
+        ),
+        (
+            "checkpoints_run_async",
+            "Approve one native AsyncCheckpoint.run_async from a pinned asynchronous owner factory, including configured actions and native retries. Unknown effects are not retried; inspect the retained native result.",
+            SourceBindingOpen,
+            "truthound.checkpoint.async_checkpoint.AsyncCheckpoint.run_async",
+            wire.ResourceInfo | wire.OperationPlan,
+            True,
+        ),
         (
             "checkpoints_run",
             "Approve one native Checkpoint run from a pinned operator factory, including configured actions, routing and native retries. Artifact contains native outcome; transport success is not validation success. Unknown effects are never automatically retried.",
@@ -988,6 +1013,9 @@ def operations(descriptor):
                 "assets_validate",
                 "suites_validate",
                 "checkpoints_run",
+                "checkpoints_run_async",
+                "checkpoint_services_open",
+                "checkpoint_services_execute",
                 "models_create",
                 "models_persist",
                 "models_resume",
@@ -1026,12 +1054,17 @@ def operations(descriptor):
                 "sources_validate",
             },
             requires_workspaces=name.startswith("contexts_"),
-            requires_control=name.startswith(("jobs_", "storage_", "schema_monitor_", "schema_watch_"))
+            requires_control=name.startswith(
+                ("jobs_", "storage_", "schema_monitor_", "schema_watch_")
+            )
             or name in {"schedules_register", "schedules_status", "schedules_disable"}
             or name
             in {
                 "contexts_initialize",
                 "checkpoints_run",
+                "checkpoints_run_async",
+                "checkpoint_services_open",
+                "checkpoint_services_execute",
                 "contexts_execute",
                 "plans_status",
                 "models_persist",

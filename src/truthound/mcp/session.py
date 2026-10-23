@@ -33,6 +33,7 @@ class MCPSession:
         self._histories = None
         self._monitors = None
         self._checkpoint_workers = set()
+        self._checkpoint_services = None
 
     @property
     def policy(self):
@@ -75,11 +76,14 @@ class MCPSession:
             self._models,
             self._histories,
             self._monitors,
+            self._checkpoint_services,
         ):
             if controller is not None:
                 controller.release(identity)
 
     def close(self):
+        if self._checkpoint_services is not None:
+            self._checkpoint_services.close()
         for worker in tuple(self._checkpoint_workers):
             worker.close()
         if self._monitors is not None:
@@ -539,10 +543,18 @@ class MCPSession:
     async def call(self, name, arguments):
         from truthound.mcp.catalog import CATALOG
 
-        if name == "checkpoints_run":
+        if self._checkpoint_services is not None:
+            self._checkpoint_services.reap()
+        if name.startswith("checkpoint_services_"):
+            from truthound.mcp.checkpoint_services import CheckpointServices
+
+            if self._checkpoint_services is None:
+                self._checkpoint_services = CheckpointServices(self)
+            return await self._checkpoint_services.call(name, arguments)
+        if name in {"checkpoints_run", "checkpoints_run_async"}:
             from truthound.mcp.checkpoints import run
 
-            return await run(self, arguments)
+            return await run(self, arguments, operation=name)
         if name.startswith("schema_watch_"):
             from truthound.mcp.durable_schema import call
 

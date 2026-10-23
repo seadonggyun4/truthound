@@ -852,6 +852,60 @@ ML 산출물에는 `encoding`, `model_algorithm`, `model_revision`과 태그로 
 정리를 보장하지 않습니다. 트리거·체크포인트 예약·에스컬레이션 서비스는
 시작하지 않습니다. 원격 실서비스는 미검증입니다.
 
+`checkpoints_run_async`는 네이티브 `AsyncCheckpoint.run_async` 경로를 별도로
+승인합니다. `binding_id`와 `idempotency_key`를 받으며 `use_router`는 받지
+않습니다. 인자 없는 바인딩 팩토리는 `AsyncCheckpoint`를 제공하는 **비동기
+컨텍스트 관리자**여야 하고 종료 시 실행기·데이터소스·액션을 정리해야 합니다.
+결과 산출물·권한 철회·불명확한 결과 규칙은 동일합니다. 동기 Checkpoint를
+단순 스레드 래퍼로 변환하는 기능이 아닙니다.
+
+### 네이티브 체크포인트 서비스
+
+개발 Core 프로파일은 `checkpoint_services_open`과
+`checkpoint_services_execute`도 제공합니다. 팩토리는 비공개 `checkpoints`
+바인딩에 등록합니다. `kind="runner"`의 팩토리는 중지된 네이티브
+`CheckpointRunner`를 제공하는 동기 컨텍스트 관리자이며, 체크포인트·트리거·
+콜백·대기열 한도는 운영자가 구성합니다. `kind="escalation"`은 중지된 네이티브
+`EscalationEngine`을 제공하는 비동기 컨텍스트 관리자이며 정책·저장소·예약기·
+알림 처리기는 운영자가 지정합니다. 소유자는 종료 시 서비스와 모든 자원을
+정리해야 합니다. 모델은 팩토리·자격증명·알림 목적지·임의 컨텍스트·파이썬
+객체를 지정할 수 없습니다.
+
+```json
+{"binding_id":"daily-runner","kind":"runner","idempotency_key":"runner-open-01"}
+```
+
+운영자 승인 CLI로 반환 계획을 승인한 뒤 같은 요청을 반복합니다. 반환된
+`monitor_...` 핸들은 현재 MCP 세션 소유입니다. 열기만으로 예약을 시작하지
+않습니다. 상태 조회·대기열 소비를 포함한 각 명령은 핸들에 묶인 별도 승인이
+필요합니다.
+
+```json
+{"binding_id":"daily-runner","service_id":"monitor_<returned-id>","command":"start","idempotency_key":"runner-start-01"}
+```
+
+- 두 종류 모두 `start`, `stop`, `status`를 지원합니다.
+- 실행기는 `results`와 `max_results`(1–1000, 기본 100, 정책 한도도 적용)를
+  지원합니다. 네이티브 결과 대기열을 **소비**합니다. 승인 요청 재생은 보관한
+  산출물을 반환하며 다시 소비하지 않습니다. 네이티브 대기열 용량·초과 결과
+  폐기 동작은 바꾸지 않습니다.
+- 에스컬레이션 엔진의 `trigger`는 `incident_id`와 선택적인 `policy_name`을
+  받습니다. `record`, `acknowledge`, `resolve`, `cancel`, `escalate`에는
+  `record_id`가 필요합니다. 확인·해결·취소 주체는 모델이 지정한 사람 이름이
+  아니라 `mcp-approved-operator`로 기록합니다. 허용되지 않는 상태 전이를
+  강제하지 않습니다. 네이티브 실패 결과를 전송 성공으로 바꾸지 않습니다.
+  통계의 정수 키 `escalations_by_level`은 키 자료형 보존을 위해
+  `[{"level":1,"count":2}]`로 인코딩합니다.
+
+명령 결과는 `artifacts_read`로 읽으며 민감 자료이고 서비스 권한에 종속됩니다.
+`stop`은 네이티브 실행을 중지하지만 소유자와 메모리 상태는 유지하여 나중에
+승인된 `start`를 받을 수 있습니다. 핸들 해제·세션 종료·만료·권한 철회·응답
+실패는 worker를 종료합니다. 불명확한 명령 효과는 자동 재시도하지 않습니다.
+종료는 이미 전송한 알림을 취소하거나 서드파티의 정상 정리를 보장하지 않습니다.
+이는 세션 소유 서비스이지 **영구 재시작 복구가 아닙니다**. 예약 정의·새 정책·
+알림 목적지는 운영자가 구성하며 요청으로 편집하지 않습니다. 외부 알림·저장소
+실서비스는 미검증입니다. 게시된 3.2.0이 아닌 개발 소스의 기능입니다.
+
 ### 네이티브 스케줄 미리보기
 
 `schedules_preview`는 cron `expression`(최대 256자), 명시적인 ISO 일시 `after`,

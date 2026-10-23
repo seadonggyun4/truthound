@@ -38,3 +38,35 @@ def watch_parent(fd):
             os._exit(75)
 
     threading.Thread(target=supervise, daemon=True).start()
+
+
+def watch_resident_parent(fd):
+    """Watch only disconnect, without consuming a resident worker's commands."""
+    if os.name == "nt":
+        import _winapi
+        import msvcrt
+
+        handle = msvcrt.get_osfhandle(fd)
+
+        def disconnected():
+            try:
+                _winapi.PeekNamedPipe(handle)
+                return False
+            except OSError:
+                return True
+    else:
+        import select
+
+        poller = select.poll()
+        poller.register(fd, select.POLLHUP | select.POLLERR | select.POLLNVAL)
+
+        def disconnected():
+            return bool(poller.poll(0))
+
+    def supervise():
+        pause = threading.Event()
+        while not pause.wait(0.05):
+            if disconnected():
+                os._exit(75)
+
+    threading.Thread(target=supervise, daemon=True).start()

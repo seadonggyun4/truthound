@@ -109,6 +109,7 @@ async def core_profile():
                 required.add("profilers_schema_compatibility")
                 required.add("sources_open_binding")
                 required.add("checkpoints_run")
+                required.update({"checkpoints_run_async", "checkpoint_services_open", "checkpoint_services_execute"})
                 required.update({"schema_history_create", "schema_history_execute", "schema_history_persist", "schema_history_resume"})
                 required.update({"schema_monitor_open", "schema_monitor_status", "schema_monitor_stop"})
                 required.update({"schema_watch_register", "schema_watch_status", "schema_watch_disable", "schema_watch_update"})
@@ -466,9 +467,9 @@ def runtime_failure_diagnostic(result):
         "worker_error": "worker_error" in result.stderr,
     }
     # Diagnose cleanup failures without publishing exception messages or paths.
-    diagnostic["os_error_numbers"] = sorted({
-        int(number) for number in re.findall(r"\[(?:WinError|Errno) (\d{1,5})\]", result.stderr)
-    })
+    diagnostic["os_error_numbers"] = sorted(
+        {int(number) for number in re.findall(r"\[(?:WinError|Errno) (\d{1,5})\]", result.stderr)}
+    )
     cleanup_functions = {"__exit__", "cleanup", "_rmtree", "rmtree", "_rmtree_unsafe", "onerror"}
     diagnostic["cleanup_frames"] = [
         {"module": module, "function": function, "line": int(line)}
@@ -481,10 +482,14 @@ def runtime_failure_diagnostic(result):
     # Only fixed fixture/workspace components are surfaced, never arbitrary names.
     known_components = {"data", "workspace", "control", "native.db", ".truthound", "input.csv"}
     error_paths = re.findall(r"PermissionError: [^\n]*: ['\"]([^\n]+)['\"]", result.stderr)
-    diagnostic["locked_fixture_components"] = sorted({
-        part for path in error_paths for part in re.split(r"[/\\]+", path)
-        if part in known_components
-    })
+    diagnostic["locked_fixture_components"] = sorted(
+        {
+            part
+            for path in error_paths
+            for part in re.split(r"[/\\]+", path)
+            if part in known_components
+        }
+    )
     allowed_causes = {"missing_home", "lost_stdin", "lost_stdout", "cpu_feature"}
     for line in result.stdout.splitlines()[:16]:
         if len(line) > 16384:

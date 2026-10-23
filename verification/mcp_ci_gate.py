@@ -39,6 +39,7 @@ TEST_FILES = (
     "tests/test_mcp_schema_monitor.py",
     "tests/test_mcp_durable_schema.py",
     "tests/test_mcp_checkpoints.py",
+    "tests/test_mcp_checkpoint_services.py",
     "tests/test_core_execution_accounting.py",
     "tests/test_mcp_profiling.py",
     "tests/test_mcp_suites.py",
@@ -82,6 +83,7 @@ BOUNDARY_FILES = tuple(
         "test_mcp_schema_monitor",
         "test_mcp_durable_schema",
         "test_mcp_checkpoints",
+        "test_mcp_checkpoint_services",
     )
 )
 

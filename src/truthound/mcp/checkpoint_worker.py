@@ -1,5 +1,6 @@
 """Isolated installed factory; no wire-selected imports or connection settings."""
 
+import asyncio
 import contextlib
 import hashlib
 import json
@@ -15,9 +16,7 @@ from truthound.mcp.policy import MCPError
 from truthound.mcp.resources import BoundedWriter
 
 
-def execute(request):
-    from truthound.checkpoint import Checkpoint
-
+def binding_guard(request):
     def guard():
         raw = private_read(Path(request["control"]) / "bindings.json", 1024**2)
         if hashlib.sha256(raw).hexdigest() != request["digest"]:
@@ -27,6 +26,32 @@ def execute(request):
             if package.version != spec["version"] or digest != spec["sha256"]:
                 raise MCPError("plugin_identity_mismatch")
 
+    return guard
+
+
+async def execute_async(request):
+    from truthound.checkpoint.async_checkpoint import AsyncCheckpoint
+
+    guard = binding_guard(request)
+    guard()
+    with approved_capabilities(request["plugins"]) as capabilities:
+        async with capabilities[request["capability"]]() as checkpoint:
+            if not isinstance(checkpoint, AsyncCheckpoint):
+                raise MCPError("invalid_binding")
+            guard()
+            result = await checkpoint.run_async(run_id=request["run_id"])
+            guard()
+            packed = encode(result.to_dict())
+    guard()
+    return packed
+
+
+def execute(request):
+    from truthound.checkpoint import Checkpoint
+
+    if request.get("mode", "sync") == "async":
+        return asyncio.run(execute_async(request))
+    guard = binding_guard(request)
     guard()
     # A bare Checkpoint has no general resource-close contract. Its factory
     # must explicitly own datasource and action cleanup in a context manager.

@@ -26,12 +26,12 @@ def authorize(session, metadata):
         raise MCPError("access_denied")
 
 
-async def run(session, arguments):
+async def run(session, arguments, *, operation="checkpoints_run"):
     resources, policy = session.resources, session.policy
     digest, capability, plugins = resolve(policy, arguments.binding_id, checkpoint=True)
     stamp, store = session._policy_stamp(), session.approvals()
     plan = store.prepare(
-        "checkpoints_run",
+        operation,
         key=arguments.idempotency_key,
         request={
             **arguments.model_dump(exclude={"idempotency_key"}),
@@ -52,7 +52,7 @@ async def run(session, arguments):
         resources.get(response["data"]["resource_id"], "artifact")
         return response
     if plan["state"] != "approved":
-        return envelope("checkpoints_run", data=plan, error="approval_required")
+        return envelope(operation, data=plan, error="approval_required")
     identity, path = resources.reserve("artifact")
     worker = entry = None
     started = False
@@ -84,7 +84,8 @@ async def run(session, arguments):
                 "control": str(policy.control_directory),
                 "digest": digest,
                 "run_id": plan["plan_id"],
-                "use_router": arguments.use_router,
+                "mode": "async" if operation == "checkpoints_run_async" else "sync",
+                "use_router": getattr(arguments, "use_router", True),
                 "output_path": str(path),
                 "budget": resources.available_bytes,
             },
@@ -97,7 +98,7 @@ async def run(session, arguments):
             media_type="application/vnd.truthound.checkpoint-result+json",
             metadata=metadata,
         )
-        response = envelope("checkpoints_run", data=session._info(entry))
+        response = envelope(operation, data=session._info(entry))
         store.finish(plan["plan_id"], response)
         return response
     except BaseException:
