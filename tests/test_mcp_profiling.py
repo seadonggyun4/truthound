@@ -45,6 +45,25 @@ def normalize(value):
 )
 @pytest.mark.parametrize("strictness", ["loose", "medium", "strict"])
 def test_generated_rules_match_complete_native_result(tmp_path, generator, strictness):
+    assert_generated_rules(tmp_path, generator, strictness)
+
+
+@pytest.mark.parametrize(
+    "generator",
+    [
+        "SchemaRuleGenerator",
+        "StatsRuleGenerator",
+        "PatternRuleGenerator",
+        "MLRuleGenerator",
+    ],
+)
+@pytest.mark.parametrize("strictness", ["loose", "medium", "strict"])
+def test_column_rules_match_native_without_table_rules(tmp_path, generator, strictness):
+    column = "email" if generator == "PatternRuleGenerator" else "amount"
+    assert_generated_rules(tmp_path, generator, strictness, column=column)
+
+
+def assert_generated_rules(tmp_path, generator, strictness, column=None):
     import truthound.profiler as core
 
     frame = pl.DataFrame(
@@ -60,13 +79,13 @@ def test_generated_rules_match_complete_native_result(tmp_path, generator, stric
         parallel=False,
     ).profile(frame.lazy())
     settings = {"correlation_threshold": 0.8} if generator == "MLRuleGenerator" else {}
-    expected = [
-        rule.to_dict()
-        for rule in getattr(core, generator)(**settings).generate(
-            profile,
-            core.Strictness(strictness),
-        )
-    ]
+    native = getattr(core, generator)(**settings)
+    rules = (
+        native.generate(profile, core.Strictness(strictness))
+        if column is None
+        else native.generate_for_column(profile[column], core.Strictness(strictness))
+    )
+    expected = [rule.to_dict() for rule in rules]
     assert expected, "Exercise real rule generation, not an empty result"
     adapter = MCPService(MCPPolicy((tmp_path,), profile="core", allow_sensitive_results=True))
     try:
@@ -86,6 +105,7 @@ def test_generated_rules_match_complete_native_result(tmp_path, generator, stric
             options={"parallel": False},
             generator={"component": generator, "settings": settings},
             strictness=strictness,
+            column=column,
         )["resource_id"]
         parts, offset = [], 0
         while offset is not None:
@@ -93,6 +113,23 @@ def test_generated_rules_match_complete_native_result(tmp_path, generator, stric
             parts.append(base64.b64decode(chunk["base64"]))
             offset = chunk["next_offset"]
         assert decode(json.loads(b"".join(parts))) == expected
+        if column is not None:
+            assert all(rule["columns"] == [column] for rule in expected)
+            with pytest.raises(KeyError):
+                native.generate_for_column(profile["absent"], core.Strictness(strictness))
+            failed = asyncio.run(
+                adapter.call_operation_async(
+                    "profilers_generate_rules",
+                    {
+                        "asset_id": asset,
+                        "generator": {"component": generator},
+                        "column": "absent",
+                    },
+                )
+            )
+            assert failed["execution_status"] == "failed"
+            assert failed["issues"] == [{"code": "core_error"}]
+            assert not failed.get("data"), "No artifact may represent a failed generation"
         call(adapter, "resources_release", resource_id=asset)
         denied = asyncio.run(
             adapter.call_operation_async("artifacts_read", {"resource_id": output})

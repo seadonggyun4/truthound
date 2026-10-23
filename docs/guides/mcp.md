@@ -438,6 +438,11 @@ catalog also includes `StatsRuleGenerator`, `PatternRuleGenerator` and
 `MLRuleGenerator`. One selected native generator receives the fresh native
 profile; its complete `GeneratedRule.to_dict()` results are retained as an
 owned artifact. Generation does not execute validators or apply a suite.
+Omit `column` (or pass `null`) for table-wide generation. To use the native
+column-only algorithm, pass a literal column name such as `"column":"amount"`.
+This calls `generate_for_column()` on that column's fresh profile, not a filter
+over table-wide rules; table-level correlation rules are therefore not added.
+An absent column fails with `core_error` and does not produce a partial artifact.
 Exceptions fail the operation rather than silently returning partial rules.
 Artifact reads require sensitive-result permission and retain the source asset's
 authorization; releasing that asset also prevents reading its rule artifact.

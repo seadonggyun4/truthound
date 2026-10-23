@@ -3763,6 +3763,7 @@
     "truthound.profiler.base.DataType": "4739749bf806c9d691b498903757497ffe4c0daf92052188d91717c269af1002",
     "truthound.profiler.base.Profiler": "cbf1c44f08acd2e1cc74728ceb8caead1a87e74f0f46c08d8f93b21b56c2ce6d",
     "truthound.profiler.base.ProfilerConfig": "72ec32a8d6ca8e0fa42ccf055bf8ebbad20b8f724fcb710b05643fd99dccf9dc",
+    "truthound.profiler.base.TableProfile": "6f5d042b37b6ea25ff28d2acd7a65c9d60c4585fadae0a41120e6a29ff614835",
     "truthound.profiler.base.TypeInferrer": "bca17cdff0b517f242d48799e0332206ef559bdaf6e20e0d39d0627333bf638b",
     "truthound.profiler.column_profiler.BasicStatsAnalyzer": "4daef3c38b2808fd2ca0414bfd0f5ffc6e58dcab9942cd7b2ef34b4d93181e49",
     "truthound.profiler.column_profiler.CardinalityTypeInferrer": "57d4667ec1172cd518ccae5a4183be643b13771d2f24c1c23a2fdcb9a86c15d4",

@@ -312,6 +312,7 @@ def generate():
             profiling["components"][group][name] = {"target": reference(cls), "fields": options}
     record_source(profiler.ColumnProfiler)
     record_source(profiler.GeneratedRule)
+    record_source(profiler.TableProfile)
     suite = {
         "evidence_policy": describe(EvidencePolicy),
         "severity_policy": describe(SeverityPolicy),

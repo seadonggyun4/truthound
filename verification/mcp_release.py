@@ -232,6 +232,9 @@ async def core_profile():
                 native_profile=DataProfiler(config=native_config,column_profiler=ColumnProfiler(config=native_config),parallel=False).profile(pl.DataFrame({"x":[float(i) for i in range(100)]}).lazy())
                 expected_rules=[rule.to_dict() for rule in SchemaRuleGenerator().generate(native_profile,Strictness.MEDIUM)]
                 assert expected_rules and decode(json.loads(await artifact_bytes(rules["resource_id"])))==expected_rules
+                column_rules=await invoke("profilers_generate_rules",{"asset_id":training,"generator":{"component":"SchemaRuleGenerator"},"column":"x","options":{"parallel":False}})
+                expected_column_rules=[rule.to_dict() for rule in SchemaRuleGenerator().generate_for_column(native_profile["x"],Strictness.MEDIUM)]
+                assert expected_column_rules and decode(json.loads(await artifact_bytes(column_rules["resource_id"])))==expected_column_rules
                 schedule=await invoke("schedules_preview",{"expression":"@daily","after":"2024-01-01T00:00:00+09:00","count":2})
                 assert schedule["valid"] and schedule["next_times"]==["2024-01-02T00:00:00+09:00","2024-01-03T00:00:00+09:00"]
                 model=await invoke("models_create",{"algorithm":"ZScoreAnomalyDetector"})

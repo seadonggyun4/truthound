@@ -54,6 +54,7 @@ class Profile(AssetInput):
 class GenerateRules(Profile):
     generator: Component
     strictness: Literal["loose", "medium", "strict"] = "medium"
+    column: Name | None = None
 
     @model_validator(mode="after")
     def generator_configuration(self):
@@ -67,11 +68,16 @@ def generate_rules(arguments, frame):
     profile = execute(arguments, frame)
     generator = component("rule_generators", arguments.generator, build=True)
     _known_type("truthound.profiler.generators.base.GeneratedRule")
+    _known_type("truthound.profiler.base.TableProfile")
     # Call one explicit generator: the native suite aggregator suppresses
     # generator exceptions, which would hide an incomplete result here.
-    return [
-        rule.to_dict() for rule in generator.generate(profile, Strictness(arguments.strictness))
-    ]
+    strictness = Strictness(arguments.strictness)
+    rules = (
+        generator.generate(profile, strictness)
+        if arguments.column is None
+        else generator.generate_for_column(profile[arguments.column], strictness)
+    )
+    return [rule.to_dict() for rule in rules]
 
 
 def execute(arguments, frame):

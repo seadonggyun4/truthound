@@ -269,6 +269,20 @@ def attach(cases):
     )
     observed, result = set(), []
     for row in cases:
+        if row.validator in {"column_type", "table_schema"}:
+            assert row.error is None and row.caught_error is None
+            key = "expected_types" if row.validator == "column_type" else "expected_schema"
+            # The reviewed dtype grammar admits parameterized Polars dtypes.
+            # Native construction succeeds, but validate assumes __name__.
+            result.append(
+                replace(
+                    row,
+                    error={"x": [1, 2]},
+                    error_overrides={key: {"x": {"kind": "Datetime", "unit": "us"}}},
+                    native_error_settings={key: {"x": pl.Datetime("us")}},
+                )
+            )
+            continue
         if row.validator in {"null", "not_null", "positive", "non_negative", "range"}:
             assert row.error is None and row.caught_error is None
             # A real column name is also a Polars regex selector. Native

@@ -400,6 +400,11 @@ DataProfiler의 실제 앞부분 표본은 `options.sample_size`가 지정하며
 목록에는 `StatsRuleGenerator`, `PatternRuleGenerator`, `MLRuleGenerator`도
 있습니다. 선택한 네이티브 생성기 하나가 새 원본 프로파일을 받아 전체
 `GeneratedRule.to_dict()` 결과를 소유권이 있는 산출물로 보관합니다.
+`column`을 생략하거나 `null`로 지정하면 테이블 전체 규칙을 생성합니다.
+`"column":"amount"`처럼 실제 컬럼명을 지정하면 새 프로파일의 해당 컬럼에
+네이티브 `generate_for_column()`을 호출합니다. 전체 규칙을 나중에 거르는
+방식이 아니므로 테이블 수준 상관관계 규칙은 추가되지 않습니다. 없는 컬럼은
+`core_error`로 실패하며 부분 산출물을 만들지 않습니다.
 검증기를 실행하거나 suite를 적용하지 않으며, 예외를 숨겨 부분 규칙을 성공으로
 반환하지 않습니다. 산출물 읽기에는 민감 결과 허용이 필요하고 원본 자산의 접근
 권한을 유지하므로, 원본을 해제하면 규칙 산출물도 읽을 수 없습니다.
