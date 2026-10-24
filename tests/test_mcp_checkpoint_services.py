@@ -77,6 +77,237 @@ def command(runtime, identity, action, *, key=None, **kwargs):
     return plugins.source_artifact(adapter, response["data"]["resource_id"])
 
 
+def test_policy_definition_recovery_requires_fresh_approval_and_integrity(runtime, monkeypatch):
+    from truthound.checkpoint.escalation.protocols import EscalationPolicy
+    from truthound.mcp.service import MCPService
+
+    adapter, control, marker, source, asset = runtime
+    identity = prepare(runtime, monkeypatch, "escalation")
+    specification = {
+        "description": "Local parity policy",
+        "triggers": [
+            "unacknowledged",
+            "unresolved",
+            "severity_upgrade",
+            "repeated_failure",
+            "threshold_breach",
+            "manual",
+            "scheduled",
+            "custom",
+        ],
+        "levels": [
+            {
+                "level": 1,
+                "delay_minutes": 0,
+                "targets": [
+                    {
+                        "type": kind,
+                        "identifier": "local-only",
+                        "name": kind,
+                        "priority": index,
+                        "metadata": {"routing": "fixture"},
+                    }
+                    for index, kind in enumerate(
+                        [
+                            "user",
+                            "team",
+                            "channel",
+                            "schedule",
+                            "webhook",
+                            "email",
+                            "phone",
+                            "custom",
+                        ]
+                    )
+                ],
+                "repeat_count": 2,
+                "repeat_interval_minutes": 5,
+                "require_ack": False,
+                "auto_resolve_minutes": 60,
+                "conditions": {"severity": "high"},
+                "metadata": {"label": "local"},
+            }
+        ],
+        "metadata": {"test": True},
+    }
+    direct = EscalationPolicy.from_dict({"name": "new-policy", **specification})
+    actual = command(
+        runtime, identity, "policy_create", policy_name="new-policy", policy_update=specification
+    )
+    assert actual == {"policy": direct.to_dict()}
+    # Exact destination approval is required before worker-side editing.
+    before = marker.read_bytes()
+    pending = invoke(
+        adapter,
+        "checkpoint_services_execute",
+        binding_id="service",
+        service_id=identity,
+        command="policy_update",
+        policy_name="new-policy",
+        policy_update={"levels": []},
+        idempotency_key="unapproved-level-edit",
+    )
+    assert pending["issues"] == [{"code": "approval_required"}]
+    assert marker.read_bytes() == before
+    altered = invoke(
+        adapter,
+        "checkpoint_services_execute",
+        binding_id="service",
+        service_id=identity,
+        command="policy_update",
+        policy_name="new-policy",
+        policy_update={"levels": specification["levels"]},
+        idempotency_key="unapproved-level-edit",
+    )
+    assert altered["issues"] == [{"code": "idempotency_conflict"}]
+    assert command(runtime, identity, "policy", policy_name="new-policy") == actual
+    command(runtime, identity, "policy_remove", policy_name="approved-policy")
+    receipt = command(
+        runtime, identity, "persist_configuration", policy_names=["new-policy", "approved-policy"]
+    )
+    assert receipt["bytes"] > 0
+    argv, policy = adapter._worker_argv, adapter.policy
+    adapter.close()
+    fresh = MCPService(policy)
+    fresh._worker_argv = argv
+    new_runtime = (fresh, control, marker, source, asset)
+    try:
+        before = marker.read_bytes()
+        request = dict(
+            kind="escalation",
+            binding_id="service",
+            snapshot_id=receipt["snapshot_id"],
+            idempotency_key="restore-policy-snapshot",
+        )
+        pending = invoke(fresh, "checkpoint_services_open", **request)
+        assert pending["issues"] == [{"code": "approval_required"}]
+        assert marker.read_bytes() == before
+        restored = approve(fresh, control, "checkpoint_services_open", **request)["data"][
+            "resource_id"
+        ]
+        assert (
+            command(
+                new_runtime, restored, "policy", policy_name="new-policy", key="restored-policy"
+            )
+            == actual
+        )
+        assert command(
+            new_runtime, restored, "policy", policy_name="approved-policy", key="restored-tombstone"
+        ) == {"policy": None}
+        assert command(new_runtime, restored, "status")["running"] is False
+        assert "escalation-notify" not in marker.read_text(encoding="utf-8")
+        engine = native_engine()
+        engine.register_policy(direct)
+        from truthound.checkpoint.escalation.protocols import EscalationTrigger
+
+        expected = asyncio.run(
+            engine.trigger(
+                "new-incident",
+                context={"severity": "high", "source": "local"},
+                trigger_type=EscalationTrigger.MANUAL,
+            )
+        ).to_dict()
+        triggered = command(
+            new_runtime,
+            restored,
+            "trigger",
+            incident_id="new-incident",
+            trigger_type="manual",
+            context={"severity": "high", "source": "local"},
+        )
+        for key in ("success", "action", "targets_notified"):
+            assert triggered[key] == expected[key]
+        for key in ("state", "current_level", "notification_count", "policy_name", "incident_id"):
+            assert triggered["record"][key] == expected["record"][key]
+        assert triggered["record"]["notification_count"] == 8
+        assert triggered["record"]["context"] == expected["record"]["context"]
+        # Altering saved bytes is not an authorization to restore another destination.
+        store = ApprovalStore(control)
+        try:
+            store.connection.execute(
+                "UPDATE checkpoint_service_snapshots SET payload=? WHERE identity=?",
+                (b"{}", receipt["snapshot_id"]),
+            )
+        finally:
+            store.close()
+        failed = invoke(
+            fresh, "checkpoint_services_open", **{**request, "idempotency_key": "tampered-snapshot"}
+        )
+        assert failed["issues"] == [{"code": "invalid_control_state"}]
+    finally:
+        fresh.close()
+
+
+@pytest.mark.parametrize(
+    "patch",
+    [
+        {"levels": [{"level": 1}, {"level": 1}]},
+        {"levels": [{"level": 0}]},
+        {"levels": [{"level": 1, "targets": [{"type": "smtp", "identifier": "local"}]}]},
+        {"triggers": ["python"]},
+        {"levels": None},
+    ],
+)
+def test_policy_definition_rejects_ambiguous_or_unsupported_configuration(patch):
+    from pydantic import ValidationError
+
+    from truthound.mcp.checkpoint_services import EscalationPolicyUpdate
+
+    with pytest.raises(ValidationError):
+        EscalationPolicyUpdate.model_validate(patch)
+
+
+def test_policy_create_cannot_silently_replace_existing_native_policy(runtime, monkeypatch):
+    adapter, control, _, _, _ = runtime
+    identity = prepare(runtime, monkeypatch, "escalation")
+    request = dict(
+        binding_id="service",
+        service_id=identity,
+        command="policy_create",
+        policy_name="approved-policy",
+        policy_update={"enabled": False},
+        idempotency_key="create-duplicate-policy",
+    )
+    pending = invoke(adapter, "checkpoint_services_execute", **request)
+    store = ApprovalStore(control)
+    try:
+        store.approve(pending["data"]["plan_id"])
+    finally:
+        store.close()
+    failed = invoke(adapter, "checkpoint_services_execute", **request)
+    assert failed["issues"] == [{"code": "outcome_unknown"}]
+    assert adapter._session._checkpoint_services.workers.get(identity) is None
+
+
+@pytest.mark.parametrize("value", [{1: "key"}, ("tuple",), b"binary", object()])
+def test_configuration_persistence_rejects_lossy_native_metadata(value):
+    from truthound.mcp.durable_checkpoint_services import json_configuration
+    from truthound.mcp.policy import MCPError
+
+    with pytest.raises(MCPError, match="unsupported_value"):
+        json_configuration({"metadata": value})
+
+
+def test_running_service_cannot_be_snapshotted_as_stopped():
+    from truthound.mcp.checkpoint_service_worker import execute
+    from truthound.mcp.policy import MCPError
+
+    async def check():
+        engine = native_engine()
+        await engine.start()
+        try:
+            with pytest.raises(MCPError, match="invalid_arguments"):
+                await execute(
+                    engine,
+                    "escalation",
+                    {"command": "persist_configuration", "policy_names": ["approved-policy"]},
+                )
+        finally:
+            await engine.stop()
+
+    asyncio.run(check())
+
+
 def test_runner_uses_native_schedule_and_retains_results(runtime, monkeypatch, tmp_path):
     from truthound.checkpoint import Checkpoint
     from truthound.datasources.sql.sqlite import SQLiteDataSource, SQLiteDataSourceConfig
@@ -473,7 +704,10 @@ def test_policy_edit_rejects_new_destinations_and_wrong_arguments(runtime, monke
             policy_update=patch,
             idempotency_key="invalid-policy",
         )
-        assert response["issues"] == [{"code": "invalid_arguments"}]
+        # Empty levels are now a supported declarative edit, but still cannot
+        # alter the factory's destinations without exact operator approval.
+        expected = "approval_required" if patch == {"levels": []} else "invalid_arguments"
+        assert response["issues"] == [{"code": expected}]
     assert command(runtime, identity, "policy", policy_name="approved-policy")["policy"] == (
         native_engine().get_policy("approved-policy").to_dict()
     )

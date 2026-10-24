@@ -4,7 +4,7 @@ import json
 from contextlib import suppress
 from typing import Annotated, Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, JsonValue, model_validator
 
 from truthound.mcp.approved_sources import SourceBindingOpen, resolve
 from truthound.mcp.checkpoints import authorize
@@ -17,10 +17,53 @@ from truthound.mcp.session_contracts import Handle
 
 class CheckpointServiceOpen(SourceBindingOpen):
     kind: Literal["runner", "escalation"]
+    snapshot_id: Annotated[str, Field(pattern=r"^servicesnapshot_[0-9a-f]{64}$")] | None = None
+
+    @model_validator(mode="after")
+    def recovery_kind(self):
+        if self.snapshot_id is not None and self.kind != "escalation":
+            raise ValueError("Only escalation configuration snapshots can be restored")
+        return self
+
+
+Trigger = Literal[
+    "unacknowledged",
+    "unresolved",
+    "severity_upgrade",
+    "repeated_failure",
+    "threshold_breach",
+    "manual",
+    "scheduled",
+    "custom",
+]
+
+
+class EscalationTargetSpec(WireModel):
+    type: Literal["user", "team", "channel", "schedule", "webhook", "email", "phone", "custom"]
+    identifier: Name
+    name: Annotated[str, Field(max_length=512)] = ""
+    priority: int = 0
+    metadata: Annotated[dict[Name, JsonValue], Field(max_length=100)] = Field(default_factory=dict)
+
+
+class EscalationLevelSpec(WireModel):
+    level: Annotated[int, Field(ge=1)]
+    delay_minutes: Annotated[int, Field(ge=0)] = 0
+    targets: Annotated[list[EscalationTargetSpec], Field(max_length=100)] = Field(
+        default_factory=list
+    )
+    repeat_count: Annotated[int, Field(ge=0)] = 0
+    repeat_interval_minutes: Annotated[int, Field(ge=0)] = 5
+    require_ack: bool = True
+    auto_resolve_minutes: Annotated[int, Field(ge=0)] = 0
+    conditions: Annotated[dict[Name, JsonValue], Field(max_length=100)] = Field(
+        default_factory=dict
+    )
+    metadata: Annotated[dict[Name, JsonValue], Field(max_length=100)] = Field(default_factory=dict)
 
 
 class EscalationPolicyUpdate(WireModel):
-    """Edit policy timing/filtering without replacing trusted targets or callbacks."""
+    """Declarative native policy edits; callbacks remain operator-owned."""
 
     enabled: bool | None = None
     severity_filter: list[Literal["critical", "high", "medium", "low", "info"]] | None = None
@@ -31,6 +74,10 @@ class EscalationPolicyUpdate(WireModel):
     business_hours_end: Annotated[int, Field(ge=0, le=23)] | None = None
     business_days: list[Annotated[int, Field(ge=0, le=6)]] | None = None
     timezone: Name | None = None
+    description: Annotated[str, Field(max_length=4096)] | None = None
+    triggers: Annotated[list[Trigger], Field(max_length=8)] | None = None
+    levels: Annotated[list[EscalationLevelSpec], Field(max_length=100)] | None = None
+    metadata: Annotated[dict[Name, JsonValue], Field(max_length=100)] | None = None
 
     @model_validator(mode="after")
     def supplied(self):
@@ -38,6 +85,10 @@ class EscalationPolicyUpdate(WireModel):
             getattr(self, k) is None for k in self.model_fields_set
         ):
             raise ValueError("supply at least one non-null policy setting")
+        if self.levels is not None and len({level.level for level in self.levels}) != len(
+            self.levels
+        ):
+            raise ValueError("Level numbers must be unique")
         return self
 
 
@@ -61,15 +112,20 @@ class CheckpointServiceCommand(SourceBindingOpen):
         "remove_checkpoint",
         "policy",
         "policy_update",
+        "policy_create",
+        "persist_configuration",
         "policy_remove",
         "active_records",
         "incident_records",
     ]
     record_id: Name | None = None
     incident_id: Name | None = None
+    trigger_type: Trigger = "unacknowledged"
+    context: Annotated[dict[Name, JsonValue], Field(max_length=100)] = Field(default_factory=dict)
     policy_name: Name | None = None
     checkpoint_name: Name | None = None
     policy_update: EscalationPolicyUpdate | None = None
+    policy_names: Annotated[list[Name], Field(min_length=1, max_length=100)] | None = None
     max_results: Annotated[int, Field(ge=1, le=1000)] = 100
 
     @model_validator(mode="after")
@@ -79,7 +135,9 @@ class CheckpointServiceCommand(SourceBindingOpen):
             raise ValueError("record_id is required only for record commands")
         if (self.command in {"trigger", "incident_records"}) != (self.incident_id is not None):
             raise ValueError("incident_id is required only for incident commands")
-        policy_commands = {"policy", "policy_update", "policy_remove"}
+        if self.command != "trigger" and self.model_fields_set & {"trigger_type", "context"}:
+            raise ValueError("trigger_type and context are only supported by trigger")
+        policy_commands = {"policy", "policy_update", "policy_create", "policy_remove"}
         if self.command in policy_commands and self.policy_name is None:
             raise ValueError("policy_name is required")
         if self.policy_name is not None and self.command not in policy_commands | {
@@ -87,8 +145,12 @@ class CheckpointServiceCommand(SourceBindingOpen):
             "active_records",
         }:
             raise ValueError("policy_name is not supported by this command")
-        if (self.command == "policy_update") != (self.policy_update is not None):
-            raise ValueError("policy_update is required only for policy_update")
+        if (self.command in {"policy_update", "policy_create"}) != (self.policy_update is not None):
+            raise ValueError("policy_update is required only for policy_update or policy_create")
+        if (self.command == "persist_configuration") != (self.policy_names is not None):
+            raise ValueError("policy_names is required only for persist_configuration")
+        if self.policy_names is not None and len(set(self.policy_names)) != len(self.policy_names):
+            raise ValueError("policy_names must be unique")
         if (self.command in {"run_once", "remove_checkpoint"}) != (
             self.checkpoint_name is not None
         ):
@@ -109,6 +171,11 @@ class CheckpointServices(MonitorSession):
         opening = operation == "checkpoint_services_open"
         digest, capability, plugins = resolve(policy, arguments.binding_id, checkpoint=True)
         stamp = session._policy_stamp()
+        snapshot = None
+        if opening and arguments.snapshot_id is not None:
+            from truthound.mcp.durable_checkpoint_services import read
+
+            snapshot = read(session, arguments.snapshot_id, arguments.binding_id)
         entry = None
         if not opening:
             entry = resources.get(arguments.service_id, "monitor")
@@ -127,6 +194,8 @@ class CheckpointServices(MonitorSession):
                     "escalate",
                     "policy",
                     "policy_update",
+                    "policy_create",
+                    "persist_configuration",
                     "policy_remove",
                     "active_records",
                     "incident_records",
@@ -154,6 +223,8 @@ class CheckpointServices(MonitorSession):
                 "native_checkpoint_service_control",
                 "operator_configured_actions_and_external_notifications",
                 "operator_configured_native_action_retries",
+                "approved_notification_target_configuration",
+                "persistent_configuration_storage_or_restore",
             ],
         )
         if "committed_result" in plan:
@@ -178,7 +249,12 @@ class CheckpointServices(MonitorSession):
             store.begin(plan["plan_id"], session=session.identity, policy=stamp)
             started = True
             if opening:
-                path.write_text(json.dumps({"kind": arguments.kind}), encoding="utf-8")
+                if snapshot is None:
+                    path.write_text(json.dumps({"kind": arguments.kind}), encoding="utf-8")
+                else:
+                    if len(snapshot) > resources.available_bytes:
+                        raise MCPError("resource_exhausted")
+                    path.write_bytes(snapshot)
                 worker = ServiceProcess(policy.handle_ttl_seconds)
 
                 def authorized():
@@ -195,6 +271,7 @@ class CheckpointServices(MonitorSession):
                     "capability": capability,
                     "control": str(policy.control_directory),
                     "digest": digest,
+                    "configuration_path": str(path) if snapshot is not None else None,
                 }
             else:
                 request = {
@@ -204,6 +281,13 @@ class CheckpointServices(MonitorSession):
                 }
             await worker.call(request, policy.timeout_seconds)
             authorize(session, metadata)
+            if not opening and arguments.command == "persist_configuration":
+                from truthound.mcp.durable_checkpoint_services import persist
+                from truthound.mcp.encoding import encode
+
+                payload = path.read_bytes()
+                receipt = persist(session, plan, metadata, payload)
+                path.write_text(json.dumps(encode(receipt)), encoding="utf-8")
             committed = resources.commit(
                 identity,
                 kind="monitor" if opening else "artifact",

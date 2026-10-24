@@ -1020,8 +1020,8 @@ its native in-memory state for a later approved `start`. Releasing the handle,
 closing the session, expiry, revocation or a failed exchange terminates the
 worker. Unknown command effects are never automatically retried. Termination
 cannot retract notifications or guarantee third-party cleanup. These are
-session-owned services, **not durable restart recovery**: scheduling definitions,
-new policies and notification targets are operator-configured, not wire-editable.
+session-owned services. Policy configuration can be persisted and restored as
+described below; live scheduling/notification recovery is not implied.
 Real external notification and store services remain unverified. These tools
 are development-source features, not part of published 3.2.0.
 
@@ -1042,7 +1042,15 @@ Additional approved management commands reuse the native service methods:
   `max_escalations`, `cooldown_minutes`, `business_hours_only`,
   `business_hours_start`, `business_hours_end`, `business_days` or `timezone`.
   Omitted settings are preserved; explicit nulls and unknown fields are rejected.
-  Levels, destinations, conditions, triggers and metadata remain unchanged.
+  It also accepts `description`, `triggers`, `levels` and JSON `metadata`.
+  A supplied levels list replaces the whole list (unique positive level numbers).
+  Each level supports delay, targets, repeat count/interval, acknowledgment,
+  auto-resolve, JSON conditions and metadata. Each target supports native type,
+  identifier, name, priority and JSON metadata. Omitted fields are preserved.
+  All eight native trigger and target types are accepted; custom callbacks and
+  delivery transports still come from the pinned operator factory. Approval of
+  the exact request includes destinations, not just the policy name. Do not put
+  secrets in these settings: requests and policy artifacts are retained locally.
   This replaces the registered native policy, not existing records or scheduled
   jobs. Subsequent native execution decides when it consults that policy.
   Core's explicit `policy_name` lookup bypasses enabled/severity selection;
@@ -1059,7 +1067,29 @@ Every command, including reads, needs its own exact-request approval. Cached
 replay never re-executes a removed checkpoint or restores a removed policy.
 Invalid command shapes are rejected before execution. A native exception or
 lost receipt after execution starts remains `outcome_unknown`, not safe retry.
-New policies, target/level editing and durable service recovery remain unavailable.
+`policy_create` takes the same `policy_name` / `policy_update` shape, applying
+native defaults for omitted fields. It refuses to overwrite an existing policy.
+`policy_update` refuses to create a missing policy. Empty levels/triggers are
+allowed and retain native semantics, rather than inventing a default recipient.
+The `trigger` command also accepts `trigger_type` (native default
+`unacknowledged`) and JSON `context`. Both are forwarded to Core, including
+native automatic policy selection; they are rejected on unrelated commands.
+
+`persist_configuration` takes explicit unique `policy_names` (1–100), requires a
+stopped escalation service, and returns a signed immutable `snapshot_id`, hash
+and byte count in its artifact. Missing policies are stored as removal markers.
+Storage is private approval storage, bounded to 1 MiB per snapshot, 128 snapshots
+and 16 MiB total; no caller-controlled file paths. Native non-JSON metadata is
+not silently converted. Use `checkpoint_services_open` with `kind="escalation"`,
+the same `binding_id`, this `snapshot_id` and a fresh idempotency key to restore
+after session shutdown. A separate exact-request approval is required; altered
+payloads, policy or binding changes are rejected before factory execution.
+The pinned owner factory is reopened, selected policies/removals are applied,
+and the service stays stopped. Unselected factory policies remain unchanged.
+This restores **policy configuration only**, not incident records, pending jobs,
+notification delivery receipts or runner schedules. Those records remain owned
+by the operator's native store. Automatic resident-service restart and uncertain
+notification reconciliation are still gaps, not verified recovery capabilities.
 
 ### Native schedule preview
 

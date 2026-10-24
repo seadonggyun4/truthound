@@ -77,19 +77,44 @@ async def execute(service, kind, args):
         elif command != "status":
             raise MCPError("invalid_arguments")
         return {"running": service.running, "checkpoints": list(service.checkpoints)}
-    if command in {"policy", "policy_update"}:
+    if command == "persist_configuration":
+        if service.is_running:
+            raise MCPError("invalid_arguments")
+        return {
+            "policies": {
+                name: policy.to_dict() if (policy := service.get_policy(name)) is not None else None
+                for name in args["policy_names"]
+            }
+        }
+    if command in {"policy", "policy_update", "policy_create"}:
         policy = service.get_policy(args["policy_name"])
-        if command == "policy_update":
-            if policy is None:
+        if command in {"policy_update", "policy_create"}:
+            if (command == "policy_update") != (policy is not None):
                 raise MCPError("invalid_arguments")
             from dataclasses import replace
 
+            from truthound.checkpoint.escalation.protocols import (
+                EscalationLevel,
+                EscalationPolicy,
+                EscalationTrigger,
+            )
             from truthound.mcp.checkpoint_services import EscalationPolicyUpdate
 
             update = EscalationPolicyUpdate.model_validate(
                 {key: value for key, value in args["policy_update"].items() if value is not None}
             )
-            policy = replace(policy, **update.model_dump(exclude_none=True))
+            patch = update.model_dump(exclude_none=True)
+            if policy is None:
+                policy = EscalationPolicy.from_dict({"name": args["policy_name"], **patch})
+            else:
+                if "levels" in patch:
+                    patch["levels"] = [
+                        EscalationLevel.from_dict(level) for level in patch["levels"]
+                    ]
+                if "triggers" in patch:
+                    patch["triggers"] = [EscalationTrigger(value) for value in patch["triggers"]]
+                # Preserve opaque operator-owned values in fields not edited.
+                policy = replace(policy, **patch)
             service.register_policy(policy)
         return {"policy": policy.to_dict() if policy is not None else None}
     elif command == "policy_remove":
@@ -107,8 +132,15 @@ async def execute(service, kind, args):
     elif command == "stop":
         await service.stop()
     elif command == "trigger":
+        from truthound.checkpoint.escalation.protocols import EscalationTrigger
+
         return (
-            await service.trigger(args["incident_id"], policy_name=args["policy_name"])
+            await service.trigger(
+                args["incident_id"],
+                context=args.get("context", {}),
+                trigger_type=EscalationTrigger(args.get("trigger_type", "unacknowledged")),
+                policy_name=args["policy_name"],
+            )
         ).to_dict()
     elif command == "record":
         record = service.get_record(args["record_id"])
@@ -158,6 +190,21 @@ async def serve(wire):
                             raise MCPError("invalid_binding")
                     else:
                         raise MCPError("invalid_binding")
+                    if request.get("configuration_path") is not None:
+                        if kind != "escalation":
+                            raise MCPError("invalid_arguments")
+                        from truthound.checkpoint.escalation.protocols import EscalationPolicy
+
+                        # Restore only declarative policies, never actions, incidents,
+                        # scheduler jobs or notifications. The factory owns its store.
+                        snapshot = json.loads(
+                            Path(request["configuration_path"]).read_text(encoding="utf-8")
+                        )
+                        for name, configuration in snapshot["policies"].items():
+                            if configuration is None:
+                                service.unregister_policy(name)
+                            else:
+                                service.register_policy(EscalationPolicy.from_dict(configuration))
                 else:
                     if service is None:
                         raise MCPError("invalid_handle")
@@ -165,7 +212,13 @@ async def serve(wire):
                     result = await execute(service, kind, request["arguments"])
                     guard()
                     with BoundedWriter(Path(request["output_path"]), request["budget"]) as output:
-                        output.write(json.dumps(encode(result), allow_nan=False).encode())
+                        if request["arguments"]["command"] == "persist_configuration":
+                            from truthound.mcp.durable_checkpoint_services import json_configuration
+
+                            value = json_configuration(result)
+                        else:
+                            value = encode(result)
+                        output.write(json.dumps(value, allow_nan=False).encode())
                 guard()
                 wire.write('{"ok":true}\n')
                 wire.flush()

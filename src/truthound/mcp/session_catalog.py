@@ -80,7 +80,7 @@ def operations(descriptor):
     rows = (
         (
             "checkpoint_services_open",
-            "Approve a pinned operator-owned native CheckpointRunner or EscalationEngine. Opens stopped; start requires a separate command approval. Session expiry/revocation terminates the owner process.",
+            "Approve a pinned operator-owned native CheckpointRunner or EscalationEngine. Optionally restore a signed escalation policy configuration snapshot, not pending jobs or notification receipts. Opens stopped; start requires separate approval. Session expiry/revocation terminates the owner process.",
             CheckpointServiceOpen,
             "truthound.checkpoint.runner.CheckpointRunner",
             wire.ResourceInfo | wire.OperationPlan,
@@ -88,7 +88,7 @@ def operations(descriptor):
         ),
         (
             "checkpoint_services_execute",
-            "Approve a native runner or escalation lifecycle command bound to its live handle. Scheduled actions/notifications can have external effects; unknown outcomes are never automatically retried. Native failures remain in the sensitive artifact.",
+            "Approve a native runner or escalation lifecycle command bound to its live handle, including policy creation, trigger/level/target editing and stopped policy configuration persistence. Scheduled actions/notifications can have external effects; unknown outcomes are never automatically retried. Native failures remain in the sensitive artifact.",
             CheckpointServiceCommand,
             "truthound.checkpoint.escalation.engine.EscalationEngine",
             wire.ResourceInfo | wire.OperationPlan,
