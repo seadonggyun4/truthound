@@ -17,9 +17,14 @@ the full partition. Both retain their original 15-minute job deadlines.
 The canonical wheel, sdist and two MCPBs are built once. Every installation job
 verifies SHA256SUMS and installs those exact files; the embedded wheel must match
 the canonical wheel byte-for-byte. All seven fresh installation/launcher checks
-remain. Development uses Linux 3.11/3.13 and Windows/macOS 3.11 (13 total MCP jobs).
+remain. Development uses Linux 3.11/3.13 and Windows/macOS 3.11 (14 total MCP jobs).
 Weekly and release verification use all nine supported OS/Python combinations
-(23 jobs). Platform-independent semantic cases are not repeated nine times.
+(26 jobs). Platform-independent semantic cases are not repeated nine times.
+Windows boundary tests use two disjoint shards per Python version; all other
+boundary jobs retain one partition. Installation first aggregates the matching
+partitions and rejects missing, duplicated, failed or wrong-scope evidence.
+This changes neither test coverage nor the 15-minute deadline and does not
+turn a failing test into a passing one.
 Platform contract jobs run alongside the full Linux shards, separately from
 installation jobs, with the same 15-minute deadline per job. This avoids charging
 both boundary tests and seven installations against one deadline. No tests or

@@ -139,7 +139,7 @@ def junit_key(node):
     )
 
 
-def aggregate(directory: Path, count: int, destination: Path):
+def aggregate(directory: Path, count: int, destination: Path, required_files=TEST_FILES):
     helpers = proof_helpers()
     files = sorted(directory.glob("mcp-*.sources.json"))
     if len(files) != count or not 1 <= count <= 16:
@@ -180,6 +180,8 @@ def aggregate(directory: Path, count: int, destination: Path):
         phases += proof["execution_phases"]
     if indices != set(range(count)) or combined != full:
         raise ValueError("MCP_INCOMPLETE_PARTITION")
+    if {node.split("::")[0] for node in combined} != set(required_files):
+        raise ValueError("MCP_PARTITION_SCOPE_MISMATCH")
     if reference != {
         "package_sources": helpers.sources(),
         "test_and_verification_sources": helpers.supporting_sources(),
@@ -188,7 +190,7 @@ def aggregate(directory: Path, count: int, destination: Path):
         raise ValueError("MCP_CURRENT_SOURCE_MISMATCH")
     destination.parent.mkdir(parents=True, exist_ok=True)
     ET.ElementTree(suites).write(destination, encoding="utf-8")
-    result = validate_report(destination)
+    result = validate_report(destination, required_files)
     destination.with_suffix(".sources.json").write_text(
         json.dumps(
             {
@@ -217,12 +219,14 @@ def main() -> int:
     args = parser.parse_args()
     try:
         selected_files = TEST_FILES if args.scope == "full" else BOUNDARY_FILES
-        if args.scope != "full" and (args.aggregate_dir or args.shard_count != 1):
-            raise ValueError("MCP_BOUNDARY_IS_NOT_FULL_PARTITION")
         runtime = verify_runtime(args.expected_python)
         if args.aggregate_dir is not None:
-            result = aggregate(args.aggregate_dir, args.shard_count, args.junitxml)
-            print(json.dumps({"stage": "complete-mcp-partition", **runtime, **result}))
+            result = aggregate(args.aggregate_dir, args.shard_count, args.junitxml, selected_files)
+            print(
+                json.dumps(
+                    {"stage": "complete-mcp-partition", "scope": args.scope, **runtime, **result}
+                )
+            )
             return 0
         args.junitxml.parent.mkdir(parents=True, exist_ok=True)
         result = subprocess.run(

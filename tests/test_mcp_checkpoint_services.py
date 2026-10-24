@@ -17,6 +17,25 @@ runtime = plugins.runtime
 invoke = plugins.invoke
 
 
+@pytest.mark.parametrize(
+    "error, category",
+    [
+        (OSError("private-path"), "os_error"),
+        (TypeError("private-value"), "type_error"),
+        (ValueError("private-value"), "value_error"),
+        (RuntimeError("private-token"), "runtime_error"),
+        (Exception("private-token"), "failed"),
+    ],
+)
+def test_service_failure_diagnostics_exclude_exception_payload(error, category):
+    from truthound.mcp.checkpoint_service_worker import failure_code
+    from truthound.mcp.policy import MCPError
+
+    assert failure_code(error) == "checkpoint_service_" + category
+    assert failure_code(MCPError("access_denied")) == "checkpoint_service_access_denied"
+    assert failure_code(MCPError("private-token")) == "checkpoint_service_failed"
+
+
 def approve(adapter, control, operation, **request):
     pending = invoke(adapter, operation, **request)
     assert pending["issues"] == [{"code": "approval_required"}], pending
@@ -25,8 +44,15 @@ def approve(adapter, control, operation, **request):
         store.approve(pending["data"]["plan_id"])
     finally:
         store.close()
+    owner = None
+    if request.get("service_id") is not None:
+        owner = adapter._session._checkpoint_services.workers.get(request["service_id"])
     result = invoke(adapter, operation, **request)
-    assert result["execution_status"] == "succeeded", result
+    diagnostic = {
+        "category": getattr(owner, "failure_category", None),
+        "exit_status_after_cleanup": getattr(owner, "failure_exit_status_after_cleanup", None),
+    }
+    assert result["execution_status"] == "succeeded", (result, diagnostic)
     return result
 
 
@@ -85,9 +111,16 @@ def test_schedule_edit_preserves_native_run_history_and_approval(runtime, monkey
     adapter, control, marker, _, _ = runtime
     identity = prepare(runtime, monkeypatch, "runner")
     request = dict(
-        binding_id="service", service_id=identity, command="schedule_update",
-        checkpoint_name="approved-checkpoint", trigger_name="approved-schedule",
-        schedule_update={"interval_seconds": 120, "max_runs": 1, "start_time": "2000-01-01T00:00:00"},
+        binding_id="service",
+        service_id=identity,
+        command="schedule_update",
+        checkpoint_name="approved-checkpoint",
+        trigger_name="approved-schedule",
+        schedule_update={
+            "interval_seconds": 120,
+            "max_runs": 1,
+            "start_time": "2000-01-01T00:00:00",
+        },
         idempotency_key="edit-native-schedule",
     )
     before = marker.read_bytes()
@@ -102,27 +135,43 @@ def test_schedule_edit_preserves_native_run_history_and_approval(runtime, monkey
     runner = CheckpointRunner().add_checkpoint(checkpoint)
     from datetime import datetime
 
-    runner.edit_schedule("native-edit", native.name, {
-        **request["schedule_update"], "start_time": datetime(2000, 1, 1),
-    })
+    runner.edit_schedule(
+        "native-edit",
+        native.name,
+        {
+            **request["schedule_update"],
+            "start_time": datetime(2000, 1, 1),
+        },
+    )
     from dataclasses import asdict
 
     assert result["configuration"] == asdict(native.config)
     assert result["trigger"] == native.to_dict()
     assert invoke(adapter, "checkpoint_services_execute", **request) == response
-    conflicting = invoke(adapter, "checkpoint_services_execute", **{
-        **request, "schedule_update": {**request["schedule_update"], "start_time": None},
-    })
+    conflicting = invoke(
+        adapter,
+        "checkpoint_services_execute",
+        **{
+            **request,
+            "schedule_update": {**request["schedule_update"], "start_time": None},
+        },
+    )
     assert conflicting["issues"] == [{"code": "idempotency_conflict"}]
     command(runtime, identity, "start")
     deadline = time.monotonic() + 10
-    while time.monotonic() < deadline and "checkpoint-action" not in marker.read_text(encoding="utf-8"):
+    while time.monotonic() < deadline and "checkpoint-action" not in marker.read_text(
+        encoding="utf-8"
+    ):
         time.sleep(0.05)
     command(runtime, identity, "stop")
     assert marker.read_text(encoding="utf-8").count("checkpoint-action") == 1
     edited = command(
-        runtime, identity, "schedule_update", key="edit-after-run",
-        checkpoint_name="approved-checkpoint", trigger_name="approved-schedule",
+        runtime,
+        identity,
+        "schedule_update",
+        key="edit-after-run",
+        checkpoint_name="approved-checkpoint",
+        trigger_name="approved-schedule",
         schedule_update={"interval_seconds": 1},
     )
     assert edited["trigger"]["run_count"] == 1
@@ -132,7 +181,9 @@ def test_schedule_edit_preserves_native_run_history_and_approval(runtime, monkey
     assert marker.read_text(encoding="utf-8").count("checkpoint-action") == 1
 
 
-@pytest.mark.parametrize("changes", [{"interval_seconds": 0}, {"run_on_weekdays": []}, {"name": "renamed"}])
+@pytest.mark.parametrize(
+    "changes", [{"interval_seconds": 0}, {"run_on_weekdays": []}, {"name": "renamed"}]
+)
 def test_native_schedule_edit_rolls_back_invalid_configuration(changes):
     from truthound.checkpoint import Checkpoint
     from truthound.checkpoint.runner import CheckpointRunner

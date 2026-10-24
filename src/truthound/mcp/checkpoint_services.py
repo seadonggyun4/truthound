@@ -105,7 +105,9 @@ class ScheduleUpdate(WireModel):
     interval_hours: Annotated[int, Field(ge=0)] | None = None
     start_time: datetime | None = None
     end_time: datetime | None = None
-    run_on_weekdays: Annotated[list[Annotated[int, Field(ge=0, le=6)]], Field(min_length=1)] | None = None
+    run_on_weekdays: (
+        Annotated[list[Annotated[int, Field(ge=0, le=6)]], Field(min_length=1)] | None
+    ) = None
     timezone: Name | None = None
 
     @field_validator("start_time", "end_time", mode="before")
@@ -204,6 +206,24 @@ class CheckpointServiceCommand(SourceBindingOpen):
 class ServiceProcess(MonitorProcess):
     worker_module = "truthound.mcp.checkpoint_service_worker"
 
+    async def call(self, request, timeout):
+        try:
+            return await super().call(request, timeout)
+        except BaseException as error:
+            # Private owner diagnostics; the public operation still becomes
+            # outcome_unknown and must not be retried after effects start.
+            self.failure_category = (
+                error.code
+                if isinstance(error, MCPError)
+                else "timeout"
+                if isinstance(error, TimeoutError)
+                else "exchange_failed"
+            )
+            # This is observed after superclass cleanup and is not necessarily
+            # the worker's original exit status (cleanup may have killed it).
+            self.failure_exit_status_after_cleanup = self.process.poll()
+            raise
+
 
 class CheckpointServices(MonitorSession):
     async def call(self, operation, arguments):
@@ -254,7 +274,9 @@ class CheckpointServices(MonitorSession):
             operation,
             key=arguments.idempotency_key,
             request={
-                **arguments.model_dump(mode="json", exclude={"idempotency_key"}, exclude_unset=True),
+                **arguments.model_dump(
+                    mode="json", exclude={"idempotency_key"}, exclude_unset=True
+                ),
                 "bindings_digest": digest,
             },
             policy=stamp,

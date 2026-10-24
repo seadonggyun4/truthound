@@ -15,6 +15,29 @@ from truthound.mcp.policy import MCPError
 from truthound.mcp.resources import BoundedWriter
 
 
+def failure_code(error):
+    """Closed diagnostic categories only: never serialize plugin exception text."""
+    if isinstance(error, MCPError) and error.code in {
+        "invalid_arguments",
+        "invalid_binding",
+        "access_denied",
+        "plugin_identity_mismatch",
+        "resource_exhausted",
+        "unsupported_value",
+        "invalid_handle",
+    }:
+        return "checkpoint_service_" + error.code
+    for kind, label in (
+        (OSError, "os_error"),
+        (TypeError, "type_error"),
+        (ValueError, "value_error"),
+        (RuntimeError, "runtime_error"),
+    ):
+        if isinstance(error, kind):
+            return "checkpoint_service_" + label
+    return "checkpoint_service_failed"
+
+
 async def requests():
     # Do not leave a Windows synchronous ReadFile pending while native scheduled
     # work starts subprocesses. Read only available bytes, on either platform.
@@ -64,7 +87,9 @@ async def execute(service, kind, args):
 
             changes = ScheduleUpdate.model_validate(args["schedule_update"])
             trigger = service.edit_schedule(
-                args["checkpoint_name"], args["trigger_name"], changes.model_dump(exclude_unset=True)
+                args["checkpoint_name"],
+                args["trigger_name"],
+                changes.model_dump(exclude_unset=True),
             )
             return {"trigger": trigger.to_dict(), "configuration": asdict(trigger.config)}
         elif command == "run_once":
@@ -131,7 +156,9 @@ async def execute(service, kind, args):
         return {"removed": service.unregister_policy(args["policy_name"])}
     elif command == "active_records":
         return {
-            "records": [r.to_dict() for r in service.get_active_escalations(args.get("policy_name"))]
+            "records": [
+                r.to_dict() for r in service.get_active_escalations(args.get("policy_name"))
+            ]
         }
     elif command == "incident_records":
         return {
@@ -251,8 +278,8 @@ def main():
             contextlib.redirect_stderr(sink),
         ):
             asyncio.run(serve(wire))
-    except Exception:
-        wire.write('{"ok":false,"code":"checkpoint_service_failed"}\n')
+    except Exception as error:
+        wire.write(json.dumps({"ok": False, "code": failure_code(error)}) + "\n")
         wire.flush()
 
 

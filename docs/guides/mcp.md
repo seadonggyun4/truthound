@@ -1592,7 +1592,10 @@ and [authentication guide](https://modelcontextprotocol.io/registry/authenticati
 ## Extending the adapter
 
 The MCP CI matrix keeps its 15-minute job limit and partitions the entire required
-test collection into four deterministic, disjoint shards for each OS/Python pair.
+test collection into four deterministic, disjoint Linux Python 3.11 shards.
+Other selected OS/Python pairs run platform boundary tests, with two disjoint
+partitions on Windows and one elsewhere. Their evidence is aggregated before
+installation and cannot substitute for the full semantic collection.
 Packaging starts only after every shard succeeds. The aggregate gate compares
 the full collection and source hashes, checks all setup/call/teardown phases and
 JUnit results, and rejects missing, overlapping, skipped or failed executions.
