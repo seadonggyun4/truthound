@@ -1027,6 +1027,19 @@ are development-source features, not part of published 3.2.0.
 
 Additional approved management commands reuse the native service methods:
 
+- Runner `schedule_update` takes `checkpoint_name`, `trigger_name` and a nonempty
+  `schedule_update` patch for one built-in interval trigger. It reuses
+  `CheckpointRunner.edit_schedule`; the runner and its execution thread must be
+  stopped. Editing retains the trigger's run count, last-run clock and attachment,
+  rather than creating a new first run. Interval seconds/minutes/hours, enabled,
+  max runs, run-immediately, catch-up, max-concurrent, JSON metadata, start/end
+  times, weekdays and timezone can be edited. Omitted settings remain unchanged;
+  explicit null clears only start/end time, weekdays or timezone. Boundaries use
+  naive local datetimes; empty weekdays and nonpositive total intervals are
+  rejected. Native scheduling semantics apply: timezone/catch-up/concurrency
+  settings do not add guarantees absent from Core. Renaming, cron/custom trigger
+  editing and durable runner recovery are not provided by this command. It does
+  not itself run or restart a checkpoint. Each edit needs exact-request approval.
 - Runner `run_once` takes `checkpoint_name`; `run_all` executes every registered
   checkpoint. Native actions and result callbacks run; results are returned in
   artifacts, not inserted into the scheduled-result queue. `remove_checkpoint`

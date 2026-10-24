@@ -2,9 +2,10 @@
 
 import json
 from contextlib import suppress
+from datetime import datetime
 from typing import Annotated, Literal
 
-from pydantic import Field, JsonValue, model_validator
+from pydantic import Field, JsonValue, field_validator, model_validator
 
 from truthound.mcp.approved_sources import SourceBindingOpen, resolve
 from truthound.mcp.checkpoints import authorize
@@ -92,6 +93,39 @@ class EscalationPolicyUpdate(WireModel):
         return self
 
 
+class ScheduleUpdate(WireModel):
+    enabled: bool | None = None
+    max_runs: Annotated[int, Field(ge=0)] | None = None
+    run_immediately: bool | None = None
+    catch_up: bool | None = None
+    max_concurrent: Annotated[int, Field(ge=1)] | None = None
+    metadata: Annotated[dict[Name, JsonValue], Field(max_length=100)] | None = None
+    interval_seconds: Annotated[int, Field(ge=0)] | None = None
+    interval_minutes: Annotated[int, Field(ge=0)] | None = None
+    interval_hours: Annotated[int, Field(ge=0)] | None = None
+    start_time: datetime | None = None
+    end_time: datetime | None = None
+    run_on_weekdays: Annotated[list[Annotated[int, Field(ge=0, le=6)]], Field(min_length=1)] | None = None
+    timezone: Name | None = None
+
+    @field_validator("start_time", "end_time", mode="before")
+    @classmethod
+    def datetime_from_wire(cls, value):
+        return datetime.fromisoformat(value) if isinstance(value, str) else value
+
+    @model_validator(mode="after")
+    def supplied(self):
+        nullable = {"start_time", "end_time", "run_on_weekdays", "timezone"}
+        if not self.model_fields_set or any(
+            getattr(self, key) is None for key in self.model_fields_set - nullable
+        ):
+            raise ValueError("Supply schedule settings; only optional boundaries may be cleared")
+        for value in (self.start_time, self.end_time):
+            if value is not None and value.utcoffset() is not None:
+                raise ValueError("Use naive local datetimes, as required by Core")
+        return self
+
+
 class CheckpointServiceCommand(SourceBindingOpen):
     # The binding is repeated intentionally: each approval pins both identity
     # and the live handle, rather than authorizing a portable command.
@@ -110,6 +144,7 @@ class CheckpointServiceCommand(SourceBindingOpen):
         "run_once",
         "run_all",
         "remove_checkpoint",
+        "schedule_update",
         "policy",
         "policy_update",
         "policy_create",
@@ -124,6 +159,8 @@ class CheckpointServiceCommand(SourceBindingOpen):
     context: Annotated[dict[Name, JsonValue], Field(max_length=100)] = Field(default_factory=dict)
     policy_name: Name | None = None
     checkpoint_name: Name | None = None
+    trigger_name: Name | None = None
+    schedule_update: ScheduleUpdate | None = None
     policy_update: EscalationPolicyUpdate | None = None
     policy_names: Annotated[list[Name], Field(min_length=1, max_length=100)] | None = None
     max_results: Annotated[int, Field(ge=1, le=1000)] = 100
@@ -151,7 +188,11 @@ class CheckpointServiceCommand(SourceBindingOpen):
             raise ValueError("policy_names is required only for persist_configuration")
         if self.policy_names is not None and len(set(self.policy_names)) != len(self.policy_names):
             raise ValueError("policy_names must be unique")
-        if (self.command in {"run_once", "remove_checkpoint"}) != (
+        if (self.command == "schedule_update") != (self.trigger_name is not None):
+            raise ValueError("trigger_name is required only for schedule_update")
+        if (self.command == "schedule_update") != (self.schedule_update is not None):
+            raise ValueError("schedule_update is required only for schedule_update")
+        if (self.command in {"run_once", "remove_checkpoint", "schedule_update"}) != (
             self.checkpoint_name is not None
         ):
             raise ValueError("checkpoint_name is required only for named runner commands")
@@ -183,7 +224,7 @@ class CheckpointServices(MonitorSession):
             if metadata.get("checkpoint_binding") != arguments.binding_id:
                 raise MCPError("invalid_binding")
             allowed = {"start", "stop", "status"} | (
-                {"results", "run_once", "run_all", "remove_checkpoint"}
+                {"results", "run_once", "run_all", "remove_checkpoint", "schedule_update"}
                 if metadata["service_kind"] == "runner"
                 else {
                     "trigger",
@@ -213,7 +254,7 @@ class CheckpointServices(MonitorSession):
             operation,
             key=arguments.idempotency_key,
             request={
-                **arguments.model_dump(exclude={"idempotency_key"}),
+                **arguments.model_dump(mode="json", exclude={"idempotency_key"}, exclude_unset=True),
                 "bindings_digest": digest,
             },
             policy=stamp,
@@ -275,7 +316,7 @@ class CheckpointServices(MonitorSession):
                 }
             else:
                 request = {
-                    "arguments": arguments.model_dump(),
+                    "arguments": arguments.model_dump(mode="json", exclude_unset=True),
                     "output_path": str(path),
                     "budget": resources.available_bytes,
                 }

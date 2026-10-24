@@ -77,6 +77,104 @@ def command(runtime, identity, action, *, key=None, **kwargs):
     return plugins.source_artifact(adapter, response["data"]["resource_id"])
 
 
+def test_schedule_edit_preserves_native_run_history_and_approval(runtime, monkeypatch):
+    from truthound.checkpoint import Checkpoint
+    from truthound.checkpoint.runner import CheckpointRunner
+    from truthound.checkpoint.triggers.schedule import ScheduleTrigger
+
+    adapter, control, marker, _, _ = runtime
+    identity = prepare(runtime, monkeypatch, "runner")
+    request = dict(
+        binding_id="service", service_id=identity, command="schedule_update",
+        checkpoint_name="approved-checkpoint", trigger_name="approved-schedule",
+        schedule_update={"interval_seconds": 120, "max_runs": 1, "start_time": "2000-01-01T00:00:00"},
+        idempotency_key="edit-native-schedule",
+    )
+    before = marker.read_bytes()
+    pending = invoke(adapter, "checkpoint_services_execute", **request)
+    assert pending["issues"] == [{"code": "approval_required"}]
+    assert marker.read_bytes() == before
+    response = approve(adapter, control, "checkpoint_services_execute", **request)
+    result = plugins.source_artifact(adapter, response["data"]["resource_id"])
+    checkpoint = Checkpoint(name="native-edit", data_source={"x": [1]})
+    native = ScheduleTrigger(name="approved-schedule", interval_seconds=60, max_runs=1)
+    checkpoint.add_trigger(native)
+    runner = CheckpointRunner().add_checkpoint(checkpoint)
+    from datetime import datetime
+
+    runner.edit_schedule("native-edit", native.name, {
+        **request["schedule_update"], "start_time": datetime(2000, 1, 1),
+    })
+    from dataclasses import asdict
+
+    assert result["configuration"] == asdict(native.config)
+    assert result["trigger"] == native.to_dict()
+    assert invoke(adapter, "checkpoint_services_execute", **request) == response
+    conflicting = invoke(adapter, "checkpoint_services_execute", **{
+        **request, "schedule_update": {**request["schedule_update"], "start_time": None},
+    })
+    assert conflicting["issues"] == [{"code": "idempotency_conflict"}]
+    command(runtime, identity, "start")
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline and "checkpoint-action" not in marker.read_text(encoding="utf-8"):
+        time.sleep(0.05)
+    command(runtime, identity, "stop")
+    assert marker.read_text(encoding="utf-8").count("checkpoint-action") == 1
+    edited = command(
+        runtime, identity, "schedule_update", key="edit-after-run",
+        checkpoint_name="approved-checkpoint", trigger_name="approved-schedule",
+        schedule_update={"interval_seconds": 1},
+    )
+    assert edited["trigger"]["run_count"] == 1
+    assert edited["trigger"]["last_run"] is not None
+    command(runtime, identity, "start", key="restart-after-edit")
+    command(runtime, identity, "stop", key="stop-after-edit")
+    assert marker.read_text(encoding="utf-8").count("checkpoint-action") == 1
+
+
+@pytest.mark.parametrize("changes", [{"interval_seconds": 0}, {"run_on_weekdays": []}, {"name": "renamed"}])
+def test_native_schedule_edit_rolls_back_invalid_configuration(changes):
+    from truthound.checkpoint import Checkpoint
+    from truthound.checkpoint.runner import CheckpointRunner
+    from truthound.checkpoint.triggers.schedule import ScheduleTrigger
+
+    trigger = ScheduleTrigger(name="interval", interval_seconds=60)
+    trigger.record_run()
+    runner = CheckpointRunner().add_checkpoint(
+        Checkpoint(name="checkpoint", data_source={"x": [1]}).add_trigger(trigger)
+    )
+    config, state = trigger.config, trigger.to_dict()
+    with pytest.raises(ValueError):
+        runner.edit_schedule("checkpoint", "interval", changes)
+    assert trigger.config is config
+    assert trigger.to_dict() == state
+
+
+def test_native_schedule_edit_rejects_stopped_but_inflight_thread():
+    import threading
+
+    from truthound.checkpoint.runner import CheckpointRunner
+
+    runner = CheckpointRunner()
+    entered, release = threading.Event(), threading.Event()
+
+    def work():
+        entered.set()
+        release.wait(5)
+
+    runner._thread = threading.Thread(target=work)
+    runner._thread.start()
+    try:
+        assert entered.wait(2)
+        with pytest.raises(RuntimeError, match="quiescent"):
+            runner.edit_schedule("unused", "unused", {"enabled": False})
+        with pytest.raises(RuntimeError, match="has not stopped"):
+            runner.start()
+    finally:
+        release.set()
+        runner._thread.join(5)
+
+
 def test_policy_definition_recovery_requires_fresh_approval_and_integrity(runtime, monkeypatch):
     from truthound.checkpoint.escalation.protocols import EscalationPolicy
     from truthound.mcp.service import MCPService

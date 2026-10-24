@@ -57,7 +57,17 @@ async def requests():
 async def execute(service, kind, args):
     command = args["command"]
     if kind == "runner":
-        if command == "run_once":
+        if command == "schedule_update":
+            from dataclasses import asdict
+
+            from truthound.mcp.checkpoint_services import ScheduleUpdate
+
+            changes = ScheduleUpdate.model_validate(args["schedule_update"])
+            trigger = service.edit_schedule(
+                args["checkpoint_name"], args["trigger_name"], changes.model_dump(exclude_unset=True)
+            )
+            return {"trigger": trigger.to_dict(), "configuration": asdict(trigger.config)}
+        elif command == "run_once":
             result = await asyncio.to_thread(service.run_once, args["checkpoint_name"])
             return {"result": result.to_dict()}
         elif command == "run_all":
@@ -71,7 +81,7 @@ async def execute(service, kind, args):
             await asyncio.to_thread(service.stop)
         elif command == "results":
             results = await asyncio.to_thread(
-                service.get_results, timeout=0.01, max_results=args["max_results"]
+                service.get_results, timeout=0.01, max_results=args.get("max_results", 100)
             )
             return {"results": [result.to_dict() for result in results]}
         elif command != "status":
@@ -121,7 +131,7 @@ async def execute(service, kind, args):
         return {"removed": service.unregister_policy(args["policy_name"])}
     elif command == "active_records":
         return {
-            "records": [r.to_dict() for r in service.get_active_escalations(args["policy_name"])]
+            "records": [r.to_dict() for r in service.get_active_escalations(args.get("policy_name"))]
         }
     elif command == "incident_records":
         return {
@@ -139,7 +149,7 @@ async def execute(service, kind, args):
                 args["incident_id"],
                 context=args.get("context", {}),
                 trigger_type=EscalationTrigger(args.get("trigger_type", "unacknowledged")),
-                policy_name=args["policy_name"],
+                policy_name=args.get("policy_name"),
             )
         ).to_dict()
     elif command == "record":

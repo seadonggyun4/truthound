@@ -88,7 +88,7 @@ def operations(descriptor):
         ),
         (
             "checkpoint_services_execute",
-            "Approve a native runner or escalation lifecycle command bound to its live handle, including policy creation, trigger/level/target editing and stopped policy configuration persistence. Scheduled actions/notifications can have external effects; unknown outcomes are never automatically retried. Native failures remain in the sensitive artifact.",
+            "Approve a native runner or escalation lifecycle command bound to its live handle, including quiescent interval-schedule editing with retained run history, policy creation, trigger/level/target editing and stopped policy configuration persistence. Scheduled actions/notifications can have external effects; unknown outcomes are never automatically retried. Native failures remain in the sensitive artifact.",
             CheckpointServiceCommand,
             "truthound.checkpoint.escalation.engine.EscalationEngine",
             wire.ResourceInfo | wire.OperationPlan,

@@ -156,13 +156,22 @@ class ScheduleTrigger(BaseTrigger[ScheduleConfig]):
         errors = []
 
         interval = self._config.get_interval()
-        if interval.total_seconds() == 0:
+        if interval.total_seconds() <= 0:
             errors.append("At least one interval (seconds, minutes, hours) must be > 0")
 
-        if self._config.run_on_weekdays:
+        if self._config.run_on_weekdays is not None:
+            if not self._config.run_on_weekdays:
+                errors.append("run_on_weekdays cannot be empty")
             for day in self._config.run_on_weekdays:
                 if day < 0 or day > 6:
                     errors.append(f"Invalid weekday: {day}. Must be 0-6 (Mon-Sun)")
+
+        for boundary in (self._config.start_time, self._config.end_time):
+            if boundary is not None and boundary.utcoffset() is not None:
+                errors.append("Schedule boundaries must use naive local datetimes")
+        if self._config.start_time and self._config.end_time:
+            if not errors and self._config.end_time < self._config.start_time:
+                errors.append("end_time cannot precede start_time")
 
         return errors
 

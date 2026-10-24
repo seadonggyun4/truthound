@@ -128,6 +128,37 @@ class CheckpointRunner:
                 return True
         return False
 
+    def edit_schedule(self, checkpoint_name: str, trigger_name: str, changes: dict[str, Any]):
+        """Edit an interval trigger while quiescent, retaining execution history.
+
+        Stopping is not sufficient if the worker has not actually exited. Refuse
+        that case rather than racing an in-flight action or resetting its clock.
+        Custom trigger implementations remain owned by their provider.
+        """
+        from dataclasses import replace
+
+        from truthound.checkpoint.triggers.schedule import ScheduleTrigger
+
+        with self._lock:
+            if self._running or (self._thread is not None and self._thread.is_alive()):
+                raise RuntimeError("Runner must be quiescent before editing schedules")
+            checkpoint = self._checkpoints[checkpoint_name]
+            matches = [trigger for trigger in checkpoint.triggers if trigger.name == trigger_name]
+            if len(matches) != 1 or type(matches[0]) is not ScheduleTrigger:
+                raise ValueError("Expected one built-in interval trigger")
+            trigger = matches[0]
+            if not changes or "name" in changes:
+                raise ValueError("Supply configuration changes without renaming the trigger")
+            candidate = ScheduleTrigger(replace(trigger.config, **changes))
+            errors = candidate.validate_config()
+            if errors:
+                raise ValueError("; ".join(errors))
+            # Preserve the same trigger, run count, last run and attachment. A
+            # replacement would look like a first run and could repeat actions.
+            trigger._config = candidate.config
+            trigger._next_run = None
+            return trigger
+
     def run_once(
         self,
         checkpoint: Checkpoint | str,
@@ -185,13 +216,13 @@ class CheckpointRunner:
         Args:
             blocking: If True, block until stopped.
         """
-        if self._running:
-            return
-
-        self._running = True
-
         # Start triggers
         with self._lock:
+            if self._running:
+                return
+            if self._thread is not None and self._thread.is_alive():
+                raise RuntimeError("Previous runner thread has not stopped")
+            self._running = True
             for checkpoint in self._checkpoints.values():
                 for trigger in checkpoint.triggers:
                     trigger.start()
