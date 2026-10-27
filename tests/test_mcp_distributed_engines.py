@@ -1,6 +1,7 @@
 """Approved installed factories own actual local Ray and Spark lifetimes."""
 
 import json
+import time
 
 import pytest
 
@@ -14,10 +15,31 @@ pytestmark = pytest.mark.contract
 
 
 @pytest.fixture
-def startup_evidence(runtime, record_property):
+def startup_evidence(runtime, record_property, monkeypatch):
     """Retain successful startup timing as well as failed startup diagnostics."""
-    yield
+    from truthound.mcp.execution_services import ExecutionServices
+
+    original = ExecutionServices.process_type
     marker = runtime[2]
+
+    class ObservedProcess(original):
+        async def call(self, request, timeout):
+            started = time.monotonic()
+            try:
+                return await super().call(request, timeout)
+            finally:
+                if request.get("open"):
+                    diagnostic = {
+                        "factory": "execution_worker", "phase": "open-exchange-finished",
+                        "elapsed_seconds": round(time.monotonic() - started, 3),
+                        "failure_category": getattr(self, "failure_category", None),
+                        "exit_status_after_exchange": self.process.poll(),
+                    }
+                    with marker.open("a", encoding="utf-8") as stream:
+                        stream.write("native-fixture-diagnostic:" + json.dumps(diagnostic) + "\n")
+
+    monkeypatch.setattr(ExecutionServices, "process_type", ObservedProcess)
+    yield
     if marker.exists():
         prefix = "native-fixture-diagnostic:"
         records = [json.loads(line[len(prefix):]) for line in marker.read_text().splitlines()

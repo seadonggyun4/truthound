@@ -518,6 +518,45 @@ def test_installed_startup_snapshot_excludes_private_frames_paths_and_locals():
     assert "private" not in json.dumps(result) and "secret" not in json.dumps(result)
 
 
+def test_spark_start_failure_never_formats_gateway_backed_exception(monkeypatch, tmp_path, capsys):
+    from types import SimpleNamespace
+
+    from py4j.protocol import Py4JJavaError
+    from pyspark import SparkContext
+    from pyspark.sql import SparkSession
+
+    from tests.verification_support import _load
+
+    formatted = []
+
+    class GatewayClient:
+        def send_command(self, command):
+            formatted.append(True)
+            raise AssertionError("A stopped JVM cannot format this exception")
+
+    error = Py4JJavaError("synthetic private SDK detail", SimpleNamespace(
+        _target_id="synthetic-owned-error", _gateway_client=GatewayClient(),
+    ))
+
+    class Builder:
+        def master(self, *args):
+            return self
+
+        appName = config = master
+
+        def getOrCreate(self):
+            raise error
+
+    monkeypatch.setattr(SparkSession, "builder", Builder())
+    monkeypatch.setattr(SparkContext, "_active_spark_context", None)
+    probe = _load("native_distributed_probe")
+    with pytest.raises(Py4JJavaError) as caught, probe.engine("spark", tmp_path):
+        pytest.fail("A failed SDK must not yield an engine")
+    assert caught.value is error
+    assert formatted == []
+    assert "synthetic private SDK detail" not in capsys.readouterr().out
+
+
 @pytest.mark.parametrize("failure", [False, True])
 def test_installed_startup_watchdog_cancelled_on_success_and_failure(monkeypatch, failure):
     from tests.verification_support import _load

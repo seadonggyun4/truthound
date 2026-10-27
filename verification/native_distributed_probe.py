@@ -301,10 +301,10 @@ def engine(backend, scratch, progress=None, *, guard_node_lookup=False):
             with SparkExecutionEngine(frame, SparkEngineConfig(shuffle_partitions=1)) as native:
                 phase("spark-ready")
                 yield native
-        except BaseException:
-            # Py4J exception text needs its still-live gateway. Preserve SDK
-            # diagnostics before stopping the JVM owned by this probe.
-            traceback.print_exc()
+        except BaseException as error:
+            # Formatting a Py4J exception can issue another blocking JVM RPC.
+            # Preserve structure before teardown without invoking __str__.
+            print(json.dumps({"native_startup_failure": failure_diagnostic(error)}), flush=True)
             raise
         finally:
             try:
