@@ -183,7 +183,9 @@ def main():
         proof["actual_codex_install_verified"] = True
     if args.smoke:
         with tempfile.TemporaryDirectory(prefix="truthound-core-plugin-") as directory:
-            work = Path(directory)
+            # macOS exposes its temporary root through /var -> /private/var.
+            # Use the canonical owned fixture path; consent still rejects aliases.
+            work = Path(directory).resolve(strict=True)
             extracted = work / "plugin with spaces 한글"
             with zipfile.ZipFile(output) as archive:
                 assert set(archive.namelist()) == set(FILES)

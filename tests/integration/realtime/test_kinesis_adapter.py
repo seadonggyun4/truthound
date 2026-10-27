@@ -164,9 +164,10 @@ class TestKinesisAdapterIntegration:
         adapter = KinesisAdapter(kinesis_config)
 
         async with adapter:
-            description = await adapter.get_stream_description()
-            assert description["StreamName"] == "test-stream"
-            assert description["StreamStatus"] in ["ACTIVE", "CREATING"]
+            description = await adapter.get_stream_info()
+            assert description["stream_name"] == "test-stream"
+            assert description["stream_status"] in ["ACTIVE", "CREATING"]
+            assert description["shard_count"] == 2
 
     @pytest.mark.asyncio(loop_scope="class")
     async def test_reconnection(self, kinesis_config):

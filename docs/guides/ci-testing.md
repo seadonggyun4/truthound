@@ -257,3 +257,5 @@ EOF diagnostics retain only closed phase names and the process exit code.
 Disposable broker async fixtures and their consuming tests use the same class event loop, so retained SDK clients never cross loops. Verbose case names preserve the last active test when a hard timeout terminates the process.
 
 Kafka fixture consumers explicitly replay earliest offsets and use isolated topics for independent scenarios. Batch production queues native producer sends with each message's routing and serializers intact, then observes every acknowledgement, including delivery failures.
+
+Broker integration uses the native millisecond window configuration, awaited aggregator-factory processing and normalized Kinesis stream-info contract. Window verification accounts for every emitted and force-emitted result and requires the complete message count and sum. macOS client fixtures resolve their owned temporary directory before granting access; the product still rejects symlink aliases.

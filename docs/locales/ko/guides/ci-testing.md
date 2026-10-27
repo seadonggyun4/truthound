@@ -238,3 +238,5 @@ aiobotocore·Testcontainers도 설치합니다. `Disposable broker integration` 
 임시 브로커 비동기 fixture와 이를 사용하는 테스트는 같은 클래스 이벤트 루프를 사용하여 SDK 클라이언트가 루프를 넘지 않게 합니다. 상세 테스트 이름을 출력하여 강제 시간 초과 때 마지막 실행 항목을 보존합니다.
 
 Kafka fixture 소비자는 earliest 오프셋을 명시하고 독립 시나리오마다 별도 토픽을 사용합니다. 배치 전송은 각 메시지의 라우팅과 serializer를 유지한 채 네이티브 producer에 전송을 큐잉하고 전달 실패를 포함한 모든 확인 응답을 관찰합니다.
+
+브로커 통합은 네이티브 밀리초 윈도 설정, await한 aggregator-factory 처리와 정규화된 Kinesis stream-info 계약을 사용합니다. 모든 자동·강제 방출 결과의 메시지 수와 합계를 빠짐없이 검증합니다. macOS 클라이언트 fixture는 권한 부여 전에 소유한 임시 디렉터리의 실제 경로를 구하며 제품은 심볼릭 링크 별칭을 계속 거부합니다.

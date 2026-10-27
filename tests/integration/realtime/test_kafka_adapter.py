@@ -308,10 +308,10 @@ class TestKafkaStreamingPipeline:
         adapter = KafkaAdapter(config)
 
         # Create window processor
-        window_config = WindowConfig(window_size_seconds=5)
+        window_config = WindowConfig(size_ms=5000)
         processor = TumblingWindowProcessor(
             config=window_config,
-            aggregators={"total": SumAggregator("value")},
+            aggregator_factory=lambda: SumAggregator("value"),
         )
 
         async with adapter:
@@ -332,17 +332,18 @@ class TestKafkaStreamingPipeline:
 
             # Consume and process through window
             consumed = 0
+            results = []
             async for msg in adapter.consume():
-                processor.add(msg)
+                results.extend(await processor.add(msg))
                 consumed += 1
 
                 if consumed >= 20:
                     break
 
             # Check aggregated results
-            results = processor.get_results()
-            # Sum of 20 messages * 10 value each = 200
-            assert results.get("total", 0) >= 100  # At least some aggregated
+            results.extend(await processor.force_emit())
+            assert sum(result.message_count for result in results) == 20
+            assert sum(result.result for result in results) == 200
 
 
 @pytest.mark.skipif(
