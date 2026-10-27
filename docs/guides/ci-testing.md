@@ -334,3 +334,5 @@ Spark startup failure diagnostics never format JVM-backed exception messages: fo
 Spark probe diagnostics sample at most 64 owned child processes once per second. They retain only reviewed process roles and last-observed age/CPU/RSS/thread counts, including exited launcher stages; IDs, executable paths and arguments are excluded. These are diagnostic samples, not final process totals or benchmark measurements.
 
 The standalone Windows Spark cold-start diagnostic now requires all 20 starts per Python version to pass, retaining the same 30-second reply and 15-minute job deadlines. This fixed series preserves every result; it does not retry a failed start.
+
+Dashboard hard-kill regression treats a process disappearing between status queries as exited, while access errors still fail. Both the original five-second exit deadline and the independent closed-port assertion remain required.

@@ -116,10 +116,35 @@ def test_dashboard_title_is_rendered_as_data_and_cannot_execute_python(tmp_path)
     assert not marker.exists()
 
 
+def child_exited(process):
+    import psutil
+
+    try:
+        return not process.is_running() or process.status() == psutil.STATUS_ZOMBIE
+    except psutil.NoSuchProcess:
+        return True
+
+
+@pytest.mark.parametrize("denied", [False, True])
+def test_dashboard_exit_observation_handles_disappearance_without_hiding_access_errors(denied):
+    import psutil
+
+    def status():
+        raise psutil.AccessDenied(123) if denied else psutil.NoSuchProcess(123)
+
+    process = SimpleNamespace(is_running=lambda: True, status=status)
+    if denied:
+        with pytest.raises(psutil.AccessDenied):
+            child_exited(process)
+    else:
+        assert child_exited(process)
+
+
 def test_native_dashboard_child_exits_after_owning_process_is_hard_killed(tmp_path):
     import os
     import subprocess
     import time
+    from contextlib import suppress
     from pathlib import Path
 
     import psutil
@@ -153,20 +178,22 @@ finally:
         owner.wait(timeout=5)
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline:
-            exited = not child.is_running() or child.status() == psutil.STATUS_ZOMBIE
+            exited = child_exited(child)
             with socket.socket() as probe:
                 port_closed = probe.connect_ex(('127.0.0.1', port)) != 0
             if exited and port_closed:
                 break
             time.sleep(0.01)
-        assert not child.is_running() or child.status() == psutil.STATUS_ZOMBIE
+        assert child_exited(child)
         with socket.socket() as probe:
             assert probe.connect_ex(('127.0.0.1', port)) != 0
     finally:
         if owner.poll() is None:
             owner.kill()
         owner.wait(timeout=5)
-        if child is not None and child.is_running() and child.status() != psutil.STATUS_ZOMBIE:
-            child.kill()
+        if child is not None:
+            with suppress(psutil.NoSuchProcess):
+                if not child_exited(child):
+                    child.kill()
         owner.stdout.close()
         owner.stderr.close()
