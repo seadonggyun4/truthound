@@ -593,6 +593,37 @@ def test_owned_sdk_process_samples_omit_names_ids_arguments_and_reused_pids():
     assert "synthetic-private" not in json.dumps(report) and "123456" not in json.dumps(report)
 
 
+def test_timed_stack_capture_runs_in_python_thread_with_gil_and_retains_trace(tmp_path, monkeypatch):
+    import ctypes
+    import threading
+    from types import SimpleNamespace
+
+    from tests.verification_support import _load
+
+    probe = _load("native_distributed_probe")
+    original = probe.faulthandler.dump_traceback
+    done = threading.Event()
+    observed = []
+
+    def capture(**kwargs):
+        observed.append(ctypes.pythonapi.PyGILState_Check())
+        original(**kwargs)
+        done.set()
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("Timed capture must not use the asynchronous native watchdog")
+
+    monkeypatch.setattr(probe.faulthandler, "dump_traceback", capture)
+    monkeypatch.setattr(probe.faulthandler, "dump_traceback_later", forbidden)
+    log = tmp_path / "stack.log"
+    with log.open("wb") as stream:
+        monkeypatch.setattr(probe, "sys", SimpleNamespace(stderr=stream))
+        with probe.stack_watchdog(delay=0.01):
+            assert done.wait(timeout=2)
+    assert observed == [1]
+    assert b"capture" in log.read_bytes() and b"Thread" in log.read_bytes()
+
+
 @pytest.mark.parametrize("failure", [False, True])
 def test_installed_startup_watchdog_cancelled_on_success_and_failure(monkeypatch, failure):
     from tests.verification_support import _load

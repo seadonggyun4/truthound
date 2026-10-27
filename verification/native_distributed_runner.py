@@ -270,6 +270,8 @@ class OwnedProbe:
             )
         }
         allowed |= {
+            "ray-data-import",
+            "ray-data-imported",
             "startup-unclassified-wait",
             "ray-api-server-wait",
             "ray-gcs-wait",

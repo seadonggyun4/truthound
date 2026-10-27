@@ -25,8 +25,11 @@ def main():
     if not relative.startswith('pool/') or '..' in relative.split('/') or len(digest) != 64:
         raise ValueError('INVALID_APT_FONT_METADATA')
     destination = Path(os.environ['RUNNER_TEMP']) / Path(relative).name
-    # Both mirrors serve the exact package authenticated by APT's signed index.
-    for mirror in ('https://archive.ubuntu.com/ubuntu/', 'https://azure.archive.ubuntu.com/ubuntu/'):
+    # The runner's APT index uses this HTTP Azure mirror successfully. Package
+    # authenticity comes from the SHA-256 in that signed index, on every route.
+    # Do not force a different TLS endpoint that the runner cannot reach.
+    for mirror in ('http://azure.archive.ubuntu.com/ubuntu/',
+                   'https://archive.ubuntu.com/ubuntu/', 'https://azure.archive.ubuntu.com/ubuntu/'):
         result = subprocess.run([
             'curl', '--fail', '--location', '--silent', '--show-error',
             '--connect-timeout', '15', '--max-time', '120', '--speed-limit', '524288',

@@ -182,10 +182,10 @@ async def serve(wire, owner_type=BrokerOwner):
                     startup = contextlib.nullcontext()
                     if request.get("native_group") == "execution_services":
                         from truthound.execution.distributed._spark_startup import (
-                            local_gateway_launcher,
+                            resident_gateway_launcher,
                         )
 
-                        startup = local_gateway_launcher(resident=True)
+                        startup = resident_gateway_launcher()
                     with startup:
                         runtime = await stack.enter_async_context(capabilities[request["capability"]]())
                     owner = owner_type(runtime, request)

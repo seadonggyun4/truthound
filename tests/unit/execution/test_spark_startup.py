@@ -1,5 +1,8 @@
 """Keep the real SDK argv protocol, configuration and scoped ownership intact."""
 
+import subprocess
+import sys
+import textwrap
 import threading
 from types import SimpleNamespace
 
@@ -8,6 +11,41 @@ import pytest
 from truthound.execution.distributed import _spark_startup as startup
 
 pytestmark = pytest.mark.contract
+
+
+@pytest.mark.parametrize("import_sdk,fail", [(False, False), (True, False), (True, True)])
+def test_resident_scope_imports_only_requested_real_sdk_and_restores_loader(import_sdk, fail):
+    # A fresh interpreter exercises the real SDK import, without a JVM or SDK substitute.
+    code = textwrap.dedent('''
+        import subprocess, sys
+        from types import SimpleNamespace
+        from truthound.execution.distributed import _spark_startup as startup
+        startup.sys = SimpleNamespace(platform="win32")
+        before = tuple(sys.meta_path)
+        assert "pyspark" not in sys.modules
+        try:
+            with startup.resident_gateway_launcher():
+                assert "pyspark" not in sys.modules
+                with startup.resident_gateway_launcher():
+                    if IMPORT_SDK:
+                        import pyspark
+                        from pyspark import java_gateway
+                        assert java_gateway.Popen is not subprocess.Popen
+                        assert pyspark.__loader__ is pyspark.__spec__.loader
+                        assert not type(pyspark.__loader__).__qualname__.startswith("resident_gateway_launcher.")
+                    else:
+                        assert "pyspark" not in sys.modules
+                if FAIL:
+                    raise RuntimeError("owned-factory-failed")
+        except RuntimeError as exc:
+            assert FAIL and str(exc) == "owned-factory-failed"
+        assert tuple(sys.meta_path) == before
+        assert not hasattr(startup._PENDING, "active")
+        assert not hasattr(startup._ACTIVE, "context")
+        if IMPORT_SDK:
+            assert java_gateway.Popen is subprocess.Popen
+    ''').replace("IMPORT_SDK", repr(import_sdk)).replace("FAIL", repr(fail))
+    subprocess.run([sys.executable, "-c", code], check=True, timeout=30, capture_output=True)
 
 
 def wire(args, prefix=b"\0\r\n"):

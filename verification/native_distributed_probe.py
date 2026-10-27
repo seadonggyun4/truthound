@@ -82,6 +82,24 @@ def startup_watchdog(emit, delay=20):
         timer.join(timeout=1)
 
 
+def dump_stack():
+    # Enter through Python with the GIL held. The native asynchronous watchdog
+    # can race frame/thread teardown on older CPython builds.
+    faulthandler.dump_traceback(file=sys.stderr, all_threads=True)
+
+
+@contextlib.contextmanager
+def stack_watchdog(delay=20):
+    timer = threading.Timer(delay, dump_stack)
+    timer.daemon = True
+    timer.start()
+    try:
+        yield
+    finally:
+        timer.cancel()
+        timer.join(timeout=1)
+
+
 def failure_diagnostic(error):
     """Return structural SDK diagnostics without messages or full paths."""
     unavailable = False
@@ -233,6 +251,10 @@ def engine(backend, scratch, progress=None, *, guard_node_lookup=False, direct_s
         from truthound.execution.distributed.ray_engine import RayEngineConfig, RayExecutionEngine
 
         phase("ray-imported")
+        phase("ray-data-import")
+        import ray.data
+
+        phase("ray-data-imported")
 
         if ray.is_initialized():
             raise RuntimeError("The probe requires its own local Ray lifetime")
@@ -978,6 +1000,7 @@ def main():
         print("native-probe-time:" + label + ":" + str(time.monotonic() - started), flush=True)
 
     def blocked():
+        dump_stack()
         label = blocked_startup_phase(sys._current_frames().get(main_thread))
         label = label or "startup-unclassified-wait"
         print("native-probe:" + label, flush=True)
@@ -986,7 +1009,6 @@ def main():
     watchdog = threading.Timer(20, blocked)
     watchdog.daemon = True
     watchdog.start()
-    faulthandler.dump_traceback_later(20, file=sys.stderr)
     primary_error = None
     primary_diagnostic = None
     try:
@@ -1004,9 +1026,8 @@ def main():
             engine(arguments.backend, Path(directory), progress=progress, guard_node_lookup=arguments.guard_node_lookup,
                    direct_spark_launcher=arguments.direct_spark_launcher) as native,
         ):
-            faulthandler.cancel_dump_traceback_later()
             watchdog.cancel()
-            watchdog.join()
+            watchdog.join(timeout=1)
             wire.write(
                 json.dumps(
                     {
@@ -1027,11 +1048,8 @@ def main():
                 if request == {"close": True}:
                     break
                 try:
-                    faulthandler.dump_traceback_later(20, file=sys.stderr)
-                    try:
+                    with stack_watchdog():
                         value = execute(native, request["command"])
-                    finally:
-                        faulthandler.cancel_dump_traceback_later()
                 except Exception as error:
                     # Capture lazy JVM-backed diagnostics before SDK teardown.
                     primary_error = error
@@ -1046,9 +1064,8 @@ def main():
         wire.write(json.dumps({"ok": False, **diagnostic}) + "\n")
         return 1
     finally:
-        faulthandler.cancel_dump_traceback_later()
         watchdog.cancel()
-        watchdog.join()
+        watchdog.join(timeout=1)
         wire.close()
     return 0
 

@@ -11,11 +11,12 @@ import sys
 import tempfile
 import threading
 import time
-from contextlib import contextmanager
+from contextlib import ExitStack, contextmanager
 from pathlib import Path
 
 _STARTUP_LOCK = threading.RLock()
 _ACTIVE = threading.local()
+_PENDING = threading.local()
 _MAX_COMMAND_BYTES = 1024 * 1024
 _STOCK_SCRIPTS = {
     "find-spark-home.cmd": "c3b3a92bc39a6bb2a9e52b9724f0e33a3072abb4696e56d8166417e760be1fa1",
@@ -227,3 +228,68 @@ def local_gateway_launcher(*, force=False, progress=None, resident=False):
             finally:
                 processes.clear()
                 del _ACTIVE.context
+
+
+@contextmanager
+def resident_gateway_launcher():
+    """Do not import an optional Spark SDK for Ray, Polars or SQL factories."""
+    if sys.platform != "win32":
+        yield
+        return
+    import sys as runtime_sys
+
+    if runtime_sys.modules.get("pyspark") is not None:
+        with local_gateway_launcher(resident=True):
+            yield
+        return
+    if getattr(_PENDING, "active", False):
+        yield
+        return
+    owner = threading.get_ident()
+    original_finders = tuple(runtime_sys.meta_path)
+    scopes = ExitStack()
+
+    class Loader:
+        def __init__(self, original):
+            self.original = original
+
+        def create_module(self, spec):
+            create = getattr(self.original, "create_module", None)
+            return create(spec) if create is not None else None
+
+        def exec_module(self, module):
+            try:
+                self.original.exec_module(module)
+            finally:
+                module.__loader__ = self.original
+                if module.__spec__ is not None:
+                    module.__spec__.loader = self.original
+            scopes.enter_context(local_gateway_launcher(resident=True))
+            if finder in runtime_sys.meta_path:
+                runtime_sys.meta_path.remove(finder)
+
+    class Finder:
+        def find_spec(self, fullname, path=None, target=None):
+            if fullname != "pyspark" or threading.get_ident() != owner:
+                return None
+            for original in original_finders:
+                find = getattr(original, "find_spec", None)
+                if find is None:
+                    continue
+                spec = find(fullname, path, target)
+                if spec is not None:
+                    if getattr(spec.loader, "exec_module", None) is not None:
+                        spec.loader = Loader(spec.loader)
+                    return spec
+            return None
+
+    finder = Finder()
+    _PENDING.active = True
+    runtime_sys.meta_path.insert(0, finder)
+    try:
+        with scopes:
+            yield
+    finally:
+        if finder in runtime_sys.meta_path:
+            runtime_sys.meta_path.remove(finder)
+        del _PENDING.active

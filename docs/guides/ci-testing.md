@@ -342,3 +342,7 @@ Owned local Windows Spark 4.2 startup uses the installed SDK launcher JAR to gen
 The adapter verifies stock SDK script hashes and delegates modified scripts or custom process-launch options. In resident MCP workers it cancels only the SDK exit callback whose closure holds the exact process it created; the process owner performs cleanup. Failed initialization kills and reaps only those owned process handles. Ordinary SDK lifetime callbacks and borrowed gateways remain intact.
 
 The SDK emits an extensionless `bin/java` program name on Windows. The adapter validates it against the selected JDK and uses that same explicit `java.exe`; it does not search for an alternate executable.
+
+Timed 20-second probe stack snapshots enter through a Python watchdog thread holding the GIL, avoiding asynchronous native stack scans racing frame/thread teardown on older interpreters. Fatal-error capture remains enabled and the 30-second reply deadline is unchanged. CJK font packages also use the runner's reachable APT mirror route; every downloaded byte set must match the SHA-256 from the signed APT index before installation, with existing transfer limits and rendering checks retained.
+
+Resident factories activate the Spark startup scope only when they import the actual optional SDK; Ray, Polars and SQL factories do not preload PySpark. Native Ray probes import `ray.data` before starting local workers, within the same reply deadline, and record both import boundaries.
