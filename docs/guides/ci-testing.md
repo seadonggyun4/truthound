@@ -222,3 +222,7 @@ thresholds remain the same. After artifacts are recorded, the release job remove
 only its claimed temporary runtime: run ID, attempt, commit and canonical path must
 match, and aliases or changed ownership records fail closed. Other run directories
 and shared caches are retained.
+
+The build applies only Apache's [HADOOP-19977 fix](https://github.com/apache/hadoop/commit/7609530caaa260261a6302a4fb20fa6a26c65110)
+to rename the internal helper that conflicts with Windows SDK 26100. The SDK
+provenance also verifies this compatibility commit.

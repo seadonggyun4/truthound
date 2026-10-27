@@ -204,3 +204,7 @@ SDK가 없는 환경에서의 동작도 계속 확인합니다.
 작업은 자신이 소유권을 기록한 임시 런타임만 제거합니다. run ID·시도·커밋·canonical
 경로가 일치해야 하며 별칭이나 변경된 소유권 기록은 거부합니다. 다른 run의
 디렉터리와 공유 캐시는 보존합니다.
+
+Windows SDK 26100과 충돌하는 내부 함수 이름은 Apache의
+[HADOOP-19977 수정](https://github.com/apache/hadoop/commit/7609530caaa260261a6302a4fb20fa6a26c65110)만
+적용하며 해당 커밋도 SDK 출처 기록에서 검증합니다.

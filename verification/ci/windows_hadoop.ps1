@@ -6,6 +6,7 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $hadoopVersion = '3.5.0'
 $hadoopRevision = 'dbcc7cd797100e6b32cd84f85b53a5193a5f9af0'
+$hadoopPatch = '7609530caaa260261a6302a4fb20fa6a26c65110'
 $expectedFiles = @('bin/hadoop.dll', 'bin/winutils.exe', 'LICENSE.txt', 'NOTICE.txt')
 
 function Assert-NativeSdk {
@@ -16,7 +17,8 @@ function Assert-NativeSdk {
         }
     }
     $proof = Get-Content -LiteralPath $manifest -Raw | ConvertFrom-Json -AsHashtable
-    if ($proof.version -ne $hadoopVersion -or $proof.source_sha -ne $hadoopRevision) {
+    if ($proof.version -ne $hadoopVersion -or $proof.source_sha -ne $hadoopRevision -or
+        $proof.compatibility_patch_sha -ne $hadoopPatch) {
         throw 'HADOOP_SDK_SOURCE_MISMATCH'
     }
     if (@(Compare-Object @($proof.files.Keys | Sort-Object) @($expectedFiles | Sort-Object)).Count) {
@@ -76,6 +78,16 @@ if ($LASTEXITCODE) { throw 'HADOOP_SDK_CHECKOUT_FAILED' }
 if ((git -C $sdkSource rev-parse HEAD).Trim() -ne $hadoopRevision) {
     throw 'HADOOP_SDK_CHECKOUT_MISMATCH'
 }
+# Apache HADOOP-19977 renames the internal helper that collides with SDK 26100.
+git -C $sdkSource fetch --depth=2 origin $hadoopPatch
+if ($LASTEXITCODE) { throw 'HADOOP_SDK_PATCH_FETCH_FAILED' }
+$patchFile = Join-Path $sdkSource 'native-sdk-compatibility.patch'
+git -C $sdkSource show --format= $hadoopPatch | Set-Content -LiteralPath $patchFile -Encoding utf8
+if ($LASTEXITCODE) { throw 'HADOOP_SDK_PATCH_READ_FAILED' }
+git -C $sdkSource apply --check $patchFile
+if ($LASTEXITCODE) { throw 'HADOOP_SDK_PATCH_CHECK_FAILED' }
+git -C $sdkSource apply $patchFile
+if ($LASTEXITCODE) { throw 'HADOOP_SDK_PATCH_APPLY_FAILED' }
 $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio/Installer/vswhere.exe'
 $visualStudio = (& $vswhere -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath).Trim()
 if (-not $visualStudio) { throw 'HADOOP_SDK_CPP_TOOLS_MISSING' }
@@ -102,7 +114,7 @@ $hashes = @{}
 foreach ($relative in $expectedFiles) {
     $hashes[$relative] = (Get-FileHash -LiteralPath (Join-Path $SdkRoot $relative) -Algorithm SHA256).Hash.ToLowerInvariant()
 }
-@{ version = $hadoopVersion; source_sha = $hadoopRevision; toolset = $toolset;
+@{ version = $hadoopVersion; source_sha = $hadoopRevision; compatibility_patch_sha = $hadoopPatch; toolset = $toolset;
    image_os = $env:ImageOS; image_version = $env:ImageVersion; files = $hashes } |
     ConvertTo-Json -Depth 5 | Set-Content -LiteralPath (Join-Path $SdkRoot 'provenance.json') -Encoding utf8
 Assert-NativeSdk
