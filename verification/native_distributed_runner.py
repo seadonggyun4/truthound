@@ -84,7 +84,7 @@ def environment(home=None):
 
 
 class OwnedProbe:
-    def __init__(self, backend, log_path):
+    def __init__(self, backend, log_path, *, guard_node_lookup=False):
         self.log_path = Path(log_path)
         self.directory = tempfile.TemporaryDirectory(prefix="truthound-native-driver-")
         self.pool = ThreadPoolExecutor(max_workers=1)
@@ -109,6 +109,7 @@ class OwnedProbe:
                     backend,
                     "--log-path",
                     str(log_path),
+                    *(["--guard-node-lookup"] if guard_node_lookup else []),
                 ],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,

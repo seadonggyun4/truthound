@@ -317,6 +317,7 @@ MCP 런타임을 포함합니다.
 네이티브 SDK 검증은 worker 종료 전에 소유한 Spark launcher를 닫고 회수합니다.
 Ray 전역 스칼라 집계는 캐시된 네이티브 통계를 재사용하며 `clear_cache()`·`cache_results=False`로 재계산을 제어합니다.
 Ray의 개수·null 개수·평균·표본 표준편차·최솟값·최댓값 통계는 한 네이티브 집계로 계산합니다.
+Windows Ray 2.58의 소유한 로컬 시작은 기존 SDK 노드 클라이언트로 정확한 ALIVE 노드와 유효한 관리 포트를 조회하여 네이티브 접근 위반이 발생한 임시 `GlobalStateAccessor.GetNode` 경로를 우회합니다. 범위를 제한한 훅은 성공·실패 모두 복원하며, 다른 스레드·외부 클러스터는 SDK 동작을 유지하고 시작 제한 시간을 늘리지 않습니다.
 Spark에는 Java 17+와 일치하는 Python worker를 준비해야 하며 원격 클러스터에
 연결하지 않습니다.
 네이티브 Parquet checkpoint와 atomic store는 Windows에서도 쓰기 가능한 staging 파일을 동기화합니다.

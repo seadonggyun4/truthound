@@ -324,3 +324,5 @@ Owned Spark fixtures explicitly close the launched gateway's stdin and wait for 
 If the owned Windows JVM does not observe stdin EOF, the fixture synchronously runs the SDK's tree-stop operation against its still-owned launcher and verifies process exit. The stop command is joined and bounded inside the existing owner lifetime; a nonzero stop result while the launcher remains alive is a cleanup failure.
 
 The same 20-second private SDK snapshot also observes native command waits. Closed command labels and elapsed reply times distinguish initialization from aggregation latency without changing the 30-second protocol deadline.
+
+Windows Ray 2.58 owned local startup queries its existing SDK node client for the exact ALIVE node and valid manager port, avoiding the temporary `GlobalStateAccessor.GetNode` path that produced a native access violation. The scoped hooks are restored on success or failure; other threads and external clusters retain SDK behavior, and the startup deadline is not extended.

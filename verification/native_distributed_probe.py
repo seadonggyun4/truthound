@@ -173,7 +173,7 @@ def close_owned_spark_gateway(owner):
 
 
 @contextlib.contextmanager
-def engine(backend, scratch, progress=None):
+def engine(backend, scratch, progress=None, *, guard_node_lookup=False):
     def phase(label):
         print("native-probe:" + label, flush=True)
         if progress is not None:
@@ -192,17 +192,20 @@ def engine(backend, scratch, progress=None):
             raise RuntimeError("The probe requires its own local Ray lifetime")
         try:
             phase("ray-start")
-            ray.init(
-                address="local",
-                num_cpus=2,
-                num_gpus=0,
-                include_dashboard=False,
-                object_store_memory=80 * 1024**2,
-                _node_ip_address="127.0.0.1",
-                _temp_dir=str(scratch),
-                logging_level=logging.ERROR,
-                log_to_driver=False,
+            from truthound.execution.distributed._ray_startup import (
+                initialize_ray,
+                local_node_lookup,
             )
+
+            scope = local_node_lookup() if guard_node_lookup else contextlib.nullcontext(None)
+            with scope as lookup_state:
+                initialize = ray.init if guard_node_lookup else initialize_ray
+                initialize(
+                    address="local", num_cpus=2, num_gpus=0,
+                    include_dashboard=False, object_store_memory=80 * 1024**2,
+                    _node_ip_address="127.0.0.1", _temp_dir=str(scratch),
+                    logging_level=logging.ERROR, log_to_driver=False,
+                )
             phase("ray-started")
             dataset = ray.data.from_items(
                 [{"x": 1.0, "g": "a"}, {"x": None, "g": "b"}, {"x": 3.0, "g": "a"}]
@@ -211,6 +214,7 @@ def engine(backend, scratch, progress=None):
             with RayExecutionEngine(
                 dataset, RayEngineConfig(ray_address="local", num_cpus=2, num_gpus=0)
             ) as native:
+                native._verification_node_lookup_queries = lookup_state["queries"] if lookup_state else 0
                 phase("ray-ready")
                 yield native
         finally:
@@ -909,6 +913,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("backend", choices=("ray", "spark"))
     parser.add_argument("--log-path", type=Path, required=True)
+    parser.add_argument("--guard-node-lookup", action="store_true")
     arguments = parser.parse_args()
     wire = redirect_native_output(arguments.log_path)
     # Fatal SDK exits can precede the 20-second timed snapshot.
@@ -943,7 +948,7 @@ def main():
         # generated session suffix. macOS's default temp directory is too long.
         with (
             runtime_directory("th-native-") as directory,
-            engine(arguments.backend, Path(directory), progress=progress) as native,
+            engine(arguments.backend, Path(directory), progress=progress, guard_node_lookup=arguments.guard_node_lookup) as native,
         ):
             faulthandler.cancel_dump_traceback_later()
             watchdog.cancel()
@@ -954,6 +959,7 @@ def main():
                         "ok": True,
                         "ready": True,
                         "owner_pid": os.getpid(),
+                        "node_lookup_queries": native._verification_node_lookup_queries if arguments.backend == "ray" else 0,
                         "version": importlib.metadata.version(
                             "ray" if arguments.backend == "ray" else "pyspark"
                         ),

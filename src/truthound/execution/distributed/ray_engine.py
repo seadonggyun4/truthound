@@ -158,7 +158,9 @@ def _ensure_ray_initialized(config: RayEngineConfig) -> None:
         if config.object_store_memory is not None:
             init_kwargs["object_store_memory"] = config.object_store_memory
 
-        ray.init(**init_kwargs)
+        from truthound.execution.distributed._ray_startup import initialize_ray
+
+        initialize_ray(**init_kwargs)
 
 
 # =============================================================================

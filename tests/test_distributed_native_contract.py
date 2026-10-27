@@ -11,6 +11,19 @@ from truthound.mcp.tables import decode
 pytestmark = pytest.mark.contract
 
 
+def test_real_owned_ray_startup_uses_registered_alive_node_before_native_work(tmp_path):
+    runtime = OwnedProbe("ray", tmp_path / "ray-node-lookup.log", guard_node_lookup=True)
+    try:
+        ready = runtime.receive()
+        assert ready["ready"] is True and ready["node_lookup_queries"] >= 1
+        result = decode(runtime.call("basics"))
+        assert result["rows"] == 3 and result["stats"]["count"] == 2
+        assert result["stats"]["mean"] == 2
+    finally:
+        runtime.close()
+    assert runtime.process.returncode == 0
+
+
 def test_native_probe_utf8_log_does_not_corrupt_its_separate_protocol(tmp_path):
     import os
     import subprocess

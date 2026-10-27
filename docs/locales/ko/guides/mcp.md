@@ -2957,3 +2957,5 @@ truthound-mcp bundle --profile core --wheel dist/truthound-3.3.0-py3-none-any.wh
 설치만으로 데이터 접근을 허용하지 않습니다. 설치된 UV 프로젝트에서 `python -m truthound.mcp.consent configure --allow-dir <승인한-디렉터리> --confirm`을 실행합니다. `--workspace-dir`, `--control-dir`, `--allow-sensitive-results`는 각각 별도 운영자 승인 항목입니다. 전체 설정은 `~/.truthound-core/permissions.json`의 이전 권한을 대체하며 `python -m truthound.mcp.consent revoke`로 모두 철회합니다. 변경 시 세션을 종료하고 보유 핸들을 무효화하므로 재연결해야 합니다. 개별 실행 계획 승인은 여전히 MCP 외부의 신뢰된 운영자 명령으로 수행합니다.
 
 Core MCPB는 현재 카탈로그와 데이터·작업공간·승인 저장소·민감 결과 설정을 제공합니다. 선택 디렉터리를 비우면 접근을 허용하지 않으며 민감 결과 공개 기본값은 false입니다. 데스크톱 설정 변경 후 재시작합니다. 기본 번들은 요약 도구 3개를 유지합니다. Core 지원은 부분적이며 공식 디렉터리 승인은 없습니다.
+
+Windows Ray 2.58의 소유한 로컬 시작은 기존 SDK 노드 클라이언트로 정확한 ALIVE 노드와 유효한 관리 포트를 조회하여 네이티브 접근 위반이 발생한 임시 `GlobalStateAccessor.GetNode` 경로를 우회합니다. 범위를 제한한 훅은 성공·실패 모두 복원하며, 다른 스레드·외부 클러스터는 SDK 동작을 유지하고 시작 제한 시간을 늘리지 않습니다.
