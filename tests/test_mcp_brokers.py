@@ -23,7 +23,12 @@ def approved(runtime, operation, **request):
     store.approve(pending["data"]["plan_id"])
     store.close()
     result = invoke(adapter, operation, **request)
-    assert result["execution_status"] == "succeeded", result
+    diagnostics = []
+    if result["execution_status"] != "succeeded" and runtime[2].exists():
+        prefix = "native-fixture-diagnostic:"
+        diagnostics = [json.loads(line[len(prefix):]) for line in runtime[2].read_text().splitlines()
+                       if line.startswith(prefix)]
+    assert result["execution_status"] == "succeeded", (result, diagnostics)
     return result
 
 

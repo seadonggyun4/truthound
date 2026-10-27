@@ -1101,6 +1101,10 @@ the host user's OS privileges; the application policy is not an OS sandbox.
 On Windows virtual environments, workers launch the underlying interpreter
 directly while preserving the virtual environment. Shutdown waits for that
 interpreter, not an intermediate launcher, before removing its working directory.
+Resident native workers resolve `HOME` and `USERPROFILE` to their owned temporary
+workspace, including on Windows. Default native caches are therefore temporary;
+durable state requires explicit operator-pinned slots or factory configuration.
+The operator's actual home directory and credentials are not inherited.
 
 ML result artifacts contain `encoding`, `model_algorithm`, `model_revision` and
 the tagged native `result`. This records the model state used without lossy

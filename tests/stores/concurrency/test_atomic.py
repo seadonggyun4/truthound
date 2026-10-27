@@ -32,8 +32,17 @@ def lock_manager() -> FileLockManager:
 class TestAtomicFileWriter:
     """Tests for AtomicFileWriter."""
 
-    def test_basic_write(self, tmp_path: Path, lock_manager: FileLockManager) -> None:
+    def test_basic_write(self, tmp_path: Path, lock_manager: FileLockManager, monkeypatch) -> None:
         """Test basic atomic write."""
+        import os
+
+        native_sync = os.fsync
+
+        def writable_sync(descriptor):
+            os.write(descriptor, b"")  # Windows CRT requires a writable fd.
+            native_sync(descriptor)
+
+        monkeypatch.setattr(os, "fsync", writable_sync)
         target = tmp_path / "test.txt"
         content = b"Hello, World!"
 

@@ -147,6 +147,14 @@ scale은 최소 논리 CPU 4개, 전체 RAM 16GB, 가용 RAM 12GB, 여유 디스
 별도 native worker도 부모와 동일한 테스트 함수를 import하게 합니다.
 Ray 런타임 패키지에도 빌드에 필요한 공개 JSON 리소스를 명시적으로 허용해
 포함하며, 비공개 JSON 제외 규칙은 유지합니다.
+native checkpoint와 atomic store는 Windows에서도 쓰기 가능한 descriptor로 staging
+파일을 동기화합니다. 수동 실행 Windows native 회귀 workflow는 Python
+3.11–3.13에서 실제 엔진과 설치형 operator 수명주기를 검사해 플랫폼 실패를
+진단하며 전체 릴리스 검증을 대체하지 않습니다. 실패 진단에는 예외 타입과
+구조적 stack frame만 포함하며 native 원문과 전체 파일 경로를 제외합니다.
+수집 단계에는 native PDF import 라이브러리를 설치합니다. 실행 레인은 실제
+PDF 렌더링 검사용 Poppler·CJK font를 계속 설치합니다. APT 다운로드에는
+제한된 timeout·retry를 적용하며 다운로드 실패는 그대로 job 실패입니다.
 faulthandler의 soft timeout은 stack만 출력하며,
 별도의 pytest-timeout thread deadline이 프로세스를 강제 종료합니다.
 강제 종료로 최종 JSON/JUnit이 없을 수 있으므로 부분 증거는 보존하되 gate는 실패합니다.

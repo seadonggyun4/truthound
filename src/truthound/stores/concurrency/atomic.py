@@ -251,7 +251,8 @@ class AtomicFileWriter:
 
     def _sync_file(self, path: Path) -> None:
         """Sync file to disk."""
-        fd = os.open(str(path), os.O_RDONLY)
+        # Windows' CRT commit requires write access to the staged file.
+        fd = os.open(str(path), os.O_RDWR)
         try:
             os.fsync(fd)
         finally:

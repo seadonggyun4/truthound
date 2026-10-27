@@ -123,6 +123,15 @@ The manifest runner adds the checkout root to its Python import path so spawned
 native workers can import the same test callables as the parent process.
 Ray runtime packaging also retains each explicitly allowlisted public JSON
 resource required by the package build; private JSON remains excluded.
+Native checkpoint publication and atomic stores flush their staged files using writable
+descriptors, including on Windows. The manually dispatched Windows native
+regression workflow runs the real engines and installed operator lifecycles on
+Python 3.11–3.13 to diagnose platform failures; it does not replace full release
+verification. Failure diagnostics contain exception types and structural stack
+frames, without native messages or full filesystem paths.
+Collection installs the native PDF import libraries. Execution lanes retain
+Poppler and CJK fonts for actual PDF rendering checks. APT acquisition uses
+bounded timeouts and retries; download failures still fail the job.
 Pytest faulthandler emits stacks at the soft threshold without killing the test.
 The separate pytest-timeout thread deadline terminates a stuck pytest process;
 such termination can prevent final JSON/JUnit cleanup. Partial evidence remains,

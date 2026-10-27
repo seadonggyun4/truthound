@@ -16,7 +16,7 @@ from pathlib import Path
 import psutil
 
 
-def environment():
+def environment(home=None):
     result = {
         key: value
         for key, value in os.environ.items()
@@ -56,6 +56,8 @@ def environment():
         )
         if selected:
             result["JAVA_HOME"] = selected
+    if home is not None:
+        result.update(HOME=str(home), USERPROFILE=str(home))
     return result
 
 
@@ -81,7 +83,7 @@ class OwnedProbe:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
                 cwd=self.directory.name,
-                env=environment(),
+                env=environment(self.directory.name),
             )
             self.created = psutil.Process(self.process.pid).create_time()
         except BaseException:
@@ -122,7 +124,7 @@ class OwnedProbe:
             raise RuntimeError("Native runtime did not return a bounded protocol reply")
         value = json.loads(line)
         if value.get("ok") is not True:
-            raise RuntimeError("Native runtime failed: " + str(value.get("error_type")))
+            raise RuntimeError("Native runtime failed: " + json.dumps(value, sort_keys=True))
         return value
 
     def call(self, command):

@@ -354,10 +354,22 @@ def test_native_dask_configured_checkpoint_and_reopen_do_not_reexecute_source(tm
     assert sorted(calls) == [1, 2]
 
 
-def test_native_dask_checkpoint_rejects_partial_and_corrupt_snapshot(tmp_path):
+def test_native_dask_checkpoint_rejects_partial_and_corrupt_snapshot(tmp_path, monkeypatch):
+    import os
+    import stat
     from pathlib import Path
 
     from truthound.execution.distributed.dask_engine import DaskEngineConfig
+
+    native_sync = os.fsync
+
+    def writable_file_sync(descriptor):
+        if stat.S_ISREG(os.fstat(descriptor).st_mode):
+            # Enforce Windows CRT's writable-fd requirement on every platform.
+            os.write(descriptor, b"")
+        native_sync(descriptor)
+
+    monkeypatch.setattr(os, "fsync", writable_file_sync)
 
     source = dd.from_pandas(pd.DataFrame({"x": [1, 2, 3]}), npartitions=2)
     engine = DaskExecutionEngine(

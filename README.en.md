@@ -296,6 +296,7 @@ base installation without the SDK. The `all` extra includes the MCP runtime.
 Native distributed contracts also run actual local Ray and Spark SDKs from the
 `dev` extra. Provision Java 17+ for Spark and select the matching Python worker;
 these contracts do not connect to remote clusters.
+Native Parquet checkpoints and atomic stores flush writable staged files on Windows as well.
 
 ```bash
 uv run --frozen --extra dev python -m pytest -q

@@ -40,6 +40,9 @@ class OwnedModelProcess:
             }
         }
         environment.update(POLARS_MAX_THREADS="1", OMP_NUM_THREADS="1", OPENBLAS_NUM_THREADS="1")
+        # Native libraries may resolve a home directory during import. Give
+        # them this owner's private workspace, never the operator's real home.
+        environment.update(HOME=self.directory.name, USERPROFILE=self.directory.name)
         executable = sys.executable
         if sys.platform == "win32" and executable != sys._base_executable:
             # Match multiprocessing's Windows venv launch: own the interpreter,

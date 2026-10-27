@@ -66,7 +66,9 @@ def publish(directory, backend, writer):
     writer(data)
     files = _inventory(data)
     for relative in files:
-        with (data / relative).open("rb") as stream:
+        # Windows' CRT commit requires a writable descriptor. These are the
+        # files just created by our native writer in the unpublished snapshot.
+        with (data / relative).open("r+b") as stream:
             os.fsync(stream.fileno())
     document = json.dumps(
         {"version": 1, "backend": backend, "files": files}, sort_keys=True

@@ -305,6 +305,7 @@ MCP 런타임을 포함합니다.
 네이티브 분산 계약도 `dev` extra의 실제 로컬 Ray·Spark SDK를 실행합니다.
 Spark에는 Java 17+와 일치하는 Python worker를 준비해야 하며 원격 클러스터에
 연결하지 않습니다.
+네이티브 Parquet checkpoint와 atomic store는 Windows에서도 쓰기 가능한 staging 파일을 동기화합니다.
 
 ```bash
 uv run --frozen --extra dev python -m pytest -q

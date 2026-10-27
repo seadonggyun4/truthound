@@ -689,7 +689,15 @@ def main():
                 wire.write(json.dumps({"ok": True, "value": encode(value)}, allow_nan=False) + "\n")
     except Exception as error:
         traceback.print_exc()
-        wire.write(json.dumps({"ok": False, "error_type": type(error).__name__}) + "\n")
+        # Only structural diagnostics cross the verification protocol. Native
+        # messages and full paths remain in the private owned log.
+        frames = [
+            {"file": Path(frame.filename).name, "function": frame.name, "line": frame.lineno}
+            for frame in traceback.extract_tb(error.__traceback__)
+        ]
+        wire.write(json.dumps({"ok": False, "error_type": type(error).__name__, "frames": frames,
+                               "errno": getattr(error, "errno", None),
+                               "winerror": getattr(error, "winerror", None)}) + "\n")
         return 1
     finally:
         wire.close()

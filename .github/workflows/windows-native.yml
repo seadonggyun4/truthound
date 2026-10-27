@@ -1,0 +1,45 @@
+name: Windows native regressions
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  native:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.11', '3.12', '3.13']
+        scope: [engines, operators]
+    env:
+      NATIVE_SCOPE: ${{ matrix.scope }}
+      POLARS_MAX_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      OPENBLAS_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --python ${{ matrix.python }} --frozen --extra dev --extra mcp
+      - name: Run actual native engine and installed operator regressions
+        run: |
+          if ($env:NATIVE_SCOPE -eq 'engines') {
+            $targets = @('tests/test_dask_native_contract.py', 'tests/test_distributed_native_contract.py', 'tests/test_mcp_distributed_engines.py', 'tests/stores/concurrency/test_atomic.py')
+          } else {
+            $targets = @('tests/test_mcp_profiler_services.py', 'tests/test_mcp_store_reconciliation.py', 'tests/test_mcp_store_concurrent.py', 'tests/test_mcp_dashboards.py')
+          }
+          uv run --python ${{ matrix.python }} --frozen --extra dev --extra mcp python -m pytest -q @targets -p no:cacheprovider --junitxml test-artifacts/windows-native.xml
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: truthound-windows-native-${{ matrix.python }}-${{ matrix.scope }}
+          path: test-artifacts/windows-native.xml
+          if-no-files-found: error
+          retention-days: 7

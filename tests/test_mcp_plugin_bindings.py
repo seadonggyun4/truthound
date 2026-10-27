@@ -1162,6 +1162,7 @@ def runtime(tmp_path, monkeypatch):
         "        finally: note('streaming-store-close')\n"
         '@asynccontextmanager\n'
         'async def profiler_factory():\n'
+        "    assert Path.home().resolve() == Path.cwd().resolve(), 'Native home must be the owned workspace'\n"
         "    if MARKER.with_name('pdf-native-mode').exists():\n"
         "        import os, sys\n"
         "        if sys.platform == 'darwin' and Path('/opt/homebrew/lib/libgobject-2.0.dylib').exists():\n"
@@ -1266,6 +1267,17 @@ def runtime(tmp_path, monkeypatch):
         "    finally:\n"
         "        if 'distributed' in runtime.profilers: distributed.__exit__(None,None,None)\n"
         "        note('profiler-close')\n"
+        '@asynccontextmanager\n'
+        'async def diagnosed_native(factory):\n'
+        '    import json, traceback\n'
+        '    try:\n'
+        '        async with factory() as runtime:\n'
+        "            note('native-fixture-diagnostic:'+json.dumps({'factory':factory.__name__,'phase':'entered'}))\n"
+        '            yield runtime\n'
+        '    except Exception as error:\n'
+        "        frames = [{'file':Path(f.filename).name,'function':f.name,'line':f.lineno} for f in traceback.extract_tb(error.__traceback__)]\n"
+        "        note('native-fixture-diagnostic:'+json.dumps({'factory':factory.__name__,'error_type':type(error).__name__,'frames':frames,'errno':getattr(error,'errno',None),'winerror':getattr(error,'winerror',None)}))\n"
+        '        raise\n'
         "class FixturePlugin(Plugin):\n"
         "    @property\n"
         "    def info(self): return PluginInfo(name='mcp-operator-fixture', version='1.0.0', plugin_type=PluginType.CUSTOM)\n"
@@ -1307,8 +1319,8 @@ def runtime(tmp_path, monkeypatch):
         "        manager.register_capability('rate-limit-factory', rate_limit_factory)\n"
         "        manager.register_capability('tenant-factory', tenant_factory)\n"
         "        manager.register_capability('execution-factory', execution_factory)\n"
-        "        manager.register_capability('store-factory', store_factory)\n"
-        "        manager.register_capability('profiler-factory', profiler_factory)\n"
+        "        manager.register_capability('store-factory', lambda: diagnosed_native(store_factory))\n"
+        "        manager.register_capability('profiler-factory', lambda: diagnosed_native(profiler_factory))\n"
         "        from .ml_monitor_fixture import factory as ml_factory\n"
         "        manager.register_capability('ml-factory', ml_factory)\n"
         "        from .store_utility_fixture import factory as store_utility_factory\n"
