@@ -972,6 +972,7 @@ def execute(native, command):
 
 def redirect_native_output(path):
     wire = os.fdopen(os.dup(sys.stdout.fileno()), "w", buffering=1, encoding="utf-8", newline="\n")
+    os.set_inheritable(wire.fileno(), False)
     descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_BINARY", 0), 0o600)
     try:
         os.dup2(descriptor, 1)

@@ -20,6 +20,14 @@ import atexit, os, subprocess, sys
 from truthound.mcp.native_stdio import native_worker_wire
 sys.stdout.reconfigure(encoding="cp1252")
 sys.stderr.reconfigure(encoding="cp1252")
+# Windows standard-stream duplication returns an inheritable descriptor.
+original_dup = os.dup
+def standard_stream_dup(fd):
+    descriptor = original_dup(fd)
+    if fd in (0, 1, 2):
+        os.set_inheritable(descriptor, True)
+    return descriptor
+os.dup = standard_stream_dup
 wire = native_worker_wire()
 assert not os.get_inheritable(wire.fileno())
 print("synthetic-private-unicode-\u2713")

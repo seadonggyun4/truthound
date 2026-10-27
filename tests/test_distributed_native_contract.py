@@ -50,6 +50,7 @@ def test_native_probe_utf8_log_does_not_corrupt_its_separate_protocol(tmp_path):
         "m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m); "
         "assert sys.stdout.encoding.lower()=='cp1252'; "
         "wire=m.redirect_native_output(sys.argv[2]); "
+        "assert not __import__('os').get_inheritable(wire.fileno()); "
         "assert sys.platform!='win32' or __import__('_winapi').GetStdHandle(-11)==__import__('msvcrt').get_osfhandle(1); "
         "assert sys.platform!='win32' or __import__('_winapi').GetStdHandle(-12)==__import__('msvcrt').get_osfhandle(2); "
         "print('native progress \\u2714',flush=True); "

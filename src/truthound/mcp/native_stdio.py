@@ -10,6 +10,8 @@ def native_worker_wire():
     sys.stderr.flush()
     wire = os.fdopen(os.dup(sys.stdout.fileno()), "w", buffering=1, encoding="utf-8", newline="\n")
     try:
+        # Windows standard-stream dup() is an inheritable exception to PEP 446.
+        os.set_inheritable(wire.fileno(), False)
         descriptor = os.open(os.devnull, os.O_WRONLY | getattr(os, "O_BINARY", 0))
         try:
             os.dup2(descriptor, 1)
