@@ -18,6 +18,12 @@ across the same four contract shards. Other PR files retain their shared fixture
 lifecycle within one shard. Every algorithm case still runs once; the 35-minute
 contract deadline, assertions and test inputs are unchanged.
 
+Native Ray statistics regression counts actual Dataset aggregation calls and
+checks cached repeats, invalidation, disabled caching, explicit `ddof`, empty and
+all-null columns, NaN and literal column names. It retains the original reply
+deadline. Local installed SDK proofs run after packaging/launcher checks finish
+so those checks do not compete for JVM and Ray startup resources.
+
 Malformed native SDK replies retain only byte count, empty/newline flags and
 elapsed wait time in diagnostics. Reply contents stay private; EOF, truncation,
 oversized replies and the existing 30-second deadline remain failures.

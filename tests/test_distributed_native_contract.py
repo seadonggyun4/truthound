@@ -633,10 +633,32 @@ def test_ray_default_aggregations_reuse_stats_but_preserve_invalidation_and_cust
     try:
         assert runtime.receive()["ready"] is True
         result = decode(runtime.call("aggregation_cache_contract"))
+        assert result["stats_native_aggregations"] == 1
         assert result["means"] == [2.0, 2.0] and result["sums"] == [4.0, 4.0]
         assert result["cached_calls"] == {"mean": 0, "sum": 1, "std": 0}
         assert result["population"] == {"population": 1.0} and result["custom_std_calls"] == 1
         assert result["invalidated"] == 2.0 and result["invalidated_calls"] == 1
         assert result["disabled"] == [2.0, 2.0] and result["disabled_calls"] == 2
+    finally:
+        runtime.close()
+
+
+def test_ray_batched_statistics_preserve_empty_null_nan_and_literal_column(tmp_path):
+    runtime = OwnedProbe("ray", tmp_path / "ray-statistics-shapes.log")
+    try:
+        assert runtime.receive()["ready"] is True
+        native_nan_mean = decode(runtime.call("statistics_nan_mean"))
+        native_nan_std = decode(runtime.call("statistics_nan_std"))
+        for command, count, nulls, mean, std, minimum, maximum in [
+            ("statistics_null", 0, 2, None, None, None, None),
+            ("statistics_empty", 0, 0, None, None, None, None),
+            ("statistics_single", 1, 0, 7.0, "nan", 7.0, 7.0),
+            ("statistics_nan", 2, 1, native_nan_mean, native_nan_std, 1.0, 1.0),
+            ("statistics_literal", 2, 1, 2.0, pytest.approx(2**0.5), 1.0, 3.0),
+        ]:
+            assert decode(runtime.call(command)) == {
+                "count": count, "null_count": nulls, "mean": mean,
+                "std": std, "min": minimum, "max": maximum,
+            }
     finally:
         runtime.close()

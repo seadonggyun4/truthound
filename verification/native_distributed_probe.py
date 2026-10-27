@@ -274,6 +274,27 @@ def engine(backend, scratch, progress=None):
 
 
 def execute(native, command):
+    if command in {"statistics_null", "statistics_empty", "statistics_single", "statistics_nan", "statistics_literal", "statistics_nan_mean", "statistics_nan_std"}:
+        import math
+
+        import pyarrow as pa
+        import ray
+
+        rows = {
+            "statistics_null": [None, None], "statistics_empty": [],
+            "statistics_single": [7.0], "statistics_nan": [1.0, float("nan"), None],
+            "statistics_nan_mean": [1.0, float("nan"), None],
+            "statistics_nan_std": [1.0, float("nan"), None],
+            "statistics_literal": [1.0, None, 3.0],
+        }[command]
+        data = ray.data.from_arrow(pa.table({"*": pa.array(rows, type=pa.float64())}))
+        if command in {"statistics_nan_mean", "statistics_nan_std"}:
+            value = data.mean("*") if command.endswith("mean") else data.std("*")
+            return "nan" if isinstance(value, float) and math.isnan(value) else value
+        with type(native)(data, native.config) as owner:
+            stats = owner.get_stats("*")
+        return {key: "nan" if isinstance(value, float) and math.isnan(value) else value
+                for key, value in stats.items()}
     if command == "spark_gateway_owner":
         from pyspark import SparkContext
 
@@ -589,8 +610,20 @@ def execute(native, command):
 
         from truthound.execution.distributed.protocols import AggregationSpec
 
-        native.get_stats("x")
         data = native.dataset
+        original_aggregate = data.aggregate
+        stats_calls = []
+
+        def observed_stats(*aggregates, **kwargs):
+            stats_calls.append(len(aggregates))
+            return original_aggregate(*aggregates, **kwargs)
+
+        data.aggregate = observed_stats
+        try:
+            native.get_stats("x")
+            native.get_stats("x")
+        finally:
+            data.aggregate = original_aggregate
         original = {name: getattr(data, name) for name in ("mean", "sum", "std")}
         calls = {name: 0 for name in original}
 
@@ -616,6 +649,7 @@ def execute(native, command):
             with type(native)(data, replace(native.config, cache_results=False)) as uncached:
                 disabled = [uncached.aggregate_column("x", AggregationType.MEAN) for _ in range(2)]
             return {"means": means, "sums": sums, "cached_calls": cached_calls,
+                    "stats_native_aggregations": len(stats_calls),
                     "population": population, "custom_std_calls": custom_calls,
                     "invalidated": invalidated, "invalidated_calls": invalidated_calls,
                     "disabled": disabled, "disabled_calls": calls["mean"] - before}

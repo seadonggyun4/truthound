@@ -307,7 +307,9 @@ and cleanup checks run as ordinary contract tests. Release checks also verify a 
 base installation without the SDK. The `all` extra includes the MCP runtime.
 Native distributed contracts also run actual local Ray and Spark SDKs from the
 `dev` extra. Native SDK verification closes and reaps its owned Spark launcher before the worker exits.
-Ray global scalar reductions reuse cached native statistics; `clear_cache()` and `cache_results=False` control recomputation. Provision Java 17+ for Spark and select the matching Python worker;
+Ray global scalar reductions reuse cached native statistics; `clear_cache()` and `cache_results=False` control recomputation.
+Ray computes count, null count, mean, sample standard deviation and extrema in one native statistics aggregation.
+Provision Java 17+ for Spark and select the matching Python worker;
 these contracts do not connect to remote clusters.
 Native Parquet checkpoints and atomic stores flush writable staged files on Windows as well.
 Ray checkpoints create the staging destination and explicitly select the local filesystem.

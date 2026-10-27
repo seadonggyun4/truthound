@@ -501,3 +501,14 @@ def test_cached_nullable_stats_preserve_none_wildcard_count_and_result_isolation
         observed = engine._aggregate_distributed(spec)
         observed["range"]["min"] = 999
         assert engine._aggregate_distributed(spec) == {"range": {"min": None, "max": None}}
+
+
+@pytest.mark.contract
+def test_missing_nonempty_native_statistics_cannot_be_cached_as_zero(mock_ray_available, mock_ray_dataset):
+    from truthound.execution.distributed.ray_engine import RayExecutionEngine
+
+    mock_ray_dataset.aggregate.return_value = None
+    with RayExecutionEngine(mock_ray_dataset) as engine:
+        with pytest.raises(RuntimeError, match="missing for a non-empty dataset"):
+            engine.get_stats("value")
+        assert engine._get_cached(engine._cache_key("get_stats", "value")) is None

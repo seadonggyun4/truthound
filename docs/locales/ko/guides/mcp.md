@@ -2569,6 +2569,10 @@ Pandas 엔진은 전달한 변경 가능한 프레임을 참조합니다. 프레
 `clear_cache`는 Ray·Spark 행 수 캐시도 무효화하며 `cache_results=False`는
 Core 결과 캐시를 우회합니다. Ray는 연산별 명시적 매개변수가 없는 전역
 COUNT/SUM/MEAN/MIN/MAX/STD/VAR/NULL_COUNT 집계에서 정확한 열 통계 캐시와 기본 결과를 재사용하며 MIN/MAX 쌍도 공유합니다.
+Ray `get_stats()`는 행/유효 값 개수·평균·표본 표준편차(`ddof=1`)·최솟값·최댓값을
+한 네이티브 복합 집계로 계산하며 all-null·타입이 있는 빈 열도 처리합니다.
+NaN 동작은 네이티브 SDK를 따릅니다. 비어 있지 않은 데이터의 집계 결과가 누락되면
+0 통계로 캐시하지 않고 실패합니다.
 `clear_cache()`는 두 캐시를 모두 무효화합니다. `ddof=0` 같은 명시적 매개변수,
 그룹/필터 계획·FIRST/LAST·고유 값 수와 제한된 median 변환은 고유 실행을 유지합니다. `COUNT(*)`는
 행 수를 유지하며 캐시된 null 결과도 null입니다. 네이티브 dataset persist는 이 캐시와 별개입니다.

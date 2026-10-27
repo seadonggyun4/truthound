@@ -31,6 +31,8 @@ COMMAND_LABELS = frozenset(
         "aggregation_cache_contract",
         "ray_configuration",
         "spark_gateway_owner",
+        "statistics_null", "statistics_empty", "statistics_single", "statistics_nan", "statistics_literal",
+        "statistics_nan_mean", "statistics_nan_std",
     }
 )
 

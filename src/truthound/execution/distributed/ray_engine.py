@@ -960,14 +960,27 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
         if cached is not None:
             return cached
 
-        # Compute stats
+        from ray.data.aggregate import Count, Max, Mean, Min, Std
+
+        # One native reduction keeps all fields on the same dataset execution.
+        # Count() includes rows while the column count excludes native nulls.
+        values = self._ds.aggregate(
+            Count(alias_name="_rows"),
+            Count(column, ignore_nulls=True, alias_name="count"),
+            Mean(column, alias_name="mean"),
+            Std(column, ddof=1, alias_name="std"),
+            Min(column, alias_name="min"),
+            Max(column, alias_name="max"),
+        )
+        if values is None:
+            if self._ds.count() != 0:
+                raise RuntimeError("Native Ray statistics missing for a non-empty dataset")
+            values = {"_rows": 0, "count": 0, "mean": None, "std": None, "min": None, "max": None}
+        count = 0 if values["count"] is None else values["count"]
         stats = {
-            "count": self._count_non_null(column),
-            "null_count": self._count_nulls_column(column),
-            "mean": self._ds.mean(column),
-            "std": self._ds.std(column),
-            "min": self._ds.min(column),
-            "max": self._ds.max(column),
+            "count": count,
+            "null_count": values["_rows"] - count,
+            **{field: values[field] for field in ("mean", "std", "min", "max")},
         }
 
         self._set_cached(cache_key, stats)

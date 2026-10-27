@@ -2862,6 +2862,11 @@ Pandas engines borrow the supplied mutable frame. After changing it, call
 `clear_cache()` to invalidate the materialized Polars conversion as well as
 computed results. `cache_results=False` converts the current frame on every call.
 
+Ray `get_stats()` computes row/valid counts, mean, sample standard deviation
+(`ddof=1`) and extrema with one native multi-aggregation, including all-null and
+typed empty columns. NaN behavior follows the native SDK. A missing reduction
+result for a non-empty dataset fails instead of being cached as zero statistics.
+
 `clear_cache` also invalidates native Ray/Spark row-count memoization, and
 `cache_results=False` bypasses Core result caching. Ray global COUNT/SUM/MEAN/MIN/MAX/STD/VAR/NULL_COUNT reductions
 without explicit per-operation parameters reuse exact cached column statistics
