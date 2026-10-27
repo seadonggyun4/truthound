@@ -241,3 +241,9 @@ The three-row native SDK fixtures use two Ray CPU slots and Spark's C1 JVM
 compiler tier to bound cold-start overhead on CI runners. They retain actual
 partitions, actors, checkpoint I/O and the same 30-second protocol deadline;
 production engine defaults and benchmark JVM settings are unchanged.
+
+The CI-only `nightly-local` group also provisions aiokafka, aiobotocore and
+Testcontainers for approved disposable Kafka/LocalStack tests. The focused
+`Disposable broker integration` workflow requires every selected test to run
+without skips, uses only dummy AWS keys, and rejects non-loopback Python socket
+connections. It never enables live-account warehouse, cloud or paid-AI gates.

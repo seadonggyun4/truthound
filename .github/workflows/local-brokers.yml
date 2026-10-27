@@ -1,0 +1,28 @@
+name: Disposable broker integration
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  brokers:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      POLARS_MAX_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      OPENBLAS_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --frozen --extra dev --extra mcp --group nightly-local
+      - name: Execute actual disposable Kafka and LocalStack with no skipped tests
+        run: uv run --frozen --extra dev --extra mcp --group nightly-local python verification/broker_ci_gate.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: truthound-disposable-broker-results
+          path: test-artifacts/brokers.xml
+          if-no-files-found: error

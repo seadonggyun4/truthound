@@ -223,3 +223,8 @@ Redis Streams 중복 제거는 통합 작업에 명시된 폐기 가능한 Redis
 단계를 사용해 CI의 초기 준비 비용을 제한합니다. 실제 partition·actor·체크포인트
 I/O와 기존 30초 프로토콜 제한은 유지합니다. 제품 엔진 기본값과 벤치마크 JVM
 설정은 바꾸지 않습니다.
+
+CI 전용 `nightly-local` 그룹은 승인된 임시 Kafka·LocalStack 테스트용 aiokafka·
+aiobotocore·Testcontainers도 설치합니다. `Disposable broker integration` 검증은
+선택된 테스트의 건너뜀을 거부하고, 더미 AWS 키와 loopback 소켓만 사용합니다.
+실제 계정이 필요한 웨어하우스·클라우드·유료 AI 검증은 활성화하지 않습니다.
