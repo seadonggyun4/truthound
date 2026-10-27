@@ -38,6 +38,14 @@ async def verify(runtime, image, report):
         )
         report["native_values"] = value == (b"abc", {"x": 3})
         assert report["native_values"]
+        if hasattr(os, "getuid"):
+            identity = await engine.execute(
+                engine.create_sandbox("native-ipc-owner", policy),
+                eval,
+                "(__import__('os').getuid(), __import__('os').stat('/workspace').st_mode & 0o777)",
+            )
+            assert identity == (os.getuid(), 0o700), identity
+            report["private_ipc_owner_preserved"] = True
         rejected = False
         try:
             value = await engine.execute(

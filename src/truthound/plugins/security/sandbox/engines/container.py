@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import math
+import os
 import pickle
 import shutil
 import tempfile
@@ -399,6 +400,11 @@ class ContainerSandboxEngine:
             "-w",
             "/workspace",
         ]
+
+        # With all capabilities dropped, container root cannot bypass the
+        # host owner's private IPC mode on native Linux bind mounts.
+        if hasattr(os, "getuid") and hasattr(os, "getgid"):
+            cmd.extend(["--user", f"{os.getuid()}:{os.getgid()}"])
 
         if limits.max_memory_mb:
             cmd.append(f"--memory={limits.max_memory_mb}m")

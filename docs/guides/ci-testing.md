@@ -7,8 +7,8 @@ Contract tests retain four shards and fault/e2e; the three lint targets share on
 job without removing checks. Documentation retains full/public strict builds,
 Korean checks and public-surface exclusions.
 
-MCP semantic coverage retains all 40 mandatory files in four disjoint Linux
-Python 3.11 shards. No algorithm case is removed. The source/execution aggregate
+MCP semantic coverage runs every mandatory file listed in
+`verification/mcp_ci_gate.py` in eight disjoint Linux Python 3.11 shards. No algorithm case is removed. The source/execution aggregate
 still rejects missing, duplicate, failed or skipped tests. Platform boundary
 contracts cover subprocess cleanup, permissions, UTF-8, resources, persistence
 and approval on other selected runtimes. Boundary results cannot substitute for
@@ -17,11 +17,9 @@ the full partition. Both retain their original 15-minute job deadlines.
 The canonical wheel, sdist and two MCPBs are built once. Every installation job
 verifies SHA256SUMS and installs those exact files; the embedded wheel must match
 the canonical wheel byte-for-byte. All seven fresh installation/launcher checks
-remain. Development uses Linux 3.11/3.13 and Windows/macOS 3.11 (14 total MCP jobs).
-Weekly and release verification use all nine supported OS/Python combinations
-(26 jobs). Platform-independent semantic cases are not repeated nine times.
-Windows boundary tests use two disjoint shards per Python version; all other
-boundary jobs retain one partition. Installation first aggregates the matching
+remain. Development uses Linux 3.11/3.13 and Windows/macOS 3.11.
+Weekly and release verification use all nine supported OS/Python combinations. Platform-independent semantic cases are not repeated nine times.
+Every additional OS/Python boundary runtime uses four disjoint shards. Installation first aggregates the matching
 partitions and rejects missing, duplicated, failed or wrong-scope evidence.
 This changes neither test coverage nor the 15-minute deadline and does not
 turn a failing test into a passing one.
@@ -43,6 +41,10 @@ before publication, without rebuilding or repeating the full source test suite.
 The post-publication verifier reads the release execution receipts instead of
 re-running the entire MCP suite under an obsolete short diagnostic deadline.
 Diagnostic and live-account workflows remain manual, not development gates.
+
+The `dev` extra includes the MCP SDK so shared installed-service fixtures collect
+and execute in the ordinary quality lanes. The `all` extra also enables MCP.
+Fresh base-package installation checks still verify operation without the SDK.
 
 ## Exact full partition
 
@@ -117,6 +119,8 @@ availability still gates execution. Preflight is not an OOM guarantee.
 Every test emits its node ID at start. Partial NDJSON records phase outcomes and
 durations as they arrive; JUnit, final execution manifests, environment versions,
 resource observations and the collection plan are retained for seven days.
+The manifest runner adds the checkout root to its Python import path so spawned
+native workers can import the same test callables as the parent process.
 Pytest faulthandler emits stacks at the soft threshold without killing the test.
 The separate pytest-timeout thread deadline terminates a stuck pytest process;
 such termination can prevent final JSON/JUnit cleanup. Partial evidence remains,
@@ -188,3 +192,10 @@ or an experimentally established speedup. References consulted include the
 and [SRE chapter 22 on bounded workloads/resources](https://sre.google/sre-book/addressing-cascading-failures/).
 The repository's existing PR manifest runner and Depot's backend coverage/timeout
 patterns informed the implementation; Depot workflows are not copied as-is.
+
+Benchmark CLI jobs install the `benchmarks` runtime extra for both source and
+released-wheel measurements. Workloads, assertions, fixed-runner identity and
+thresholds remain the same. After artifacts are recorded, the release job removes
+only its claimed temporary runtime: run ID, attempt, commit and canonical path must
+match, and aliases or changed ownership records fail closed. Other run directories
+and shared caches are retained.

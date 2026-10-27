@@ -21,7 +21,7 @@ jobs:
       - uses: astral-sh/setup-uv@v4
 
       - name: Install project with benchmark extras
-        run: uv pip install --system ".[dev,benchmarks]"
+        run: uv pip install --system ".[benchmarks]"
 
       - name: Run local GX parity suite
         run: python -m truthound.cli benchmark parity --suite nightly-core --frameworks both --backend local --strict --output benchmark-artifacts/nightly-core.json
@@ -35,6 +35,12 @@ jobs:
       - name: Record separate SQLite runtime profile without replacing gate measurements
         if: always()
         run: python verification/benchmark_runtime_diagnostic.py --output benchmark-artifacts/sqlite-runtime-diagnostic.json
+
+      - name: Record separate local schema profiles without replacing gate measurements
+        if: always()
+        run: |
+          python verification/benchmark_runtime_diagnostic.py --workload local-mixed-core-suite --output benchmark-artifacts/local-mixed-runtime-diagnostic.json
+          python verification/benchmark_runtime_diagnostic.py --workload local-schema --output benchmark-artifacts/local-schema-runtime-diagnostic.json
 
       - name: Upload nightly benchmark artifacts
         if: always()

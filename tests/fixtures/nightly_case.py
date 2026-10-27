@@ -11,6 +11,17 @@ def test_boundary():
     assert 2 + 2 == 4
 
 
+def native_value():
+    return 42
+
+
+def test_spawned_callable():
+    from truthound.profiler.process_timeout import ProcessExecutionStrategy
+
+    result = ProcessExecutionStrategy().execute(native_value, timeout_seconds=5)
+    assert result.success and result.value == 42
+
+
 def test_required_failure():
     raise AssertionError("synthetic required failure")
 

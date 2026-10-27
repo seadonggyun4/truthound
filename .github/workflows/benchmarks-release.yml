@@ -90,6 +90,7 @@ jobs:
           set -euo pipefail
           test ! -e "$RELEASE_VENV"
           uv venv --python 3.11 "$RELEASE_VENV"
+          "$RELEASE_VENV/bin/python" -I verification/ci/benchmark_runtime.py claim
 
       - name: Validate explicit release identity before checking out its ref
         if: github.event_name == 'workflow_dispatch' && inputs.target == 'released-wheel'
@@ -122,7 +123,7 @@ jobs:
 
       - name: Install project with release benchmark constraints
         if: github.event_name != 'workflow_dispatch' || inputs.target != 'released-wheel'
-        run: uv pip install --python "$RELEASE_VENV/bin/python" -c benchmarks/constraints/release.txt ".[dev,benchmarks]"
+        run: uv pip install --python "$RELEASE_VENV/bin/python" -c benchmarks/constraints/release.txt ".[benchmarks]"
 
       - name: Verify tag and download the exact published wheel
         if: github.event_name == 'workflow_dispatch' && inputs.target == 'released-wheel'
@@ -161,3 +162,11 @@ jobs:
         with:
           name: truthound-benchmark-release-artifacts
           path: benchmark-artifacts
+
+      - name: Remove only this run's claimed temporary runtime
+        if: always()
+        shell: bash
+        run: |
+          if [[ -n "${RELEASE_VENV:-}" && -x "$RELEASE_VENV/bin/python" ]]; then
+            "$RELEASE_VENV/bin/python" -I verification/ci/benchmark_runtime.py cleanup
+          fi

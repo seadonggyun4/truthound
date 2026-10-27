@@ -168,6 +168,12 @@ class _FileSystemCodec:
 
     def _deserialize(self, content):
         self._guard()
+        data = self._decode_record(content)
+        self._guard()
+        return data
+
+    def _decode_record(self, content):
+        """Decode captured bytes; explicit locked recovery authorizes its own IO."""
         if self._config.use_compression:
             content = get_compressor(self._config.compression).decompress(content)
         if self._config.serialization_format == "yaml":
@@ -177,7 +183,6 @@ class _FileSystemCodec:
         validate_values(data)
         if not isinstance(data, dict):
             raise ValueError("Stored record must be a mapping")
-        self._guard()
         return data
 
     def _publish(self, path, content):

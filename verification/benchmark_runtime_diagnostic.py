@@ -1,4 +1,4 @@
-"""Profile the exact synthetic SQLite workload; not a benchmark acceptance gate."""
+"""Profile exact synthetic workloads separately from benchmark acceptance gates."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 
-def diagnose():
+def diagnose(workload_id="sqlite-unique"):
     # Set before importing Polars, matching the parity worker's native budget.
     for name in (
         "POLARS_MAX_THREADS",
@@ -33,7 +33,7 @@ def diagnose():
         raise RuntimeError("Diagnostic must start in a fresh single-thread-budget interpreter")
 
     workload = load_workload(
-        Path(__file__).resolve().parents[1] / "benchmarks/workloads/sqlite-unique.json"
+        Path(__file__).resolve().parents[1] / "benchmarks/workloads" / (workload_id + ".json")
     )
     profiler = cProfile.Profile()
     with tempfile.TemporaryDirectory(prefix="truthound-sql-diagnostic-") as directory:
@@ -80,8 +80,12 @@ def diagnose():
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--workload", default="sqlite-unique",
+        choices=("sqlite-unique", "local-mixed-core-suite", "local-schema"),
+    )
     args = parser.parse_args()
-    report = diagnose()
+    report = diagnose(args.workload)
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
     print(

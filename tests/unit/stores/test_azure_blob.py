@@ -23,9 +23,11 @@ class TestAzureBlobConfig:
 
     def test_default_config(self) -> None:
         """Test default configuration."""
-        config = AzureBlobConfig()
+        with pytest.raises(ValueError, match="container"):
+            AzureBlobConfig()
+        config = AzureBlobConfig(container="test")
 
-        assert config.container == ""
+        assert config.container == "test"
         assert config.prefix == "truthound/"
         assert config.use_compression is True
 
@@ -47,6 +49,7 @@ class TestAzureBlobConfig:
     def test_get_full_prefix(self) -> None:
         """Test full prefix generation."""
         config = AzureBlobConfig(
+            container="test",
             prefix="validations/",
             namespace="production",
         )
@@ -58,6 +61,7 @@ class TestAzureBlobConfig:
     def test_get_full_prefix_no_namespace(self) -> None:
         """Test full prefix without namespace."""
         config = AzureBlobConfig(
+            container="test",
             prefix="validations/",
             namespace="",
         )
@@ -95,6 +99,11 @@ class TestAzureBlobStoreWithAzure:
 class TestAzureBlobStoreMocked:
     """Tests for AzureBlobStore with mocked Azure SDK."""
 
+    @pytest.fixture(autouse=True)
+    def initialized_local_codec(self, monkeypatch):
+        # Construction sets lifecycle guards but never opens an Azure client.
+        monkeypatch.setattr("truthound.stores.backends.azure_blob.HAS_AZURE", True)
+
     @pytest.fixture
     def mock_azure(self) -> MagicMock:
         """Create mock Azure SDK components."""
@@ -130,11 +139,10 @@ class TestAzureBlobStoreMocked:
 
     def test_serialize_with_compression(self) -> None:
         """Test data serialization with compression."""
-        store = AzureBlobStore.__new__(AzureBlobStore)
-        store._config = AzureBlobConfig(
+        store = AzureBlobStore(config=AzureBlobConfig(
             container="test",
             use_compression=True,
-        )
+        ))
 
         data = {"key": "value", "number": 123}
         serialized = store._serialize(data)
@@ -147,11 +155,10 @@ class TestAzureBlobStoreMocked:
 
     def test_serialize_without_compression(self) -> None:
         """Test data serialization without compression."""
-        store = AzureBlobStore.__new__(AzureBlobStore)
-        store._config = AzureBlobConfig(
+        store = AzureBlobStore(config=AzureBlobConfig(
             container="test",
             use_compression=False,
-        )
+        ))
 
         data = {"key": "value", "number": 123}
         serialized = store._serialize(data)
@@ -163,11 +170,10 @@ class TestAzureBlobStoreMocked:
 
     def test_deserialize_with_compression(self) -> None:
         """Test data deserialization with compression."""
-        store = AzureBlobStore.__new__(AzureBlobStore)
-        store._config = AzureBlobConfig(
+        store = AzureBlobStore(config=AzureBlobConfig(
             container="test",
             use_compression=True,
-        )
+        ))
 
         data = {"key": "value", "number": 123}
         compressed = gzip.compress(json.dumps(data).encode("utf-8"))
@@ -178,11 +184,10 @@ class TestAzureBlobStoreMocked:
 
     def test_deserialize_without_compression(self) -> None:
         """Test data deserialization without compression."""
-        store = AzureBlobStore.__new__(AzureBlobStore)
-        store._config = AzureBlobConfig(
+        store = AzureBlobStore(config=AzureBlobConfig(
             container="test",
             use_compression=False,
-        )
+        ))
 
         data = {"key": "value", "number": 123}
         content = json.dumps(data).encode("utf-8")
@@ -193,13 +198,12 @@ class TestAzureBlobStoreMocked:
 
     def test_get_blob_name_with_compression(self) -> None:
         """Test blob name generation with compression."""
-        store = AzureBlobStore.__new__(AzureBlobStore)
-        store._config = AzureBlobConfig(
+        store = AzureBlobStore(config=AzureBlobConfig(
             container="test",
             prefix="validations/",
             namespace="prod",
             use_compression=True,
-        )
+        ))
 
         blob_name = store._get_blob_name("run-123")
 
@@ -207,13 +211,12 @@ class TestAzureBlobStoreMocked:
 
     def test_get_blob_name_without_compression(self) -> None:
         """Test blob name generation without compression."""
-        store = AzureBlobStore.__new__(AzureBlobStore)
-        store._config = AzureBlobConfig(
+        store = AzureBlobStore(config=AzureBlobConfig(
             container="test",
             prefix="validations/",
             namespace="prod",
             use_compression=False,
-        )
+        ))
 
         blob_name = store._get_blob_name("run-123")
 

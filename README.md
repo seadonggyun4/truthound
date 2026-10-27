@@ -298,9 +298,10 @@ Lineage sample 메타데이터는 명시적 활성화 시에만 행·바이트 �
 
 ## 개발 (Development)
 
-개발 대시보드 실행 계약은 Node/npm과 실제 로컬 서버를 사용합니다. MCP 계약을 실행할
-때는 `mcp` extra도 포함합니다. 해당 의존성을 설치한 환경에서 대시보드 production
-빌드·정리 검사는 일반 계약 테스트로 실행합니다.
+개발 대시보드 실행 계약은 Node/npm과 실제 로컬 서버를 사용합니다. `dev` extra는
+통합 계약용 MCP SDK를 포함하며 대시보드 production 빌드·정리도 일반 계약으로
+검증합니다. 릴리스 검사는 SDK가 없는 새 기본 설치도 확인합니다. `all` extra도
+MCP 런타임을 포함합니다.
 네이티브 분산 계약도 `dev` extra의 실제 로컬 Ray·Spark SDK를 실행합니다.
 Spark에는 Java 17+와 일치하는 Python worker를 준비해야 하며 원격 클러스터에
 연결하지 않습니다.

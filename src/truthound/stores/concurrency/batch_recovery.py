@@ -170,7 +170,7 @@ def reconcile(store, identity, resolution, expected_fingerprint):
                 item = (
                     None
                     if absent or not source.exists()
-                    else ValidationResult.from_dict(store._deserialize(source.read_bytes()))
+                    else ValidationResult.from_dict(store._decode_record(source.read_bytes()))
                 )
                 if item is not None and store._get_file_path(item.id).name != row["name"]:
                     raise StoreReadError("Recovery record identity mismatch")

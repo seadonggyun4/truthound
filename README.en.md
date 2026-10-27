@@ -290,8 +290,9 @@ The root package intentionally exposes a small API.
 ## Development
 
 The development dashboard runtime contracts use Node/npm and actual local servers.
-Include the `mcp` extra when running MCP contracts; dashboard production-build and
-cleanup checks are ordinary contract tests when these dependencies are installed.
+The `dev` extra includes the MCP SDK for integration contracts; dashboard production-build
+and cleanup checks run as ordinary contract tests. Release checks also verify a fresh
+base installation without the SDK. The `all` extra includes the MCP runtime.
 Native distributed contracts also run actual local Ray and Spark SDKs from the
 `dev` extra. Provision Java 17+ for Spark and select the matching Python worker;
 these contracts do not connect to remote clusters.

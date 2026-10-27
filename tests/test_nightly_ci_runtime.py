@@ -24,6 +24,7 @@ SPEC.loader.exec_module(nightly)
     "scenario",
     [
         "normal",
+        "spawn",
         "failure",
         "timeout",
         "wrong-sha",
@@ -37,6 +38,7 @@ def test_real_manifest_executor_preserves_failure_timeout_and_identity(tmp_path,
     sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     name = "test_required_failure" if scenario == "failure" else "test_boundary"
     name = {
+        "spawn": "test_spawned_callable",
         "subtests": "test_subtests",
         "subtest-failure": "test_subtest_failure",
         "subtest-skip": "test_subtest_skip",
@@ -79,7 +81,7 @@ def test_real_manifest_executor_preserves_failure_timeout_and_identity(tmp_path,
         text=True,
         timeout=20,
     )
-    if scenario == "normal":
+    if scenario in {"normal", "spawn"}:
         assert result.returncode == 0, result.stderr
         assert (
             nightly.verify_lane(
@@ -88,7 +90,8 @@ def test_real_manifest_executor_preserves_failure_timeout_and_identity(tmp_path,
             == 1
         )
         # Stack emission is diagnostic, not evidence of an enforced deadline.
-        assert "Timeout" in result.stderr
+        if scenario == "normal":
+            assert "Timeout" in result.stderr
     elif scenario == "subtests":
         import copy
 

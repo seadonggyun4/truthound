@@ -916,3 +916,8 @@ A discovered key, including an entry-point name, must match the instantiated plu
 If container creation loses its acknowledgement, the engine reconciles only its generated name and ownership label before removing the immutable container ID. A runtime lookup failure remains an unknown outcome; pending ownership is retained for cleanup retry. This reconciliation lasts for the engine lifetime and is not a durable recovery journal after parent-process loss.
 
 Host grants must be existing canonical absolute regular-file/directory paths; symbolic-link aliases, reserved `/workspace`/`proc`/`sys`/`dev` destinations, the host root, and ambiguous mount delimiters are rejected. Paths appear at the same absolute location in the container. Read grants are mounted read-only; explicit writable grants require `allow_file_write=True` and override a read grant at the same path. No host directory is mounted implicitly beyond the engine-owned IPC workspace. Image files remain visible: these grants are not a deny-all allowlist for the image filesystem. Host mutation racing mount creation is outside this trusted-local-callable contract; use a local, operator-selected runtime and immutable input snapshots when required.
+
+On POSIX hosts, container workers use the host caller UID/GID. The owned IPC directory
+keeps mode `0700`; dropped capabilities do not let a different UID bypass that
+permission on native Linux bind mounts. Images and explicit host grants must support
+that caller identity. Windows hosts retain the runtime image identity.

@@ -223,7 +223,7 @@ def test_workflow_preserves_source_lane_and_has_explicit_wheel_lane():
     source = path.read_text()
     assert "verify_release_package.py prepare" in source
     assert "verify_release_package.py run" in source
-    assert '".[dev,benchmarks]"' in source
+    assert '".[benchmarks]"' in source
     assert "persist-credentials: false" in source
     assert "VERIFY_RELEASE_COMMIT: ${{ inputs.release_commit }}" in source
     assert "VERIFY_WHEEL_SHA256: ${{ inputs.wheel_sha256 }}" in source

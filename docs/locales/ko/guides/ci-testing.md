@@ -30,7 +30,8 @@ Elasticsearch 로그 fixture는 기존 100행을 유지하고 datetime 연산으
 fault/e2e는 유지하고 lint 3개 대상은 한 job에서 모두 검사합니다. 문서는
 full/public strict 빌드·한국어·공개 제외 검사를 유지합니다.
 
-MCP 전체 40개 필수 테스트 파일은 Linux Python 3.11에서 4개 분할로 실행합니다.
+MCP는 `verification/mcp_ci_gate.py`에 명시한 모든 필수 테스트 파일을
+Linux Python 3.11에서 8개 비중복 분할로 실행합니다.
 알고리즘 사례는 제거하지 않습니다. 소스·실행 증명 집계는 누락·중복·실패·skip을
 거부합니다. 다른 환경에서는 프로세스 정리·권한·UTF-8·자원·영속성·승인 경계
 검증을 수행하며 이를 전체 의미 동등성 검증으로 대체하지 않습니다. 기존 job의
@@ -39,14 +40,13 @@ MCP 전체 40개 필수 테스트 파일은 Linux Python 3.11에서 4개 분할�
 wheel·sdist·MCPB 2종은 한 번 빌드합니다. 각 설치 job은 SHA256SUMS를 검사하고
 동일 파일을 설치하며 MCPB 내장 wheel도 원본과 바이트 단위로 같아야 합니다.
 기존 7개 새 환경 설치·실행기 검증은 모두 유지합니다. 개발 환경은 Linux
-3.11/3.13과 Windows/macOS 3.11로 MCP job 총 14개입니다. 주간·릴리스에서는
-지원 OS/Python 9개 조합을 모두 검증하여 총 26개 job을 실행합니다. OS 독립적
+3.11/3.13과 Windows/macOS 3.11입니다. 주간·릴리스에서는
+지원 OS/Python 9개 조합을 모두 검증합니다. OS 독립적
 의미 검증 전체를 9번 반복하지 않습니다. 공통 소스·테스트·설정·의존성 변경은
 보수적으로 MCP 영향에 포함합니다. 이 구성이 전체 Core 기능 동등성을 의미하지는
 않습니다.
 
-Windows 경계 테스트는 Python 버전마다 2개 비중복 분할로 실행하며 나머지 경계
-검증은 단일 분할입니다. 설치 전에 같은 환경의 분할을 집계하여 누락·중복·실패와
+추가 OS·Python 환경의 경계 테스트는 각각 4개 비중복 분할로 실행합니다. 설치 전에 같은 환경의 분할을 집계하여 누락·중복·실패와
 잘못된 검증 범위의 증거를 거부합니다. 테스트 범위와 15분 제한은 바뀌지 않으며
 분할만으로 실패한 테스트를 통과한 것으로 처리하지 않습니다.
 
@@ -143,7 +143,9 @@ scale은 최소 논리 CPU 4개, 전체 RAM 16GB, 가용 RAM 12GB, 여유 디스
 
 테스트 시작 시 node ID를 출력하고 부분 NDJSON에 단계별 결과·시간을 즉시
 기록합니다. JUnit, 최종 실행 manifest, 의존성 버전, 자원 관측과 수집 계획은
-7일 보관합니다. faulthandler의 soft timeout은 stack만 출력하며,
+7일 보관합니다. manifest runner는 checkout root를 Python import 경로에 넣어
+별도 native worker도 부모와 동일한 테스트 함수를 import하게 합니다.
+faulthandler의 soft timeout은 stack만 출력하며,
 별도의 pytest-timeout thread deadline이 프로세스를 강제 종료합니다.
 강제 종료로 최종 JSON/JUnit이 없을 수 있으므로 부분 증거는 보존하되 gate는 실패합니다.
 
@@ -169,3 +171,14 @@ pytest가 수집 중 평가한 source skip/skipif만 optional 예상 skip으로 
 확인했습니다. 기존 PR manifest runner와 Depot의 backend coverage·timeout 패턴을
 참고했지만 그대로 복사하지 않았습니다. 제한된 공학적 조사이며 체계적 문헌고찰이나
 속도 개선 실험 완료를 주장하지 않습니다.
+
+
+`dev` extra는 공유 설치형 서비스 fixture가 일반 quality 레인에서도 수집·실행되도록
+MCP SDK를 포함합니다. `all` extra도 MCP를 활성화합니다. 새 기본 패키지 설치 검사는
+SDK가 없는 환경에서의 동작도 계속 확인합니다.
+
+벤치마크 CLI 작업은 소스와 게시된 wheel 측정에 `benchmarks` 런타임 extra를 사용합니다.
+워크로드·판정·고정 runner 식별자·기준값은 유지합니다. 산출물을 기록한 뒤 릴리스
+작업은 자신이 소유권을 기록한 임시 런타임만 제거합니다. run ID·시도·커밋·canonical
+경로가 일치해야 하며 별칭이나 변경된 소유권 기록은 거부합니다. 다른 run의
+디렉터리와 공유 캐시는 보존합니다.

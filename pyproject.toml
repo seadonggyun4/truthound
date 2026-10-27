@@ -219,6 +219,8 @@ perf = [
 
 # Full installation with all optional dependencies
 all = [
+    "mcp>=1.30.0,<2.0.0",
+    "anyio>=4.6,<5.0",
     "graphviz>=0.21,<1.0.0",
     "plotly>=5.24.0,<7.0.0",
     "filelock>=3.16.0,<4.0.0",
@@ -230,7 +232,7 @@ all = [
     "lz4>=4.3.0,<5.0.0",
     "python-snappy>=0.7.0,<1.0.0",
     "shapely>=2.0.0,<3.0.0",
-    "pydantic>=2.0.0,<3.0.0",
+    "pydantic>=2.11.0,<3.0.0",
     "openai>=1.35.0,<2.0.0",
     "jinja2>=3.0.0",
     "pyarrow>=14.0.0",
@@ -270,6 +272,9 @@ all = [
 
 # Development dependencies
 dev = [
+    # Shared native MCP fixtures must collect and execute in the normal dev lane.
+    "mcp>=1.30.0,<2.0.0",
+    "anyio>=4.6,<5.0",
     "graphviz>=0.21,<1.0.0",
     "weasyprint>=60.0",
     "plotly>=5.24.0,<7.0.0",
@@ -303,7 +308,7 @@ dev = [
     "cryptography>=41.0.0,<51.0.0",
     # Lifecycle contracts observe real child PIDs and reaping, not mocked tasks.
     "psutil>=5.9.0,<8.0.0",
-    "pydantic>=2.0.0,<3.0.0",
+    "pydantic>=2.11.0,<3.0.0",
     "openai>=1.35.0,<2.0.0",
     "pytest>=9.0.0,<10.0.0",
     "pytest-timeout>=2.4.0,<3.0.0",

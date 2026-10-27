@@ -44,6 +44,9 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     args.junitxml.parent.mkdir(parents=True, exist_ok=True)
+    # Direct script execution otherwise exposes only verification/ci on sys.path.
+    # Spawned native workers must import the same test callables as the parent.
+    sys.path.insert(0, str(Path(__file__).resolve().parents[2]))
     files = {target.split("::", 1)[0] for target in targets}
     print(
         f"Running pytest manifest {args.manifest} with {len(targets)} targets "

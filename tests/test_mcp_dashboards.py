@@ -152,7 +152,12 @@ finally:
         owner.kill()
         owner.wait(timeout=5)
         deadline = time.monotonic() + 5
-        while child.is_running() and child.status() != psutil.STATUS_ZOMBIE and time.monotonic() < deadline:
+        while time.monotonic() < deadline:
+            exited = not child.is_running() or child.status() == psutil.STATUS_ZOMBIE
+            with socket.socket() as probe:
+                port_closed = probe.connect_ex(('127.0.0.1', port)) != 0
+            if exited and port_closed:
+                break
             time.sleep(0.01)
         assert not child.is_running() or child.status() == psutil.STATUS_ZOMBIE
         with socket.socket() as probe:
