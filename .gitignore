@@ -86,6 +86,8 @@ Thumbs.db
 *.json
 !src/truthound/schema_audit/schemas/document-v1.json
 !src/truthound/mcp/validator_contracts.json
+!src/truthound/ai/data/prompt_lexicon.ko.json
+!src/truthound/ai/data/validation_dsl_coverage.v1.json
 !pyproject.toml
 !tests/fixtures/
 !tests/fixtures/**

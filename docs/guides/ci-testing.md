@@ -121,6 +121,8 @@ durations as they arrive; JUnit, final execution manifests, environment versions
 resource observations and the collection plan are retained for seven days.
 The manifest runner adds the checkout root to its Python import path so spawned
 native workers can import the same test callables as the parent process.
+Ray runtime packaging also retains each explicitly allowlisted public JSON
+resource required by the package build; private JSON remains excluded.
 Pytest faulthandler emits stacks at the soft threshold without killing the test.
 The separate pytest-timeout thread deadline terminates a stuck pytest process;
 such termination can prevent final JSON/JUnit cleanup. Partial evidence remains,

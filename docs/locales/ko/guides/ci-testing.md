@@ -145,6 +145,8 @@ scale은 최소 논리 CPU 4개, 전체 RAM 16GB, 가용 RAM 12GB, 여유 디스
 기록합니다. JUnit, 최종 실행 manifest, 의존성 버전, 자원 관측과 수집 계획은
 7일 보관합니다. manifest runner는 checkout root를 Python import 경로에 넣어
 별도 native worker도 부모와 동일한 테스트 함수를 import하게 합니다.
+Ray 런타임 패키지에도 빌드에 필요한 공개 JSON 리소스를 명시적으로 허용해
+포함하며, 비공개 JSON 제외 규칙은 유지합니다.
 faulthandler의 soft timeout은 stack만 출력하며,
 별도의 pytest-timeout thread deadline이 프로세스를 강제 종료합니다.
 강제 종료로 최종 JSON/JUnit이 없을 수 있으므로 부분 증거는 보존하되 gate는 실패합니다.
