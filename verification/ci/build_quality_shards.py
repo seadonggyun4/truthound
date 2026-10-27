@@ -11,6 +11,10 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
+# Function-scoped cases already execute independently in the MCP matrix.
+# Share this reviewed exception with full Nightly; other files stay whole.
+INDEPENDENT_CONTRACT_FILES = frozenset({"tests/test_mcp_algorithm_parity.py"})
+
 
 def _extract_nodeids(path: Path) -> list[str]:
     nodeids: list[str] = []
@@ -193,12 +197,21 @@ def main(argv: list[str] | None = None) -> int:
         contract_shards = _build_contract_shards(
             contract_nodeids,
             shard_count=args.contract_shards,
+            independent_files=INDEPENDENT_CONTRACT_FILES,
         )
         fault_e2e_files = sorted(_group_by_file(fault_e2e_nodeids))
 
         args.output_dir.mkdir(parents=True, exist_ok=True)
         for shard in contract_shards:
-            _write_manifest(args.output_dir / f"contract-{shard.shard_id}.txt", shard.files)
+            targets = []
+            for file_path in shard.files:
+                if file_path in INDEPENDENT_CONTRACT_FILES:
+                    targets.extend(
+                        node for node in shard.nodeids if node.split("::", 1)[0] == file_path
+                    )
+                else:
+                    targets.append(file_path)
+            _write_manifest(args.output_dir / f"contract-{shard.shard_id}.txt", targets)
         _write_manifest(args.output_dir / "fault-e2e.txt", fault_e2e_files)
 
         summary = _build_summary(

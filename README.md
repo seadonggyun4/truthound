@@ -305,6 +305,7 @@ Lineage sample 메타데이터는 명시적 활성화 시에만 행·바이트 �
 
 문서 배포는 `deployment-manifest.json`에 공개 소스 커밋과 검증 페이지 해시를 기록합니다.
 소스 배포본은 생성된 `dist/` 검증 출력을 제외합니다.
+PR과 full Nightly는 독립 실행 가능한 알고리즘 사례를 같은 contract 4개 분할에 분산하며 범위·제한 시간은 유지합니다.
 
 개발 대시보드 실행 계약은 Node/npm과 실제 로컬 서버를 사용합니다. `dev` extra는
 통합 계약용 MCP SDK를 포함하며 대시보드 production 빌드·정리도 일반 계약으로

@@ -30,6 +30,11 @@ Elasticsearch 로그 fixture는 기존 100행을 유지하고 datetime 연산으
 fault/e2e는 유지하고 lint 3개 대상은 한 job에서 모두 검사합니다. 문서는
 full/public strict 빌드·한국어·공개 제외 검사를 유지합니다.
 
+PR과 full Nightly는 독립 실행이 검토된 `test_mcp_algorithm_parity.py` 사례에
+같은 분할 규칙을 적용합니다. 수집한 정확한 node ID를 기존 contract 4개 분할에
+분산하며, 다른 PR 파일은 공유 fixture 수명주기를 한 분할 안에서 유지합니다.
+모든 알고리즘 사례는 정확히 한 번 실행하며 35분 제한·검증문·입력은 유지합니다.
+
 MCP는 `verification/mcp_ci_gate.py`에 명시한 모든 필수 테스트 파일을
 Linux Python 3.11에서 8개 비중복 분할로 실행합니다.
 알고리즘 사례는 제거하지 않습니다. 소스·실행 증명 집계는 누락·중복·실패·skip을

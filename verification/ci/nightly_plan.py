@@ -18,13 +18,10 @@ import xml.etree.ElementTree as ET
 from pathlib import Path
 from typing import Any
 
-from build_quality_shards import _build_contract_shards
+from build_quality_shards import INDEPENDENT_CONTRACT_FILES, _build_contract_shards
 
 FULL = "contract or fault or integration or soak or stress or scale_100m or e2e"
 FLAGS = ["--run-integration", "--run-expensive", "--run-soak"]
-# These cases already run independently in the mandatory MCP OS/Python matrix.
-# Keep their native algorithms, rows, assertions and function-scoped state intact.
-INDEPENDENT_CONTRACT_FILES = frozenset({"tests/test_mcp_algorithm_parity.py"})
 BUDGETS = {
     "contract": (35, 120),
     "fault-e2e": (25, 180),

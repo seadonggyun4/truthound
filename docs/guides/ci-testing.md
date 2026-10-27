@@ -7,6 +7,12 @@ Contract tests retain four shards and fault/e2e; the three lint targets share on
 job without removing checks. Documentation retains full/public strict builds,
 Korean checks and public-surface exclusions.
 
+PR and full Nightly share the reviewed exception for independently executable
+`test_mcp_algorithm_parity.py` cases: exact collected node IDs are distributed
+across the same four contract shards. Other PR files retain their shared fixture
+lifecycle within one shard. Every algorithm case still runs once; the 35-minute
+contract deadline, assertions and test inputs are unchanged.
+
 MCP semantic coverage runs every mandatory file listed in
 `verification/mcp_ci_gate.py` in eight disjoint Linux Python 3.11 shards. No algorithm case is removed. The source/execution aggregate
 still rejects missing, duplicate, failed or skipped tests. Platform boundary

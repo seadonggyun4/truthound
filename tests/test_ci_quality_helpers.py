@@ -629,3 +629,28 @@ def test_dev_and_streaming_extras_cover_quality_gate_dependencies():
     assert any(dep.startswith("pyarrow") for dep in streaming)
     assert any(dep.startswith("pyarrow") for dep in dev)
     assert any(dep.startswith("pyarrow") for dep in all_extra)
+
+
+@pytest.mark.contract
+def test_pr_manifests_split_only_reviewed_independent_algorithm_cases(tmp_path: Path):
+    module = _load_module("build_quality_shards.py")
+    parity_file = "tests/test_mcp_algorithm_parity.py"
+    parity_nodes = [f"{parity_file}::test_native_parity[case-{i:02d}]" for i in range(12)]
+    ordinary_nodes = [f"tests/test_owner_{i}.py::test_lifecycle" for i in range(4)]
+    contract = tmp_path / "contract.txt"
+    fault = tmp_path / "fault.txt"
+    contract.write_text("\n".join(parity_nodes + ordinary_nodes) + "\n")
+    fault.write_text("tests/test_fault.py::test_failure\n")
+    output = tmp_path / "manifests"
+    assert module.main([
+        "--contract-nodeids", str(contract), "--fault-nodeids", str(fault),
+        "--output-dir", str(output), "--summary-out", str(tmp_path / "summary.json"),
+        "--contract-shards", "4",
+    ]) == 0
+    manifests = [p.read_text().splitlines() for p in sorted(output.glob("contract-*.txt"))]
+    assigned = [node for entries in manifests for node in entries if node.startswith(parity_file)]
+    assert sorted(assigned) == sorted(parity_nodes)
+    assert all(sum(node.startswith(parity_file) for node in entries) == 3 for entries in manifests)
+    # Files with shared fixtures remain whole and appear exactly once.
+    ordinary = [node for entries in manifests for node in entries if not node.startswith(parity_file)]
+    assert sorted(ordinary) == sorted(node.split("::")[0] for node in ordinary_nodes)
