@@ -75,7 +75,8 @@ class CancellablePipeReader:
                         import msvcrt
 
                         try:
-                            available = _winapi.PeekNamedPipe(msvcrt.get_osfhandle(fd), 0)[1]
+                            # A zero-size peek returns (available, left), without a buffer.
+                            available = _winapi.PeekNamedPipe(msvcrt.get_osfhandle(fd), 0)[0]
                         except OSError as error:
                             if error.winerror not in (109, 232):
                                 raise

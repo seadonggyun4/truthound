@@ -22,18 +22,29 @@ def test_pipe_reader_preserves_frames_and_enforces_partial_frame_limit():
     read_fd, write_fd = os.pipe()
     with os.fdopen(read_fd, "rb") as stream:
         reader = CancellablePipeReader(stream)
+        done = threading.Event()
+        replies, errors = [], []
+
+        def receive_frames():
+            try:
+                for limit in (10, 10, 16, 16, 16):
+                    replies.append(reader.readline(limit))
+            except BaseException as error:
+                errors.append(error)
+            finally:
+                done.set()
+
+        os.write(write_fd, b'first\nsecond\n' + b'x' * 17)
+        os.close(write_fd)
+        thread = threading.Thread(target=receive_frames, daemon=True)
+        thread.start()
         try:
-            os.write(write_fd, b'first\nsecond\n' + b'x' * 17)
-            assert reader.readline(10) == b'first\n'
-            assert reader.readline(10) == b'second\n'
-            assert reader.readline(16) == b'x' * 16
-            os.close(write_fd)
-            write_fd = None
-            assert reader.readline(16) == b'x'
-            assert reader.readline(16) == b''
+            assert done.wait(2), "Available bytes must be read even on a byte-mode Windows pipe"
+            assert not errors
+            assert replies == [b'first\n', b'second\n', b'x' * 16, b'x', b'']
         finally:
-            if write_fd is not None:
-                os.close(write_fd)
+            reader.stop()
+            thread.join(timeout=2)
 
 
 def test_worker_timeout_finishes_while_another_writer_keeps_pipe_open(monkeypatch):

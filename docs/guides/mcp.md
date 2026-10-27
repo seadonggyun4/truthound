@@ -3268,3 +3268,5 @@ Native worker processes keep their JSON protocol on a separate, non-inheritable 
 The protocol descriptor inheritance flag is explicitly cleared, including Windows standard-stream duplicates.
 
 Owned resident reply readers poll pipe availability and stop on cancellation without waiting for another writer to close. The existing reply-size and timeout limits still apply.
+
+On Windows byte-mode pipes the zero-size availability check uses the byte count, including when the writer stays open.
