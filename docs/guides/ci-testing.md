@@ -255,3 +255,5 @@ scope explicitly; strict pytest warning/error policy remains enabled. Native pro
 EOF diagnostics retain only closed phase names and the process exit code.
 
 Disposable broker async fixtures and their consuming tests use the same class event loop, so retained SDK clients never cross loops. Verbose case names preserve the last active test when a hard timeout terminates the process.
+
+Kafka fixture consumers explicitly replay earliest offsets and use isolated topics for independent scenarios. Batch production queues native producer sends with each message's routing and serializers intact, then observes every acknowledgement, including delivery failures.

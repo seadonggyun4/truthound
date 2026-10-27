@@ -57,11 +57,12 @@ def serve(
 def bundle(
     output: Annotated[Path, typer.Option("--output")],
     wheel: Annotated[Path | None, typer.Option("--wheel")] = None,
+    profile: Annotated[str, typer.Option("--profile")] = "summary",
 ) -> None:
     """Build a version-matched Claude Desktop bundle."""
     from truthound.mcp.bundle import build_bundle
 
-    typer.echo(str(build_bundle(output, wheel=wheel)))
+    typer.echo(str(build_bundle(output, wheel=wheel, profile=profile)))
 
 
 def register_commands(parent_app: typer.Typer) -> None:

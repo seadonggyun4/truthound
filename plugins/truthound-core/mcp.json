@@ -1,0 +1,18 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "truthound-core": {
+      "type": "stdio",
+      "command": "uv",
+      "cwd": "./",
+      "args": [
+        "run",
+        "--no-config",
+        "python",
+        "-m",
+        "truthound.mcp.consent",
+        "serve"
+      ]
+    }
+  }
+}

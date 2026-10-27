@@ -37,6 +37,7 @@ def main() -> None:
     worker.add_argument("--poll-interval", type=int, default=5)
     bundle = commands.add_parser("bundle", help="Build a Claude Desktop MCPB")
     bundle.add_argument("--output", required=True, type=Path)
+    bundle.add_argument("--profile", choices=("summary", "core"), default="summary")
     bundle.add_argument(
         "--wheel", type=Path, help="Bundle an exact local wheel before PyPI publication"
     )
@@ -105,7 +106,7 @@ def main() -> None:
     if args.command == "bundle":
         from truthound.mcp.bundle import build_bundle
 
-        print(build_bundle(args.output, wheel=args.wheel))
+        print(build_bundle(args.output, wheel=args.wheel, profile=args.profile))
         return
     try:
         from truthound.mcp.policy import MCPError, MCPPolicy

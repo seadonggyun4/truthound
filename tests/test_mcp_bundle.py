@@ -37,3 +37,32 @@ def test_documentation_and_optional_dependency_contract():
             assert term in text
     for path in ("mkdocs.yml", "mkdocs.public.yml"):
         assert "guides/mcp.md" in (root / path).read_text(encoding="utf-8")
+
+
+def test_core_bundle_exposes_the_catalog_and_denies_blank_optional_grants(tmp_path):
+    from truthound.mcp.bundle import build_bundle
+    from truthound.mcp.catalog import CATALOG
+    from truthound.mcp.desktop import arguments
+
+    bundle = build_bundle(tmp_path / "core.mcpb", profile="core")
+    with zipfile.ZipFile(bundle) as archive:
+        manifest = json.loads(archive.read("manifest.json"))
+        assert {tool["name"] for tool in manifest["tools"]} == set(CATALOG) | {
+            "check_file", "profile_file", "scan_pii"
+        }
+        command = manifest["server"]["mcp_config"]["args"]
+        substituted = [
+            argument.replace("${user_config.allowed_directory}", str(tmp_path))
+            .replace("${user_config.workspace_directory}", "")
+            .replace("${user_config.control_directory}", "")
+            .replace("${user_config.sensitive_results}", "false")
+            for argument in command[4:]
+        ]
+        assert arguments(substituted) == ["serve", "--profile", "core", "--allow-dir", str(tmp_path)]
+        assert b"truthound.mcp.desktop" in archive.read("server.py")
+        with pytest.raises(SystemExit):
+            arguments(["--allowed-directory", ""])
+        with pytest.raises(SystemExit):
+            arguments(["--allowed-directory", str(tmp_path), "--sensitive-results", "yes"])
+    with pytest.raises(ValueError):
+        build_bundle(tmp_path / "invalid.mcpb", profile="unknown")

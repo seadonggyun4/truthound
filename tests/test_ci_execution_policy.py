@@ -95,6 +95,8 @@ def test_canonical_artifacts_reject_corruption_before_copy(tmp_path, mutation):
         "truthound-1.tar.gz",
         "truthound-1.mcpb",
         "truthound-1-local.mcpb",
+        "truthound-1-core.mcpb",
+        "truthound-1-core-local.mcpb",
     ]
     lines = []
     for name in names:

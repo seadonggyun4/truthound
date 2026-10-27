@@ -52,11 +52,13 @@ class TestKafkaAdapterIntegration:
     def kafka_config(self, kafka_container):
         """Get Kafka adapter configuration."""
         from truthound.realtime.adapters.kafka import KafkaAdapterConfig
+        from truthound.realtime.protocols import OffsetReset
 
         return KafkaAdapterConfig(
             bootstrap_servers=kafka_container.get_connection_url(),
             topic="test-topic",
             consumer_group="test-consumer",
+            auto_offset_reset=OffsetReset.EARLIEST,
             enable_auto_commit=False,
         )
 
@@ -79,7 +81,7 @@ class TestKafkaAdapterIntegration:
     async def test_produce_and_consume(self, kafka_config):
         """Test producing and consuming messages."""
         from truthound.realtime.adapters.kafka import KafkaAdapter
-        from truthound.realtime.protocols import StreamMessage
+        from truthound.realtime.protocols import StreamMessage, OffsetReset
 
         adapter = KafkaAdapter(kafka_config)
 
@@ -118,7 +120,7 @@ class TestKafkaAdapterIntegration:
     async def test_batch_produce(self, kafka_config):
         """Test batch message production."""
         from truthound.realtime.adapters.kafka import KafkaAdapter
-        from truthound.realtime.protocols import StreamMessage
+        from truthound.realtime.protocols import StreamMessage, OffsetReset
 
         adapter = KafkaAdapter(kafka_config)
 
@@ -188,7 +190,7 @@ class TestKafkaAdapterIntegration:
     async def test_error_handling(self, kafka_config):
         """Test error handling for invalid operations."""
         from truthound.realtime.adapters.kafka import KafkaAdapter
-        from truthound.realtime.protocols import StreamMessage, ConnectionError
+        from truthound.realtime.protocols import StreamMessage, OffsetReset, ConnectionError
 
         adapter = KafkaAdapter(kafka_config)
 
@@ -225,19 +227,21 @@ class TestKafkaStreamingPipeline:
 
         async with StreamTestEnvironment(["kafka"]) as env:
             await env.create_kafka_topic("pipeline-topic", num_partitions=3)
+            await env.create_kafka_topic("window-topic", num_partitions=3)
             yield env
 
     @pytest.mark.asyncio(loop_scope="class")
     async def test_validation_pipeline(self, kafka_env):
         """Test complete validation pipeline with Kafka."""
         from truthound.realtime.adapters.kafka import KafkaAdapter, KafkaAdapterConfig
-        from truthound.realtime.protocols import StreamMessage
+        from truthound.realtime.protocols import StreamMessage, OffsetReset
         from truthound.realtime.testing.fixtures import TestFixtures
 
         config = KafkaAdapterConfig(
             bootstrap_servers=kafka_env.get_service_url("kafka"),
             topic="pipeline-topic",
             consumer_group="pipeline-consumer",
+            auto_offset_reset=OffsetReset.EARLIEST,
         )
 
         adapter = KafkaAdapter(config)
@@ -287,7 +291,7 @@ class TestKafkaStreamingPipeline:
     async def test_window_processing(self, kafka_env):
         """Test window-based processing with Kafka."""
         from truthound.realtime.adapters.kafka import KafkaAdapter, KafkaAdapterConfig
-        from truthound.realtime.protocols import StreamMessage
+        from truthound.realtime.protocols import StreamMessage, OffsetReset
         from truthound.realtime.processing.windows import (
             TumblingWindowProcessor,
             WindowConfig,
@@ -296,8 +300,9 @@ class TestKafkaStreamingPipeline:
 
         config = KafkaAdapterConfig(
             bootstrap_servers=kafka_env.get_service_url("kafka"),
-            topic="pipeline-topic",
+            topic="window-topic",
             consumer_group="window-consumer",
+            auto_offset_reset=OffsetReset.EARLIEST,
         )
 
         adapter = KafkaAdapter(config)
@@ -319,7 +324,7 @@ class TestKafkaStreamingPipeline:
                     offset=-1,
                     timestamp=datetime.now(timezone.utc),
                     headers=(),
-                    topic="pipeline-topic",
+                    topic="window-topic",
                 )
                 await adapter.produce(message)
 

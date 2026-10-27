@@ -236,3 +236,5 @@ aiobotocore·Testcontainers도 설치합니다. `Disposable broker integration` 
 남깁니다.
 
 임시 브로커 비동기 fixture와 이를 사용하는 테스트는 같은 클래스 이벤트 루프를 사용하여 SDK 클라이언트가 루프를 넘지 않게 합니다. 상세 테스트 이름을 출력하여 강제 시간 초과 때 마지막 실행 항목을 보존합니다.
+
+Kafka fixture 소비자는 earliest 오프셋을 명시하고 독립 시나리오마다 별도 토픽을 사용합니다. 배치 전송은 각 메시지의 라우팅과 serializer를 유지한 채 네이티브 producer에 전송을 큐잉하고 전달 실패를 포함한 모든 확인 응답을 관찰합니다.

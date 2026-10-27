@@ -1,0 +1,44 @@
+{
+  "name": "truthound-core",
+  "version": "0.2.0",
+  "description": "Explicitly authorized local Core tools using Truthound Core 3.3.0.",
+  "author": {
+    "name": "Truthound contributors",
+    "url": "https://github.com/seadonggyun4/truthound"
+  },
+  "homepage": "https://truthound.netlify.app/guides/mcp/",
+  "repository": "https://github.com/seadonggyun4/truthound",
+  "license": "Apache-2.0",
+  "keywords": [
+    "data-quality",
+    "local",
+    "mcp",
+    "privacy"
+  ],
+  "skills": "./skills/",
+  "mcpServers": "./.mcp.json",
+  "requires_local_executor": true,
+  "extensions": {
+    "com.openai": {
+      "onboardingSkill": "./skills/truthound-core-setup/SKILL.md"
+    }
+  },
+  "interface": {
+    "displayName": "Truthound Core",
+    "shortDescription": "Use approved local Core tools",
+    "longDescription": "Local Core profile with explicit read, workspace, operator control and sensitive result grants. Installation grants no data access. Configuration changes close the session; reconnect after setup or revocation. Coverage is not full Core parity. Local desktop execution only.",
+    "developerName": "Truthound contributors",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Approved local Core operations",
+      "Explicit workspace and disclosure grants"
+    ],
+    "websiteURL": "https://truthound.netlify.app/guides/mcp/",
+    "supportURL": "https://github.com/seadonggyun4/truthound/issues",
+    "composerIcon": "./assets/icon.png",
+    "logo": "./assets/icon.png",
+    "defaultPrompt": [
+      "Set up Truthound Core for directories I explicitly approve."
+    ]
+  }
+}

@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, AsyncIterator
 import json
+import asyncio
 import logging
 
 from truthound.realtime.protocols import (
@@ -277,38 +278,24 @@ class KafkaAdapter(BaseStreamAdapter[dict[str, Any], KafkaAdapterConfig]):
         if not self._producer:
             raise RuntimeError("Producer not initialized")
 
-        batch = self._producer.create_batch()
-
-        for message in messages:
-            headers = [(h.key, h.value) for h in message.headers] if message.headers else None
-
-            # Try to append to batch
-            metadata = batch.append(
-                key=message.key.encode() if message.key else None,
-                value=json.dumps(message.value).encode(),
-                timestamp=int(message.timestamp.timestamp() * 1000),
-                headers=headers,
-            )
-
-            if metadata is None:
-                # Batch is full, send and create new one
-                await self._producer.send_batch(
-                    batch,
-                    message.topic or self._config.topic,
+        # Let the native producer select partitions and apply its configured
+        # serializers. Its accumulator batches queued sends; observe every ack.
+        pending = []
+        try:
+            for message in messages:
+                pending.append(await self._producer.send(
+                    topic=message.topic or self._config.topic,
+                    key=message.key,
+                    value=message.value,
                     partition=message.partition if message.partition >= 0 else None,
-                )
-                batch = self._producer.create_batch()
-                batch.append(
-                    key=message.key.encode() if message.key else None,
-                    value=json.dumps(message.value).encode(),
-                    timestamp=int(message.timestamp.timestamp() * 1000),
-                    headers=headers,
-                )
-
-        # Send remaining batch
-        if len(batch) > 0:
-            topic = messages[-1].topic or self._config.topic
-            await self._producer.send_batch(batch, topic, partition=None)
+                    headers=[(header.key, header.value) for header in message.headers]
+                    if message.headers else None,
+                ))
+        finally:
+            outcomes = await asyncio.gather(*pending, return_exceptions=True)
+        for outcome in outcomes:
+            if isinstance(outcome, BaseException):
+                raise outcome
 
     async def _do_flush(self) -> None:
         """Flush producer buffer."""

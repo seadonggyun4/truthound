@@ -2935,3 +2935,17 @@ files={별칭: 운영자_절대경로})`를 반환합니다. 팩터리는 네이
 표현식 검증은 보고된 컬럼 자체의 실패 샘플·빈도·전체 행을 유지합니다. 앞 컬럼이
 통과하거나 `mostly`로 생략돼도 뒤 실패의 증거가 다른 컬럼으로 이동하지 않습니다.
 단독·배치 Core 실행은 같은 연결 규칙을 사용합니다.
+
+### Core 3.3.0 설치 후보
+
+공개 `truthound` 0.1.4 플러그인은 Core 3.2.0을 유지합니다. 별도 `truthound-core` 0.2.0 후보는 Core 3.3.0을 고정하며 일반 공개 인덱스 설치에는 해당 버전의 실제 게시가 필요합니다. 전이 의존성은 설치 시 허용 범위에서 해석하며 미게시 후보의 공개 인덱스 고정 lock은 포함하지 않습니다. 후보 CI는 소스 체크아웃 대신 새 wheel을 설치합니다.
+
+```bash
+codex plugin add truthound-core@truthound --json
+truthound-mcp bundle --profile core --output truthound-3.3.0-core.mcpb
+truthound-mcp bundle --profile core --wheel dist/truthound-3.3.0-py3-none-any.whl --output truthound-3.3.0-core-local.mcpb
+```
+
+설치만으로 데이터 접근을 허용하지 않습니다. 설치된 UV 프로젝트에서 `python -m truthound.mcp.consent configure --allow-dir <승인한-디렉터리> --confirm`을 실행합니다. `--workspace-dir`, `--control-dir`, `--allow-sensitive-results`는 각각 별도 운영자 승인 항목입니다. 전체 설정은 `~/.truthound-core/permissions.json`의 이전 권한을 대체하며 `python -m truthound.mcp.consent revoke`로 모두 철회합니다. 변경 시 세션을 종료하고 보유 핸들을 무효화하므로 재연결해야 합니다. 개별 실행 계획 승인은 여전히 MCP 외부의 신뢰된 운영자 명령으로 수행합니다.
+
+Core MCPB는 현재 카탈로그와 데이터·작업공간·승인 저장소·민감 결과 설정을 제공합니다. 선택 디렉터리를 비우면 접근을 허용하지 않으며 민감 결과 공개 기본값은 false입니다. 데스크톱 설정 변경 후 재시작합니다. 기본 번들은 요약 도구 3개를 유지합니다. Core 지원은 부분적이며 공식 디렉터리 승인은 없습니다.

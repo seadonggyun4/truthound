@@ -21,9 +21,11 @@ def _license() -> str:
     raise ValueError("Truthound distribution license was not found")
 
 
-def build_bundle(output: Path, *, wheel: Path | None = None) -> Path:
+def build_bundle(output: Path, *, wheel: Path | None = None, profile: str = "summary") -> Path:
     from truthound import __version__
 
+    if profile not in {"summary", "core"}:
+        raise ValueError("Invalid MCP profile")
     output = Path(output)
     if output.suffix != ".mcpb":
         raise ValueError("Output must have .mcpb suffix")
@@ -84,6 +86,62 @@ def build_bundle(output: Path, *, wheel: Path | None = None) -> Path:
         ],
         "compatibility": {"platforms": ["darwin", "win32"], "runtimes": {"python": ">=3.11,<3.14"}},
     }
+    launcher = (
+        b'from truthound.mcp.__main__ import main\n\nif __name__ == "__main__":\n    main()\n'
+    )
+    if profile == "core":
+        from truthound.mcp.catalog import CATALOG
+
+        manifest["display_name"] = "Truthound Core"
+        manifest["description"] = (
+            "Local Core operations with explicit data, workspace and disclosure grants."
+        )
+        manifest["tools"].extend(
+            {"name": item.operation_id, "description": item.description}
+            for item in CATALOG.values()
+        )
+        manifest["user_config"].update(
+            {
+                "workspace_directory": {
+                    "type": "directory",
+                    "title": "Optional writable workspace",
+                    "description": "Grant writes only within this existing directory; blank denies workspace access.",
+                    "required": False,
+                    "default": "",
+                },
+                "control_directory": {
+                    "type": "directory",
+                    "title": "Optional private operator control directory",
+                    "description": "Existing private directory separate from data and workspace; approvals remain operator-only.",
+                    "required": False,
+                    "default": "",
+                },
+                "sensitive_results": {
+                    "type": "boolean",
+                    "title": "Allow sensitive Core evidence",
+                    "description": "Explicitly permit raw values and full evidence from approved data.",
+                    "required": False,
+                    "default": False,
+                },
+            }
+        )
+        manifest["server"]["mcp_config"]["args"] = [
+            "run",
+            "--directory",
+            "${__dirname}",
+            "server.py",
+            "--allowed-directory",
+            "${user_config.allowed_directory}",
+            "--workspace-directory",
+            "${user_config.workspace_directory}",
+            "--control-directory",
+            "${user_config.control_directory}",
+            "--sensitive-results",
+            "${user_config.sensitive_results}",
+        ]
+        launcher = (
+            b'from truthound.mcp.desktop import main\n\nif __name__ == "__main__":\n    main()\n'
+        )
     project = (
         f'[project]\nname = "truthound-desktop"\nversion = "{__version__}"\nrequires-python = ">=3.11,<3.14"\ndependencies = ["truthound[mcp]=={__version__}"]\n'
         + source_config
@@ -92,7 +150,7 @@ def build_bundle(output: Path, *, wheel: Path | None = None) -> Path:
         {
             "manifest.json": (json.dumps(manifest, indent=2) + "\n").encode(),
             "pyproject.toml": project.encode(),
-            "server.py": b'from truthound.mcp.__main__ import main\n\nif __name__ == "__main__":\n    main()\n',
+            "server.py": launcher,
             "LICENSE": _license().encode(),
         }
     )

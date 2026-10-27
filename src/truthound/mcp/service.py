@@ -48,7 +48,11 @@ class MCPService:
         """Validate and authorize explicit typed operations before touching input."""
         from truthound.mcp.operations import envelope
 
-        if self.policy.profile != "core":
+        try:
+            profile = self.policy.profile
+        except MCPError as error:
+            return envelope(name, error=error.code)
+        if profile != "core":
             return envelope(name, error="unknown_operation")
         from pydantic import ValidationError
 

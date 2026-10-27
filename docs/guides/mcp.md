@@ -3234,3 +3234,17 @@ Expression-based validation retains each reported column's own failure samples,
 value counts and full rows. Passing earlier columns and checks suppressed by
 `mostly` do not shift evidence onto a later failure; standalone and batched Core
 execution use the same association.
+
+### Core 3.3.0 installation candidate
+
+The published `truthound` 0.1.4 plugin remains pinned to Core 3.2.0. The separate `truthound-core` 0.2.0 candidate pins Core 3.3.0; normal public-index installation requires publication of that version. Transitive dependencies resolve within package bounds at installation; no frozen public-index lock is shipped for the unpublished candidate. Candidate CI installs a freshly built wheel, not the source checkout.
+
+```bash
+codex plugin add truthound-core@truthound --json
+truthound-mcp bundle --profile core --output truthound-3.3.0-core.mcpb
+truthound-mcp bundle --profile core --wheel dist/truthound-3.3.0-py3-none-any.whl --output truthound-3.3.0-core-local.mcpb
+```
+
+Installation grants no data access. Inside the installed UV project, use `python -m truthound.mcp.consent configure --allow-dir <approved-directory> --confirm`. Optional `--workspace-dir`, `--control-dir` and `--allow-sensitive-results` are separate operator grants. Configuration replaces all prior grants in `~/.truthound-core/permissions.json`; `python -m truthound.mcp.consent revoke` removes them. Changes close the session and invalidate retained handles; reconnect afterward. Individual execution plans still require trusted operator approval outside MCP.
+
+The Core MCPB exposes the current catalog and separate data, workspace, control and sensitive-result settings. Blank optional directories grant no access; sensitive disclosure defaults to false. Restart after editing desktop settings. The default bundle still exposes three summary tools. Core coverage remains partial; neither candidate has official directory approval.

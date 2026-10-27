@@ -521,7 +521,7 @@ def copy_verified_artifacts(source: Path, output: Path):
             raise ValueError("INVALID_CANONICAL_INVENTORY")
         entries[name] = digest
     expected = {p.name for p in source.iterdir() if p.suffix in {".whl", ".gz", ".mcpb"}}
-    if len(entries) != 4 or set(entries) != expected:
+    if len(entries) != 6 or set(entries) != expected:
         raise ValueError("INCOMPLETE_CANONICAL_INVENTORY")
     for name, digest in entries.items():
         path = source / name
@@ -638,6 +638,16 @@ print("TRUTHOUND_RUNTIME_PROOF:"+json.dumps({
         }
         assert z.read("wheels/" + wheel.name) == wheel.read_bytes()
         z.extractall(output / "extension")
+    with zipfile.ZipFile(output / f"truthound-{version}-core-local.mcpb") as z:
+        assert set(z.namelist()) == {
+            "manifest.json",
+            "pyproject.toml",
+            "server.py",
+            "LICENSE",
+            "wheels/" + wheel.name,
+        }
+        assert z.read("wheels/" + wheel.name) == wheel.read_bytes()
+        z.extractall(output / "core-extension")
     if args.smoke:
         smoke_artifacts(args, output, wheel, sdist, version, uv, smoke)
     (output / "runtime-proofs.json").write_text(json.dumps(proofs, indent=2), encoding="utf-8")
@@ -666,6 +676,21 @@ def build_bundles(python, root, output, version, wheel):
         [python, "-m", "truthound.mcp", "bundle", "--output", output / f"truthound-{version}.mcpb"],
         cwd=root,
     )
+    for suffix, source in (("core", []), ("core-local", ["--wheel", wheel])):
+        run(
+            [
+                python,
+                "-m",
+                "truthound.mcp",
+                "bundle",
+                "--profile",
+                "core",
+                *source,
+                "--output",
+                output / f"truthound-{version}-{suffix}.mcpb",
+            ],
+            cwd=root,
+        )
     run(
         [
             python,
@@ -726,6 +751,27 @@ def smoke_artifacts(args, output, wheel, sdist, version, uv, smoke):
             "uv-launcher",
             output / "extension",
         )
+    core_launcher = SMOKE.replace("asyncio.run(run())", "").replace(
+        '["-I","-m","truthound.mcp","serve","--allow-dir",str(data),"--workspace-dir",str(workspace),"--control-dir",str(control),"--profile","core","--allow-sensitive-results"]',
+        '[str(Path.cwd()/"server.py"),"--allowed-directory",str(data),"--workspace-directory",str(workspace),"--control-directory",str(control),"--sensitive-results","true"]',
+    )
+    assert core_launcher != SMOKE and 'str(Path.cwd()/"server.py")' in core_launcher
+    smoke(
+        [
+            uv,
+            "run",
+            "--directory",
+            output / "core-extension",
+            "--python",
+            args.expected_python,
+            "python",
+            "-c",
+        ],
+        core_launcher,
+        output / f"truthound-{version}-core-local.mcpb",
+        "core-uv-launcher",
+        output / "core-extension",
+    )
 
 
 if __name__ == "__main__":

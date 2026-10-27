@@ -49,6 +49,7 @@ TEST_FILES = (
     "tests/test_mcp_profiler_pdf.py",
     "tests/test_mcp.py",
     "tests/test_mcp_bundle.py",
+    "tests/test_mcp_core_consent.py",
     "tests/test_mcp_faults.py",
     "tests/test_mcp_environment.py",
     "tests/test_polars_dependency_contract.py",
@@ -172,6 +173,7 @@ BOUNDARY_FILES = tuple(
     for name in (
         "test_mcp",
         "test_mcp_bundle",
+        "test_mcp_core_consent",
         "test_mcp_faults",
         "test_mcp_environment",
         "test_mcp_lifecycle",

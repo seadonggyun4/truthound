@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "truthound-core": {
+      "type": "stdio",
+      "command": "uv",
+      "cwd": "./",
+      "args": [
+        "run",
+        "--no-config",
+        "python",
+        "-m",
+        "truthound.mcp.consent",
+        "serve"
+      ]
+    }
+  }
+}
