@@ -294,6 +294,8 @@ Build a Core MCPB with `truthound-mcp bundle --profile core --output truthound-c
 
 ## Development
 
+Source distributions exclude generated `dist/` verification output.
+
 Documentation deployments record the public source commit and verification-page hashes in `deployment-manifest.json`.
 
 The development dashboard runtime contracts use Node/npm and actual local servers.

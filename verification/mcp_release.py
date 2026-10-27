@@ -599,6 +599,7 @@ print("TRUTHOUND_RUNTIME_PROOF:"+json.dumps({
         inventory = z.namelist() + t.getnames()
         forbidden = {
             ".git",
+            "dist",
             "internal-development",
             "docs-private",
             "mcp-full-core-design.md",

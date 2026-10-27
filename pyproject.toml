@@ -412,7 +412,7 @@ exclude = ["/internal-development/**", "/docs-private/**"]
 
 [tool.hatch.build.targets.sdist]
 # Generated verification output is not source or a runtime package resource.
-exclude = ["/verification/**", "/internal-development/**", "/docs-private/**", "**/__pycache__/**", "**/*.py[cod]"]
+exclude = ["/dist/**", "/verification/**", "/internal-development/**", "/docs-private/**", "**/__pycache__/**", "**/*.py[cod]"]
 
 [tool.hatch.build.targets.sdist.force-include]
 "src/truthound/mcp/validator_contracts.json" = "src/truthound/mcp/validator_contracts.json"

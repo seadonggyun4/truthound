@@ -14,9 +14,12 @@ contracts cover subprocess cleanup, permissions, UTF-8, resources, persistence
 and approval on other selected runtimes. Boundary results cannot substitute for
 the full partition. Both retain their original 15-minute job deadlines.
 
-The canonical wheel, sdist and two MCPBs are built once. Every installation job
+Source distributions exclude generated `dist/` output even when it contains nested
+`pyproject.toml` files. Archive inspection rejects generated distribution paths.
+
+The canonical wheel, sdist and four MCPBs (summary/Core, public/local) are built once. Every installation job
 verifies SHA256SUMS and installs those exact files; the embedded wheel must match
-the canonical wheel byte-for-byte. All seven fresh installation/launcher checks
+the canonical wheel byte-for-byte. All eight fresh installation/launcher checks
 remain. Development uses Linux 3.11/3.13 and Windows/macOS 3.11.
 Weekly and release verification use all nine supported OS/Python combinations. Platform-independent semantic cases are not repeated nine times.
 Every additional OS/Python boundary runtime uses four disjoint shards. Installation first aggregates the matching
@@ -25,7 +28,7 @@ This changes neither test coverage nor the 15-minute deadline and does not
 turn a failing test into a passing one.
 Platform contract jobs run alongside the full Linux shards, separately from
 installation jobs, with the same 15-minute deadline per job. This avoids charging
-both boundary tests and seven installations against one deadline. No tests or
+both boundary tests and eight installations against one deadline. No tests or
 runtime combinations are removed or repeated. Installation jobs download the
 matching boundary proof, and the final gate requires full tests, build, platform
 contracts and installation success; failed or missing contracts cannot be bypassed.
