@@ -14,6 +14,12 @@ Can the public zero-config Truthound path outperform Great Expectations on compa
 - Run each framework in its own child process.
 - Reject performance wins that do not also preserve correctness.
 
+Each Truthound worker creates a `.truthound` boundary in its declared workload
+workspace before auto-discovery, so an enclosing project cannot absorb its
+artifacts. The measured public `check()` calls still initialize the context and
+persist every run, metric-history update and HTML document. This isolation does
+not disable persistence, change inputs or replace wall-clock acceptance timing.
+
 ## Measurement Model
 
 Each framework/workload observation records:

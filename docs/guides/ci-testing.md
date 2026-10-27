@@ -13,6 +13,12 @@ across the same four contract shards. Other PR files retain their shared fixture
 lifecycle within one shard. Every algorithm case still runs once; the 35-minute
 contract deadline, assertions and test inputs are unchanged.
 
+Native benchmark workers establish the declared workload workspace boundary
+before zero-config discovery. Run JSON, metric history and HTML docs stay inside
+that workspace even beneath an existing project. Context initialization and
+persistence still execute within the measured checks; workload rows, seven warm
+iterations, wall-clock timing and strict performance thresholds are unchanged.
+
 MCP semantic coverage runs every mandatory file listed in
 `verification/mcp_ci_gate.py` in eight disjoint Linux Python 3.11 shards. No algorithm case is removed. The source/execution aggregate
 still rejects missing, duplicate, failed or skipped tests. Platform boundary

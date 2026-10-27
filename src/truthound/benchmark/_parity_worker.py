@@ -187,6 +187,9 @@ def _truthound_execute(
     from truthound.datasources import get_sql_datasource
 
     project_root.mkdir(parents=True, exist_ok=True)
+    # Establish the declared zero-config boundary before walking parent projects.
+    # Context initialization, run/history persistence and docs remain measured.
+    (project_root / ".truthound").mkdir(exist_ok=True)
     schema = workload.truthound.build_schema()
 
     sql_database_path: Path | None = None

@@ -35,6 +35,11 @@ PR과 full Nightly는 독립 실행이 검토된 `test_mcp_algorithm_parity.py` 
 분산하며, 다른 PR 파일은 공유 fixture 수명주기를 한 분할 안에서 유지합니다.
 모든 알고리즘 사례는 정확히 한 번 실행하며 35분 제한·검증문·입력은 유지합니다.
 
+네이티브 벤치마크 worker는 zero-config 탐색 전에 지정된 작업 workspace 경계를
+만듭니다. 기존 프로젝트 아래에서도 실행 JSON·metric 이력·HTML 문서는 그
+workspace 안에 저장합니다. 문맥 초기화·영구 저장은 계속 측정 구간에서 실행하며
+입력 행·warm 7회·wall-clock 시간·엄격한 성능 기준은 유지합니다.
+
 MCP는 `verification/mcp_ci_gate.py`에 명시한 모든 필수 테스트 파일을
 Linux Python 3.11에서 8개 비중복 분할로 실행합니다.
 알고리즘 사례는 제거하지 않습니다. 소스·실행 증명 집계는 누락·중복·실패·skip을

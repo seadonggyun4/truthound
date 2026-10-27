@@ -296,6 +296,7 @@ Build a Core MCPB with `truthound-mcp bundle --profile core --output truthound-c
 
 Source distributions exclude generated `dist/` verification output.
 PR and full Nightly distribute independently executable algorithm cases across the same four contract shards without changing coverage or deadlines.
+Benchmark workers establish their own workspace boundary so parent projects cannot absorb their run, history and documentation artifacts; persistence remains measured.
 
 Documentation deployments record the public source commit and verification-page hashes in `deployment-manifest.json`.
 

@@ -489,3 +489,29 @@ def test_parity_runner_executes_truthound_sqlite_suite(tmp_path: Path):
     assert all(observation.backend == "sqlite" for observation in result.observations)
     assert all(observation.correctness_passed for observation in result.observations)
     assert all(observation.artifact_paths["database_path"].endswith(".sqlite") for observation in result.observations)
+
+
+@pytest.mark.contract
+def test_native_parity_persists_every_iteration_inside_its_declared_workspace(tmp_path):
+    from truthound.benchmark._parity_worker import _truthound_execute
+
+    parent = tmp_path / "existing-project"
+    inherited = parent / ".truthound"
+    inherited.mkdir(parents=True)
+    sentinel = inherited / "unrelated.json"
+    sentinel.write_text('{"preserve": true}\n')
+    root = parent / "artifacts" / "local-range" / "workspace"
+    observed = _truthound_execute(
+        load_workload(workload_root() / "local-range.json"),
+        project_root=root, warm_iterations=7, artifact_dir=root.parent,
+    )
+    assert observed.correctness_passed and observed.observed_issue_count == 1
+    assert len(observed.metadata["warm_durations_seconds"]) == 7
+    assert observed.metadata["iteration_correctness"] == [True] * 8
+    for key in ["run_artifact", "docs_artifact"]:
+        assert Path(observed.artifact_paths[key]).is_relative_to(root / ".truthound")
+        assert Path(observed.artifact_paths[key]).is_file()
+    assert len(list((root / ".truthound/runs").glob("*.json"))) == 8
+    assert len(list((root / ".truthound/docs").glob("*.html"))) == 8
+    assert sorted(p.name for p in inherited.iterdir()) == ["unrelated.json"]
+    assert sentinel.read_text() == '{"preserve": true}\n'
