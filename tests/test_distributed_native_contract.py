@@ -145,6 +145,36 @@ def test_native_startup_diagnostic_keeps_only_closed_markers(tmp_path):
     assert value["native_startup"]["markers"]["module_missing"] is False
 
 
+
+def test_ray_fatal_evidence_keeps_closed_cause_markers_and_reviewed_source_locations(tmp_path):
+    from types import SimpleNamespace
+
+    logs = tmp_path / "th-native-test/session_test/logs"
+    logs.mkdir(parents=True)
+    secret = "synthetic-private-path-and-payload"
+    (logs / "dashboard_agent.err").write_text(
+        "Permission denied " + secret + "\n[synthetic E 12 34] agent_manager.cc:77: one Ray agent failed " + secret
+    )
+    driver = tmp_path / "driver.log"
+    driver.write_text(
+        "[synthetic F 12 34] core_worker.cc:123: Failed to register worker " + secret
+        + "\n[synthetic E 12 34] private_component.cc:456: " + secret
+        + "\n[synthetic I 12 34] raylet_client.cc:999: " + secret
+    )
+    probe = object.__new__(OwnedProbe)
+    probe.directory = SimpleNamespace(name=str(tmp_path))
+    probe.log_path = driver
+    report = probe._native_startup_state()
+    assert secret not in json.dumps(report) and str(tmp_path) not in json.dumps(report)
+    assert report["ray_failure_markers"]["worker_registration_failed"]
+    assert report["ray_failure_markers"]["agent_failed"]
+    assert report["ray_failure_markers"]["permission_denied"]
+    assert not report["ray_failure_markers"]["address_in_use"]
+    assert report["native_source_locations"] == [
+        {"file": "agent_manager.cc", "line": 77}, {"file": "core_worker.cc", "line": 123}
+    ]
+
+
 def test_native_ray_local_checkpoint_destination_resolves_as_one_directory(tmp_path):
     from pyarrow.fs import FileType, LocalFileSystem
     from ray.data.datasource.path_util import _resolve_paths_and_filesystem

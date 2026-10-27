@@ -208,6 +208,32 @@ class OwnedProbe:
             "worker_registration_timeout": (b"not registered within the timeout",),
         }
         observed = {key: False for key in markers}
+        failure_tokens = {
+            "worker_registration_failed": (b"Failed to register worker", b"Unable to register worker"),
+            "agent_failed": (b"one Ray agent failed",),
+            "native_check_failed": (b"Check failed:",),
+            "connection_refused": (b"Connection refused", b"actively refused"),
+            "connection_closed": (b"forcibly closed", b"End of file", b"Broken pipe"),
+            "permission_denied": (b"Permission denied", b"Access is denied", b"WinError 10013"),
+            "address_in_use": (b"Address already in use", b"Only one usage of each socket address"),
+            "sigterm_received": (b"receives a SIGTERM", b"draining node on SIGTERM"),
+        }
+        failures = {key: False for key in failure_tokens}
+        locations = set()
+
+        def observe_failure(raw):
+            for key, tokens in failure_tokens.items():
+                failures[key] |= any(token in raw for token in tokens)
+            # Only reviewed SDK source basenames and bounded line numbers.
+            for line in raw.splitlines():
+                if b"Check failed:" not in line and not re.search(rb"\b[EF] [0-9]+ [0-9]+\]", line):
+                    continue
+                for match in re.finditer(
+                    rb"\b(core_worker|core_worker_process|raylet_client|node_manager|agent_manager|gcs_client|gcs_rpc_client|grpc_server)\.cc:([0-9]{1,7})\b",
+                    line,
+                ):
+                    locations.add((match[1].decode("ascii") + ".cc", int(match[2])))
+
         count = 0
         root = Path(self.directory.name)
         for logs in root.glob("th-native-*/session_*/logs"):
@@ -220,6 +246,10 @@ class OwnedProbe:
                 "raylet.err",
                 "dashboard.log",
                 "monitor.log",
+                "dashboard_agent.log",
+                "dashboard_agent.err",
+                "runtime_env_agent.log",
+                "runtime_env_agent.err",
             ):
                 path = logs / name
                 if path.is_symlink() or not path.is_file():
@@ -230,6 +260,7 @@ class OwnedProbe:
                     tail = stream.read(65536)
                 for key, tokens in markers.items():
                     observed[key] |= any(token in tail for token in tokens)
+                observe_failure(tail)
         driver_markers = {
             "jvm_started": b"Using Spark's default log4j profile",
             "spark_context_started": b"Running Spark version",
@@ -244,10 +275,15 @@ class OwnedProbe:
             with self.log_path.open("rb") as stream:
                 stream.seek(max(0, self.log_path.stat().st_size - 65536))
                 driver = stream.read(65536)
+        observe_failure(driver)
         return {
             "log_files": count,
             "markers": observed,
             "spark_markers": {key: token in driver for key, token in driver_markers.items()},
+            "ray_failure_markers": failures,
+            "native_source_locations": [
+                {"file": file, "line": line} for file, line in sorted(locations)[:16]
+            ],
         }
 
     def _diagnostic_report(self):

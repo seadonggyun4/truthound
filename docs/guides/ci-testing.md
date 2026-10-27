@@ -346,3 +346,5 @@ The SDK emits an extensionless `bin/java` program name on Windows. The adapter v
 Timed 20-second probe stack snapshots enter through a Python watchdog thread holding the GIL, avoiding asynchronous native stack scans racing frame/thread teardown on older interpreters. Fatal-error capture remains enabled and the 30-second reply deadline is unchanged. CJK font packages also use the runner's reachable APT mirror route; every downloaded byte set must match the SHA-256 from the signed APT index before installation, with existing transfer limits and rendering checks retained.
 
 Resident factories activate the Spark startup scope only when they import the actual optional SDK; Ray, Polars and SQL factories do not preload PySpark. Native Ray probes import `ray.data` before starting local workers, within the same reply deadline, and record both import boundaries.
+
+Fatal native Ray startup diagnostics retain closed cause markers and reviewed SDK source basenames with numeric line numbers, including bounded agent logs. Raw messages, IDs, command arguments, private paths and data remain excluded; these diagnostics never convert an early SDK exit into success.
