@@ -1,10 +1,16 @@
 """The runner's APT route retains signed-index hash authentication."""
 
 import hashlib
+import importlib.util
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from verification.ci import native_prerequisites as prerequisites
+
+_SOURCE = Path(__file__).resolve().parents[1] / "verification/ci/native_prerequisites.py"
+_SPEC = importlib.util.spec_from_file_location("native_ci_prerequisites", _SOURCE)
+prerequisites = importlib.util.module_from_spec(_SPEC)
+_SPEC.loader.exec_module(prerequisites)
 
 pytestmark = pytest.mark.contract
 
