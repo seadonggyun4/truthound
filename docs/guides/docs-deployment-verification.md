@@ -139,3 +139,9 @@ python docs/scripts/verify_public_surface.py --manifest docs/public_docs.yml --s
 - [Latest Verified Benchmark Summary](../releases/latest-benchmark-summary.md)
 - [Truthound AI Overview](../ai/index.md)
 - [Truthound Orchestration Overview](../orchestration/index.md)
+
+## Public deployment identity
+
+After the public/Korean build gates, the build writes `deployment-manifest.json` containing only the source Git commit, package version and SHA-256 hashes of six public verification pages. It does not collect environment variables, private records or arbitrary files. A deployment record is not evidence of Release CI success or PyPI publication.
+
+Fetch `https://truthound.netlify.app/deployment-manifest.json`, require `source_commit` to equal the intended final commit, then download each fixed public page and compare its exact response bytes with `page_sha256`. An old commit, missing page or hash mismatch remains a failed deployment check. The default Korean pages use `/guides/.../`; English uses `/en/guides/.../`. HTTP 200 and matching text alone do not prove the deployed commit.

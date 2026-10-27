@@ -294,6 +294,8 @@ Build a Core MCPB with `truthound-mcp bundle --profile core --output truthound-c
 
 ## Development
 
+Documentation deployments record the public source commit and verification-page hashes in `deployment-manifest.json`.
+
 The development dashboard runtime contracts use Node/npm and actual local servers.
 The `dev` extra includes the MCP SDK for integration contracts; dashboard production-build
 and cleanup checks run as ordinary contract tests. Release checks also verify a fresh

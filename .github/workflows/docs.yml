@@ -90,5 +90,10 @@ jobs:
       - name: Verify generated Korean docs
         run: python docs/scripts/verify_korean_docs.py --site-dir site
 
+      - name: Verify public deployment identity
+        run: |
+          python -m pytest -q tests/test_docs_deployment_identity.py -p no:cacheprovider
+          python docs/scripts/write_deployment_manifest.py --site-dir site
+
       - name: Verify plugins CLI snapshot
         run: python -m pytest -q tests/cli_modules/test_plugins_cli.py -p no:cacheprovider

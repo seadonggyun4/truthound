@@ -138,3 +138,9 @@ python docs/scripts/verify_public_surface.py --manifest docs/public_docs.yml --s
 - 실무 운영 가이드에서 Latest, Verified, Benchmark, Summary을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
 - [Truthound AI 개요](../ai/index.md)
 - [Truthound 오케스트레이션 개요](../orchestration/index.md)
+
+## 공개 배포 식별 정보
+
+공개·한국어 빌드 gate 이후 `deployment-manifest.json`에 소스 Git 커밋, 패키지 버전과 공개 검증 문서 6개의 SHA-256 해시만 기록합니다. 환경 변수, 비공개 기록, 임의 파일을 수집하지 않습니다. 이 기록은 Release CI 성공이나 PyPI 게시 증거를 대신하지 않습니다.
+
+`https://truthound.netlify.app/deployment-manifest.json`의 `source_commit`이 최종 목표 커밋과 같은지 확인하고 고정된 공개 페이지 각각의 실제 응답 바이트를 `page_sha256`과 대조합니다. 이전 커밋, 누락 페이지, 해시 불일치는 배포 검증 실패입니다. 기본 한국어 페이지는 `/guides/.../`, 영어는 `/en/guides/.../`를 사용합니다. HTTP 200과 문구 일치만으로 배포 커밋을 증명하지 않습니다.
