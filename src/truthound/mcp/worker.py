@@ -72,7 +72,7 @@ def main() -> None:
 
     # Third-party/Core console output must not contaminate protocol output.
     with (
-        open(os.devnull, "w") as sink,
+        open(os.devnull, "w", encoding="utf-8") as sink,
         contextlib.redirect_stdout(sink),
         contextlib.redirect_stderr(sink),
     ):

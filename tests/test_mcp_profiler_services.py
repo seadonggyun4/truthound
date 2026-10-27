@@ -95,7 +95,8 @@ def asset(runtime):
 def test_native_custom_composition_save_restore_execute_and_close(runtime, monkeypatch):
     service = prepare(runtime, monkeypatch)
     source = asset(runtime)
-    _, profiled = call(runtime, service, "profile", profiler_id="custom", asset_id=source)
+    response, profiled = call(runtime, service, "profile", profiler_id="custom", asset_id=source)
+    assert "synthetic-private-native-progress" not in json.dumps(response)
     profile_id = profiled["profile_id"]
     assert profiled["profile"]["row_count"] == 2
     column = profiled["profile"]["columns"][0]

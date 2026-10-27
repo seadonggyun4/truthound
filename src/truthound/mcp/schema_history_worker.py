@@ -35,7 +35,7 @@ def main():
         handler.setLevel(logging.WARNING)
         logging.getLogger("truthound.profiler.evolution." + module).addHandler(handler)
     wire = sys.stdout
-    with open(os.devnull, "w") as sink:
+    with open(os.devnull, "w", encoding="utf-8") as sink:
         while line := sys.stdin.buffer.readline(131073):
             try:
                 if len(line) > 131072 or not line.endswith(b"\n"):

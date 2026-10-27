@@ -298,6 +298,8 @@ Native distributed contracts also run actual local Ray and Spark SDKs from the
 these contracts do not connect to remote clusters.
 Native Parquet checkpoints and atomic stores flush writable staged files on Windows as well.
 Ray checkpoints create the staging destination and explicitly select the local filesystem.
+Ray 2.59.0 is excluded for its local-path resolver regression. Windows Spark local
+checkpoints require the matching native Hadoop SDK; private worker sinks use UTF-8.
 
 ```bash
 uv run --frozen --extra dev python -m pytest -q

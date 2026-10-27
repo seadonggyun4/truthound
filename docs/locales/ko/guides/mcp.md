@@ -980,6 +980,8 @@ Windows 가상환경에서는 가상환경을 유지하면서 실제 인터프�
 디렉터리로 지정합니다. 기본 native cache도 임시이며 영속 상태는 운영자가
 고정한 slot이나 factory 설정이 필요합니다. 운영자의 실제 home이나 자격 증명은
 상속하지 않습니다.
+비공개 worker 출력 sink는 Windows SDK 진행 출력을 포함해 UTF-8을 명시하며,
+이 stream은 MCP protocol 응답과 분리합니다.
 종료 시 중간 실행기가 아닌 해당 인터프리터의 종료를 기다린 후 작업 디렉터리를
 제거합니다.
 
@@ -2659,6 +2661,9 @@ Dask와 Ray의 `checkpoint_dir`는 운영자가 소유하는 로컬 디렉터리
 반환된 child의 `checkpoint_path`를 조회할 수 있습니다.
 Ray는 로컬 목적지 디렉터리를 생성하고 Windows drive 경로를 포함한 native
 쓰기·읽기에 Arrow local filesystem을 명시적으로 선택합니다.
+`execution-ray`·`all`·`dev` extra는 Windows 로컬 경로 처리 중 사용할 수 없는
+선택 Azure filesystem을 조회하는 SDK 회귀 때문에 Ray 2.59.0을 제외합니다.
+CI 밖에서도 같은 의존성 제한을 적용하며 native 계산·checkpoint assertion은 유지합니다.
 `DaskExecutionEngine.from_checkpoint(path, config, client=...)`와
 `RayExecutionEngine.from_checkpoint(path, config)`는 전체 파일 목록을 검증한
 다음 native reader를 엽니다. 미완료 디렉터리, 손상 파일, 다른 backend의 응답은

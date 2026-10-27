@@ -307,6 +307,8 @@ Spark에는 Java 17+와 일치하는 Python worker를 준비해야 하며 원격
 연결하지 않습니다.
 네이티브 Parquet checkpoint와 atomic store는 Windows에서도 쓰기 가능한 staging 파일을 동기화합니다.
 Ray checkpoint는 staging 목적지를 생성하고 로컬 filesystem을 명시적으로 선택합니다.
+로컬 경로 resolver 회귀가 있는 Ray 2.59.0은 제외합니다. Windows Spark 로컬
+checkpoint에는 일치하는 native Hadoop SDK가 필요하며 비공개 worker sink는 UTF-8을 사용합니다.
 
 ```bash
 uv run --frozen --extra dev python -m pytest -q

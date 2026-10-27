@@ -161,6 +161,12 @@ Windows native SDK scratch는 driver가 종료할 때까지 비공개 작업 디
 Windows Spark checkpoint 검사는 SDK의 Hadoop native·winutils 가용성 검사를
 먼저 통과해야 실제 checkpoint를 실행하며, 필수 의존성이 없으면 실패합니다.
 진단은 SDK 예외의 원격 formatter를 호출하지 않습니다.
+Windows SDK workflow는 Apache 소스 커밋
+`dbcc7cd797100e6b32cd84f85b53a5193a5f9af0`의 Hadoop 3.5.0을 공식
+`native-win` compile 단계로 빌드합니다. native binary·license·notice·소스/파일
+hash provenance만 보존합니다. cache 식별자는 빌드 script와 runner image를
+포함하며 복원된 파일을 검증한 뒤 실제 제품 검사를 실행합니다. SDK 설정은
+운영자 factory에서 비공개로 고정하며 MCP 요청 경로로 받지 않습니다.
 faulthandler의 soft timeout은 stack만 출력하며,
 별도의 pytest-timeout thread deadline이 프로세스를 강제 종료합니다.
 강제 종료로 최종 JSON/JUnit이 없을 수 있으므로 부분 증거는 보존하되 gate는 실패합니다.

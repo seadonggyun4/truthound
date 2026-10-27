@@ -29,6 +29,8 @@ env:
   OMP_NUM_THREADS: "1"
   OPENBLAS_NUM_THREADS: "1"
 jobs:
+  windows-native-sdk:
+    uses: ./.github/workflows/windows-hadoop.yml
   mcp-tests:
     strategy:
       fail-fast: false
@@ -144,6 +146,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
   platform-contracts:
+    needs: windows-native-sdk
     strategy:
       fail-fast: false
       matrix:
@@ -160,6 +163,19 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: astral-sh/setup-uv@v4
+      - uses: actions/download-artifact@v4
+        if: runner.os == 'Windows'
+        with:
+          name: ${{ needs.windows-native-sdk.outputs.artifact }}
+          path: ${{ runner.temp }}/truthound-hadoop-sdk-3.5.0
+      - name: Verify and select Windows native Hadoop
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $sdk = '${{ runner.temp }}/truthound-hadoop-sdk-3.5.0'
+          ./verification/ci/windows_hadoop.ps1 -Mode Verify -SdkRoot $sdk
+          "HADOOP_HOME=$sdk" >> $env:GITHUB_ENV
+          "$sdk/bin" >> $env:GITHUB_PATH
       - run: uv sync --python ${{ matrix.python }} --frozen --extra dev --extra mcp
       - name: Verify platform-sensitive contracts with source and execution identity
         run: uv run --python ${{ matrix.python }} --frozen --extra dev --extra mcp python verification/mcp_ci_gate.py --scope boundary --expected-python ${{ matrix.python }} --shard-count ${{ matrix.count }} --shard-index ${{ matrix.shard }} --junitxml test-artifacts/mcp-${{ matrix.shard }}.xml
@@ -212,7 +228,7 @@ jobs:
           retention-days: 7
   mcp-gate:
     if: always()
-    needs: [mcp-tests, build, platform-contracts, compatibility]
+    needs: [mcp-tests, build, platform-contracts, compatibility, windows-native-sdk]
     runs-on: ubuntu-latest
     steps:
       - name: Reject failed, cancelled or missing required execution
@@ -222,6 +238,6 @@ jobs:
           python - <<'PY'
           import json, os
           results = json.loads(os.environ['RESULTS'])
-          assert set(results) == {'mcp-tests', 'build', 'platform-contracts', 'compatibility'}
+          assert set(results) == {'mcp-tests', 'build', 'platform-contracts', 'compatibility', 'windows-native-sdk'}
           assert all(job['result'] == 'success' for job in results.values()), results
           PY

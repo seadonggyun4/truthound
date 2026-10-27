@@ -1105,6 +1105,8 @@ Resident native workers resolve `HOME` and `USERPROFILE` to their owned temporar
 workspace, including on Windows. Default native caches are therefore temporary;
 durable state requires explicit operator-pinned slots or factory configuration.
 The operator's actual home directory and credentials are not inherited.
+Private worker output sinks use UTF-8 explicitly, including Windows SDK progress
+output; these streams remain separate from MCP protocol responses.
 
 ML result artifacts contain `encoding`, `model_algorithm`, `model_revision` and
 the tagged native `result`. This records the model state used without lossy
@@ -2964,6 +2966,10 @@ files and SHA-256 inventory, and publishes a completed snapshot by directory
 rename. The returned child exposes its local `checkpoint_path` in Python.
 Ray creates its local destination directory and explicitly selects Arrow's local
 filesystem for native writes and reads, including Windows drive paths.
+The `execution-ray`, `all` and `dev` extras exclude Ray 2.59.0 because that SDK's
+local-path resolver probes an unavailable optional Azure filesystem on Windows.
+This dependency restriction also applies outside CI; the native computation and
+checkpoint assertions are unchanged.
 `DaskExecutionEngine.from_checkpoint(path, config, client=...)` and
 `RayExecutionEngine.from_checkpoint(path, config)` validate the complete inventory
 before opening the native reader. Pending directories, corrupt files and wrong

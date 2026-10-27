@@ -16,7 +16,7 @@ def main():
     source = iterator = None
     wire = sys.stdout
     try:
-        with open(os.devnull, "w") as sink:
+        with open(os.devnull, "w", encoding="utf-8") as sink:
             while line := sys.stdin.buffer.readline(131073):
                 try:
                     if len(line) > 131072 or not line.endswith(b"\n"):

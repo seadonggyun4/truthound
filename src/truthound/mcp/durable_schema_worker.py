@@ -180,7 +180,7 @@ def main():
 
         threading.Thread(target=parent_disconnected, daemon=True).start()
         with (
-            open(os.devnull, "w") as sink,
+            open(os.devnull, "w", encoding="utf-8") as sink,
             contextlib.redirect_stdout(sink),
             contextlib.redirect_stderr(sink),
         ):

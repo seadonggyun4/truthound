@@ -70,20 +70,25 @@ def runtime_directory(prefix):
 
 
 @contextlib.contextmanager
-def engine(backend, scratch):
+def engine(backend, scratch, progress=None):
+    def phase(label):
+        print("native-probe:" + label, flush=True)
+        if progress is not None:
+            progress(label)
+
     if backend == "ray":
-        print("native-probe:ray-import", flush=True)
+        phase("ray-import")
         os.environ["RAY_USAGE_STATS_ENABLED"] = "0"
         import ray
 
         from truthound.execution.distributed.ray_engine import RayEngineConfig, RayExecutionEngine
 
-        print("native-probe:ray-imported", flush=True)
+        phase("ray-imported")
 
         if ray.is_initialized():
             raise RuntimeError("The probe requires its own local Ray lifetime")
         try:
-            print("native-probe:ray-start", flush=True)
+            phase("ray-start")
             ray.init(
                 address="local",
                 num_cpus=4,
@@ -95,20 +100,20 @@ def engine(backend, scratch):
                 logging_level=logging.ERROR,
                 log_to_driver=False,
             )
-            print("native-probe:ray-started", flush=True)
+            phase("ray-started")
             dataset = ray.data.from_items(
                 [{"x": 1.0, "g": "a"}, {"x": None, "g": "b"}, {"x": 3.0, "g": "a"}]
             )
-            print("native-probe:ray-dataset", flush=True)
+            phase("ray-dataset")
             with RayExecutionEngine(
                 dataset, RayEngineConfig(ray_address="local", num_cpus=4, num_gpus=0)
             ) as native:
-                print("native-probe:ray-ready", flush=True)
+                phase("ray-ready")
                 yield native
         finally:
             ray.shutdown()
     else:
-        print("native-probe:spark-import", flush=True)
+        phase("spark-import")
         os.environ["PYSPARK_PYTHON"] = sys.executable
         from pyspark import SparkContext
         from pyspark.sql import SparkSession
@@ -119,13 +124,13 @@ def engine(backend, scratch):
             SparkExecutionEngine,
         )
 
-        print("native-probe:spark-imported", flush=True)
+        phase("spark-imported")
         if SparkContext._active_spark_context is not None:
             raise RuntimeError("The probe requires its own local Spark lifetime")
         previous_gateway = SparkContext._gateway
         spark = None
         try:
-            print("native-probe:spark-start", flush=True)
+            phase("spark-start")
             spark = (
                 SparkSession.builder.master("local[1]")
                 .appName("truthound-native-probe")
@@ -138,15 +143,15 @@ def engine(backend, scratch):
                 .config("spark.pyspark.python", sys.executable)
                 .getOrCreate()
             )
-            print("native-probe:spark-started", flush=True)
+            phase("spark-started")
             spark.sparkContext.setLogLevel("ERROR")
             frame = spark.createDataFrame(
                 [(1.0, "a"), (None, "b"), (3.0, "a")],
                 StructType([StructField("x", DoubleType(), True), StructField("g", StringType(), True)]),
             )
-            print("native-probe:spark-frame", flush=True)
+            phase("spark-frame")
             with SparkExecutionEngine(frame, SparkEngineConfig(shuffle_partitions=1)) as native:
-                print("native-probe:spark-ready", flush=True)
+                phase("spark-ready")
                 yield native
         except BaseException:
             # Py4J exception text needs its still-live gateway. Preserve SDK

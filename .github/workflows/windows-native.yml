@@ -10,7 +10,10 @@ on:
 permissions:
   contents: read
 jobs:
+  native-sdk:
+    uses: ./.github/workflows/windows-hadoop.yml
   native:
+    needs: native-sdk
     runs-on: windows-latest
     timeout-minutes: 15
     strategy:
@@ -33,6 +36,17 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: astral-sh/setup-uv@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.native-sdk.outputs.artifact }}
+          path: ${{ runner.temp }}/truthound-hadoop-sdk-3.5.0
+      - name: Verify and select the native Hadoop SDK
+        shell: pwsh
+        run: |
+          $sdk = '${{ runner.temp }}/truthound-hadoop-sdk-3.5.0'
+          ./verification/ci/windows_hadoop.ps1 -Mode Verify -SdkRoot $sdk
+          "HADOOP_HOME=$sdk" >> $env:GITHUB_ENV
+          "$sdk/bin" >> $env:GITHUB_PATH
       - run: uv sync --python ${{ matrix.python }} --frozen --extra dev --extra mcp
       - name: Run actual native engine and installed operator regressions
         run: |

@@ -221,7 +221,7 @@ def main(owner_type=BrokerOwner):
     try:
         watch_resident_parent(sys.stdin.fileno())
         with (
-            open(os.devnull, "w") as sink,
+            open(os.devnull, "w", encoding="utf-8") as sink,
             contextlib.redirect_stdout(sink),
             contextlib.redirect_stderr(sink),
         ):

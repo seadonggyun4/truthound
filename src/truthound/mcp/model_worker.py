@@ -43,7 +43,7 @@ def save_bounded(model, request):
 def main():
     model, revision = None, 0
     wire = sys.stdout
-    with open(os.devnull, "w") as sink:
+    with open(os.devnull, "w", encoding="utf-8") as sink:
         while True:
             line = sys.stdin.buffer.readline(131073)
             if not line:

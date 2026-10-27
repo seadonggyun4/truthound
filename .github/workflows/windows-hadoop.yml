@@ -1,0 +1,48 @@
+name: Windows Hadoop native SDK
+on:
+  workflow_dispatch:
+  workflow_call:
+    outputs:
+      artifact:
+        value: ${{ jobs.build.outputs.artifact }}
+permissions:
+  contents: read
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    outputs:
+      artifact: truthound-windows-hadoop-3.5.0
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: microsoft/setup-msbuild@v2
+      - name: Identify native build image
+        id: image
+        shell: pwsh
+        run: |
+          if (-not $env:ImageOS -or -not $env:ImageVersion) { throw 'HADOOP_BUILD_IMAGE_UNIDENTIFIED' }
+          "identity=$env:ImageOS-$env:ImageVersion" >> $env:GITHUB_OUTPUT
+      - uses: actions/cache@v4
+        with:
+          path: ${{ runner.temp }}/truthound-hadoop-sdk-3.5.0
+          key: hadoop-3.5.0-dbcc7cd797100e6b32cd84f85b53a5193a5f9af0-${{ steps.image.outputs.identity }}-${{ hashFiles('verification/ci/windows_hadoop.ps1') }}
+      - name: Build or verify the official source SDK
+        shell: pwsh
+        run: ./verification/ci/windows_hadoop.ps1 -Mode Build -SdkRoot '${{ runner.temp }}/truthound-hadoop-sdk-3.5.0'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: truthound-windows-hadoop-3.5.0
+          path: ${{ runner.temp }}/truthound-hadoop-sdk-3.5.0
+          if-no-files-found: error
+          retention-days: 7
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: truthound-windows-hadoop-build-log
+          path: ${{ runner.temp }}/truthound-windows-hadoop-build.log
+          if-no-files-found: warn
+          retention-days: 7

@@ -138,6 +138,12 @@ reaping owned descendants, so native log handles cannot race directory deletion.
 Windows Spark checkpoint tests first require the SDK's Hadoop native/winutils
 availability checks to pass, then execute the checkpoint. Missing prerequisites
 fail the test. Diagnostics never invoke an SDK exception's remote formatter.
+The Windows SDK workflow builds Hadoop 3.5.0 from Apache source commit
+`dbcc7cd797100e6b32cd84f85b53a5193a5f9af0` using its `native-win` compile phase.
+Only the native binaries, license, notice and source/file hash provenance are
+retained. Cache identity includes the build script and runner image; restored
+files are verified before the native product tests run. Operator factories pin
+SDK settings privately, rather than accepting paths through MCP requests.
 Pytest faulthandler emits stacks at the soft threshold without killing the test.
 The separate pytest-timeout thread deadline terminates a stuck pytest process;
 such termination can prevent final JSON/JUnit cleanup. Partial evidence remains,

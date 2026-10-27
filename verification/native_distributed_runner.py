@@ -29,6 +29,7 @@ def environment(home=None):
             "TMP",
             "PROCESSOR_ARCHITECTURE",
             "PROCESSOR_ARCHITEW6432",
+            "HADOOP_HOME",
         }
     }
     result.update(

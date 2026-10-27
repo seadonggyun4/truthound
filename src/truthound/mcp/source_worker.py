@@ -19,7 +19,7 @@ def main():
     bound = False
     wire = sys.stdout
     try:
-        with open(os.devnull, "w") as sink:
+        with open(os.devnull, "w", encoding="utf-8") as sink:
             while line := sys.stdin.buffer.readline(131073):
                 response = {"ok": False, "code": "worker_error"}
                 validation = None
@@ -215,7 +215,7 @@ def main():
                 wire.flush()
     finally:
         with (
-            open(os.devnull, "w") as sink,
+            open(os.devnull, "w", encoding="utf-8") as sink,
             contextlib.redirect_stdout(sink),
             contextlib.redirect_stderr(sink),
             contextlib.ExitStack() as cleanup,

@@ -26,7 +26,7 @@ def main():
         logging.getLogger("truthound.profiler.evolution." + name).addHandler(handler)
     with contextlib.ExitStack() as stack:
         plugins = stack.enter_context(contextlib.ExitStack())
-        sink = stack.enter_context(open(os.devnull, "w"))
+        sink = stack.enter_context(open(os.devnull, "w", encoding="utf-8"))
         # Keep background plugin prints off the protocol for the whole lifetime.
         stack.enter_context(contextlib.redirect_stdout(sink))
         stack.enter_context(contextlib.redirect_stderr(sink))

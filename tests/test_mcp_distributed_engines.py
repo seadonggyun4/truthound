@@ -18,6 +18,9 @@ def test_approved_native_distributed_engines_children_and_reopen(runtime, monkey
         java = environment().get("JAVA_HOME")
         if java:
             marker.with_name("execution-java-home").write_text(java)
+        hadoop = environment().get("HADOOP_HOME")
+        if hadoop:
+            marker.with_name("execution-hadoop-home").write_text(hadoop)
     identity = prepare(runtime, monkeypatch, "execution_services", backend)
     process = adapter._session._administration["execution_services"].workers[identity]
 
