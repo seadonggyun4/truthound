@@ -377,3 +377,30 @@ def test_every_registered_concrete_source_has_an_exact_reviewable_contract():
     assert registry.list_all() == registered
     for name, cls in concrete.items():
         assert constructor(name) is cls
+
+
+def test_mcp_complete_evidence_stays_on_failed_column_after_passing_column(service):
+    adapter, _ = service
+    captured = invoke(
+        adapter, 'assets_inline',
+        columns=[
+            {'name': 'first', 'dtype': {'kind': 'Int64'}, 'values': [1, 2, 3]},
+            {'name': 'second', 'dtype': {'kind': 'Int64'}, 'values': [2, -7, -7]},
+        ],
+    )
+    assert captured['execution_status'] == 'succeeded', captured
+    result = invoke(
+        adapter, 'assets_validate', asset_id=captured['data']['resource_id'], result_format='complete',
+        checks=[{'validator': 'between', 'settings': {
+            'min_value': 0, 'max_value': 5,
+            'config': {'columns': ['first', 'second'], 'result_format': {'format': 'complete'}},
+        }}],
+    )
+    report = canonical(adapter, result)['entries']
+    assert len(report['issues']) == 1
+    issue = report['issues'][0]['entries']
+    assert issue['column'] == 'second' and issue['count'] == 2
+    assert issue['sample_values'] == [-7, -7]
+    evidence = issue['result']['entries']
+    assert evidence['partial_unexpected_counts'] == [encode({'value': -7, 'count': 2})]
+    assert evidence['unexpected_index_list'] == [1, 2]

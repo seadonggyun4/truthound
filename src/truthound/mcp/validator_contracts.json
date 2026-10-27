@@ -3953,7 +3953,7 @@
     "truthound.validators.anomaly.statistical.TukeyFencesValidator": "e9d1b62e0748ac2eccfc78a9ee6b93c515f664e05bf5d0df1ec2fef9ef995c9f",
     "truthound.validators.base.AggregateValidator": "77278caa009162bdfae9186159ae041611793a5bf1319065aec35a9d90b5c8fc",
     "truthound.validators.base.DatetimeValidatorMixin": "84be7860a39994d33ddaa8ea6986d1ee908400b4fdd315a1f324e44ca48c46fd",
-    "truthound.validators.base.ExpressionValidatorMixin": "768840cd86da468bad03d03245395c45ca81e6e08773b8dd536975b8f28c5135",
+    "truthound.validators.base.ExpressionValidatorMixin": "1236cf21a0f89365db4d348a04dac66280cabc0002e5e06fead225c3bb8e56f8",
     "truthound.validators.base.FloatValidatorMixin": "0ecc1b4230d5fd8598894407807764642c3968b834086905c8dea99f77846ab7",
     "truthound.validators.base.NumericValidatorMixin": "e46529041d707e3169eb56a74f426a397d6151ad806e0b8ed3d73c3e0d340eeb",
     "truthound.validators.base.RegexValidatorMixin": "c20e2d6a53067e3e40767886c10238453e4a9323b1ea2eb59962b6ad59ad7194",

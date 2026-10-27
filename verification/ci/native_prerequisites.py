@@ -39,8 +39,12 @@ def main():
             break
     else:
         raise RuntimeError('APT_FONT_DOWNLOAD_FAILED')
+    # APT may prefer the equal-version mirror candidate over its local argument
+    # and fetch the same 61 MB package again. Install the verified bytes directly.
+    print('Installing SHA-256 verified CJK package', flush=True)
+    run('sudo', 'dpkg', '--install', str(destination))
     run('sudo', 'apt-get', *options, 'install', '--no-install-recommends', '-y',
-        str(destination), *sys.argv[1:])
+        *sys.argv[1:])
 
 
 if __name__ == '__main__':

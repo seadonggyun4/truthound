@@ -36,3 +36,32 @@ def test_frequency_precedes_encounter_order_and_limit_does_not_drop_counts():
         {"value": 200, "count": 2},
     ]
     assert issue.count == len(values)
+
+
+@pytest.mark.parametrize('batched', [False, True])
+@pytest.mark.parametrize('mostly', [None, 0.6])
+def test_passing_first_column_does_not_shift_failure_evidence(batched, mostly):
+    from truthound.validators.base import ExpressionBatchExecutor
+    from truthound.validators.distribution.range import BetweenValidator
+
+    first = [1, 2, 3] if mostly is None else [-1, 2, 3]
+    frame = pl.DataFrame({'first': first, 'second': [2, -7, -7]}).lazy()
+    validator = BetweenValidator(
+        columns=['first', 'second'], min_value=0, max_value=5,
+        mostly=mostly,
+        result_format=ResultFormatConfig(format=ResultFormat.COMPLETE, include_unexpected_rows=True),
+    )
+    if batched:
+        executor = ExpressionBatchExecutor()
+        executor.add_validator(validator)
+        issues = executor.execute(frame)
+    else:
+        issues = validator.validate(frame)
+    assert len(issues) == 1
+    issue = issues[0]
+    assert issue.column == 'second' and issue.count == 2
+    assert issue.sample_values == [-7, -7]
+    assert issue.result.partial_unexpected_counts == [{'value': -7, 'count': 2}]
+    assert issue.result.unexpected_index_list == [1, 2]
+    assert issue.result.unexpected_list == [-7, -7]
+    assert issue.result.unexpected_rows.to_dict(as_series=False) == {'second': [-7, -7]}

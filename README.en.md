@@ -287,6 +287,8 @@ The root package intentionally exposes a small API.
 
 ---
 
+Expression validation keeps failure samples, counts and rows attached to the reported column after passing checks are omitted.
+
 ## Development
 
 The development dashboard runtime contracts use Node/npm and actual local servers.

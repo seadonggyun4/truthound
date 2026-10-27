@@ -1946,6 +1946,22 @@ class ExpressionValidatorMixin:
                 return self._validate_with_expressions(lf)
     """
 
+    @staticmethod
+    def _enrichment_specs(issues, prefix_map, results):
+        """Retain each reported issue's expression after passing specs disappear."""
+        candidates = {}
+        for prefix, spec in prefix_map.items():
+            key = (spec.column, spec.issue_type, results[prefix].get("count", 0))
+            candidates.setdefault(key, []).append(spec)
+        selected = []
+        for issue in issues:
+            key = (issue.column, issue.issue_type, issue.count)
+            matches = candidates.get(key)
+            if not matches:
+                raise ValueError("Reported issue has no matching expression evidence")
+            selected.append(matches.pop(0))
+        return selected
+
     def _validate_with_expressions(
         self,
         lf: pl.LazyFrame,
@@ -2020,18 +2036,19 @@ class ExpressionValidatorMixin:
 
         # Resolve result_format config
         fmt = self._get_result_format_config()  # type: ignore
+        evidence_specs = self._enrichment_specs(issues, prefix_map, all_results)
 
         # Phase 2: Collect failure value samples (BASIC+)
         if fmt.includes_unexpected_samples():
-            self._enrich_with_samples(lf, issues, list(prefix_map.values()), fmt)
+            self._enrich_with_samples(lf, issues, evidence_specs, fmt)
 
         # Phase 3: Collect value frequency counts (SUMMARY+)
         if fmt.includes_unexpected_counts():
-            self._enrich_with_value_counts(lf, issues, list(prefix_map.values()), fmt)
+            self._enrich_with_value_counts(lf, issues, evidence_specs, fmt)
 
         # Phase 4: Collect full failure rows (COMPLETE)
         if fmt.includes_full_results():
-            self._enrich_with_full_results(lf, issues, list(prefix_map.values()), fmt)
+            self._enrich_with_full_results(lf, issues, evidence_specs, fmt)
 
         return issues
 
@@ -2723,7 +2740,10 @@ class ExpressionBatchExecutor:
                     validator, specs, prefix_map, result_row, total_rows, fmt,
                 )
                 if issues:
-                    _enrich_issues(validator, issues, list(prefix_map.values()), fmt)
+                    evidence_specs = ExpressionValidatorMixin._enrichment_specs(
+                        issues, prefix_map, _extract_spec_results(prefix_map, result_row, total_rows)
+                    )
+                    _enrich_issues(validator, issues, evidence_specs, fmt)
                 return issues
 
             except Exception as e2:
@@ -2813,7 +2833,10 @@ class ExpressionBatchExecutor:
                 if not issues:
                     continue
 
-                _enrich_issues(validator, issues, list(prefix_map.values()), fmt)
+                evidence_specs = ExpressionValidatorMixin._enrichment_specs(
+                    issues, prefix_map, _extract_spec_results(prefix_map, result_row, total_rows)
+                )
+                _enrich_issues(validator, issues, evidence_specs, fmt)
                 all_issues.extend(issues)
 
             return all_issues

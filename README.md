@@ -74,6 +74,8 @@ Truthound is an open-source framework for data validation and data quality workf
 
 ---
 
+표현식 검증은 통과한 검사를 생략해도 실패 샘플·빈도·행을 해당 컬럼에 연결합니다.
+
 ## 개발 목적 (Motivation)
 
 데이터 품질 검증은 대부분 개별 프로젝트마다 서로 다른 방식으로 구현되어 재사용과 표준화가 어렵습니다. Truthound는 데이터 검증과 품질 관리 과정을 코드 기반 프레임워크와 워크플로우로 표준화하여, 누구나 일관되고 재현 가능한 데이터 검증 환경을 구축할 수 있도록 하는 것을 목표로 합니다.

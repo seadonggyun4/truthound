@@ -3229,3 +3229,8 @@ primary uncertainty. A fresh owner reloads configured graph state with empty
 native context history. Cancellation joins the owned native thread; this is not a
 hard CPU sandbox or durable callback/history journal. Forced process loss remains
 an unknown outcome with no automatic job replay.
+
+Expression-based validation retains each reported column's own failure samples,
+value counts and full rows. Passing earlier columns and checks suppressed by
+`mostly` do not shift evidence onto a later failure; standalone and batched Core
+execution use the same association.
