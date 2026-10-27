@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import faulthandler
 import importlib.metadata
 import json
 import logging
@@ -777,13 +778,14 @@ def main():
 
     def blocked():
         label = blocked_startup_phase(sys._current_frames().get(main_thread))
-        if label:
-            print("native-probe:" + label, flush=True)
-            progress(label)
+        label = label or "startup-unclassified-wait"
+        print("native-probe:" + label, flush=True)
+        progress(label)
 
     watchdog = threading.Timer(20, blocked)
     watchdog.daemon = True
     watchdog.start()
+    faulthandler.dump_traceback_later(20, file=sys.stderr)
     primary_error = None
     primary_diagnostic = None
     try:
@@ -800,6 +802,7 @@ def main():
             runtime_directory("th-native-") as directory,
             engine(arguments.backend, Path(directory), progress=progress) as native,
         ):
+            faulthandler.cancel_dump_traceback_later()
             watchdog.cancel()
             watchdog.join()
             wire.write(
@@ -835,6 +838,7 @@ def main():
         wire.write(json.dumps({"ok": False, **diagnostic}) + "\n")
         return 1
     finally:
+        faulthandler.cancel_dump_traceback_later()
         watchdog.cancel()
         watchdog.join()
         wire.close()

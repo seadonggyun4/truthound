@@ -419,3 +419,27 @@ def test_startup_watchdog_classifies_only_reviewed_sdk_frames():
     assert probe.blocked_startup_phase(frame("private-module", "private-function", sdk)) == "ray-api-server-wait"
     assert probe.blocked_startup_phase(frame("private-module", "start_api_server")) is None
     assert probe.blocked_startup_phase(frame("pyspark.java_gateway", "launch_gateway")) == "spark-gateway-wait"
+
+
+def test_native_wait_stack_exports_sdk_structure_without_paths_or_payload(tmp_path):
+    import subprocess
+    import sys
+    from types import SimpleNamespace
+
+    log = tmp_path / "owned-sdk.log"
+    secret = "synthetic-private-wait-stack-value"
+    source = "/" + secret + "/site-packages/ray/_private/node.py"
+    code = "import faulthandler,sys;faulthandler.dump_traceback(file=sys.stderr)"
+    with log.open("wb") as stream:
+        subprocess.run([sys.executable, "-c", "exec(compile(" + repr(code) + "," + repr(source) + ",'exec'))"], stderr=stream, check=True)
+    with log.open("a") as stream:
+        stream.write('  File "/private/site-packages/ray/../private.py", line 1 in private_function\n')
+        stream.write("private SDK error: " + secret + "\n")
+    probe = object.__new__(OwnedProbe)
+    probe.directory = SimpleNamespace(name=str(tmp_path))
+    probe.log_path = log
+    probe.process = SimpleNamespace(poll=lambda: None)
+    report = probe._diagnostic_report()
+    assert report["sdk_wait_frames"] == [{"package": "ray", "file": "node.py", "line": 1, "function": "<module>"}]
+    encoded = json.dumps(report)
+    assert secret not in encoded and str(tmp_path) not in encoded and "private_function" not in encoded

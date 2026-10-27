@@ -6,6 +6,7 @@ import argparse
 import json
 import math
 import os
+import re
 import subprocess
 import sys
 import tempfile
@@ -208,6 +209,7 @@ class OwnedProbe:
             )
         }
         allowed |= {
+            "startup-unclassified-wait",
             "ray-api-server-wait",
             "ray-gcs-wait",
             "ray-node-wait",
@@ -216,10 +218,27 @@ class OwnedProbe:
         }
         phases = []
         elapsed = {}
+        sdk_frames = []
         if self.log_path.is_file():
             with self.log_path.open("rb") as stream:
                 stream.seek(max(0, self.log_path.stat().st_size - 65536))
                 for line in stream.read(65536).decode("utf-8", errors="replace").splitlines():
+                    match = re.fullmatch(
+                        r'  File "[^"\n]*[/\\]site-packages[/\\](ray|pyspark|py4j)[/\\]([^"\n]+\.py)", line ([0-9]{1,7}) in ([A-Za-z0-9_<>]{1,128})',
+                        line,
+                    )
+                    if match and len(sdk_frames) < 16:
+                        package, relative, number, function = match.groups()
+                        parts = re.split(r"[/\\]", relative)
+                        if ".." not in parts and re.fullmatch(r"[A-Za-z0-9_]+\.py", parts[-1]):
+                            sdk_frames.append(
+                                {
+                                    "package": package,
+                                    "file": parts[-1],
+                                    "line": int(number),
+                                    "function": function,
+                                }
+                            )
                     if line.startswith("native-probe:") and line[13:] in allowed:
                         phases.append(line[13:])
                     if line.startswith("native-probe-time:"):
@@ -238,6 +257,7 @@ class OwnedProbe:
         return {
             "phases": phases,
             "phase_elapsed_seconds": elapsed,
+            "sdk_wait_frames": sdk_frames,
             "returncode": self.process.poll(),
             "native_startup": startup,
             "capture_count": getattr(self, "capture_count", 0),

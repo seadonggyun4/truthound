@@ -282,3 +282,5 @@ The manual `spark-after-ray` diagnostic repeats the original three-Ray-test pref
 Native cold-start diagnostics record closed phase timings and only the owned process monitor's CPU/wall cost. A 20-second observer classifies reviewed SDK stack locations without exporting paths, frame locals, messages or environment values. It neither terminates nor retries the SDK and leaves the 30-second reply deadline unchanged.
 
 The manual Windows diagnostic can compare lazy uv bytecode creation with `bytecode=compiled` installation. Both execute the same five-iteration cases and unchanged deadlines; this comparison does not change benchmark preparation or acceptance rules.
+
+A native 20-second traceback snapshot remains in the owned private log even during SDK calls that hold the Python GIL. Exported evidence retains at most 16 frames from the installed Ray/PySpark/Py4J SDKs, with package, file basename, function and line number only; traceback messages, full paths and other code frames are excluded.
