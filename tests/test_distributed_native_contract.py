@@ -495,6 +495,61 @@ def test_startup_watchdog_classifies_only_reviewed_sdk_frames():
     assert probe.blocked_startup_phase(frame("pyspark.java_gateway", "launch_gateway")) == "spark-gateway-wait"
 
 
+def test_installed_startup_snapshot_excludes_private_frames_paths_and_locals():
+    from types import SimpleNamespace
+
+    from tests.verification_support import _load
+
+    probe = _load("native_distributed_probe")
+    sdk = SimpleNamespace(
+        f_globals={"__name__": "py4j.java_gateway"},
+        f_code=SimpleNamespace(co_filename="/private/secret/java_gateway.py", co_name="send_command"),
+        f_lineno=12, f_back=None, f_locals={"secret": "private-argument"},
+    )
+    private = SimpleNamespace(
+        f_globals={"__name__": "private_operator"},
+        f_code=SimpleNamespace(co_filename="/private/operator.py", co_name="secret_method"),
+        f_lineno=42, f_back=sdk,
+    )
+    result = probe.startup_snapshot(private)
+    assert result == {"phase": "spark-jvm-rpc-wait", "sdk_wait_frames": [
+        {"package": "py4j", "file": "java_gateway.py", "function": "send_command", "line": 12},
+    ]}
+    assert "private" not in json.dumps(result) and "secret" not in json.dumps(result)
+
+
+@pytest.mark.parametrize("failure", [False, True])
+def test_installed_startup_watchdog_cancelled_on_success_and_failure(monkeypatch, failure):
+    from tests.verification_support import _load
+
+    probe = _load("native_distributed_probe")
+    events = []
+
+    class Timer:
+        def __init__(self, delay, callback):
+            assert delay == 20
+
+        def start(self):
+            events.append("start")
+
+        def cancel(self):
+            events.append("cancel")
+
+        def join(self, timeout):
+            events.append(("join", timeout))
+
+    monkeypatch.setattr(probe.threading, "Timer", Timer)
+    try:
+        with probe.startup_watchdog(lambda payload: events.append(payload)) as cancel:
+            if failure:
+                raise ValueError("synthetic startup failure")
+            cancel()
+    except ValueError:
+        assert failure
+    assert events == (["start", "cancel", ("join", 1)] if failure
+                      else ["start", "cancel", "cancel", ("join", 1)])
+
+
 def test_native_wait_stack_exports_sdk_structure_without_paths_or_payload(tmp_path):
     import subprocess
     import sys

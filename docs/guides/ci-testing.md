@@ -326,3 +326,5 @@ If the owned Windows JVM does not observe stdin EOF, the fixture synchronously r
 The same 20-second private SDK snapshot also observes native command waits. Closed command labels and elapsed reply times distinguish initialization from aggregation latency without changing the 30-second protocol deadline.
 
 Windows Ray 2.58 owned local startup queries its existing SDK node client for the exact ALIVE node and valid manager port, avoiding the temporary `GlobalStateAccessor.GetNode` path that produced a native access violation. The scoped hooks are restored on success or failure; other threads and external clusters retain SDK behavior, and the startup deadline is not extended.
+
+Installed native factory startup also records a bounded SDK stack snapshot at 20 seconds and monotonic phase timings. Snapshots include only SDK package/file/function/line structure, excluding absolute paths, frame locals and arguments. The watchdog is cancelled on entry or failure; the original operation deadline still applies. The separate Windows installed-Spark diagnostic requires all five complete open/use/shutdown/reopen runs per Python version to pass.

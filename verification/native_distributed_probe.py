@@ -44,6 +44,44 @@ def blocked_startup_phase(frame):
     return None
 
 
+def startup_snapshot(frame):
+    """Keep bounded SDK call structure, never paths, arguments or frame locals."""
+    import re
+
+    phase = blocked_startup_phase(frame) or "startup-unclassified-wait"
+    frames = []
+    for _ in range(128):
+        if frame is None:
+            break
+        package = frame.f_globals.get("__name__", "").split(".")[0]
+        filename = Path(frame.f_code.co_filename).name
+        function = frame.f_code.co_name
+        if (package in {"ray", "pyspark", "py4j"} and len(frames) < 16
+                and re.fullmatch(r"[A-Za-z0-9_]+\.py", filename)
+                and re.fullmatch(r"[A-Za-z0-9_<>]{1,128}", function)):
+            frames.append({"package": package, "file": filename,
+                           "function": function, "line": frame.f_lineno})
+        frame = frame.f_back
+    return {"phase": phase, "sdk_wait_frames": frames}
+
+
+@contextlib.contextmanager
+def startup_watchdog(emit, delay=20):
+    owner = threading.get_ident()
+
+    def snapshot():
+        emit(startup_snapshot(sys._current_frames().get(owner)))
+
+    timer = threading.Timer(delay, snapshot)
+    timer.daemon = True
+    timer.start()
+    try:
+        yield timer.cancel
+    finally:
+        timer.cancel()
+        timer.join(timeout=1)
+
+
 def failure_diagnostic(error):
     """Return structural SDK diagnostics without messages or full paths."""
     unavailable = False

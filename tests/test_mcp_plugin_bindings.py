@@ -930,7 +930,8 @@ def runtime(tmp_path, monkeypatch):
         "    mode_path = MARKER.with_name('execution-mode')\n"
         "    mode = mode_path.read_text() if mode_path.exists() else 'polars'\n"
         "    if mode in {'ray','spark'}:\n"
-        "        import os,json\n"
+        "        import os,json,time\n"
+        "        started=time.monotonic()\n"
         "        from .distributed_fixture import engine as owned_engine, runtime_directory\n"
         "        java = MARKER.with_name('execution-java-home')\n"
         "        if java.exists(): os.environ['JAVA_HOME'] = java.read_text()\n"
@@ -940,7 +941,7 @@ def runtime(tmp_path, monkeypatch):
         "        os.environ['SPARK_LOCAL_HOSTNAME'] = 'localhost'\n"
         "        try:\n"
         "            with runtime_directory('th-fixture-') as directory:\n"
-        "                def phase(label): note('native-fixture-diagnostic:'+json.dumps({'factory':'execution_factory','phase':label}))\n"
+        "                def phase(label): note('native-fixture-diagnostic:'+json.dumps({'factory':'execution_factory','phase':label,'elapsed_seconds':round(time.monotonic()-started,3)}))\n"
         "                with owned_engine(mode,Path(directory),progress=phase) as native:\n"
         "                    if mode == 'spark': native.spark_dataframe.createOrReplaceTempView('items')\n"
         "                    yield ExecutionRuntime(native,plans={'stats':AggregationPlan().add_stats('x'),'partitions':AggregationPlan(scope=AggregationScope.PARTITION).add_count().add_sum('x')},validators={'nulls':NullValidator()},predicates={'positive':'x > 0'},queries={'count':'SELECT COUNT(*) AS total FROM items'},row_filters={'positive':lambda row: row['x'] is not None and row['x'] > 0})\n"
@@ -1273,13 +1274,17 @@ def runtime(tmp_path, monkeypatch):
         "        note('profiler-close')\n"
         '@asynccontextmanager\n'
         'async def diagnosed_native(factory):\n'
-        '    import json\n'
-        '    from .distributed_fixture import failure_diagnostic\n'
+        '    import json,time\n'
+        '    from .distributed_fixture import failure_diagnostic,startup_watchdog\n'
+        '    started=time.monotonic()\n'
+        "    def diagnostic(payload): note('native-fixture-diagnostic:'+json.dumps({'factory':factory.__name__,'elapsed_seconds':round(time.monotonic()-started,3),**payload}))\n"
         '    try:\n'
-        "        note('native-fixture-diagnostic:'+json.dumps({'factory':factory.__name__,'phase':'starting'}))\n"
-        '        async with factory() as runtime:\n'
-        "            note('native-fixture-diagnostic:'+json.dumps({'factory':factory.__name__,'phase':'entered'}))\n"
-        '            yield runtime\n'
+        '        with startup_watchdog(diagnostic) as cancel_startup:\n'
+        "            diagnostic({'phase':'starting'})\n"
+        '            async with factory() as runtime:\n'
+        '                cancel_startup()\n'
+        "                diagnostic({'phase':'entered'})\n"
+        '                yield runtime\n'
         '    except Exception as error:\n'
         "        note('native-fixture-diagnostic:'+json.dumps({'factory':factory.__name__,**failure_diagnostic(error)}))\n"
         '        raise\n'
