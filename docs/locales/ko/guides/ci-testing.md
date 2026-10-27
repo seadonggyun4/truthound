@@ -255,3 +255,5 @@ Windows 네이티브 로그 descriptor는 바이너리 모드와 UTF-8/LF 텍스
 자격증명 없는 LocalStack KMS fixture는 스트리밍 테스트와 같은 major-3 호환 이미지를 고정합니다. 2026년 latest 이미지는 계정 인증이 필요합니다. 브로커·KMS 집중 CI는 JUnit의 실제 Docker/LocalStack 제공자 증거와 loopback 클라이언트 연결을 요구하며 mock 대체를 네이티브 테스트 성공으로 취급하지 않습니다.
 
 KMS 잘못된 키 검사는 네이티브 키·암호문 거부를 요구하며 자체 assertion이나 연결·인증 오류를 성공으로 삼킬 수 없습니다. 자격증명 없는 호환 fixture에서 `latest`를 사용하지 않는 이유는 [LocalStack 이미지 변경 안내](https://blog.localstack.cloud/localstack-single-image-next-steps/)에 설명되어 있습니다.
+
+Spark 시간 초과 진단은 SDK gateway 실행과 Spark 세션 생성을 구분하고 고정된 시작 표식만 노출합니다. 수동 `spark-startup` 범위는 지원 Windows Python 버전마다 새 프로세스의 cold start 5회를 모두 요구하며 한 번이라도 실패하면 진단이 실패합니다. 기존 30초 응답 제한을 늘리거나 전체 릴리스 검증을 대체하지 않습니다.

@@ -274,3 +274,5 @@ Windows native log descriptors use binary mode and UTF-8/LF text streams to avoi
 The credential-free LocalStack KMS fixture uses the same pinned major-3 compatibility image as streaming tests. The floating latest image requires account authentication in 2026. Focused broker/KMS CI requires actual Docker/LocalStack provenance in JUnit and loopback-only client connections; mock substitution is not a successful native test.
 
 Wrong-key KMS checks require the native incorrect-key/ciphertext denial, and cannot swallow their own assertion or accept connectivity/authentication failures. The [LocalStack image change](https://blog.localstack.cloud/localstack-single-image-next-steps/) explains why credential-free compatibility fixtures do not use `latest`.
+
+Spark timeout diagnostics distinguish SDK gateway launch from Spark session creation and expose only fixed startup markers. The manual `spark-startup` scope requires five fresh cold starts per supported Windows Python version; any failed iteration fails the diagnostic. It does not extend the 30-second reply deadline or replace full release verification.

@@ -46,7 +46,7 @@ def test_native_startup_diagnostic_keeps_only_closed_markers(tmp_path):
     (logs / "gcs_server.out").write_text("GcsServer server started " + secret)
     (logs / "unreviewed.log").write_text("No module named " + secret)
     driver = tmp_path / "driver.log"
-    driver.write_text("native-probe:ray-start\nnative-probe:" + secret + "\n")
+    driver.write_text("native-probe:ray-start\nnative-probe:spark-gateway-start\nRunning Spark version " + secret + "\nnative-probe:" + secret + "\n")
     probe = object.__new__(OwnedProbe)
     probe.directory = SimpleNamespace(name=str(root))
     probe.log_path = driver
@@ -54,7 +54,8 @@ def test_native_startup_diagnostic_keeps_only_closed_markers(tmp_path):
     note = probe._diagnostic_note()
     assert secret not in note and str(tmp_path) not in note
     value = json.loads(note.split(": ", 1)[1])
-    assert value["phases"] == ["ray-start"]
+    assert value["phases"] == ["ray-start", "spark-gateway-start"]
+    assert value["native_startup"]["spark_markers"]["spark_context_started"] is True
     assert value["native_startup"]["log_files"] == 1
     assert value["native_startup"]["markers"]["gcs_started"] is True
     assert value["native_startup"]["markers"]["module_missing"] is False
@@ -366,3 +367,35 @@ def test_native_arrow_bridge_applies_selected_policy_without_session_mutation(tm
         }
     finally:
         runtime.close()
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_spark_gateway_observer_restores_launcher_and_preserves_failure(monkeypatch, fail):
+    import sys
+    from types import SimpleNamespace
+    from tests.verification_support import _load
+
+    calls, phases = [], []
+    failure = RuntimeError("synthetic-private-gateway-error")
+    result = object()
+
+    def launch(*args, **kwargs):
+        calls.append((args, kwargs))
+        if fail:
+            raise failure
+        return result
+
+    context = type("SyntheticContext", (), {"__module__": "synthetic_spark_context"})
+    module = SimpleNamespace(launch_gateway=launch)
+    monkeypatch.setitem(sys.modules, context.__module__, module)
+    probe = _load("native_distributed_probe")
+    try:
+        with probe.spark_gateway_progress(context, phases.append):
+            assert module.launch_gateway("configuration", popen_kwargs={"stdin": 1}) is result
+    except RuntimeError as error:
+        assert fail and error is failure
+    else:
+        assert not fail
+    assert calls == [(("configuration",), {"popen_kwargs": {"stdin": 1}})]
+    assert module.launch_gateway is launch
+    assert phases == (["spark-gateway-start"] if fail else ["spark-gateway-start", "spark-gateway-started"])

@@ -160,13 +160,31 @@ class OwnedProbe:
                     tail = stream.read(65536)
                 for key, tokens in markers.items():
                     observed[key] |= any(token in tail for token in tokens)
-        return {"log_files": count, "markers": observed}
+        driver_markers = {
+            "jvm_started": b"Using Spark's default log4j profile",
+            "spark_context_started": b"Running Spark version",
+            "driver_service_started": b"Successfully started service 'sparkDriver'",
+            "block_manager_started": b"Initialized BlockManager",
+            "gateway_exited": b"JAVA_GATEWAY_EXITED",
+            "hadoop_native_missing": b"UnsatisfiedLinkError",
+            "port_bind_failed": b"failed after 16 retries",
+        }
+        driver = b""
+        if self.log_path.is_file() and not self.log_path.is_symlink():
+            with self.log_path.open("rb") as stream:
+                stream.seek(max(0, self.log_path.stat().st_size - 65536))
+                driver = stream.read(65536)
+        return {
+            "log_files": count,
+            "markers": observed,
+            "spark_markers": {key: token in driver for key, token in driver_markers.items()},
+        }
 
     def _diagnostic_note(self):
         allowed = {"core-import", "core-imported"} | {
             backend + "-" + stage
             for backend in ("ray", "spark")
-            for stage in ("import", "imported", "start", "started", "dataset", "frame", "ready")
+            for stage in ("import", "imported", "start", "started", "gateway-start", "gateway-started", "dataset", "frame", "ready")
         }
         phases = []
         if self.log_path.is_file():

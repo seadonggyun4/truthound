@@ -5,7 +5,7 @@ on:
       scope:
         description: Diagnostic component; full release verification remains separate
         type: choice
-        options: [all, engines, operators, checkpoints, ai]
+        options: [all, engines, operators, checkpoints, ai, spark-startup]
         default: all
 permissions:
   contents: read
@@ -20,7 +20,7 @@ jobs:
       fail-fast: false
       matrix:
         python: ['3.11', '3.12', '3.13']
-        scope: ${{ fromJSON(inputs.scope == 'engines' && '["engines"]' || inputs.scope == 'operators' && '["operators"]' || inputs.scope == 'checkpoints' && '["checkpoints"]' || inputs.scope == 'ai' && '["ai"]' || '["engines","operators"]') }}
+        scope: ${{ fromJSON(inputs.scope == 'spark-startup' && '["spark-startup"]' || inputs.scope == 'engines' && '["engines"]' || inputs.scope == 'operators' && '["operators"]' || inputs.scope == 'checkpoints' && '["checkpoints"]' || inputs.scope == 'ai' && '["ai"]' || '["engines","operators"]') }}
     env:
       NATIVE_SCOPE: ${{ matrix.scope }}
       POLARS_MAX_THREADS: '1'
@@ -50,7 +50,14 @@ jobs:
       - run: uv sync --python ${{ matrix.python }} --frozen --extra dev --extra mcp
       - name: Run actual native engine and installed operator regressions
         run: |
-          if ($env:NATIVE_SCOPE -eq 'engines') {
+          if ($env:NATIVE_SCOPE -eq 'spark-startup') {
+            # Fixed repeated cold starts: every run must pass; this is not a retry.
+            for ($iteration = 1; $iteration -le 5; $iteration++) {
+              uv run --python ${{ matrix.python }} --frozen --extra dev --extra mcp python -m pytest -q 'tests/test_distributed_native_contract.py::test_native_row_cache_honors_disabled_cache_and_explicit_invalidation[spark]' -p no:cacheprovider --junitxml "test-artifacts/windows-native-$iteration.xml"
+              if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            }
+            exit 0
+          } elseif ($env:NATIVE_SCOPE -eq 'engines') {
             $targets = @('tests/test_dask_native_contract.py', 'tests/test_distributed_native_contract.py', 'tests/test_mcp_distributed_engines.py', 'tests/stores/concurrency/test_atomic.py')
           } elseif ($env:NATIVE_SCOPE -eq 'checkpoints') {
             $targets = @('tests/test_distributed_native_contract.py::test_native_ray_local_checkpoint_destination_resolves_as_one_directory', 'tests/test_distributed_native_contract.py::test_native_checkpoint_enabled_creates_real_snapshot', 'tests/test_distributed_native_contract.py::test_native_ray_empty_checkpoint_preserves_schema', 'tests/test_mcp_distributed_engines.py::test_approved_native_distributed_engines_children_and_reopen[ray]')
@@ -64,6 +71,6 @@ jobs:
         if: always()
         with:
           name: truthound-windows-native-${{ matrix.python }}-${{ matrix.scope }}
-          path: test-artifacts/windows-native.xml
+          path: test-artifacts/windows-native*.xml
           if-no-files-found: error
           retention-days: 7

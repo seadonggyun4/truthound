@@ -70,6 +70,25 @@ def runtime_directory(prefix):
 
 
 @contextlib.contextmanager
+def spark_gateway_progress(context, phase):
+    """Observe the existing SDK launcher without changing arguments or retries."""
+    module = sys.modules[context.__module__]
+    original = module.launch_gateway
+
+    def launch(*args, **kwargs):
+        phase("spark-gateway-start")
+        result = original(*args, **kwargs)
+        phase("spark-gateway-started")
+        return result
+
+    module.launch_gateway = launch
+    try:
+        yield
+    finally:
+        module.launch_gateway = original
+
+
+@contextlib.contextmanager
 def engine(backend, scratch, progress=None):
     def phase(label):
         print("native-probe:" + label, flush=True)
@@ -131,19 +150,20 @@ def engine(backend, scratch, progress=None):
         spark = None
         try:
             phase("spark-start")
-            spark = (
-                SparkSession.builder.master("local[1]")
-                .appName("truthound-native-probe")
-                .config("spark.driver.bindAddress", "127.0.0.1")
-                .config("spark.driver.host", "127.0.0.1")
-                .config("spark.ui.enabled", "false")
-                .config("spark.driver.extraJavaOptions", "-XX:TieredStopAtLevel=1")
-                .config("spark.sql.shuffle.partitions", "1")
-                .config("spark.local.dir", str(scratch / "local"))
-                .config("spark.sql.warehouse.dir", (scratch / "warehouse").as_uri())
-                .config("spark.pyspark.python", sys.executable)
-                .getOrCreate()
-            )
+            with spark_gateway_progress(SparkContext, phase):
+                spark = (
+                    SparkSession.builder.master("local[1]")
+                    .appName("truthound-native-probe")
+                    .config("spark.driver.bindAddress", "127.0.0.1")
+                    .config("spark.driver.host", "127.0.0.1")
+                    .config("spark.ui.enabled", "false")
+                    .config("spark.driver.extraJavaOptions", "-XX:TieredStopAtLevel=1")
+                    .config("spark.sql.shuffle.partitions", "1")
+                    .config("spark.local.dir", str(scratch / "local"))
+                    .config("spark.sql.warehouse.dir", (scratch / "warehouse").as_uri())
+                    .config("spark.pyspark.python", sys.executable)
+                    .getOrCreate()
+                )
             phase("spark-started")
             spark.sparkContext.setLogLevel("ERROR")
             frame = spark.createDataFrame(
