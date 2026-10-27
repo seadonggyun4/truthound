@@ -954,3 +954,44 @@ class TestPerformance:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+@pytest.mark.parametrize('strategy', [RandomSamplingStrategy(), SystematicSamplingStrategy(), HashSamplingStrategy(), StratifiedSamplingStrategy('g'), ReservoirSamplingStrategy(), AdaptiveSamplingStrategy()])
+def test_sampling_returns_exact_budget_and_preserves_internal_named_columns(strategy):
+    frame = pl.DataFrame({'x': range(200), 'g': ['a'] * 189 + ['b'] * 11,
+                          '__sample_idx': range(200), '__hash_idx': range(200),
+                          '__strat_idx': range(200), '__res_idx': range(200),
+                          '__rand': range(200), '__priority': range(200)})
+    config = SamplingConfig(max_rows=20, min_sample_size=20, seed=7)
+    result = strategy.sample(frame.lazy(), config)
+    sampled = result.data.collect()
+    assert sampled.columns == frame.columns
+    assert sampled.height == result.metrics.sample_size == 20
+    if isinstance(strategy, StratifiedSamplingStrategy):
+        assert sampled['g'].to_list().count('b') == 1
+
+
+def test_systematic_sampling_preserves_global_rng_and_sampler_memory_bound():
+    random.seed(9345)
+    before = random.getstate()
+    frame = pl.DataFrame({'x': range(101)})
+    SystematicSamplingStrategy().sample(frame.lazy(), SamplingConfig(max_rows=10, seed=7)).data.collect()
+    assert random.getstate() == before
+    large = pl.DataFrame({'x': ['a' * 2_000_000]})
+    with pytest.raises(MemoryError):
+        Sampler(SamplingConfig(strategy=SamplingMethod.HEAD, max_memory_mb=1)).sample(large.lazy())
+
+
+def test_stratified_null_groups_and_decision_cache_follow_configuration():
+    from dataclasses import replace
+    frame = pl.DataFrame({'g': [None] * 50 + ['a'] * 50, 'x': range(100)})
+    config = SamplingConfig(max_rows=10, min_sample_size=10, seed=7)
+    result = StratifiedSamplingStrategy('g').sample(frame.lazy(), config).data.collect()
+    assert result.height == 10 and result['g'].null_count() == 5
+    adaptive = AdaptiveSamplingStrategy()
+    first = adaptive.sample(frame.lazy(), config).data.collect()
+    assert first.height == 10
+    assert adaptive.sample(frame.lazy(), replace(config, max_rows=5)).data.collect().height == 5
+    a, b = Sampler(), Sampler()
+    a.config.max_rows = 3
+    assert b.config.max_rows != 3

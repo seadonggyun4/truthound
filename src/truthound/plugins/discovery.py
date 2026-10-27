@@ -18,19 +18,14 @@ import importlib.metadata
 import importlib.util
 import logging
 import sys
+import types
+import uuid
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Iterator
 
 from truthound.plugins.base import (
     Plugin,
-    PluginInfo,
-    PluginType,
-    PluginError,
     PluginLoadError,
 )
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 
@@ -39,290 +34,247 @@ ENTRY_POINT_GROUP = "truthound.plugins"
 
 
 class PluginDiscovery:
-    """Discovers plugins from various sources.
+    """Import operator-selected plugins and retain explicit discovery failures.
 
-    The discovery process finds plugin classes but does not instantiate
-    or load them. Use PluginManager for the full lifecycle.
-
-    Example:
-        >>> discovery = PluginDiscovery()
-        >>>
-        >>> # Discover from installed packages
-        >>> plugins = discovery.discover_entrypoints()
-        >>>
-        >>> # Discover from a directory
-        >>> plugins = discovery.discover_directory("./plugins")
-        >>>
-        >>> # Discover all
-        >>> plugins = discovery.discover_all()
+    Discovery executes module code and metadata constructors. It is not a
+    sandbox. Owned file modules remain registered until close() for inspection.
     """
 
-    def __init__(
-        self,
-        plugin_dirs: list[Path | str] | None = None,
-        scan_entrypoints: bool = True,
-    ) -> None:
-        """Initialize plugin discovery.
-
-        Args:
-            plugin_dirs: Directories to scan for plugins.
-            scan_entrypoints: Whether to scan Python entry points.
-        """
-        self._plugin_dirs = [
-            Path(d) if isinstance(d, str) else d for d in (plugin_dirs or [])
-        ]
+    def __init__(self, plugin_dirs=None, scan_entrypoints=True, *, strict=True):
+        if type(scan_entrypoints) is not bool or type(strict) is not bool:
+            raise ValueError("Discovery switches must be boolean")
+        self._plugin_dirs = [Path(path) for path in plugin_dirs or []]
         self._scan_entrypoints = scan_entrypoints
-        self._discovered: dict[str, type[Plugin]] = {}
+        self._discovered = {}
+        self._failures = []
+        self._strict = strict
+        self._namespace = "_truthound_plugins_" + uuid.uuid4().hex
+        self._roots = {}
+        self._failed_packages = set()
+        self._generation = 0
+        from truthound.plugins._discovery_imports import SourceFinder
 
-    def discover_all(self) -> dict[str, type[Plugin]]:
-        """Discover plugins from all sources.
+        self._finder = SourceFinder()
 
-        Returns:
-            Dict mapping plugin names to plugin classes.
-        """
-        self._discovered.clear()
+    def _begin(self):
+        self._failures = []
+        self._roots = {}
+        self._failed_packages = set()
+        self._generation += 1
 
-        # Discover from entry points
-        if self._scan_entrypoints:
-            self._discovered.update(self.discover_entrypoints())
+    @property
+    def failures(self):
+        return [dict(item) for item in self._failures]
 
-        # Discover from configured directories
-        for plugin_dir in self._plugin_dirs:
-            self._discovered.update(self.discover_directory(plugin_dir))
+    def _failure(self, source, error):
+        self._failures.append({"source": str(source), "error_type": type(error).__name__})
 
-        return self._discovered
+    def _merge(self, result, name, plugin):
+        if name in result and result[name] is not plugin:
+            raise ValueError("Conflicting plugin names")
+        result[name] = plugin
 
-    def discover_entrypoints(self) -> dict[str, type[Plugin]]:
-        """Discover plugins from Python entry points.
-
-        Packages can register plugins in pyproject.toml:
-
-            [project.entry-points."truthound.plugins"]
-            my-plugin = "my_package.plugin:MyPlugin"
-
-        Returns:
-            Dict mapping plugin names to plugin classes.
-        """
-        discovered: dict[str, type[Plugin]] = {}
-
-        try:
-            entry_points = importlib.metadata.entry_points()
-
-            # Python 3.10+ uses select(), 3.9 uses get()
-            if hasattr(entry_points, "select"):
-                plugin_eps = entry_points.select(group=ENTRY_POINT_GROUP)
-            else:
-                plugin_eps = entry_points.get(ENTRY_POINT_GROUP, [])
-
-            for ep in plugin_eps:
-                try:
-                    plugin_cls = ep.load()
-                    if self._is_valid_plugin_class(plugin_cls):
-                        # Get name from entry point or class
-                        name = ep.name
-                        discovered[name] = plugin_cls
-                        logger.debug(f"Discovered plugin from entry point: {name}")
-                    else:
-                        logger.warning(
-                            f"Entry point {ep.name} does not point to a valid Plugin class"
-                        )
-                except ModuleNotFoundError as e:
-                    # Module not found - likely stale entry point from uninstalled package
-                    # Get package info if available
-                    pkg_info = f" (from {ep.dist.name})" if hasattr(ep, "dist") else ""
-                    logger.debug(
-                        f"Skipping entry point '{ep.name}'{pkg_info}: {e}. "
-                        f"Consider uninstalling the package or reinstalling it."
-                    )
-                except Exception as e:
-                    # Other errors - log as warning with package info
-                    pkg_info = f" (from {ep.dist.name})" if hasattr(ep, "dist") else ""
-                    logger.warning(f"Failed to load plugin '{ep.name}'{pkg_info}: {e}")
-
-        except Exception as e:
-            logger.error(f"Error discovering entry points: {e}")
-
-        return discovered
-
-    def discover_directory(
-        self,
-        directory: Path | str,
-        recursive: bool = True,
-    ) -> dict[str, type[Plugin]]:
-        """Discover plugins from a directory.
-
-        Scans for Python files containing Plugin subclasses.
-
-        Args:
-            directory: Directory to scan.
-            recursive: Whether to scan subdirectories.
-
-        Returns:
-            Dict mapping plugin names to plugin classes.
-        """
-        directory = Path(directory)
-        discovered: dict[str, type[Plugin]] = {}
-
-        if not directory.exists():
-            logger.debug(f"Plugin directory does not exist: {directory}")
-            return discovered
-
-        pattern = "**/*.py" if recursive else "*.py"
-        for py_file in directory.glob(pattern):
-            if py_file.name.startswith("_"):
-                continue
-
-            try:
-                plugins = self._discover_from_file(py_file)
-                discovered.update(plugins)
-            except Exception as e:
-                logger.error(f"Failed to discover plugins from {py_file}: {e}")
-
-        return discovered
-
-    def discover_module(self, module_name: str) -> dict[str, type[Plugin]]:
-        """Discover plugins from a Python module.
-
-        Args:
-            module_name: Fully qualified module name.
-
-        Returns:
-            Dict mapping plugin names to plugin classes.
-        """
-        discovered: dict[str, type[Plugin]] = {}
-
-        try:
-            module = importlib.import_module(module_name)
-
-            for name in dir(module):
-                obj = getattr(module, name)
-                if self._is_valid_plugin_class(obj):
-                    # Create temporary instance to get info
-                    try:
-                        temp = obj()
-                        plugin_name = temp.info.name
-                        discovered[plugin_name] = obj
-                        logger.debug(f"Discovered plugin from module: {plugin_name}")
-                    except Exception:
-                        # Use class name as fallback
-                        discovered[name.lower()] = obj
-
-        except ImportError as e:
-            logger.error(f"Failed to import module {module_name}: {e}")
-
-        return discovered
-
-    def _discover_from_file(self, file_path: Path) -> dict[str, type[Plugin]]:
-        """Discover plugins from a single Python file.
-
-        Args:
-            file_path: Path to Python file.
-
-        Returns:
-            Dict mapping plugin names to plugin classes.
-        """
-        discovered: dict[str, type[Plugin]] = {}
-
-        # Create a unique module name
-        module_name = f"_truthound_plugin_{file_path.stem}_{id(file_path)}"
-
-        try:
-            spec = importlib.util.spec_from_file_location(module_name, file_path)
-            if spec is None or spec.loader is None:
-                return discovered
-
-            module = importlib.util.module_from_spec(spec)
-            sys.modules[module_name] = module
-
-            try:
-                spec.loader.exec_module(module)
-
-                for name in dir(module):
-                    obj = getattr(module, name)
-                    if self._is_valid_plugin_class(obj):
-                        try:
-                            temp = obj()
-                            plugin_name = temp.info.name
-                            discovered[plugin_name] = obj
-                            logger.debug(
-                                f"Discovered plugin from file {file_path}: {plugin_name}"
-                            )
-                        except Exception:
-                            discovered[name.lower()] = obj
-
-            finally:
-                # Cleanup module
-                sys.modules.pop(module_name, None)
-
-        except Exception as e:
-            logger.debug(f"Could not load {file_path} as plugin: {e}")
-
-        return discovered
-
-    def _is_valid_plugin_class(self, obj: Any) -> bool:
-        """Check if object is a valid Plugin subclass.
-
-        Args:
-            obj: Object to check.
-
-        Returns:
-            True if it's a valid Plugin subclass.
-        """
-        try:
-            return (
-                isinstance(obj, type)
-                and issubclass(obj, Plugin)
-                and obj is not Plugin
-                and not getattr(obj, "__abstractmethods__", None)
+    def _finish(self, result):
+        self._discovered = dict(result)
+        if self._strict and self._failures:
+            raise ExceptionGroup(
+                "Plugin discovery failed",
+                [
+                    PluginLoadError("Discovery failed (" + item["error_type"] + ")")
+                    for item in self._failures
+                ],
             )
-        except TypeError:
-            return False
+        return dict(result)
 
-    def add_plugin_directory(self, directory: Path | str) -> None:
-        """Add a directory to scan for plugins.
+    def discover_all(self):
+        self._begin()
+        result = {}
+        if self._scan_entrypoints:
+            self._entrypoints(result)
+        for directory in self._plugin_dirs:
+            self._directory(directory, True, result)
+        return self._finish(result)
 
-        Args:
-            directory: Directory path to add.
-        """
-        path = Path(directory) if isinstance(directory, str) else directory
+    def _entrypoints(self, result):
+        try:
+            entries = importlib.metadata.entry_points(group=ENTRY_POINT_GROUP)
+        except Exception as error:
+            self._failure("entrypoints", error)
+            return
+        for entry in sorted(entries, key=lambda item: item.name):
+            try:
+                plugin = entry.load()
+                if not self._is_valid_plugin_class(plugin):
+                    raise TypeError("Entry point must resolve to a concrete Plugin")
+                self._merge(result, entry.name, plugin)
+            except Exception as error:
+                self._failure(entry.name, error)
+
+    def discover_entrypoints(self):
+        self._begin()
+        result = {}
+        self._entrypoints(result)
+        return self._finish(result)
+
+    def _package(self, name, directory):
+        if name in self._failed_packages:
+            raise RuntimeError("Package initialization already failed during this discovery")
+        if name in sys.modules:
+            return
+        initializer = directory / "__init__.py"
+        if initializer.is_file():
+            spec = importlib.util.spec_from_file_location(
+                name, initializer, submodule_search_locations=[str(directory)]
+            )
+            module = importlib.util.module_from_spec(spec)
+            sys.modules[name] = module
+            try:
+                exec(compile(initializer.read_bytes(), str(initializer), "exec"), module.__dict__)
+            except BaseException:
+                self._failed_packages.add(name)
+                sys.modules.pop(name, None)
+                raise
+        else:
+            module = types.ModuleType(name)
+            module.__package__ = name
+            module.__path__ = [str(directory)]
+            module.__spec__ = importlib.machinery.ModuleSpec(name, loader=None, is_package=True)
+            sys.modules[name] = module
+
+    def _file(self, path, root):
+        path = path.resolve(strict=True)
+        relative = path.relative_to(root)
+        if any(not part.isidentifier() for part in (*relative.parts[:-1], path.stem)):
+            raise ValueError("Plugin module path must contain Python identifiers")
+        if root not in self._roots:
+            self._roots[root] = (
+                self._namespace + "_" + str(self._generation) + "_" + str(len(self._roots))
+            )
+        package = self._roots[root]
+        self._finder.roots[package] = root
+        if self._finder not in sys.meta_path:
+            sys.meta_path.insert(0, self._finder)
+        self._package(package, root)
+        directory = root
+        for part in relative.parts[:-1]:
+            directory /= part
+            package += "." + part
+            self._package(package, directory)
+        if path.name == "__init__.py":
+            return self._classes(sys.modules[package])
+        name = package + "." + path.stem
+        spec = importlib.util.spec_from_file_location(name, path)
+        module = importlib.util.module_from_spec(spec)
+        previous = sys.modules.get(name)
+        sys.modules[name] = module
+        try:
+            exec(compile(path.read_bytes(), str(path), "exec"), module.__dict__)
+            return self._classes(module)
+        except BaseException:
+            if previous is None:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = previous
+            raise
+
+    def _classes(self, module):
+        result = {}
+        for value in tuple(vars(module).values()):
+            if self._is_valid_plugin_class(value) and value.__module__ == module.__name__:
+                info = value().info
+                self._merge(result, info.name, value)
+        return result
+
+    def _directory(self, directory, recursive, result):
+        try:
+            root = Path(directory).resolve(strict=True)
+            if not root.is_dir():
+                raise NotADirectoryError("Plugin source must be a directory")
+            paths = sorted(root.glob("**/*.py" if recursive else "*.py"))
+        except Exception as error:
+            self._failure(directory, error)
+            return
+        for path in paths:
+            if path.name.startswith("_") and path.name != "__init__.py":
+                continue
+            try:
+                if path.is_symlink():
+                    raise ValueError("Discovery does not follow source symlinks")
+                for name, plugin in self._file(path, root).items():
+                    self._merge(result, name, plugin)
+            except Exception as error:
+                self._failure(path, error)
+
+    def discover_directory(self, directory, recursive=True):
+        self._begin()
+        result = {}
+        self._directory(directory, recursive, result)
+        return self._finish(result)
+
+    def discover_module(self, module_name):
+        self._begin()
+        result = {}
+        try:
+            result = self._classes(importlib.import_module(module_name))
+        except Exception as error:
+            self._failure(module_name, error)
+        return self._finish(result)
+
+    def _discover_from_file(self, file_path):
+        path = Path(file_path).resolve(strict=True)
+        return self._file(path, path.parent)
+
+    def _is_valid_plugin_class(self, value):
+        return (
+            isinstance(value, type)
+            and issubclass(value, Plugin)
+            and value is not Plugin
+            and not getattr(value, "__abstractmethods__", None)
+        )
+
+    def add_plugin_directory(self, directory):
+        path = Path(directory)
         if path not in self._plugin_dirs:
             self._plugin_dirs.append(path)
 
-    def remove_plugin_directory(self, directory: Path | str) -> bool:
-        """Remove a plugin directory.
-
-        Args:
-            directory: Directory to remove.
-
-        Returns:
-            True if directory was removed.
-        """
-        path = Path(directory) if isinstance(directory, str) else directory
+    def remove_plugin_directory(self, directory):
         try:
-            self._plugin_dirs.remove(path)
+            self._plugin_dirs.remove(Path(directory))
             return True
         except ValueError:
             return False
 
     @property
-    def plugin_directories(self) -> list[Path]:
-        """Get configured plugin directories."""
+    def plugin_directories(self):
         return list(self._plugin_dirs)
 
     @property
-    def discovered_plugins(self) -> dict[str, type[Plugin]]:
-        """Get last discovered plugins."""
+    def discovered_plugins(self):
         return dict(self._discovered)
 
-    def clear_cache(self) -> None:
-        """Clear discovered plugins cache."""
+    def clear_cache(self):
         self._discovered.clear()
+        self._failures.clear()
 
-    def __repr__(self) -> str:
-        return (
-            f"<PluginDiscovery dirs={len(self._plugin_dirs)} "
-            f"discovered={len(self._discovered)}>"
-        )
+    def close(self):
+        self.clear_cache()
+        if self._finder in sys.meta_path:
+            sys.meta_path.remove(self._finder)
+        self._finder.roots.clear()
+        self._finder.failed.clear()
+        for name in tuple(sys.modules):
+            if name.startswith(self._namespace + "_"):
+                del sys.modules[name]
+        self._roots.clear()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.close()
+
+    def __repr__(self):
+        return f"<PluginDiscovery dirs={len(self._plugin_dirs)} discovered={len(self._discovered)} failures={len(self._failures)}>"
 
 
 # =============================================================================
@@ -377,13 +329,7 @@ def load_plugin_from_module(module_name: str, class_name: str) -> type[Plugin]:
 
         return plugin_cls
 
-    except ImportError as e:
-        raise PluginLoadError(
-            f"Could not import module {module_name}: {e}",
-            plugin_name=class_name,
-        )
-    except AttributeError as e:
-        raise PluginLoadError(
-            f"Module {module_name} has no class {class_name}: {e}",
-            plugin_name=class_name,
-        )
+    except ImportError:
+        raise PluginLoadError("Could not import selected module", plugin_name=class_name) from None
+    except AttributeError:
+        raise PluginLoadError("Selected class does not exist", plugin_name=class_name) from None

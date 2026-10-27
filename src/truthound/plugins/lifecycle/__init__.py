@@ -8,14 +8,14 @@ This module provides lifecycle management for plugins including:
 
 Example:
     >>> from truthound.plugins.lifecycle import (
-    ...     LifecycleManager,
     ...     HotReloadManager,
     ...     ReloadStrategy,
     ... )
     >>>
-    >>> lifecycle = LifecycleManager()
+    >>> from truthound.plugins.manager import PluginManager
+    >>> lifecycle = PluginManager()
     >>> hot_reload = HotReloadManager(lifecycle)
-    >>> await hot_reload.watch(plugin_path)
+    >>> await hot_reload.watch("my-plugin", plugin_path, auto_reload=False)
 """
 
 from __future__ import annotations

@@ -317,3 +317,22 @@ fi
 - [Statistical Methods](../../concepts/statistical-methods.md)
 - [Advanced Features](../../concepts/advanced.md)
 - [ML Model Monitoring](../../guides/ml-monitoring.md)
+
+## Python concept drift
+
+`ConceptDriftDetector` defaults to `method="correlation"`. The Python/MCP model also supports `ddm`, `adwin`, and `page_hinkley` through the actual River detectors installed with `truthound[drift]`. These are model options, not additional CLI `--method` values. Select a numeric `stream_column`, or `prediction_column` plus `target_column` to generate classification errors (0 correct, 1 incorrect). DDM accepts only binary errors. Missing columns, nulls, non-finite values, and undersized windows fail explicitly.
+
+```python
+from truthound.ml import ConceptDriftDetector
+
+model = ConceptDriftDetector(method="ddm", stream_column="error",
+                             reference_window=1000, detection_window=1000)
+model.fit(reference.lazy())
+result = model.predict(current.lazy())
+```
+
+Streaming comparisons retain the last `reference_window` and `detection_window` rows in input order, with at least `min_samples_per_window` rows each. Each comparison replays the reference into a fresh detector and counts current-window alarms; it does not accumulate an online session across calls. The result score is an alarm indicator (0 or 1), and confidence is 0 because the detector does not provide a calibrated probability. Details contain counts and the zero-based first alarm index within the selected current window. Streaming windows use their own sizes rather than `sample_size`; generic correlation thresholds and gradual/sudden classification do not control River alarms.
+
+DDM uses `min_window`, `warning_threshold`, and `drift_threshold`. ADWIN uses `min_window` as its grace period and `adwin_delta`, `adwin_clock`, `adwin_max_buckets`, and `adwin_min_window_length`. Page-Hinkley uses `min_window`, `page_hinkley_delta`, `page_hinkley_threshold`, `page_hinkley_alpha`, and `page_hinkley_mode` (`up`, `down`, `both`). See the native [DDM](https://riverml.xyz/latest/api/drift/binary/DDM/), [ADWIN](https://riverml.xyz/latest/api/drift/ADWIN/), and [Page-Hinkley](https://riverml.xyz/latest/api/drift/PageHinkley/) contracts.
+
+Saved models contain the reference window and configuration, never a pickled River object. Failed refits preserve the previously trained model. Version 1 saved concept models used correlation regardless of their method label; loading those models maps their label to `correlation` to preserve that behavior. Newly constructed streaming models require explicit stream selectors.

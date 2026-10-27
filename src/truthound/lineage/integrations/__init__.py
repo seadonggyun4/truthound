@@ -7,15 +7,17 @@ Provides integration with industry-standard lineage platforms:
 """
 
 from truthound.lineage.integrations.openlineage import (
-    OpenLineageEmitter,
-    OpenLineageConfig,
-    RunEvent,
     DatasetFacets,
+    OpenLineageConfig,
+    OpenLineageEmissionError,
+    OpenLineageEmitter,
+    RunEvent,
 )
 
 __all__ = [
     # OpenLineage
     "OpenLineageEmitter",
+    "OpenLineageEmissionError",
     "OpenLineageConfig",
     "RunEvent",
     "DatasetFacets",

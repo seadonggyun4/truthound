@@ -5,12 +5,16 @@ Produces DOT format output for use with Graphviz tools.
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING
 
+from truthound.lineage.visualization._encoding import safe_node_id
 from truthound.lineage.visualization.protocols import (
     IGraphRenderer,
-    RenderFormat,
     RenderConfig,
+    RenderFormat,
+    capture_render_config,
+    resolve_render_depth,
 )
 
 if TYPE_CHECKING:
@@ -73,7 +77,7 @@ class GraphvizRenderer(IGraphRenderer):
 
     def render(
         self,
-        graph: "LineageGraph",
+        graph: LineageGraph,
         config: RenderConfig | None = None,
     ) -> str:
         """Render graph to DOT format.
@@ -85,17 +89,17 @@ class GraphvizRenderer(IGraphRenderer):
         Returns:
             DOT format string
         """
-        config = config or RenderConfig(theme=self._theme)
+        config = capture_render_config(config, theme=self._theme)
         if config.theme == "light" and self._theme == "dark":
             config.theme = self._theme
         return self._build_dot(graph, config)
 
     def render_subgraph(
         self,
-        graph: "LineageGraph",
+        graph: LineageGraph,
         root_node_id: str,
         direction: str = "downstream",
-        max_depth: int = -1,
+        max_depth: int | None = None,
         config: RenderConfig | None = None,
     ) -> str:
         """Render subgraph from root node.
@@ -104,13 +108,14 @@ class GraphvizRenderer(IGraphRenderer):
             graph: Full lineage graph
             root_node_id: Root node ID
             direction: "upstream", "downstream", or "both"
-            max_depth: Maximum depth
+            max_depth: Maximum depth; None inherits RenderConfig.max_depth
             config: Render configuration
 
         Returns:
             DOT format string
         """
-        config = config or RenderConfig()
+        config = capture_render_config(config, theme=self._theme)
+        max_depth = resolve_render_depth(max_depth, config)
 
         # Collect subgraph nodes
         subgraph_node_ids: set[str] = {root_node_id}
@@ -128,7 +133,8 @@ class GraphvizRenderer(IGraphRenderer):
 
         # Filter edges to only those within subgraph
         subgraph_edges = [
-            edge for edge in graph.edges
+            edge
+            for edge in graph.edges
             if edge.source in subgraph_node_ids and edge.target in subgraph_node_ids
         ]
 
@@ -164,6 +170,9 @@ class GraphvizRenderer(IGraphRenderer):
         lines.append("digraph LineageGraph {")
         lines.append("    // Graph settings")
         lines.append(f"    rankdir={config.orientation};")
+        lines.append("    dpi=96;")
+        lines.append("    pad=0;")
+        lines.append(f'    size="{config.width / 96},{config.height / 96}!";')
         lines.append(f'    bgcolor="{bg_color}";')
         lines.append(f'    node [fontname="Arial", fontsize=10, fontcolor="{font_color}"];')
         lines.append(f'    edge [fontname="Arial", fontsize=8, fontcolor="{edge_font_color}"];')
@@ -180,18 +189,18 @@ class GraphvizRenderer(IGraphRenderer):
             node_ids.add(node.id)
 
             shape = self.NODE_SHAPES.get(node.node_type.value, "ellipse")
-            color = config.get_node_color(node.node_type.value)
+            color = self._escape_label(config.get_node_color(node.node_type.value))
             label = self._escape_label(node.name)
 
             attrs = [
                 f'label="{label}"',
-                f'shape={shape}',
+                f"shape={shape}",
                 f'fillcolor="{color}"',
-                'style=filled',
+                "style=filled",
             ]
 
             if node.id in config.highlight_nodes:
-                attrs.append('penwidth=3')
+                attrs.append("penwidth=3")
                 attrs.append('color="red"')
 
             if config.include_metadata and hasattr(node, "metadata"):
@@ -201,7 +210,7 @@ class GraphvizRenderer(IGraphRenderer):
                 attrs.append(f'tooltip="{self._escape_label(tooltip)}"')
 
             safe_id = self._safe_id(node.id)
-            lines.append(f'    {safe_id} [{", ".join(attrs)}];')
+            lines.append(f"    {safe_id} [{', '.join(attrs)}];")
 
         lines.append("")
 
@@ -212,24 +221,24 @@ class GraphvizRenderer(IGraphRenderer):
             if config.filter_edge_types and edge.edge_type.value not in config.filter_edge_types:
                 continue
 
-            source_id = getattr(edge, 'source_id', None) or getattr(edge, 'source', None)
-            target_id = getattr(edge, 'target_id', None) or getattr(edge, 'target', None)
+            source_id = getattr(edge, "source_id", None) or getattr(edge, "source", None)
+            target_id = getattr(edge, "target_id", None) or getattr(edge, "target", None)
 
             if source_id not in node_ids or target_id not in node_ids:
                 continue
 
             style = self.EDGE_STYLES.get(edge.edge_type.value, "solid")
-            color = config.get_edge_color(edge.edge_type.value)
+            color = self._escape_label(config.get_edge_color(edge.edge_type.value))
 
             attrs = [
-                f'style={style}',
+                f"style={style}",
                 f'color="{color}"',
                 f'label="{edge.edge_type.value}"',
             ]
 
             safe_source = self._safe_id(source_id)
             safe_target = self._safe_id(target_id)
-            lines.append(f'    {safe_source} -> {safe_target} [{", ".join(attrs)}];')
+            lines.append(f"    {safe_source} -> {safe_target} [{', '.join(attrs)}];")
 
         lines.append("}")
 
@@ -237,7 +246,7 @@ class GraphvizRenderer(IGraphRenderer):
 
     def _build_dot(
         self,
-        graph: "LineageGraph",
+        graph: LineageGraph,
         config: RenderConfig,
     ) -> str:
         """Build DOT format string."""
@@ -253,9 +262,12 @@ class GraphvizRenderer(IGraphRenderer):
         lines.append("digraph LineageGraph {")
         lines.append("    // Graph settings")
         lines.append(f"    rankdir={config.orientation};")
-        lines.append(f"    bgcolor=\"{bg_color}\";")
-        lines.append(f"    node [fontname=\"Arial\", fontsize=10, fontcolor=\"{font_color}\"];")
-        lines.append(f"    edge [fontname=\"Arial\", fontsize=8, fontcolor=\"{edge_font_color}\"];")
+        lines.append("    dpi=96;")
+        lines.append("    pad=0;")
+        lines.append(f'    size="{config.width / 96},{config.height / 96}!";')
+        lines.append(f'    bgcolor="{bg_color}";')
+        lines.append(f'    node [fontname="Arial", fontsize=10, fontcolor="{font_color}"];')
+        lines.append(f'    edge [fontname="Arial", fontsize=8, fontcolor="{edge_font_color}"];')
         lines.append("")
 
         # Node definitions
@@ -275,20 +287,20 @@ class GraphvizRenderer(IGraphRenderer):
             node_ids.add(node_id)
 
             shape = self.NODE_SHAPES.get(node.node_type.value, "ellipse")
-            color = config.get_node_color(node.node_type.value)
+            color = self._escape_label(config.get_node_color(node.node_type.value))
             label = self._escape_label(node.name)
 
             # Build node attributes
             attrs = [
                 f'label="{label}"',
-                f'shape={shape}',
+                f"shape={shape}",
                 f'fillcolor="{color}"',
-                'style=filled',
+                "style=filled",
             ]
 
             # Highlight
             if node_id in config.highlight_nodes:
-                attrs.append('penwidth=3')
+                attrs.append("penwidth=3")
                 attrs.append('color="red"')
 
             # Tooltip with metadata
@@ -299,7 +311,7 @@ class GraphvizRenderer(IGraphRenderer):
                 attrs.append(f'tooltip="{self._escape_label(tooltip)}"')
 
             safe_id = self._safe_id(node_id)
-            lines.append(f'    {safe_id} [{", ".join(attrs)}];')
+            lines.append(f"    {safe_id} [{', '.join(attrs)}];")
 
         lines.append("")
 
@@ -311,24 +323,24 @@ class GraphvizRenderer(IGraphRenderer):
                 continue
 
             # Handle both source/source_id attribute names
-            source_id = getattr(edge, 'source_id', None) or getattr(edge, 'source', None)
-            target_id = getattr(edge, 'target_id', None) or getattr(edge, 'target', None)
+            source_id = getattr(edge, "source_id", None) or getattr(edge, "source", None)
+            target_id = getattr(edge, "target_id", None) or getattr(edge, "target", None)
 
             if source_id not in node_ids or target_id not in node_ids:
                 continue
 
             style = self.EDGE_STYLES.get(edge.edge_type.value, "solid")
-            color = config.get_edge_color(edge.edge_type.value)
+            color = self._escape_label(config.get_edge_color(edge.edge_type.value))
 
             attrs = [
-                f'style={style}',
+                f"style={style}",
                 f'color="{color}"',
                 f'label="{edge.edge_type.value}"',
             ]
 
             safe_source = self._safe_id(source_id)
             safe_target = self._safe_id(target_id)
-            lines.append(f'    {safe_source} -> {safe_target} [{", ".join(attrs)}];')
+            lines.append(f"    {safe_source} -> {safe_target} [{', '.join(attrs)}];")
 
         lines.append("}")
 
@@ -336,20 +348,21 @@ class GraphvizRenderer(IGraphRenderer):
 
     def _escape_label(self, text: str) -> str:
         """Escape text for DOT labels."""
-        return text.replace('"', '\\"').replace("\n", "\\n")
+        return (
+            text.replace("\\", "\\\\")
+            .replace('"', '\\"')
+            .replace("\n", "\\n")
+            .replace("\r", "\\r")
+            .replace("\x00", "\\\\0")
+        )
 
     def _safe_id(self, node_id: str) -> str:
-        """Convert node ID to safe DOT identifier."""
-        # Replace non-alphanumeric with underscore
-        safe = "".join(c if c.isalnum() else "_" for c in node_id)
-        # Ensure it starts with letter
-        if safe and not safe[0].isalpha():
-            safe = "n_" + safe
-        return safe or "node"
+        """Convert a node ID without merging distinct native identities."""
+        return safe_node_id(node_id)
 
     def render_svg(
         self,
-        graph: "LineageGraph",
+        graph: LineageGraph,
         config: RenderConfig | None = None,
     ) -> str:
         """Render graph to SVG using Graphviz.
@@ -367,10 +380,17 @@ class GraphvizRenderer(IGraphRenderer):
             import graphviz
         except ImportError:
             raise ImportError(
-                "graphviz package is required for SVG rendering. "
-                "Install with: pip install graphviz"
-            )
+                "graphviz package is required for SVG rendering. Install with: pip install graphviz"
+            ) from None
 
+        config = capture_render_config(config, theme=self._theme)
+        colors = [config.get_node_color(node.node_type.value) for node in graph.nodes]
+        colors.extend(config.get_edge_color(edge.edge_type.value) for edge in graph.edges)
+        if any(
+            not re.fullmatch(r"(?:[A-Za-z][A-Za-z0-9_]*|#[0-9a-fA-F]{6}(?:[0-9a-fA-F]{2})?)", color)
+            for color in colors
+        ):
+            raise ValueError("Unsupported Graphviz image color")
         dot = self.render(graph, config)
 
         # Create graphviz source
@@ -381,7 +401,7 @@ class GraphvizRenderer(IGraphRenderer):
 
     def render_png(
         self,
-        graph: "LineageGraph",
+        graph: LineageGraph,
         config: RenderConfig | None = None,
     ) -> bytes:
         """Render graph to PNG using Graphviz.
@@ -399,10 +419,17 @@ class GraphvizRenderer(IGraphRenderer):
             import graphviz
         except ImportError:
             raise ImportError(
-                "graphviz package is required for PNG rendering. "
-                "Install with: pip install graphviz"
-            )
+                "graphviz package is required for PNG rendering. Install with: pip install graphviz"
+            ) from None
 
+        config = capture_render_config(config, theme=self._theme)
+        colors = [config.get_node_color(node.node_type.value) for node in graph.nodes]
+        colors.extend(config.get_edge_color(edge.edge_type.value) for edge in graph.edges)
+        if any(
+            not re.fullmatch(r"(?:[A-Za-z][A-Za-z0-9_]*|#[0-9a-fA-F]{6}(?:[0-9a-fA-F]{2})?)", color)
+            for color in colors
+        ):
+            raise ValueError("Unsupported Graphviz image color")
         dot = self.render(graph, config)
 
         source = graphviz.Source(dot)

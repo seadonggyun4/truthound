@@ -317,3 +317,22 @@ fi
 - CLI 명령 실행에서 Statistical, Methods을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
 - CLI 명령 실행에서 Advanced, Features을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
 - [ML Model 모니터링](../../guides/ml-monitoring.md)
+
+## Python 개념 드리프트
+
+`ConceptDriftDetector`의 기본값은 `method="correlation"`입니다. Python/MCP 모델의 `ddm`, `adwin`, `page_hinkley`는 `truthound[drift]`로 설치하는 실제 River 탐지기를 실행합니다. 이 옵션은 CLI `--method` 값이 아닙니다. 숫자 `stream_column` 또는 `prediction_column`과 `target_column`을 지정합니다. 후자는 분류 오류(정답 0, 오답 1)를 생성합니다. DDM은 이진 오류만 받습니다. 누락 열, null, 비유한 값, 최소 크기 미달 윈도는 명시적으로 실패합니다.
+
+```python
+from truthound.ml import ConceptDriftDetector
+
+model = ConceptDriftDetector(method="ddm", stream_column="error",
+                             reference_window=1000, detection_window=1000)
+model.fit(reference.lazy())
+result = model.predict(current.lazy())
+```
+
+스트림 비교는 입력 순서를 유지하며 마지막 `reference_window`, `detection_window`행을 사용합니다. 각 윈도는 `min_samples_per_window`행 이상이어야 합니다. 매 비교마다 새 탐지기에 기준 윈도를 재생하고 현재 윈도의 경보를 집계하므로 호출 간 온라인 세션을 누적하지 않습니다. 점수는 경보 여부(0 또는 1)이며 보정된 확률을 제공하지 않아 confidence는 0입니다. details에는 표본·경보 수와 선택된 현재 윈도 내 최초 경보의 0 기반 위치가 담깁니다. 스트림은 `sample_size` 대신 전용 윈도 크기를 사용하며, 일반 상관관계 임계값과 gradual/sudden 분류는 River 경보를 제어하지 않습니다.
+
+DDM은 `min_window`, `warning_threshold`, `drift_threshold`를 사용합니다. ADWIN은 `min_window`를 유예 기간으로 사용하고 `adwin_delta`, `adwin_clock`, `adwin_max_buckets`, `adwin_min_window_length`를 적용합니다. Page-Hinkley는 `min_window`, `page_hinkley_delta`, `page_hinkley_threshold`, `page_hinkley_alpha`, `page_hinkley_mode`(`up`, `down`, `both`)를 적용합니다. 실제 [DDM](https://riverml.xyz/latest/api/drift/binary/DDM/), [ADWIN](https://riverml.xyz/latest/api/drift/ADWIN/), [Page-Hinkley](https://riverml.xyz/latest/api/drift/PageHinkley/) 계약을 참고하세요.
+
+저장 모델에는 기준 윈도와 설정이 들어가며 River 객체의 pickle은 포함하지 않습니다. 재학습 실패 시 기존 학습 모델을 보존합니다. 버전 1 개념 모델은 method 표기와 무관하게 상관관계를 계산했으므로 복원 시 `correlation`으로 매핑하여 기존 동작을 유지합니다. 새 스트림 모델은 입력 열을 명시해야 합니다.

@@ -10,10 +10,11 @@ This module provides a comprehensive error handling system with:
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from collections.abc import Callable  # noqa: TC003 - public runtime annotation resolution
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
-from typing import Any, Callable, TypeVar, Generic
+from typing import Any, TypeVar
 
 logger = logging.getLogger("truthound.profiler")
 
@@ -99,6 +100,14 @@ class ProfilerError(Exception):
         if self.cause:
             parts.append(f"cause={self.cause}")
         return " | ".join(parts)
+
+
+class IncompleteProfileError(ProfilerError):
+    """A native best-effort result is retained but cannot feed automatic rules."""
+
+    def __init__(self, profile):
+        super().__init__("Native profiling execution is incomplete", category=ErrorCategory.ANALYSIS)
+        self.profile = profile
 
 
 class AnalysisError(ProfilerError):
@@ -275,7 +284,7 @@ class ErrorCollector:
                 ErrorSeverity.ERROR: logger.error,
                 ErrorSeverity.CRITICAL: logger.critical,
             }.get(error.severity, logger.error)
-            log_method(str(error))
+            log_method("Native profiling component failed (%s)", type(error.cause or error).__name__)
 
         # Fail fast check
         if self.fail_fast:
@@ -295,7 +304,7 @@ class ErrorCollector:
         analyzer: str | None = None,
         default: Any = None,
         severity: ErrorSeverity = ErrorSeverity.ERROR,
-    ) -> "ErrorCatcher":
+    ) -> ErrorCatcher:
         """Context manager for catching and recording errors.
 
         Args:
@@ -386,7 +395,7 @@ class ErrorCatcher:
         self.result: Any = None
         self.error: Exception | None = None
 
-    def __enter__(self) -> "ErrorCatcher":
+    def __enter__(self) -> ErrorCatcher:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> bool:

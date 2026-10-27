@@ -101,6 +101,7 @@ from truthound.profiler.evolution.detector import (
     NullabilityChangedChange,
 )
 from truthound.profiler.evolution.compatibility import (
+    CompatibilityAnalysisError,
     CompatibilityRule,
     TypeCompatibilityChecker,
     NullabilityCompatibilityChecker,
@@ -193,6 +194,7 @@ __all__ = [
     "TypeChangedChange",
     "NullabilityChangedChange",
     # Compatibility
+    "CompatibilityAnalysisError",
     "CompatibilityRule",
     "TypeCompatibilityChecker",
     "NullabilityCompatibilityChecker",

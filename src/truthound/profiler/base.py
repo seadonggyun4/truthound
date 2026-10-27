@@ -9,26 +9,18 @@ This module provides the foundational abstractions for the profiling system:
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable, Iterator  # noqa: TC003 - public runtime annotation resolution
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from math import isfinite
 from typing import (
-    TYPE_CHECKING,
     Any,
-    Callable,
-    Generic,
-    Iterator,
     Protocol,
-    TypeVar,
     runtime_checkable,
 )
 
-import polars as pl
-
-if TYPE_CHECKING:
-    from truthound.validators.base import Validator
-
+import polars as pl  # noqa: TC002 - public runtime annotation resolution
 
 # =============================================================================
 # Enums
@@ -154,6 +146,57 @@ class ValueFrequency:
         return {"value": self.value, "count": self.count, "ratio": self.ratio}
 
 
+def validate_profile_payload(data: dict[str, Any]) -> None:
+    """Reject corrupt/wrong-format state instead of inventing an empty profile."""
+    if not isinstance(data, dict) or not {"row_count", "column_count", "columns"} <= data.keys():
+        raise ValueError("Invalid native profile payload")
+    if any(type(data[key]) is not int or data[key] < 0 for key in ("row_count", "column_count")):
+        raise ValueError("Invalid native profile counts")
+    if not isinstance(data["columns"], list):
+        raise ValueError("Invalid native profile columns")
+    names = set()
+    for value in (data, *data["columns"]):
+        if not isinstance(value, dict) or ("complete" in value and type(value["complete"]) is not bool):
+            raise ValueError("Invalid native profile state")
+    for column in data["columns"]:
+        name = column.get("name")
+        if not isinstance(name, str) or name in names:
+            raise ValueError("Invalid native profile column identity")
+        names.add(name)
+
+
+@dataclass(frozen=True)
+class ProfileExecutionIssue:
+    """Safe native failure identity; exception bodies and input values are excluded."""
+
+    stage: str
+    component: str
+    error_type: str
+    column: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"stage": self.stage, "component": self.component, "error_type": self.error_type, "column": self.column}
+
+    @classmethod
+    def from_dict(cls, value: dict[str, Any]) -> ProfileExecutionIssue:
+        return cls(stage=value["stage"], component=value["component"], error_type=value["error_type"], column=value.get("column"))
+
+
+    @classmethod
+    def from_profile_dict(cls, value: dict[str, Any]) -> tuple[ProfileExecutionIssue, ...]:
+        """Restore diagnostics without erasing an explicit incomplete verdict."""
+        issues = tuple(cls.from_dict(issue) for issue in value.get("execution_issues", ()))
+        if value.get("complete") is False and not issues:
+            columns = value.get("columns")
+            if columns is not None and (
+                len(columns) != value.get("column_count", len(columns))
+                or any(column.get("complete") is False or column.get("execution_issues") for column in columns)
+            ):
+                return issues
+            return (cls("restore", "profile", "IncompleteProfile"),)
+        return issues
+
+
 @dataclass(frozen=True)
 class ColumnProfile:
     """Complete profile for a single column.
@@ -206,6 +249,14 @@ class ColumnProfile:
     profiled_at: datetime = field(default_factory=datetime.now)
     profile_duration_ms: float = 0.0
 
+    # Optional native incremental sampling identity; absent for ordinary profiles.
+    content_fingerprint: str | None = None
+    execution_issues: tuple[ProfileExecutionIssue, ...] = field(default_factory=tuple)
+
+    @property
+    def complete(self) -> bool:
+        return not self.execution_issues
+
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
         result: dict[str, Any] = {
@@ -221,6 +272,9 @@ class ColumnProfile:
             "is_unique": self.is_unique,
             "is_constant": self.is_constant,
         }
+
+        if self.content_fingerprint is not None:
+            result["content_fingerprint"] = self.content_fingerprint
 
         if self.distribution:
             result["distribution"] = self.distribution.to_dict()
@@ -250,6 +304,9 @@ class ColumnProfile:
         result["profiled_at"] = self.profiled_at.isoformat()
         result["profile_duration_ms"] = self.profile_duration_ms
 
+        if not self.complete:
+            result["complete"] = False
+            result["execution_issues"] = [issue.to_dict() for issue in self.execution_issues]
         return result
 
 
@@ -283,6 +340,12 @@ class TableProfile:
     profiled_at: datetime = field(default_factory=datetime.now)
     profile_duration_ms: float = 0.0
 
+    execution_issues: tuple[ProfileExecutionIssue, ...] = field(default_factory=tuple)
+
+    @property
+    def complete(self) -> bool:
+        return not self.execution_issues and len(self.columns) == self.column_count and all(column.complete for column in self.columns)
+
     def __iter__(self) -> Iterator[ColumnProfile]:
         """Iterate over column profiles."""
         return iter(self.columns)
@@ -310,7 +373,7 @@ class TableProfile:
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
-        return {
+        result = {
             "name": self.name,
             "row_count": self.row_count,
             "column_count": self.column_count,
@@ -326,6 +389,10 @@ class TableProfile:
             "profiled_at": self.profiled_at.isoformat(),
             "profile_duration_ms": self.profile_duration_ms,
         }
+        if not self.complete:
+            result["complete"] = False
+            result["execution_issues"] = [issue.to_dict() for issue in self.execution_issues]
+        return result
 
 
 # =============================================================================
@@ -384,6 +451,15 @@ class Profiler(ABC):
         self.include_correlations = include_correlations
         self.top_n_values = top_n_values
         self.pattern_sample_size = pattern_sample_size
+
+    def set_execution_guard(self, guard: Callable[[], None]) -> None:
+        """Install a trusted guard before native component execution."""
+        self._execution_guard = guard
+
+    def _guard_execution(self) -> None:
+        guard = getattr(self, "_execution_guard", None)
+        if guard is not None:
+            guard()
 
     @abstractmethod
     def profile(self, data: pl.LazyFrame) -> TableProfile:

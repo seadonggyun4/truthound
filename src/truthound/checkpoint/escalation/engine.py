@@ -7,10 +7,15 @@ escalation policy system.
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import json
 import logging
+from collections.abc import Awaitable, Callable
+from contextlib import nullcontext, suppress
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
-from typing import Any, Awaitable, Callable, Protocol, runtime_checkable
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Protocol, runtime_checkable
 
 from truthound.checkpoint.escalation.protocols import (
     BaseEscalationStore,
@@ -24,14 +29,12 @@ from truthound.checkpoint.escalation.protocols import (
     EscalationTrigger,
 )
 from truthound.checkpoint.escalation.scheduler import (
-    AsyncJobExecutor,
     BaseEscalationScheduler,
     ScheduledJob,
     SchedulerConfig,
     create_scheduler,
 )
 from truthound.checkpoint.escalation.states import (
-    EscalationEvent,
     EscalationState,
     EscalationStateManager,
 )
@@ -150,6 +153,17 @@ class EscalationEngine:
             config: Engine configuration.
         """
         self._config = config or EscalationEngineConfig()
+        scheduler_config = self._config.scheduler_config
+        if scheduler_config and scheduler_config.journal_path:
+            database = self._config.store_config.get("database", ":memory:")
+            if (
+                self._config.store_type != "sqlite"
+                or str(database) == ":memory:"
+                or Path(database).resolve() != Path(scheduler_config.journal_path).resolve()
+            ):
+                raise ValueError(
+                    "Durable execution requires journal and records in one SQLite file"
+                )
         self._policies: dict[str, EscalationPolicy] = {}
         self._store: BaseEscalationStore = create_store(
             self._config.store_type,
@@ -164,6 +178,18 @@ class EscalationEngine:
         self._condition_evaluators = self._config.condition_evaluators.copy()
         self._is_running = False
         self._lock = asyncio.Lock()
+        self._notification_journal = None
+        if self._config.scheduler_config and self._config.scheduler_config.journal_path:
+            from truthound.checkpoint.escalation.journal import ExecutionJournal
+
+            self._scheduler._journal.close()
+            self._notification_journal = ExecutionJournal(
+                self._config.scheduler_config.journal_path,
+                connection=self._store._get_connection(),
+            )
+            self._scheduler._journal = self._notification_journal
+        self._closed = False
+        self._execution_guard = None
 
     @property
     def is_running(self) -> bool:
@@ -236,16 +262,146 @@ class EscalationEngine:
         if self._is_running:
             return
 
+        self._ensure_owner()
         self._scheduler.start()
         self._is_running = True
         logger.info("Escalation engine started")
 
+    def bind_recovery_scope(self, scope: str) -> None:
+        """Pin durable recovery to the current operator authorization."""
+        if self._notification_journal:
+            self._notification_journal.bind_scope(scope)
+
+    def set_execution_guard(self, guard: Callable[[], None]) -> None:
+        """Set an operator authorization check invoked before scheduled effects."""
+        self._execution_guard = guard
+
+    def _ensure_owner(self) -> None:
+        if self._execution_guard:
+            self._execution_guard()
+        if self._closed:
+            raise RuntimeError("Escalation engine is closed")
+        if self._notification_journal:
+            self._notification_journal.acquire_owner()
+
+    @staticmethod
+    def _policy_digest(policy):
+        return hashlib.sha256(
+            json.dumps(policy.to_dict(), sort_keys=True, allow_nan=False).encode()
+        ).hexdigest()
+
+    def _transaction(self):
+        return (
+            self._notification_journal.transaction()
+            if self._notification_journal
+            else nullcontext()
+        )
+
+    @staticmethod
+    def _notification_identity(record, level):
+        return f"notification:{record.id}:{record.escalation_count}:{level.level}"
+
+    def _complete_notification(self, record, level):
+        if self._notification_journal and self._notification_handler:
+            self._notification_journal.finish(
+                self._notification_identity(record, level), "completed"
+            )
+
+    def recovery_status(self, *, limit: int = 100, offset: int = 0) -> dict[str, Any]:
+        """Report durable pending and uncertain attempts without replaying effects."""
+        journal = self._notification_journal
+        if not 1 <= limit <= 1000 or offset < 0:
+            raise ValueError("Invalid recovery page")
+        rows = journal.attempts(limit=limit + 1, offset=offset) if journal else []
+        return {
+            "enabled": journal is not None,
+            "attempts": [
+                {"identity": identity, "state": state} for identity, state, _ in rows[:limit]
+            ],
+            "next_offset": offset + limit if len(rows) > limit else None,
+        }
+
+    async def recovery_resolve(self, identity: str, resolution: str) -> dict[str, Any]:
+        """Record an operator's confirmation or discard; never send a notification."""
+        async with self._lock:
+            self._ensure_owner()
+            if self._is_running or not self._notification_journal:
+                raise RuntimeError("Recovery requires a stopped durable engine")
+            journal = self._notification_journal
+            rows = journal.connection.execute(
+                "SELECT payload FROM execution_attempts WHERE identity=?", (identity,)
+            ).fetchone()
+            if not rows or not identity.startswith(("notification:", "job:")):
+                raise ValueError("Unknown escalation attempt")
+            with journal.transaction():
+                journal.resolve_unknown(identity, resolution)
+                if identity.startswith("notification:"):
+                    payload = json.loads(rows[0])
+                    record = self._store.get(payload["record_id"])
+                    if record is None:
+                        raise ValueError("Missing incident record")
+                    self._scheduler.cancel_escalation(record.id)
+                    record.next_escalation_at = None
+                    if resolution == "completed":
+                        policy = self._policies.get(record.policy_name)
+                        if (
+                            not policy
+                            or not policy.enabled
+                            or payload.get("policy_digest") != self._policy_digest(policy)
+                        ):
+                            raise ValueError("Notification policy changed")
+                        level = policy.get_level(record.current_level)
+                        if level is None or not record.is_active:
+                            raise ValueError("Incident cannot continue")
+                        record.notification_count += len(level.targets)
+                        if record.state == "escalating":
+                            self._state_manager.complete_escalation(record)
+                        following = policy.get_next_level(level.level)
+                        if following:
+                            record.next_escalation_at = datetime.now() + following.delay
+                            self._scheduler.schedule_escalation(
+                                record.id,
+                                policy.name,
+                                following.level,
+                                following.delay,
+                                metadata={"policy_digest": self._policy_digest(policy)},
+                            )
+                    self._store.save(record)
+            return {"identity": identity, "state": resolution}
+
+    async def recovery_forget(self, identities: list[str]) -> dict[str, Any]:
+        """Remove explicitly selected terminal receipts while quiescent."""
+        async with self._lock:
+            self._ensure_owner()
+            if self._is_running or not self._notification_journal:
+                raise RuntimeError("Retention requires a stopped durable engine")
+            if any(not identity.startswith(("notification:", "job:")) for identity in identities):
+                raise ValueError("Invalid escalation attempt identity")
+            return {"removed": self._notification_journal.forget_terminal(identities)}
+
+    async def close(self) -> None:
+        """Stop, drain tasks, then release durable ownership and connections."""
+        await self.stop()
+        async with self._lock:
+            if self._closed:
+                return
+            if self._notification_journal:
+                self._notification_journal.close()
+                self._store._get_connection().close()
+            self._closed = True
+
     async def stop(self) -> None:
         """Stop the escalation engine."""
-        if not self._is_running:
-            return
-
+        tasks = set(getattr(self._scheduler, "_tasks", {}).values())
+        tasks.update(self._scheduler._active_tasks)
+        tasks.discard(asyncio.current_task())
         self._scheduler.stop()
+        for task in tasks:
+            task.cancel()
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+        # APScheduler queues its native shutdown callback on this event loop.
+        await asyncio.sleep(0)
         self._is_running = False
         logger.info("Escalation engine stopped")
 
@@ -268,6 +424,7 @@ class EscalationEngine:
             EscalationResult with created record.
         """
         async with self._lock:
+            self._ensure_owner()
             # Find policy
             policy = self._find_policy(policy_name, context or {}, trigger_type)
             if not policy:
@@ -281,9 +438,7 @@ class EscalationEngine:
             existing = self._store.get_by_incident(incident_id)
             for record in existing:
                 if record.is_active and record.policy_name == policy.name:
-                    logger.info(
-                        f"Active escalation already exists for incident {incident_id}"
-                    )
+                    logger.info(f"Active escalation already exists for incident {incident_id}")
                     return EscalationResult.success_result(
                         record,
                         "trigger_existing",
@@ -295,6 +450,17 @@ class EscalationEngine:
                 logger.info(f"Outside business hours for policy {policy.name}")
                 # Schedule for next business hours
                 # For now, just proceed with escalation
+
+            if self._notification_journal:
+                for previous in existing:
+                    blocked = self._notification_journal.connection.execute(
+                        "SELECT 1 FROM execution_attempts WHERE identity LIKE 'notification:%' "
+                        "AND json_extract(payload,'$.record_id')=? "
+                        "AND state IN ('pending','attempting','unknown') LIMIT 1",
+                        (previous.id,),
+                    ).fetchone()
+                    if blocked:
+                        raise RuntimeError("Incident has an unresolved notification outcome")
 
             # Create record
             record = EscalationRecord.create(
@@ -321,27 +487,36 @@ class EscalationEngine:
                     "Policy has no level 1",
                 )
 
+            # Persist incident identity before any external effect, so restart
+            # deduplication can recognize an interrupted initial notification.
+            if self._notification_journal:
+                self._store.save(record)
             # Send initial notification
             notified_targets = await self._send_notifications(
                 record,
                 first_level,
             )
 
-            record.notification_count += len(notified_targets)
+            with self._transaction():
+                self._complete_notification(record, first_level)
+                record.notification_count += len(notified_targets)
 
-            # Schedule next escalation
-            next_level = policy.get_next_level(1)
-            if next_level:
-                record.next_escalation_at = datetime.now() + next_level.delay
-                self._scheduler.schedule_escalation(
-                    record_id=record.id,
-                    policy_name=policy.name,
-                    target_level=next_level.level,
-                    delay=next_level.delay,
-                )
+                # Schedule next escalation
+                next_level = policy.get_next_level(1)
+                if next_level:
+                    record.next_escalation_at = datetime.now() + next_level.delay
+                    self._scheduler.schedule_escalation(
+                        record_id=record.id,
+                        policy_name=policy.name,
+                        target_level=next_level.level,
+                        delay=next_level.delay,
+                        metadata={"policy_digest": self._policy_digest(policy)}
+                        if self._notification_journal
+                        else None,
+                    )
 
-            # Save record
-            self._store.save(record)
+                # Save record
+                self._store.save(record)
 
             logger.info(
                 f"Triggered escalation {record.id} for incident {incident_id} "
@@ -370,6 +545,7 @@ class EscalationEngine:
             EscalationResult.
         """
         async with self._lock:
+            self._ensure_owner()
             record = self._store.get(record_id)
             if not record:
                 return EscalationResult.failure_result(
@@ -425,6 +601,7 @@ class EscalationEngine:
             EscalationResult.
         """
         async with self._lock:
+            self._ensure_owner()
             record = self._store.get(record_id)
             if not record:
                 return EscalationResult.failure_result(
@@ -479,6 +656,7 @@ class EscalationEngine:
             EscalationResult.
         """
         async with self._lock:
+            self._ensure_owner()
             record = self._store.get(record_id)
             if not record:
                 return EscalationResult.failure_result(
@@ -500,9 +678,7 @@ class EscalationEngine:
 
             self._store.save(record)
 
-            logger.info(
-                f"Escalation {record_id} cancelled by {cancelled_by}: {reason}"
-            )
+            logger.info(f"Escalation {record_id} cancelled by {cancelled_by}: {reason}")
 
             return EscalationResult.success_result(
                 record,
@@ -525,6 +701,7 @@ class EscalationEngine:
             EscalationResult.
         """
         async with self._lock:
+            self._ensure_owner()
             record = self._store.get(record_id)
             if not record:
                 return EscalationResult.failure_result(
@@ -604,31 +781,37 @@ class EscalationEngine:
         Args:
             job: The scheduled job.
         """
-        record = self._store.get(job.record_id)
-        if not record:
-            logger.warning(f"Record not found for job {job.id}: {job.record_id}")
-            return
+        async with self._lock:
+            self._ensure_owner()
+            record = self._store.get(job.record_id)
+            if not record:
+                logger.warning(f"Record not found for job {job.id}: {job.record_id}")
+                return
 
-        if not record.is_active:
-            logger.info(
-                f"Skipping escalation for inactive record {record.id}: {record.state}"
-            )
-            return
+            if not record.is_active:
+                logger.info(f"Skipping escalation for inactive record {record.id}: {record.state}")
+                return
 
-        policy = self._policies.get(record.policy_name)
-        if not policy:
-            logger.error(f"Policy not found: {record.policy_name}")
-            return
+            policy = self._policies.get(record.policy_name)
+            if not policy:
+                logger.error(f"Policy not found: {record.policy_name}")
+                return
 
-        # Check if we should escalate to this level
-        if record.current_level >= job.target_level:
-            logger.info(
-                f"Record {record.id} already at level {record.current_level}, "
-                f"target was {job.target_level}"
-            )
-            return
+            if self._notification_journal and (
+                not policy.enabled
+                or job.metadata.get("policy_digest") != self._policy_digest(policy)
+            ):
+                raise RuntimeError("Recovered job policy changed or was disabled")
 
-        await self._perform_escalation(record, policy)
+            # Check if we should escalate to this level
+            if record.current_level >= job.target_level:
+                logger.info(
+                    f"Record {record.id} already at level {record.current_level}, "
+                    f"target was {job.target_level}"
+                )
+                return
+
+            await self._perform_escalation(record, policy)
 
     async def _perform_escalation(
         self,
@@ -644,6 +827,17 @@ class EscalationEngine:
         Returns:
             EscalationResult.
         """
+        if self._notification_journal:
+            blocked = self._notification_journal.connection.execute(
+                "SELECT 1 FROM execution_attempts WHERE identity LIKE 'notification:%' "
+                "AND json_extract(payload,'$.record_id')=? "
+                "AND state IN ('pending','attempting','unknown') LIMIT 1",
+                (record.id,),
+            ).fetchone()
+            if blocked:
+                raise RuntimeError("Incident has an unresolved notification outcome")
+        if not policy.enabled:
+            raise RuntimeError("Escalation policy is disabled")
         next_level = policy.get_next_level(record.current_level)
 
         if not next_level:
@@ -675,9 +869,7 @@ class EscalationEngine:
                 next_level.conditions,
             )
             if not conditions_met:
-                logger.info(
-                    f"Level {next_level.level} conditions not met for {record.id}"
-                )
+                logger.info(f"Level {next_level.level} conditions not met for {record.id}")
                 return EscalationResult.success_result(
                     record,
                     "conditions_not_met",
@@ -700,36 +892,44 @@ class EscalationEngine:
 
         # Send notifications
         notified_targets = await self._send_notifications(record, next_level)
-        record.notification_count += len(notified_targets)
+        with self._transaction():
+            self._complete_notification(record, next_level)
+            record.notification_count += len(notified_targets)
 
-        # Complete escalation
-        self._state_manager.complete_escalation(record)
+            # Complete escalation
+            self._state_manager.complete_escalation(record)
 
-        # Schedule next escalation
-        self._scheduler.cancel_escalation(record.id)
-        after_next = policy.get_next_level(next_level.level)
+            # Schedule next escalation
+            self._scheduler.cancel_escalation(record.id)
+            after_next = policy.get_next_level(next_level.level)
 
-        if after_next:
-            record.next_escalation_at = datetime.now() + after_next.delay
-            self._scheduler.schedule_escalation(
-                record_id=record.id,
-                policy_name=policy.name,
-                target_level=after_next.level,
-                delay=after_next.delay,
-            )
-        elif next_level.repeat_count > 0:
-            # Schedule repeat notification
-            record.next_escalation_at = datetime.now() + next_level.repeat_interval
-            self._scheduler.schedule_escalation(
-                record_id=record.id,
-                policy_name=policy.name,
-                target_level=next_level.level,
-                delay=next_level.repeat_interval,
-            )
-        else:
-            record.next_escalation_at = None
+            if after_next:
+                record.next_escalation_at = datetime.now() + after_next.delay
+                self._scheduler.schedule_escalation(
+                    record_id=record.id,
+                    policy_name=policy.name,
+                    target_level=after_next.level,
+                    delay=after_next.delay,
+                    metadata={"policy_digest": self._policy_digest(policy)}
+                    if self._notification_journal
+                    else None,
+                )
+            elif next_level.repeat_count > 0:
+                # Schedule repeat notification
+                record.next_escalation_at = datetime.now() + next_level.repeat_interval
+                self._scheduler.schedule_escalation(
+                    record_id=record.id,
+                    policy_name=policy.name,
+                    target_level=next_level.level,
+                    delay=next_level.repeat_interval,
+                    metadata={"policy_digest": self._policy_digest(policy)}
+                    if self._notification_journal
+                    else None,
+                )
+            else:
+                record.next_escalation_at = None
 
-        self._store.save(record)
+            self._store.save(record)
 
         logger.info(
             f"Escalated {record.id} to level {record.current_level}, "
@@ -762,6 +962,20 @@ class EscalationEngine:
             return []
 
         notified: list[EscalationTarget] = []
+        attempt = None
+        if self._notification_journal:
+            attempt = f"notification:{record.id}:{record.escalation_count}:{level.level}"
+            with self._transaction():
+                self._store.save(record)
+                self._notification_journal.enqueue(
+                    attempt,
+                    {
+                        "record_id": record.id,
+                        "policy_digest": self._policy_digest(self._policies[record.policy_name]),
+                    },
+                )
+                if not self._notification_journal.claim(attempt):
+                    raise RuntimeError("Notification outcome already recorded or unknown")
 
         try:
             # Sort targets by priority
@@ -771,9 +985,18 @@ class EscalationEngine:
             if success:
                 notified.extend(sorted_targets)
             else:
+                if attempt:
+                    raise RuntimeError("Notification outcome is unknown")
                 logger.warning(f"Notification handler returned failure for {record.id}")
 
-        except Exception as e:
+        except BaseException as e:
+            if attempt:
+                # Never mask the original error with a second persistence error.
+                with suppress(Exception):
+                    self._notification_journal.finish(attempt, "unknown")
+                raise
+            if not isinstance(e, Exception):
+                raise
             logger.exception(f"Error sending notifications for {record.id}: {e}")
 
         return notified
@@ -863,10 +1086,7 @@ class EscalationEngine:
                 return False
 
             # Check hour
-            if not (policy.business_hours_start <= now.hour < policy.business_hours_end):
-                return False
-
-            return True
+            return policy.business_hours_start <= now.hour < policy.business_hours_end
 
         except Exception:
             # Default to always business hours if timezone fails

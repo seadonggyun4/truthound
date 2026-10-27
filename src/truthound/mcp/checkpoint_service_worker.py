@@ -77,9 +77,100 @@ async def requests():
         await asyncio.sleep(0.05)
 
 
+def runner_configuration(service, names):
+    from dataclasses import asdict
+
+    from truthound.checkpoint.triggers.base import TriggerConfig
+    from truthound.checkpoint.triggers.schedule import CronTrigger, ScheduleTrigger
+    from truthound.mcp.checkpoint_services import CheckpointDefinitionUpdate, ScheduleUpdate
+
+    if service.running or service._active_runs or (service._thread and service._thread.is_alive()):
+        raise MCPError("invalid_arguments")
+    output = {}
+    for name in names:
+        checkpoint = service.checkpoints.get(name)
+        if checkpoint is None:
+            output[name] = None
+            continue
+        settings = {
+            key: getattr(checkpoint.config, key)
+            for key in CheckpointDefinitionUpdate.model_fields
+            if key != "checks"
+        }
+        checks = getattr(service, "_definition_checks", {}).get(name)
+        if checks is not None:
+            settings["checks"] = checks
+        # Only common settings are portable for provider-defined triggers.
+        triggers = {}
+        if any(not trigger.config.name for trigger in checkpoint.triggers):
+            raise MCPError("unsupported_value")
+        if len({trigger.name for trigger in checkpoint.triggers}) != len(checkpoint.triggers):
+            raise MCPError("unsupported_value")
+        for trigger in checkpoint.triggers:
+            fields = (
+                ScheduleUpdate.model_fields
+                if type(trigger) in {ScheduleTrigger, CronTrigger}
+                else TriggerConfig.__dataclass_fields__
+            )
+            config = asdict(trigger.config)
+            patch = {key: value for key, value in config.items() if key in fields and key != "name"}
+            triggers[trigger.name] = ScheduleUpdate.model_validate(patch).model_dump(
+                mode="json", exclude_unset=True
+            )
+        output[name] = {
+            "settings": CheckpointDefinitionUpdate.model_validate(settings).model_dump(
+                mode="json", exclude_unset=True
+            ),
+            "triggers": triggers,
+        }
+    return {"checkpoints": output}
+
+
 async def execute(service, kind, args):
     command = args["command"]
+    if command == "recovery_status":
+        return service.recovery_status(
+            limit=args.get("recovery_limit", 100), offset=args.get("recovery_offset", 0)
+        )
+    if command in {"recovery_resolve", "recovery_forget"}:
+        args_values = (
+            (args["attempt_id"], args["resolution"])
+            if command == "recovery_resolve"
+            else (args["attempt_ids"],)
+        )
+        method = getattr(service, command)
+        if kind == "runner":
+            return await asyncio.to_thread(method, *args_values)
+        return await method(*args_values)
     if kind == "runner":
+        if command == "persist_configuration":
+            return runner_configuration(service, args["checkpoint_names"])
+        if command == "checkpoint_update":
+            from truthound.mcp.checkpoint_services import CheckpointDefinitionUpdate
+            from truthound.mcp.validator_wire import constructor, settings
+
+            update = CheckpointDefinitionUpdate.model_validate(args["checkpoint_update"])
+            patch = update.model_dump(exclude_unset=True, exclude={"checks"})
+            if update.checks is not None:
+                patch["validators"] = [
+                    constructor(check.validator)(
+                        **settings(check.validator, check.settings, build=True)
+                    )
+                    for check in update.checks
+                ]
+                patch["validator_config"] = {}
+            checkpoint = service.edit_checkpoint(args["checkpoint_name"], patch)
+            if update.checks is not None:
+                if not hasattr(service, "_definition_checks"):
+                    service._definition_checks = {}
+                service._definition_checks[checkpoint.name] = [
+                    check.model_dump() for check in update.checks
+                ]
+            # Project only edited declarative fields, never the opaque source/transport.
+            return {
+                "checkpoint": checkpoint.name,
+                "settings": update.model_dump(exclude_unset=True),
+            }
         if command == "schedule_update":
             from dataclasses import asdict
 
@@ -209,6 +300,8 @@ async def serve(wire):
     async with contextlib.AsyncExitStack() as stack:
         try:
             async for request in requests():
+                if request == {"close": True}:
+                    break
                 if "open" in request:
                     if service is not None:
                         raise MCPError("invalid_arguments")
@@ -221,27 +314,56 @@ async def serve(wire):
                         service = stack.enter_context(owner)
                         if not isinstance(service, CheckpointRunner) or service.running:
                             raise MCPError("invalid_binding")
+                        service.set_execution_guard(guard)
+                        service._ensure_owner()
                     elif kind == "escalation":
                         service = await stack.enter_async_context(owner)
                         if not isinstance(service, EscalationEngine) or service.is_running:
                             raise MCPError("invalid_binding")
+                        service.set_execution_guard(guard)
+                        service._ensure_owner()
                     else:
                         raise MCPError("invalid_binding")
+                    service.bind_recovery_scope(request["recovery_scope"])
                     if request.get("configuration_path") is not None:
-                        if kind != "escalation":
-                            raise MCPError("invalid_arguments")
                         from truthound.checkpoint.escalation.protocols import EscalationPolicy
 
-                        # Restore only declarative policies, never actions, incidents,
-                        # scheduler jobs or notifications. The factory owns its store.
                         snapshot = json.loads(
                             Path(request["configuration_path"]).read_text(encoding="utf-8")
                         )
-                        for name, configuration in snapshot["policies"].items():
-                            if configuration is None:
-                                service.unregister_policy(name)
-                            else:
-                                service.register_policy(EscalationPolicy.from_dict(configuration))
+                        if kind == "escalation":
+                            for name, configuration in snapshot["policies"].items():
+                                if configuration is None:
+                                    service.unregister_policy(name)
+                                else:
+                                    service.register_policy(
+                                        EscalationPolicy.from_dict(configuration)
+                                    )
+                        else:
+                            for name, configuration in snapshot["checkpoints"].items():
+                                if configuration is None:
+                                    service.remove_checkpoint(name)
+                                    continue
+                                await execute(
+                                    service,
+                                    kind,
+                                    {
+                                        "command": "checkpoint_update",
+                                        "checkpoint_name": name,
+                                        "checkpoint_update": configuration["settings"],
+                                    },
+                                )
+                                for trigger_name, changes in configuration["triggers"].items():
+                                    await execute(
+                                        service,
+                                        kind,
+                                        {
+                                            "command": "schedule_update",
+                                            "checkpoint_name": name,
+                                            "trigger_name": trigger_name,
+                                            "schedule_update": changes,
+                                        },
+                                    )
                 else:
                     if service is None:
                         raise MCPError("invalid_handle")
@@ -263,9 +385,9 @@ async def serve(wire):
             # Owner exit runs after native stop. Forced revocation/timeout cannot
             # promise third-party graceful cleanup or retract already sent work.
             if isinstance(service, CheckpointRunner):
-                await asyncio.to_thread(service.stop)
+                await asyncio.to_thread(service.close)
             elif isinstance(service, EscalationEngine):
-                await service.stop()
+                await service.close()
 
 
 def main():

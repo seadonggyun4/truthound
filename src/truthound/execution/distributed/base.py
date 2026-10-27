@@ -8,6 +8,7 @@ and provides default implementations where possible.
 from __future__ import annotations
 
 import logging
+import math
 import threading
 import time
 from abc import ABC, abstractmethod
@@ -16,17 +17,15 @@ from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 from truthound.execution._protocols import AggregationType
 from truthound.execution.base import BaseExecutionEngine, ExecutionConfig
+from truthound.execution.distributed.policies import operation
 from truthound.execution.distributed.protocols import (
     AggregationScope,
     AggregationSpec,
     ComputeBackend,
-    DistributedAggregation,
-    DistributedBackendProtocol,
     DistributedResult,
     ExecutionMode,
     PartitionInfo,
     PartitionStrategy,
-    get_aggregator,
 )
 
 if TYPE_CHECKING:
@@ -54,7 +53,7 @@ class DistributedEngineConfig(ExecutionConfig):
         checkpoint_enabled: Enable checkpointing for fault tolerance.
         checkpoint_dir: Directory for checkpoints.
         arrow_batch_size: Batch size for Arrow conversions.
-        memory_fraction: Fraction of memory to use per partition.
+        memory_fraction: Fraction of available driver memory allowed per Arrow batch.
         collect_metrics: Whether to collect execution metrics.
     """
 
@@ -68,6 +67,66 @@ class DistributedEngineConfig(ExecutionConfig):
     arrow_batch_size: int = 65536
     memory_fraction: float = 0.6
     collect_metrics: bool = True
+    partition_columns: tuple[str, ...] = ()
+    partitioner: Any = field(default=None, repr=False)
+
+    def __post_init__(self) -> None:
+        for name in ("num_partitions", "retry_count"):
+            value = getattr(self, name)
+            if type(value) is not int or value < 0:
+                raise ValueError(f"{name} must be a non-negative integer")
+        for name in (
+            "arrow_batch_size",
+            "max_rows_for_numpy",
+            "max_rows_for_polars",
+            "sample_size_for_stats",
+        ):
+            value = getattr(self, name)
+            if type(value) is not int or value < 1:
+                raise ValueError(f"{name} must be a positive integer")
+        for name in ("checkpoint_enabled", "collect_metrics", "cache_results", "parallel"):
+            if type(getattr(self, name)) is not bool:
+                raise ValueError(f"{name} must be boolean")
+        for name in ("timeout_seconds", "memory_fraction"):
+            value = getattr(self, name)
+            if type(value) not in (int, float) or not math.isfinite(value) or value <= 0:
+                raise ValueError(f"{name} must be positive and finite")
+        if self.memory_fraction > 1:
+            raise ValueError("memory_fraction must not exceed one")
+        if not isinstance(self.checkpoint_dir, str):
+            raise ValueError("checkpoint_dir must be a string")
+        if self.checkpoint_enabled and not self.checkpoint_dir:
+            raise ValueError("Enabled checkpoints require checkpoint_dir")
+        self.partition_strategy = PartitionStrategy(self.partition_strategy)
+        self.execution_mode = ExecutionMode(self.execution_mode)
+        if (
+            not isinstance(self.partition_columns, (tuple, list))
+            or any(not isinstance(column, str) or not column for column in self.partition_columns)
+            or len(set(self.partition_columns)) != len(self.partition_columns)
+        ):
+            raise ValueError("Partition columns must be unique non-empty names")
+        self.partition_columns = tuple(self.partition_columns)
+        if (
+            self.partition_strategy in {PartitionStrategy.COLUMN, PartitionStrategy.ROW_RANGE}
+            and not self.partition_columns
+        ):
+            raise ValueError("Selected partition strategy requires partition columns")
+        if self.partition_strategy == PartitionStrategy.CUSTOM:
+            if not callable(self.partitioner):
+                raise ValueError("Custom partition strategy requires a partitioner")
+        elif self.partitioner is not None:
+            raise ValueError("A partitioner requires the custom strategy")
+
+    def selected_partition_columns(self, available):
+        columns = list(self.partition_columns or available)
+        if any(column not in available for column in columns):
+            raise ValueError("Unknown partition column")
+        return columns
+
+    @staticmethod
+    def validate_partition_count(value: int) -> None:
+        if type(value) is not int or value < 1:
+            raise ValueError("Partition count must be a positive integer")
 
 
 ConfigT = TypeVar("ConfigT", bound=DistributedEngineConfig)
@@ -149,6 +208,12 @@ class BaseDistributedEngine(BaseExecutionEngine[ConfigT], ABC, Generic[ConfigT])
         self._lock = threading.RLock()
         self._metrics: list[ExecutionMetrics] = []
         self._initialized = False
+        self._checkpoint_path = None
+
+    @property
+    def checkpoint_path(self) -> str | None:
+        """Committed local checkpoint path, when this engine owns a snapshot."""
+        return self._checkpoint_path
 
     @classmethod
     def _default_config(cls) -> ConfigT:
@@ -215,7 +280,7 @@ class BaseDistributedEngine(BaseExecutionEngine[ConfigT], ABC, Generic[ConfigT])
     def _to_arrow_batches(
         self,
         batch_size: int | None = None,
-    ) -> list["pa.RecordBatch"]:
+    ) -> list[pa.RecordBatch]:
         """Convert distributed data to Arrow record batches.
 
         This should use native Arrow conversion when available
@@ -230,7 +295,7 @@ class BaseDistributedEngine(BaseExecutionEngine[ConfigT], ABC, Generic[ConfigT])
         pass
 
     @abstractmethod
-    def _repartition(self, num_partitions: int) -> "BaseDistributedEngine":
+    def _repartition(self, num_partitions: int) -> BaseDistributedEngine:
         """Repartition the underlying data.
 
         Args:
@@ -245,6 +310,7 @@ class BaseDistributedEngine(BaseExecutionEngine[ConfigT], ABC, Generic[ConfigT])
     # Implemented Methods - Core Operations (Distributed)
     # -------------------------------------------------------------------------
 
+    @operation
     def count_rows(self) -> int:
         """Count total rows using distributed aggregation."""
         cache_key = self._cache_key("count_rows")
@@ -268,6 +334,7 @@ class BaseDistributedEngine(BaseExecutionEngine[ConfigT], ABC, Generic[ConfigT])
             return list(partitions[0].columns)
         return []
 
+    @operation
     def count_nulls(self, column: str) -> int:
         """Count nulls in a column using distributed aggregation."""
         cache_key = self._cache_key("count_nulls", column)
@@ -284,6 +351,7 @@ class BaseDistributedEngine(BaseExecutionEngine[ConfigT], ABC, Generic[ConfigT])
         self._set_cached(cache_key, count)
         return count
 
+    @operation
     def count_nulls_all(self) -> dict[str, int]:
         """Count nulls in all columns using distributed aggregation."""
         cache_key = self._cache_key("count_nulls_all")
@@ -309,6 +377,7 @@ class BaseDistributedEngine(BaseExecutionEngine[ConfigT], ABC, Generic[ConfigT])
         self._set_cached(cache_key, null_counts)
         return null_counts
 
+    @operation
     def count_distinct(self, column: str) -> int:
         """Count distinct values using distributed aggregation."""
         cache_key = self._cache_key("count_distinct", column)
@@ -325,6 +394,7 @@ class BaseDistributedEngine(BaseExecutionEngine[ConfigT], ABC, Generic[ConfigT])
         self._set_cached(cache_key, count)
         return count
 
+    @operation
     def get_stats(self, column: str) -> dict[str, Any]:
         """Get comprehensive column statistics using distributed aggregation."""
         cache_key = self._cache_key("get_stats", column)
@@ -357,7 +427,8 @@ class BaseDistributedEngine(BaseExecutionEngine[ConfigT], ABC, Generic[ConfigT])
     # Arrow Conversion - Zero-Copy Path
     # -------------------------------------------------------------------------
 
-    def to_polars_lazyframe(self) -> "pl.LazyFrame":
+    @operation
+    def to_polars_lazyframe(self) -> pl.LazyFrame:
         """Convert to Polars LazyFrame via Arrow zero-copy.
 
         This method uses Arrow as the intermediate format to
@@ -370,9 +441,7 @@ class BaseDistributedEngine(BaseExecutionEngine[ConfigT], ABC, Generic[ConfigT])
         import pyarrow as pa
 
         # Get Arrow batches from distributed data
-        batches = self._to_arrow_batches(
-            batch_size=self._config.arrow_batch_size
-        )
+        batches = self._to_arrow_batches(batch_size=self._config.arrow_batch_size)
 
         if not batches:
             # Return empty LazyFrame with correct schema
@@ -387,7 +456,8 @@ class BaseDistributedEngine(BaseExecutionEngine[ConfigT], ABC, Generic[ConfigT])
 
         return df.lazy()
 
-    def to_arrow_table(self) -> "pa.Table":
+    @operation
+    def to_arrow_table(self) -> pa.Table:
         """Convert to PyArrow Table.
 
         Returns:
@@ -395,9 +465,7 @@ class BaseDistributedEngine(BaseExecutionEngine[ConfigT], ABC, Generic[ConfigT])
         """
         import pyarrow as pa
 
-        batches = self._to_arrow_batches(
-            batch_size=self._config.arrow_batch_size
-        )
+        batches = self._to_arrow_batches(batch_size=self._config.arrow_batch_size)
 
         if not batches:
             return pa.table({})
@@ -408,6 +476,7 @@ class BaseDistributedEngine(BaseExecutionEngine[ConfigT], ABC, Generic[ConfigT])
     # Aggregation Interface
     # -------------------------------------------------------------------------
 
+    @operation
     def aggregate(
         self,
         aggregations: dict[str, AggregationType],
@@ -435,11 +504,13 @@ class BaseDistributedEngine(BaseExecutionEngine[ConfigT], ABC, Generic[ConfigT])
             AggregationType.VAR: "var",
             AggregationType.COUNT_DISTINCT: "distinct_count",
             AggregationType.NULL_COUNT: "null_count",
+            AggregationType.FIRST: "first",
+            AggregationType.LAST: "last",
         }
 
         spec = AggregationSpec(scope=AggregationScope.GLOBAL)
         for col, agg_type in aggregations.items():
-            op = agg_type_to_op.get(agg_type, "count")
+            op = agg_type_to_op[agg_type]
             spec.add(col, op, alias=f"{col}_{agg_type.value}")
 
         results = self._aggregate_distributed(spec)
@@ -501,7 +572,7 @@ class BaseDistributedEngine(BaseExecutionEngine[ConfigT], ABC, Generic[ConfigT])
         """Get current number of partitions."""
         return self._get_partition_count()
 
-    def repartition(self, num_partitions: int) -> "BaseDistributedEngine":
+    def repartition(self, num_partitions: int) -> BaseDistributedEngine:
         """Repartition the data.
 
         Args:
@@ -510,9 +581,10 @@ class BaseDistributedEngine(BaseExecutionEngine[ConfigT], ABC, Generic[ConfigT])
         Returns:
             New engine with repartitioned data.
         """
+        self._config.validate_partition_count(num_partitions)
         return self._repartition(num_partitions)
 
-    def coalesce(self, num_partitions: int) -> "BaseDistributedEngine":
+    def coalesce(self, num_partitions: int) -> BaseDistributedEngine:
         """Coalesce partitions (no shuffle).
 
         This is more efficient than repartition when reducing
@@ -526,13 +598,14 @@ class BaseDistributedEngine(BaseExecutionEngine[ConfigT], ABC, Generic[ConfigT])
         """
         # Default implementation uses repartition
         # Subclasses should override with native coalesce
+        self._config.validate_partition_count(num_partitions)
         return self._repartition(num_partitions)
 
     # -------------------------------------------------------------------------
     # Context Manager
     # -------------------------------------------------------------------------
 
-    def __enter__(self) -> "BaseDistributedEngine":
+    def __enter__(self) -> BaseDistributedEngine:
         """Context manager entry."""
         return self
 

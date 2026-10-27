@@ -169,9 +169,9 @@ engine.terminate(context)
 ```
 
 **Process Isolation Features:**
-- Resource limits via Unix `resource` module (RLIMIT_AS, RLIMIT_CPU)
+- Supported Unix limits plus parent-observed RSS and wall deadlines
 - Module blocking via `ImportBlocker` meta path hook
-- Communication via pickle files (safe IPC)
+- Trusted local argument transport; bounded data-only child results
 - Automatic cleanup of temp directories
 
 ### Container Sandbox Engine
@@ -201,7 +201,7 @@ result = await engine.execute(context, my_func, args)
 ```
 
 **Container Security Features:**
-- `--rm`: Auto-remove container
+- Owned container ID: awaited removal after execution/cancellation
 - `--memory`: Memory limit
 - `--cpus`: CPU limit
 - `--network=none`: Network isolation
@@ -226,6 +226,7 @@ service = SigningServiceImpl(
     algorithm=SignatureAlgorithm.RSA_SHA256,
     signer_id="my-org",
     validity_days=365,
+    verification_keys={"my-org": public_key_bytes},
 )
 
 # Sign a plugin
@@ -262,6 +263,52 @@ print(f"Warnings: {result.warnings}")
 | `RSA_SHA256` | Asymmetric | RSA signing |
 | `ED25519` | Asymmetric | Modern elliptic curve |
 
+### Authenticated signatures and lifecycle admission
+
+`SigningServiceImpl(verification_keys={signer_id: public_pem},
+verification_secrets={signer_id: hmac_secret})` checks the actual signature bytes
+against the signed content hash, algorithm, signer identity and timestamps.
+Missing keys, changed content or invalid signatures fail verification. SHA256
+and SHA512 are unkeyed integrity checks, not signer authentication; their
+successful result includes this warning. `plugin_hash` is reserved metadata.
+Verification keys come from the operator, never from the submitted signature.
+Only Python files are covered when signing a directory; separately loaded data
+and native dependencies are outside this digest.
+
+`create_verification_chain(..., require_trusted_signer=True)` requires an
+operator-key-authenticated signer whose trust-store level is `TRUSTED`.
+A hash-only signature, unknown signer or revoked signer fails. Certificate
+metadata does not replace the configured verification key or this trust check.
+
+For lifecycle admission, configure `EnterprisePluginManagerConfig` with
+`require_signature=True` and `verification_keys` or `verification_secrets`.
+Use `manager.signature_trust_store.set_signer_trust(signer_id, TrustLevel.TRUSTED)`
+and `manager.register_signed_plugin(name, plugin_class, source_path, signature)`.
+The manager verifies before load/setup and activation, including synchronous
+`load_plugin`, `load_from_class` and asynchronous `load`/`load_all` paths.
+Explicit `load(..., verify_signature=True)` requires the binding even when the
+global option is false. Bound signatures are always checked. A changed source,
+replaced class binding or revoked signer prevents subsequent admission;
+unloading remains available. Bulk loading raises an `ExceptionGroup` on failures
+and retains successful loads for inspection and cleanup.
+
+Classes are already imported when registered: this is a lifecycle admission
+check, not an import sandbox or proof that previously imported bytecode matches
+the current file. Discovery and imports remain operator-trusted operations.
+
+Trust-store format 2 atomically persists public certificate bytes, trust levels
+and revocation metadata. Reopening validates the whole document before adopting
+any trust. Malformed or oversized documents fail; legacy signer-only files remain
+readable, while legacy certificate entries without bytes require operator reimport.
+The file is single-writer; publication failures are raised and retain prior in-memory
+state. If directory synchronization fails after replacement, reopen to inspect the
+possibly published state. Keys and HMAC secrets are never written to this file.
+
+The shared manager uses synchronous lifecycle ports for automatic loading and
+shutdown, including the enterprise facade's synchronous context manager. Bulk
+load/unload attempts every selected plugin and raises grouped failures; successful
+loads remain registered and cleanup failures are not reported as success.
+
 ### Trust Store
 
 ```python
@@ -271,7 +318,7 @@ from truthound.plugins.security.signing import (
 )
 
 # Create trust store
-store = TrustStoreImpl(persist_path=Path("./trust_store.json"))
+store = TrustStoreImpl(store_path=Path("./trust_store.json"))
 
 # Add trusted certificate
 store.add_trusted_certificate(
@@ -543,45 +590,53 @@ for transition in history:
 
 ## Hot Reload
 
-### HotReloadManager
+`HotReloadManager` uses the shared `PluginManager`; the old separate lifecycle
+state manager is not a reload runtime. Its operator-provided loader returns a
+fresh `Plugin` class (or an awaitable of that class). Loading new Python code is
+the factory's responsibility, not an implicit `importlib.reload` of shared modules.
 
 ```python
-from truthound.plugins.lifecycle import (
-    HotReloadManager,
-    ReloadStrategy,
-)
+from truthound.plugins.manager import PluginManager
+from truthound.plugins.lifecycle import HotReloadManager, ReloadStrategy
 
-manager = HotReloadManager(lifecycle_manager)
-
-# Reload with strategy
-result = await manager.reload(
-    "plugin-id",
-    strategy=ReloadStrategy.GRACEFUL,
-)
-
-print(f"Success: {result.success}")
-print(f"Reload time: {result.reload_time_ms:.0f}ms")
-print(f"Previous version: {result.previous_version}")
-print(f"New version: {result.new_version}")
-
-# Watch for file changes
-handle = await manager.watch(
-    plugin_id="my-plugin",
-    plugin_path=Path("./my-plugin"),
-    auto_reload=True,
-)
-
-# Stop watching
-handle.cancel()
+plugins = PluginManager()
+plugins.load_from_class(OriginalPlugin, activate=False)
+reloads = HotReloadManager(plugins, plugin_loader=lambda name: ReplacementPlugin)
+async with reloads.operation("my-plugin") as plugin:
+    result = plugin.run()  # Operator-defined plugin work
+outcome = await reloads.reload("my-plugin", ReloadStrategy.GRACEFUL)
+print(outcome.success, outcome.duration_ms, outcome.rolled_back, outcome.error)
+await reloads.aclose()
+plugins.shutdown()
 ```
 
-**Reload Strategies:**
+`GRACEFUL` waits for work wrapped in `operation(name)` up to `timeout` (30 seconds
+by default), rejects new leases during reload, then observes old teardown and new
+setup/activation. `IMMEDIATE` skips lease draining; references already held by
+callers are not interrupted. Synchronous factories and callbacks cannot be forcibly
+preempted. A single registry does not implement multi-instance `ROLLING`; requesting
+it returns a failed result before mutation.
 
-| Strategy | Description |
-|----------|-------------|
-| `GRACEFUL` | Wait for in-flight operations |
-| `IMMEDIATE` | Stop and reload immediately |
-| `ROLLING` | Incremental for multi-instance |
+Failed candidate setup invokes teardown. A clean failure can restore a fresh
+instance of the previous class with its configuration and activation state;
+`rolled_back=True` means that reload actually succeeded. It does not restore prior
+in-memory state or undo external effects. Unconfirmed cleanup prevents automatic
+restoration. Errors are reported by type in `ReloadResult.error`; failed automatic
+reloads stop the watcher and are also raised on `aclose()`.
+
+File watching hashes contents, observes creation/change/deletion and awaits sync
+or async callbacks in order. Duplicate watched paths/plugins are rejected. Use
+`await aclose()` to cancel and join owned watchers; `cancel()`/`stop_all_watches()`
+request cancellation only. Python directory watches include `*.py` files.
+
+With `EnterprisePluginManagerConfig(enable_hot_reload=True)`, call
+`await manager.configure_hot_reload(name, loader, path=source_path)`; automatic
+watching starts only when `watch_for_changes=True` and a path is explicitly given.
+Then use `await manager.reload(name)` and `await manager.unload_all()` for joined
+cleanup. Synchronous shutdown with active watchers raises rather than abandoning
+them. After joined shutdown, create a new manager for further reloads. Signed
+class bindings require explicit unload, fresh signature registration and load;
+automatic reload does not bypass signature renewal.
 
 ---
 
@@ -604,16 +659,17 @@ config = EnterprisePluginManagerConfig(
     auto_activate=True,
 
     # Security
-    default_security_policy=SecurityPolicy.STANDARD,
+    default_security_policy=SecurityPolicy.standard(),
     require_signature=True,
     trust_store_path=Path("./trust_store.json"),
+    verification_keys={"my-org": public_key_bytes},
 
     # Hot Reload
     enable_hot_reload=True,
     watch_for_changes=True,
 
     # Versioning & Dependencies
-    strict_version_check=True,
+    check_compatibility=True,
     strict_dependencies=True,
     allow_missing_optional=True,
 )
@@ -628,7 +684,9 @@ plugins = manager.list_plugins()
 for plugin in plugins:
     print(f"{plugin.id}: {plugin.version} ({plugin.state})")
 
-# Load a plugin
+# Register operator-authenticated source before a required-signature load
+manager.register_signed_plugin("my-plugin", MyPlugin, source_path, signature)
+manager.signature_trust_store.set_signer_trust("my-org", TrustLevel.TRUSTED)
 await manager.load("my-plugin")
 
 # Activate is included in load() by default, or use:
@@ -727,7 +785,7 @@ config = EnterprisePluginManagerConfig(
     auto_activate=True,                # Auto-activate on load
 
     # Security
-    default_security_policy=SecurityPolicy.STANDARD,
+    default_security_policy=SecurityPolicy.standard(),
     require_signature=True,            # Require signed plugins
     trust_store_path=None,             # Trust store file
 
@@ -736,7 +794,7 @@ config = EnterprisePluginManagerConfig(
     watch_for_changes=True,            # Watch file changes
 
     # Versioning & Dependencies
-    strict_version_check=True,         # Strict version checking
+    check_compatibility=True,         # Strict version checking
     strict_dependencies=True,          # Fail on missing required
     allow_missing_optional=True,       # Allow missing optional
 )
@@ -826,3 +884,35 @@ except SandboxSecurityViolation as e:
 - [Custom Validators](../validators/index.md) - Creating custom validators
 - [Security](../ci-cd/index.md) - CI/CD security integration
 - [CLI Extensions](../configuration/index.md) - CLI plugin system
+
+### Dependency admission and shutdown
+
+Plugin dependencies must be loaded before a dependent plugin can run setup; discovery alone is insufficient. `load_all()` resolves a deterministic dependency order and rejects cycles or missing required plugins. `PluginInfo.dependencies` and `optional_dependencies` accept installed plugin names with PEP 440 constraints; URLs and distribution extras are not plugin names. Optional missing plugins are permitted only when `allow_missing_optional=True`. Present optional plugins must satisfy version constraints. `python_dependencies` uses installed distribution metadata and PEP 508 requirements, including markers and selected extras’ immediate dependencies, without importing those packages. It does not install packages or prove they are importable.
+
+`strict_version_check=True` rejects unmet versions and unparseable host compatibility. Setting it to false explicitly relaxes version checks, while dependency existence still applies. `check_compatibility=False` disables host compatibility admission; `strict_dependencies=False` disables dependency admission. Manager configuration is copied at construction.
+
+The selected MCP plugin owner supports an approved `shutdown` command. Success is acknowledged only after native plugin teardown, reload-owner closure and factory exit. Failed cleanup receipts remain failures, other owned plugins are still attempted, and uncertain shutdown is not automatically replayed. Expiry/revocation cleanup remains bounded and cannot be used as evidence of acknowledged native shutdown.
+
+### Discovery ownership and failures
+
+Discovery executes operator-selected module code and metadata constructors. It does not sandbox imports. File discovery uses an owned namespace, supports package initializers and relative Python imports, retains module/source identity for inspection, and reads source rather than stale timestamp-based bytecode on explicit rediscovery. A failed package initializer is not retried for each child during the same discovery. Conflicting plugin names, missing directories, import failures and invalid metadata produce an `ExceptionGroup` by default; completed results remain in `discovered_plugins`, and `failures` contains source identifiers and error types without exception bodies.
+
+`PluginDiscovery(strict=False)` (or manager `strict_discovery=False`) explicitly permits partial results while retaining diagnostics. Use a `PluginDiscovery` context manager or call `close()` after all discovered classes finish use; closing removes its owned import finder and modules. Manager shutdown closes its discovery owner after plugin cleanup. Explicit rediscovery creates a separate module generation; it does not replace already loaded plugin instances. Symlink sources and relative imports escaping the selected root are rejected.
+
+### Process worker boundaries
+
+Process workers accept trusted local callables and arguments; input pickle is never accepted from a wire or untrusted file. Child results use Core's closed, data-only scalar/container codec, with a default 16 MiB encoded-result budget (`max_result_bytes`). Bytes, dates and tuples retain their types; arbitrary objects fail. The parent never unpickles a child result. Exception bodies, stdout and stderr are not returned. A context belongs to one engine and one execution. Cancellation and cleanup kill and reap the owned worker; cleanup also joins pending process creation and memory-observation tasks.
+
+Wall deadlines are finite and positive. Unix CPU-time, descriptor and output-file limits apply where supported. Address-space limits apply where available; a parent RSS observer also enforces the selected memory budget, including platforms that reject `RLIMIT_AS`. RSS checks are sampled and do not promise a hard peak-memory ceiling or descendant accounting. Zero memory/descriptor limits disable those limits; negative values fail. CPU percentage, filesystem allowlists, network/subprocess restrictions and syscall policies are not enforced by this process worker. Python import filtering is advisory and cannot isolate hostile code. Enterprise lifecycle registration remains in the shared manager and does not automatically run inside a process/container worker.
+
+Container workers also use the bounded data-only result codec. Callable and argument pickle remains a trusted local input; selected images must contain their imports. Images must be installed before execution (`--pull=never`). The engine creates a container, retains its immutable ID, and removes that owned container after execution or cancellation. `terminate()` requests cancellation; await execution or `cleanup()` to observe removal. Removal failures remain visible and owned IDs are retained for retry. Container policy currently applies memory/CPU cgroups, network mode, read-only root and capability restrictions; `allowed_paths` and `writable_paths` grant explicit host mounts. Linux x86-64/AArch64 workers install a seccomp deny set before loading the selected callable. Supported names are `fork`, `vfork`, `clone`, `clone3`, `execve`, `execveat`, and `getpid`; unknown names or architectures fail closed. Denying `clone` also denies `clone3`; AArch64 fork/vfork map to clone. `allow_subprocess=False` adds all process-creation/exec denials, also blocking thread creation. To permit subprocesses, explicitly set `allow_subprocess=True` and remove the corresponding entries from `denied_syscalls`. The IPC workspace is writable even with a read-only root.
+
+The no-isolation engine accepts only trusted in-process work. Its deadline stops waiting for a synchronous result but cannot kill a Python thread. Timed-out or cancelled threads remain owned until completion, and `cleanup()` waits for them; a permanently blocked function can therefore block cleanup. Async work is cancelled and joined. Failed operations finish their execution context, and another engine cannot execute a foreign context.
+
+Sandbox factory registration preserves other built-in engine registrations. Replacing, unregistering or resetting a cached engine retains its cleanup ownership. `cleanup_all()` attempts all current and retired owners, reports aggregated failures, and retains failed owners for retry. Non-singleton engines remain the caller’s cleanup responsibility. Factory availability means an engine class is registered; it does not prove that Docker or another external runtime is running.
+
+A discovered key, including an entry-point name, must match the instantiated plugin’s declared name. The manager rejects mismatches before setup or registry mutation so dependencies, activation and cleanup use one identity.
+
+If container creation loses its acknowledgement, the engine reconciles only its generated name and ownership label before removing the immutable container ID. A runtime lookup failure remains an unknown outcome; pending ownership is retained for cleanup retry. This reconciliation lasts for the engine lifetime and is not a durable recovery journal after parent-process loss.
+
+Host grants must be existing canonical absolute regular-file/directory paths; symbolic-link aliases, reserved `/workspace`/`proc`/`sys`/`dev` destinations, the host root, and ambiguous mount delimiters are rejected. Paths appear at the same absolute location in the container. Read grants are mounted read-only; explicit writable grants require `allow_file_write=True` and override a read grant at the same path. No host directory is mounted implicitly beyond the engine-owned IPC workspace. Image files remain visible: these grants are not a deny-all allowlist for the image filesystem. Host mutation racing mount creation is outside this trusted-local-callable contract; use a local, operator-selected runtime and immutable input snapshots when required.

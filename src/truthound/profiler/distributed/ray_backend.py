@@ -17,9 +17,10 @@ Example:
 
 from __future__ import annotations
 
+import importlib
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional
+from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
@@ -32,6 +33,9 @@ from truthound.profiler.distributed.base import (
     WorkerResult,
     backend_registry,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 logger = logging.getLogger(__name__)
@@ -51,11 +55,11 @@ class RayConfig(BackendConfig):
     """
 
     backend_type: BackendType = field(default=BackendType.RAY)
-    address: Optional[str] = None  # None = start local, "auto" = detect
-    num_cpus: Optional[int] = None
-    num_gpus: Optional[int] = None
-    memory: Optional[int] = None
-    object_store_memory: Optional[int] = None
+    address: str | None = None  # None = start local, "auto" = detect
+    num_cpus: int | None = None
+    num_gpus: int | None = None
+    memory: int | None = None
+    object_store_memory: int | None = None
     runtime_env: dict[str, Any] = field(default_factory=dict)
     include_dashboard: bool = False
     dashboard_port: int = 8265
@@ -126,7 +130,7 @@ class RayBackend(DistributedBackend):
     def is_available(self) -> bool:
         """Check if Ray is available."""
         try:
-            import ray
+            importlib.import_module("ray")
             return True
         except ImportError:
             return False
@@ -168,6 +172,8 @@ class RayBackend(DistributedBackend):
 
     def shutdown(self) -> None:
         """Shutdown Ray if we started it."""
+        self._data_ref = None
+        self._initialized = False
         if self._ray_initialized:
             import ray
             ray.shutdown()
@@ -180,6 +186,7 @@ class RayBackend(DistributedBackend):
         data: pl.DataFrame | pl.LazyFrame | str,
         num_partitions: int | None = None,
         strategy: PartitionStrategy = PartitionStrategy.ROW_BASED,
+        sample_size: int | None = None,
     ) -> list[PartitionInfo]:
         """Distribute data using Ray object store.
 
@@ -204,6 +211,8 @@ class RayBackend(DistributedBackend):
         else:
             df = data
 
+        if sample_size is not None:
+            df = df.head(sample_size)
         row_count = len(df)
         columns = df.columns
 
@@ -211,30 +220,12 @@ class RayBackend(DistributedBackend):
         if num_partitions is None:
             # Based on available CPUs
             num_cpus = int(ray.cluster_resources().get("CPU", 4))
-            num_partitions = max(1, min(num_cpus * 2, row_count // 10000))
+            num_partitions = self.config.parallelism or max(1, min(num_cpus * 2, row_count // 10000))
 
-        # Calculate partition sizes
-        rows_per_partition = row_count // num_partitions
-        partitions = []
-
-        # Put data in object store
+        from truthound.profiler.distributed._partitions import polars_plan
+        self._checkpoint_polars(df)
         self._data_ref = ray.put(df)
-
-        for i in range(num_partitions):
-            start_row = i * rows_per_partition
-            end_row = (i + 1) * rows_per_partition if i < num_partitions - 1 else row_count
-
-            partitions.append(PartitionInfo(
-                partition_id=i,
-                total_partitions=num_partitions,
-                start_row=start_row,
-                end_row=end_row,
-                columns=columns,
-                metadata={"data_ref": str(self._data_ref)},
-            ))
-
-        logger.debug(f"Created {num_partitions} partitions for {row_count} rows")
-        return partitions
+        return polars_plan(row_count, columns, num_partitions, strategy)
 
     def map_partitions(
         self,
@@ -256,50 +247,14 @@ class RayBackend(DistributedBackend):
             self.initialize()
 
         import ray
-        import time
+        policy = self.config
+        @ray.remote(max_retries=0)
+        def process_partition(partition, frame):
+            from truthound.profiler.distributed._partitions import select_polars
+            from truthound.profiler.distributed.base import execute_partition
+            selected = select_polars(frame, partition)
+            return execute_partition(func, partition, selected, policy)
 
-        # Define remote function
-        @ray.remote
-        def process_partition(partition: PartitionInfo, data_ref) -> WorkerResult:
-            """Process a single partition."""
-            start_time = time.time()
-
-            # Get data from object store
-            df = ray.get(data_ref)
-
-            # Slice to partition
-            partition_df = df.slice(partition.start_row, partition.end_row - partition.start_row)
-
-            # Calculate statistics
-            stats = {}
-            for col in partition_df.columns:
-                series = partition_df.get_column(col)
-                stats[col] = {
-                    "count": len(series),
-                    "null_count": series.null_count(),
-                    "distinct_count": series.n_unique(),
-                }
-
-                if series.dtype.is_numeric():
-                    non_null = series.drop_nulls()
-                    if len(non_null) > 0:
-                        stats[col].update({
-                            "min": float(non_null.min()),
-                            "max": float(non_null.max()),
-                            "mean": float(non_null.mean()),
-                            "sum": float(non_null.sum()),
-                        })
-
-            processing_time = (time.time() - start_time) * 1000
-
-            return WorkerResult(
-                partition_id=partition.partition_id,
-                column_stats=stats,
-                row_count=len(partition_df),
-                processing_time_ms=processing_time,
-            )
-
-        # Submit all tasks
         futures = [
             process_partition.remote(partition, self._data_ref)
             for partition in partitions
@@ -310,6 +265,13 @@ class RayBackend(DistributedBackend):
 
         logger.debug(f"Processed {len(results)} partitions")
         return results
+
+    def sample_column(self, name, limit):
+        import ray
+        @ray.remote
+        def select(frame, column, size):
+            return frame.select(column).drop_nulls().head(size)
+        return ray.get(select.remote(self._data_ref, name, limit))
 
     def aggregate_results(
         self,
@@ -323,51 +285,19 @@ class RayBackend(DistributedBackend):
         Returns:
             Aggregated column statistics
         """
-        if not results:
-            return {}
+        import ray
+        if any(result.errors for result in results):
+            raise RuntimeError("Native profiling partition failed")
+        if self._data_ref is None:
+            raise RuntimeError("No active native profiling input")
 
-        # Gather all columns
-        all_columns = set()
-        for result in results:
-            all_columns.update(result.column_stats.keys())
+        @ray.remote
+        def global_statistics(frame):
+            from truthound.profiler.distributed.local_backend import LocalBackend
+            native = LocalBackend()
+            return {column.name: native._profile_column(column) for column in frame}
 
-        aggregated = {}
-
-        for col in all_columns:
-            col_stats = [r.column_stats.get(col, {}) for r in results if col in r.column_stats]
-
-            if not col_stats:
-                continue
-
-            # Aggregate counts
-            total_count = sum(s.get("count", 0) for s in col_stats)
-            total_null = sum(s.get("null_count", 0) for s in col_stats)
-
-            # Distinct count needs exact computation or HyperLogLog
-            max_distinct = max((s.get("distinct_count", 0) for s in col_stats), default=0)
-
-            aggregated[col] = {
-                "count": total_count,
-                "null_count": total_null,
-                "null_ratio": total_null / total_count if total_count > 0 else 0,
-                "distinct_count_estimate": max_distinct,
-            }
-
-            # Aggregate numeric stats
-            mins = [s.get("min") for s in col_stats if s.get("min") is not None]
-            maxs = [s.get("max") for s in col_stats if s.get("max") is not None]
-            sums = [s.get("sum") for s in col_stats if s.get("sum") is not None]
-            counts = [s.get("count", 0) for s in col_stats]
-
-            if mins:
-                aggregated[col]["min"] = min(mins)
-            if maxs:
-                aggregated[col]["max"] = max(maxs)
-            if sums and sum(counts) > 0:
-                aggregated[col]["sum"] = sum(sums)
-                aggregated[col]["mean"] = sum(sums) / sum(counts)
-
-        return aggregated
+        return ray.get(global_statistics.remote(self._data_ref))
 
 
 # Register backend

@@ -5,10 +5,12 @@ Collects model quality metrics (accuracy, precision, recall, F1).
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any
+import copy
+import math
 from collections import defaultdict
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import Any
 
 from truthound.ml.monitoring.protocols import (
     IMetricCollector,
@@ -30,6 +32,20 @@ class QualityConfig:
     window_size: int = 1000
     classification_threshold: float = 0.5
     positive_label: Any = 1
+    task_type: str = "auto"
+
+    def __post_init__(self):
+        if type(self.window_size) is not int or self.window_size <= 0:
+            raise ValueError("Quality window size must be a positive integer")
+        if (
+            isinstance(self.classification_threshold, bool)
+            or not isinstance(self.classification_threshold, (int, float))
+            or not math.isfinite(self.classification_threshold)
+            or not 0 <= self.classification_threshold <= 1
+        ):
+            raise ValueError("Classification threshold must be finite and between zero and one")
+        if self.task_type not in {"auto", "binary", "multiclass", "regression"}:
+            raise ValueError("Unsupported quality task type")
 
 
 class QualityCollector(IMetricCollector):
@@ -59,6 +75,7 @@ class QualityCollector(IMetricCollector):
         # For regression
         self._squared_errors: dict[str, list[float]] = {}
         self._absolute_errors: dict[str, list[float]] = {}
+        self._windows: dict[str, list[PredictionRecord]] = {}
 
     @property
     def name(self) -> str:
@@ -80,19 +97,25 @@ class QualityCollector(IMetricCollector):
         """
         # Filter predictions with actual values
         with_actuals = [p for p in predictions if p.actual is not None]
+        window = self._windows.setdefault(model_id, [])
+        window.extend(copy.deepcopy(with_actuals))
+        del window[: -self._config.window_size]
+        with_actuals = window
 
         if not with_actuals:
             # Return empty metrics if no actuals
             return ModelMetrics(
                 model_id=model_id,
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
             )
 
         # Determine task type and compute metrics
         first_pred = with_actuals[0].prediction
         first_actual = with_actuals[0].actual
 
-        is_classification = self._is_classification(first_pred, first_actual)
+        is_classification = self._config.task_type != "regression" and (
+            self._config.task_type != "auto" or self._is_classification(first_pred, first_actual)
+        )
 
         if is_classification:
             return self._collect_classification_metrics(model_id, with_actuals)
@@ -109,9 +132,7 @@ class QualityCollector(IMetricCollector):
             if pred_val == int(pred_val) and actual_val == int(actual_val):
                 return True
             # If prediction is probability-like, treat as classification
-            if 0 <= pred_val <= 1:
-                return True
-            return False
+            return 0 <= pred_val <= 1
         except (TypeError, ValueError):
             # Non-numeric, treat as classification
             return True
@@ -128,7 +149,22 @@ class QualityCollector(IMetricCollector):
             classes.add(p.prediction)
             classes.add(p.actual)
 
-        if len(classes) <= 2:
+        actual_classes = {record.actual for record in predictions}
+        binary_candidates = (
+            len(actual_classes) <= 2
+            and (self._config.positive_label in classes or actual_classes <= {0, 1})
+            and all(
+                record.prediction in actual_classes
+                or record.prediction == self._config.positive_label
+                or isinstance(record.prediction, float)
+                and 0 <= record.prediction <= 1
+                for record in predictions
+            )
+        )
+
+        if self._config.task_type == "binary" or (
+            self._config.task_type != "multiclass" and binary_candidates
+        ):
             return self._collect_binary_metrics(model_id, predictions)
         else:
             return self._collect_multiclass_metrics(model_id, predictions)
@@ -148,12 +184,13 @@ class QualityCollector(IMetricCollector):
             # Handle probability outputs
             pred_val = pred.prediction
             if isinstance(pred_val, float) and 0 <= pred_val <= 1:
-                pred_val = 1 if pred_val >= self._config.classification_threshold else 0
+                pred_positive = pred_val >= self._config.classification_threshold
+            else:
+                pred_positive = pred_val == self._config.positive_label
 
             actual_val = pred.actual
 
             # Convert to positive/negative
-            pred_positive = pred_val == self._config.positive_label
             actual_positive = actual_val == self._config.positive_label
 
             if actual_positive and pred_positive:
@@ -166,10 +203,10 @@ class QualityCollector(IMetricCollector):
                 fn += 1
 
         # Update running counts
-        self._true_positives[model_id] += tp
-        self._true_negatives[model_id] += tn
-        self._false_positives[model_id] += fp
-        self._false_negatives[model_id] += fn
+        self._true_positives[model_id] = tp
+        self._true_negatives[model_id] = tn
+        self._false_positives[model_id] = fp
+        self._false_negatives[model_id] = fn
 
         # Compute metrics
         total = tp + tn + fp + fn
@@ -200,7 +237,7 @@ class QualityCollector(IMetricCollector):
 
         return ModelMetrics(
             model_id=model_id,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             accuracy=accuracy,
             precision=precision,
             recall=recall,
@@ -215,8 +252,7 @@ class QualityCollector(IMetricCollector):
     ) -> ModelMetrics:
         """Collect multi-class classification metrics."""
         # Build confusion matrix
-        if model_id not in self._class_counts:
-            self._class_counts[model_id] = defaultdict(lambda: defaultdict(int))
+        self._class_counts[model_id] = defaultdict(lambda: defaultdict(int))
 
         correct = 0
         total = 0
@@ -257,7 +293,7 @@ class QualityCollector(IMetricCollector):
 
         return ModelMetrics(
             model_id=model_id,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             accuracy=accuracy,
             precision=macro_precision,
             recall=macro_recall,
@@ -309,13 +345,15 @@ class QualityCollector(IMetricCollector):
                 pred_val = float(pred.prediction)
                 actual_val = float(pred.actual)
                 error = pred_val - actual_val
-                squared_errors.append(error ** 2)
+                squared_errors.append(error**2)
                 absolute_errors.append(abs(error))
             except (TypeError, ValueError):
-                continue
+                raise ValueError("Native regression labels must be finite numbers") from None
+            if not math.isfinite(pred_val) or not math.isfinite(actual_val):
+                raise ValueError("Native regression labels must be finite numbers")
 
-        self._squared_errors[model_id].extend(squared_errors)
-        self._absolute_errors[model_id].extend(absolute_errors)
+        self._squared_errors[model_id] = squared_errors
+        self._absolute_errors[model_id] = absolute_errors
 
         # Keep window size
         while len(self._squared_errors[model_id]) > self._config.window_size:
@@ -328,7 +366,7 @@ class QualityCollector(IMetricCollector):
 
         mse = sum(all_squared) / len(all_squared) if all_squared else None
         mae = sum(all_absolute) / len(all_absolute) if all_absolute else None
-        rmse = mse ** 0.5 if mse is not None else None
+        rmse = mse**0.5 if mse is not None else None
 
         custom_metrics: dict[str, float] = {
             "total_predictions": len(all_squared),
@@ -343,7 +381,7 @@ class QualityCollector(IMetricCollector):
 
         return ModelMetrics(
             model_id=model_id,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             custom_metrics=custom_metrics,
         )
 
@@ -356,6 +394,7 @@ class QualityCollector(IMetricCollector):
         self._class_counts.clear()
         self._squared_errors.clear()
         self._absolute_errors.clear()
+        self._windows.clear()
 
     def get_confusion_matrix(self, model_id: str) -> dict[Any, dict[Any, int]]:
         """Get confusion matrix for model.

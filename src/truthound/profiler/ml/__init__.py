@@ -9,6 +9,11 @@ This package provides ML-powered type inference with:
 Example:
     from truthound.profiler.ml import (
         TypeInferenceModel,
+    NaiveBayesTypeClassifier,
+    LogisticRegressionTypeClassifier,
+    SVMTypeClassifier,
+    NeuralNetworkTypeClassifier,
+    EnsembleTypeClassifier,
         PretrainedModelManager,
         train_type_classifier,
     )
@@ -24,10 +29,22 @@ Example:
 
 from truthound.profiler.ml.base import (
     ModelConfig,
-    TrainingData,
-    PredictionResult,
     ModelMetrics,
     ModelProtocol,
+    PredictionResult,
+    TrainingData,
+)
+from truthound.profiler.ml.classifier import (
+    EnsembleTypeClassifier,
+    GradientBoostingTypeClassifier,
+    LogisticRegressionTypeClassifier,
+    NaiveBayesTypeClassifier,
+    NeuralNetworkTypeClassifier,
+    RandomForestTypeClassifier,
+    RuleBasedTypeClassifier,
+    SVMTypeClassifier,
+    TypeInferenceModel,
+    train_type_classifier,
 )
 from truthound.profiler.ml.feature_extraction import (
     FeatureExtractor,
@@ -35,17 +52,10 @@ from truthound.profiler.ml.feature_extraction import (
     extract_features,
 )
 from truthound.profiler.ml.pretrained import (
-    PretrainedModelManager,
     PretrainedModel,
+    PretrainedModelManager,
     get_default_model,
     list_available_models,
-)
-from truthound.profiler.ml.classifier import (
-    TypeInferenceModel,
-    RandomForestTypeClassifier,
-    GradientBoostingTypeClassifier,
-    RuleBasedTypeClassifier,
-    train_type_classifier,
 )
 
 __all__ = [
@@ -66,6 +76,11 @@ __all__ = [
     "list_available_models",
     # Classifiers
     "TypeInferenceModel",
+    "NaiveBayesTypeClassifier",
+    "LogisticRegressionTypeClassifier",
+    "SVMTypeClassifier",
+    "NeuralNetworkTypeClassifier",
+    "EnsembleTypeClassifier",
     "RandomForestTypeClassifier",
     "GradientBoostingTypeClassifier",
     "RuleBasedTypeClassifier",

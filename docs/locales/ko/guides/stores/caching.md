@@ -375,3 +375,54 @@ store = CachedStore(versioned, cache)
 - 실무 운영 가이드에서 Replication, Cross-region을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
 - [관측성](observability.md) - 감사, metrics, tracing
 - 실무 운영 가이드에서 Tiering, Hot/Warm/Cold/Archive을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+
+
+CachedStore의 get/get_many/refresh/warm은 StoreNotFoundError만 부재로 처리합니다. 다른 하위 저장소 읽기 실패는 None이나 부분 성공으로 바꾸지 않고 전달합니다. 뒤 항목 읽기 실패 전에 앞 항목이 캐시에 반영됐을 수 있습니다. 실제 삭제된 기록을 refresh하면 오래된 캐시 항목을 제거합니다. 캐시 자체 오류도 숨기지 않습니다.
+
+
+## 캐시 모드와 소유한 백그라운드 쓰기
+
+READ_THROUGH는 읽을 때 채우고 저장 시 무효화합니다. WRITE_THROUGH는 저장소에
+쓴 뒤 사본을 캐시합니다. CACHE_ASIDE는 암묵적 캐싱을 건너뛰며 cache 또는 명시적
+warm/refresh/invalidate를 사용합니다. WRITE_BEHIND는 안정적인 비어 있지 않은
+item.id를 요구하고 제출 항목의 사본을 인스턴스 소유 작업 스레드 하나로 씁니다.
+save 결과는 접수 ID이지 영속 쓰기 완료 증명이 아닙니다. max_pending_writes
+(기본 1000개)로 개수를 제한하며 바이트 예약이나 영속 journal은 아닙니다. 쓰기 완료
+전 캐시에서 항목이 퇴출될 수 있고 list_ids는 영속 기록만 나열합니다. 프로세스 종료로
+대기 쓰기가 유실될 수 있으므로 전달 전에 flush하고 provider보다 wrapper를 먼저
+닫아야 합니다. provider는 해당 작업 스레드 호출을 지원해야 합니다.
+
+flush는 소유한 쓰기를 기다리고 누적 완료 개수를 반환합니다. close/context 종료는
+flush 후 스레드를 종료하며 빌린 하위 저장소는 닫지 않습니다. delete/refresh는 먼저
+flush하여 순서를 지킵니다. 백그라운드 쓰기 실패는 이미 저장됐을 수 있으므로
+outcome_unknown으로 표시하고 새 제출·자동 재시도를 막습니다. get_stats의
+write_behind는 개수·closed/outcome_unknown·불투명 uncertain_token만 노출합니다.
+운영자 확인 후 reconcile_write(token, confirm/discard/retry)로 항목을 확인·제거·재시도하며
+retry는 accept_duplicate_risk=True를 요구합니다. confirm은 운영자 주장이고 discard는
+rollback이 아니며 retry는 중복 쓰기를 만들 수 있습니다. 정확한 token으로 다른 작업을
+잘못 처리하지 않습니다. close 실패는 명시적 복구용 대기열을 보존합니다. set_io_guard는
+작업 스레드 I/O 직전에 검사하며 통계에는 원시 예외 본문을 넣지 않습니다.
+
+승인된 MCP cache_flush/cache_reconcile이 이 제어를 제공합니다. 복구에는 write_token과
+cache_resolution, retry에는 accept_duplicate_risk: true도 필요합니다. provider·큐 한도·
+물리 경로는 팩토리가 소유합니다. MCP 종료는 팩토리 teardown 전에 wrapper를 비웁니다.
+설치 worker 검증은 파일 저장소 flush·캐시 무효화·새 소유자의 읽기·소유 프로세스 종료를
+확인합니다.
+
+wrapper의 기본 캐시는 네이티브 InMemoryCache로 CacheConfig.eviction_policy를
+적용합니다. 네이티브 backend 4종 모두 내장 컨테이너·dataclass 필드·순환 참조 처리를
+포함한 제한된 Python 값 크기 추정으로 max_memory_mb를 적용합니다. 너무 큰 교체는
+기존 항목 삭제 전에 거부하고 일반 추가는 선택한 backend 정책으로 퇴출합니다. 전체
+프로세스 메모리 예약이 아닌 추정치이며 불투명 객체·외부 버퍼·변경 가능한 값·할당기
+부담은 다를 수 있습니다. 설정은 복사하고 유한하지 않은 한도/TTL은 거부합니다.
+enable_statistics=False는 hit/miss/set/퇴출·시간 집계를 끄되 크기·메모리 계산은 유지합니다.
+
+warm_on_startup=True는 wrapper 생성 시 영속 ID를 max_size개까지 읽습니다.
+background_refresh=True는 소유한 주기 스레드와 네이티브 expiring_keys 메타데이터로
+TTL이 설정 비율 이하인 store: 항목을 갱신합니다. TTL 0은 만료 갱신 스레드를 시작하지
+않습니다. 사용자 캐시는 갱신 활성화 시 이 메타데이터 port를 구현해야 하고 provider는
+작업 스레드 호출을 허용해야 합니다. 갱신은 wrapper 작업과 직렬화하고 I/O guard를
+검사하며 대기 쓰기를 먼저 flush합니다. 통계는 maintenance의 running/failures/refreshes를
+제공하고 원시 예외 본문 없이 실패를 집계하며 실패 후에도 순회 간격을 유지합니다.
+close는 갱신 스레드를 종료한 뒤 쓰기를 비웁니다. 프로세스 종료 후 캐시·갱신 이력·대기
+지연 쓰기는 남지 않습니다.

@@ -25,7 +25,7 @@ truthound new plugin <name> [OPTIONS]
 | `--tests/--no-tests` | | `--tests` | Generate test code |
 | `--install/--no-install` | `-i` | `--no-install` | Auto-install plugin after generation |
 | `--min-version` | | `3.0.0` | Minimum Truthound version (defaults to the current Truthound release) |
-| `--python` | | `3.10` | Minimum Python version |
+| `--python` | | `3.11` | Minimum Python version |
 
 ## Description
 
@@ -108,7 +108,7 @@ Generated `pyproject.toml`:
 name = "truthound-my-validators"
 version = "0.1.0"
 description = "Custom validators for Truthound"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "truthound>=3.0.0",
 ]
@@ -187,28 +187,10 @@ def post_validation_hook(context, report):
 truthound new plugin custom_db --type datasource --description "Custom database connector"
 ```
 
-Generated datasource code:
-```python
-from truthound.datasources.base import DataSource
-import polars as pl
-
-class CustomDbDataSource(DataSource):
-    """Custom database data source."""
-
-    name = "custom_db"
-
-    def __init__(self, connection_string: str):
-        self.connection_string = connection_string
-
-    def read(self) -> pl.LazyFrame:
-        """Read data from custom database."""
-        # Implement connection and data reading
-        pass
-
-    def get_schema(self) -> dict:
-        """Get schema information."""
-        pass
-```
+The generated datasource extends `BaseDataSource` and supplies the native
+`schema`, `to_polars_lazyframe`, `get_execution_engine`, `sample`, connection and
+context-manager ports. Implement its `schema` and `read` methods before using a
+real provider; the generated placeholders raise `NotImplementedError`.
 
 ### Action Plugin
 
@@ -216,20 +198,11 @@ class CustomDbDataSource(DataSource):
 truthound new plugin my_actions --type action
 ```
 
-Generated action code:
-```python
-from truthound.checkpoint.actions import Action, ActionResult
-
-class MyCustomAction(Action):
-    """Custom checkpoint action."""
-
-    name = "my_action"
-
-    def execute(self, report, context) -> ActionResult:
-        """Execute the action."""
-        # Implement action logic
-        return ActionResult(success=True, message="Action completed")
-```
+The generated action extends `BaseAction` with an `ActionConfig` subclass.
+Implement `_execute(checkpoint_result)` to return a native `ActionResult`.
+The placeholder raises `NotImplementedError`, which native execution records as
+an error. The plugin registers the action class through the manager capability
+port; setup alone does not perform an external action.
 
 ### Full Plugin
 
@@ -242,34 +215,16 @@ truthound new plugin enterprise \
 ```
 
 Generated structure:
-```
+```text
 enterprise/
 ├── pyproject.toml
 ├── README.md
-├── src/
-│   └── enterprise/
-│       ├── __init__.py
-│       ├── validators/
-│       │   ├── __init__.py
-│       │   └── sample_validator.py
-│       ├── reporters/
-│       │   ├── __init__.py
-│       │   └── sample_reporter.py
-│       ├── hooks/
-│       │   ├── __init__.py
-│       │   └── sample_hook.py
-│       ├── datasources/
-│       │   ├── __init__.py
-│       │   └── sample_datasource.py
-│       └── actions/
-│           ├── __init__.py
-│           └── sample_action.py
+├── enterprise/
+│   ├── __init__.py
+│   └── plugin.py
 └── tests/
-    ├── test_validators.py
-    ├── test_reporters.py
-    ├── test_hooks.py
-    ├── test_datasources.py
-    └── test_actions.py
+    ├── __init__.py
+    └── test_plugin.py
 ```
 
 ### Version Requirements

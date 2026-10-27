@@ -9,22 +9,28 @@ Both renderers produce HTML that includes the necessary JavaScript for interacti
 
 from __future__ import annotations
 
-import html
+import importlib.util
 import json
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from truthound.profiler.visualization.base import (
+    COLOR_PALETTES,
     ChartConfig,
     ChartData,
     ChartType,
     ColorScheme,
-    COLOR_PALETTES,
 )
 from truthound.profiler.visualization.renderers import (
     ChartRenderer,
     chart_renderer_registry,
 )
+
+
+def _script_json(value):
+    return (json.dumps(value, allow_nan=False).replace("&", "\\u0026")
+            .replace("<", "\\u003c").replace(">", "\\u003e")
+            .replace("\u2028", "\\u2028").replace("\u2029", "\\u2029"))
 
 
 class PlotlyChartRenderer(ChartRenderer):
@@ -78,21 +84,27 @@ class PlotlyChartRenderer(ChartRenderer):
     def _check_plotly(self) -> bool:
         """Check if Plotly is available."""
         try:
-            import plotly
-            return True
+            return importlib.util.find_spec("plotly") is not None
         except ImportError:
             return False
 
     def supports_chart_type(self, chart_type: ChartType) -> bool:
         return chart_type in self.SUPPORTED_TYPES
 
-    def get_js_dependencies(self) -> List[str]:
+    def get_js_dependencies(self) -> list[str]:
         return [self.PLOTLY_CDN] if self.use_cdn else []
+
+    def get_inline_js(self) -> str:
+        from plotly.offline import get_plotlyjs
+
+        return get_plotlyjs()
 
     def render(self, data: ChartData, config: ChartConfig) -> str:
         """Render chart using Plotly."""
         if not self._plotly_available:
-            return '<p class="error">Plotly not installed. Install with: pip install plotly</p>'
+            raise ImportError("Plotly rendering requires truthound[profiler-visualization]")
+        from truthound.profiler.visualization._validation import validate
+        validate(data, config)
 
         # Generate unique div ID
         div_id = f"plotly-chart-{uuid.uuid4().hex[:8]}"
@@ -113,9 +125,9 @@ class PlotlyChartRenderer(ChartRenderer):
         <div id="{div_id}" style="width: 100%; height: {config.height}px;"></div>
         <script>
             (function() {{
-                var data = {json.dumps([trace])};
-                var layout = {json.dumps(layout)};
-                var config = {json.dumps(plotly_config)};
+                var data = {_script_json([trace])};
+                var layout = {_script_json(layout)};
+                var config = {_script_json(plotly_config)};
                 Plotly.newPlot('{div_id}', data, layout, config);
             }})();
         </script>
@@ -127,7 +139,7 @@ class PlotlyChartRenderer(ChartRenderer):
         self,
         data: ChartData,
         config: ChartConfig,
-    ) -> tuple[Dict[str, Any], Dict[str, Any]]:
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
         """Build Plotly trace and layout."""
         colors = self.get_colors(config, len(data.values) if data.values else 10)
 
@@ -149,7 +161,7 @@ class PlotlyChartRenderer(ChartRenderer):
         builder = builders.get(config.chart_type, self._build_bar)
         return builder(data, config, colors)
 
-    def _base_layout(self, data: ChartData, config: ChartConfig) -> Dict[str, Any]:
+    def _base_layout(self, data: ChartData, config: ChartConfig) -> dict[str, Any]:
         """Create base layout configuration."""
         return {
             "title": {
@@ -168,8 +180,8 @@ class PlotlyChartRenderer(ChartRenderer):
         self,
         data: ChartData,
         config: ChartConfig,
-        colors: List[str],
-    ) -> tuple[Dict[str, Any], Dict[str, Any]]:
+        colors: list[str],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
         """Build vertical bar chart."""
         trace = {
             "type": "bar",
@@ -192,8 +204,8 @@ class PlotlyChartRenderer(ChartRenderer):
         self,
         data: ChartData,
         config: ChartConfig,
-        colors: List[str],
-    ) -> tuple[Dict[str, Any], Dict[str, Any]]:
+        colors: list[str],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
         """Build horizontal bar chart."""
         trace = {
             "type": "bar",
@@ -218,9 +230,9 @@ class PlotlyChartRenderer(ChartRenderer):
         self,
         data: ChartData,
         config: ChartConfig,
-        colors: List[str],
+        colors: list[str],
         donut: bool = False,
-    ) -> tuple[Dict[str, Any], Dict[str, Any]]:
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
         """Build pie or donut chart."""
         trace = {
             "type": "pie",
@@ -242,8 +254,8 @@ class PlotlyChartRenderer(ChartRenderer):
         self,
         data: ChartData,
         config: ChartConfig,
-        colors: List[str],
-    ) -> tuple[Dict[str, Any], Dict[str, Any]]:
+        colors: list[str],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
         """Build line chart."""
         trace = {
             "type": "scatter",
@@ -265,8 +277,8 @@ class PlotlyChartRenderer(ChartRenderer):
         self,
         data: ChartData,
         config: ChartConfig,
-        colors: List[str],
-    ) -> tuple[Dict[str, Any], Dict[str, Any]]:
+        colors: list[str],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
         """Build area chart."""
         trace = {
             "type": "scatter",
@@ -289,8 +301,8 @@ class PlotlyChartRenderer(ChartRenderer):
         self,
         data: ChartData,
         config: ChartConfig,
-        colors: List[str],
-    ) -> tuple[Dict[str, Any], Dict[str, Any]]:
+        colors: list[str],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
         """Build scatter plot."""
         # Extract x, y from series if available
         if data.series:
@@ -325,8 +337,8 @@ class PlotlyChartRenderer(ChartRenderer):
         self,
         data: ChartData,
         config: ChartConfig,
-        colors: List[str],
-    ) -> tuple[Dict[str, Any], Dict[str, Any]]:
+        colors: list[str],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
         """Build histogram."""
         trace = {
             "type": "histogram",
@@ -347,8 +359,8 @@ class PlotlyChartRenderer(ChartRenderer):
         self,
         data: ChartData,
         config: ChartConfig,
-        colors: List[str],
-    ) -> tuple[Dict[str, Any], Dict[str, Any]]:
+        colors: list[str],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
         """Build heatmap."""
         z_values = data.metadata.get("z", [data.values])
         x_labels = data.labels or list(range(len(z_values[0]) if z_values else 0))
@@ -374,8 +386,8 @@ class PlotlyChartRenderer(ChartRenderer):
         self,
         data: ChartData,
         config: ChartConfig,
-        colors: List[str],
-    ) -> tuple[Dict[str, Any], Dict[str, Any]]:
+        colors: list[str],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
         """Build box plot."""
         trace = {
             "type": "box",
@@ -394,8 +406,8 @@ class PlotlyChartRenderer(ChartRenderer):
         self,
         data: ChartData,
         config: ChartConfig,
-        colors: List[str],
-    ) -> tuple[Dict[str, Any], Dict[str, Any]]:
+        colors: list[str],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
         """Build gauge chart."""
         value = data.values[0] if data.values else 0
         max_val = data.metadata.get("max", 100)
@@ -446,14 +458,14 @@ class PlotlyChartRenderer(ChartRenderer):
         self,
         data: ChartData,
         config: ChartConfig,
-        colors: List[str],
-    ) -> tuple[Dict[str, Any], Dict[str, Any]]:
+        colors: list[str],
+    ) -> tuple[dict[str, Any], dict[str, Any]]:
         """Build table."""
         headers = data.metadata.get("headers", ["Label", "Value"])
-        rows = data.metadata.get("rows", list(zip(data.labels, data.values)))
+        rows = data.metadata.get("rows", list(zip(data.labels, data.values, strict=True)))
 
         # Transpose rows for Plotly table format
-        values = [list(col) for col in zip(*rows)] if rows else [[], []]
+        values = [list(col) for col in zip(*rows, strict=True)] if rows else [[], []]
 
         trace = {
             "type": "table",
@@ -513,17 +525,25 @@ class EChartsChartRenderer(ChartRenderer):
         ChartType.FUNNEL,
     }
 
-    def __init__(self, use_cdn: bool = True):
+    def __init__(self, use_cdn: bool = True, javascript: str | None = None):
         self.use_cdn = use_cdn
+        self.javascript = javascript
 
     def supports_chart_type(self, chart_type: ChartType) -> bool:
         return chart_type in self.SUPPORTED_TYPES
 
-    def get_js_dependencies(self) -> List[str]:
+    def get_js_dependencies(self) -> list[str]:
         return [self.ECHARTS_CDN] if self.use_cdn else []
+
+    def get_inline_js(self) -> str:
+        if not self.javascript:
+            raise ValueError("Embedded ECharts requires operator-supplied JavaScript")
+        return self.javascript
 
     def render(self, data: ChartData, config: ChartConfig) -> str:
         """Render chart using ECharts."""
+        from truthound.profiler.visualization._validation import validate
+        validate(data, config)
         div_id = f"echarts-chart-{uuid.uuid4().hex[:8]}"
         options = self._build_options(data, config)
 
@@ -532,7 +552,7 @@ class EChartsChartRenderer(ChartRenderer):
         <script>
             (function() {{
                 var chart = echarts.init(document.getElementById('{div_id}'));
-                var option = {json.dumps(options)};
+                var option = {_script_json(options)};
                 chart.setOption(option);
                 window.addEventListener('resize', function() {{
                     chart.resize();
@@ -543,7 +563,7 @@ class EChartsChartRenderer(ChartRenderer):
 
         return chart_html
 
-    def _build_options(self, data: ChartData, config: ChartConfig) -> Dict[str, Any]:
+    def _build_options(self, data: ChartData, config: ChartConfig) -> dict[str, Any]:
         """Build ECharts options."""
         colors = self.get_colors(config, len(data.values) if data.values else 10)
 
@@ -562,7 +582,7 @@ class EChartsChartRenderer(ChartRenderer):
         builder = builders.get(config.chart_type, self._build_bar)
         return builder(data, config, colors)
 
-    def _base_options(self, data: ChartData, config: ChartConfig, colors: List[str]) -> Dict[str, Any]:
+    def _base_options(self, data: ChartData, config: ChartConfig, colors: list[str]) -> dict[str, Any]:
         """Create base options."""
         return {
             "color": colors,
@@ -579,8 +599,8 @@ class EChartsChartRenderer(ChartRenderer):
         self,
         data: ChartData,
         config: ChartConfig,
-        colors: List[str],
-    ) -> Dict[str, Any]:
+        colors: list[str],
+    ) -> dict[str, Any]:
         """Build bar chart options."""
         options = self._base_options(data, config, colors)
         options.update({
@@ -604,8 +624,8 @@ class EChartsChartRenderer(ChartRenderer):
         self,
         data: ChartData,
         config: ChartConfig,
-        colors: List[str],
-    ) -> Dict[str, Any]:
+        colors: list[str],
+    ) -> dict[str, Any]:
         """Build horizontal bar chart options."""
         options = self._base_options(data, config, colors)
         options.update({
@@ -628,9 +648,9 @@ class EChartsChartRenderer(ChartRenderer):
         self,
         data: ChartData,
         config: ChartConfig,
-        colors: List[str],
+        colors: list[str],
         donut: bool = False,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """Build pie chart options."""
         options = self._base_options(data, config, colors)
         options.update({
@@ -645,7 +665,7 @@ class EChartsChartRenderer(ChartRenderer):
                 "center": ["40%", "50%"],
                 "data": [
                     {"name": label, "value": value}
-                    for label, value in zip(data.labels, data.values)
+                    for label, value in zip(data.labels, data.values, strict=True)
                 ],
                 "emphasis": {
                     "itemStyle": {
@@ -666,8 +686,8 @@ class EChartsChartRenderer(ChartRenderer):
         self,
         data: ChartData,
         config: ChartConfig,
-        colors: List[str],
-    ) -> Dict[str, Any]:
+        colors: list[str],
+    ) -> dict[str, Any]:
         """Build line chart options."""
         options = self._base_options(data, config, colors)
         options.update({
@@ -691,8 +711,8 @@ class EChartsChartRenderer(ChartRenderer):
         self,
         data: ChartData,
         config: ChartConfig,
-        colors: List[str],
-    ) -> Dict[str, Any]:
+        colors: list[str],
+    ) -> dict[str, Any]:
         """Build gauge chart options."""
         value = data.values[0] if data.values else 0
         max_val = data.metadata.get("max", 100)
@@ -726,8 +746,8 @@ class EChartsChartRenderer(ChartRenderer):
         self,
         data: ChartData,
         config: ChartConfig,
-        colors: List[str],
-    ) -> Dict[str, Any]:
+        colors: list[str],
+    ) -> dict[str, Any]:
         """Build radar chart options."""
         max_val = max(data.values) if data.values else 100
 
@@ -754,12 +774,12 @@ class EChartsChartRenderer(ChartRenderer):
         self,
         data: ChartData,
         config: ChartConfig,
-        colors: List[str],
-    ) -> Dict[str, Any]:
+        colors: list[str],
+    ) -> dict[str, Any]:
         """Build treemap options."""
         tree_data = data.metadata.get("tree_data", [
             {"name": label, "value": value}
-            for label, value in zip(data.labels, data.values)
+            for label, value in zip(data.labels, data.values, strict=True)
         ])
 
         options = self._base_options(data, config, colors)
@@ -779,8 +799,8 @@ class EChartsChartRenderer(ChartRenderer):
         self,
         data: ChartData,
         config: ChartConfig,
-        colors: List[str],
-    ) -> Dict[str, Any]:
+        colors: list[str],
+    ) -> dict[str, Any]:
         """Build funnel chart options."""
         options = self._base_options(data, config, colors)
         options.update({
@@ -794,7 +814,7 @@ class EChartsChartRenderer(ChartRenderer):
                 "label": {"show": True, "position": "inside"},
                 "data": [
                     {"name": label, "value": value}
-                    for label, value in zip(data.labels, data.values)
+                    for label, value in zip(data.labels, data.values, strict=True)
                 ],
             }],
         })
@@ -802,10 +822,7 @@ class EChartsChartRenderer(ChartRenderer):
 
 
 # Register renderers
-try:
-    import plotly
+if importlib.util.find_spec("plotly") is not None:
     chart_renderer_registry.register("plotly", PlotlyChartRenderer())
-except ImportError:
-    pass
 
 chart_renderer_registry.register("echarts", EChartsChartRenderer())

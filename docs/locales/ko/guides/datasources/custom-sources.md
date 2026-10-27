@@ -619,6 +619,15 @@ print(is_async_source(async_source))  # True
 print(is_sync_source(sync_source))    # True
 ```
 
+`AsyncToSyncAdapter`는 네이티브 `BaseDataSource`이며 감싼 소스의 설정·스키마로
+크기 제한과 컬럼 helper를 제공합니다. 컨텍스트 관리자를 사용하면 연결 이후
+연결과 소유한 이벤트 루프를 순서대로 종료합니다. 샘플 어댑터는 소유자의 루프를
+공유하고 샘플 소스를 별도로 연결하므로 소유자보다 먼저 닫아야 합니다.
+`close()`는 여러 번 호출해도 안전하며 종료한 어댑터는 다시 사용할 수 없습니다.
+진입 중 스키마·연결 실패는 부분 연결을 정리합니다. 실행 중인 비동기 이벤트
+루프에서 동기 어댑터를 호출하면 `RuntimeError`가 발생하므로 그 문맥에서는
+비동기 소스를 직접 사용합니다.
+
 ## Error Handling
 
 실무 운영 가이드에서 Define을(를) 다루는 항목입니다:
@@ -670,3 +679,8 @@ def get_my_datasource(data: Any, **kwargs):
 6. 실무 운영 가이드에서 Leverage을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
 7. 실무 운영 가이드에서 Handle을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
 8. 실무 운영 가이드에서 Document, Add을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+
+
+Core MCP의 `sources_sample_source`는 승인된 소유자 안에 실제 표본 datasource를 유지합니다. 빌린 provider·event loop를 종료하기 전에 자식을 해제해야 하며 MCP는 후손부터 정리합니다. 기존 `sources_sample`은 Arrow 스냅샷 동작을 유지합니다. [네이티브 소스 수명주기](../mcp.md)를 참고하세요.
+
+동일한 MCP source 핸들은 `sources_read`, `sources_profile`, `sources_scan`, `sources_mask`, `sources_learn`을 통해 네이티브 공개 `read`·`profile`·`scan`·`mask`·`learn`을 지원합니다. Arrow 결과와 학습 스키마는 별도 보관하며 소스 권한과 수명을 상속합니다. 작업 실패 후에도 정상 소스 연결을 유지합니다.

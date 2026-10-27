@@ -277,3 +277,5 @@ truthound plugins create enterprise-suite \
 - [플러그인 명령 개요](index.md)
 - CLI 명령 실행에서 Plugin, System을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
 - [스캐폴딩 명령](../scaffolding/index.md)
+
+생성된 reporter 플러그인은 표준 `ValidationRunResult`와 공유 Core 표시 포트를 사용하며 통과한 검사도 선택적으로 표시합니다. 작성자 이름은 Python·TOML 문자열로 안전하게 인코딩합니다. 패키지는 Python 3.11 이상이 필요합니다. 생성 대상 파일이나 심볼릭 링크가 이미 있으면 쓰기 전에 거부하여 기존 사용자 코드를 보존합니다. 개별 파일 쓰기는 원자적이며 전체 파일 묶음의 단일 트랜잭션은 아닙니다.

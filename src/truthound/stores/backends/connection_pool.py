@@ -821,6 +821,7 @@ class ConnectionPoolManager:
         self._lock = threading.RLock()
         self._initialized = False
         self._disposed = False
+        self._closing = False
 
         # Tracked sessions for cleanup
         self._active_sessions: weakref.WeakSet[Session] = weakref.WeakSet()
@@ -856,11 +857,21 @@ class ConnectionPoolManager:
 
             if self._disposed:
                 raise RuntimeError("Cannot initialize disposed pool manager")
+            if self._closing:
+                raise RuntimeError("Native pool cleanup is incomplete")
 
-            self._create_engine()
-            self._test_connection()
-            self._setup_event_listeners()
-            self._start_health_checks()
+            try:
+                self._create_engine()
+                # Count the initial connection and its checkin as well.
+                self._setup_event_listeners()
+                self._test_connection()
+                self._start_health_checks()
+            except BaseException as original:
+                try:
+                    self.dispose()
+                except BaseException as cleanup:
+                    raise BaseExceptionGroup("Native pool initialization and cleanup failed", [original, cleanup]) from None
+                raise
             self._initialized = True
 
             logger.info(
@@ -976,7 +987,9 @@ class ConnectionPoolManager:
             try:
                 self._perform_health_check()
             except Exception as e:
-                logger.error(f"Health check error: {e}")
+                self._is_healthy = False
+                self._metrics.record_health_check(False)
+                logger.error("Native health check failed (%s)", type(e).__name__)
 
             self._health_check_stop.wait(self._config.health_check.interval)
 
@@ -1021,25 +1034,25 @@ class ConnectionPoolManager:
         Raises:
             RuntimeError: If circuit is open.
         """
-        if not self._initialized:
-            self.initialize()
+        with self._lock:
+            if self._closing:
+                raise RuntimeError("Native pool cleanup is incomplete")
+            if not self._initialized:
+                self.initialize()
 
-        if not self._circuit_breaker.can_execute():
-            self._metrics._lock.acquire()
-            try:
-                self._metrics.requests_rejected += 1
-            finally:
-                self._metrics._lock.release()
-            raise RuntimeError(
-                "Circuit breaker is open, database connections temporarily unavailable"
-            )
+            if not self._circuit_breaker.can_execute():
+                with self._metrics._lock:
+                    self._metrics.requests_rejected += 1
+                raise RuntimeError(
+                    "Circuit breaker is open, database connections temporarily unavailable"
+                )
 
-        if self._session_factory is None:
-            raise RuntimeError("Session factory not available")
+            if self._session_factory is None:
+                raise RuntimeError("Session factory not available")
 
-        session = self._session_factory()
-        self._active_sessions.add(session)
-        return session
+            session = self._session_factory()
+            self._active_sessions.add(session)
+            return session
 
     @contextmanager
     def session(self) -> Iterator["Session"]:
@@ -1168,28 +1181,42 @@ class ConnectionPoolManager:
         with self._lock:
             if self._disposed:
                 return
+            self._closing = True
+            self._is_healthy = False
+            failures = []
 
             # Stop health checks
             if self._health_check_thread:
                 self._health_check_stop.set()
-                self._health_check_thread.join(timeout=5.0)
-                self._health_check_thread = None
+                if self._health_check_thread is not threading.current_thread():
+                    self._health_check_thread.join(timeout=5.0)
+                if self._health_check_thread.is_alive():
+                    failures.append(RuntimeError("Native health checker cleanup is incomplete"))
+                else:
+                    self._health_check_thread = None
 
             # Close active sessions
             for session in list(self._active_sessions):
                 try:
                     session.close()
-                except Exception:
-                    pass
+                    self._active_sessions.discard(session)
+                except Exception as error:
+                    failures.append(error)
 
             # Dispose engine
             if self._engine:
-                self._engine.dispose()
-                self._engine = None
-                self._session_factory = None
+                try:
+                    self._engine.dispose()
+                except Exception as error:
+                    failures.append(error)
+
+            self._initialized = False
+            if failures:
+                raise ExceptionGroup("Native pool cleanup failed", failures)
+            self._engine = None
+            self._session_factory = None
 
             self._disposed = True
-            self._initialized = False
 
             logger.info("ConnectionPoolManager disposed")
 

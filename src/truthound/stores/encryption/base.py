@@ -25,23 +25,18 @@ Example:
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
+import hashlib
+import hmac
+import os
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum, auto
 from typing import (
     Any,
-    BinaryIO,
-    Callable,
-    Iterator,
     Protocol,
     TypeVar,
     runtime_checkable,
 )
-import hashlib
-import hmac
-import os
-
 
 # =============================================================================
 # Exceptions
@@ -345,10 +340,10 @@ class EncryptionKey:
     """
 
     key_id: str
-    key_material: bytes
+    key_material: bytes = field(repr=False)
     algorithm: EncryptionAlgorithm
     key_type: KeyType = KeyType.DATA_ENCRYPTION_KEY
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     expires_at: datetime | None = None
     version: int = 1
     metadata: dict[str, Any] = field(default_factory=dict)
@@ -368,7 +363,7 @@ class EncryptionKey:
         """Check if key has expired."""
         if self.expires_at is None:
             return False
-        return datetime.now(timezone.utc) > self.expires_at
+        return datetime.now(UTC) > self.expires_at
 
     def validate(self) -> None:
         """Validate key is usable."""
@@ -501,7 +496,7 @@ class EncryptionResult:
         data: bytes,
         algorithm: EncryptionAlgorithm,
         has_header: bool = False,
-    ) -> "EncryptionResult":
+    ) -> EncryptionResult:
         """Deserialize from bytes format."""
         import json
 
@@ -520,7 +515,7 @@ class EncryptionResult:
         nonce = data[offset : offset + nonce_size]
         offset += nonce_size
 
-        ciphertext = data[offset : -tag_size] if tag_size > 0 else data[offset:]
+        ciphertext = data[offset:-tag_size] if tag_size > 0 else data[offset:]
         tag = data[-tag_size:] if tag_size > 0 else b""
 
         return cls(
@@ -616,7 +611,7 @@ class EncryptionHeader:
     kdf: KeyDerivation = KeyDerivation.NONE
     salt: bytes = b""
     key_id: str | None = None
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     nonce_size: int = 12
     tag_size: int = 16
     extra: dict[str, Any] = field(default_factory=dict)
@@ -640,7 +635,7 @@ class EncryptionHeader:
         return len(header_json).to_bytes(4, "big") + header_json
 
     @classmethod
-    def from_bytes(cls, data: bytes) -> tuple["EncryptionHeader", int]:
+    def from_bytes(cls, data: bytes) -> tuple[EncryptionHeader, int]:
         """Deserialize header from bytes.
 
         Returns:

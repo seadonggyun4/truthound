@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from abc import abstractmethod
 from collections.abc import Iterator, Mapping
-from contextlib import contextmanager, suppress
+from contextlib import contextmanager, nullcontext, suppress
 from dataclasses import dataclass
 from queue import Empty, Queue
 from threading import Lock
@@ -92,16 +92,12 @@ def _row_mapping(row: Any, columns: list[str]) -> dict[str, Any]:
         values = list(mapping.values())
         if len(values) == len(columns):
             return dict(zip(columns, values, strict=True))
-        raise DataSourceSchemaError(
-            "SQL row keys do not match cursor description columns."
-        )
+        raise DataSourceSchemaError("SQL row keys do not match cursor description columns.")
 
     try:
         values = list(row)
     except TypeError as exc:
-        raise DataSourceSchemaError(
-            f"Unsupported SQL row type: {type(row).__name__}"
-        ) from exc
+        raise DataSourceSchemaError(f"Unsupported SQL row type: {type(row).__name__}") from exc
     if len(values) != len(columns):
         raise DataSourceSchemaError(
             "SQL row value count does not match cursor description columns."
@@ -229,8 +225,7 @@ class SQLConnectionPool:
                     conn = self._pool.get(timeout=self._timeout)
                 except Empty:
                     raise DataSourceConnectionError(
-                        "pool",
-                        f"Timeout waiting for connection after {self._timeout}s"
+                        "pool", f"Timeout waiting for connection after {self._timeout}s"
                     ) from None
 
         try:
@@ -343,12 +338,9 @@ class BaseSQLDataSource(BaseDataSource[SQLDataSourceConfig]):
 
         provider_class = type(self)
         has_query_strategy = (
-            provider_class._get_table_schema_query
-            is not BaseSQLDataSource._get_table_schema_query
+            provider_class._get_table_schema_query is not BaseSQLDataSource._get_table_schema_query
         )
-        has_native_strategy = (
-            provider_class._fetch_schema is not BaseSQLDataSource._fetch_schema
-        )
+        has_native_strategy = provider_class._fetch_schema is not BaseSQLDataSource._fetch_schema
         if not (has_query_strategy or has_native_strategy):
             raise TypeError(
                 f"{provider_class.__name__} must implement a schema discovery strategy: "
@@ -682,6 +674,7 @@ class BaseSQLDataSource(BaseDataSource[SQLDataSourceConfig]):
     def get_execution_engine(self) -> BaseExecutionEngine:
         """Get a SQL execution engine."""
         from truthound.execution.sql_engine import SQLExecutionEngine
+
         return SQLExecutionEngine(self)
 
     def sample(
@@ -729,11 +722,15 @@ class BaseSQLDataSource(BaseDataSource[SQLDataSourceConfig]):
         query: str,
         *,
         max_rows: int,
+        connection_scope=None,
     ) -> tuple[list[str], list[dict[str, Any]]]:
         """Fetch no more than ``max_rows`` using DB-API batches."""
 
         batch_size = max(1, min(int(self._config.fetch_size), max_rows))
-        with self._get_connection() as conn:
+        with (
+            self._get_connection() as conn,
+            connection_scope(conn) if connection_scope else nullcontext(),
+        ):
             cursor = conn.cursor()
             try:
                 cursor.execute(query)
@@ -861,6 +858,7 @@ class SampledSQLDataSource(BaseSQLDataSource):
         self._sample_size = sample_size
         self._seed = seed
         self.materialization_dialect = parent.materialization_dialect
+        self.subquery_alias_keyword = parent.subquery_alias_keyword
 
     def _create_connection(self) -> Any:
         return self._parent._create_connection()
@@ -920,5 +918,58 @@ class SampledSQLDataSource(BaseSQLDataSource):
         query: str,
         *,
         max_rows: int,
+    ) -> tuple[list[str], list[dict[str, Any]]]:
+        return self._parent._fetch_bounded_rows(query, max_rows=max_rows)
+
+
+class FilteredSQLDataSource(BaseSQLDataSource):
+    """Lazy SQL predicate view borrowing its parent's connection lifecycle.
+
+    Conditions are trusted SQL expressions, as with ``count_matching``. This
+    object never owns or closes the parent. Samples and nested filters retain
+    the complete query rather than materializing a substitute dataframe.
+    """
+
+    source_type = "sql_filtered"
+
+    def __init__(self, parent: BaseSQLDataSource, condition: str) -> None:
+        if not isinstance(condition, str) or not condition.strip():
+            raise ValueError("A SQL filter requires a condition")
+        self._parent = parent
+        self.materialization_dialect = parent.materialization_dialect
+        self.subquery_alias_keyword = parent.subquery_alias_keyword
+        super().__init__(
+            query=f"SELECT * FROM {parent.full_table_name} WHERE ({condition})",
+            config=parent.config,
+        )
+
+    def _create_connection(self) -> Any:
+        return self._parent._create_connection()
+
+    def _fetch_schema(self) -> list[tuple[str, str]]:
+        return list(self._parent.sql_schema.items())
+
+    def _get_row_count_query(self) -> str:
+        return self.build_count_query()
+
+    def _quote_identifier(self, identifier: str) -> str:
+        return self._parent._quote_identifier(identifier)
+
+    def execute_query(self, query: str, params: tuple | dict | None = None) -> list[dict[str, Any]]:
+        return (
+            self._parent.execute_query(query, params)
+            if params is not None
+            else self._parent.execute_query(query)
+        )
+
+    def execute_scalar(self, query: str, params: tuple | dict | None = None) -> Any:
+        return (
+            self._parent.execute_scalar(query, params)
+            if params is not None
+            else self._parent.execute_scalar(query)
+        )
+
+    def _fetch_bounded_rows(
+        self, query: str, *, max_rows: int
     ) -> tuple[list[str], list[dict[str, Any]]]:
         return self._parent._fetch_bounded_rows(query, max_rows=max_rows)

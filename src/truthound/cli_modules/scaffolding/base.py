@@ -9,21 +9,26 @@ This module provides the core abstractions for the scaffolding system:
 
 from __future__ import annotations
 
+import json
+import keyword
 import logging
 import re
 from abc import abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum, auto
 from pathlib import Path
 from typing import (
+    TYPE_CHECKING,
     Any,
-    Callable,
     ClassVar,
     Protocol,
     TypeVar,
     runtime_checkable,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +36,16 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 # Utility Functions
 # =============================================================================
+
+
+def quoted(value: str) -> str:
+    """Encode metadata as a Python and TOML compatible string literal."""
+    return json.dumps(value, ensure_ascii=False)
+
+
+def docstring_text(value: str) -> str:
+    """Escape interpolated text inside a generated triple-quoted docstring."""
+    return quoted(value)[1:-1]
 
 
 def snake_to_pascal(name: str) -> str:
@@ -80,7 +95,9 @@ def validate_name(name: str, pattern: str = r"^[a-z][a-z0-9_]*$") -> bool:
     Returns:
         True if valid, False otherwise
     """
-    return bool(re.match(pattern, name))
+    return (
+        isinstance(name, str) and not keyword.iskeyword(name) and bool(re.fullmatch(pattern, name))
+    )
 
 
 # =============================================================================
@@ -155,6 +172,16 @@ class ScaffoldConfig:
 
     def __post_init__(self) -> None:
         """Validate configuration after initialization."""
+        for field_name in ("author", "version", "description", "category", "license_type"):
+            if not isinstance(getattr(self, field_name), str):
+                raise ValueError(f"{field_name} must be a string")
+        if not isinstance(self.extra, dict) or any(not isinstance(key, str) for key in self.extra):
+            raise ValueError("extra must be a dictionary with string keys")
+        if any(
+            type(getattr(self, key)) is not bool
+            for key in ("include_tests", "include_docs", "include_examples")
+        ):
+            raise ValueError("Scaffold inclusion flags must be booleans")
         if not validate_name(self.name):
             raise ValueError(
                 f"Invalid name '{self.name}'. Must start with a lowercase letter "
@@ -264,11 +291,42 @@ class ScaffoldResult:
         Returns:
             List of written file paths
         """
-        written: list[Path] = []
+        from truthound.stores.concurrency.atomic import AtomicFileWriter
 
+        base_dir = Path(base_dir)
+        if base_dir.is_symlink():
+            raise ValueError("Scaffold output root cannot be a symlink")
+        root = base_dir.resolve()
+        targets, seen = [], set()
         for scaffold_file in self.files:
-            full_path = base_dir / scaffold_file.path
+            relative = Path(scaffold_file.path)
+            key = relative.as_posix().casefold()
+            if (
+                relative.is_absolute()
+                or not relative.parts
+                or ".." in relative.parts
+                or any("\\" in part or ":" in part for part in relative.parts)
+                or key in seen
+                or not isinstance(scaffold_file.content, str)
+                or type(scaffold_file.overwrite) is not bool
+                or type(scaffold_file.executable) is not bool
+            ):
+                raise ValueError("Invalid or duplicate scaffold path or file settings")
+            seen.add(key)
+            full_path = root / relative
+            current = root
+            for part in relative.parts:
+                current = current / part
+                if current.is_symlink():
+                    raise ValueError("Scaffold files cannot traverse symlinks")
+            if not full_path.resolve().is_relative_to(root) or (
+                full_path.exists() and not full_path.is_file()
+            ):
+                raise ValueError("Scaffold target must be a contained regular file")
+            targets.append((scaffold_file, full_path))
 
+        written: list[Path] = []
+        for scaffold_file, full_path in targets:
             # Create parent directories
             full_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -278,7 +336,11 @@ class ScaffoldResult:
                 continue
 
             # Write file
-            full_path.write_text(scaffold_file.content, encoding="utf-8")
+            with AtomicFileWriter(full_path, use_lock=False) as writer:
+                writer.write(scaffold_file.content.encode("utf-8"))
+                outcome = writer.commit()
+                if not outcome.success:
+                    raise OSError("Scaffold file write failed")
             written.append(full_path)
 
             # Set executable if needed
@@ -415,16 +477,13 @@ class BaseScaffold:
 
     def _get_header(self, config: ScaffoldConfig) -> str:
         """Get file header with metadata."""
-        now = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-        return f'''"""
-{config.description or f'{config.title_name} component.'}
-
-Author: {config.author or 'Unknown'}
-Version: {config.version}
-License: {config.license_type}
-Created: {now}
-"""
-'''
+        now = datetime.now(UTC).strftime("%Y-%m-%d")
+        header = (
+            f"{config.description or config.title_name + ' component.'}\n\n"
+            f"Author: {config.author or 'Unknown'}\n"
+            f"Version: {config.version}\nLicense: {config.license_type}\nCreated: {now}\n"
+        )
+        return quoted(header) + "\n"
 
 
 # =============================================================================
@@ -445,7 +504,7 @@ class ScaffoldRegistry:
         result = registry.generate("validator", config)
     """
 
-    _instance: ClassVar["ScaffoldRegistry | None"] = None
+    _instance: ClassVar[ScaffoldRegistry | None] = None
 
     def __init__(self) -> None:
         """Initialize the registry."""
@@ -454,7 +513,7 @@ class ScaffoldRegistry:
         self.logger = logging.getLogger(__name__)
 
     @classmethod
-    def get_instance(cls) -> "ScaffoldRegistry":
+    def get_instance(cls) -> ScaffoldRegistry:
         """Get the singleton registry instance.
 
         Returns:
@@ -485,8 +544,7 @@ class ScaffoldRegistry:
             alias_lower = alias.lower()
             if alias_lower in self._aliases:
                 self.logger.warning(
-                    f"Alias '{alias_lower}' already registered for "
-                    f"'{self._aliases[alias_lower]}'"
+                    f"Alias '{alias_lower}' already registered for '{self._aliases[alias_lower]}'"
                 )
             self._aliases[alias_lower] = name
 

@@ -20,6 +20,15 @@ def encode(value, *, depth: int = 0):
         return {"$type": "integer", "value": str(value)}
     if value is None or type(value) in (str, bool, int):
         return value
+    if type(value).__module__.split(".", 1)[0] == "numpy":
+        import numpy as np
+
+        # Normalize standard scalar values exactly; never coerce object arrays,
+        # complex numbers, temporal units or extended-precision floats.
+        if isinstance(value, (np.integer, np.bool_, np.str_, np.bytes_)) or (
+            isinstance(value, np.floating) and value.dtype.itemsize <= 8
+        ):
+            return encode(value.item(), depth=depth + 1)
     if type(value) is float:
         if math.isfinite(value):
             return value

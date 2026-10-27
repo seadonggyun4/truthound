@@ -25,7 +25,7 @@ truthound new plugin <name> [OPTIONS]
 | CLI 명령 실행에서 `--tests/--no-tests`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | | CLI 명령 실행에서 `--tests`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | CLI 명령 실행에서 Generate을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
 | CLI 명령 실행에서 `--install/--no-install`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | CLI 명령 실행에서 `-i`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | CLI 명령 실행에서 `--no-install`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | CLI 명령 실행에서 Auto-install을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
 | CLI 명령 실행에서 `--min-version`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | | CLI 명령 실행에서 `3.0.0`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | CLI 명령 실행에서 Truthound, Minimum을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
-| CLI 명령 실행에서 `--python`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | | CLI 명령 실행에서 `3.10`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | CLI 명령 실행에서 Minimum, Python을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
+| CLI 명령 실행에서 `--python`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | | CLI 명령 실행에서 `3.11`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | CLI 명령 실행에서 Minimum, Python을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
 
 ## Description
 
@@ -108,7 +108,7 @@ CLI 명령 실행에서 `pyproject.toml`, Generated을(를) 다루는 항목입�
 name = "truthound-my-validators"
 version = "0.1.0"
 description = "Custom validators for Truthound"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "truthound>=3.0.0",
 ]
@@ -184,31 +184,13 @@ def post_validation_hook(context, report):
 ### DataSource Plugin
 
 ```bash
-truthound new plugin custom_db --type datasource --description "Custom database connector"
+truthound new plugin custom_db --type datasource
 ```
 
-CLI 명령 실행에서 Generated을(를) 다루는 항목입니다:
-```python
-from truthound.datasources.base import DataSource
-import polars as pl
-
-class CustomDbDataSource(DataSource):
-    """Custom database data source."""
-
-    name = "custom_db"
-
-    def __init__(self, connection_string: str):
-        self.connection_string = connection_string
-
-    def read(self) -> pl.LazyFrame:
-        """Read data from custom database."""
-        # Implement connection and data reading
-        pass
-
-    def get_schema(self) -> dict:
-        """Get schema information."""
-        pass
-```
+생성된 데이터소스는 `BaseDataSource`를 확장하며 네이티브 `schema`,
+`to_polars_lazyframe`, `get_execution_engine`, `sample`, 연결 및 컨텍스트 관리
+포트를 제공합니다. 실제 공급자를 사용하기 전에 `schema`와 `read`를 구현해야
+합니다. 생성된 자리표시자는 `NotImplementedError`를 발생시킵니다.
 
 ### Action Plugin
 
@@ -216,20 +198,11 @@ class CustomDbDataSource(DataSource):
 truthound new plugin my_actions --type action
 ```
 
-CLI 명령 실행에서 Generated을(를) 다루는 항목입니다:
-```python
-from truthound.checkpoint.actions import Action, ActionResult
-
-class MyCustomAction(Action):
-    """Custom checkpoint action."""
-
-    name = "my_action"
-
-    def execute(self, report, context) -> ActionResult:
-        """Execute the action."""
-        # Implement action logic
-        return ActionResult(success=True, message="Action completed")
-```
+생성된 액션은 `BaseAction`과 `ActionConfig` 하위 클래스를 사용합니다.
+`_execute(checkpoint_result)`를 구현하여 네이티브 `ActionResult`를 반환해야
+합니다. 자리표시자의 `NotImplementedError`는 네이티브 실행에서 오류 결과로
+기록됩니다. 플러그인은 관리자 capability 포트에 액션 클래스를 등록하며 setup
+자체는 외부 액션을 수행하지 않습니다.
 
 ### Full Plugin
 
@@ -241,35 +214,17 @@ truthound new plugin enterprise \
   --install
 ```
 
-CLI 명령 실행에서 Generated을(를) 다루는 항목입니다:
-```
+생성된 구조:
+```text
 enterprise/
 ├── pyproject.toml
 ├── README.md
-├── src/
-│   └── enterprise/
-│       ├── __init__.py
-│       ├── validators/
-│       │   ├── __init__.py
-│       │   └── sample_validator.py
-│       ├── reporters/
-│       │   ├── __init__.py
-│       │   └── sample_reporter.py
-│       ├── hooks/
-│       │   ├── __init__.py
-│       │   └── sample_hook.py
-│       ├── datasources/
-│       │   ├── __init__.py
-│       │   └── sample_datasource.py
-│       └── actions/
-│           ├── __init__.py
-│           └── sample_action.py
+├── enterprise/
+│   ├── __init__.py
+│   └── plugin.py
 └── tests/
-    ├── test_validators.py
-    ├── test_reporters.py
-    ├── test_hooks.py
-    ├── test_datasources.py
-    └── test_actions.py
+    ├── __init__.py
+    └── test_plugin.py
 ```
 
 ### Version Requirements

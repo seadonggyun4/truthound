@@ -1,7 +1,7 @@
 """Enterprise-grade sampling strategies for memory-efficient pattern matching.
 
-This module provides a comprehensive sampling framework that prevents OOM errors
-when processing large datasets while maintaining statistical accuracy.
+This module provides configurable row sampling. Output memory checks are
+cooperative and do not reserve or cap native query-engine heap allocations.
 
 Key features:
 - Pluggable sampling strategy architecture
@@ -35,25 +35,17 @@ Example:
 
 from __future__ import annotations
 
-import hashlib
 import logging
 import math
 import random
-import sys
 import threading
 import time
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
-from datetime import datetime
+from dataclasses import dataclass, replace
 from enum import Enum
 from typing import (
-    TYPE_CHECKING,
     Any,
-    Callable,
     Generic,
-    Iterator,
-    Protocol,
-    Sequence,
     TypeVar,
 )
 
@@ -192,7 +184,7 @@ class SamplingConfig:
 
     strategy: SamplingMethod = SamplingMethod.ADAPTIVE
     max_rows: int = 100_000
-    max_memory_mb: int = 0  # 0 = auto (use 10% of available)
+    max_memory_mb: int = 0  # 0 = unlimited output budget, not a heap reservation
     confidence_level: float = 0.95
     margin_of_error: float = 0.05
     seed: int | None = None
@@ -215,6 +207,8 @@ class SamplingConfig:
             raise ValueError(
                 f"margin_of_error must be between 0 and 1, got {self.margin_of_error}"
             )
+        if type(self.max_memory_mb) is not int or self.max_memory_mb < 0:
+            raise ValueError("max_memory_mb must be nonnegative")
         if self.max_rows < 0:
             raise ValueError(f"max_rows must be non-negative, got {self.max_rows}")
         if self.min_sample_size < 1:
@@ -291,7 +285,7 @@ class SamplingConfig:
             return 1.0
 
     @classmethod
-    def for_accuracy(cls, accuracy: str = "medium") -> "SamplingConfig":
+    def for_accuracy(cls, accuracy: str = "medium") -> SamplingConfig:
         """Create config optimized for accuracy level.
 
         Args:
@@ -329,7 +323,7 @@ class SamplingConfig:
         return configs.get(accuracy, configs["medium"])
 
     @classmethod
-    def for_speed(cls) -> "SamplingConfig":
+    def for_speed(cls) -> SamplingConfig:
         """Create config optimized for speed."""
         return cls(
             strategy=SamplingMethod.HEAD,
@@ -339,7 +333,7 @@ class SamplingConfig:
         )
 
     @classmethod
-    def for_memory(cls, max_memory_mb: int = 100) -> "SamplingConfig":
+    def for_memory(cls, max_memory_mb: int = 100) -> SamplingConfig:
         """Create config optimized for memory efficiency."""
         return cls(
             strategy=SamplingMethod.RESERVOIR,
@@ -575,21 +569,10 @@ class RandomSamplingStrategy(SamplingStrategy):
         if sample_size >= total_rows:
             return NoSamplingStrategy().sample(lf, config, total_rows)
 
-        # Calculate fraction for sampling
-        fraction = sample_size / total_rows
+        from truthound.profiler._sampling_native import ordered
 
-        # Apply random sampling with seed for reproducibility
-        seed = config.seed if config.seed is not None else random.randint(0, 2**32 - 1)
-
-        # Polars sample is on DataFrame, need to collect first for true random
-        # For LazyFrame, we use a workaround with row index
-        # Use higher precision (10000) to avoid fraction becoming 0 for small ratios
-        threshold = max(1, int(fraction * 10000))
-        sampled_lf = (
-            lf.with_row_index("__sample_idx")
-            .filter(pl.col("__sample_idx").hash(seed) % 10000 < threshold)
-            .drop("__sample_idx")
-        )
+        seed = config.seed if config.seed is not None else random.Random().randrange(2**32)
+        sampled_lf = ordered(lf, sample_size, seed)
 
         elapsed_ms = (time.perf_counter() - start_time) * 1000
 
@@ -640,16 +623,15 @@ class SystematicSamplingStrategy(SamplingStrategy):
         # Calculate sampling interval
         interval = max(1, total_rows // sample_size)
 
-        # Random start offset for unbiased sampling
-        seed = config.seed if config.seed is not None else random.randint(0, 2**32 - 1)
-        random.seed(seed)
-        offset = random.randint(0, interval - 1)
+        from truthound.profiler._sampling_native import names
 
-        # Apply systematic sampling
+        offset = random.Random(config.seed).randrange(interval)
+        index = names(lf, 1)[0]
         sampled_lf = (
-            lf.with_row_index("__sample_idx")
-            .filter((pl.col("__sample_idx") - offset) % interval == 0)
-            .drop("__sample_idx")
+            lf.with_row_index(index)
+            .filter((pl.col(index) >= offset) & ((pl.col(index) - offset) % interval == 0))
+            .head(sample_size)
+            .drop(index)
         )
 
         elapsed_ms = (time.perf_counter() - start_time) * 1000
@@ -703,23 +685,10 @@ class HashSamplingStrategy(SamplingStrategy):
         if sample_size >= total_rows:
             return NoSamplingStrategy().sample(lf, config, total_rows)
 
-        # Calculate threshold for hash-based filtering
-        # Use higher precision (10000) to avoid threshold becoming 0 for small ratios
-        threshold = max(1, int((sample_size / total_rows) * 10000))
-        seed = config.seed if config.seed is not None else 42
+        from truthound.profiler._sampling_native import ordered
 
-        if self.hash_column:
-            # Hash specific column
-            sampled_lf = lf.filter(
-                pl.col(self.hash_column).hash(seed) % 10000 < threshold
-            )
-        else:
-            # Hash row index
-            sampled_lf = (
-                lf.with_row_index("__hash_idx")
-                .filter(pl.col("__hash_idx").hash(seed) % 10000 < threshold)
-                .drop("__hash_idx")
-            )
+        seed = config.seed if config.seed is not None else 42
+        sampled_lf = ordered(lf, sample_size, seed, self.hash_column)
 
         elapsed_ms = (time.perf_counter() - start_time) * 1000
 
@@ -771,23 +740,12 @@ class StratifiedSamplingStrategy(SamplingStrategy):
         if sample_size >= total_rows:
             return NoSamplingStrategy().sample(lf, config, total_rows)
 
-        fraction = sample_size / total_rows
+        from truthound.profiler._sampling_native import stratified
 
         if self.stratify_column:
-            # Sample within each stratum
-            seed = config.seed if config.seed is not None else random.randint(0, 2**32 - 1)
-
-            # Get strata and sample proportionally
-            sampled_lf = (
-                lf.with_row_index("__strat_idx")
-                .with_columns(
-                    (pl.col("__strat_idx").hash(seed) % 1000 / 1000).alias("__rand")
-                )
-                .filter(pl.col("__rand") < fraction)
-                .drop(["__strat_idx", "__rand"])
-            )
+            seed = config.seed if config.seed is not None else random.Random().randrange(2**32)
+            sampled_lf = stratified(lf, sample_size, seed, self.stratify_column)
         else:
-            # Fallback to random sampling if no stratify column
             return RandomSamplingStrategy().sample(lf, config, total_rows)
 
         elapsed_ms = (time.perf_counter() - start_time) * 1000
@@ -822,8 +780,7 @@ class ReservoirSamplingStrategy(SamplingStrategy):
         """Reservoir sampling for streaming-friendly sampling."""
         start_time = time.perf_counter()
 
-        # For reservoir sampling, we need to process in a streaming fashion
-        # Polars doesn't have native reservoir sampling, so we approximate
+        # Algorithm R retains only the selected rows plus one native input chunk.
 
         if total_rows is None:
             total_rows = self.estimate_row_count(lf)
@@ -835,19 +792,10 @@ class ReservoirSamplingStrategy(SamplingStrategy):
         if sample_size >= total_rows:
             return NoSamplingStrategy().sample(lf, config, total_rows)
 
-        # Approximate reservoir sampling using weighted random selection
-        seed = config.seed if config.seed is not None else random.randint(0, 2**32 - 1)
+        from truthound.profiler._sampling_native import reservoir
 
-        # Use logarithmic random for reservoir-like behavior
-        sampled_lf = (
-            lf.with_row_index("__res_idx")
-            .with_columns(
-                (-pl.col("__res_idx").hash(seed).log()).alias("__priority")
-            )
-            .sort("__priority")
-            .head(sample_size)
-            .drop(["__res_idx", "__priority"])
-        )
+        sampled_lf, total_rows = reservoir(lf, sample_size, config.seed)
+        sample_size = min(sample_size, total_rows)
 
         elapsed_ms = (time.perf_counter() - start_time) * 1000
 
@@ -878,6 +826,8 @@ class AdaptiveSamplingStrategy(SamplingStrategy):
 
     def __init__(self) -> None:
         """Initialize with sub-strategies."""
+        self._decisions = {}
+        self._decision_lock = threading.Lock()
         self._strategies: dict[str, SamplingStrategy] = {
             "none": NoSamplingStrategy(),
             "head": HeadSamplingStrategy(),
@@ -927,7 +877,20 @@ class AdaptiveSamplingStrategy(SamplingStrategy):
             is_sampled=result.is_sampled,
         )
 
-    def _select_strategy(
+    def _select_strategy(self, total_rows, config):
+        if not config.enable_caching:
+            return self._choose_strategy(total_rows, config)
+        key = (total_rows, config.max_rows, config.small_dataset_threshold,
+               config.medium_dataset_threshold, config.large_dataset_threshold,
+               tuple((name, id(value)) for name, value in self._strategies.items()))
+        with self._decision_lock:
+            if key not in self._decisions:
+                if len(self._decisions) >= 128:
+                    self._decisions.pop(next(iter(self._decisions)))
+                self._decisions[key] = self._choose_strategy(total_rows, config)
+            return self._decisions[key]
+
+    def _choose_strategy(
         self,
         total_rows: int,
         config: SamplingConfig,
@@ -935,6 +898,8 @@ class AdaptiveSamplingStrategy(SamplingStrategy):
         """Select the best strategy for given parameters."""
         # Small datasets: no sampling needed
         if total_rows <= config.small_dataset_threshold:
+            if config.max_rows > 0 and total_rows > config.max_rows:
+                return self._strategies["random"]
             return self._strategies["none"]
 
         # Medium datasets: systematic for balance of speed/quality
@@ -1134,7 +1099,7 @@ class Sampler:
             config: Sampling configuration
             registry: Strategy registry (uses global if not provided)
         """
-        self.config = config or DEFAULT_SAMPLING_CONFIG
+        self.config = replace(config or DEFAULT_SAMPLING_CONFIG)
         self.registry = registry or sampling_strategy_registry
         self._size_estimator = DataSizeEstimator()
 
@@ -1160,17 +1125,21 @@ class Sampler:
         # Estimate row count
         total_rows = self._size_estimator.estimate_row_count(lf)
 
-        # Execute sampling
+        # Resource/cancellation failures must not trigger another native read.
         try:
-            return strategy.sample(lf, config, total_rows)
-        except Exception as e:
-            logger.warning(
-                f"Sampling strategy '{strategy.name}' failed: {e}. "
-                f"Falling back to '{config.fallback_strategy.value}'"
-            )
-            # Fallback
+            result = strategy.sample(lf, config, total_rows)
+        except (MemoryError, TimeoutError, PermissionError):
+            raise
+        except Exception:
+            logger.warning("Sampling strategy failed; using the configured fallback")
             fallback = self.registry.create_from_method(config.fallback_strategy)
-            return fallback.sample(lf, config, total_rows)
+            result = fallback.sample(lf, config, total_rows)
+        if config.max_memory_mb > 0:
+            frame = result.data.collect()
+            if frame.estimated_size() > config.max_memory_mb * 1024 * 1024:
+                raise MemoryError("Sample exceeds the configured output memory budget")
+            result.data = frame.lazy()
+        return result
 
     def sample_column(
         self,

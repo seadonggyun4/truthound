@@ -1,354 +1,251 @@
-"""In-memory store backend.
-
-This module provides a store implementation that keeps data in memory.
-Useful for testing and development. Data is not persisted between sessions.
-"""
+"""Instance-local memory stores with bounded updates and coherent snapshots."""
 
 from __future__ import annotations
 
 from copy import deepcopy
-from dataclasses import dataclass
+from dataclasses import dataclass, fields, replace
 from datetime import datetime
-from typing import Any, TypeVar
+from functools import wraps
+from threading import RLock
+from typing import Any
 
 from truthound.stores.base import (
+    ExpectationStore,
     StoreConfig,
     StoreNotFoundError,
     StoreQuery,
     ValidationStore,
-    ExpectationStore,
 )
-from truthound.stores.results import ValidationResult
 from truthound.stores.expectations import ExpectationSuite
-
-T = TypeVar("T")
+from truthound.stores.results import ValidationResult
 
 
 @dataclass
 class MemoryConfig(StoreConfig):
-    """Configuration for memory store.
-
-    Attributes:
-        max_items: Maximum number of items to store (0 for unlimited).
-        deep_copy: Whether to deep copy items on save/retrieve.
-    """
+    """Memory capacity (zero is unlimited) and nested-value snapshot behavior."""
 
     max_items: int = 0
     deep_copy: bool = True
 
+    def __post_init__(self):
+        self.validate()
 
-class MemoryStore(ValidationStore[MemoryConfig]):
-    """In-memory validation store.
+    def validate(self):
+        if type(self.max_items) is not int or self.max_items < 0:
+            raise ValueError("max_items must be a non-negative integer")
+        if type(self.deep_copy) is not bool:
+            raise ValueError("deep_copy must be boolean")
+        if not isinstance(self.metadata, dict):
+            raise ValueError("Memory store metadata must be a mapping")
+        if self.serialization_format != "json" or self.compression not in {None, "none"}:
+            raise ValueError("Memory stores retain canonical mappings, without byte codecs")
 
-    Stores validation results in memory. Data is not persisted between
-    sessions. Useful for testing and development.
 
-    Example:
-        >>> store = MemoryStore()
-        >>> result = ValidationResult.from_report(report, "customers.csv")
-        >>> run_id = store.save(result)
-        >>> assert store.exists(run_id)
-    """
+def _configuration(max_items, deep_copy, kwargs, config):
+    if type(max_items) is not int or max_items < 0 or type(deep_copy) is not bool:
+        raise ValueError("Invalid memory capacity or copy mode")
+    if config is not None:
+        if not isinstance(config, MemoryConfig):
+            raise TypeError("config must be MemoryConfig")
+        if max_items != 0 or deep_copy is not True or kwargs:
+            raise ValueError("Select a config object or individual memory settings")
+        return replace(deepcopy(config))
+    known = {field.name for field in fields(MemoryConfig)}
+    if set(kwargs) - known:
+        raise TypeError("Unknown memory store setting")
+    return MemoryConfig(max_items=max_items, deep_copy=deep_copy, **kwargs)
 
-    def __init__(
-        self,
-        max_items: int = 0,
-        deep_copy: bool = True,
-        **kwargs: Any,
-    ) -> None:
-        """Initialize the memory store.
 
-        Args:
-            max_items: Maximum number of items to store (0 for unlimited).
-            deep_copy: Whether to deep copy items on save/retrieve.
-            **kwargs: Additional configuration options.
-        """
-        config = MemoryConfig(max_items=max_items, deep_copy=deep_copy)
-        super().__init__(config)
-        self._data: dict[str, dict[str, Any]] = {}
-        self._metadata: dict[str, dict[str, Any]] = {}
+def _locked(method):
+    @wraps(method)
+    def call(self, *args, **kwargs):
+        with self._lock:
+            self._config.validate()
+            self._guard()
+            result = method(self, *args, **kwargs)
+            self._guard()
+            return result
 
-    @classmethod
-    def _default_config(cls) -> MemoryConfig:
-        """Create default configuration."""
-        return MemoryConfig()
+    return call
 
-    def _do_initialize(self) -> None:
-        """Initialize the store (no-op for memory store)."""
+
+def _page(ids, query):
+    if (
+        type(query.offset) is not int
+        or query.offset < 0
+        or (query.limit is not None and (type(query.limit) is not int or query.limit < 0))
+    ):
+        raise ValueError("Invalid store query pagination")
+    return (
+        ids[query.offset :]
+        if query.limit is None
+        else ids[query.offset : query.offset + query.limit]
+    )
+
+
+class _MemoryState:
+    def _setup(self):
+        self._data = {}
+        self._metadata = {}
+        self._lock = RLock()
+        self._io_guard = None
+
+    def set_io_guard(self, guard):
+        if guard is not None and not callable(guard):
+            raise TypeError("Memory store guard must be callable")
+        self._io_guard = guard
+
+    def _guard(self):
+        if self._io_guard is not None:
+            self._io_guard()
+
+    def _do_initialize(self):
         pass
 
-    def save(self, item: ValidationResult) -> str:
-        """Save a validation result to memory.
-
-        Args:
-            item: The validation result to save.
-
-        Returns:
-            The run ID of the saved result.
-        """
-        self.initialize()
-
-        item_id = item.run_id
+    def _snapshot(self, item, *, metadata_key):
         data = item.to_dict()
+        if self._config.metadata:
+            data[metadata_key] = {**deepcopy(self._config.metadata), **data.get(metadata_key, {})}
+        return deepcopy(data) if self._config.deep_copy else data
 
-        if self._config.deep_copy:
-            data = deepcopy(data)
-
-        # Enforce max items limit (remove oldest)
-        if self._config.max_items > 0 and len(self._data) >= self._config.max_items:
-            # Remove oldest item
-            oldest_id = min(
-                self._metadata.keys(),
-                key=lambda k: self._metadata[k].get("run_time", ""),
-            )
-            del self._data[oldest_id]
-            del self._metadata[oldest_id]
-
-        self._data[item_id] = data
-        self._metadata[item_id] = {
-            "data_asset": item.data_asset,
-            "run_time": item.run_time.isoformat(),
-            "status": item.status.value,
-            "tags": item.tags,
+    @staticmethod
+    def _meta(data):
+        return {
+            "data_asset": data.get("data_asset"),
+            "run_time": data.get("run_time", data.get("updated_at")),
+            "status": data.get("status"),
+            "tags": data.get("tags", {}),
         }
 
-        return item_id
+    def _put(self, identity, data):
+        if not isinstance(identity, str) or not identity:
+            raise ValueError("Memory record identity must be a non-empty string")
+        self._guard()
+        # Updating an existing ID consumes no additional capacity.
+        if (
+            identity not in self._data
+            and self._config.max_items
+            and len(self._data) >= self._config.max_items
+        ):
+            oldest = min(
+                self._data, key=lambda key: (self._meta(self._data[key])["run_time"] or "", key)
+            )
+            del self._data[oldest]
+            self._metadata.pop(oldest, None)
+        self._data[identity] = data
+        self._metadata[identity] = self._meta(data)
+        return identity
 
-    def get(self, item_id: str) -> ValidationResult:
-        """Retrieve a validation result by run ID.
-
-        Args:
-            item_id: The run ID of the result to retrieve.
-
-        Returns:
-            The validation result.
-
-        Raises:
-            StoreNotFoundError: If the result doesn't exist.
-        """
-        self.initialize()
-
-        if item_id not in self._data:
-            raise StoreNotFoundError("ValidationResult", item_id)
-
-        data = self._data[item_id]
-        if self._config.deep_copy:
-            data = deepcopy(data)
-
-        return ValidationResult.from_dict(data)
-
+    @_locked
     def exists(self, item_id: str) -> bool:
-        """Check if a validation result exists.
-
-        Args:
-            item_id: The run ID to check.
-
-        Returns:
-            True if the result exists.
-        """
         self.initialize()
         return item_id in self._data
 
+    @_locked
     def delete(self, item_id: str) -> bool:
-        """Delete a validation result.
-
-        Args:
-            item_id: The run ID of the result to delete.
-
-        Returns:
-            True if the result was deleted, False if it didn't exist.
-        """
         self.initialize()
-
         if item_id not in self._data:
             return False
-
         del self._data[item_id]
-        del self._metadata[item_id]
+        self._metadata.pop(item_id, None)
         return True
 
+    @_locked
     def list_ids(self, query: StoreQuery | None = None) -> list[str]:
-        """List validation result IDs matching the query.
-
-        Args:
-            query: Optional query to filter results.
-
-        Returns:
-            List of matching run IDs.
-        """
         self.initialize()
+        if query is None:
+            return list(self._data)
+        if query.order_by not in {"run_time", "data_asset", "status"}:
+            raise ValueError("Unsupported memory store ordering")
+        selected = [
+            (key, self._meta(data))
+            for key, data in self._data.items()
+            if query.matches(self._meta(data))
+        ]
 
-        if not query:
-            return list(self._data.keys())
+        def order(row):
+            value = row[1][query.order_by]
+            return (
+                datetime.fromisoformat(value)
+                if query.order_by == "run_time" and value
+                else value or "",
+                row[0],
+            )
 
-        # Filter by query
-        matching_ids: list[tuple[str, datetime]] = []
+        selected.sort(key=order, reverse=not query.ascending)
+        return _page([identity for identity, _ in selected], query)
 
-        for item_id, meta in self._metadata.items():
-            if query.matches(meta):
-                run_time = datetime.fromisoformat(meta["run_time"])
-                matching_ids.append((item_id, run_time))
+    @_locked
+    def query(self, query: StoreQuery):
+        return [self.get(identity) for identity in self.list_ids(query)]
 
-        # Sort
-        reverse = not query.ascending
-        matching_ids.sort(key=lambda x: x[1], reverse=reverse)
-
-        # Apply offset and limit
-        ids = [item_id for item_id, _ in matching_ids]
-
-        if query.offset:
-            ids = ids[query.offset :]
-        if query.limit:
-            ids = ids[: query.limit]
-
-        return ids
-
-    def query(self, query: StoreQuery) -> list[ValidationResult]:
-        """Query validation results.
-
-        Args:
-            query: Query parameters for filtering.
-
-        Returns:
-            List of matching validation results.
-        """
-        ids = self.list_ids(query)
-        return [self.get(item_id) for item_id in ids]
-
+    @_locked
     def clear_all(self) -> int:
-        """Clear all stored items.
-
-        Returns:
-            Number of items cleared.
-        """
         count = len(self._data)
         self._data.clear()
         self._metadata.clear()
         return count
 
 
-class MemoryExpectationStore(ExpectationStore[MemoryConfig]):
-    """In-memory expectation store.
+class MemoryStore(_MemoryState, ValidationStore[MemoryConfig]):
+    """Validation records live for the instance lifetime, without persistence."""
 
-    Stores expectation suites in memory. Useful for testing.
-    """
-
-    def __init__(self, deep_copy: bool = True, **kwargs: Any) -> None:
-        """Initialize the memory expectation store.
-
-        Args:
-            deep_copy: Whether to deep copy items on save/retrieve.
-        """
-        config = MemoryConfig(deep_copy=deep_copy)
-        super().__init__(config)
-        self._data: dict[str, dict[str, Any]] = {}
+    def __init__(
+        self,
+        max_items: int = 0,
+        deep_copy: bool = True,
+        *,
+        config: MemoryConfig | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(_configuration(max_items, deep_copy, kwargs, config))
+        self._setup()
 
     @classmethod
-    def _default_config(cls) -> MemoryConfig:
-        """Create default configuration."""
+    def _default_config(cls):
         return MemoryConfig()
 
-    def _do_initialize(self) -> None:
-        """Initialize the store (no-op for memory store)."""
-        pass
+    @_locked
+    def save(self, item: ValidationResult) -> str:
+        self.initialize()
+        return self._put(item.run_id, self._snapshot(item, metadata_key="metadata"))
 
+    @_locked
+    def get(self, item_id: str) -> ValidationResult:
+        self.initialize()
+        if item_id not in self._data:
+            raise StoreNotFoundError("ValidationResult", item_id)
+        data = deepcopy(self._data[item_id]) if self._config.deep_copy else self._data[item_id]
+        return ValidationResult.from_dict(data)
+
+
+class MemoryExpectationStore(_MemoryState, ExpectationStore[MemoryConfig]):
+    """Named suites with the same capacity, query and nested-value semantics."""
+
+    def __init__(
+        self,
+        deep_copy: bool = True,
+        *,
+        max_items: int = 0,
+        config: MemoryConfig | None = None,
+        **kwargs: Any,
+    ) -> None:
+        super().__init__(_configuration(max_items, deep_copy, kwargs, config))
+        self._setup()
+
+    @classmethod
+    def _default_config(cls):
+        return MemoryConfig()
+
+    @_locked
     def save(self, item: ExpectationSuite) -> str:
-        """Save an expectation suite to memory.
-
-        Args:
-            item: The suite to save.
-
-        Returns:
-            The suite name.
-        """
         self.initialize()
+        return self._put(item.name, self._snapshot(item, metadata_key="meta"))
 
-        data = item.to_dict()
-        if self._config.deep_copy:
-            data = deepcopy(data)
-
-        self._data[item.name] = data
-        return item.name
-
+    @_locked
     def get(self, item_id: str) -> ExpectationSuite:
-        """Retrieve an expectation suite by name.
-
-        Args:
-            item_id: The suite name.
-
-        Returns:
-            The expectation suite.
-
-        Raises:
-            StoreNotFoundError: If the suite doesn't exist.
-        """
         self.initialize()
-
         if item_id not in self._data:
             raise StoreNotFoundError("ExpectationSuite", item_id)
-
-        data = self._data[item_id]
-        if self._config.deep_copy:
-            data = deepcopy(data)
-
+        data = deepcopy(self._data[item_id]) if self._config.deep_copy else self._data[item_id]
         return ExpectationSuite.from_dict(data)
-
-    def exists(self, item_id: str) -> bool:
-        """Check if a suite exists."""
-        self.initialize()
-        return item_id in self._data
-
-    def delete(self, item_id: str) -> bool:
-        """Delete an expectation suite.
-
-        Args:
-            item_id: The suite name.
-
-        Returns:
-            True if deleted, False if it didn't exist.
-        """
-        self.initialize()
-
-        if item_id not in self._data:
-            return False
-
-        del self._data[item_id]
-        return True
-
-    def list_ids(self, query: StoreQuery | None = None) -> list[str]:
-        """List all suite names."""
-        self.initialize()
-
-        if not query or not query.data_asset:
-            return list(self._data.keys())
-
-        # Filter by data_asset
-        names: list[str] = []
-        for name, data in self._data.items():
-            if data.get("data_asset") == query.data_asset:
-                names.append(name)
-
-        return names
-
-    def query(self, query: StoreQuery) -> list[ExpectationSuite]:
-        """Query expectation suites."""
-        names = self.list_ids(query)
-        suites = [self.get(name) for name in names]
-
-        # Apply limit
-        if query.limit:
-            suites = suites[query.offset : query.offset + query.limit]
-        elif query.offset:
-            suites = suites[query.offset :]
-
-        return suites
-
-    def clear_all(self) -> int:
-        """Clear all stored items.
-
-        Returns:
-            Number of items cleared.
-        """
-        count = len(self._data)
-        self._data.clear()
-        return count

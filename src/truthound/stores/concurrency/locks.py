@@ -17,18 +17,19 @@ from __future__ import annotations
 
 import os
 import sys
-import time
 import threading
+import time
 from abc import ABC, abstractmethod
-from contextlib import contextmanager
+from collections.abc import Iterator  # noqa: TC003 - public annotation introspection
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from pathlib import Path
-from typing import Any, Iterator, TypeVar
+from pathlib import Path  # noqa: TC003 - public annotation introspection
+from typing import Any
 
 # Thread-local storage for lock tracking
 _thread_local = threading.local()
-_process_lock_states: dict[str, "_ProcessLocalLockState"] = {}
+_process_lock_states: dict[str, _ProcessLocalLockState] = {}
 _process_lock_states_guard = threading.RLock()
 
 
@@ -289,7 +290,7 @@ class FcntlLockStrategy(LockStrategy):
         import fcntl
 
         self._fcntl = fcntl
-        self._locks: dict[int, Path] = {}  # fd -> lock path
+        self._locks: dict[int, LockHandle] = {}
         self._lock = threading.RLock()
 
     def acquire(
@@ -304,76 +305,65 @@ class FcntlLockStrategy(LockStrategy):
         lock_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Determine lock operation
-        if mode == LockMode.SHARED:
-            operation = self._fcntl.LOCK_SH
-        else:
-            operation = self._fcntl.LOCK_EX
+        operation = self._fcntl.LOCK_SH if mode == LockMode.SHARED else self._fcntl.LOCK_EX
 
         if not blocking:
             operation |= self._fcntl.LOCK_NB
 
-        local_state = _acquire_process_local_lock(path, mode, timeout, blocking)
-
-        # Open lock file
-        fd = os.open(str(lock_path), os.O_RDWR | os.O_CREAT, 0o666)
-
+        started = time.monotonic()
+        _acquire_process_local_lock(path, mode, timeout, blocking)
+        fd = None
         try:
+            fd = os.open(str(lock_path), os.O_RDWR | os.O_CREAT, 0o666)
             if timeout is not None and blocking:
                 # Implement timeout with polling
-                start_time = time.time()
                 while True:
                     try:
                         self._fcntl.flock(fd, operation | self._fcntl.LOCK_NB)
                         break
-                    except BlockingIOError:
-                        if time.time() - start_time >= timeout:
-                            os.close(fd)
+                    except BlockingIOError as error:
+                        if time.monotonic() - started >= timeout:
                             from truthound.stores.concurrency.manager import LockTimeout
 
-                            raise LockTimeout(path, timeout)
+                            raise LockTimeout(path, timeout) from error
                         time.sleep(0.01)  # 10ms sleep between retries
             else:
                 self._fcntl.flock(fd, operation)
 
+            handle = LockHandle(path=path, mode=mode, fd=fd)
             with self._lock:
-                self._locks[fd] = lock_path
+                self._locks[fd] = handle
+            return handle
 
-            return LockHandle(path=path, mode=mode, fd=fd)
-
-        except (BlockingIOError, OSError) as e:
-            os.close(fd)
+        except BaseException as error:
+            if fd is not None:
+                with suppress(OSError):
+                    os.close(fd)
             _release_process_local_lock(path, mode)
-            if not blocking:
+            if not blocking and isinstance(error, BlockingIOError):
                 from truthound.stores.concurrency.manager import LockTimeout
 
-                raise LockTimeout(path, 0) from e
-            raise
-        except Exception:
-            os.close(fd)
-            _release_process_local_lock(path, mode)
+                raise LockTimeout(path, 0) from error
             raise
 
     def release(self, handle: LockHandle) -> None:
         """Release the fcntl lock."""
         with self._lock:
             fd = handle.fd
-            if fd is None or fd not in self._locks:
+            if fd is None or self._locks.get(fd) is not handle:
                 raise ValueError(f"Lock not held: {handle.path}")
             self._locks.pop(fd)
 
         try:
             self._fcntl.flock(fd, self._fcntl.LOCK_UN)
         finally:
-            os.close(fd)
-            _release_process_local_lock(handle.path, handle.mode)
+            try:
+                os.close(fd)
+            finally:
+                _release_process_local_lock(handle.path, handle.mode)
 
-        # Clean up lock file if it exists and is empty
-        lock_path = self._get_lock_path(handle.path)
-        try:
-            if lock_path.exists() and lock_path.stat().st_size == 0:
-                lock_path.unlink(missing_ok=True)
-        except OSError:
-            pass
+        # Keep this stable inode: existing waiters may already hold descriptors
+        # for it. Unlinking would admit new owners through a different inode.
 
     def try_acquire(self, path: Path, mode: LockMode) -> LockHandle | None:
         """Try to acquire without blocking."""
@@ -430,7 +420,7 @@ class PortalockerStrategy(LockStrategy):
                 "Install it with: pip install portalocker"
             ) from e
 
-        self._locks: dict[str, Any] = {}
+        self._locks: dict[int, Any] = {}
         self._lock = threading.RLock()
 
     def acquire(
@@ -444,58 +434,52 @@ class PortalockerStrategy(LockStrategy):
         lock_path = self._get_lock_path(path)
         lock_path.parent.mkdir(parents=True, exist_ok=True)
 
-        # Determine lock flags
-        if mode == LockMode.SHARED:
-            flags = self._portalocker.LOCK_SH
-        else:
-            flags = self._portalocker.LOCK_EX
-
+        flags = self._portalocker.LOCK_SH if mode == LockMode.SHARED else self._portalocker.LOCK_EX
+        started = time.monotonic()
         _acquire_process_local_lock(path, mode, timeout, blocking)
-
-        # Open and lock
-        lock_file = open(lock_path, "w")
-
+        lock_file = None
         try:
-            if timeout is not None or not blocking:
-                effective_timeout = timeout if timeout is not None else 0
-                self._portalocker.lock(
-                    lock_file,
-                    flags | self._portalocker.LOCK_NB,
-                    timeout=effective_timeout,
-                )
-            else:
-                self._portalocker.lock(lock_file, flags)
+            # Ownership intentionally crosses acquire/release calls.
+            lock_file = open(lock_path, "a+b")  # noqa: SIM115 - released by release
+            while True:
+                try:
+                    wanted = flags | self._portalocker.LOCK_NB if timeout is not None or not blocking else flags
+                    self._portalocker.lock(lock_file, wanted)
+                    break
+                except self._portalocker.AlreadyLocked as error:
+                    elapsed = time.monotonic() - started
+                    if not blocking or (timeout is not None and elapsed >= timeout):
+                        from truthound.stores.concurrency.manager import LockTimeout
 
+                        raise LockTimeout(path, timeout or 0) from error
+                    time.sleep(min(0.01, max(0, timeout - elapsed)) if timeout is not None else 0.01)
+            descriptor = lock_file.fileno()
+            handle = LockHandle(path=path, mode=mode, fd=descriptor)
             with self._lock:
-                self._locks[str(path)] = lock_file
-
-            return LockHandle(path=path, mode=mode, fd=lock_file.fileno())
-
-        except self._portalocker.LockException as e:
-            lock_file.close()
-            _release_process_local_lock(path, mode)
-            from truthound.stores.concurrency.manager import LockTimeout
-
-            raise LockTimeout(path, timeout or 0) from e
-        except Exception:
-            lock_file.close()
-            _release_process_local_lock(path, mode)
+                self._locks[descriptor] = (handle, lock_file)
+            return handle
+        except BaseException:
+            try:
+                if lock_file is not None:
+                    lock_file.close()
+            finally:
+                _release_process_local_lock(path, mode)
             raise
 
     def release(self, handle: LockHandle) -> None:
-        """Release the portalocker lock."""
+        """Release this reader/writer's unique descriptor, then local ownership."""
         with self._lock:
-            key = str(handle.path)
-            if key not in self._locks:
+            entry = self._locks.get(handle.fd)
+            if entry is None or entry[0] is not handle:
                 raise ValueError(f"Lock not held: {handle.path}")
-
-            lock_file = self._locks.pop(key)
-
+            _, lock_file = self._locks.pop(handle.fd)
         try:
             self._portalocker.unlock(lock_file)
         finally:
-            lock_file.close()
-            _release_process_local_lock(handle.path, handle.mode)
+            try:
+                lock_file.close()
+            finally:
+                _release_process_local_lock(handle.path, handle.mode)
 
     def try_acquire(self, path: Path, mode: LockMode) -> LockHandle | None:
         """Try to acquire without blocking."""
@@ -514,7 +498,7 @@ class PortalockerStrategy(LockStrategy):
             return False
 
         try:
-            lock_file = open(lock_path, "w")
+            lock_file = open(lock_path, "a+b")  # noqa: SIM115 - probe closes in finally
             try:
                 self._portalocker.lock(
                     lock_file,
@@ -570,17 +554,20 @@ class FileLockStrategy(LockStrategy):
         lock_path.parent.mkdir(parents=True, exist_ok=True)
 
         # filelock only supports exclusive locks
-        lock = self._filelock.FileLock(lock_path)
+        lock = self._filelock.FileLock(lock_path, thread_local=False)
+        started = time.monotonic()
         _acquire_process_local_lock(path, mode, timeout, blocking)
 
         try:
-            effective_timeout = timeout if blocking else 0
-            lock.acquire(timeout=effective_timeout if effective_timeout else -1)
+            effective_timeout = None if timeout is None else max(0, timeout - (time.monotonic() - started))
+            if not blocking:
+                effective_timeout = 0
+            lock.acquire(timeout=-1 if effective_timeout is None else effective_timeout)
 
+            handle = LockHandle(path=path, mode=mode)
             with self._lock:
-                self._locks[str(path)] = lock
-
-            return LockHandle(path=path, mode=mode)
+                self._locks[str(path)] = (handle, lock)
+            return handle
 
         except self._filelock.Timeout as e:
             _release_process_local_lock(path, mode)
@@ -595,15 +582,17 @@ class FileLockStrategy(LockStrategy):
         """Release the filelock lock."""
         with self._lock:
             key = str(handle.path)
-            if key not in self._locks:
+            entry = self._locks.get(key)
+            if entry is None or entry[0] is not handle:
                 raise ValueError(f"Lock not held: {handle.path}")
-
-            lock = self._locks.pop(key)
-
-        try:
-            lock.release()
-        finally:
-            _release_process_local_lock(handle.path, handle.mode)
+            lock = entry[1]
+            # Keep ownership if the SDK fails to unlock, so cleanup can retry
+            # the same owned resource instead of acknowledging a false release.
+            lock.release(force=True)
+            if lock.is_locked:
+                raise RuntimeError("Native filelock did not release its owned lock")
+            del self._locks[key]
+        _release_process_local_lock(handle.path, handle.mode)
 
     def try_acquire(self, path: Path, mode: LockMode) -> LockHandle | None:
         """Try to acquire without blocking."""

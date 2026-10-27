@@ -8,12 +8,15 @@ various template variants:
 
 from __future__ import annotations
 
+import re
 from typing import Any, ClassVar
 
 from truthound.cli_modules.scaffolding.base import (
     BaseScaffold,
     ScaffoldConfig,
     ScaffoldResult,
+    docstring_text,
+    quoted,
     register_scaffold,
 )
 
@@ -50,6 +53,19 @@ class ReporterScaffold(BaseScaffold):
             },
         }
 
+    def _validate_config(self, config: ScaffoldConfig, result: ScaffoldResult) -> None:
+        super()._validate_config(config, result)
+        extension = config.extra.get("file_extension", ".txt")
+        content_type = config.extra.get("content_type", "text/plain")
+        if not isinstance(extension, str) or not re.fullmatch(r"(?:\.[A-Za-z0-9_-]+)*", extension):
+            result.add_error("File extension must contain only dot-separated filename suffixes")
+        if (
+            not isinstance(content_type, str)
+            or not content_type
+            or any(ord(character) < 32 or ord(character) == 127 for character in content_type)
+        ):
+            result.add_error("Content type must be a nonempty string without control characters")
+
     def _generate_files(self, config: ScaffoldConfig, result: ScaffoldResult) -> None:
         """Generate reporter files based on variant."""
         variant = config.template_variant
@@ -63,12 +79,23 @@ class ReporterScaffold(BaseScaffold):
         self._generate_init(config, result)
 
         # Generate tests if requested
-        if config.include_tests:
+        if config.include_tests and variant != "full":
             self._generate_tests(config, result)
 
         # Generate docs if requested
-        if config.include_docs:
+        if config.include_docs and variant != "full":
             self._generate_docs(config, result)
+        if config.include_examples:
+            example = f'''"""Render a synthetic validation run using the generated reporter."""
+import polars as pl
+import truthound as th
+from {config.name} import {config.class_name}Reporter
+
+if __name__ == "__main__":
+    run = th.check(pl.DataFrame({{"value": [1, None, 3]}}), validators=["null"])
+    print({config.class_name}Reporter().render(run))
+'''
+            result.add_file(f"{config.name}/examples/basic_usage.py", example, executable=True)
 
     def _generate_init(self, config: ScaffoldConfig, result: ScaffoldResult) -> None:
         """Generate __init__.py file."""
@@ -116,7 +143,7 @@ class {config.class_name}ReporterConfig(ReporterConfig):
 
 @register_reporter("{config.name}")
 class {config.class_name}Reporter(ValidationReporter[{config.class_name}ReporterConfig]):
-    """{config.description or f'{config.title_name} reporter.'}
+    """{docstring_text(config.description or f"{config.title_name} reporter.")}
 
     Generates validation reports in custom format.
 
@@ -127,8 +154,8 @@ class {config.class_name}Reporter(ValidationReporter[{config.class_name}Reporter
     """
 
     name = "{config.name}"
-    file_extension = "{file_ext}"
-    content_type = "{content_type}"
+    file_extension = {quoted(file_ext)}
+    content_type = {quoted(content_type)}
 
     @classmethod
     def _default_config(cls) -> {config.class_name}ReporterConfig:
@@ -145,7 +172,7 @@ class {config.class_name}Reporter(ValidationReporter[{config.class_name}Reporter
             Rendered string in custom format.
         """
         presentation = self.present(data)
-        legacy_view = presentation.to_legacy_view()
+        legacy_view = presentation.to_legacy_view(include_passed=self._config.include_passed)
         lines: list[str] = []
 
         # Header
@@ -175,7 +202,7 @@ class {config.class_name}Reporter(ValidationReporter[{config.class_name}Reporter
         if not self._config.include_passed:
             results = [r for r in results if not r.success]
 
-        if self._config.max_issues:
+        if self._config.max_issues is not None:
             results = results[: self._config.max_issues]
 
         # Issues
@@ -210,7 +237,7 @@ class {config.class_name}Reporter(ValidationReporter[{config.class_name}Reporter
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -263,7 +290,7 @@ class {config.class_name}Reporter(
     SerializationMixin,
     ValidationReporter[{config.class_name}ReporterConfig],
 ):
-    """{config.description or f'{config.title_name} reporter.'}
+    """{docstring_text(config.description or f"{config.title_name} reporter.")}
 
     Full-featured reporter with JSON output, filtering, and sorting.
 
@@ -274,8 +301,8 @@ class {config.class_name}Reporter(
     """
 
     name = "{config.name}"
-    file_extension = "{file_ext}"
-    content_type = "{content_type}"
+    file_extension = {quoted(file_ext)}
+    content_type = {quoted(content_type)}
 
     @classmethod
     def _default_config(cls) -> {config.class_name}ReporterConfig:
@@ -295,7 +322,7 @@ class {config.class_name}Reporter(
 
         # Metadata section
         presentation = self.present(data)
-        legacy_view = presentation.to_legacy_view()
+        legacy_view = presentation.to_legacy_view(include_passed=self._config.include_passed)
 
         if self._config.include_metadata:
             output["metadata"] = self._build_metadata(presentation)
@@ -325,7 +352,7 @@ class {config.class_name}Reporter(
                 else None
             ),
             "generated_at": datetime.utcnow().strftime(self._config.date_format),
-            "reporter_version": "{config.version}",
+            "reporter_version": {quoted(config.version)},
         }}
 
     def _build_statistics(self, legacy_view: "LegacyValidationResultView") -> dict[str, Any]:
@@ -359,7 +386,7 @@ class {config.class_name}Reporter(
             )
 
         # Limit
-        if self._config.max_issues:
+        if self._config.max_issues is not None:
             results = results[: self._config.max_issues]
 
         # Convert to dictionaries
@@ -382,8 +409,9 @@ class {config.class_name}Reporter(
             "count": result.count,
         }}
 
-        if self._config.include_samples and result.sample_values:
-            issue["sample_values"] = result.sample_values[
+        samples = result.details.get("sample_values", [])
+        if self._config.include_samples and samples:
+            issue["sample_values"] = samples[
                 : self._config.max_sample_values
             ]
 
@@ -490,7 +518,7 @@ class Test{config.class_name}Reporter:
     def test_write_creates_file(self, sample_validation_result, tmp_path):
         """Test that write creates a file."""
         reporter = {config.class_name}Reporter()
-        output_path = tmp_path / "report{config.extra.get('file_extension', '.txt')}"
+        output_path = tmp_path / "report{config.extra.get("file_extension", ".json" if config.template_variant == "full" else ".txt")}"
 
         reporter.write(sample_validation_result, output_path)
 
@@ -501,12 +529,12 @@ class Test{config.class_name}Reporter:
     def test_file_extension(self):
         """Test file extension property."""
         reporter = {config.class_name}Reporter()
-        assert reporter.file_extension == "{config.extra.get('file_extension', '.txt')}"
+        assert reporter.file_extension == "{config.extra.get("file_extension", ".json" if config.template_variant == "full" else ".txt")}"
 
     def test_content_type(self):
         """Test content type property."""
         reporter = {config.class_name}Reporter()
-        assert reporter.content_type == "{config.extra.get('content_type', 'text/plain')}"
+        assert reporter.content_type == {quoted(config.extra.get("content_type", "application/json" if config.template_variant == "full" else "text/plain"))}
 
     def test_empty_results(self):
         """Test with empty results."""
@@ -539,13 +567,13 @@ class Test{config.class_name}Reporter:
 
     def _generate_docs(self, config: ScaffoldConfig, result: ScaffoldResult) -> None:
         """Generate documentation file."""
-        content = f'''# {config.class_name}Reporter
+        content = f"""# {config.class_name}Reporter
 
 > Custom reporter for Truthound
 
 ## Description
 
-{config.description or 'TODO: Add description'}
+{config.description or "TODO: Add description"}
 
 ## Installation
 
@@ -565,7 +593,7 @@ reporter = {config.class_name}Reporter()
 output = reporter.render(run_result)
 
 # Write to file
-reporter.write(run_result, "report{config.extra.get('file_extension', '.txt')}")
+reporter.write(run_result, "report{config.extra.get("file_extension", ".json" if config.template_variant == "full" else ".txt")}")
 ```
 
 ## Configuration
@@ -604,7 +632,7 @@ output = reporter.render(run_result)
 ---
 
 *Version: {config.version}*
-*Author: {config.author or 'Unknown'}*
+*Author: {config.author or "Unknown"}*
 *License: {config.license_type}*
-'''
+"""
         result.add_file(f"{config.name}/docs/README.md", content)

@@ -382,3 +382,23 @@ checkpoints:
 | **CronTrigger** | Complex schedules | Flexible expressions | Learning curve required |
 | **EventTrigger** | Event-based | Immediate response | Requires external system |
 | **FileWatchTrigger** | File changes | Automation | Resource consumption |
+
+## Durable runner history
+
+`RunnerConfig(journal_path="/private/state/runner.sqlite")` opts the native
+`CheckpointRunner` into local persistence. Use explicitly named, unique triggers
+with JSON-compatible configurations and the same operator-defined checkpoints
+after restart. Run counts and last-run clocks survive process loss; unclaimed
+reservations resume, while interrupted actions/callbacks become unknown and block
+that trigger. In-memory result queues are not recovered. Providers with additional
+mutable state must implement `export_runtime_state()` and
+`restore_runtime_state(state)`; the base hooks preserve count and last-run time.
+
+`runner.recovery_status(limit=100, offset=0)` reports bounded identities/states.
+While quiescent, `recovery_resolve(identity, "completed" | "cancelled")` records
+an independently verified operator decision and consumes the scheduled trigger
+slot without running actions. `recovery_forget(identities)` deletes selected
+completed/cancelled receipts only. Call `runner.close()` to release ownership after
+execution drains. A stopped runner retains ownership; a live process is never
+displaced by lease expiry. `edit_schedule` accepts interval or cron settings while
+quiescent, preserving trigger history; cron edits invalidate the native parser cache.

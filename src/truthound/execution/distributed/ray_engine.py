@@ -52,28 +52,30 @@ from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, replace
 from functools import reduce
-from typing import TYPE_CHECKING, Any, Callable, Iterator
+from typing import TYPE_CHECKING, Any
 
 from truthound.execution.distributed.base import (
     BaseDistributedEngine,
     DistributedEngineConfig,
-    ExecutionMetrics,
 )
+from truthound.execution.distributed.policies import operation
 from truthound.execution.distributed.protocols import (
     AggregationScope,
     AggregationSpec,
     ComputeBackend,
     DistributedResult,
+    ExecutionMode,
     PartitionInfo,
     PartitionStrategy,
     get_aggregator,
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     import pyarrow as pa
-    import ray
     from ray.data import Dataset
 
 logger = logging.getLogger(__name__)
@@ -112,6 +114,23 @@ class RayEngineConfig(DistributedEngineConfig):
     actor_pool_size: int = 4
     target_max_block_size: int = 128 * 1024 * 1024  # 128MB
 
+    def __post_init__(self):
+        super().__post_init__()
+        for name in ("batch_size", "actor_pool_size", "target_max_block_size"):
+            value = getattr(self, name)
+            if type(value) is not int or value <= 0:
+                raise ValueError(f"{name} must be a positive integer")
+        if type(self.prefetch_batches) is not int or self.prefetch_batches < 0:
+            raise ValueError("prefetch_batches must be a non-negative integer")
+        if self.concurrency is not None and (
+            type(self.concurrency) is not int or self.concurrency <= 0
+        ):
+            raise ValueError("concurrency must be a positive integer")
+        if type(self.use_actors) is not bool:
+            raise ValueError("use_actors must be boolean")
+        if self.use_actors and self.concurrency is not None:
+            raise ValueError("Actor mode uses actor_pool_size; task concurrency cannot also be set")
+
 
 def _check_ray_available() -> None:
     """Check if Ray is available."""
@@ -120,9 +139,8 @@ def _check_ray_available() -> None:
         import ray.data  # noqa: F401
     except ImportError:
         raise ImportError(
-            "ray is required for RayExecutionEngine. "
-            "Install with: pip install 'ray[data]'"
-        )
+            "ray is required for RayExecutionEngine. Install with: pip install 'ray[data]'"
+        ) from None
 
 
 def _ensure_ray_initialized(config: RayEngineConfig) -> None:
@@ -133,11 +151,11 @@ def _ensure_ray_initialized(config: RayEngineConfig) -> None:
         init_kwargs = {}
         if config.ray_address:
             init_kwargs["address"] = config.ray_address
-        if config.num_cpus:
+        if config.num_cpus is not None:
             init_kwargs["num_cpus"] = config.num_cpus
-        if config.num_gpus:
+        if config.num_gpus is not None:
             init_kwargs["num_gpus"] = config.num_gpus
-        if config.object_store_memory:
+        if config.object_store_memory is not None:
             init_kwargs["object_store_memory"] = config.object_store_memory
 
         ray.init(**init_kwargs)
@@ -172,8 +190,10 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
 
     def __init__(
         self,
-        dataset: "Dataset",
+        dataset: Dataset,
         config: RayEngineConfig | None = None,
+        *,
+        _apply_defaults: bool = True,
     ) -> None:
         """Initialize Ray execution engine.
 
@@ -182,14 +202,30 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
             config: Optional configuration.
         """
         _check_ray_available()
-        super().__init__(config)
+        super().__init__(replace(config) if config is not None else None)
 
         _ensure_ray_initialized(self._config)
 
         self._ds = dataset
+        self._before_materialize = None
+        # DataContext is bound to this selected Dataset's logical plan. Do not
+        # mutate Ray's process-global context or initialize a second cluster.
+        self._ds.context.target_max_block_size = self._config.target_max_block_size
         self._schema = dataset.schema()
         self._columns = list(self._schema.names) if self._schema else []
-        self._cached_row_count: int | None = None
+        if _apply_defaults and (
+            self._config.num_partitions
+            or self._config.partition_strategy != PartitionStrategy.ROW_HASH
+        ):
+            self._ds = self._partition_native(
+                self._ds, self._config.num_partitions or self._get_partition_count()
+            )
+        if _apply_defaults and self._config.checkpoint_enabled:
+            restored = self.checkpoint()
+            self._ds = restored._ds
+            self._checkpoint_path = restored.checkpoint_path
+        if self._config.execution_mode == ExecutionMode.EAGER:
+            self.materialize()
 
     @classmethod
     def _default_config(cls) -> RayEngineConfig:
@@ -203,9 +239,9 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
     @classmethod
     def from_dataset(
         cls,
-        dataset: "Dataset",
+        dataset: Dataset,
         config: RayEngineConfig | None = None,
-    ) -> "RayExecutionEngine":
+    ) -> RayExecutionEngine:
         """Create engine from existing Ray Dataset.
 
         Args:
@@ -223,7 +259,7 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
         path: str,
         config: RayEngineConfig | None = None,
         **read_kwargs: Any,
-    ) -> "RayExecutionEngine":
+    ) -> RayExecutionEngine:
         """Create engine from Parquet files.
 
         Args:
@@ -250,7 +286,7 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
         path: str,
         config: RayEngineConfig | None = None,
         **read_kwargs: Any,
-    ) -> "RayExecutionEngine":
+    ) -> RayExecutionEngine:
         """Create engine from CSV files.
 
         Args:
@@ -276,7 +312,7 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
         cls,
         df: Any,
         config: RayEngineConfig | None = None,
-    ) -> "RayExecutionEngine":
+    ) -> RayExecutionEngine:
         """Create engine from Pandas DataFrame.
 
         Args:
@@ -299,9 +335,9 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
     @classmethod
     def from_arrow(
         cls,
-        table: "pa.Table",
+        table: pa.Table,
         config: RayEngineConfig | None = None,
-    ) -> "RayExecutionEngine":
+    ) -> RayExecutionEngine:
         """Create engine from Arrow Table.
 
         Args:
@@ -326,7 +362,7 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
         cls,
         items: list[dict[str, Any]],
         config: RayEngineConfig | None = None,
-    ) -> "RayExecutionEngine":
+    ) -> RayExecutionEngine:
         """Create engine from list of dictionaries.
 
         Args:
@@ -356,7 +392,7 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
         return ComputeBackend.RAY
 
     @property
-    def dataset(self) -> "Dataset":
+    def dataset(self) -> Dataset:
         """Get the underlying Ray Dataset."""
         return self._ds
 
@@ -375,9 +411,14 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
     # -------------------------------------------------------------------------
 
     def _get_partition_count(self) -> int:
-        """Get number of data blocks (partitions)."""
-        return self._ds.num_blocks()
+        """Observe actual blocks; lazy Ray plans have no trustworthy count."""
+        try:
+            return self._ds.num_blocks()
+        except NotImplementedError:
+            self.materialize()
+            return self._ds.num_blocks()
 
+    @operation
     def _get_partition_info(self) -> list[PartitionInfo]:
         """Get information about all partitions (blocks)."""
         num_blocks = self._get_partition_count()
@@ -392,6 +433,7 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
             for i in range(num_blocks)
         ]
 
+    @operation
     def _execute_on_partitions(
         self,
         operation: str,
@@ -410,6 +452,9 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
         """
         import ray
 
+        # Ray 2.48 defines this class but does not export it from ray.data.
+        from ray.data._internal.compute import TaskPoolStrategy
+
         metrics = self._start_metrics(operation)
 
         try:
@@ -418,7 +463,10 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
                 ds = ds.select_columns(columns)
 
             # Map batches - func receives batch dict
-            def wrapped_func(batch: dict[str, Any]) -> dict[str, Any]:
+            def wrapped_func(table):
+                import pyarrow as pa
+
+                batch = table.to_pydict()
                 start_time = time.time()
                 result = func(batch)
                 duration_ms = (time.time() - start_time) * 1000
@@ -426,23 +474,36 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
                 # Get row count from batch
                 row_count = len(next(iter(batch.values()))) if batch else 0
 
-                return {
-                    "value": [result.get("value")],
-                    "row_count": [row_count],
-                    "duration_ms": [duration_ms],
-                    "errors": [result.get("errors", [])],
-                    "metadata": [result.get("metadata", {})],
-                }
+                return pa.Table.from_pydict(
+                    {
+                        "value": [result.get("value")],
+                        "row_count": [row_count],
+                        "duration_ms": [duration_ms],
+                        "errors": [result.get("errors", [])],
+                        "metadata": [result.get("metadata", {})],
+                    }
+                )
 
+            mapper = wrapped_func
+            compute = TaskPoolStrategy(size=self._config.concurrency)
+            if self._config.use_actors:
+
+                class BatchMapper:
+                    def __call__(self, table):
+                        return wrapped_func(table)
+
+                mapper = BatchMapper
+                compute = ray.data.ActorPoolStrategy(size=self._config.actor_pool_size)
             results_ds = ds.map_batches(
-                wrapped_func,
-                batch_format="pydict",
+                mapper,
+                batch_format="pyarrow",
                 batch_size=self._config.batch_size,
+                compute=compute,
             )
 
             # Collect results
             collected = []
-            for i, batch in enumerate(results_ds.iter_batches(batch_format="pydict")):
+            for i, batch in enumerate(self._iter_dictionary_batches(results_ds)):
                 for j in range(len(batch["value"])):
                     collected.append(
                         DistributedResult(
@@ -468,6 +529,7 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
         finally:
             self._end_metrics(metrics)
 
+    @operation
     def _aggregate_distributed(
         self,
         spec: AggregationSpec,
@@ -480,11 +542,18 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
         Returns:
             Aggregated results.
         """
-        import ray
 
         metrics = self._start_metrics("aggregate")
 
         try:
+            if (
+                spec.group_by
+                or spec.filter_condition
+                or spec.scope in {AggregationScope.GROUPED, AggregationScope.PARTITION}
+            ):
+                from truthound.execution.distributed.aggregations import execute_spec
+
+                return execute_spec(self._ds, spec)
             results = {}
 
             for agg in spec.aggregations:
@@ -494,12 +563,18 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
                 params = agg.params
 
                 if operation == "count":
-                    if column == "*":
-                        value = self._ds.count()
-                    else:
-                        # Count non-null values
-                        value = self._count_non_null(column)
+                    value = self._ds.count() if column == "*" else self._count_non_null(column)
                     results[alias] = value
+
+                elif operation == "first":
+                    values = self._ds.take(1)
+                    results[alias] = values[0][column] if values else None
+
+                elif operation == "last":
+                    values = self._ds.map_batches(
+                        lambda batch: batch.tail(1), batch_format="pandas", batch_size=None
+                    ).take_all()
+                    results[alias] = values[-1][column] if values else None
 
                 elif operation == "sum":
                     value = self._ds.sum(column)
@@ -508,6 +583,15 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
                 elif operation == "mean":
                     value = self._ds.mean(column)
                     results[alias] = value
+
+                elif operation == "median":
+                    from truthound.execution._protocols import AggregationType
+                    from truthound.execution.polars_engine import PolarsExecutionEngine
+
+                    # Ray has no exact median reduction. Reuse Core's bounded
+                    # Polars bridge instead of averaging partition medians.
+                    with PolarsExecutionEngine(self.to_polars_lazyframe()) as local:
+                        results[alias] = local.aggregate_column(column, AggregationType.MEDIAN)
 
                 elif operation == "min":
                     value = self._ds.min(column)
@@ -518,13 +602,21 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
                     results[alias] = value
 
                 elif operation == "std":
-                    value = self._ds.std(column)
+                    value = self._ds.std(
+                        column,
+                        ddof=params.get("ddof", 1),
+                        ignore_nulls=params.get("ignore_nulls", True),
+                    )
                     results[alias] = value
 
                 elif operation == "var":
                     # Ray doesn't have built-in var, compute from std
-                    std = self._ds.std(column)
-                    value = std ** 2 if std is not None else None
+                    std = self._ds.std(
+                        column,
+                        ddof=params.get("ddof", 1),
+                        ignore_nulls=params.get("ignore_nulls", True),
+                    )
+                    value = std**2 if std is not None else None
                     results[alias] = value
 
                 elif operation == "minmax":
@@ -557,6 +649,15 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
         finally:
             self._end_metrics(metrics)
 
+    def _iter_dictionary_batches(self, dataset=None):
+        source = self._ds if dataset is None else dataset
+        for batch in source.iter_batches(
+            batch_format="pyarrow",
+            batch_size=self._config.batch_size,
+            prefetch_batches=self._config.prefetch_batches,
+        ):
+            yield batch.to_pydict()
+
     def _count_non_null(self, column: str) -> int:
         """Count non-null values in a column."""
         total = self._ds.count()
@@ -573,10 +674,7 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
             return sum(1 for v in values if v is None)
 
         null_counts = []
-        for batch in self._ds.iter_batches(
-            batch_format="pydict",
-            batch_size=self._config.batch_size,
-        ):
+        for batch in self._iter_dictionary_batches():
             ref = count_nulls_batch.remote(batch)
             null_counts.append(ref)
 
@@ -584,9 +682,22 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
 
     def _count_distinct_column(self, column: str) -> int:
         """Count distinct values in a column."""
-        # Use unique() which returns a dataset with unique values
-        unique_ds = self._ds.unique(column)
-        return unique_ds.count()
+        # Dataset.unique returns a materialized list, including null by default.
+        return len(self._ds.unique(column))
+
+    def _grouped_counts(self, columns):
+        """Use Ray's hash aggregation without mutating another plan's context.
+
+        Ray 2.48's sort-shuffle splitter cannot compare nullable composite keys.
+        Hash aggregation preserves native typed key equality, including nulls.
+        """
+        from ray.data import Dataset
+        from ray.data.context import ShuffleStrategy
+
+        partitions = self._config.num_partitions or self._get_partition_count()
+        source = Dataset.copy(self._ds, _deep_copy=True)
+        source.context.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
+        return source.groupby(columns, num_partitions=max(1, partitions)).count()
 
     def _aggregate_with_aggregator(
         self,
@@ -615,10 +726,7 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
 
         # Map phase: compute partial aggregates per batch
         batch_refs = []
-        for batch in self._ds.iter_batches(
-            batch_format="pydict",
-            batch_size=self._config.batch_size,
-        ):
+        for batch in self._iter_dictionary_batches():
             ref = map_batch.remote(batch)
             batch_refs.append(ref)
 
@@ -631,38 +739,55 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
         final_state = reduce(aggregator.merge, partial_states)
         return aggregator.finalize(final_state)
 
-    def _to_arrow_batches(
-        self,
-        batch_size: int | None = None,
-    ) -> list["pa.RecordBatch"]:
-        """Convert Ray Dataset to Arrow batches.
-
-        Ray has native Arrow support, making this efficient.
-
-        Args:
-            batch_size: Batch size for conversion.
-
-        Returns:
-            List of Arrow record batches.
-        """
+    def iter_arrow_batches(self, batch_size=None):
+        """Yield native Arrow batches and eagerly release this iterator on close."""
         import pyarrow as pa
 
-        batch_size = batch_size or self._config.arrow_batch_size
+        from truthound.execution.distributed.policies import batch_size as selected_size
+        from truthound.execution.distributed.policies import checked_batches
 
-        # Ray Dataset has native Arrow support
-        batches = []
-        for batch in self._ds.iter_batches(
-            batch_format="pyarrow",
-            batch_size=batch_size,
-        ):
-            if isinstance(batch, pa.RecordBatch):
-                batches.append(batch)
-            elif isinstance(batch, pa.Table):
-                batches.extend(batch.to_batches(max_chunksize=batch_size))
+        size = selected_size(self, batch_size)
 
-        return batches
+        def batches():
+            source = iter(
+                self._ds.iter_batches(
+                    batch_format="pyarrow",
+                    batch_size=size,
+                    prefetch_batches=self._config.prefetch_batches,
+                )
+            )
+            observed = False
+            try:
+                for table in source:
+                    schema = self._schema.base_schema if self._schema is not None else None
+                    if isinstance(schema, pa.Schema) and table.schema != schema:
+                        table = table.cast(schema)
+                    if isinstance(table, pa.RecordBatch):
+                        observed = True
+                        yield table
+                    else:
+                        for batch in table.to_batches(max_chunksize=size):
+                            observed = True
+                            yield batch
+                if not observed:
+                    schema = self._schema.base_schema if self._schema is not None else pa.schema([])
+                    if not isinstance(schema, pa.Schema):
+                        schema = pa.Schema.from_pandas(
+                            self._ds.to_pandas(limit=0), preserve_index=False
+                        )
+                    yield pa.RecordBatch.from_pylist([], schema=schema)
+            finally:
+                close = getattr(source, "close", None)
+                if close is not None:
+                    close()
 
-    def _repartition(self, num_partitions: int) -> "RayExecutionEngine":
+        return checked_batches(self, batches())
+
+    @operation
+    def _to_arrow_batches(self, batch_size=None):
+        return list(self.iter_arrow_batches(batch_size))
+
+    def _repartition(self, num_partitions: int) -> RayExecutionEngine:
         """Repartition the underlying Dataset.
 
         Args:
@@ -671,10 +796,34 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
         Returns:
             New engine with repartitioned data.
         """
-        repartitioned = self._ds.repartition(num_partitions)
-        return RayExecutionEngine(repartitioned, self._config)
+        repartitioned = self._partition_native(self._ds, num_partitions)
+        return RayExecutionEngine(repartitioned, self._config, _apply_defaults=False)
 
-    def coalesce(self, num_partitions: int) -> "RayExecutionEngine":
+    def _partition_native(self, data, count):
+        from ray.data import Dataset
+        from ray.data.context import ShuffleStrategy
+
+        strategy = self._config.partition_strategy
+        columns = self._config.selected_partition_columns(self._columns)
+        if strategy == PartitionStrategy.CUSTOM:
+            result = self._config.partitioner(data, count)
+            if not isinstance(result, Dataset) or result.schema() != data.schema():
+                raise ValueError("Custom partitioner changed the dataset type or schema")
+            materialized = result.materialize()
+            if materialized.num_blocks() != count:
+                raise ValueError("Custom partitioner returned a different partition count")
+            return materialized
+        if strategy in {PartitionStrategy.ROW_HASH, PartitionStrategy.COLUMN}:
+            selected = Dataset.copy(data, _deep_copy=True)
+            selected.context.shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
+            return selected.repartition(count, shuffle=True, keys=columns)
+        if strategy == PartitionStrategy.ROW_RANGE:
+            return data.sort(columns).repartition(count)
+        from truthound.execution.distributed.partitioning import round_robin_ray
+
+        return round_robin_ray(data, count)
+
+    def coalesce(self, num_partitions: int) -> RayExecutionEngine:
         """Coalesce partitions (blocks).
 
         Args:
@@ -683,26 +832,24 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
         Returns:
             New engine with coalesced data.
         """
+        self._config.validate_partition_count(num_partitions)
         # Ray's repartition can reduce partitions without full shuffle
         coalesced = self._ds.repartition(num_partitions)
-        return RayExecutionEngine(coalesced, self._config)
+        return RayExecutionEngine(coalesced, self._config, _apply_defaults=False)
 
     # -------------------------------------------------------------------------
     # Core Operation Overrides (Native Ray)
     # -------------------------------------------------------------------------
 
+    @operation
     def count_rows(self) -> int:
         """Count rows using native Ray count."""
-        if self._cached_row_count is not None:
-            return self._cached_row_count
-
         cache_key = self._cache_key("count_rows")
         cached = self._get_cached(cache_key)
         if cached is not None:
             return cached
 
         count = self._ds.count()
-        self._cached_row_count = count
         self._set_cached(cache_key, count)
         return count
 
@@ -710,6 +857,7 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
         """Get column names."""
         return self._columns
 
+    @operation
     def count_nulls(self, column: str) -> int:
         """Count nulls using distributed computation."""
         cache_key = self._cache_key("count_nulls", column)
@@ -721,6 +869,7 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
         self._set_cached(cache_key, count)
         return count
 
+    @operation
     def count_nulls_all(self) -> dict[str, int]:
         """Count nulls in all columns."""
         import ray
@@ -740,10 +889,7 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
             return result
 
         batch_results = []
-        for batch in self._ds.iter_batches(
-            batch_format="pydict",
-            batch_size=self._config.batch_size,
-        ):
+        for batch in self._iter_dictionary_batches():
             ref = count_batch_nulls.remote(batch, self._columns)
             batch_results.append(ref)
 
@@ -758,6 +904,7 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
         self._set_cached(cache_key, result)
         return result
 
+    @operation
     def count_distinct(self, column: str) -> int:
         """Count distinct values using native Ray."""
         cache_key = self._cache_key("count_distinct", column)
@@ -769,6 +916,7 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
         self._set_cached(cache_key, count)
         return count
 
+    @operation
     def get_stats(self, column: str) -> dict[str, Any]:
         """Get column statistics using native Ray aggregations."""
         cache_key = self._cache_key("get_stats", column)
@@ -778,7 +926,7 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
 
         # Compute stats
         stats = {
-            "count": self._ds.count(),
+            "count": self._count_non_null(column),
             "null_count": self._count_nulls_column(column),
             "mean": self._ds.mean(column),
             "std": self._ds.std(column),
@@ -789,13 +937,13 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
         self._set_cached(cache_key, stats)
         return stats
 
+    @operation
     def get_value_counts(
         self,
         column: str,
         limit: int | None = None,
     ) -> dict[Any, int]:
         """Get value counts."""
-        import ray
 
         cache_key = self._cache_key("get_value_counts", column, limit)
         cached = self._get_cached(cache_key)
@@ -803,20 +951,18 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
             return cached
 
         # Use groupby with count
-        grouped = self._ds.groupby(column).count()
+        grouped = self._grouped_counts(column)
 
         # Collect and sort
         counts = {}
-        for batch in grouped.iter_batches(batch_format="pydict"):
+        for batch in self._iter_dictionary_batches(grouped):
             for i in range(len(batch[column])):
                 value = batch[column][i]
                 count = batch["count()"][i]
                 counts[value] = count
 
         # Sort by count descending
-        sorted_counts = dict(
-            sorted(counts.items(), key=lambda x: x[1], reverse=True)
-        )
+        sorted_counts = dict(sorted(counts.items(), key=lambda x: x[1], reverse=True))
 
         if limit:
             sorted_counts = dict(list(sorted_counts.items())[:limit])
@@ -824,6 +970,7 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
         self._set_cached(cache_key, sorted_counts)
         return sorted_counts
 
+    @operation
     def count_duplicates(self, columns: list[str]) -> int:
         """Count duplicates."""
         cache_key = self._cache_key("count_duplicates", tuple(columns))
@@ -835,25 +982,26 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
 
         # Get unique count
         if len(columns) == 1:
-            unique_ds = self._ds.unique(columns[0])
+            unique_count = len(self._ds.unique(columns[0]))
         else:
             # For multiple columns, use groupby
-            grouped = self._ds.groupby(columns).count()
+            grouped = self._grouped_counts(columns)
             unique_count = grouped.count()
             duplicates = total - unique_count
             self._set_cached(cache_key, duplicates)
             return duplicates
 
-        unique_count = unique_ds.count()
         duplicates = total - unique_count
 
         self._set_cached(cache_key, duplicates)
         return duplicates
 
+    @operation
     def count_matching_regex(self, column: str, pattern: str) -> int:
         """Count values matching regex."""
-        import ray
         import re
+
+        import ray
 
         cache_key = self._cache_key("count_matching_regex", column, pattern)
         cached = self._get_cached(cache_key)
@@ -865,16 +1013,10 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
         @ray.remote
         def count_matches_batch(batch: dict) -> int:
             values = batch.get(column, [])
-            return sum(
-                1 for v in values
-                if v is not None and compiled.match(str(v))
-            )
+            return sum(1 for v in values if v is not None and compiled.match(str(v)))
 
         batch_refs = []
-        for batch in self._ds.iter_batches(
-            batch_format="pydict",
-            batch_size=self._config.batch_size,
-        ):
+        for batch in self._iter_dictionary_batches():
             ref = count_matches_batch.remote(batch)
             batch_refs.append(ref)
 
@@ -883,6 +1025,7 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
         self._set_cached(cache_key, count)
         return count
 
+    @operation
     def count_in_range(
         self,
         column: str,
@@ -893,9 +1036,7 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
         """Count values in range."""
         import ray
 
-        cache_key = self._cache_key(
-            "count_in_range", column, min_value, max_value, inclusive
-        )
+        cache_key = self._cache_key("count_in_range", column, min_value, max_value, inclusive)
         cached = self._get_cached(cache_key)
         if cached is not None:
             return cached
@@ -917,10 +1058,7 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
             return count
 
         batch_refs = []
-        for batch in self._ds.iter_batches(
-            batch_format="pydict",
-            batch_size=self._config.batch_size,
-        ):
+        for batch in self._iter_dictionary_batches():
             ref = count_range_batch.remote(batch)
             batch_refs.append(ref)
 
@@ -929,6 +1067,7 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
         self._set_cached(cache_key, count)
         return count
 
+    @operation
     def count_in_set(self, column: str, values: set[Any]) -> int:
         """Count values in set."""
         import ray
@@ -946,10 +1085,7 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
             return sum(1 for v in col_values if v in values_set)
 
         batch_refs = []
-        for batch in self._ds.iter_batches(
-            batch_format="pydict",
-            batch_size=self._config.batch_size,
-        ):
+        for batch in self._iter_dictionary_batches():
             ref = count_in_set_batch.remote(batch)
             batch_refs.append(ref)
 
@@ -966,8 +1102,8 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
         self,
         n: int = 1000,
         seed: int | None = None,
-    ) -> "RayExecutionEngine":
-        """Create sampled engine using Ray's native sampling.
+    ) -> RayExecutionEngine:
+        """Create an exact-size sample using Ray's native shuffle.
 
         Args:
             n: Target number of rows.
@@ -981,33 +1117,73 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
         if row_count <= n:
             return self
 
-        fraction = min((n * 1.1) / row_count, 1.0)
+        # Bernoulli sampling followed by limit can return fewer than n rows.
+        sampled = self._ds.random_shuffle(seed=seed).limit(n)
 
-        # Ray's random_sample method
-        sampled = self._ds.random_sample(fraction, seed=seed)
-
-        # Limit to exact n rows
-        sampled = sampled.limit(n)
-
-        return RayExecutionEngine(sampled, self._config)
+        return RayExecutionEngine(sampled, self._config, _apply_defaults=False)
 
     # -------------------------------------------------------------------------
     # Ray-Specific Methods
     # -------------------------------------------------------------------------
 
-    def materialize(self) -> "RayExecutionEngine":
+    def checkpoint(self) -> RayExecutionEngine:
+        """Publish native Parquet in checkpoint_dir and return its independent plan."""
+        from truthound.execution.distributed.checkpoints import publish
+
+        def write(path):
+            self._ds.write_parquet(str(path))
+            if not any(path.rglob("*.parquet")):
+                # Ray legitimately emits no files for zero rows. Preserve the
+                # known Arrow schema before committing an empty snapshot.
+                import pyarrow as pa
+                import pyarrow.parquet as parquet
+
+                if self._ds.count() != 0:
+                    raise ValueError("Native checkpoint write omitted nonempty data")
+                schema = self._schema.base_schema if self._schema is not None else pa.schema([])
+                if not isinstance(schema, pa.Schema):
+                    raise TypeError("Empty native checkpoint requires an Arrow schema")
+                path.mkdir(parents=True, exist_ok=True)
+                parquet.write_table(
+                    pa.Table.from_batches([], schema=schema), path / "empty.parquet"
+                )
+
+        location = publish(self._config.checkpoint_dir, "ray", write)
+        return self.from_checkpoint(location, self._config)
+
+    @classmethod
+    def from_checkpoint(cls, location, config=None) -> RayExecutionEngine:
+        """Restore a checked local snapshot through Ray's native Parquet reader."""
+        from pathlib import Path
+
+        import ray.data
+
+        from truthound.execution.distributed.checkpoints import validate
+
+        data = validate(location, "ray")
+        restored = cls(ray.data.read_parquet(data), config, _apply_defaults=False)
+        restored._checkpoint_path = str(Path(location).resolve())
+        return restored
+
+    def materialize(self) -> RayExecutionEngine:
         """Materialize the dataset (trigger execution and cache).
 
         Returns:
             Self after materializing.
         """
-        self._ds = self._ds.materialize()
+        from ray.data.dataset import MaterializedDataset
+
+        if not isinstance(self._ds, MaterializedDataset):
+            previous = self._ds
+            materialized = previous.materialize()
+            self._before_materialize = previous
+            self._ds = materialized
         return self
 
     def filter(
         self,
         fn: Callable[[dict[str, Any]], bool],
-    ) -> "RayExecutionEngine":
+    ) -> RayExecutionEngine:
         """Filter the dataset using a function.
 
         Args:
@@ -1017,9 +1193,9 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
             New engine with filtered data.
         """
         filtered = self._ds.filter(fn)
-        return RayExecutionEngine(filtered, self._config)
+        return RayExecutionEngine(filtered, self._config, _apply_defaults=False)
 
-    def select_columns(self, columns: list[str]) -> "RayExecutionEngine":
+    def select_columns(self, columns: list[str]) -> RayExecutionEngine:
         """Select specific columns.
 
         Args:
@@ -1029,8 +1205,9 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
             New engine with selected columns.
         """
         selected = self._ds.select_columns(columns)
-        return RayExecutionEngine(selected, self._config)
+        return RayExecutionEngine(selected, self._config, _apply_defaults=False)
 
+    @operation
     def take(self, n: int = 5) -> list[dict[str, Any]]:
         """Get first n rows as list of dicts.
 
@@ -1042,6 +1219,7 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
         """
         return self._ds.take(n)
 
+    @operation
     def take_all(self) -> list[dict[str, Any]]:
         """Get all rows as list of dicts.
 
@@ -1058,6 +1236,7 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
         """
         self._ds.show(n)
 
+    @operation
     def to_pandas(self) -> Any:
         """Convert to Pandas DataFrame.
 
@@ -1066,13 +1245,14 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
         """
         return self._ds.to_pandas()
 
-    def to_arrow(self) -> "pa.Table":
+    @operation
+    def to_arrow(self) -> pa.Table:
         """Convert to Arrow Table.
 
         Returns:
             PyArrow Table.
         """
-        return self._ds.to_arrow()
+        return self.to_arrow_table()
 
     def write_parquet(self, path: str, **kwargs: Any) -> None:
         """Write to Parquet files.
@@ -1115,6 +1295,11 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         """Context manager exit."""
         super().__exit__(exc_type, exc_val, exc_tb)
+        if self._before_materialize is not None:
+            # Drop only this engine's pinned result. Borrowed datasets and the
+            # caller's Ray lifetime remain owned by their original contexts.
+            self._ds = self._before_materialize
+            self._before_materialize = None
         # Note: We don't shutdown Ray here as it might be shared
         # Users should manage Ray lifecycle separately
 

@@ -8,18 +8,16 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path  # noqa: TC003 - public annotation introspection
 from typing import Any
 
 from truthound.plugins.security.protocols import (
     SignatureInfo,
-    VerificationResult,
     TrustLevel,
-    VerificationHandler,
+    VerificationResult,
 )
-from truthound.plugins.security.signing.trust_store import TrustStoreImpl
 from truthound.plugins.security.signing.service import SigningServiceImpl
+from truthound.plugins.security.signing.trust_store import TrustStoreImpl
 
 logger = logging.getLogger(__name__)
 
@@ -35,7 +33,7 @@ class VerificationHandlerBase(ABC):
         """Initialize handler."""
         self._next: VerificationHandlerBase | None = None
 
-    def set_next(self, handler: "VerificationHandlerBase") -> "VerificationHandlerBase":
+    def set_next(self, handler: VerificationHandlerBase) -> VerificationHandlerBase:
         """Set the next handler in the chain.
 
         Args:
@@ -133,16 +131,12 @@ class IntegrityVerifier(VerificationHandlerBase):
         """Check file integrity."""
         stored_hash = signature.metadata.get("plugin_hash", "")
         if not stored_hash:
-            return VerificationResult.failure(
-                "Signature does not contain plugin hash"
-            )
+            return VerificationResult.failure("Signature does not contain plugin hash")
 
         current_hash = self._service.get_plugin_hash(plugin_path)
 
         if current_hash != stored_hash:
-            return VerificationResult.failure(
-                "Plugin content has been modified since signing"
-            )
+            return VerificationResult.failure("Plugin content has been modified since signing")
 
         # Store hash in context for other handlers
         context["plugin_hash"] = current_hash
@@ -169,17 +163,19 @@ class SignatureVerifier(VerificationHandlerBase):
         context: dict[str, Any],
     ) -> VerificationResult | None:
         """Verify cryptographic signature."""
-        # For now, we rely on integrity check and trust verification
-        # Full cryptographic verification would require public keys
+        result = self._service.verify(plugin_path, signature)
+        if not result.is_valid:
+            return result
         context["signer_id"] = signature.signer_id
-        logger.debug(f"Signature structure verified for signer {signature.signer_id}")
+        context["authenticated"] = signature.algorithm not in {"SHA256", "SHA512"}
+        context.setdefault("warnings", []).extend(result.warnings)
         return None
 
 
 class TrustVerifier(VerificationHandlerBase):
     """Verifies signer is trusted."""
 
-    def __init__(self, trust_store: TrustStoreImpl) -> None:
+    def __init__(self, trust_store: TrustStoreImpl, require_trusted: bool = False) -> None:
         """Initialize trust verifier.
 
         Args:
@@ -187,6 +183,7 @@ class TrustVerifier(VerificationHandlerBase):
         """
         super().__init__()
         self._trust_store = trust_store
+        self._require_trusted = require_trusted
 
     def _do_verify(
         self,
@@ -199,9 +196,12 @@ class TrustVerifier(VerificationHandlerBase):
         trust_level = self._trust_store.get_trust_level(signer_id)
 
         if trust_level == TrustLevel.REVOKED:
-            return VerificationResult.failure(
-                f"Signer '{signer_id}' has been revoked"
-            )
+            return VerificationResult.failure(f"Signer '{signer_id}' has been revoked")
+
+        if self._require_trusted and (
+            trust_level != TrustLevel.TRUSTED or not context.get("authenticated", False)
+        ):
+            return VerificationResult.failure("A trusted authenticated signer is required")
 
         if trust_level == TrustLevel.UNKNOWN:
             # Add warning but continue
@@ -234,9 +234,7 @@ class ExpirationVerifier(VerificationHandlerBase):
         """Check signature expiration."""
         # Check if signature has explicit expiry
         if signature.is_expired():
-            return VerificationResult.failure(
-                f"Signature expired at {signature.expires_at}"
-            )
+            return VerificationResult.failure(f"Signature expired at {signature.expires_at}")
 
         # Check max age policy
         if self._max_age_days > 0:
@@ -324,7 +322,7 @@ def create_verification_chain(
     integrity = IntegrityVerifier(signing_service)
     expiration = ExpirationVerifier(max_age_days)
     signature = SignatureVerifier(signing_service)
-    trust = TrustVerifier(trust_store)
+    trust = TrustVerifier(trust_store, require_trusted=require_trusted_signer)
     chain = ChainVerifier(trust_store)
 
     # Build chain
@@ -353,7 +351,7 @@ class VerificationChainBuilder:
     def with_integrity_check(
         self,
         signing_service: SigningServiceImpl | None = None,
-    ) -> "VerificationChainBuilder":
+    ) -> VerificationChainBuilder:
         """Add integrity verification.
 
         Args:
@@ -368,7 +366,7 @@ class VerificationChainBuilder:
     def with_expiration_check(
         self,
         max_age_days: int = 0,
-    ) -> "VerificationChainBuilder":
+    ) -> VerificationChainBuilder:
         """Add expiration verification.
 
         Args:
@@ -383,7 +381,7 @@ class VerificationChainBuilder:
     def with_signature_check(
         self,
         signing_service: SigningServiceImpl | None = None,
-    ) -> "VerificationChainBuilder":
+    ) -> VerificationChainBuilder:
         """Add signature verification.
 
         Args:
@@ -398,7 +396,7 @@ class VerificationChainBuilder:
     def with_trust_check(
         self,
         trust_store: TrustStoreImpl,
-    ) -> "VerificationChainBuilder":
+    ) -> VerificationChainBuilder:
         """Add trust verification.
 
         Args:
@@ -413,7 +411,7 @@ class VerificationChainBuilder:
     def with_chain_check(
         self,
         trust_store: TrustStoreImpl,
-    ) -> "VerificationChainBuilder":
+    ) -> VerificationChainBuilder:
         """Add certificate chain verification.
 
         Args:
@@ -428,7 +426,7 @@ class VerificationChainBuilder:
     def with_custom_handler(
         self,
         handler: VerificationHandlerBase,
-    ) -> "VerificationChainBuilder":
+    ) -> VerificationChainBuilder:
         """Add a custom verification handler.
 
         Args:

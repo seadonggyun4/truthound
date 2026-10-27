@@ -28,29 +28,25 @@ Policy Combination:
 
 from __future__ import annotations
 
+import json
 import threading
 import time
-from abc import ABC
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
-from typing import Any, Callable, Sequence
+from typing import Any
 
 from truthound.rbac.core import (
     AccessContext,
     AccessDecision,
     Condition,
     Permission,
+    PermissionDeniedError,
     PermissionEffect,
     PolicyEvaluator,
     Principal,
-    Role,
     RoleStore,
-    PrincipalStore,
-    PermissionDeniedError,
-    PolicyEvaluationError,
 )
-
 
 # =============================================================================
 # Policy Combination Algorithms
@@ -118,7 +114,7 @@ class Policy:
     tenant_id: str | None = None
 
     # Metadata
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     metadata: dict[str, Any] = field(default_factory=dict)
 
     def matches_subject(self, principal: Principal) -> bool:
@@ -139,9 +135,8 @@ class Policy:
                 elif subject_type == "user":
                     if subject_id == "*" or subject_id == principal.id:
                         return True
-                elif subject_type == "type":
-                    if subject_id == principal.type.value:
-                        return True
+                elif subject_type == "type" and subject_id == principal.type.value:
+                    return True
             else:
                 # Plain role name
                 if subject in principal.roles:
@@ -199,11 +194,7 @@ class Policy:
         if not self.conditions:
             return True
 
-        for condition in self.conditions:
-            if not condition.evaluate(context):
-                return False
-
-        return True
+        return all(condition.evaluate(context) for condition in self.conditions)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
@@ -255,6 +246,21 @@ class RoleBasedEvaluator(PolicyEvaluator):
     def priority(self) -> int:
         return 100
 
+    def _cacheable(self, context: AccessContext) -> bool:
+        pending = list(context.principal.roles) if context.principal else []
+        visited = set()
+        while pending:
+            identity = pending.pop()
+            if identity in visited:
+                continue
+            visited.add(identity)
+            role = self._role_store.get(identity)
+            if role is not None:
+                if role.conditions:
+                    return False
+                pending.extend(role.parent_roles)
+        return True
+
     def evaluate(self, context: AccessContext) -> AccessDecision:
         """Evaluate access based on roles."""
         start_time = time.time()
@@ -265,43 +271,38 @@ class RoleBasedEvaluator(PolicyEvaluator):
         principal = context.principal
         required_permission = context.get_required_permission()
 
-        # Check direct permissions first
+        direct_permissions = []
         for perm in principal.direct_permissions:
             if perm.matches(required_permission):
                 if perm.effect == PermissionEffect.DENY:
-                    return AccessDecision.deny(
-                        f"Permission explicitly denied: {perm}"
-                    )
-                return AccessDecision.allow(
-                    f"Direct permission granted: {perm}",
-                    [perm],
-                )
+                    return AccessDecision.deny(f"Permission explicitly denied: {perm}")
+                direct_permissions.append(perm)
 
         # Check role permissions
         matching_permissions: list[Permission] = []
         for role_id in principal.roles:
-            permissions = self._role_store.get_all_permissions(role_id)
+            permissions = self._role_store.get_applicable_permissions(role_id, context)
             for perm in permissions:
                 if perm.matches(required_permission):
                     if perm.effect == PermissionEffect.DENY:
-                        return AccessDecision.deny(
-                            f"Permission denied by role {role_id}: {perm}"
-                        )
+                        return AccessDecision.deny(f"Permission denied by role {role_id}: {perm}")
                     matching_permissions.append(perm)
 
+        if direct_permissions:
+            return AccessDecision.allow(
+                f"Direct permission granted: {direct_permissions[0]}", direct_permissions
+            )
         if matching_permissions:
             elapsed = (time.time() - start_time) * 1000
             decision = AccessDecision.allow(
-                f"Permission granted by roles",
+                "Permission granted by roles",
                 matching_permissions,
             )
             decision.evaluation_time_ms = elapsed
             return decision
 
         if self._deny_by_default:
-            return AccessDecision.deny(
-                f"No matching permission for {required_permission}"
-            )
+            return AccessDecision.deny(f"No matching permission for {required_permission}")
 
         # Return neutral (let other evaluators decide)
         return AccessDecision(
@@ -414,9 +415,7 @@ class PolicyBasedEvaluator(PolicyEvaluator):
             # Any deny wins
             for policy, effect in matches:
                 if effect == PermissionEffect.DENY:
-                    return AccessDecision.deny(
-                        f"Denied by policy: {policy.name}"
-                    )
+                    return AccessDecision.deny(f"Denied by policy: {policy.name}")
             # All allows
             policy, _ = matches[0]
             return AccessDecision.allow(
@@ -432,9 +431,7 @@ class PolicyBasedEvaluator(PolicyEvaluator):
                     )
             # All denies
             policy, _ = matches[0]
-            return AccessDecision.deny(
-                f"Denied by policy: {policy.name}"
-            )
+            return AccessDecision.deny(f"Denied by policy: {policy.name}")
 
         elif self._combination == PolicyCombination.FIRST_APPLICABLE:
             # First match wins
@@ -443,9 +440,7 @@ class PolicyBasedEvaluator(PolicyEvaluator):
                 return AccessDecision.allow(
                     f"Allowed by policy: {policy.name}",
                 )
-            return AccessDecision.deny(
-                f"Denied by policy: {policy.name}"
-            )
+            return AccessDecision.deny(f"Denied by policy: {policy.name}")
 
         elif self._combination == PolicyCombination.UNANIMOUS:
             # All must allow
@@ -456,7 +451,7 @@ class PolicyBasedEvaluator(PolicyEvaluator):
                     )
             policy, _ = matches[0]
             return AccessDecision.allow(
-                f"Unanimously allowed",
+                "Unanimously allowed",
             )
 
         return AccessDecision.deny("Unknown combination algorithm")
@@ -516,13 +511,9 @@ class ABACEvaluator(PolicyEvaluator):
                 if all_match:
                     elapsed = (time.time() - start_time) * 1000
                     if effect == PermissionEffect.ALLOW:
-                        decision = AccessDecision.allow(
-                            f"ABAC rule matched: {description}"
-                        )
+                        decision = AccessDecision.allow(f"ABAC rule matched: {description}")
                     else:
-                        decision = AccessDecision.deny(
-                            f"ABAC rule denied: {description}"
-                        )
+                        decision = AccessDecision.deny(f"ABAC rule denied: {description}")
                     decision.evaluation_time_ms = elapsed
                     return decision
 
@@ -582,9 +573,7 @@ class OwnershipEvaluator(PolicyEvaluator):
 
         # Check ownership
         if owner_id == context.principal.id:
-            return AccessDecision.allow(
-                f"Principal owns the resource"
-            )
+            return AccessDecision.allow("Principal owns the resource")
 
         return AccessDecision(
             allowed=False,
@@ -728,7 +717,7 @@ class PolicyEngine:
     ) -> None:
         self._config = config or PolicyEngineConfig()
         self._evaluators: list[PolicyEvaluator] = []
-        self._decision_cache: dict[str, tuple[AccessDecision, float]] = {}
+        self._decision_cache: dict[tuple[str, str, str], tuple[AccessDecision, float]] = {}
         self._lock = threading.RLock()
 
     def add_evaluator(self, evaluator: PolicyEvaluator) -> None:
@@ -737,6 +726,7 @@ class PolicyEngine:
             self._evaluators.append(evaluator)
             # Sort by priority (descending)
             self._evaluators.sort(key=lambda e: e.priority, reverse=True)
+            self._decision_cache.clear()
 
     def remove_evaluator(self, name: str) -> bool:
         """Remove an evaluator by name."""
@@ -744,10 +734,19 @@ class PolicyEngine:
             for i, evaluator in enumerate(self._evaluators):
                 if evaluator.name == name:
                     del self._evaluators[i]
+                    self._decision_cache.clear()
                     return True
             return False
 
     def evaluate(self, context: AccessContext) -> AccessDecision:
+        """Evaluate one request against a coherent evaluator registry generation."""
+        # Cache lookup, evaluator configuration and cache publication must see
+        # one registry generation. Otherwise a removed policy can be republished
+        # by an evaluation racing an invalidation.
+        with self._lock:
+            return self._evaluate(context)
+
+    def _evaluate(self, context: AccessContext) -> AccessDecision:
         """Evaluate access for the given context.
 
         Args:
@@ -757,6 +756,9 @@ class PolicyEngine:
             AccessDecision indicating whether access is allowed.
         """
         start_time = time.time()
+
+        if context.principal is not None and not context.principal.enabled:
+            return AccessDecision.deny("Principal is disabled")
 
         # Check cache
         cache_key = self._get_cache_key(context)
@@ -773,10 +775,11 @@ class PolicyEngine:
                 try:
                     decision = evaluator.evaluate(context)
                     decisions.append((evaluator, decision))
-                except Exception as e:
-                    # Log error but continue with other evaluators
-                    if self._config.log_decisions:
-                        pass  # Would log here
+                except Exception:
+                    # An unavailable/invalid policy is not a neutral decision.
+                    # Do not authorize from another evaluator after a failure,
+                    # including when ordinary policy combination allows overrides.
+                    return AccessDecision.deny("Policy evaluation failed")
 
         if not decisions:
             return AccessDecision.deny("No evaluators configured")
@@ -798,30 +801,30 @@ class PolicyEngine:
         """Combine decisions from multiple evaluators."""
         if self._config.combination == PolicyCombination.DENY_OVERRIDES:
             # Any deny wins
-            for evaluator, decision in decisions:
+            for _evaluator, decision in decisions:
                 if decision.allowed is False and decision.effect == PermissionEffect.DENY:
                     return decision
 
             # Check for any allow
-            for evaluator, decision in decisions:
+            for _evaluator, decision in decisions:
                 if decision.allowed:
                     return decision
 
         elif self._config.combination == PolicyCombination.ALLOW_OVERRIDES:
             # Any allow wins
-            for evaluator, decision in decisions:
+            for _evaluator, decision in decisions:
                 if decision.allowed:
                     return decision
 
         elif self._config.combination == PolicyCombination.FIRST_APPLICABLE:
             # First definitive decision wins
-            for evaluator, decision in decisions:
+            for _evaluator, decision in decisions:
                 if decision.effect in (PermissionEffect.ALLOW, PermissionEffect.DENY):
                     return decision
 
         elif self._config.combination == PolicyCombination.UNANIMOUS:
             # All must allow
-            for evaluator, decision in decisions:
+            for _evaluator, decision in decisions:
                 if not decision.allowed:
                     return decision
 
@@ -838,20 +841,42 @@ class PolicyEngine:
             reason="No definitive decision",
         )
 
-    def _get_cache_key(self, context: AccessContext) -> str | None:
+    def _get_cache_key(self, context: AccessContext) -> tuple[str, str, str] | None:
         """Generate a cache key for the context."""
-        if context.principal is None:
+        # Custom/attribute/time/ownership evaluators may consult mutable state
+        # outside this context. They have no cache-invalidation protocol, so do
+        # not cache their decisions. Ordinary native role-only caching remains.
+        if context.principal is None or any(
+            type(evaluator) is not RoleBasedEvaluator or not evaluator._cacheable(context)
+            for evaluator in self._evaluators
+        ):
             return None
-
-        parts = [
+        principal = context.principal
+        resource_type = context.resource_type
+        if isinstance(resource_type, Enum):
+            resource_type = resource_type.value
+        fingerprint = json.dumps(
+            [
+                resource_type,
+                context.action,
+                context.tenant_id,
+                principal.tenant_id,
+                sorted(principal.roles),
+                sorted(
+                    (p.resource, p.action, p.scope, p.effect.value)
+                    for p in principal.direct_permissions
+                ),
+            ],
+            ensure_ascii=False,
+            allow_nan=False,
+        )
+        return (
             context.principal.id,
             context.resource,
-            context.action if isinstance(context.action, str) else context.action.value,
-            context.tenant_id or "",
-        ]
-        return ":".join(parts)
+            fingerprint,
+        )
 
-    def _get_cached_decision(self, cache_key: str) -> AccessDecision | None:
+    def _get_cached_decision(self, cache_key: tuple[str, str, str]) -> AccessDecision | None:
         """Get a cached decision."""
         with self._lock:
             if cache_key in self._decision_cache:
@@ -862,7 +887,7 @@ class PolicyEngine:
                     del self._decision_cache[cache_key]
             return None
 
-    def _cache_decision(self, cache_key: str, decision: AccessDecision) -> None:
+    def _cache_decision(self, cache_key: tuple[str, str, str], decision: AccessDecision) -> None:
         """Cache a decision."""
         with self._lock:
             # Limit cache size
@@ -890,10 +915,9 @@ class PolicyEngine:
 
             keys_to_remove = []
             for key in self._decision_cache:
-                parts = key.split(":")
-                if principal_id and parts[0] == principal_id:
-                    keys_to_remove.append(key)
-                elif resource and parts[1] == resource:
+                if (principal_id is not None and key[0] == principal_id) or (
+                    resource is not None and key[1] == resource
+                ):
                     keys_to_remove.append(key)
 
             for key in keys_to_remove:

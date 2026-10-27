@@ -13,9 +13,10 @@ from __future__ import annotations
 import re
 import time
 from abc import ABC, abstractmethod
+from collections.abc import Callable, Sequence  # noqa: TC003 - public runtime annotation resolution
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Any, Callable, Sequence
+from typing import Any
 
 import polars as pl
 
@@ -24,12 +25,12 @@ from truthound.profiler.base import (
     DataType,
     DistributionStats,
     PatternMatch,
+    ProfileExecutionIssue,
     ProfilerConfig,
     TypeInferrer,
     ValueFrequency,
     register_type_inferrer,
 )
-
 
 # =============================================================================
 # Pattern Definitions
@@ -606,11 +607,12 @@ class ColumnProfiler:
         else:
             self.analyzers = [
                 BasicStatsAnalyzer(),
-                NumericAnalyzer(),
                 StringAnalyzer(),
                 DatetimeAnalyzer(),
                 ValueFrequencyAnalyzer(),
             ]
+            if self.config.include_distributions:
+                self.analyzers.insert(1, NumericAnalyzer())
             # Only add PatternAnalyzer if include_patterns is True
             if self.config.include_patterns:
                 self.analyzers.append(PatternAnalyzer())
@@ -627,6 +629,15 @@ class ColumnProfiler:
             if self.config.include_patterns:
                 self.type_inferrers.append(PatternBasedTypeInferrer())
         self.type_inferrers.sort(key=lambda x: -x.priority)
+
+    def set_execution_guard(self, guard: Callable[[], None]) -> None:
+        """Install a trusted guard before every analyzer and inferrer."""
+        self._execution_guard = guard
+
+    def _guard_execution(self) -> None:
+        guard = getattr(self, "_execution_guard", None)
+        if guard is not None:
+            guard()
 
     def add_analyzer(self, analyzer: ColumnAnalyzer) -> None:
         """Add a custom analyzer."""
@@ -655,6 +666,7 @@ class ColumnProfiler:
         """
         start_time = time.perf_counter()
 
+        execution_issues = []
         # Run applicable analyzers
         metrics: dict[str, Any] = {
             "name": column,
@@ -662,20 +674,21 @@ class ColumnProfiler:
         }
 
         for analyzer in self.analyzers:
+            self._guard_execution()
             if analyzer.is_applicable(dtype):
                 try:
                     result = analyzer.analyze(column, lf, self.config)
                     metrics.update(result)
-                except Exception:
-                    # Skip failed analyzers
-                    pass
+                except Exception as error:
+                    execution_issues.append(ProfileExecutionIssue("column_analyzer", analyzer.name, type(error).__name__, column))
 
         # Infer semantic type
-        inferred_type = self._infer_type(column, lf, dtype)
+        inferred_type = self._infer_type(column, lf, dtype, execution_issues)
         metrics["inferred_type"] = inferred_type
 
         # Generate suggested validators
-        metrics["suggested_validators"] = self._suggest_validators(metrics)
+        metrics["suggested_validators"] = self._suggest_validators(metrics) if not execution_issues else ()
+        metrics["execution_issues"] = tuple(execution_issues)
 
         # Calculate profiling duration
         duration_ms = (time.perf_counter() - start_time) * 1000
@@ -689,14 +702,18 @@ class ColumnProfiler:
         column: str,
         lf: pl.LazyFrame,
         dtype: pl.DataType,
+        execution_issues=None,
     ) -> DataType:
         """Infer semantic type using registered inferrers."""
         for inferrer in self.type_inferrers:
+            self._guard_execution()
             try:
                 result = inferrer.infer(column, lf, dtype)
                 if result is not None:
                     return result
-            except Exception:
+            except Exception as error:
+                if execution_issues is not None:
+                    execution_issues.append(ProfileExecutionIssue("type_inferrer", inferrer.name, type(error).__name__, column))
                 continue
         return DataType.UNKNOWN
 
@@ -736,11 +753,10 @@ class ColumnProfiler:
 
         # Distribution-based suggestions (for numeric)
         dist = metrics.get("distribution")
-        if dist and isinstance(dist, DistributionStats):
-            if dist.min is not None and dist.max is not None:
-                suggestions.append(
-                    f"RangeValidator(min_value={dist.min}, max_value={dist.max})"
-                )
+        if isinstance(dist, DistributionStats) and dist.min is not None and dist.max is not None:
+            suggestions.append(
+                f"RangeValidator(min_value={dist.min}, max_value={dist.max})"
+            )
 
         # String length suggestions
         if metrics.get("min_length") is not None:

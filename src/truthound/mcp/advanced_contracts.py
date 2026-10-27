@@ -31,7 +31,7 @@ class DriftCompare(WireModel):
         "energy",
         "mmd",
     ] = "auto"
-    threshold: float | None = None
+    threshold: Annotated[float, Field(ge=0, allow_inf_nan=False)] | None = None
     sample_size: Annotated[int, Field(ge=1, le=10_000_000)] | None = None
 
 

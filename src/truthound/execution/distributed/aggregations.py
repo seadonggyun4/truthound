@@ -60,25 +60,19 @@ Example:
 from __future__ import annotations
 
 import logging
-import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from functools import reduce
-from typing import TYPE_CHECKING, Any, Callable, Generic, Iterator, TypeVar
+from typing import TYPE_CHECKING, Any, TypeVar
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 from truthound.execution.distributed.protocols import (
     AggregationScope,
     AggregationSpec,
-    BaseAggregator,
     ComputeBackend,
-    DistributedAggregation,
-    DistributedResult,
     get_aggregator,
-    register_aggregator,
 )
-
-if TYPE_CHECKING:
-    from pyspark.sql import DataFrame as SparkDataFrame
 
 logger = logging.getLogger(__name__)
 
@@ -111,6 +105,7 @@ class AggregationPlan:
     aggregations: list[tuple[str, str, dict[str, Any]]] = field(default_factory=list)
     group_by: list[str] = field(default_factory=list)
     filter_condition: str | None = None
+    scope: AggregationScope = AggregationScope.GLOBAL
 
     def add(
         self,
@@ -118,7 +113,7 @@ class AggregationPlan:
         operation: str,
         alias: str = "",
         **params: Any,
-    ) -> "AggregationPlan":
+    ) -> AggregationPlan:
         """Add an aggregation to the plan.
 
         Args:
@@ -130,18 +125,20 @@ class AggregationPlan:
         Returns:
             Self for method chaining.
         """
-        self.aggregations.append((
-            column,
-            operation,
-            {"alias": alias or f"{column}_{operation}", **params},
-        ))
+        self.aggregations.append(
+            (
+                column,
+                operation,
+                {"alias": alias or f"{column}_{operation}", **params},
+            )
+        )
         return self
 
-    def add_count(self, column: str = "*", alias: str = "") -> "AggregationPlan":
+    def add_count(self, column: str = "*", alias: str = "") -> AggregationPlan:
         """Add count aggregation."""
         return self.add(column, "count", alias)
 
-    def add_null_count(self, column: str, alias: str = "") -> "AggregationPlan":
+    def add_null_count(self, column: str, alias: str = "") -> AggregationPlan:
         """Add null count aggregation."""
         return self.add(column, "null_count", alias)
 
@@ -150,15 +147,15 @@ class AggregationPlan:
         column: str,
         alias: str = "",
         max_sample: int = 100_000,
-    ) -> "AggregationPlan":
+    ) -> AggregationPlan:
         """Add distinct count aggregation."""
         return self.add(column, "distinct_count", alias, max_sample=max_sample)
 
-    def add_sum(self, column: str, alias: str = "") -> "AggregationPlan":
+    def add_sum(self, column: str, alias: str = "") -> AggregationPlan:
         """Add sum aggregation."""
         return self.add(column, "sum", alias)
 
-    def add_mean(self, column: str, alias: str = "") -> "AggregationPlan":
+    def add_mean(self, column: str, alias: str = "") -> AggregationPlan:
         """Add mean aggregation."""
         return self.add(column, "mean", alias)
 
@@ -167,15 +164,15 @@ class AggregationPlan:
         column: str,
         alias: str = "",
         ddof: int = 1,
-    ) -> "AggregationPlan":
+    ) -> AggregationPlan:
         """Add standard deviation aggregation."""
         return self.add(column, "std", alias, ddof=ddof)
 
-    def add_minmax(self, column: str, alias: str = "") -> "AggregationPlan":
+    def add_minmax(self, column: str, alias: str = "") -> AggregationPlan:
         """Add min/max aggregation."""
         return self.add(column, "minmax", alias)
 
-    def add_stats(self, column: str) -> "AggregationPlan":
+    def add_stats(self, column: str) -> AggregationPlan:
         """Add comprehensive statistics (count, null, mean, std, min, max)."""
         return (
             self.add_count(column, f"{column}_count")
@@ -185,22 +182,35 @@ class AggregationPlan:
             .add_minmax(column, f"{column}_minmax")
         )
 
-    def add_group_by(self, *columns: str) -> "AggregationPlan":
+    def add_group_by(self, *columns: str) -> AggregationPlan:
         """Add group by columns."""
         self.group_by.extend(columns)
         return self
 
-    def add_filter(self, condition: str) -> "AggregationPlan":
+    def add_filter(self, condition: str) -> AggregationPlan:
         """Add filter condition."""
         self.filter_condition = condition
         return self
 
     def to_spec(self) -> AggregationSpec:
         """Convert to AggregationSpec."""
-        spec = AggregationSpec(group_by=self.group_by)
+        from copy import deepcopy
+
+        spec = AggregationSpec(
+            group_by=list(self.group_by),
+            scope=AggregationScope.GROUPED
+            if self.group_by and self.scope == AggregationScope.GLOBAL
+            else AggregationScope(self.scope),
+            filter_condition=self.filter_condition,
+        )
         for column, operation, params in self.aggregations:
-            alias = params.pop("alias", f"{column}_{operation}")
-            spec.add(column, operation, alias, **params)
+            alias = params.get("alias", f"{column}_{operation}")
+            spec.add(
+                column,
+                operation,
+                alias,
+                **deepcopy({k: v for k, v in params.items() if k != "alias"}),
+            )
         return spec
 
     def __len__(self) -> int:
@@ -287,6 +297,8 @@ class DistributedAggregator:
         self,
         data: Any,
         backend: ComputeBackend = ComputeBackend.AUTO,
+        *,
+        dask_scheduler: Any = None,
     ) -> None:
         """Initialize distributed aggregator.
 
@@ -295,8 +307,18 @@ class DistributedAggregator:
             backend: Compute backend to use.
         """
         self._data = data
+        self._dask_scheduler = dask_scheduler
         self._backend = backend
         self._inferred_backend = self._infer_backend()
+        self._execution_guard = None
+
+    def set_execution_guard(self, guard) -> None:
+        """Check owner authority before new work and after each observed batch."""
+        self._execution_guard = guard
+
+    def _check_guard(self) -> None:
+        if self._execution_guard is not None:
+            self._execution_guard()
 
     def _infer_backend(self) -> ComputeBackend:
         """Infer backend from data type."""
@@ -321,360 +343,337 @@ class DistributedAggregator:
         return ComputeBackend.LOCAL
 
     def execute(self, plan: AggregationPlan) -> dict[str, Any]:
-        """Execute aggregation plan.
-
-        Args:
-            plan: Plan to execute.
-
-        Returns:
-            Aggregation results.
-        """
-        backend = self._inferred_backend
-
-        if backend == ComputeBackend.SPARK:
-            return self._execute_spark(plan)
-        elif backend == ComputeBackend.DASK:
-            return self._execute_dask(plan)
-        elif backend == ComputeBackend.RAY:
-            return self._execute_ray(plan)
-        else:
-            return self._execute_local(plan)
+        """Return the final merged result, retaining every group and typed key."""
+        final = None
+        for snapshot in self.execute_streaming(plan):
+            final = snapshot
+        assert final is not None
+        return final
 
     def execute_streaming(
-        self,
-        plan: AggregationPlan,
-        batch_size: int = 10000,
+        self, plan: AggregationPlan, batch_size: int = 10000
     ) -> Iterator[dict[str, Any]]:
-        """Execute plan in streaming mode.
+        """Yield cumulative independent snapshots after each native batch.
 
-        Args:
-            plan: Plan to execute.
-            batch_size: Batch size.
-
-        Yields:
-            Partial results.
+        Only aggregate states cross the worker boundary. Filters are SQL
+        expressions evaluated by Core's Polars bridge inside each batch; no
+        caller Python is evaluated. Grouped output is {"groups": [{"keys": ...,
+        "aggregations": ...}]}; global output remains an alias-to-value mapping.
         """
-        # For now, just execute normally and yield once
-        # TODO: Implement true streaming aggregation
-        yield self.execute(plan)
+        if type(batch_size) is not int or batch_size < 1:
+            raise ValueError("batch_size must be a positive integer")
+        captured, aggregators = self._prepare_plan(plan)
+        if captured.scope == AggregationScope.PARTITION:
+            return self._stream_partitions(captured, aggregators, batch_size)
+        return self._stream(captured, aggregators, batch_size)
 
-    def _execute_spark(self, plan: AggregationPlan) -> dict[str, Any]:
-        """Execute on Spark using native aggregations where possible."""
-        from pyspark.sql import functions as F
+    def _prepare_plan(self, plan):
+        from copy import deepcopy
 
-        df = self._data
+        self._check_guard()
+        captured = deepcopy(plan)
+        captured.scope = AggregationScope(captured.scope)
+        if captured.scope == AggregationScope.GROUPED and not captured.group_by:
+            raise ValueError("Grouped aggregation requires group columns")
+        aliases = [
+            params.get("alias", f"{column}_{operation}")
+            for column, operation, params in captured.aggregations
+        ]
+        if len(aliases) != len(set(aliases)):
+            raise ValueError("Aggregation aliases must be unique")
+        if len(captured.group_by) != len(set(captured.group_by)):
+            raise ValueError("Group columns must be unique")
+        aggregators = [
+            _plan_aggregator(column, operation, params)
+            for column, operation, params in captured.aggregations
+        ]
+        return captured, aggregators
 
-        # Apply filter if specified
-        if plan.filter_condition:
-            df = df.filter(plan.filter_condition)
+    def execute_partitioned(self, plan: AggregationPlan) -> dict[str, Any]:
+        """Finalize each native partition separately, including empty partitions.
 
-        # Separate native Spark aggs from custom aggs
-        spark_native = {"count", "sum", "mean", "min", "max", "std", "var"}
-        native_aggs = []
-        custom_aggs = []
+        IDs are zero-based ordinals in the selected native iteration. They are
+        not durable IDs across repartitioning or separate backend executions.
+        """
 
-        for column, operation, params in plan.aggregations:
-            if operation in spark_native:
-                native_aggs.append((column, operation, params))
-            else:
-                custom_aggs.append((column, operation, params))
+        captured, aggregators = self._prepare_plan(plan)
+        final = {"partitions": []}
+        for snapshot in self._stream_partitions(captured, aggregators, 10000):
+            final = snapshot
+        return final
 
-        results = {}
+    def _stream_partitions(self, captured, aggregators, batch_size):
+        from contextlib import closing
+        from copy import deepcopy
 
-        # Execute native Spark aggregations
-        if native_aggs:
-            spark_funcs = {
-                "count": lambda c: F.count(c if c != "*" else F.lit(1)),
-                "sum": F.sum,
-                "mean": F.avg,
-                "min": F.min,
-                "max": F.max,
-                "std": F.stddev,
-                "var": F.variance,
-            }
+        import cloudpickle
 
-            exprs = []
-            for column, operation, params in native_aggs:
-                alias = params.get("alias", f"{column}_{operation}")
-                expr = spark_funcs[operation](column).alias(alias)
-                exprs.append(expr)
+        result = []
+        with closing(self._partial_payloads(captured, aggregators, batch_size, True)) as partials:
+            while True:
+                self._check_guard()
+                try:
+                    payload = next(partials)
+                except StopIteration:
+                    break
+                self._check_guard()
+                result.append(
+                    {
+                        "partition_id": len(result),
+                        "result": _finalize_plan(captured, aggregators, cloudpickle.loads(payload)),
+                    }
+                )
+                yield {"partitions": deepcopy(result)}
+        if not result:
+            yield {"partitions": []}
 
-            if plan.group_by:
-                agg_df = df.groupBy(*plan.group_by).agg(*exprs)
-                rows = agg_df.collect()
-                # Return as list of dicts for grouped results
+    def _stream(self, plan, aggregators, batch_size):
+        from contextlib import closing
+        from copy import deepcopy
+
+        import cloudpickle
+
+        states = {} if plan.group_by else {(): ((), [agg.initialize() for agg in aggregators])}
+        observed = False
+        with closing(self._partial_payloads(plan, aggregators, batch_size)) as partials:
+            while True:
+                self._check_guard()
+                try:
+                    payload = next(partials)
+                except StopIteration:
+                    break
+                # Only trusted in-operation workers create these state bytes.
+                self._check_guard()
+                partial = cloudpickle.loads(payload)
+                for key, (values, incoming) in partial.items():
+                    if key in states:
+                        previous = states[key][1]
+                        states[key] = (
+                            values,
+                            [
+                                agg.merge(left, right)
+                                for agg, left, right in zip(
+                                    aggregators, previous, incoming, strict=True
+                                )
+                            ],
+                        )
+                    else:
+                        states[key] = (values, incoming)
+                observed = True
+                yield deepcopy(_finalize_plan(plan, aggregators, states))
+        if not observed:
+            self._check_guard()
+            yield deepcopy(_finalize_plan(plan, aggregators, states))
+
+    def _partial_payloads(self, plan, aggregators, batch_size, whole_partition=False):
+        self._check_guard()
+        backend = self._inferred_backend
+        if backend == ComputeBackend.DASK:
+            import dask
+
+            for partition in self._data.to_delayed():
+                self._check_guard()
+                task = dask.delayed(_pandas_partials)(
+                    partition, plan, aggregators, batch_size, whole_partition
+                )
+                yield from task.compute(scheduler=self._dask_scheduler)
+        elif backend == ComputeBackend.SPARK:
+            columns = self._data.columns
+
+            def batches(rows):
+                import pyarrow as pa
+
+                batch = []
                 for row in rows:
-                    for column, operation, params in native_aggs:
-                        alias = params.get("alias", f"{column}_{operation}")
-                        results[alias] = row[alias]
+                    batch.append(row.asDict(recursive=True))
+                    if len(batch) == batch_size:
+                        yield from _arrow_partials(
+                            pa.Table.from_pylist(batch), plan, aggregators, batch_size
+                        )
+                        batch = []
+                if batch:
+                    yield from _arrow_partials(
+                        pa.Table.from_pylist(batch), plan, aggregators, batch_size
+                    )
+
+            def partial_partition(rows):
+                payloads = batches(rows)
+                if whole_partition:
+                    yield _merge_payloads(payloads, plan, aggregators)
+                else:
+                    yield from payloads
+
+            # Validate names even when Spark has no rows/partitions to inspect.
+            _validate_plan_columns(plan, columns)
+            yield from self._data.rdd.mapPartitions(partial_partition).toLocalIterator()
+        elif backend == ComputeBackend.RAY:
+            import pyarrow as pa
+
+            if whole_partition:
+                import ray
+
+                aggregate_block = ray.remote(_aggregate_arrow_partition)
+                for block in self._data.to_arrow_refs():
+                    self._check_guard()
+                    yield ray.get(aggregate_block.remote(block, plan, aggregators, batch_size))
+                return
+
+            def partial_batch(table):
+                payloads = _arrow_partials(table, plan, aggregators, batch_size)
+                if whole_partition:
+                    payloads = [_merge_payloads(payloads, plan, aggregators)]
+                return pa.table(
+                    {
+                        "state": pa.array(
+                            list(payloads),
+                            type=pa.binary(),
+                        )
+                    }
+                )
+
+            result = self._data.map_batches(
+                partial_batch,
+                batch_format="pyarrow",
+                batch_size=None if whole_partition else batch_size,
+            )
+            for batch in result.iter_batches(batch_format="pyarrow", batch_size=1):
+                yield from batch.column("state").to_pylist()
+        else:
+            import polars as pl
+            import pyarrow as pa
+
+            if isinstance(self._data, pl.LazyFrame):
+                data = self._data.collect().to_arrow()
+            elif isinstance(self._data, pl.DataFrame):
+                data = self._data.to_arrow()
+            elif isinstance(self._data, pa.Table):
+                data = self._data
             else:
-                row = df.agg(*exprs).collect()[0]
-                for column, operation, params in native_aggs:
-                    alias = params.get("alias", f"{column}_{operation}")
-                    results[alias] = row[alias]
+                import pandas as pd
 
-        # Execute custom aggregations using map-reduce
-        for column, operation, params in custom_aggs:
-            alias = params.get("alias", f"{column}_{operation}")
-            aggregator = get_aggregator(operation, **{k: v for k, v in params.items() if k != "alias"})
-            result = self._map_reduce_spark(df, column, aggregator)
-            results[alias] = result
+                if not isinstance(self._data, pd.DataFrame):
+                    raise TypeError("Unsupported aggregation input")
+                data = pa.Table.from_pandas(self._data, preserve_index=False)
+            payloads = _arrow_partials(data, plan, aggregators, batch_size)
+            if whole_partition:
+                yield _merge_payloads(payloads, plan, aggregators)
+            else:
+                yield from payloads
 
-        return results
 
-    def _map_reduce_spark(
-        self,
-        df: "SparkDataFrame",
-        column: str,
-        aggregator: BaseAggregator,
-    ) -> Any:
-        """Execute aggregator using Spark map-reduce.
+def execute_spec(data, spec, *, dask_scheduler=None):
+    """Execute a captured native grouped/filtered spec through Core plan states."""
+    from copy import deepcopy
 
-        Args:
-            df: Spark DataFrame.
-            column: Column to aggregate.
-            aggregator: Aggregator to use.
+    scope = AggregationScope(spec.scope)
+    if scope == AggregationScope.GROUPED and not spec.group_by:
+        raise ValueError("Grouped aggregation requires group columns")
+    plan = AggregationPlan(
+        group_by=list(spec.group_by), filter_condition=spec.filter_condition, scope=scope
+    )
+    for item in spec.aggregations:
+        plan.add(item.column, item.operation, item.alias, **deepcopy(item.params))
+    executor = DistributedAggregator(data, dask_scheduler=dask_scheduler)
+    if scope == AggregationScope.PARTITION:
+        return executor.execute_partitioned(plan)
+    return executor.execute(plan)
 
-        Returns:
-            Aggregation result.
-        """
-        # Map phase: compute partial aggregate per partition
-        def map_partition(iterator: Iterator) -> Iterator:
-            state = aggregator.initialize()
-            for row in iterator:
-                value = row[column] if column in row.asDict() else None
-                state = aggregator.accumulate(state, value)
-            yield state
 
-        partial_states = df.rdd.mapPartitions(map_partition).collect()
+def _plan_aggregator(column, operation, params):
+    if column == "*" and operation != "count":
+        raise ValueError("Only count supports the wildcard column")
+    return get_aggregator(
+        operation, **{key: value for key, value in params.items() if key != "alias"}
+    )
 
-        # Reduce phase: merge all partial states
-        if not partial_states:
-            return aggregator.finalize(aggregator.initialize())
 
-        final_state = reduce(aggregator.merge, partial_states)
-        return aggregator.finalize(final_state)
+def _validate_plan_columns(plan, columns):
+    required = set(plan.group_by) | {column for column, _, _ in plan.aggregations if column != "*"}
+    if not required.issubset(columns):
+        raise ValueError("Unknown aggregation column")
 
-    def _execute_dask(self, plan: AggregationPlan) -> dict[str, Any]:
-        """Execute on Dask."""
-        import dask.dataframe as dd
-        import pandas as pd
 
-        ddf = self._data
+def _pandas_partials(frame, plan, aggregators, batch_size, whole_partition=False):
+    import pyarrow as pa
 
-        # Apply filter
+    payloads = _arrow_partials(
+        pa.Table.from_pandas(frame, preserve_index=False), plan, aggregators, batch_size
+    )
+    if whole_partition:
+        return [_merge_payloads(payloads, plan, aggregators)]
+    return list(payloads)
+
+
+def _merge_payloads(payloads, plan, aggregators):
+    """Merge trusted worker batches without retaining raw partition rows."""
+    import cloudpickle
+
+    states = {} if plan.group_by else {(): ((), [agg.initialize() for agg in aggregators])}
+    for payload in payloads:
+        for key, (values, incoming) in cloudpickle.loads(payload).items():
+            if key in states:
+                incoming = [
+                    agg.merge(left, right)
+                    for agg, left, right in zip(aggregators, states[key][1], incoming, strict=True)
+                ]
+            states[key] = (values, incoming)
+    return cloudpickle.dumps(states)
+
+
+def _aggregate_arrow_partition(table, plan, aggregators, batch_size):
+    # map_batches skips zero-row blocks in Ray; explicit block tasks retain
+    # their empty aggregate without moving block values into the driver.
+    return _merge_payloads(_arrow_partials(table, plan, aggregators, batch_size), plan, aggregators)
+
+
+def _arrow_partials(table, plan, aggregators, batch_size):
+    import cloudpickle
+    import polars as pl
+
+    from truthound.execution.distributed.protocols import _distinct_identity
+
+    _validate_plan_columns(plan, table.column_names)
+    for batch in table.to_batches(max_chunksize=batch_size):
+        frame = pl.from_arrow(batch)
         if plan.filter_condition:
-            ddf = ddf.query(plan.filter_condition)
+            frame = frame.filter(pl.sql_expr(plan.filter_condition))
+        states = {}
+        for row in frame.iter_rows(named=True):
+            values = tuple(row[column] for column in plan.group_by)
+            key = tuple(_distinct_identity(value) for value in values)
+            if key not in states:
+                states[key] = (values, [agg.initialize() for agg in aggregators])
+            current = states[key][1]
+            for index, ((column, operation, _), agg) in enumerate(
+                zip(plan.aggregations, aggregators, strict=True)
+            ):
+                value = row[column] if column != "*" else 1
+                if operation == "count" and column != "*" and value is None:
+                    continue
+                current[index] = agg.accumulate(current[index], value)
+        yield cloudpickle.dumps(states)
 
-        results = {}
 
-        # Native Dask aggregations
-        native_ops = {
-            "count": lambda s: s.count(),
-            "sum": lambda s: s.sum(),
-            "mean": lambda s: s.mean(),
-            "min": lambda s: s.min(),
-            "max": lambda s: s.max(),
-            "std": lambda s: s.std(),
-            "var": lambda s: s.var(),
+def _finalize_plan(plan, aggregators, states):
+    def finalize(current):
+        return {
+            params.get("alias", f"{column}_{operation}"): agg.finalize(state)
+            for (column, operation, params), agg, state in zip(
+                plan.aggregations, aggregators, current, strict=True
+            )
         }
 
-        for column, operation, params in plan.aggregations:
-            alias = params.get("alias", f"{column}_{operation}")
-
-            if operation in native_ops:
-                if column == "*":
-                    value = len(ddf)
-                else:
-                    value = native_ops[operation](ddf[column]).compute()
-                results[alias] = value
-            elif operation == "null_count":
-                null_count = ddf[column].isna().sum().compute()
-                total_count = len(ddf)
-                results[alias] = {"null_count": null_count, "total_count": total_count}
-            elif operation == "distinct_count":
-                distinct = ddf[column].nunique().compute()
-                results[alias] = distinct
-            elif operation == "minmax":
-                min_val = ddf[column].min().compute()
-                max_val = ddf[column].max().compute()
-                results[alias] = {"min": min_val, "max": max_val}
-            else:
-                # Use custom aggregator
-                aggregator = get_aggregator(
-                    operation,
-                    **{k: v for k, v in params.items() if k != "alias"},
-                )
-                result = self._map_reduce_dask(ddf, column, aggregator)
-                results[alias] = result
-
-        return results
-
-    def _map_reduce_dask(
-        self,
-        ddf: Any,
-        column: str,
-        aggregator: BaseAggregator,
-    ) -> Any:
-        """Execute aggregator using Dask map-reduce."""
-        import pandas as pd
-
-        def map_partition(pdf: pd.DataFrame) -> pd.DataFrame:
-            state = aggregator.initialize()
-            for value in pdf[column]:
-                state = aggregator.accumulate(state, value)
-            return pd.DataFrame([{"state": state}])
-
-        partial_states = ddf.map_partitions(
-            map_partition,
-            meta={"state": object},
-        ).compute()
-
-        states = partial_states["state"].tolist()
-
-        if not states:
-            return aggregator.finalize(aggregator.initialize())
-
-        final_state = reduce(aggregator.merge, states)
-        return aggregator.finalize(final_state)
-
-    def _execute_ray(self, plan: AggregationPlan) -> dict[str, Any]:
-        """Execute on Ray."""
-        import ray
-
-        dataset = self._data
-        results = {}
-
-        for column, operation, params in plan.aggregations:
-            alias = params.get("alias", f"{column}_{operation}")
-
-            if operation == "count":
-                if column == "*":
-                    results[alias] = dataset.count()
-                else:
-                    results[alias] = dataset.count()
-            elif operation == "sum":
-                results[alias] = dataset.sum(column)
-            elif operation == "mean":
-                results[alias] = dataset.mean(column)
-            elif operation == "min":
-                results[alias] = dataset.min(column)
-            elif operation == "max":
-                results[alias] = dataset.max(column)
-            elif operation == "std":
-                results[alias] = dataset.std(column)
-            else:
-                # Use map-reduce with custom aggregator
-                aggregator = get_aggregator(
-                    operation,
-                    **{k: v for k, v in params.items() if k != "alias"},
-                )
-                result = self._map_reduce_ray(dataset, column, aggregator)
-                results[alias] = result
-
-        return results
-
-    def _map_reduce_ray(
-        self,
-        dataset: Any,
-        column: str,
-        aggregator: BaseAggregator,
-    ) -> Any:
-        """Execute aggregator using Ray map-reduce."""
-        import ray
-
-        @ray.remote
-        def map_batch(batch: dict) -> Any:
-            state = aggregator.initialize()
-            for value in batch[column]:
-                state = aggregator.accumulate(state, value)
-            return state
-
-        # Map phase
-        batch_refs = [
-            map_batch.remote(batch)
-            for batch in dataset.iter_batches(batch_format="pydict")
-        ]
-
-        partial_states = ray.get(batch_refs)
-
-        if not partial_states:
-            return aggregator.finalize(aggregator.initialize())
-
-        final_state = reduce(aggregator.merge, partial_states)
-        return aggregator.finalize(final_state)
-
-    def _execute_local(self, plan: AggregationPlan) -> dict[str, Any]:
-        """Execute locally using Polars or Pandas."""
-        import polars as pl
-
-        # Try to convert to Polars
-        if isinstance(self._data, pl.DataFrame):
-            df = self._data
-        elif isinstance(self._data, pl.LazyFrame):
-            df = self._data.collect()
-        else:
-            # Try pandas
-            try:
-                import pandas as pd
-                if isinstance(self._data, pd.DataFrame):
-                    df = pl.from_pandas(self._data)
-                else:
-                    raise ValueError(f"Unsupported data type: {type(self._data)}")
-            except ImportError:
-                raise ValueError(f"Unsupported data type: {type(self._data)}")
-
-        # Apply filter
-        if plan.filter_condition:
-            # Basic filter parsing
-            df = df.filter(pl.sql_expr(plan.filter_condition))
-
-        results = {}
-
-        for column, operation, params in plan.aggregations:
-            alias = params.get("alias", f"{column}_{operation}")
-
-            if operation == "count":
-                if column == "*":
-                    results[alias] = len(df)
-                else:
-                    results[alias] = df.get_column(column).count()
-            elif operation == "sum":
-                results[alias] = df.get_column(column).sum()
-            elif operation == "mean":
-                results[alias] = df.get_column(column).mean()
-            elif operation == "min":
-                results[alias] = df.get_column(column).min()
-            elif operation == "max":
-                results[alias] = df.get_column(column).max()
-            elif operation == "std":
-                ddof = params.get("ddof", 1)
-                results[alias] = df.get_column(column).std(ddof=ddof)
-            elif operation == "var":
-                ddof = params.get("ddof", 1)
-                results[alias] = df.get_column(column).var(ddof=ddof)
-            elif operation == "null_count":
-                null_count = df.get_column(column).null_count()
-                total_count = len(df)
-                results[alias] = {"null_count": null_count, "total_count": total_count}
-            elif operation == "distinct_count":
-                results[alias] = df.get_column(column).n_unique()
-            elif operation == "minmax":
-                min_val = df.get_column(column).min()
-                max_val = df.get_column(column).max()
-                results[alias] = {"min": min_val, "max": max_val}
-            else:
-                # Use custom aggregator
-                aggregator = get_aggregator(
-                    operation,
-                    **{k: v for k, v in params.items() if k != "alias"},
-                )
-                state = aggregator.initialize()
-                for value in df.get_column(column):
-                    state = aggregator.accumulate(state, value)
-                results[alias] = aggregator.finalize(state)
-
-        return results
+    if plan.group_by:
+        return {
+            "groups": [
+                {
+                    "keys": dict(zip(plan.group_by, values, strict=True)),
+                    "aggregations": finalize(current),
+                }
+                for values, current in states.values()
+            ]
+        }
+    return finalize(states[()][1])
 
 
 # =============================================================================

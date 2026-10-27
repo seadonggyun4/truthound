@@ -12,15 +12,13 @@ from typing import Any
 
 import polars as pl
 
+from truthound.ml._training import atomic_fit
 from truthound.ml.base import (
     DriftConfig,
     DriftResult,
     MLDriftDetector,
-    ModelInfo,
-    ModelNotTrainedError,
     ModelState,
     ModelTrainingError,
-    ModelType,
     register_model,
 )
 
@@ -68,9 +66,9 @@ class FeatureDriftConfig(DriftConfig):
         alert_on_new_values: Alert on new categorical values
     """
 
-    track_stats: list[str] = field(default_factory=lambda: [
-        "mean", "std", "min", "max", "null_ratio"
-    ])
+    track_stats: list[str] = field(
+        default_factory=lambda: ["mean", "std", "min", "max", "null_ratio"]
+    )
     relative_threshold: bool = True
     alert_on_new_values: bool = True
     categorical_threshold: float = 0.2  # For categorical drift
@@ -120,6 +118,7 @@ class FeatureDriftDetector(MLDriftDetector):
     def _get_description(self) -> str:
         return "Feature-level drift detection with detailed statistics"
 
+    @atomic_fit
     def fit(self, data: pl.LazyFrame) -> None:
         """Compute reference feature profiles.
 
@@ -128,7 +127,7 @@ class FeatureDriftDetector(MLDriftDetector):
         """
         import time
 
-        start = time.perf_counter()
+        time.perf_counter()
         self._state = ModelState.TRAINING
 
         try:
@@ -138,20 +137,21 @@ class FeatureDriftDetector(MLDriftDetector):
             # Classify columns
             schema = df.schema
             numeric_types = {
-                pl.Int8, pl.Int16, pl.Int32, pl.Int64,
-                pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64,
-                pl.Float32, pl.Float64,
+                pl.Int8,
+                pl.Int16,
+                pl.Int32,
+                pl.Int64,
+                pl.UInt8,
+                pl.UInt16,
+                pl.UInt32,
+                pl.UInt64,
+                pl.Float32,
+                pl.Float64,
             }
             categorical_types = {pl.String, pl.Utf8, pl.Categorical}
 
-            self._numeric_columns = [
-                c for c in schema.keys()
-                if type(schema[c]) in numeric_types
-            ]
-            self._categorical_columns = [
-                c for c in schema.keys()
-                if type(schema[c]) in categorical_types
-            ]
+            self._numeric_columns = [c for c in schema if type(schema[c]) in numeric_types]
+            self._categorical_columns = [c for c in schema if type(schema[c]) in categorical_types]
             self._columns = self._numeric_columns + self._categorical_columns
 
             # Compute profiles
@@ -176,17 +176,19 @@ class FeatureDriftDetector(MLDriftDetector):
 
     def _profile_numeric(self, df: pl.DataFrame, column: str) -> dict[str, Any]:
         """Profile a numeric column."""
-        stats = df.select([
-            pl.col(column).count().alias("count"),
-            pl.col(column).null_count().alias("null_count"),
-            pl.col(column).mean().alias("mean"),
-            pl.col(column).std().alias("std"),
-            pl.col(column).min().alias("min"),
-            pl.col(column).max().alias("max"),
-            pl.col(column).median().alias("median"),
-            pl.col(column).quantile(0.25).alias("q1"),
-            pl.col(column).quantile(0.75).alias("q3"),
-        ]).row(0)
+        stats = df.select(
+            [
+                pl.col(column).count().alias("count"),
+                pl.col(column).null_count().alias("null_count"),
+                pl.col(column).mean().alias("mean"),
+                pl.col(column).std().alias("std"),
+                pl.col(column).min().alias("min"),
+                pl.col(column).max().alias("max"),
+                pl.col(column).median().alias("median"),
+                pl.col(column).quantile(0.25).alias("q1"),
+                pl.col(column).quantile(0.75).alias("q3"),
+            ]
+        ).row(0)
 
         count = stats[0] or 0
         null_count = stats[1] or 0
@@ -222,7 +224,7 @@ class FeatureDriftDetector(MLDriftDetector):
 
         values = value_counts[column].to_list()
         counts = value_counts["count"].to_list()
-        proportions = {v: c / total for v, c in zip(values, counts)}
+        proportions = {v: c / total for v, c in zip(values, counts, strict=True)}
 
         return {
             "type": "categorical",
@@ -251,9 +253,10 @@ class FeatureDriftDetector(MLDriftDetector):
             DriftResult with per-feature drift scores
         """
         import time
+
         start = time.perf_counter()
 
-        ref_df = reference.collect()
+        reference.collect()
         curr_df = current.collect()
 
         # Determine columns to check
@@ -278,15 +281,17 @@ class FeatureDriftDetector(MLDriftDetector):
 
             is_drifted = score >= self.config.threshold
 
-            feature_scores.append(FeatureDriftScore(
-                feature=col,
-                drift_score=score,
-                statistic_type=ref_profile["type"],
-                reference_stats={k: v for k, v in ref_profile.items() if k != "values"},
-                current_stats={k: v for k, v in curr_profile.items() if k != "values"},
-                is_drifted=is_drifted,
-                details=details,
-            ))
+            feature_scores.append(
+                FeatureDriftScore(
+                    feature=col,
+                    drift_score=score,
+                    statistic_type=ref_profile["type"],
+                    reference_stats={k: v for k, v in ref_profile.items() if k != "values"},
+                    current_stats={k: v for k, v in curr_profile.items() if k != "values"},
+                    is_drifted=is_drifted,
+                    details=details,
+                )
+            )
 
             column_scores.append((col, score))
 
@@ -310,7 +315,7 @@ class FeatureDriftDetector(MLDriftDetector):
         else:
             drift_type = "widespread"
 
-        elapsed = (time.perf_counter() - start) * 1000
+        (time.perf_counter() - start) * 1000
 
         return DriftResult(
             is_drifted=is_drifted,
@@ -364,7 +369,7 @@ class FeatureDriftDetector(MLDriftDetector):
 
         # Range drift
         if all(x is not None for x in [ref["min"], ref["max"], curr["min"], curr["max"]]):
-            ref_range = ref["max"] - ref["min"]
+            ref["max"] - ref["min"]
             curr_min, curr_max = curr["min"], curr["max"]
 
             # Check if current values exceed reference range
@@ -438,7 +443,9 @@ class FeatureDriftDetector(MLDriftDetector):
         """Get reference feature profiles."""
         return dict(self._reference_profiles)
 
-    def get_drifted_features(self, result: DriftResult, threshold: float | None = None) -> list[str]:
+    def get_drifted_features(
+        self, result: DriftResult, threshold: float | None = None
+    ) -> list[str]:
         """Get list of drifted features from a result."""
         threshold = threshold or self.config.threshold
         return [col for col, score in result.column_scores if score >= threshold]

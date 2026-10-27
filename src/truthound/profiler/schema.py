@@ -19,17 +19,18 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, TypeVar
+from typing import Any
 
 from truthound.profiler.base import (
     ColumnProfile,
     DataType,
     DistributionStats,
     PatternMatch,
+    ProfileExecutionIssue,
     TableProfile,
     ValueFrequency,
+    validate_profile_payload,
 )
-
 
 # =============================================================================
 # Schema Version
@@ -53,20 +54,20 @@ class SchemaVersion:
     def __str__(self) -> str:
         return f"{self.major}.{self.minor}.{self.patch}"
 
-    def __lt__(self, other: "SchemaVersion") -> bool:
+    def __lt__(self, other: SchemaVersion) -> bool:
         return (self.major, self.minor, self.patch) < (other.major, other.minor, other.patch)
 
-    def __le__(self, other: "SchemaVersion") -> bool:
+    def __le__(self, other: SchemaVersion) -> bool:
         return (self.major, self.minor, self.patch) <= (other.major, other.minor, other.patch)
 
-    def __gt__(self, other: "SchemaVersion") -> bool:
+    def __gt__(self, other: SchemaVersion) -> bool:
         return (self.major, self.minor, self.patch) > (other.major, other.minor, other.patch)
 
-    def __ge__(self, other: "SchemaVersion") -> bool:
+    def __ge__(self, other: SchemaVersion) -> bool:
         return (self.major, self.minor, self.patch) >= (other.major, other.minor, other.patch)
 
     @classmethod
-    def from_string(cls, version: str) -> "SchemaVersion":
+    def from_string(cls, version: str) -> SchemaVersion:
         """Parse version from string."""
         parts = version.split(".")
         if len(parts) < 2:
@@ -78,14 +79,14 @@ class SchemaVersion:
 
         return cls(major=major, minor=minor, patch=patch)
 
-    def is_compatible_with(self, other: "SchemaVersion") -> bool:
+    def is_compatible_with(self, other: SchemaVersion) -> bool:
         """Check if this version can read data from other version.
 
         Same major version = compatible (with possible migrations)
         """
         return self.major == other.major
 
-    def is_breaking_change(self, other: "SchemaVersion") -> bool:
+    def is_breaking_change(self, other: SchemaVersion) -> bool:
         """Check if there's a breaking change between versions."""
         return self.major != other.major
 
@@ -211,14 +212,14 @@ class SchemaMigrator:
 
     def _find_upgrade_step(self, from_version: SchemaVersion) -> MigrationStep | None:
         """Find the next upgrade step from a version."""
-        for (src, dst), step in self._migrations.items():
+        for (src, _dst), step in self._migrations.items():
             if src == from_version:
                 return step
         return None
 
     def _find_downgrade_step(self, to_version: SchemaVersion) -> MigrationStep | None:
         """Find the step that can be rolled back to reach a version."""
-        for (src, dst), step in self._migrations.items():
+        for (_src, dst), step in self._migrations.items():
             if dst == to_version:
                 return step
         return None
@@ -278,6 +279,7 @@ class ProfileSerializer:
         Returns:
             Reconstructed TableProfile
         """
+        validate_profile_payload(data)
         # Check and migrate schema if needed
         source_version_str = data.get("schema_version", "1.0.0")
         source_version = SchemaVersion.from_string(source_version_str)
@@ -306,8 +308,9 @@ class ProfileSerializer:
             duplicate_row_ratio=data.get("duplicate_row_ratio", 0.0),
             correlations=correlations,
             source=data.get("source", ""),
-            profiled_at=self._parse_datetime(data.get("profiled_at")),
+            profiled_at=self._parse_datetime(data.get("profiled_at")) or datetime.now(),
             profile_duration_ms=data.get("profile_duration_ms", 0.0),
+            execution_issues=ProfileExecutionIssue.from_profile_dict(data),
         )
 
     def _deserialize_column(self, data: dict[str, Any]) -> ColumnProfile:
@@ -374,6 +377,8 @@ class ProfileSerializer:
             suggested_validators=suggested_validators,
             profiled_at=self._parse_datetime(data.get("profiled_at")) or datetime.now(),
             profile_duration_ms=data.get("profile_duration_ms", 0.0),
+            content_fingerprint=data.get("content_fingerprint"),
+            execution_issues=ProfileExecutionIssue.from_profile_dict(data),
         )
 
     def _parse_datetime(self, value: str | None) -> datetime | None:
@@ -571,7 +576,7 @@ def load_profile(path: str | Path) -> TableProfile:
         Reconstructed TableProfile
     """
     path = Path(path)
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         data = json.load(f)
 
     serializer = ProfileSerializer()

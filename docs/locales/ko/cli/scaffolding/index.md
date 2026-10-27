@@ -180,3 +180,7 @@ truthound new plugin custom_db \
 - [사용자 정의 검증기 Tutorial](../../tutorials/custom-validator.md)
 - CLI 명령 실행에서 Plugin, System을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
 - [검증기 Guide](../../guides/validators.md)
+
+생성된 Python 코드와 패키지 메타데이터는 설명·작성자의 따옴표, 역슬래시, 줄바꿈을 보존합니다. 컴포넌트 이름은 import 가능한 식별자여야 하며 Python 예약어를 사용할 수 없습니다. 플러그인 패키지는 Python 3.11 이상이 필요하며 더 낮거나 잘못된 `--python` 버전은 파일 생성 전에 거부합니다. 생성된 테스트와 예제는 현재 Core 계약을 사용합니다.
+
+스캐폴딩은 잘못된 severity, 유한하지 않거나 역전된 범위, 잘못되거나 지원하지 않는 정규식, 잘못된 컬럼 목록 및 템플릿에 맞지 않는 옵션을 파일 생성 전에 거부합니다. Reporter 확장자는 파일명 접미사여야 하며 content type에 제어 문자를 넣을 수 없습니다. 생성된 reporter는 `include_passed=True`와 `max_issues=0`을 적용합니다.

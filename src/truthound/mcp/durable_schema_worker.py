@@ -105,6 +105,9 @@ def execute(request):
         previous = request["checkpoint"]
         if previous is not None:
             restore(runtime, previous)
+        runtime.alerts._alert_counter = max(
+            runtime.alerts._alert_counter, request.get("alert_counter", 0)
+        )
         if options["mode"] == "sync":
             runtime.watcher.check_now()
         else:
@@ -118,6 +121,7 @@ def checkpoint(runtime):
     return {
         **runtime.snapshot(),
         "schema_format": 2,
+        "alert_counter": runtime.alerts._alert_counter,
         "schemas": {
             name: pack_schema(schema) for name, schema in runtime.watcher._last_schemas.items()
         },
@@ -148,7 +152,11 @@ def restore(runtime, previous):
     runtime.history._versions = {item.version_id: item for item in versions}
     runtime.history._order = [item.version_id for item in versions]
     runtime.alerts._alerts = [BreakingChangeAlert.from_dict(item) for item in previous["alerts"]]
-    runtime.alerts._alert_counter = len(runtime.alerts._alerts)
+    runtime.alerts._alert_counter = max(
+        previous.get("alert_counter", 0),
+        *(int(item.alert_id.removeprefix("ALERT-")) for item in runtime.alerts._alerts),
+        0,
+    )
 
 
 def main():

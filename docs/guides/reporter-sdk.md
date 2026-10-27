@@ -65,3 +65,5 @@ upgrading an existing reporter package.
 - [Architecture](../concepts/architecture.md)
 - [Plugin Platform](../concepts/plugins.md)
 - [Migration to 3.0](migration-3.0.md)
+
+`RunPresentation.to_legacy_view(include_passed=True)` appends actual successful checks to the compatibility result rows; its default remains issue-only. Run statistics are unchanged. Generated reporter and plugin templates reuse this native projection. A generated reporter configured with `max_issues=0` emits no detail rows while preserving run summaries.

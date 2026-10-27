@@ -8,26 +8,17 @@ This module provides the core abstractions for lineage tracking:
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
+import json
+import threading
+from collections import deque
+from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import (
-    TYPE_CHECKING,
-    Any,
-    Callable,
-    Dict,
-    Iterator,
-    List,
-    Optional,
-    Set,
-    Tuple,
-)
-import threading
-import json
 from pathlib import Path
-import uuid
-
+from typing import (
+    Any,
+)
 
 # =============================================================================
 # Enums
@@ -161,14 +152,18 @@ class LineageMetadata:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "LineageMetadata":
+    def from_dict(cls, data: dict[str, Any]) -> LineageMetadata:
         return cls(
             description=data.get("description", ""),
             owner=data.get("owner", ""),
             tags=tuple(data.get("tags", [])),
             properties=data.get("properties", {}),
-            created_at=datetime.fromisoformat(data["created_at"]) if data.get("created_at") else datetime.now(),
-            updated_at=datetime.fromisoformat(data["updated_at"]) if data.get("updated_at") else datetime.now(),
+            created_at=datetime.fromisoformat(data["created_at"])
+            if data.get("created_at")
+            else datetime.now(),
+            updated_at=datetime.fromisoformat(data["updated_at"])
+            if data.get("updated_at")
+            else datetime.now(),
         )
 
 
@@ -180,17 +175,16 @@ class ColumnLineage:
     """
 
     column: str
-    source_columns: tuple[tuple[str, str], ...] = field(default_factory=tuple)  # (node_id, column_name)
+    source_columns: tuple[tuple[str, str], ...] = field(
+        default_factory=tuple
+    )  # (node_id, column_name)
     transformation: str = ""  # Description of transformation
     dtype: str = ""
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "column": self.column,
-            "source_columns": [
-                {"node": node, "column": col}
-                for node, col in self.source_columns
-            ],
+            "source_columns": [{"node": node, "column": col} for node, col in self.source_columns],
             "transformation": self.transformation,
             "dtype": self.dtype,
         }
@@ -245,7 +239,7 @@ class LineageNode:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "LineageNode":
+    def from_dict(cls, data: dict[str, Any]) -> LineageNode:
         """Deserialize a LineageNode from a dictionary.
 
         Args:
@@ -290,16 +284,19 @@ class LineageNode:
                 ColumnLineage(
                     column=cl["column"],
                     source_columns=tuple(
-                        (sc["node"], sc["column"])
-                        for sc in cl.get("source_columns", [])
+                        (sc["node"], sc["column"]) for sc in cl.get("source_columns", [])
                     ),
                     transformation=cl.get("transformation", ""),
                     dtype=cl.get("dtype", ""),
                 )
                 for cl in data.get("column_lineage", [])
             ),
-            created_at=datetime.fromisoformat(data["created_at"]) if data.get("created_at") else datetime.now(),
-            updated_at=datetime.fromisoformat(data["updated_at"]) if data.get("updated_at") else datetime.now(),
+            created_at=datetime.fromisoformat(data["created_at"])
+            if data.get("created_at")
+            else datetime.now(),
+            updated_at=datetime.fromisoformat(data["updated_at"])
+            if data.get("updated_at")
+            else datetime.now(),
         )
 
 
@@ -348,7 +345,7 @@ class LineageEdge:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "LineageEdge":
+    def from_dict(cls, data: dict[str, Any]) -> LineageEdge:
         """Deserialize a LineageEdge from a dictionary.
 
         Args:
@@ -389,7 +386,9 @@ class LineageEdge:
             edge_type=EdgeType(edge_type_value),
             operation=OperationType(data.get("operation", "transform")),
             metadata=LineageMetadata.from_dict(data.get("metadata", {})),
-            created_at=datetime.fromisoformat(data["created_at"]) if data.get("created_at") else datetime.now(),
+            created_at=datetime.fromisoformat(data["created_at"])
+            if data.get("created_at")
+            else datetime.now(),
         )
 
 
@@ -422,7 +421,7 @@ class LineageGraph:
         Args:
             config: Optional configuration
         """
-        self._config = config or LineageConfig()
+        self._config = deepcopy(config) if config is not None else LineageConfig()
         self._nodes: dict[str, LineageNode] = {}
         self._edges: list[LineageEdge] = []
         self._adjacency: dict[str, list[str]] = {}  # Forward edges
@@ -470,10 +469,7 @@ class LineageGraph:
             node = self._nodes.pop(node_id)
 
             # Remove edges
-            self._edges = [
-                e for e in self._edges
-                if e.source != node_id and e.target != node_id
-            ]
+            self._edges = [e for e in self._edges if e.source != node_id and e.target != node_id]
 
             # Update adjacency
             if node_id in self._adjacency:
@@ -590,17 +586,24 @@ class LineageGraph:
         max_depth: int,
         current_depth: int,
     ) -> None:
-        """Recursive upstream traversal."""
-        if max_depth != -1 and current_depth >= max_depth:
-            return
+        self._traverse_nodes(
+            node_id, visited, result, max_depth, current_depth, self._reverse_adjacency
+        )
 
-        for parent_id in self._reverse_adjacency.get(node_id, []):
-            if parent_id not in visited:
-                visited.add(parent_id)
-                result.append(self._nodes[parent_id])
-                self._traverse_upstream(
-                    parent_id, visited, result, max_depth, current_depth + 1
-                )
+    def _traverse_nodes(self, node_id, visited, result, max_depth, current_depth, adjacency):
+        if type(max_depth) is not int or max_depth < -1:
+            raise ValueError("depth must be -1 or a nonnegative integer")
+        pending = deque([(node_id, current_depth)])
+        visited.add(node_id)
+        while pending:
+            current, depth = pending.popleft()
+            if max_depth != -1 and depth >= max_depth:
+                continue
+            for neighbor in adjacency.get(current, []):
+                if neighbor not in visited:
+                    visited.add(neighbor)
+                    result.append(self._nodes[neighbor])
+                    pending.append((neighbor, depth + 1))
 
     def get_downstream(self, node_id: str, depth: int = -1) -> list[LineageNode]:
         """Get all downstream (child) nodes.
@@ -629,21 +632,9 @@ class LineageGraph:
         max_depth: int,
         current_depth: int,
     ) -> None:
-        """Recursive downstream traversal."""
-        if max_depth != -1 and current_depth >= max_depth:
-            return
+        self._traverse_nodes(node_id, visited, result, max_depth, current_depth, self._adjacency)
 
-        for child_id in self._adjacency.get(node_id, []):
-            if child_id not in visited:
-                visited.add(child_id)
-                result.append(self._nodes[child_id])
-                self._traverse_downstream(
-                    child_id, visited, result, max_depth, current_depth + 1
-                )
-
-    def get_edges_for_node(
-        self, node_id: str, direction: str = "both"
-    ) -> list[LineageEdge]:
+    def get_edges_for_node(self, node_id: str, direction: str = "both") -> list[LineageEdge]:
         """Get all edges connected to a node.
 
         Args:
@@ -656,9 +647,12 @@ class LineageGraph:
         with self._lock:
             edges = []
             for edge in self._edges:
-                if direction in ("outgoing", "both") and edge.source == node_id:
-                    edges.append(edge)
-                elif direction in ("incoming", "both") and edge.target == node_id:
+                if (
+                    direction in ("outgoing", "both")
+                    and edge.source == node_id
+                    or direction in ("incoming", "both")
+                    and edge.target == node_id
+                ):
                     edges.append(edge)
             return edges
 
@@ -668,41 +662,43 @@ class LineageGraph:
         visited: set[str] = set()
         return self._can_reach(target, source, visited)
 
-    def _can_reach(
-        self, start: str, end: str, visited: set[str]
-    ) -> bool:
-        """Check if end is reachable from start."""
-        if start == end:
-            return True
-        if start in visited:
-            return False
-        visited.add(start)
-        for neighbor in self._adjacency.get(start, []):
-            if self._can_reach(neighbor, end, visited):
+    def _can_reach(self, start: str, end: str, visited: set[str]) -> bool:
+        pending = [start]
+        while pending:
+            current = pending.pop()
+            if current == end:
                 return True
+            if current not in visited:
+                visited.add(current)
+                pending.extend(self._adjacency.get(current, []))
         return False
 
     def _find_cycle(self, source: str, target: str) -> list[str]:
-        """Find the cycle path if adding source->target creates one."""
-        path = [target]
-        self._find_path(target, source, path)
-        path.append(source)
-        path.append(target)
-        return path
+        return (self._path_ids(target, source) or [target, source]) + [target]
 
-    def _find_path(
-        self, start: str, end: str, path: list[str]
-    ) -> bool:
-        """Find path from start to end."""
-        for neighbor in self._adjacency.get(start, []):
-            if neighbor == end:
-                return True
-            if neighbor not in path:
-                path.append(neighbor)
-                if self._find_path(neighbor, end, path):
-                    return True
-                path.pop()
-        return False
+    def _path_ids(self, start, end):
+        parents = {start: None}
+        pending = deque([start])
+        while pending:
+            current = pending.popleft()
+            if current == end:
+                path = []
+                while current is not None:
+                    path.append(current)
+                    current = parents[current]
+                return list(reversed(path))
+            for neighbor in self._adjacency.get(current, []):
+                if neighbor not in parents:
+                    parents[neighbor] = current
+                    pending.append(neighbor)
+        return None
+
+    def _find_path(self, start: str, end: str, path: list[str]) -> bool:
+        found = self._path_ids(start, end)
+        if found is None:
+            return False
+        path.extend(found[1:-1])
+        return True
 
     def get_roots(self) -> list[LineageNode]:
         """Get all root nodes (no incoming edges)."""
@@ -726,14 +722,10 @@ class LineageGraph:
         """Return nodes in topological order."""
         with self._lock:
             in_degree: dict[str, int] = {
-                node_id: len(self._reverse_adjacency.get(node_id, []))
-                for node_id in self._nodes
+                node_id: len(self._reverse_adjacency.get(node_id, [])) for node_id in self._nodes
             }
 
-            queue = [
-                node_id for node_id, degree in in_degree.items()
-                if degree == 0
-            ]
+            queue = [node_id for node_id, degree in in_degree.items() if degree == 0]
             result = []
 
             while queue:
@@ -778,7 +770,7 @@ class LineageGraph:
             }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any], config: LineageConfig | None = None) -> "LineageGraph":
+    def from_dict(cls, data: dict[str, Any], config: LineageConfig | None = None) -> LineageGraph:
         """Deserialize graph from dictionary."""
         graph = cls(config)
         for node_data in data.get("nodes", []):
@@ -791,11 +783,13 @@ class LineageGraph:
         """Save graph to file."""
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(self.to_dict(), f, indent=2)
+        from truthound.stores._filesystem_io import publish
+
+        content = json.dumps(self.to_dict(), indent=2, allow_nan=False).encode("utf-8")
+        publish(path, content)
 
     @classmethod
-    def load(cls, path: str | Path, config: LineageConfig | None = None) -> "LineageGraph":
+    def load(cls, path: str | Path, config: LineageConfig | None = None) -> LineageGraph:
         """Load graph from file.
 
         Args:

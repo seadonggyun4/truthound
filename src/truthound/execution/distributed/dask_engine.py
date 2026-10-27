@@ -51,26 +51,29 @@ from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, replace
 from functools import reduce
-from typing import TYPE_CHECKING, Any, Callable, Iterator
+from typing import TYPE_CHECKING, Any
 
 from truthound.execution.distributed.base import (
     BaseDistributedEngine,
     DistributedEngineConfig,
-    ExecutionMetrics,
 )
+from truthound.execution.distributed.policies import operation
 from truthound.execution.distributed.protocols import (
     AggregationScope,
     AggregationSpec,
     ComputeBackend,
     DistributedResult,
+    ExecutionMode,
     PartitionInfo,
     PartitionStrategy,
     get_aggregator,
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     import dask.dataframe as dd
     import pandas as pd
     import pyarrow as pa
@@ -110,16 +113,28 @@ class DaskEngineConfig(DistributedEngineConfig):
     blocksize: str = "128MB"
     persist_intermediate: bool = False
 
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        if self.scheduler not in {"distributed", "threads", "synchronous"}:
+            raise ValueError("Unsupported Dask scheduler")
+        for name in ("n_workers", "threads_per_worker"):
+            value = getattr(self, name)
+            if value is not None and (type(value) is not int or value < 1):
+                raise ValueError(f"{name} must be a positive integer")
+        for name in ("processes", "persist_intermediate", "parallel", "cache_results"):
+            if type(getattr(self, name)) is not bool:
+                raise ValueError(f"{name} must be a boolean")
+
 
 def _check_dask_available() -> None:
     """Check if Dask is available."""
     try:
         import dask.dataframe  # noqa: F401
-    except ImportError:
+    except ImportError as error:
         raise ImportError(
             "dask is required for DaskExecutionEngine. "
             "Install with: pip install dask[dataframe] distributed"
-        )
+        ) from error
 
 
 # =============================================================================
@@ -151,9 +166,11 @@ class DaskExecutionEngine(BaseDistributedEngine[DaskEngineConfig]):
 
     def __init__(
         self,
-        dask_df: "dd.DataFrame",
+        dask_df: dd.DataFrame,
         config: DaskEngineConfig | None = None,
-        client: "Client | None" = None,
+        client: Client | None = None,
+        *,
+        _apply_defaults: bool = True,
     ) -> None:
         """Initialize Dask execution engine.
 
@@ -163,16 +180,61 @@ class DaskExecutionEngine(BaseDistributedEngine[DaskEngineConfig]):
             client: Optional Dask distributed client.
         """
         _check_dask_available()
-        super().__init__(config)
+        super().__init__(replace(config) if config is not None else None)
 
         self._ddf = dask_df
         self._client = client
+        self._owns_client = False
         self._columns = list(dask_df.columns)
         self._cached_row_count: int | None = None
         self._dtypes = dict(dask_df.dtypes)
 
         # Initialize distributed client if configured
         self._setup_client()
+        try:
+            if _apply_defaults and (
+                self._config.num_partitions
+                or self._config.partition_strategy != PartitionStrategy.ROW_HASH
+            ):
+                self._ddf = self._partition_native(
+                    self._ddf, self._config.num_partitions or self._ddf.npartitions
+                )
+            if _apply_defaults and self._config.checkpoint_enabled:
+                restored = self.checkpoint()
+                self._ddf = restored._ddf
+                self._checkpoint_path = restored.checkpoint_path
+            if (
+                self._config.persist_intermediate
+                or self._config.execution_mode == ExecutionMode.EAGER
+            ):
+                self.persist()
+            if self._config.execution_mode == ExecutionMode.EAGER:
+                self._wait_eager()
+        except BaseException as original:
+            try:
+                self.close()
+            except BaseException as cleanup:
+                raise BaseExceptionGroup(
+                    "Dask initialization and cleanup failed", [original, cleanup]
+                ) from None
+            raise
+
+    def _wait_eager(self):
+        if self._client is None:
+            return
+        from distributed import futures_of, wait
+
+        futures = futures_of(self._ddf, client=self._client)
+        if not futures:
+            return
+        # persist() submits asynchronously to a distributed scheduler. Do not
+        # gather full pandas partitions into the driver just to observe them.
+        with self._client.as_current():
+            wait(futures, timeout=self._config.timeout_seconds)
+        for future in futures:
+            error = future.exception()
+            if error is not None:
+                raise error
 
     @classmethod
     def _default_config(cls) -> DaskEngineConfig:
@@ -186,19 +248,28 @@ class DaskExecutionEngine(BaseDistributedEngine[DaskEngineConfig]):
                 from distributed import Client
 
                 if self._config.client_address:
-                    self._client = Client(self._config.client_address)
+                    self._client = Client(self._config.client_address, set_as_default=False)
                 else:
                     self._client = Client(
+                        set_as_default=False,
                         n_workers=self._config.n_workers,
                         threads_per_worker=self._config.threads_per_worker,
                         memory_limit=self._config.memory_per_worker,
                         processes=self._config.processes,
                         dashboard_address=self._config.dashboard_address,
                     )
-            except ImportError:
-                logger.warning(
-                    "distributed not installed. Using default scheduler."
-                )
+                self._owns_client = True
+            except ImportError as error:
+                raise ImportError(
+                    "The selected distributed scheduler requires distributed"
+                ) from error
+
+    def _scheduler(self):
+        if not self._config.parallel:
+            return "synchronous"
+        if self._client is not None:
+            return self._client.get
+        return self._config.scheduler
 
     # -------------------------------------------------------------------------
     # Factory Methods
@@ -207,10 +278,10 @@ class DaskExecutionEngine(BaseDistributedEngine[DaskEngineConfig]):
     @classmethod
     def from_dataframe(
         cls,
-        ddf: "dd.DataFrame",
+        ddf: dd.DataFrame,
         config: DaskEngineConfig | None = None,
-        client: "Client | None" = None,
-    ) -> "DaskExecutionEngine":
+        client: Client | None = None,
+    ) -> DaskExecutionEngine:
         """Create engine from existing Dask DataFrame.
 
         Args:
@@ -228,9 +299,9 @@ class DaskExecutionEngine(BaseDistributedEngine[DaskEngineConfig]):
         cls,
         path: str,
         config: DaskEngineConfig | None = None,
-        client: "Client | None" = None,
+        client: Client | None = None,
         **read_kwargs: Any,
-    ) -> "DaskExecutionEngine":
+    ) -> DaskExecutionEngine:
         """Create engine from Parquet files.
 
         Args:
@@ -255,9 +326,9 @@ class DaskExecutionEngine(BaseDistributedEngine[DaskEngineConfig]):
         cls,
         path: str,
         config: DaskEngineConfig | None = None,
-        client: "Client | None" = None,
+        client: Client | None = None,
         **read_kwargs: Any,
-    ) -> "DaskExecutionEngine":
+    ) -> DaskExecutionEngine:
         """Create engine from CSV files.
 
         Args:
@@ -280,11 +351,11 @@ class DaskExecutionEngine(BaseDistributedEngine[DaskEngineConfig]):
     @classmethod
     def from_pandas(
         cls,
-        pdf: "pd.DataFrame",
+        pdf: pd.DataFrame,
         npartitions: int = 4,
         config: DaskEngineConfig | None = None,
-        client: "Client | None" = None,
-    ) -> "DaskExecutionEngine":
+        client: Client | None = None,
+    ) -> DaskExecutionEngine:
         """Create engine from Pandas DataFrame.
 
         Args:
@@ -313,12 +384,12 @@ class DaskExecutionEngine(BaseDistributedEngine[DaskEngineConfig]):
         return ComputeBackend.DASK
 
     @property
-    def dask_dataframe(self) -> "dd.DataFrame":
+    def dask_dataframe(self) -> dd.DataFrame:
         """Get the underlying Dask DataFrame."""
         return self._ddf
 
     @property
-    def client(self) -> "Client | None":
+    def client(self) -> Client | None:
         """Get the distributed client."""
         return self._client
 
@@ -335,6 +406,7 @@ class DaskExecutionEngine(BaseDistributedEngine[DaskEngineConfig]):
         """Get number of data partitions."""
         return self._ddf.npartitions
 
+    @operation
     def _get_partition_info(self) -> list[PartitionInfo]:
         """Get information about all partitions.
 
@@ -353,6 +425,7 @@ class DaskExecutionEngine(BaseDistributedEngine[DaskEngineConfig]):
             for i in range(num_partitions)
         ]
 
+    @operation
     def _execute_on_partitions(
         self,
         operation: str,
@@ -388,28 +461,34 @@ class DaskExecutionEngine(BaseDistributedEngine[DaskEngineConfig]):
                 if partition_info:
                     partition_id = partition_info.get("number", 0)
 
-                return pd.DataFrame([{
-                    "partition_id": partition_id,
-                    "value": result.get("value"),
-                    "row_count": len(pdf),
-                    "duration_ms": duration_ms,
-                    "errors": result.get("errors", []),
-                    "metadata": result.get("metadata", {}),
-                }])
+                return pd.DataFrame(
+                    [
+                        {
+                            "partition_id": partition_id,
+                            "value": result.get("value"),
+                            "row_count": len(pdf),
+                            "duration_ms": duration_ms,
+                            "errors": result.get("errors", []),
+                            "metadata": result.get("metadata", {}),
+                        }
+                    ]
+                )
 
             results_ddf = ddf.map_partitions(
                 wrapped_func,
-                meta=pd.DataFrame({
-                    "partition_id": pd.Series(dtype=int),
-                    "value": pd.Series(dtype=object),
-                    "row_count": pd.Series(dtype=int),
-                    "duration_ms": pd.Series(dtype=float),
-                    "errors": pd.Series(dtype=object),
-                    "metadata": pd.Series(dtype=object),
-                }),
+                meta=pd.DataFrame(
+                    {
+                        "partition_id": pd.Series(dtype=int),
+                        "value": pd.Series(dtype=object),
+                        "row_count": pd.Series(dtype=int),
+                        "duration_ms": pd.Series(dtype=float),
+                        "errors": pd.Series(dtype=object),
+                        "metadata": pd.Series(dtype=object),
+                    }
+                ),
             )
 
-            results_pdf = results_ddf.compute()
+            results_pdf = results_ddf.compute(scheduler=self._scheduler())
 
             results = []
             total_rows = 0
@@ -439,6 +518,7 @@ class DaskExecutionEngine(BaseDistributedEngine[DaskEngineConfig]):
         finally:
             self._end_metrics(metrics)
 
+    @operation
     def _aggregate_distributed(
         self,
         spec: AggregationSpec,
@@ -454,6 +534,14 @@ class DaskExecutionEngine(BaseDistributedEngine[DaskEngineConfig]):
         metrics = self._start_metrics("aggregate")
 
         try:
+            if (
+                spec.group_by
+                or spec.filter_condition
+                or spec.scope in {AggregationScope.GROUPED, AggregationScope.PARTITION}
+            ):
+                from truthound.execution.distributed.aggregations import execute_spec
+
+                return execute_spec(self._ddf, spec, dask_scheduler=self._scheduler())
             results = {}
 
             for agg in spec.aggregations:
@@ -464,52 +552,70 @@ class DaskExecutionEngine(BaseDistributedEngine[DaskEngineConfig]):
 
                 if operation == "count":
                     if column == "*":
-                        value = len(self._ddf)
+                        value = int(self._ddf.shape[0].compute(scheduler=self._scheduler()))
                     else:
-                        value = self._ddf[column].count().compute()
+                        value = self._ddf[column].count().compute(scheduler=self._scheduler())
                     results[alias] = value
 
+                elif operation in {"first", "last"}:
+                    if operation == "first":
+                        values = (
+                            self._ddf[column]
+                            .head(1, npartitions=-1, compute=False)
+                            .compute(scheduler=self._scheduler())
+                        )
+                        results[alias] = values.iloc[0] if len(values) else None
+                    else:
+                        values = (
+                            self._ddf[column]
+                            .map_partitions(
+                                lambda partition: partition.tail(1), meta=self._ddf._meta[column]
+                            )
+                            .compute(scheduler=self._scheduler())
+                        )
+                        results[alias] = values.iloc[-1] if len(values) else None
+
                 elif operation == "sum":
-                    value = self._ddf[column].sum().compute()
+                    value = self._ddf[column].sum().compute(scheduler=self._scheduler())
                     results[alias] = value
 
                 elif operation == "mean":
-                    value = self._ddf[column].mean().compute()
+                    value = self._ddf[column].mean().compute(scheduler=self._scheduler())
                     results[alias] = value
 
                 elif operation == "min":
-                    value = self._ddf[column].min().compute()
+                    value = self._ddf[column].min().compute(scheduler=self._scheduler())
                     results[alias] = value
 
                 elif operation == "max":
-                    value = self._ddf[column].max().compute()
+                    value = self._ddf[column].max().compute(scheduler=self._scheduler())
                     results[alias] = value
 
                 elif operation == "std":
                     ddof = params.get("ddof", 1)
-                    value = self._ddf[column].std(ddof=ddof).compute()
+                    value = self._ddf[column].std(ddof=ddof).compute(scheduler=self._scheduler())
                     results[alias] = value
 
                 elif operation == "var":
                     ddof = params.get("ddof", 1)
-                    value = self._ddf[column].var(ddof=ddof).compute()
+                    value = self._ddf[column].var(ddof=ddof).compute(scheduler=self._scheduler())
                     results[alias] = value
 
                 elif operation == "minmax":
-                    min_val = self._ddf[column].min().compute()
-                    max_val = self._ddf[column].max().compute()
+                    min_val = self._ddf[column].min().compute(scheduler=self._scheduler())
+                    max_val = self._ddf[column].max().compute(scheduler=self._scheduler())
                     results[alias] = {"min": min_val, "max": max_val}
 
                 elif operation == "null_count":
-                    null_count = self._ddf[column].isna().sum().compute()
-                    total_count = len(self._ddf)
+                    null_count = self._ddf[column].isna().sum().compute(scheduler=self._scheduler())
+                    total_count = int(self._ddf.shape[0].compute(scheduler=self._scheduler()))
                     results[alias] = {
                         "null_count": int(null_count),
                         "total_count": total_count,
                     }
 
                 elif operation == "distinct_count":
-                    value = self._ddf[column].nunique().compute()
+                    value = self._ddf[column].nunique().compute(scheduler=self._scheduler())
                     results[alias] = int(value)
 
                 else:
@@ -552,7 +658,7 @@ class DaskExecutionEngine(BaseDistributedEngine[DaskEngineConfig]):
         partial_results = self._ddf.map_partitions(
             map_partition,
             meta=pd.DataFrame({"state": pd.Series(dtype=object)}),
-        ).compute()
+        ).compute(scheduler=self._scheduler())
 
         states = partial_results["state"].tolist()
 
@@ -563,10 +669,34 @@ class DaskExecutionEngine(BaseDistributedEngine[DaskEngineConfig]):
         final_state = reduce(aggregator.merge, states)
         return aggregator.finalize(final_state)
 
+    def iter_arrow_batches(self, batch_size=None):
+        """Read one native partition at a time and close without consuming the next."""
+        import pyarrow as pa
+
+        from truthound.execution.distributed.policies import batch_size as selected_size
+        from truthound.execution.distributed.policies import checked_batches
+
+        size = selected_size(self, batch_size)
+
+        def batches():
+            observed = False
+            for task in self._ddf.to_delayed():
+                frame = task.compute(scheduler=self._scheduler())
+                table = pa.Table.from_pandas(frame, preserve_index=False)
+                for batch in table.to_batches(max_chunksize=size):
+                    observed = True
+                    yield batch
+            if not observed:
+                schema = pa.Schema.from_pandas(self._ddf._meta, preserve_index=False)
+                yield pa.RecordBatch.from_pylist([], schema=schema)
+
+        return checked_batches(self, batches())
+
+    @operation
     def _to_arrow_batches(
         self,
         batch_size: int | None = None,
-    ) -> list["pa.RecordBatch"]:
+    ) -> list[pa.RecordBatch]:
         """Convert Dask DataFrame to Arrow batches.
 
         Args:
@@ -577,21 +707,22 @@ class DaskExecutionEngine(BaseDistributedEngine[DaskEngineConfig]):
         """
         import pyarrow as pa
 
-        batch_size = batch_size or self._config.arrow_batch_size
+        from truthound.execution.distributed.policies import batch_size as selected_size
 
-        try:
-            # Dask has native Arrow support via to_arrow
-            # This works when pyarrow is installed
-            table = self._ddf.compute().to_arrow()
-            return table.to_batches(max_chunksize=batch_size)
-        except AttributeError:
-            # Fallback: Convert via Pandas
-            logger.debug("Falling back to Pandas-based Arrow conversion")
-            pdf = self._ddf.compute()
-            table = pa.Table.from_pandas(pdf)
-            return table.to_batches(max_chunksize=batch_size)
+        batch_size = selected_size(self, batch_size)
 
-    def _repartition(self, num_partitions: int) -> "DaskExecutionEngine":
+        if self._config.execution_mode == ExecutionMode.STREAMING:
+            return list(self.iter_arrow_batches(batch_size))
+        pdf = self._ddf.compute(scheduler=self._scheduler())
+        table = pa.Table.from_pandas(pdf, preserve_index=False)
+        from truthound.execution.distributed.policies import checked_batches
+
+        batches = table.to_batches(max_chunksize=batch_size) or [
+            pa.RecordBatch.from_pylist([], schema=table.schema)
+        ]
+        return list(checked_batches(self, batches))
+
+    def _repartition(self, num_partitions: int) -> DaskExecutionEngine:
         """Repartition the underlying DataFrame.
 
         Args:
@@ -600,10 +731,38 @@ class DaskExecutionEngine(BaseDistributedEngine[DaskEngineConfig]):
         Returns:
             New engine with repartitioned data.
         """
-        repartitioned = self._ddf.repartition(npartitions=num_partitions)
-        return DaskExecutionEngine(repartitioned, self._config, self._client)
+        repartitioned = self._partition_native(self._ddf, num_partitions)
+        return DaskExecutionEngine(repartitioned, self._config, self._client, _apply_defaults=False)
 
-    def coalesce(self, num_partitions: int) -> "DaskExecutionEngine":
+    def _partition_native(self, data, count):
+        import dask.dataframe as dd
+
+        strategy = self._config.partition_strategy
+        columns = self._config.selected_partition_columns(list(data.columns))
+        if strategy == PartitionStrategy.CUSTOM:
+            result = self._config.partitioner(data, count)
+            if (
+                not isinstance(result, dd.DataFrame)
+                or list(result.columns) != list(data.columns)
+                or not result.dtypes.equals(data.dtypes)
+            ):
+                raise ValueError("Custom partitioner changed the dataframe type or schema")
+            if result.npartitions != count:
+                raise ValueError("Custom partitioner returned a different partition count")
+            return result
+        if strategy in {PartitionStrategy.ROW_HASH, PartitionStrategy.COLUMN}:
+            return data.shuffle(on=columns, npartitions=count, shuffle_method="tasks", force=True)
+        if strategy == PartitionStrategy.ROW_RANGE:
+            if len(columns) != 1:
+                raise ValueError("Dask range partitioning requires exactly one column")
+            from truthound.execution.distributed.partitioning import range_partition_dask
+
+            return range_partition_dask(data, count, columns[0], self._scheduler())
+        from truthound.execution.distributed.partitioning import round_robin_dask
+
+        return round_robin_dask(data, count)
+
+    def coalesce(self, num_partitions: int) -> DaskExecutionEngine:
         """Coalesce partitions (no shuffle when reducing).
 
         Args:
@@ -612,26 +771,24 @@ class DaskExecutionEngine(BaseDistributedEngine[DaskEngineConfig]):
         Returns:
             New engine with coalesced data.
         """
+        self._config.validate_partition_count(num_partitions)
         # Dask's repartition with fewer partitions is similar to coalesce
         coalesced = self._ddf.repartition(npartitions=num_partitions)
-        return DaskExecutionEngine(coalesced, self._config, self._client)
+        return DaskExecutionEngine(coalesced, self._config, self._client, _apply_defaults=False)
 
     # -------------------------------------------------------------------------
     # Core Operation Overrides (Native Dask)
     # -------------------------------------------------------------------------
 
+    @operation
     def count_rows(self) -> int:
         """Count rows using native Dask len."""
-        if self._cached_row_count is not None:
-            return self._cached_row_count
-
         cache_key = self._cache_key("count_rows")
         cached = self._get_cached(cache_key)
         if cached is not None:
             return cached
 
-        count = len(self._ddf)
-        self._cached_row_count = count
+        count = int(self._ddf.shape[0].compute(scheduler=self._scheduler()))
         self._set_cached(cache_key, count)
         return count
 
@@ -639,6 +796,7 @@ class DaskExecutionEngine(BaseDistributedEngine[DaskEngineConfig]):
         """Get column names."""
         return self._columns
 
+    @operation
     def count_nulls(self, column: str) -> int:
         """Count nulls using native Dask isna."""
         cache_key = self._cache_key("count_nulls", column)
@@ -646,10 +804,11 @@ class DaskExecutionEngine(BaseDistributedEngine[DaskEngineConfig]):
         if cached is not None:
             return cached
 
-        count = int(self._ddf[column].isna().sum().compute())
+        count = int(self._ddf[column].isna().sum().compute(scheduler=self._scheduler()))
         self._set_cached(cache_key, count)
         return count
 
+    @operation
     def count_nulls_all(self) -> dict[str, int]:
         """Count nulls in all columns using batch aggregation."""
         cache_key = self._cache_key("count_nulls_all")
@@ -665,12 +824,13 @@ class DaskExecutionEngine(BaseDistributedEngine[DaskEngineConfig]):
         # Compute all at once
         import dask
 
-        computed = dask.compute(results)[0]
+        computed = dask.compute(results, scheduler=self._scheduler())[0]
         result = {col: int(val) for col, val in computed.items()}
 
         self._set_cached(cache_key, result)
         return result
 
+    @operation
     def count_distinct(self, column: str) -> int:
         """Count distinct values using native Dask nunique."""
         cache_key = self._cache_key("count_distinct", column)
@@ -678,10 +838,11 @@ class DaskExecutionEngine(BaseDistributedEngine[DaskEngineConfig]):
         if cached is not None:
             return cached
 
-        count = int(self._ddf[column].nunique().compute())
+        count = int(self._ddf[column].nunique().compute(scheduler=self._scheduler()))
         self._set_cached(cache_key, count)
         return count
 
+    @operation
     def get_stats(self, column: str) -> dict[str, Any]:
         """Get column statistics using native Dask aggregations."""
         cache_key = self._cache_key("get_stats", column)
@@ -702,7 +863,7 @@ class DaskExecutionEngine(BaseDistributedEngine[DaskEngineConfig]):
 
         import dask
 
-        computed = dask.compute(computations)[0]
+        computed = dask.compute(computations, scheduler=self._scheduler())[0]
 
         stats = {
             "count": int(computed["count"]),
@@ -716,6 +877,7 @@ class DaskExecutionEngine(BaseDistributedEngine[DaskEngineConfig]):
         self._set_cached(cache_key, stats)
         return stats
 
+    @operation
     def get_quantiles(
         self,
         column: str,
@@ -727,12 +889,13 @@ class DaskExecutionEngine(BaseDistributedEngine[DaskEngineConfig]):
         if cached is not None:
             return cached
 
-        result = self._ddf[column].quantile(quantiles).compute()
+        result = self._ddf[column].quantile(quantiles).compute(scheduler=self._scheduler())
         result_list = list(result)
 
         self._set_cached(cache_key, result_list)
         return result_list
 
+    @operation
     def get_value_counts(
         self,
         column: str,
@@ -749,12 +912,13 @@ class DaskExecutionEngine(BaseDistributedEngine[DaskEngineConfig]):
         if limit:
             counts = counts.head(limit, npartitions=-1, compute=False)
 
-        result_series = counts.compute()
+        result_series = counts.compute(scheduler=self._scheduler())
         result = dict(result_series)
 
         self._set_cached(cache_key, result)
         return result
 
+    @operation
     def count_duplicates(self, columns: list[str]) -> int:
         """Count duplicates using native Dask operations."""
         cache_key = self._cache_key("count_duplicates", tuple(columns))
@@ -763,12 +927,15 @@ class DaskExecutionEngine(BaseDistributedEngine[DaskEngineConfig]):
             return cached
 
         total = self.count_rows()
-        unique = len(self._ddf[columns].drop_duplicates())
+        unique = int(
+            self._ddf[columns].drop_duplicates().shape[0].compute(scheduler=self._scheduler())
+        )
         duplicates = total - unique
 
         self._set_cached(cache_key, duplicates)
         return duplicates
 
+    @operation
     def count_matching_regex(self, column: str, pattern: str) -> int:
         """Count values matching regex."""
         cache_key = self._cache_key("count_matching_regex", column, pattern)
@@ -780,12 +947,13 @@ class DaskExecutionEngine(BaseDistributedEngine[DaskEngineConfig]):
             self._ddf[column]
             .str.match(pattern, na=False)
             .sum()
-            .compute()
+            .compute(scheduler=self._scheduler())
         )
 
         self._set_cached(cache_key, count)
         return count
 
+    @operation
     def count_in_range(
         self,
         column: str,
@@ -794,9 +962,7 @@ class DaskExecutionEngine(BaseDistributedEngine[DaskEngineConfig]):
         inclusive: bool = True,
     ) -> int:
         """Count values in range using native Dask filter."""
-        cache_key = self._cache_key(
-            "count_in_range", column, min_value, max_value, inclusive
-        )
+        cache_key = self._cache_key("count_in_range", column, min_value, max_value, inclusive)
         cached = self._get_cached(cache_key)
         if cached is not None:
             return cached
@@ -805,10 +971,7 @@ class DaskExecutionEngine(BaseDistributedEngine[DaskEngineConfig]):
         mask = None
 
         if min_value is not None:
-            if inclusive:
-                mask = series >= min_value
-            else:
-                mask = series > min_value
+            mask = series >= min_value if inclusive else series > min_value
 
         if max_value is not None:
             max_mask = series <= max_value if inclusive else series < max_value
@@ -817,11 +980,12 @@ class DaskExecutionEngine(BaseDistributedEngine[DaskEngineConfig]):
         if mask is None:
             count = self.count_rows()
         else:
-            count = int(mask.sum().compute())
+            count = int(mask.sum().compute(scheduler=self._scheduler()))
 
         self._set_cached(cache_key, count)
         return count
 
+    @operation
     def count_in_set(self, column: str, values: set[Any]) -> int:
         """Count values in set using Dask isin."""
         cache_key = self._cache_key("count_in_set", column, frozenset(values))
@@ -829,7 +993,7 @@ class DaskExecutionEngine(BaseDistributedEngine[DaskEngineConfig]):
         if cached is not None:
             return cached
 
-        count = int(self._ddf[column].isin(list(values)).sum().compute())
+        count = int(self._ddf[column].isin(list(values)).sum().compute(scheduler=self._scheduler()))
         self._set_cached(cache_key, count)
         return count
 
@@ -841,8 +1005,8 @@ class DaskExecutionEngine(BaseDistributedEngine[DaskEngineConfig]):
         self,
         n: int = 1000,
         seed: int | None = None,
-    ) -> "DaskExecutionEngine":
-        """Create sampled engine using Dask's native sampling.
+    ) -> DaskExecutionEngine:
+        """Select an exact-size sample by native distributed random-rank sort.
 
         Args:
             n: Target number of rows.
@@ -851,43 +1015,98 @@ class DaskExecutionEngine(BaseDistributedEngine[DaskEngineConfig]):
         Returns:
             New engine with sampled data.
         """
+        from uuid import uuid4
+
+        import numpy as np
+
+        if type(n) is not int or n < 0:
+            raise ValueError("Sample size must be a non-negative integer")
+        if seed is not None and (type(seed) is not int or seed < 0):
+            raise ValueError("Sample seed must be a non-negative integer")
         row_count = self.count_rows()
 
         if row_count <= n:
             return self
 
-        fraction = min((n * 1.1) / row_count, 1.0)
+        if n == 0:
+            return DaskExecutionEngine(
+                self._ddf.head(0, compute=False), self._config, self._client, _apply_defaults=False
+            )
+        rank = "__truthound_sample_" + uuid4().hex
+        while rank in self._ddf.columns:
+            rank = "__truthound_sample_" + uuid4().hex
+        resolved_seed = seed if seed is not None else np.random.SeedSequence().entropy
 
-        sampled = self._ddf.sample(
-            frac=fraction,
-            random_state=seed,
+        def ranked_partition(frame, partition_info=None):
+            number = partition_info["number"] if partition_info is not None else 0
+            rng = np.random.default_rng(np.random.SeedSequence([resolved_seed, number]))
+            return frame.assign(**{rank: rng.random(len(frame))})
+
+        metadata = self._ddf._meta.assign(**{rank: np.empty(0, dtype=float)})
+        ranked = self._ddf.map_partitions(ranked_partition, meta=metadata)
+        # Bernoulli sampling can return no rows when each tiny partition rounds
+        # its fractional request to zero. Sorting ranks always supplies n rows.
+        selected = ranked.sort_values(rank).head(n, npartitions=-1, compute=False)
+        # Keep the rank available through Dask's sort/head optimization. A
+        # projected drop can otherwise remove the sort key before the reduction.
+        sampled = selected.map_partitions(
+            lambda frame: frame.drop(columns=[rank]), meta=self._ddf._meta
         )
 
-        # Limit to exact n rows
-        sampled = sampled.head(n, npartitions=-1, compute=False)
-
-        return DaskExecutionEngine(sampled, self._config, self._client)
+        return DaskExecutionEngine(sampled, self._config, self._client, _apply_defaults=False)
 
     # -------------------------------------------------------------------------
     # Dask-Specific Methods
     # -------------------------------------------------------------------------
 
-    def persist(self) -> "DaskExecutionEngine":
+    def persist(self) -> DaskExecutionEngine:
         """Persist the DataFrame in distributed memory.
 
         Returns:
             Self after persisting.
         """
-        self._ddf = self._ddf.persist()
+        self._ddf = self._ddf.persist(scheduler=self._scheduler())
         return self
 
-    def compute(self) -> "pd.DataFrame":
+    def checkpoint(self) -> DaskExecutionEngine:
+        """Publish native Parquet in checkpoint_dir and return its independent graph."""
+        from truthound.execution.distributed.checkpoints import publish
+
+        def write(path):
+            self._ddf.to_parquet(
+                str(path),
+                engine="pyarrow",
+                write_index=True,
+                compute_kwargs={"scheduler": self._scheduler()},
+            )
+
+        location = publish(self._config.checkpoint_dir, "dask", write)
+        return self.from_checkpoint(location, self._config, client=self._client)
+
+    @classmethod
+    def from_checkpoint(cls, location, config=None, client=None) -> DaskExecutionEngine:
+        """Restore a committed native checkpoint without executing the source graph."""
+        from pathlib import Path
+
+        import dask.dataframe as dd
+
+        from truthound.execution.distributed.checkpoints import validate
+
+        data = validate(location, "dask")
+        restored = cls(
+            dd.read_parquet(data, engine="pyarrow"), config, client, _apply_defaults=False
+        )
+        restored._checkpoint_path = str(Path(location).resolve())
+        return restored
+
+    @operation
+    def compute(self) -> pd.DataFrame:
         """Compute and return as Pandas DataFrame.
 
         Returns:
             Pandas DataFrame.
         """
-        return self._ddf.compute()
+        return self._ddf.compute(scheduler=self._scheduler())
 
     def visualize(
         self,
@@ -905,7 +1124,7 @@ class DaskExecutionEngine(BaseDistributedEngine[DaskEngineConfig]):
         """
         return self._ddf.visualize(filename=filename, format=format)
 
-    def filter(self, condition: str) -> "DaskExecutionEngine":
+    def filter(self, condition: str) -> DaskExecutionEngine:
         """Filter the DataFrame using a query string.
 
         Args:
@@ -915,9 +1134,9 @@ class DaskExecutionEngine(BaseDistributedEngine[DaskEngineConfig]):
             New engine with filtered data.
         """
         filtered = self._ddf.query(condition)
-        return DaskExecutionEngine(filtered, self._config, self._client)
+        return DaskExecutionEngine(filtered, self._config, self._client, _apply_defaults=False)
 
-    def select(self, columns: list[str]) -> "DaskExecutionEngine":
+    def select(self, columns: list[str]) -> DaskExecutionEngine:
         """Select specific columns.
 
         Args:
@@ -927,9 +1146,10 @@ class DaskExecutionEngine(BaseDistributedEngine[DaskEngineConfig]):
             New engine with selected columns.
         """
         selected = self._ddf[columns]
-        return DaskExecutionEngine(selected, self._config, self._client)
+        return DaskExecutionEngine(selected, self._config, self._client, _apply_defaults=False)
 
-    def head(self, n: int = 5) -> "pd.DataFrame":
+    @operation
+    def head(self, n: int = 5) -> pd.DataFrame:
         """Get first n rows as Pandas DataFrame.
 
         Args:
@@ -938,9 +1158,10 @@ class DaskExecutionEngine(BaseDistributedEngine[DaskEngineConfig]):
         Returns:
             Pandas DataFrame.
         """
-        return self._ddf.head(n)
+        return self._ddf.head(n, npartitions=-1, compute=False).compute(scheduler=self._scheduler())
 
-    def tail(self, n: int = 5) -> "pd.DataFrame":
+    @operation
+    def tail(self, n: int = 5) -> pd.DataFrame:
         """Get last n rows as Pandas DataFrame.
 
         Args:
@@ -949,28 +1170,35 @@ class DaskExecutionEngine(BaseDistributedEngine[DaskEngineConfig]):
         Returns:
             Pandas DataFrame.
         """
-        return self._ddf.tail(n)
+        return (
+            self._ddf.map_partitions(lambda frame: frame.tail(n), meta=self._ddf._meta)
+            .compute(scheduler=self._scheduler())
+            .tail(n)
+        )
 
-    def describe(self) -> "pd.DataFrame":
+    @operation
+    def describe(self) -> pd.DataFrame:
         """Get descriptive statistics.
 
         Returns:
             Pandas DataFrame with statistics.
         """
-        return self._ddf.describe().compute()
+        return self._ddf.describe().compute(scheduler=self._scheduler())
 
     # -------------------------------------------------------------------------
     # Context Manager
     # -------------------------------------------------------------------------
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        """Context manager exit - cleanup client if we created it."""
-        super().__exit__(exc_type, exc_val, exc_tb)
-        # Note: We don't close the client here as it might be shared
-        # Users should manage client lifecycle separately
+        """Clear local state and close only the client created by this engine."""
+        try:
+            super().__exit__(exc_type, exc_val, exc_tb)
+        finally:
+            self.close()
 
     def close(self) -> None:
-        """Close the distributed client if it exists."""
-        if self._client is not None:
+        """Close the owned client; borrowed clients remain caller-owned."""
+        if self._client is not None and self._owns_client:
             self._client.close()
             self._client = None
+            self._owns_client = False

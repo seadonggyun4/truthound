@@ -13,18 +13,12 @@ from truthound.mcp.contracts import Name, WireModel
 from truthound.mcp.operations import envelope
 from truthound.mcp.policy import MCPError
 from truthound.mcp.schema_monitor import MonitorProcess, MonitorSession
-from truthound.mcp.session_contracts import Handle
+from truthound.mcp.session_contracts import Handle, RegistryCheck
 
 
 class CheckpointServiceOpen(SourceBindingOpen):
     kind: Literal["runner", "escalation"]
     snapshot_id: Annotated[str, Field(pattern=r"^servicesnapshot_[0-9a-f]{64}$")] | None = None
-
-    @model_validator(mode="after")
-    def recovery_kind(self):
-        if self.snapshot_id is not None and self.kind != "escalation":
-            raise ValueError("Only escalation configuration snapshots can be restored")
-        return self
 
 
 Trigger = Literal[
@@ -94,6 +88,7 @@ class EscalationPolicyUpdate(WireModel):
 
 
 class ScheduleUpdate(WireModel):
+    expression: Annotated[str, Field(min_length=1, max_length=256)] | None = None
     enabled: bool | None = None
     max_runs: Annotated[int, Field(ge=0)] | None = None
     run_immediately: bool | None = None
@@ -128,6 +123,32 @@ class ScheduleUpdate(WireModel):
         return self
 
 
+class CheckpointDefinitionUpdate(WireModel):
+    checks: Annotated[list[RegistryCheck], Field(min_length=1, max_length=1000)] | None = None
+    min_severity: Literal["low", "medium", "high", "critical"] | None = None
+    auto_schema: bool | None = None
+    run_name_template: Annotated[str, Field(min_length=1, max_length=256)] | None = None
+    tags: (
+        Annotated[dict[Name, Annotated[str, Field(max_length=512)]], Field(max_length=100)] | None
+    ) = None
+    metadata: Annotated[dict[Name, JsonValue], Field(max_length=100)] | None = None
+    fail_on_critical: bool | None = None
+    fail_on_high: bool | None = None
+    timeout_seconds: Annotated[int, Field(ge=1, le=86400)] | None = None
+    sample_size: Annotated[int, Field(ge=1)] | None = None
+
+    @model_validator(mode="after")
+    def supplied(self):
+        if not self.model_fields_set or any(
+            getattr(self, key) is None
+            for key in self.model_fields_set - {"min_severity", "sample_size"}
+        ):
+            raise ValueError("Supply checkpoint settings; only optional limits may be cleared")
+        if any(check.binding_id is not None for check in self.checks or ()):
+            raise ValueError("Native callback validators remain owned by the factory")
+        return self
+
+
 class CheckpointServiceCommand(SourceBindingOpen):
     # The binding is repeated intentionally: each approval pins both identity
     # and the live handle, rather than authorizing a portable command.
@@ -147,6 +168,7 @@ class CheckpointServiceCommand(SourceBindingOpen):
         "run_all",
         "remove_checkpoint",
         "schedule_update",
+        "checkpoint_update",
         "policy",
         "policy_update",
         "policy_create",
@@ -154,6 +176,9 @@ class CheckpointServiceCommand(SourceBindingOpen):
         "policy_remove",
         "active_records",
         "incident_records",
+        "recovery_status",
+        "recovery_resolve",
+        "recovery_forget",
     ]
     record_id: Name | None = None
     incident_id: Name | None = None
@@ -163,8 +188,21 @@ class CheckpointServiceCommand(SourceBindingOpen):
     checkpoint_name: Name | None = None
     trigger_name: Name | None = None
     schedule_update: ScheduleUpdate | None = None
+    checkpoint_update: CheckpointDefinitionUpdate | None = None
     policy_update: EscalationPolicyUpdate | None = None
     policy_names: Annotated[list[Name], Field(min_length=1, max_length=100)] | None = None
+    checkpoint_names: Annotated[list[Name], Field(min_length=1, max_length=100)] | None = None
+    attempt_id: Annotated[str, Field(min_length=1, max_length=256)] | None = None
+    resolution: Literal["completed", "cancelled"] | None = None
+    attempt_ids: (
+        Annotated[
+            list[Annotated[str, Field(min_length=1, max_length=256)]],
+            Field(min_length=1, max_length=100),
+        ]
+        | None
+    ) = None
+    recovery_limit: Annotated[int, Field(ge=1, le=1000)] = 100
+    recovery_offset: Annotated[int, Field(ge=0)] = 0
     max_results: Annotated[int, Field(ge=1, le=1000)] = 100
 
     @model_validator(mode="after")
@@ -186,18 +224,43 @@ class CheckpointServiceCommand(SourceBindingOpen):
             raise ValueError("policy_name is not supported by this command")
         if (self.command in {"policy_update", "policy_create"}) != (self.policy_update is not None):
             raise ValueError("policy_update is required only for policy_update or policy_create")
-        if (self.command == "persist_configuration") != (self.policy_names is not None):
-            raise ValueError("policy_names is required only for persist_configuration")
+        selections = int(self.policy_names is not None) + int(self.checkpoint_names is not None)
+        if selections != int(self.command == "persist_configuration"):
+            raise ValueError("persist_configuration requires exactly one kind of named definitions")
+        if self.checkpoint_names is not None and len(set(self.checkpoint_names)) != len(
+            self.checkpoint_names
+        ):
+            raise ValueError("checkpoint_names must be unique")
         if self.policy_names is not None and len(set(self.policy_names)) != len(self.policy_names):
             raise ValueError("policy_names must be unique")
         if (self.command == "schedule_update") != (self.trigger_name is not None):
             raise ValueError("trigger_name is required only for schedule_update")
         if (self.command == "schedule_update") != (self.schedule_update is not None):
             raise ValueError("schedule_update is required only for schedule_update")
-        if (self.command in {"run_once", "remove_checkpoint", "schedule_update"}) != (
-            self.checkpoint_name is not None
-        ):
+        if (self.command == "checkpoint_update") != (self.checkpoint_update is not None):
+            raise ValueError("checkpoint_update is required only for checkpoint_update")
+        if (
+            self.command
+            in {"run_once", "remove_checkpoint", "schedule_update", "checkpoint_update"}
+        ) != (self.checkpoint_name is not None):
             raise ValueError("checkpoint_name is required only for named runner commands")
+        if (self.command == "recovery_resolve") != (
+            self.attempt_id is not None and self.resolution is not None
+        ):
+            raise ValueError("attempt_id and resolution are required for recovery_resolve")
+        if self.command != "recovery_resolve" and (
+            self.attempt_id is not None or self.resolution is not None
+        ):
+            raise ValueError("attempt_id and resolution are only supported by recovery_resolve")
+        if (self.command == "recovery_forget") != (self.attempt_ids is not None):
+            raise ValueError("attempt_ids is required only for recovery_forget")
+        if self.attempt_ids is not None and len(set(self.attempt_ids)) != len(self.attempt_ids):
+            raise ValueError("attempt_ids must be unique")
+        if self.command != "recovery_status" and self.model_fields_set & {
+            "recovery_limit",
+            "recovery_offset",
+        }:
+            raise ValueError("recovery pagination is only supported by recovery_status")
         if "max_results" in self.model_fields_set and self.command != "results":
             raise ValueError("max_results is only supported by results")
         return self
@@ -205,6 +268,20 @@ class CheckpointServiceCommand(SourceBindingOpen):
 
 class ServiceProcess(MonitorProcess):
     worker_module = "truthound.mcp.checkpoint_service_worker"
+
+    def validate_reply(self, result):
+        if result == {"ok": True, "shutdown": True}:
+            self.native_shutdown = True
+            return result
+        return super().validate_reply(result)
+
+    def _request_shutdown(self):
+        if self.process.poll() is None:
+            with suppress(OSError, ValueError):
+                self.process.stdin.write(b'{"close":true}\n')
+                self.process.stdin.flush()
+            with suppress(Exception):
+                self.process.wait(timeout=1)
 
     async def call(self, request, timeout):
         try:
@@ -236,15 +313,32 @@ class CheckpointServices(MonitorSession):
         if opening and arguments.snapshot_id is not None:
             from truthound.mcp.durable_checkpoint_services import read
 
-            snapshot = read(session, arguments.snapshot_id, arguments.binding_id)
+            snapshot = read(
+                session, arguments.snapshot_id, arguments.binding_id, kind=arguments.kind
+            )
         entry = None
         if not opening:
             entry = resources.get(arguments.service_id, "monitor")
             metadata = entry.metadata
             if metadata.get("checkpoint_binding") != arguments.binding_id:
                 raise MCPError("invalid_binding")
-            allowed = {"start", "stop", "status"} | (
-                {"results", "run_once", "run_all", "remove_checkpoint", "schedule_update"}
+            allowed = {
+                "start",
+                "stop",
+                "status",
+                "recovery_status",
+                "recovery_resolve",
+                "recovery_forget",
+            } | (
+                {
+                    "results",
+                    "run_once",
+                    "run_all",
+                    "remove_checkpoint",
+                    "schedule_update",
+                    "checkpoint_update",
+                    "persist_configuration",
+                }
                 if metadata["service_kind"] == "runner"
                 else {
                     "trigger",
@@ -260,11 +354,21 @@ class CheckpointServices(MonitorSession):
                     "policy_remove",
                     "active_records",
                     "incident_records",
+                    "recovery_status",
                 }
             )
             if arguments.command not in allowed:
                 raise MCPError("invalid_arguments")
-            if arguments.command == "results" and arguments.max_results > policy.max_items:
+            if arguments.command == "persist_configuration" and (
+                (metadata["service_kind"] == "runner") != (arguments.checkpoint_names is not None)
+            ):
+                raise MCPError("invalid_arguments")
+            if (
+                arguments.command == "results"
+                and arguments.max_results > policy.max_items
+                or arguments.command == "recovery_status"
+                and arguments.recovery_limit > policy.max_items
+            ):
                 raise MCPError("resource_exhausted")
             worker = self.workers.get(entry.id)
             if worker is None or worker.closed:
@@ -334,6 +438,14 @@ class CheckpointServices(MonitorSession):
                     "capability": capability,
                     "control": str(policy.control_directory),
                     "digest": digest,
+                    "recovery_scope": store.digest(
+                        {
+                            "policy": stamp,
+                            "binding": arguments.binding_id,
+                            "bindings_digest": digest,
+                            "kind": arguments.kind,
+                        }
+                    ),
                     "configuration_path": str(path) if snapshot is not None else None,
                 }
             else:

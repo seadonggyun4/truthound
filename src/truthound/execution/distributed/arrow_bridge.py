@@ -46,11 +46,15 @@ Example:
 from __future__ import annotations
 
 import logging
+import sys
+from copy import deepcopy
 from dataclasses import dataclass, field
-from enum import Enum, auto
-from typing import TYPE_CHECKING, Any, Iterator
+from enum import Enum
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from collections.abc import Iterator
+
     import polars as pl
     import pyarrow as pa
     from pyspark.sql import DataFrame as SparkDataFrame
@@ -91,6 +95,19 @@ class ArrowBridgeConfig:
     coerce_temporal: bool = True
     preserve_index: bool = False
     null_handling: str = "mask"
+    sentinel_values: dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self):
+        self.strategy = ArrowConversionStrategy(self.strategy)
+        for value in (self.batch_size, self.max_memory_bytes):
+            if type(value) is not int or value <= 0:
+                raise ValueError("Arrow conversion limits must be positive integers")
+        if self.null_handling not in {"mask", "sentinel", "error"}:
+            raise ValueError("Unknown Arrow null policy")
+        if type(self.preserve_index) is not bool or type(self.coerce_temporal) is not bool:
+            raise ValueError("Arrow conversion flags must be boolean")
+        if not isinstance(self.sentinel_values, dict):
+            raise ValueError("Sentinel values must be a column mapping")
 
 
 # =============================================================================
@@ -98,7 +115,7 @@ class ArrowBridgeConfig:
 # =============================================================================
 
 
-def _spark_type_to_arrow(spark_type: Any) -> "pa.DataType":
+def _spark_type_to_arrow(spark_type: Any) -> pa.DataType:
     """Convert Spark data type to Arrow data type.
 
     Args:
@@ -122,7 +139,6 @@ def _spark_type_to_arrow(spark_type: Any) -> "pa.DataType":
         MapType,
         ShortType,
         StringType,
-        StructField,
         StructType,
         TimestampType,
     )
@@ -172,7 +188,7 @@ def _spark_type_to_arrow(spark_type: Any) -> "pa.DataType":
     return pa.string()
 
 
-def _polars_type_to_arrow(polars_type: Any) -> "pa.DataType":
+def _polars_type_to_arrow(polars_type: Any) -> pa.DataType:
     """Convert Polars data type to Arrow data type.
 
     Args:
@@ -181,8 +197,8 @@ def _polars_type_to_arrow(polars_type: Any) -> "pa.DataType":
     Returns:
         Corresponding Arrow data type.
     """
-    import pyarrow as pa
     import polars as pl
+    import pyarrow as pa
 
     type_map = {
         pl.Boolean: pa.bool_,
@@ -259,82 +275,35 @@ class ArrowBridge:
         Args:
             config: Optional configuration.
         """
-        self._config = config or ArrowBridgeConfig()
+        self._config = deepcopy(config) if config is not None else ArrowBridgeConfig()
+        self._config.__post_init__()
 
     @property
     def config(self) -> ArrowBridgeConfig:
         """Get bridge configuration."""
-        return self._config
+        return deepcopy(self._config)
 
     # -------------------------------------------------------------------------
     # Spark <-> Polars
     # -------------------------------------------------------------------------
 
-    def spark_to_polars(
-        self,
-        spark_df: "SparkDataFrame",
-        collect: bool = True,
-    ) -> "pl.LazyFrame | pl.DataFrame":
-        """Convert Spark DataFrame to Polars.
+    def spark_to_polars(self, spark_df, collect=True):
+        return self.to_polars(spark_df, collect=collect)
 
-        Args:
-            spark_df: Spark DataFrame.
-            collect: If True, return DataFrame; if False, return LazyFrame.
-
-        Returns:
-            Polars DataFrame or LazyFrame.
-        """
+    def spark_to_polars_chunked(self, spark_df, chunk_size=None):
+        """Collect with selected Spark strategy, then yield bounded row slices."""
         import polars as pl
 
-        strategy = self._determine_strategy(spark_df)
-
-        if strategy == ArrowConversionStrategy.NATIVE:
-            table = self._spark_to_arrow_native(spark_df)
-        elif strategy == ArrowConversionStrategy.PANDAS:
-            table = self._spark_to_arrow_pandas(spark_df)
-        else:
-            table = self._spark_to_arrow_manual(spark_df)
-
-        df = pl.from_arrow(table)
-
-        if collect:
-            return df
-        return df.lazy()
-
-    def spark_to_polars_chunked(
-        self,
-        spark_df: "SparkDataFrame",
-        chunk_size: int | None = None,
-    ) -> Iterator["pl.DataFrame"]:
-        """Convert Spark DataFrame to Polars in chunks.
-
-        This is useful for very large DataFrames that don't fit in memory.
-
-        Args:
-            spark_df: Spark DataFrame.
-            chunk_size: Rows per chunk.
-
-        Yields:
-            Polars DataFrames for each chunk.
-        """
-        import polars as pl
-
-        chunk_size = chunk_size or self._config.batch_size
-
-        # Get Arrow batches
-        batches = self._spark_to_arrow_batches(spark_df, chunk_size)
-
-        for batch in batches:
-            import pyarrow as pa
-
-            table = pa.Table.from_batches([batch])
-            yield pl.from_arrow(table)
+        size = self._chunk_size(chunk_size)
+        table = self.to_arrow(spark_df)
+        for batch in table.to_batches(max_chunksize=size):
+            yield pl.from_arrow(batch)
 
     def polars_to_spark(
         self,
-        polars_df: "pl.DataFrame | pl.LazyFrame",
+        polars_df: pl.DataFrame | pl.LazyFrame,
         spark: Any,
-    ) -> "SparkDataFrame":
+    ) -> SparkDataFrame:
         """Convert Polars DataFrame to Spark.
 
         Args:
@@ -345,7 +314,6 @@ class ArrowBridge:
             Spark DataFrame.
         """
         import polars as pl
-        import pyarrow as pa
 
         if isinstance(polars_df, pl.LazyFrame):
             polars_df = polars_df.collect()
@@ -353,17 +321,13 @@ class ArrowBridge:
         # Convert to Arrow
         arrow_table = polars_df.to_arrow()
 
-        # Try native Arrow conversion (Spark 3.0+)
-        try:
-            return spark.createDataFrame(arrow_table.to_pandas())
-        except Exception:
-            # Fallback to Pandas
-            return spark.createDataFrame(polars_df.to_pandas())
+        table = self._normalize_table(arrow_table)
+        return spark.createDataFrame(table.to_pandas())
 
     def _spark_to_arrow_native(
         self,
-        spark_df: "SparkDataFrame",
-    ) -> "pa.Table":
+        spark_df: SparkDataFrame,
+    ) -> pa.Table:
         """Convert Spark to Arrow using native support.
 
         Args:
@@ -374,18 +338,24 @@ class ArrowBridge:
         """
         import pyarrow as pa
 
-        try:
-            # Spark 3.0+ supports _collect_as_arrow()
-            batches = spark_df._collect_as_arrow()
-            return pa.Table.from_batches(batches)
-        except AttributeError:
-            # Fallback to Pandas path
+        collector = getattr(spark_df, "_collect_as_arrow", None)
+        if collector is None:
+            if self._config.strategy == ArrowConversionStrategy.NATIVE:
+                raise NotImplementedError("Selected native Spark Arrow collector is unavailable")
             return self._spark_to_arrow_pandas(spark_df)
+        batches = collector()
+        schema = pa.schema(
+            [
+                pa.field(field.name, _spark_type_to_arrow(field.dataType), nullable=field.nullable)
+                for field in spark_df.schema.fields
+            ]
+        )
+        return pa.Table.from_batches(batches, schema=None if batches else schema)
 
     def _spark_to_arrow_pandas(
         self,
-        spark_df: "SparkDataFrame",
-    ) -> "pa.Table":
+        spark_df: SparkDataFrame,
+    ) -> pa.Table:
         """Convert Spark to Arrow via Pandas.
 
         Args:
@@ -396,12 +366,6 @@ class ArrowBridge:
         """
         import pyarrow as pa
 
-        # Enable Arrow optimization in Spark
-        spark_df.sparkSession.conf.set(
-            "spark.sql.execution.arrow.pyspark.enabled",
-            "true",
-        )
-
         pandas_df = spark_df.toPandas()
         return pa.Table.from_pandas(
             pandas_df,
@@ -410,8 +374,8 @@ class ArrowBridge:
 
     def _spark_to_arrow_manual(
         self,
-        spark_df: "SparkDataFrame",
-    ) -> "pa.Table":
+        spark_df: SparkDataFrame,
+    ) -> pa.Table:
         """Convert Spark to Arrow manually.
 
         This is the slowest but most compatible path.
@@ -426,9 +390,11 @@ class ArrowBridge:
 
         # Infer Arrow schema
         arrow_fields = []
-        for field in spark_df.schema.fields:
-            arrow_type = _spark_type_to_arrow(field.dataType)
-            arrow_fields.append(pa.field(field.name, arrow_type, nullable=field.nullable))
+        for spark_field in spark_df.schema.fields:
+            arrow_type = _spark_type_to_arrow(spark_field.dataType)
+            arrow_fields.append(
+                pa.field(spark_field.name, arrow_type, nullable=spark_field.nullable)
+            )
         arrow_schema = pa.schema(arrow_fields)
 
         # Collect data
@@ -444,9 +410,9 @@ class ArrowBridge:
 
     def _spark_to_arrow_batches(
         self,
-        spark_df: "SparkDataFrame",
+        spark_df: SparkDataFrame,
         batch_size: int,
-    ) -> Iterator["pa.RecordBatch"]:
+    ) -> Iterator[pa.RecordBatch]:
         """Convert Spark to Arrow batches.
 
         Args:
@@ -465,9 +431,7 @@ class ArrowBridge:
                 yield batch
         except AttributeError:
             # Fallback: collect partitions separately
-            for partition_rows in spark_df.rdd.mapPartitions(
-                lambda it: [list(it)]
-            ).collect():
+            for partition_rows in spark_df.rdd.mapPartitions(lambda it: [list(it)]).collect():
                 if not partition_rows:
                     continue
 
@@ -485,7 +449,7 @@ class ArrowBridge:
 
     def _determine_strategy(
         self,
-        spark_df: "SparkDataFrame",
+        spark_df: SparkDataFrame,
     ) -> ArrowConversionStrategy:
         """Determine best conversion strategy.
 
@@ -526,61 +490,22 @@ class ArrowBridge:
     # Dask <-> Polars
     # -------------------------------------------------------------------------
 
-    def dask_to_polars(
-        self,
-        dask_df: Any,
-        collect: bool = True,
-    ) -> "pl.LazyFrame | pl.DataFrame":
-        """Convert Dask DataFrame to Polars.
+    def dask_to_polars(self, dask_df, collect=True):
+        return self.to_polars(dask_df, collect=collect)
 
-        Args:
-            dask_df: Dask DataFrame.
-            collect: If True, return DataFrame; if False, return LazyFrame.
-
-        Returns:
-            Polars DataFrame or LazyFrame.
-        """
+    def dask_to_polars_chunked(self, dask_df, chunk_size=None):
+        """Materialize one Dask partition, then yield bounded row slices."""
         import polars as pl
-        import pyarrow as pa
 
-        # Convert via Pandas with Arrow
-        pandas_df = dask_df.compute()
-        arrow_table = pa.Table.from_pandas(
-            pandas_df,
-            preserve_index=self._config.preserve_index,
-        )
-
-        df = pl.from_arrow(arrow_table)
-
-        if collect:
-            return df
-        return df.lazy()
-
-    def dask_to_polars_chunked(
-        self,
-        dask_df: Any,
-        chunk_size: int | None = None,
-    ) -> Iterator["pl.DataFrame"]:
-        """Convert Dask DataFrame to Polars in chunks.
-
-        Args:
-            dask_df: Dask DataFrame.
-            chunk_size: Rows per chunk (ignored, uses partitions).
-
-        Yields:
-            Polars DataFrames for each partition.
-        """
-        import polars as pl
-        import pyarrow as pa
-
-        for i in range(dask_df.npartitions):
-            pandas_df = dask_df.get_partition(i).compute()
-            arrow_table = pa.Table.from_pandas(pandas_df)
-            yield pl.from_arrow(arrow_table)
+        size = self._chunk_size(chunk_size)
+        for index in range(dask_df.npartitions):
+            table = self.to_arrow(dask_df.get_partition(index).compute())
+            for batch in table.to_batches(max_chunksize=size):
+                yield pl.from_arrow(batch)
 
     def polars_to_dask(
         self,
-        polars_df: "pl.DataFrame | pl.LazyFrame",
+        polars_df: pl.DataFrame | pl.LazyFrame,
         npartitions: int | None = None,
     ) -> Any:
         """Convert Polars DataFrame to Dask.
@@ -598,73 +523,30 @@ class ArrowBridge:
         if isinstance(polars_df, pl.LazyFrame):
             polars_df = polars_df.collect()
 
-        pandas_df = polars_df.to_pandas()
-
-        if npartitions:
-            return dd.from_pandas(pandas_df, npartitions=npartitions)
-        return dd.from_pandas(pandas_df, npartitions=4)
+        selected = 4 if npartitions is None else npartitions
+        if type(selected) is not int or selected <= 0:
+            raise ValueError("Dask partition count must be a positive integer")
+        pandas_df = self.to_arrow(polars_df).to_pandas()
+        return dd.from_pandas(pandas_df, npartitions=selected)
 
     # -------------------------------------------------------------------------
     # Ray <-> Polars
     # -------------------------------------------------------------------------
 
-    def ray_to_polars(
-        self,
-        ray_dataset: Any,
-        collect: bool = True,
-    ) -> "pl.LazyFrame | pl.DataFrame":
-        """Convert Ray Dataset to Polars.
+    def ray_to_polars(self, ray_dataset, collect=True):
+        return self.to_polars(ray_dataset, collect=collect)
 
-        Args:
-            ray_dataset: Ray Dataset.
-            collect: If True, return DataFrame; if False, return LazyFrame.
-
-        Returns:
-            Polars DataFrame or LazyFrame.
-        """
+    def ray_to_polars_chunked(self, ray_dataset, chunk_size=None):
         import polars as pl
 
-        # Ray datasets support Arrow natively
-        arrow_table = ray_dataset.to_arrow()
-        df = pl.from_arrow(arrow_table)
-
-        if collect:
-            return df
-        return df.lazy()
-
-    def ray_to_polars_chunked(
-        self,
-        ray_dataset: Any,
-        chunk_size: int | None = None,
-    ) -> Iterator["pl.DataFrame"]:
-        """Convert Ray Dataset to Polars in chunks.
-
-        Args:
-            ray_dataset: Ray Dataset.
-            chunk_size: Rows per chunk.
-
-        Yields:
-            Polars DataFrames for each chunk.
-        """
-        import polars as pl
-        import pyarrow as pa
-
-        batch_size = chunk_size or self._config.batch_size
-
-        for batch in ray_dataset.iter_batches(
-            batch_size=batch_size,
-            batch_format="pyarrow",
-        ):
-            if isinstance(batch, pa.Table):
-                yield pl.from_arrow(batch)
-            else:
-                # RecordBatch
-                table = pa.Table.from_batches([batch])
-                yield pl.from_arrow(table)
+        size = self._chunk_size(chunk_size)
+        for table in self._ray_tables(ray_dataset, size):
+            for part in table.to_batches(max_chunksize=size):
+                yield pl.from_arrow(part)
 
     def polars_to_ray(
         self,
-        polars_df: "pl.DataFrame | pl.LazyFrame",
+        polars_df: pl.DataFrame | pl.LazyFrame,
     ) -> Any:
         """Convert Polars DataFrame to Ray Dataset.
 
@@ -674,91 +556,134 @@ class ArrowBridge:
         Returns:
             Ray Dataset.
         """
-        import ray
         import polars as pl
+        import ray
 
         if isinstance(polars_df, pl.LazyFrame):
             polars_df = polars_df.collect()
 
-        arrow_table = polars_df.to_arrow()
+        arrow_table = self.to_arrow(polars_df)
         return ray.data.from_arrow(arrow_table)
 
     # -------------------------------------------------------------------------
     # Generic Methods
     # -------------------------------------------------------------------------
 
-    def to_arrow(self, data: Any) -> "pa.Table":
-        """Convert any supported data type to Arrow Table.
-
-        Args:
-            data: Data to convert.
-
-        Returns:
-            Arrow Table.
-        """
+    def to_arrow(self, data):
+        """Materialize supported input and enforce the captured Arrow policy."""
+        pd = sys.modules.get("pandas")
+        import polars as pl
         import pyarrow as pa
+
+        if isinstance(data, pa.RecordBatch):
+            table = pa.Table.from_batches([data])
+        elif isinstance(data, pa.Table):
+            table = data
+        elif isinstance(data, (pl.DataFrame, pl.LazyFrame)):
+            table = (data.collect() if isinstance(data, pl.LazyFrame) else data).to_arrow()
+        elif pd is not None and isinstance(data, pd.DataFrame):
+            table = pa.Table.from_pandas(data, preserve_index=self._config.preserve_index)
+        elif hasattr(data, "sparkSession"):
+            strategy = self._determine_strategy(data)
+            conversion = {
+                ArrowConversionStrategy.NATIVE: self._spark_to_arrow_native,
+                ArrowConversionStrategy.PANDAS: self._spark_to_arrow_pandas,
+                ArrowConversionStrategy.MANUAL: self._spark_to_arrow_manual,
+            }[strategy]
+            table = conversion(data)
+        elif hasattr(data, "compute") and hasattr(data, "npartitions"):
+            table = pa.Table.from_pandas(data.compute(), preserve_index=self._config.preserve_index)
+        elif hasattr(data, "iter_batches"):
+            tables = []
+            size = 0
+            for part in self._ray_tables(data, self._config.batch_size):
+                size += part.nbytes
+                if size > self._config.max_memory_bytes:
+                    raise MemoryError("Arrow conversion exceeds selected byte budget")
+                tables.append(part)
+            if tables:
+                table = pa.concat_tables(tables)
+            else:
+                schema = data.schema()
+                schema = getattr(schema, "base_schema", schema)
+                table = pa.Table.from_batches([], schema=schema)
+        else:
+            raise ValueError("Unsupported Arrow conversion input")
+        return self._normalize_table(table)
+
+    def _ray_tables(self, data, batch_size):
+        import pyarrow as pa
+
+        selected = data.schema()
+        schema = getattr(selected, "base_schema", selected)
+        if not isinstance(schema, pa.Schema):
+            raise TypeError("Ray dataset did not expose an Arrow schema")
+        for batch in data.iter_batches(batch_size=batch_size, batch_format="pyarrow"):
+            table = pa.Table.from_batches([batch]) if isinstance(batch, pa.RecordBatch) else batch
+            # A batch containing only nulls may carry Arrow null type even
+            # when the dataset's resolved column type is numeric.
+            table = table.cast(schema, safe=True)
+            yield self._normalize_table(table)
+
+    def _normalize_table(self, table):
+        import pyarrow as pa
+        import pyarrow.compute as pc
+
+        if isinstance(table, pa.RecordBatch):
+            table = pa.Table.from_batches([table])
+        if not isinstance(table, pa.Table):
+            raise TypeError("Conversion did not return an Arrow table")
+        if table.nbytes > self._config.max_memory_bytes:
+            raise MemoryError("Arrow conversion exceeds selected byte budget")
+        columns = []
+        for name, column in zip(table.column_names, table.columns, strict=True):
+            if column.null_count and self._config.null_handling == "error":
+                raise ValueError("Arrow null policy rejects null values")
+            if column.null_count and self._config.null_handling == "sentinel":
+                if name not in self._config.sentinel_values:
+                    raise ValueError("Missing explicit sentinel for nullable column")
+                scalar = pa.scalar(self._config.sentinel_values[name], type=column.type)
+                if not scalar.is_valid:
+                    raise ValueError("Sentinel must be non-null")
+                column = pc.fill_null(column, scalar)
+            if self._config.coerce_temporal:
+                dtype = column.type
+                target = None
+                if pa.types.is_timestamp(dtype):
+                    target = pa.timestamp("us", tz=dtype.tz)
+                elif pa.types.is_duration(dtype):
+                    target = pa.duration("us")
+                elif pa.types.is_time(dtype):
+                    target = pa.time64("us")
+                elif pa.types.is_date64(dtype):
+                    target = pa.date32()
+                if target is not None:
+                    column = column.cast(target, safe=True)
+            columns.append(column)
+        schema = pa.schema(
+            [
+                original.with_type(column.type)
+                for original, column in zip(table.schema, columns, strict=True)
+            ],
+            metadata=table.schema.metadata,
+        )
+        table = pa.Table.from_arrays(columns, schema=schema)
+        if table.nbytes > self._config.max_memory_bytes:
+            raise MemoryError("Arrow conversion exceeds selected byte budget")
+        return table
+
+    def _chunk_size(self, selected):
+        value = self._config.batch_size if selected is None else selected
+        if type(value) is not int or value <= 0:
+            raise ValueError("Arrow chunk size must be a positive integer")
+        return value
+
+    def to_polars(self, data, collect=True):
+        """Apply conversion policy even when the input is already Polars."""
         import polars as pl
 
-        if isinstance(data, pa.Table):
-            return data
-
-        if isinstance(data, (pl.DataFrame, pl.LazyFrame)):
-            if isinstance(data, pl.LazyFrame):
-                data = data.collect()
-            return data.to_arrow()
-
-        # Check for Spark
-        if hasattr(data, "sparkSession"):
-            return self._spark_to_arrow_native(data)
-
-        # Check for Dask
-        if hasattr(data, "compute") and hasattr(data, "npartitions"):
-            pandas_df = data.compute()
-            return pa.Table.from_pandas(pandas_df)
-
-        # Check for Ray Dataset
-        if hasattr(data, "to_arrow"):
-            return data.to_arrow()
-
-        # Check for Pandas
-        try:
-            import pandas as pd
-            if isinstance(data, pd.DataFrame):
-                return pa.Table.from_pandas(data)
-        except ImportError:
-            pass
-
-        raise ValueError(f"Cannot convert {type(data)} to Arrow")
-
-    def to_polars(
-        self,
-        data: Any,
-        collect: bool = True,
-    ) -> "pl.LazyFrame | pl.DataFrame":
-        """Convert any supported data type to Polars.
-
-        Args:
-            data: Data to convert.
-            collect: If True, return DataFrame; if False, return LazyFrame.
-
-        Returns:
-            Polars DataFrame or LazyFrame.
-        """
-        import polars as pl
-
-        if isinstance(data, pl.DataFrame):
-            return data if collect else data.lazy()
-
-        if isinstance(data, pl.LazyFrame):
-            return data.collect() if collect else data
-
-        # Convert via Arrow
-        arrow_table = self.to_arrow(data)
-        df = pl.from_arrow(arrow_table)
-
-        if collect:
-            return df
-        return df.lazy()
+        frame = pl.from_arrow(self.to_arrow(data))
+        return frame if collect else frame.lazy()
 
 
 # =============================================================================
@@ -767,9 +692,9 @@ class ArrowBridge:
 
 
 def spark_to_polars(
-    spark_df: "SparkDataFrame",
+    spark_df: SparkDataFrame,
     lazy: bool = True,
-) -> "pl.LazyFrame | pl.DataFrame":
+) -> pl.LazyFrame | pl.DataFrame:
     """Convert Spark DataFrame to Polars.
 
     Args:
@@ -784,9 +709,9 @@ def spark_to_polars(
 
 
 def polars_to_spark(
-    polars_df: "pl.DataFrame | pl.LazyFrame",
+    polars_df: pl.DataFrame | pl.LazyFrame,
     spark: Any,
-) -> "SparkDataFrame":
+) -> SparkDataFrame:
     """Convert Polars DataFrame to Spark.
 
     Args:
@@ -803,7 +728,7 @@ def polars_to_spark(
 def convert_to_polars(
     data: Any,
     lazy: bool = True,
-) -> "pl.LazyFrame | pl.DataFrame":
+) -> pl.LazyFrame | pl.DataFrame:
     """Convert any supported data type to Polars.
 
     Args:

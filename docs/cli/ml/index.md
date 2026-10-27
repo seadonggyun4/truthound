@@ -2,6 +2,27 @@
 
 Machine learning-based data quality detection commands.
 
+## Native model configuration and failures
+
+Python `truthound.ml` model constructors capture an independent copy of supplied
+configuration and mutable overrides. Keyword overrides do not mutate the caller's
+config, and unknown setting names raise `ValueError` instead of being ignored.
+The model's own `config` remains its explicit mutable configuration surface.
+Concept-drift training rejects missing selected features and propagates failed
+correlation computations as `ModelTrainingError`. Detection rejects missing target
+or selected trained features; it does not turn these errors into zero correlation
+or a successful no-drift verdict. This contract also applies through selected MCP
+model constructors and detection operations.
+
+
+Model restore stages a separate copy of native learned state, including ensemble
+children, before publishing it to the live owner. Invalid files preserve a trained
+model and its configuration. Custom model state must support copying for staged
+restore. Saving uses atomic sibling publication; pre-replacement failures preserve
+the previous artifact. A directory synchronization failure after replacement
+requires inspecting the published file. Use one writer per model owner.
+
+
 ## Overview
 
 | Command | Description | Primary Use Case |
@@ -144,3 +165,7 @@ truthound ml anomaly large_data.parquet --method isolation_forest --sample 10000
 - [Statistical Methods](../../concepts/statistical-methods.md)
 - [Advanced Features](../../concepts/advanced.md)
 - [compare command](../core/compare.md) - Statistical drift detection
+
+Native model `sample_size` selects up to that many rows using seeded row-hash priorities from Core sampling, rather than an input prefix. `random_seed` must be an unsigned 64-bit integer; `sample_size` must be positive or `None`. Repeatability requires identical input order and the same Polars version; this is not a hard memory limit because the native plan orders row priorities. Concept streaming methods use their separately documented tail windows.
+
+Built-in anomaly and drift training stages independent candidate state and publishes it only after complete success. A failed refit preserves a previously trained model. Ensembles own copies of supplied children; successful training does not train the caller’s original objects. Weights must match children, be finite and nonnegative, and have a finite positive total. Strategy and vote threshold are validated. Adding or removing a child invalidates training and requires `fit()` again. Failed ensemble training preserves every previous child.

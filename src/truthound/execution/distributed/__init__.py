@@ -33,80 +33,84 @@ Example:
     >>> lf = engine.to_polars_lazyframe()  # Arrow-based zero-copy
 """
 
-from truthound.execution.distributed.protocols import (
-    DistributedBackendProtocol,
-    DistributedAggregation,
-    PartitionStrategy,
-    ExecutionMode,
-    DistributedResult,
-    PartitionInfo,
-    ComputeBackend,
-    AggregationScope,
-    AggregationSpec,
-    BaseAggregator,
-    CountAggregator,
-    SumAggregator,
-    MeanAggregator,
-    StdAggregator,
-    MinMaxAggregator,
-    NullCountAggregator,
-    DistinctCountAggregator,
-    get_aggregator,
-    register_aggregator,
+from truthound.execution.distributed.aggregations import (
+    AggregationExecutor,
+    AggregationPlan,
+    DistributedAggregator,
+    aggregate_distributed,
+    create_null_count_plan,
+    create_stats_plan,
+)
+from truthound.execution.distributed.arrow_bridge import (
+    ArrowBridge,
+    ArrowConversionStrategy,
 )
 from truthound.execution.distributed.base import (
     BaseDistributedEngine,
     DistributedEngineConfig,
     ExecutionMetrics,
 )
-from truthound.execution.distributed.spark_engine import (
-    SparkExecutionEngine,
-    SparkEngineConfig,
-)
 from truthound.execution.distributed.dask_engine import (
-    DaskExecutionEngine,
     DaskEngineConfig,
+    DaskExecutionEngine,
+)
+from truthound.execution.distributed.mixins import (
+    DataQualityMixin,
+    DataQualityReport,
+    FullFeaturedMixin,
+    IOOperationsMixin,
+    PartitioningMixin,
+    StatisticalMixin,
+    ValidationMixin,
+    ValidationResult,
+)
+from truthound.execution.distributed.policies import (
+    DistributedOperationTimeout,
+    RetryableExecutionError,
+)
+from truthound.execution.distributed.protocols import (
+    AggregationScope,
+    AggregationSpec,
+    BaseAggregator,
+    ComputeBackend,
+    CountAggregator,
+    DistinctCountAggregator,
+    DistributedAggregation,
+    DistributedBackendProtocol,
+    DistributedResult,
+    ExecutionMode,
+    MeanAggregator,
+    MinMaxAggregator,
+    NullCountAggregator,
+    PartitionInfo,
+    PartitionStrategy,
+    StdAggregator,
+    SumAggregator,
+    get_aggregator,
+    register_aggregator,
 )
 from truthound.execution.distributed.ray_engine import (
-    RayExecutionEngine,
     RayEngineConfig,
-)
-from truthound.execution.distributed.aggregations import (
-    AggregationPlan,
-    AggregationExecutor,
-    DistributedAggregator,
-    aggregate_distributed,
-    create_stats_plan,
-    create_null_count_plan,
-)
-from truthound.execution.distributed.arrow_bridge import (
-    ArrowBridge,
-    ArrowConversionStrategy,
+    RayExecutionEngine,
 )
 from truthound.execution.distributed.registry import (
     DistributedEngineRegistry,
     get_distributed_engine,
-    register_distributed_engine,
-    list_distributed_engines,
-    list_available_engines,
     get_engine_registry,
+    list_available_engines,
+    list_distributed_engines,
+    register_distributed_engine,
+)
+from truthound.execution.distributed.spark_engine import (
+    SparkEngineConfig,
+    SparkExecutionEngine,
 )
 from truthound.execution.distributed.validator_adapter import (
-    DistributedValidatorAdapter,
     AdapterConfig,
+    DistributedValidatorAdapter,
     ExecutionStrategy,
-    validate_distributed,
     create_distributed_adapter,
-)
-from truthound.execution.distributed.mixins import (
-    StatisticalMixin,
-    DataQualityMixin,
-    PartitioningMixin,
-    IOOperationsMixin,
-    ValidationMixin,
-    FullFeaturedMixin,
-    DataQualityReport,
-    ValidationResult,
+    validate_distributed,
 )
 
 __all__ = [
@@ -135,6 +139,8 @@ __all__ = [
     "BaseDistributedEngine",
     "DistributedEngineConfig",
     "ExecutionMetrics",
+    "DistributedOperationTimeout",
+    "RetryableExecutionError",
     # Spark engine
     "SparkExecutionEngine",
     "SparkEngineConfig",

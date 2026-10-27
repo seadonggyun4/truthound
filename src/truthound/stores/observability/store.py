@@ -10,14 +10,15 @@ from __future__ import annotations
 
 import time
 import uuid
-from contextlib import contextmanager
-from typing import Any, Generator, Generic, Iterator, TypeVar
+from collections.abc import Generator, Iterator  # noqa: TC003 - public annotation introspection
+from contextlib import ExitStack, contextmanager
+from typing import Any, Generic, TypeVar
 
 from truthound.stores.base import (
     BaseStore,
+    Serializable,
     StoreConfig,
     StoreQuery,
-    Serializable,
 )
 from truthound.stores.observability.audit import (
     AuditEvent,
@@ -28,7 +29,6 @@ from truthound.stores.observability.audit import (
 )
 from truthound.stores.observability.config import ObservabilityConfig
 from truthound.stores.observability.metrics import (
-    InMemoryMetricsBackend,
     StoreMetrics,
 )
 from truthound.stores.observability.protocols import (
@@ -39,8 +39,6 @@ from truthound.stores.observability.protocols import (
 )
 from truthound.stores.observability.tracing import (
     NoopTracer,
-    Span,
-    SpanKind,
 )
 
 T = TypeVar("T", bound=Serializable)
@@ -96,9 +94,9 @@ class ObservabilityManager:
     def _create_audit_backend(self) -> AuditBackend:
         """Create audit backend based on config."""
         from truthound.stores.observability.audit import (
+            AsyncAuditBackend,
             FileAuditBackend,
             JsonAuditBackend,
-            AsyncAuditBackend,
         )
 
         backend_type = self.config.audit.backend.lower()
@@ -220,10 +218,13 @@ class ObservabilityManager:
 
     def shutdown(self) -> None:
         """Shutdown all observability backends."""
-        if self.audit:
-            self.audit.close()
-        if hasattr(self.tracer, "shutdown"):
-            self.tracer.shutdown()
+        with ExitStack() as cleanup:
+            if self.metrics and hasattr(self.metrics.backend, "stop_http_server"):
+                cleanup.callback(self.metrics.backend.stop_http_server)
+            if hasattr(self.tracer, "shutdown"):
+                cleanup.callback(self.tracer.shutdown)
+            if self.audit:
+                cleanup.callback(self.audit.close)
 
 
 class ObservableStore(BaseStore[T, ConfigT], Generic[T, ConfigT]):
@@ -250,6 +251,7 @@ class ObservableStore(BaseStore[T, ConfigT], Generic[T, ConfigT]):
         config: ObservabilityConfig | None = None,
         context: ObservabilityContext | None = None,
     ) -> None:
+        super().__init__(store.config)
         self._store = store
         self._obs_config = config or ObservabilityConfig()
         self._default_context = context
@@ -288,13 +290,15 @@ class ObservableStore(BaseStore[T, ConfigT], Generic[T, ConfigT]):
 
     def close(self) -> None:
         """Close the store with observability."""
-        with self._obs.observe(
-            "close",
-            AuditEventType.CLOSE,
-            context=self._default_context,
-        ):
-            self._store.close()
-        self._obs.shutdown()
+        try:
+            with self._obs.observe(
+                "close",
+                AuditEventType.CLOSE,
+                context=self._default_context,
+            ):
+                self._store.close()
+        finally:
+            self._obs.shutdown()
 
     # -------------------------------------------------------------------------
     # CRUD Operations
@@ -320,7 +324,7 @@ class ObservableStore(BaseStore[T, ConfigT], Generic[T, ConfigT]):
                 try:
                     import json
                     size = len(json.dumps(item.to_dict()))
-                    self._obs.metrics.record_save(0, size)
+                    self._obs.metrics.record_save(0, size, record_operation=False)
                 except Exception:
                     pass
 
@@ -391,7 +395,7 @@ class ObservableStore(BaseStore[T, ConfigT], Generic[T, ConfigT]):
 
             # Record query metrics
             if self._obs.metrics:
-                self._obs.metrics.record_query(0, len(results))
+                self._obs.metrics.record_query(0, len(results), record_operation=False)
 
             return results
 
@@ -476,7 +480,7 @@ class ObservableStore(BaseStore[T, ConfigT], Generic[T, ConfigT]):
             AuditEventType.BATCH_CREATE,
             context=context or self._default_context,
             batch_size=len(items),
-        ) as ctx:
+        ):
             start = time.perf_counter()
             results = []
             for item in items:
@@ -518,7 +522,7 @@ class ObservableStore(BaseStore[T, ConfigT], Generic[T, ConfigT]):
     # Context Management
     # -------------------------------------------------------------------------
 
-    def with_context(self, context: ObservabilityContext) -> "ObservableStore[T, ConfigT]":
+    def with_context(self, context: ObservabilityContext) -> ObservableStore[T, ConfigT]:
         """Create a new store instance with the given default context."""
         return ObservableStore(
             self._store,
@@ -526,7 +530,7 @@ class ObservableStore(BaseStore[T, ConfigT], Generic[T, ConfigT]):
             context=context,
         )
 
-    def with_user(self, user_id: str, tenant_id: str | None = None) -> "ObservableStore[T, ConfigT]":
+    def with_user(self, user_id: str, tenant_id: str | None = None) -> ObservableStore[T, ConfigT]:
         """Create a new store instance with user context."""
         context = self._obs.create_context(
             user_id=user_id,

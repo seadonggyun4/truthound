@@ -368,3 +368,11 @@ for target in config.targets:
 - [Observability](observability.md) - Audit, metrics, tracing
 - [Caching](caching.md) - In-memory caching layer
 - [Tiering](tiering.md) - Hot/Warm/Cold/Archive storage
+
+
+## Failure and shutdown contract
+
+Synchronous and semi-synchronous save failure raises `StoreWriteError` after a primary write may already exist. Do not blindly retry it. Call `save_async` inside an event loop; synchronous `save` rejects that usage before a primary write. `flush` and `stop` drain instance-owned async tasks and queued writes; counters report replica failures, and the queue is not durable. Failed batch/full synchronization preserves `success=False`; failed full sync marks the target unhealthy. An optional trusted `set_io_guard(callback)` checks immediately before primary/replica I/O, including background reads and writes. No callback is serialized. [MCP store contracts](../mcp.md#native-execution-engines-and-general-stores) expose these native operations through fixed aliases and exact approval.
+
+
+The native replication monitor awaits sync or async event handlers in registration order and attempts remaining handlers after one fails. Handler failures raise an ExceptionGroup from direct emission and are recorded by background sweeps; callbacks are not automatically retried for the same health transition. Failed health checks mark that replica unhealthy, preserve the configured interval and allow other replicas to be checked. get_health_summary() exposes running, cumulative monitor_failures/handler_failures and the last 100 phase/replica/handler-index/timestamp records without exception messages. stop() cancels and awaits its owned task. MCP replication_stats includes bounded monitor errors with public replica aliases, without private names. Intervals and lag limits must be finite.

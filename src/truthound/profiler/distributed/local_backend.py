@@ -7,9 +7,8 @@ from __future__ import annotations
 
 import logging
 import os
-import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
@@ -19,7 +18,11 @@ from truthound.profiler.distributed.base import (
     PartitionInfo,
     PartitionStrategy,
     WorkerResult,
+    backend_registry,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 logger = logging.getLogger(__name__)
@@ -41,6 +44,8 @@ class LocalBackend(DistributedBackend):
         self._current_data: pl.DataFrame | None = None
 
     def initialize(self) -> None:
+        if self._initialized:
+            return
         num_workers = self.config.num_workers
         if num_workers <= 0:
             num_workers = min(os.cpu_count() or 4, 8)
@@ -64,7 +69,10 @@ class LocalBackend(DistributedBackend):
         data: pl.DataFrame | pl.LazyFrame | str,
         num_partitions: int | None = None,
         strategy: PartitionStrategy = PartitionStrategy.COLUMN_BASED,
+        sample_size: int | None = None,
     ) -> list[PartitionInfo]:
+        if num_partitions is not None and (isinstance(num_partitions, bool) or num_partitions < 1):
+            raise ValueError("num_partitions must be positive")
         # Load data if path
         if isinstance(data, str):
             if data.endswith(".parquet"):
@@ -78,46 +86,15 @@ class LocalBackend(DistributedBackend):
         else:
             df = data
 
+        if sample_size is not None:
+            df = df.head(sample_size)
+        self._checkpoint_polars(df)
         self._current_data = df
         columns = df.columns
         row_count = len(df)
 
-        if strategy == PartitionStrategy.COLUMN_BASED:
-            # One partition per column or group of columns
-            num_parts = len(columns) if num_partitions is None else min(num_partitions, len(columns))
-            partitions = []
-
-            cols_per_part = max(1, len(columns) // num_parts)
-            for i in range(num_parts):
-                start = i * cols_per_part
-                end = start + cols_per_part if i < num_parts - 1 else len(columns)
-                partitions.append(PartitionInfo(
-                    partition_id=i,
-                    total_partitions=num_parts,
-                    start_row=0,
-                    end_row=row_count,
-                    columns=columns[start:end],
-                ))
-
-            return partitions
-
-        else:  # ROW_BASED or HYBRID
-            num_parts = num_partitions or (os.cpu_count() or 4)
-            rows_per_part = max(1, row_count // num_parts)
-
-            partitions = []
-            for i in range(num_parts):
-                start = i * rows_per_part
-                end = start + rows_per_part if i < num_parts - 1 else row_count
-                partitions.append(PartitionInfo(
-                    partition_id=i,
-                    total_partitions=num_parts,
-                    start_row=start,
-                    end_row=end,
-                    columns=columns,
-                ))
-
-            return partitions
+        from truthound.profiler.distributed._partitions import polars_plan
+        return polars_plan(row_count, columns, num_partitions or self.config.parallelism or (os.cpu_count() or 4), strategy)
 
     def map_partitions(
         self,
@@ -128,42 +105,15 @@ class LocalBackend(DistributedBackend):
         if not self._executor:
             raise RuntimeError("Backend not initialized")
 
-        # Use internal profile function for actual profiling
-        def profile_partition(partition: PartitionInfo) -> WorkerResult:
-            start_time = time.time()
-            df = self._current_data
-
-            if df is None:
-                return WorkerResult(
-                    partition_id=partition.partition_id,
-                    column_stats={},
-                    row_count=0,
-                    processing_time_ms=0,
-                    errors=["No data available"],
-                )
-
-            # Slice data if row-based
-            if partition.start_row > 0 or partition.end_row < len(df):
-                df = df.slice(partition.start_row, partition.end_row - partition.start_row)
-
-            # Profile columns
-            stats = {}
-            for col_name in partition.columns:
-                if col_name not in df.columns:
-                    continue
-
-                col = df.get_column(col_name)
-                col_stats = self._profile_column(col)
-                stats[col_name] = col_stats
-
-            elapsed_ms = (time.time() - start_time) * 1000
-
-            return WorkerResult(
-                partition_id=partition.partition_id,
-                column_stats=stats,
-                row_count=len(df),
-                processing_time_ms=elapsed_ms,
-            )
+        from truthound.profiler.distributed.base import execute_partition
+        policy = self.config
+        frame = self._current_data
+        if frame is None:
+            raise RuntimeError("No data distributed")
+        def profile_partition(partition):
+            from truthound.profiler.distributed._partitions import select_polars
+            selected = select_polars(frame, partition)
+            return execute_partition(func, partition, selected, policy)
 
         futures = {
             self._executor.submit(profile_partition, partition): partition
@@ -177,13 +127,13 @@ class LocalBackend(DistributedBackend):
                 result = future.result()
                 results.append(result)
             except Exception as e:
-                logger.error(f"Partition {partition.partition_id} failed: {e}")
+                logger.error("Native profiling partition failed")
                 results.append(WorkerResult(
                     partition_id=partition.partition_id,
                     column_stats={},
                     row_count=0,
                     processing_time_ms=0,
-                    errors=[str(e)],
+                    errors=[type(e).__name__],
                 ))
 
         return sorted(results, key=lambda r: r.partition_id)
@@ -227,67 +177,24 @@ class LocalBackend(DistributedBackend):
 
         return stats
 
+    def sample_column(self, name, limit):
+        return self._current_data.select(name).drop_nulls().head(limit)
+
     def aggregate_results(
         self,
         results: list[WorkerResult],
     ) -> dict[str, dict[str, Any]]:
-        aggregated: dict[str, dict[str, Any]] = {}
-
-        for result in results:
-            for col_name, stats in result.column_stats.items():
-                if col_name not in aggregated:
-                    aggregated[col_name] = {
-                        "row_count": 0,
-                        "null_count": 0,
-                        "distinct_values": set(),
-                        "min_value": None,
-                        "max_value": None,
-                        "sum_value": 0,
-                        "sum_squared": 0,
-                        "dtype": stats.get("dtype", "unknown"),
-                    }
-
-                agg = aggregated[col_name]
-                agg["row_count"] += stats.get("row_count", 0)
-                agg["null_count"] += stats.get("null_count", 0)
-
-                # Min/Max
-                if stats.get("min_value") is not None:
-                    if agg["min_value"] is None or stats["min_value"] < agg["min_value"]:
-                        agg["min_value"] = stats["min_value"]
-                if stats.get("max_value") is not None:
-                    if agg["max_value"] is None or stats["max_value"] > agg["max_value"]:
-                        agg["max_value"] = stats["max_value"]
-
-                # For computing variance
-                agg["sum_value"] += stats.get("sum_value", 0)
-                agg["sum_squared"] += stats.get("sum_squared", 0)
-
-                # Length stats (take from first partition for strings)
-                if "min_length" in stats and "min_length" not in agg:
-                    agg["min_length"] = stats["min_length"]
-                    agg["max_length"] = stats["max_length"]
-                    agg["avg_length"] = stats["avg_length"]
-
-                # Distinct count from first partition (approximate)
-                if "distinct_count" in stats:
-                    agg["distinct_count"] = stats["distinct_count"]
-
-        # Finalize aggregations
-        for col_name, agg in aggregated.items():
-            if isinstance(agg.get("distinct_values"), set):
-                agg["distinct_count"] = len(agg.pop("distinct_values"))
-
-            n = agg["row_count"]
-            if n > 0 and agg.get("sum_value"):
-                mean = agg["sum_value"] / n
-                agg["mean"] = mean
-                variance = (agg["sum_squared"] / n) - (mean ** 2)
-                agg["std"] = variance ** 0.5 if variance > 0 else 0
-
-        return aggregated
+        if any(result.errors for result in results):
+            raise RuntimeError("Native profiling partition failed")
+        if self._current_data is None:
+            raise RuntimeError("No active native profiling input")
+        # Global native reductions preserve cross-partition duplicates and null
+        # denominators without shipping unbounded distinct-value sets in workers.
+        columns = {name for result in results for name in result.column_stats}
+        return {name: self._profile_column(self._current_data[name])
+                for name in self._current_data.columns if name in columns}
 
 
 # Register with global registry
-from truthound.profiler.distributed.base import backend_registry
+
 backend_registry.register("local", LocalBackend)

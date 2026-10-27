@@ -16,10 +16,19 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from enum import Enum, auto
-from typing import TYPE_CHECKING, Any, Callable, Generic, Iterator, Protocol, TypeVar, runtime_checkable
+from enum import Enum
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Generic,
+    Protocol,
+    TypeVar,
+    runtime_checkable,
+)
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Iterator
+
     import polars as pl
     import pyarrow as pa
 
@@ -159,6 +168,7 @@ class AggregationSpec:
     aggregations: list[DistributedAggregation] = field(default_factory=list)
     group_by: list[str] = field(default_factory=list)
     scope: AggregationScope = AggregationScope.GLOBAL
+    filter_condition: str | None = None
 
     def add(
         self,
@@ -166,7 +176,7 @@ class AggregationSpec:
         operation: str,
         alias: str = "",
         **params: Any,
-    ) -> "AggregationSpec":
+    ) -> AggregationSpec:
         """Add an aggregation to the spec."""
         self.aggregations.append(
             DistributedAggregation(
@@ -206,7 +216,7 @@ class DistributedDataProtocol(Protocol):
         """Get number of partitions."""
         ...
 
-    def repartition(self, num_partitions: int) -> "DistributedDataProtocol":
+    def repartition(self, num_partitions: int) -> DistributedDataProtocol:
         """Repartition the data."""
         ...
 
@@ -227,7 +237,7 @@ class MapReduceProtocol(Protocol[T, ResultT]):
     def map_partitions(
         self,
         func: Callable[[Iterator[T]], Iterator[ResultT]],
-    ) -> "MapReduceProtocol[ResultT, ResultT]":
+    ) -> MapReduceProtocol[ResultT, ResultT]:
         """Apply function to each partition."""
         ...
 
@@ -339,12 +349,12 @@ class ArrowConvertibleProtocol(Protocol):
     different compute backends.
     """
 
-    def to_arrow(self) -> "pa.Table":
+    def to_arrow(self) -> pa.Table:
         """Convert to PyArrow Table."""
         ...
 
     @classmethod
-    def from_arrow(cls, table: "pa.Table") -> Any:
+    def from_arrow(cls, table: pa.Table) -> Any:
         """Create from PyArrow Table."""
         ...
 
@@ -386,7 +396,7 @@ class DistributedExecutionProtocol(Protocol):
         """Perform distributed aggregation."""
         ...
 
-    def to_polars_lazyframe(self) -> "pl.LazyFrame":
+    def to_polars_lazyframe(self) -> pl.LazyFrame:
         """Convert to Polars LazyFrame (via Arrow)."""
         ...
 
@@ -464,7 +474,7 @@ class CountAggregator(BaseAggregator[CountState]):
 class SumState:
     """State for sum aggregator."""
 
-    total: float = 0.0
+    total: float = 0
 
 
 class SumAggregator(BaseAggregator[SumState]):
@@ -477,7 +487,7 @@ class SumAggregator(BaseAggregator[SumState]):
 
     def accumulate(self, state: SumState, value: Any) -> SumState:
         if value is not None:
-            state.total += float(value)
+            state.total += value
         return state
 
     def merge(self, state1: SumState, state2: SumState) -> SumState:
@@ -525,11 +535,7 @@ class MeanAggregator(BaseAggregator[MeanState]):
         count = state1.count + state2.count
         delta = state2.mean - state1.mean
         mean = state1.mean + delta * state2.count / count
-        m2 = (
-            state1.m2
-            + state2.m2
-            + delta**2 * state1.count * state2.count / count
-        )
+        m2 = state1.m2 + state2.m2 + delta**2 * state1.count * state2.count / count
         return MeanState(count=count, mean=mean, m2=m2)
 
     def finalize(self, state: MeanState) -> float:
@@ -549,6 +555,8 @@ class StdAggregator(BaseAggregator[StdState]):
     name = "std"
 
     def __init__(self, ddof: int = 1) -> None:
+        if type(ddof) is not int or ddof < 0:
+            raise ValueError("ddof must be a non-negative integer")
         self.ddof = ddof  # Delta degrees of freedom
 
     def initialize(self) -> StdState:
@@ -574,11 +582,7 @@ class StdAggregator(BaseAggregator[StdState]):
         count = state1.count + state2.count
         delta = state2.mean - state1.mean
         mean = state1.mean + delta * state2.count / count
-        m2 = (
-            state1.m2
-            + state2.m2
-            + delta**2 * state1.count * state2.count / count
-        )
+        m2 = state1.m2 + state2.m2 + delta**2 * state1.count * state2.count / count
         return StdState(count=count, mean=mean, m2=m2)
 
     def finalize(self, state: StdState) -> float:
@@ -607,7 +611,7 @@ class MinMaxAggregator(BaseAggregator[MinMaxState]):
     def accumulate(self, state: MinMaxState, value: Any) -> MinMaxState:
         if value is None:
             return state
-        x = float(value)
+        x = value
         if state.min_value is None or x < state.min_value:
             state.min_value = x
         if state.max_value is None or x > state.max_value:
@@ -621,12 +625,12 @@ class MinMaxAggregator(BaseAggregator[MinMaxState]):
         if state1.min_value is not None and state2.min_value is not None:
             min_val = min(state1.min_value, state2.min_value)
         else:
-            min_val = state1.min_value or state2.min_value
+            min_val = state1.min_value if state1.min_value is not None else state2.min_value
 
         if state1.max_value is not None and state2.max_value is not None:
             max_val = max(state1.max_value, state2.max_value)
         else:
-            max_val = state1.max_value or state2.max_value
+            max_val = state1.max_value if state1.max_value is not None else state2.max_value
 
         return MinMaxState(min_value=min_val, max_value=max_val)
 
@@ -668,45 +672,88 @@ class NullCountAggregator(BaseAggregator[NullCountState]):
 
 @dataclass
 class DistinctState:
-    """State for approximate distinct count (HyperLogLog)."""
+    """State for exact bounded distinct values."""
 
-    # Simplified version - for production use HyperLogLog
     seen: set = field(default_factory=set)
     count: int = 0
 
 
-class DistinctCountAggregator(BaseAggregator[DistinctState]):
-    """Distributed distinct count aggregator.
+def _distinct_identity(value: Any) -> Any:
+    """Keep equality-bearing values, never just their potentially colliding hash."""
+    if isinstance(value, list):
+        return (list, tuple(_distinct_identity(item) for item in value))
+    if isinstance(value, dict):
+        return (
+            dict,
+            frozenset(
+                (_distinct_identity(key), _distinct_identity(item)) for key, item in value.items()
+            ),
+        )
+    if isinstance(value, tuple):
+        return (tuple, tuple(_distinct_identity(item) for item in value))
+    if isinstance(value, (set, frozenset)):
+        return (type(value), frozenset(_distinct_identity(item) for item in value))
+    if isinstance(value, float) and value != value:
+        return (float, "NaN")
+    hash(value)  # Unsupported values fail visibly rather than comparing repr().
+    return (type(value), value)
 
-    Note: For very large cardinalities, consider using HyperLogLog.
-    """
+
+class DistinctCountAggregator(BaseAggregator[DistinctState]):
+    """Exact distinct count with a hard per-state/merged cardinality limit."""
 
     name = "distinct_count"
 
     def __init__(self, max_sample: int = 100_000) -> None:
+        if type(max_sample) is not int or max_sample < 1:
+            raise ValueError("max_sample must be a positive integer")
         self.max_sample = max_sample
 
     def initialize(self) -> DistinctState:
         return DistinctState()
 
     def accumulate(self, state: DistinctState, value: Any) -> DistinctState:
-        if value is not None and len(state.seen) < self.max_sample:
-            # Use hash for memory efficiency
-            try:
-                state.seen.add(hash(value))
-            except TypeError:
-                state.seen.add(hash(str(value)))
+        if value is not None:
+            identity = _distinct_identity(value)
+            if identity not in state.seen:
+                if len(state.seen) >= self.max_sample:
+                    raise MemoryError("Distinct cardinality limit exceeded")
+                state.seen.add(identity)
         state.count += 1
         return state
 
     def merge(self, state1: DistinctState, state2: DistinctState) -> DistinctState:
-        merged = DistinctState()
-        merged.seen = state1.seen | state2.seen
-        merged.count = state1.count + state2.count
+        merged = DistinctState(seen=set(state1.seen), count=state1.count + state2.count)
+        for identity in state2.seen:
+            if identity not in merged.seen:
+                if len(merged.seen) >= self.max_sample:
+                    raise MemoryError("Distinct cardinality limit exceeded")
+                merged.seen.add(identity)
         return merged
 
     def finalize(self, state: DistinctState) -> int:
         return len(state.seen)
+
+
+class VarianceAggregator(StdAggregator):
+    name = "var"
+
+    def finalize(self, state: StdState) -> float:
+        return state.m2 / (state.count - self.ddof) if state.count > self.ddof else 0.0
+
+
+class MinAggregator(MinMaxAggregator):
+    name = "min"
+
+    def finalize(self, state: MinMaxState) -> Any:
+        return state.min_value
+
+
+class MaxAggregator(MinMaxAggregator):
+    name = "max"
+
+    def finalize(self, state: MinMaxState) -> Any:
+        return state.max_value
 
 
 # =============================================================================
@@ -720,6 +767,9 @@ AGGREGATOR_REGISTRY: dict[str, type[BaseAggregator]] = {
     "mean": MeanAggregator,
     "std": StdAggregator,
     "minmax": MinMaxAggregator,
+    "min": MinAggregator,
+    "max": MaxAggregator,
+    "var": VarianceAggregator,
     "null_count": NullCountAggregator,
     "distinct_count": DistinctCountAggregator,
 }
@@ -739,10 +789,7 @@ def get_aggregator(name: str, **kwargs: Any) -> BaseAggregator:
         KeyError: If aggregator not found.
     """
     if name not in AGGREGATOR_REGISTRY:
-        raise KeyError(
-            f"Unknown aggregator: {name}. "
-            f"Available: {list(AGGREGATOR_REGISTRY.keys())}"
-        )
+        raise KeyError(f"Unknown aggregator: {name}. Available: {list(AGGREGATOR_REGISTRY.keys())}")
     return AGGREGATOR_REGISTRY[name](**kwargs)
 
 

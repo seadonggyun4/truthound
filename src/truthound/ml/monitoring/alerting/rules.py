@@ -8,18 +8,55 @@ Provides various rule types for detecting issues:
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Callable
+import copy
+import math
 import uuid
+from abc import ABC, abstractmethod
+from collections import deque
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from numbers import Real
 
 from truthound.ml.monitoring.protocols import (
-    IAlertRule,
-    AlertSeverity,
-    ModelMetrics,
     Alert,
+    AlertSeverity,
+    IAlertRule,
+    ModelMetrics,
 )
+
+
+def _metric_value(metrics: ModelMetrics, name: str) -> float | None:
+    standard = {
+        key: getattr(metrics, key)
+        for key in (
+            "latency_ms",
+            "throughput_rps",
+            "prediction_drift",
+            "accuracy",
+            "precision",
+            "recall",
+            "f1_score",
+        )
+    }
+    if name in standard:
+        return standard[name]
+    if name.startswith("drift_"):
+        return metrics.feature_drift.get(name[6:])
+    return metrics.custom_metrics.get(name)
+
+
+def _finite_number(value, *, positive=False):
+    if (
+        isinstance(value, bool)
+        or not isinstance(value, Real)
+        or not math.isfinite(value)
+        or (positive and value <= 0)
+    ):
+        raise ValueError("Native alert configuration requires a finite number")
 
 
 class AlertRule(ABC, IAlertRule):
@@ -31,6 +68,8 @@ class AlertRule(ABC, IAlertRule):
         severity: AlertSeverity = AlertSeverity.WARNING,
         description: str = "",
     ):
+        if not isinstance(name, str) or not name or not isinstance(severity, AlertSeverity):
+            raise ValueError("A native rule name and severity are required")
         self._name = name
         self._severity = severity
         self._description = description
@@ -92,6 +131,14 @@ class ThresholdConfig:
     comparison: str = "gt"  # gt, lt, gte, lte, eq
     for_duration_seconds: int = 0
 
+    def __post_init__(self):
+        if not isinstance(self.metric_name, str) or not self.metric_name:
+            raise ValueError("A metric name is required")
+        _finite_number(self.threshold)
+        _finite_number(self.for_duration_seconds)
+        if self.for_duration_seconds < 0 or self.comparison not in {"gt", "lt", "gte", "lte", "eq"}:
+            raise ValueError("Invalid native threshold comparison or duration")
+
 
 class ThresholdRule(AlertRule):
     """Simple threshold-based alert rule.
@@ -146,11 +193,12 @@ class ThresholdRule(AlertRule):
             return False
 
         is_exceeded = comparator(value, self._config.threshold)
+        _finite_number(value)
 
         # Handle duration requirement
         if self._config.for_duration_seconds > 0:
             model_id = metrics.model_id
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
 
             if is_exceeded:
                 if model_id not in self._first_exceeded:
@@ -163,35 +211,10 @@ class ThresholdRule(AlertRule):
                 self._first_exceeded.pop(model_id, None)
                 return False
 
-        return is_exceeded
+        return bool(is_exceeded)
 
     def _get_metric_value(self, metrics: ModelMetrics) -> float | None:
-        """Get metric value by name."""
-        name = self._config.metric_name
-
-        # Check standard metrics
-        if name == "latency_ms":
-            return metrics.latency_ms
-        elif name == "throughput_rps":
-            return metrics.throughput_rps
-        elif name == "prediction_drift":
-            return metrics.prediction_drift
-        elif name == "accuracy":
-            return metrics.accuracy
-        elif name == "precision":
-            return metrics.precision
-        elif name == "recall":
-            return metrics.recall
-        elif name == "f1_score":
-            return metrics.f1_score
-
-        # Check feature drift
-        if name.startswith("drift_"):
-            feature = name[6:]
-            return metrics.feature_drift.get(feature)
-
-        # Check custom metrics
-        return metrics.custom_metrics.get(name)
+        return _metric_value(metrics, self._config.metric_name)
 
     def get_message(self, metrics: ModelMetrics) -> str:
         """Get alert message."""
@@ -264,33 +287,14 @@ class AnomalyRule(AlertRule):
         history = self._history[model_id]
         mean = sum(history) / len(history)
         variance = sum((x - mean) ** 2 for x in history) / len(history)
-        std = variance ** 0.5 if variance > 0 else 1.0
+        std = variance**0.5 if variance > 0 else 1.0
 
         z_score = abs(value - mean) / std if std > 0 else 0
 
-        return z_score > self._z_threshold
+        return bool(z_score > self._z_threshold)
 
     def _get_metric_value(self, metrics: ModelMetrics) -> float | None:
-        """Get metric value by name."""
-        # Same logic as ThresholdRule
-        name = self._metric_name
-
-        if name == "latency_ms":
-            return metrics.latency_ms
-        elif name == "throughput_rps":
-            return metrics.throughput_rps
-        elif name == "prediction_drift":
-            return metrics.prediction_drift
-        elif name == "accuracy":
-            return metrics.accuracy
-        elif name == "precision":
-            return metrics.precision
-        elif name == "recall":
-            return metrics.recall
-        elif name == "f1_score":
-            return metrics.f1_score
-
-        return metrics.custom_metrics.get(name)
+        return _metric_value(metrics, self._metric_name)
 
     def get_message(self, metrics: ModelMetrics) -> str:
         """Get alert message."""
@@ -366,8 +370,8 @@ class TrendRule(AlertRule):
 
         # Calculate trend
         history = self._history[model_id]
-        first_half = history[:len(history)//2]
-        second_half = history[len(history)//2:]
+        first_half = history[: len(history) // 2]
+        second_half = history[len(history) // 2 :]
 
         first_mean = sum(first_half) / len(first_half)
         second_mean = sum(second_half) / len(second_half)
@@ -378,32 +382,14 @@ class TrendRule(AlertRule):
         change_percent = ((second_mean - first_mean) / abs(first_mean)) * 100
 
         if self._trend == "increasing":
-            return change_percent >= self._min_change_percent
+            return bool(change_percent >= self._min_change_percent)
         elif self._trend == "decreasing":
-            return change_percent <= -self._min_change_percent
+            return bool(change_percent <= -self._min_change_percent)
 
         return False
 
     def _get_metric_value(self, metrics: ModelMetrics) -> float | None:
-        """Get metric value by name."""
-        name = self._metric_name
-
-        if name == "latency_ms":
-            return metrics.latency_ms
-        elif name == "throughput_rps":
-            return metrics.throughput_rps
-        elif name == "prediction_drift":
-            return metrics.prediction_drift
-        elif name == "accuracy":
-            return metrics.accuracy
-        elif name == "precision":
-            return metrics.precision
-        elif name == "recall":
-            return metrics.recall
-        elif name == "f1_score":
-            return metrics.f1_score
-
-        return metrics.custom_metrics.get(name)
+        return _metric_value(metrics, self._metric_name)
 
     def get_message(self, metrics: ModelMetrics) -> str:
         """Get alert message."""
@@ -411,8 +397,8 @@ class TrendRule(AlertRule):
         if len(history) < 2:
             return f"Model {metrics.model_id}: {self._metric_name} trend detected"
 
-        first_half = history[:len(history)//2]
-        second_half = history[len(history)//2:]
+        first_half = history[: len(history) // 2]
+        second_half = history[len(history) // 2 :]
         first_mean = sum(first_half) / len(first_half)
         second_mean = sum(second_half) / len(second_half)
 
@@ -432,9 +418,26 @@ class RuleEngine:
         >>> alerts = engine.evaluate(metrics)
     """
 
-    def __init__(self):
+    def __init__(self, history_limit: int = 10000):
+        if type(history_limit) is not int or history_limit <= 0:
+            raise ValueError("Alert history limit must be a positive integer")
         self._rules: list[AlertRule] = []
-        self._active_alerts: dict[str, Alert] = {}  # rule_name:model_id -> Alert
+        self._active_alerts: dict[tuple[str, str], Alert] = {}
+        self._history = deque(maxlen=history_limit)
+        self._resolved: list[Alert] = []
+        self._execution_guard = None
+
+    def set_execution_guard(self, guard):
+        if guard is not None and not callable(guard):
+            raise TypeError("Execution guard must be callable")
+        self._execution_guard = guard
+
+    def get_rule_names(self) -> list[str]:
+        return [rule.name for rule in self._rules]
+
+    def _guard_execution(self):
+        if self._execution_guard is not None:
+            self._execution_guard()
 
     def add_rule(self, rule: AlertRule) -> None:
         """Add a rule to the engine.
@@ -442,6 +445,11 @@ class RuleEngine:
         Args:
             rule: Rule to add
         """
+        self._guard_execution()
+        if not isinstance(rule, AlertRule) or not rule.name:
+            raise TypeError("A named native alert rule is required")
+        if any(existing.name == rule.name for existing in self._rules):
+            raise ValueError("Native alert rule name is already registered")
         self._rules.append(rule)
 
     def remove_rule(self, name: str) -> bool:
@@ -453,9 +461,12 @@ class RuleEngine:
         Returns:
             True if removed
         """
+        self._guard_execution()
         for i, rule in enumerate(self._rules):
             if rule.name == name:
                 self._rules.pop(i)
+                for key in [key for key in self._active_alerts if key[0] == name]:
+                    self._active_alerts.pop(key).resolved_at = datetime.now(UTC)
                 return True
         return False
 
@@ -469,24 +480,48 @@ class RuleEngine:
             List of triggered alerts
         """
         alerts = []
+        self._resolved = []
 
         for rule in self._rules:
-            alert_key = f"{rule.name}:{metrics.model_id}"
+            self._guard_execution()
+            alert_key = (rule.name, metrics.model_id)
+            verdict = rule.evaluate(metrics)
+            self._guard_execution()
+            if type(verdict) is not bool:
+                raise TypeError("Native alert rule must return a boolean verdict")
 
-            if rule.evaluate(metrics):
+            if verdict:
                 # Check if already alerted
                 if alert_key not in self._active_alerts:
                     alert = rule.create_alert(metrics)
+                    self._guard_execution()
+                    if (
+                        not isinstance(alert, Alert)
+                        or alert.model_id != metrics.model_id
+                        or alert.rule_name != rule.name
+                    ):
+                        raise TypeError("Native alert rule returned an invalid alert")
                     self._active_alerts[alert_key] = alert
+                    self._history.append(alert)
                     alerts.append(alert)
             else:
                 # Clear if resolved
                 if alert_key in self._active_alerts:
                     resolved_alert = self._active_alerts.pop(alert_key)
-                    resolved_alert.resolved_at = datetime.now(timezone.utc)
-                    # Could emit resolved notification here
+                    resolved_alert.resolved_at = datetime.now(UTC)
+                    self._resolved.append(resolved_alert)
 
-        return alerts
+        return copy.deepcopy(alerts)
+
+    def get_resolved_alerts(self) -> list[Alert]:
+        """Resolutions from the most recent evaluation; no delivery is implied."""
+        return copy.deepcopy(self._resolved)
+
+    def get_alert_history(self, model_id: str | None = None) -> list[Alert]:
+        """Bounded in-memory trigger history including resolved alerts."""
+        return copy.deepcopy(
+            [alert for alert in self._history if model_id is None or alert.model_id == model_id]
+        )
 
     def get_active_alerts(self, model_id: str | None = None) -> list[Alert]:
         """Get currently active alerts.
@@ -500,9 +535,11 @@ class RuleEngine:
         alerts = list(self._active_alerts.values())
         if model_id:
             alerts = [a for a in alerts if a.model_id == model_id]
-        return alerts
+        return copy.deepcopy(alerts)
 
     def clear(self) -> None:
         """Clear all rules and alerts."""
         self._rules.clear()
         self._active_alerts.clear()
+        self._history.clear()
+        self._resolved.clear()

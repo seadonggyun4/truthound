@@ -38,22 +38,22 @@ import hashlib
 import json
 import logging
 import math
-import os
-import pickle
 import re
 import threading
 from abc import ABC, abstractmethod
 from collections import Counter, defaultdict
+from copy import deepcopy
 from dataclasses import dataclass, field
-from datetime import datetime
 from enum import Enum
-from pathlib import Path
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Type, Union
+from functools import wraps
+from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
-from truthound.profiler.base import DataType, ColumnProfile
+if TYPE_CHECKING:
+    from pathlib import Path
 
+from truthound.profiler.base import DataType
 
 logger = logging.getLogger(__name__)
 
@@ -380,8 +380,6 @@ class ValueFeatureExtractor(FeatureExtractor):
         # Basic stats
         min_val = sample.min() or 0
         max_val = sample.max() or 0
-        mean_val = sample.mean() or 0
-        std_val = sample.std() or 0
 
         # Range features
         range_val = max_val - min_val
@@ -607,9 +605,11 @@ class FeatureExtractorRegistry:
         for extractor in self._extractors.values():
             try:
                 features = extractor.extract(column, context)
-                all_features.extend(features)
-            except Exception as e:
-                logger.warning(f"Extractor {extractor.name} failed: {e}")
+            except Exception:
+                raise RuntimeError("Native feature extraction failed") from None
+            if any(not isinstance(feature, Feature) or not math.isfinite(feature.value) for feature in features):
+                raise ValueError("Invalid native inference features")
+            all_features.extend(features)
 
         return FeatureVector(
             column_name=context.get("column_name", column.name or ""),
@@ -664,12 +664,16 @@ class InferenceModel(ABC):
         pass
 
     def save(self, path: str | Path) -> None:
-        """Save model to file."""
-        pass
+        """Atomically save built-in model state as bounded JSON."""
+        from truthound.profiler._inference_state import save
+
+        save(self, path)
 
     def load(self, path: str | Path) -> None:
-        """Load model from file."""
-        pass
+        """Validate a complete native snapshot before replacing model state."""
+        from truthound.profiler._inference_state import load_into
+
+        load_into(self, path)
 
 
 class RuleBasedModel(InferenceModel):
@@ -845,49 +849,25 @@ class NaiveBayesModel(InferenceModel):
 
         # Calculate priors
         total = sum(class_counts.values())
-        self.class_priors = {
+        priors = {
             dtype: count / total
             for dtype, count in class_counts.items()
         }
 
+        likelihoods = {}
         # Calculate feature likelihoods (mean, std for each feature per class)
         for feature_name, class_values in feature_values.items():
-            self.feature_likelihoods[feature_name] = {}
+            likelihoods[feature_name] = {}
             for dtype, values in class_values.items():
                 if values:
                     mean = sum(values) / len(values)
                     variance = sum((v - mean) ** 2 for v in values) / len(values)
                     std = math.sqrt(variance) if variance > 0 else 0.1
-                    self.feature_likelihoods[feature_name][dtype] = (mean, std)
+                    likelihoods[feature_name][dtype] = (mean, std)
 
+        self.class_priors, self.feature_likelihoods = priors, likelihoods
         self._trained = True
 
-    def save(self, path: str | Path) -> None:
-        """Save model to file."""
-        data = {
-            "class_priors": {k.value: v for k, v in self.class_priors.items()},
-            "feature_likelihoods": {
-                fname: {dtype.value: stats for dtype, stats in class_stats.items()}
-                for fname, class_stats in self.feature_likelihoods.items()
-            },
-            "trained": self._trained,
-        }
-        with open(path, "w") as f:
-            json.dump(data, f)
-
-    def load(self, path: str | Path) -> None:
-        """Load model from file."""
-        with open(path) as f:
-            data = json.load(f)
-
-        self.class_priors = {
-            DataType(k): v for k, v in data["class_priors"].items()
-        }
-        self.feature_likelihoods = {
-            fname: {DataType(dtype): tuple(stats) for dtype, stats in class_stats.items()}
-            for fname, class_stats in data["feature_likelihoods"].items()
-        }
-        self._trained = data["trained"]
 
 
 class EnsembleModel(InferenceModel):
@@ -908,10 +888,16 @@ class EnsembleModel(InferenceModel):
         Args:
             models: List of (model, weight) tuples
         """
-        self.models = models or [
+        self.models = models if models is not None else [
             (RuleBasedModel(), 0.6),
             (NaiveBayesModel(), 0.4),
         ]
+
+        if not self.models or any(
+            not isinstance(model, InferenceModel) or not isinstance(weight, (int, float))
+            or not math.isfinite(weight) or weight < 0 for model, weight in self.models
+        ) or sum(weight for _, weight in self.models) <= 0:
+            raise ValueError("Invalid ensemble models or weights")
 
     def predict(
         self,
@@ -943,8 +929,10 @@ class EnsembleModel(InferenceModel):
         training_data: list[tuple[FeatureVector, DataType]],
     ) -> None:
         """Train all models in ensemble."""
-        for model, _ in self.models:
+        trained = [(deepcopy(model), weight) for model, weight in self.models]
+        for model, _ in trained:
             model.train(training_data)
+        self.models = trained
 
 
 # =============================================================================
@@ -997,7 +985,27 @@ class InferrerConfig:
     use_caching: bool = True
     cache_size: int = 1000
     enable_learning: bool = True
+    feedback_batch_size: int = 100
     model_path: str | None = None
+
+
+    def __post_init__(self):
+        if not 0 <= self.confidence_threshold <= 1:
+            raise ValueError("confidence_threshold must lie between zero and one")
+        if type(self.feedback_batch_size) is not int or not 1 <= self.feedback_batch_size <= 10000:
+            raise ValueError("feedback_batch_size must lie between one and 10000")
+        if type(self.cache_size) is not int or self.cache_size < 0:
+            raise ValueError("cache_size must be nonnegative")
+
+
+def _locked_inference(function):
+    @wraps(function)
+    def run(self, *args, **kwargs):
+        with self._lock:
+            if self._state_uncertain:
+                raise RuntimeError("Reopen inferrer after an unconfirmed learning operation")
+            return function(self, *args, **kwargs)
+    return run
 
 
 class MLTypeInferrer:
@@ -1018,10 +1026,13 @@ class MLTypeInferrer:
 
     def __init__(
         self,
-        model: str | InferenceModel = "ensemble",
+        model: str | InferenceModel | None = None,
         config: InferrerConfig | None = None,
     ):
-        self.config = config or InferrerConfig()
+        self.config = deepcopy(config or InferrerConfig())
+        if model is None:
+            model = self.config.model
+        self._state_uncertain = False
 
         if isinstance(model, InferenceModel):
             self._model = model
@@ -1031,12 +1042,16 @@ class MLTypeInferrer:
         self._feature_registry = feature_extractor_registry
         self._cache: dict[str, InferenceResult] = {}
         self._feedback_buffer: list[tuple[FeatureVector, DataType]] = []
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
 
-        # Load saved model if path provided
-        if self.config.model_path and Path(self.config.model_path).exists():
-            self._model.load(self.config.model_path)
+        from truthound.profiler._inference_state import digest, writer_lock
 
+        with writer_lock(self.config.model_path):
+            self._model_file_digest = digest(self.config.model_path)
+            if self._model_file_digest is not None:
+                self._model.load(self.config.model_path)
+
+    @_locked_inference
     def infer(
         self,
         column: pl.Series,
@@ -1054,13 +1069,13 @@ class MLTypeInferrer:
         import time
         start = time.time()
 
-        context = context or {}
+        context = deepcopy(context or {})
         context["column_name"] = context.get("column_name", column.name or "")
 
         # Check cache
-        cache_key = self._make_cache_key(column, context)
-        if self.config.use_caching and cache_key in self._cache:
-            return self._cache[cache_key]
+        cache_key = self._make_cache_key(column, context) if self.config.use_caching and self.config.cache_size else None
+        if cache_key is not None and cache_key in self._cache:
+            return deepcopy(self._cache[cache_key])
 
         # Extract features
         features = self._feature_registry.extract_all(column, context)
@@ -1071,9 +1086,17 @@ class MLTypeInferrer:
         if not predictions:
             predictions = [(DataType.STRING, 0.5)]
 
+        if any(not isinstance(dtype, DataType) or not isinstance(probability, (int, float))
+               or not math.isfinite(probability) or not 0 <= probability <= 1
+               for dtype, probability in predictions):
+            raise ValueError("Invalid native type probabilities")
+        predictions = sorted(predictions, key=lambda item: item[1], reverse=True)
         # Build result
         top_type, top_confidence = predictions[0]
         alternatives = predictions[1:5]  # Top 5 alternatives
+        if top_confidence < self.config.confidence_threshold:
+            top_type = DataType.UNKNOWN
+            alternatives = predictions[:5]
 
         # Generate reasoning
         reasoning = self._generate_reasoning(features, predictions)
@@ -1092,9 +1115,9 @@ class MLTypeInferrer:
         )
 
         # Cache result
-        if self.config.use_caching:
+        if cache_key is not None:
             with self._lock:
-                self._cache[cache_key] = result
+                self._cache[cache_key] = deepcopy(result)
                 # LRU eviction
                 if len(self._cache) > self.config.cache_size:
                     oldest_key = next(iter(self._cache))
@@ -1140,6 +1163,7 @@ class MLTypeInferrer:
 
         return results
 
+    @_locked_inference
     def provide_feedback(
         self,
         column: pl.Series,
@@ -1153,10 +1177,12 @@ class MLTypeInferrer:
             true_type: The correct type
             context: Context used during inference
         """
+        if not isinstance(true_type, DataType):
+            raise ValueError("Feedback requires a native DataType")
         if not self.config.enable_learning:
             return
 
-        context = context or {}
+        context = deepcopy(context or {})
         context["column_name"] = context.get("column_name", column.name or "")
 
         features = self._feature_registry.extract_all(column, context)
@@ -1165,24 +1191,43 @@ class MLTypeInferrer:
             self._feedback_buffer.append((features, true_type))
 
             # Retrain when buffer is large enough
-            if len(self._feedback_buffer) >= 100:
-                self._model.train(self._feedback_buffer)
+            if len(self._feedback_buffer) >= self.config.feedback_batch_size:
+                self._cache.clear()
+                try:
+                    from truthound.profiler._inference_state import digest, writer_lock
+
+                    with writer_lock(self.config.model_path):
+                        if digest(self.config.model_path) != self._model_file_digest:
+                            raise RuntimeError("Inference snapshot changed; reopen before learning")
+                        self._model.train(self._feedback_buffer)
+                        if self.config.model_path:
+                            self._model.save(self.config.model_path)
+                            self._model_file_digest = digest(self.config.model_path)
+                except BaseException:
+                    self._state_uncertain = True
+                    raise
                 self._feedback_buffer.clear()
 
-                # Save model if path configured
-                if self.config.model_path:
-                    self._model.save(self.config.model_path)
+    def _make_cache_key(self, column, context) -> str | None:
+        def model_state(model):
+            if type(model) in {RuleBasedModel, NaiveBayesModel}:
+                return [model.name, vars(model)]
+            if type(model) is EnsembleModel:
+                return [model.name, [(model_state(child), weight) for child, weight in model.models]]
+            raise TypeError("Custom model state is not implicitly cacheable")
 
-    def _make_cache_key(
-        self,
-        column: pl.Series,
-        context: dict[str, Any],
-    ) -> str:
-        """Create cache key for column + context."""
-        # Use column sample and context for key
-        sample = column.head(10).to_list()
-        key_data = f"{context.get('column_name', '')}:{sample}:{column.dtype}"
-        return hashlib.md5(key_data.encode()).hexdigest()
+        if column.dtype == pl.Object or any(type(value) not in {
+            NameFeatureExtractor, ValueFeatureExtractor, StatisticalFeatureExtractor, ContextFeatureExtractor,
+        } for value in self._feature_registry._extractors.values()):
+            return None
+        try:
+            metadata = json.dumps([context, self.config.confidence_threshold, model_state(self._model)],
+                                  sort_keys=True, allow_nan=False).encode()
+        except (ValueError, TypeError):
+            return None
+        digest = hashlib.sha256(metadata)
+        digest.update(column.to_frame().serialize())
+        return digest.hexdigest()
 
     def _generate_reasoning(
         self,

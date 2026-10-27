@@ -16,17 +16,15 @@ Example:
 
 from __future__ import annotations
 
-import hashlib
 import math
 import struct
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum, auto
-from typing import Any, Callable
+from typing import Any
 
 from truthound.stores.compression.base import (
     CompressionAlgorithm,
-    CompressionConfig,
     CompressionError,
     CompressionLevel,
     CompressionMetrics,
@@ -36,7 +34,6 @@ from truthound.stores.compression.providers import (
     get_compressor,
     list_available_algorithms,
 )
-
 
 # =============================================================================
 # Data Characteristics Analysis
@@ -88,6 +85,8 @@ class DataCharacteristics:
     pattern_score: float = 0.0
     detected_type: DataType = DataType.UNKNOWN
     sample_compression_ratios: dict[str, float] = field(default_factory=dict)
+    sample_errors: list[str] = field(default_factory=list)
+    analysis_budget_exhausted: bool = False
 
     @property
     def compressibility_estimate(self) -> float:
@@ -100,7 +99,7 @@ class DataCharacteristics:
         rep_factor = self.repetition_score
 
         # Combine factors
-        return (entropy_factor * 0.6 + rep_factor * 0.4)
+        return entropy_factor * 0.6 + rep_factor * 0.4
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
@@ -114,6 +113,8 @@ class DataCharacteristics:
             "detected_type": self.detected_type.name,
             "compressibility_estimate": round(self.compressibility_estimate, 3),
             "sample_ratios": self.sample_compression_ratios,
+            "sample_errors": list(self.sample_errors),
+            "analysis_budget_exhausted": self.analysis_budget_exhausted,
         }
 
 
@@ -407,7 +408,10 @@ class AlgorithmSelector:
         goal: CompressionGoal,
     ) -> CompressionProfile:
         """Score an algorithm for given data and goal."""
-        props = self.ALGORITHM_PROFILES.get(algorithm, {})
+        props = dict(self.ALGORITHM_PROFILES.get(algorithm, {}))
+        measured = characteristics.sample_compression_ratios.get(algorithm.value)
+        if measured is not None:
+            props["ratio_text"] = props["ratio_binary"] = measured
 
         if not props:
             return CompressionProfile(
@@ -486,6 +490,27 @@ class AdaptiveConfig:
     allowed_algorithms: list[CompressionAlgorithm] | None = None
     level: CompressionLevel = CompressionLevel.BALANCED
 
+    def __post_init__(self):
+        if not isinstance(self.goal, CompressionGoal) or type(self.enable_sampling) is not bool:
+            raise ValueError("Invalid adaptive compression mode")
+        for name, minimum in (("sample_size", 1), ("min_size_for_compression", 0)):
+            value = getattr(self, name)
+            if type(value) is not int or value < minimum:
+                raise ValueError(f"Invalid {name}")
+        if (
+            type(self.max_analysis_time_ms) not in {int, float}
+            or not math.isfinite(self.max_analysis_time_ms)
+            or self.max_analysis_time_ms <= 0
+        ):
+            raise ValueError("Invalid analysis budget")
+        if self.allowed_algorithms is not None and (
+            not self.allowed_algorithms
+            or any(not isinstance(value, CompressionAlgorithm) for value in self.allowed_algorithms)
+        ):
+            raise ValueError("Invalid allowed compression algorithms")
+        if not isinstance(self.fallback_algorithm, CompressionAlgorithm):
+            raise ValueError("Invalid fallback algorithm")
+
 
 # =============================================================================
 # Adaptive Compressor
@@ -527,17 +552,79 @@ class AdaptiveCompressor:
             analyzer: Data analyzer instance.
             selector: Algorithm selector instance.
         """
-        self.config = config or AdaptiveConfig()
+        self.config = (
+            replace(
+                config,
+                allowed_algorithms=list(config.allowed_algorithms)
+                if config.allowed_algorithms is not None
+                else None,
+            )
+            if config is not None
+            else AdaptiveConfig()
+        )
+        self._execution_guard = None
         self._analyzer = analyzer or DataAnalyzer(sample_size=self.config.sample_size)
 
         # Filter available algorithms if specified
         available = None
         if self.config.allowed_algorithms:
-            available = [a for a in self.config.allowed_algorithms if a != CompressionAlgorithm.NONE]
+            available = [
+                a for a in self.config.allowed_algorithms if a != CompressionAlgorithm.NONE
+            ]
 
         self._selector = selector or AlgorithmSelector(available_algorithms=available)
         self._last_analysis: DataCharacteristics | None = None
         self._last_profile: CompressionProfile | None = None
+
+    def set_execution_guard(self, guard) -> None:
+        self._execution_guard = guard
+
+    def _check_guard(self):
+        if self._execution_guard is not None:
+            self._execution_guard()
+
+    def _analyze(self, data):
+        self._check_guard()
+        start = time.perf_counter()
+        sample = data[: self.config.sample_size]
+        chars = self._analyzer.analyze(sample)
+        self._check_guard()
+        chars.size = len(data)
+        allowed = self.config.allowed_algorithms
+        available = [
+            algorithm
+            for algorithm in (allowed if allowed is not None else list_available_algorithms())
+            if algorithm != CompressionAlgorithm.NONE and (allowed is None or algorithm in allowed)
+        ]
+        if self.config.enable_sampling and sample:
+            for algorithm in available:
+                if (time.perf_counter() - start) * 1000 >= self.config.max_analysis_time_ms:
+                    chars.analysis_budget_exhausted = True
+                    break
+                self._check_guard()
+                try:
+                    compressed = get_compressor(algorithm, level=self.config.level).compress(sample)
+                except Exception:
+                    self._check_guard()
+                    chars.sample_errors.append(algorithm.value)
+                else:
+                    self._check_guard()
+                    if compressed:
+                        chars.sample_compression_ratios[algorithm.value] = len(sample) / len(
+                            compressed
+                        )
+            chars.analysis_budget_exhausted |= (
+                time.perf_counter() - start
+            ) * 1000 >= self.config.max_analysis_time_ms
+        chars.analysis_budget_exhausted |= (
+            time.perf_counter() - start
+        ) * 1000 >= self.config.max_analysis_time_ms
+        return chars
+
+    def analyze(self, data: bytes) -> DataCharacteristics:
+        """Observe the configured native analysis and bounded sampling work."""
+        self._last_analysis = self._analyze(data)
+        return self._last_analysis
 
     @property
     def algorithm(self) -> CompressionAlgorithm:
@@ -563,18 +650,33 @@ class AdaptiveCompressor:
         Returns:
             Compressed data with header indicating algorithm used.
         """
+        self._check_guard()
+        self._last_analysis = self._last_profile = None
         if len(data) < self.config.min_size_for_compression:
             return self._wrap_uncompressed(data)
 
         # Analyze and select algorithm
-        self._last_analysis = self._analyzer.analyze(data)
+        self._last_analysis = self._analyze(data)
         self._last_profile = self._selector.select(self._last_analysis, self.config.goal)
+
+        self._check_guard()
+        if (
+            self.config.allowed_algorithms is not None
+            and self._last_profile.algorithm not in self.config.allowed_algorithms
+        ):
+            raise CompressionError("Selected algorithm is not allowed")
 
         # Compress with selected algorithm
         try:
             compressor = get_compressor(self._last_profile.algorithm, level=self.config.level)
             compressed = compressor.compress(data)
         except Exception:
+            self._check_guard()
+            if (
+                self.config.allowed_algorithms is not None
+                and self.config.fallback_algorithm not in self.config.allowed_algorithms
+            ):
+                raise CompressionError("Fallback algorithm is not allowed") from None
             # Fallback to default
             compressor = get_compressor(self.config.fallback_algorithm, level=self.config.level)
             compressed = compressor.compress(data)
@@ -583,13 +685,14 @@ class AdaptiveCompressor:
                 reason="Fallback after error",
             )
 
+        self._check_guard()
         # Check if compression helped
         if len(compressed) >= len(data):
             return self._wrap_uncompressed(data)
 
         return self._wrap_compressed(compressed, self._last_profile.algorithm, len(data))
 
-    def decompress(self, data: bytes) -> bytes:
+    def decompress(self, data: bytes, *, max_output_bytes: int | None = None) -> bytes:
         """Decompress data.
 
         Args:
@@ -598,23 +701,37 @@ class AdaptiveCompressor:
         Returns:
             Decompressed data.
         """
+        self._check_guard()
         if len(data) < self.HEADER_SIZE:
             raise CompressionError("Data too short for adaptive header")
-
-        # Parse header
-        magic, algo_byte, flags, original_size = struct.unpack(self.HEADER_FORMAT, data[: self.HEADER_SIZE])
-
-        if magic != self.MAGIC:
+        magic, algo_byte, flags, original_size = struct.unpack(
+            self.HEADER_FORMAT, data[: self.HEADER_SIZE]
+        )
+        if magic != self.MAGIC or flags not in {0, 1}:
             raise CompressionError("Invalid adaptive compression header")
-
-        # Check if uncompressed
-        if flags & 0x01:
-            return data[self.HEADER_SIZE : self.HEADER_SIZE + original_size]
-
-        # Decompress
-        algorithm = CompressionAlgorithm(list(CompressionAlgorithm)[algo_byte].value)
-        compressor = get_compressor(algorithm)
-        return compressor.decompress(data[self.HEADER_SIZE :])
+        if max_output_bytes is not None:
+            if type(max_output_bytes) is not int or max_output_bytes < 0:
+                raise ValueError("Invalid output size limit")
+            if original_size > max_output_bytes:
+                raise CompressionError("Adaptive output size limit exceeded")
+        payload = data[self.HEADER_SIZE :]
+        if flags == 1:
+            if algo_byte != 0 or len(payload) != original_size:
+                raise CompressionError("Invalid uncompressed adaptive payload")
+            return payload
+        if algo_byte >= len(CompressionAlgorithm):
+            raise CompressionError("Invalid adaptive algorithm")
+        algorithm = list(CompressionAlgorithm)[algo_byte]
+        if (
+            self.config.allowed_algorithms is not None
+            and algorithm not in self.config.allowed_algorithms
+        ):
+            raise CompressionError("Adaptive algorithm is not allowed")
+        result = get_compressor(algorithm).decompress(payload)
+        self._check_guard()
+        if len(result) != original_size:
+            raise CompressionError("Adaptive decompressed size mismatch")
+        return result
 
     def compress_with_metrics(self, data: bytes) -> CompressionResult:
         """Compress with full metrics.
@@ -631,7 +748,9 @@ class AdaptiveCompressor:
 
         # Get actual algorithm used
         if len(compressed) >= self.HEADER_SIZE:
-            _, algo_byte, flags, _ = struct.unpack(self.HEADER_FORMAT, compressed[: self.HEADER_SIZE])
+            _, algo_byte, flags, _ = struct.unpack(
+                self.HEADER_FORMAT, compressed[: self.HEADER_SIZE]
+            )
             if flags & 0x01:
                 algo = CompressionAlgorithm.NONE
             else:
@@ -669,7 +788,9 @@ class AdaptiveCompressor:
         )
         return header + data
 
-    def _wrap_compressed(self, data: bytes, algorithm: CompressionAlgorithm, original_size: int) -> bytes:
+    def _wrap_compressed(
+        self, data: bytes, algorithm: CompressionAlgorithm, original_size: int
+    ) -> bytes:
         """Wrap compressed data with header."""
         algo_index = list(CompressionAlgorithm).index(algorithm)
         header = struct.pack(
@@ -690,5 +811,5 @@ class AdaptiveCompressor:
         Returns:
             List of algorithm profiles ranked by suitability.
         """
-        characteristics = self._analyzer.analyze(data)
+        characteristics = self._analyze(data)
         return self._selector.rank_algorithms(characteristics, self.config.goal)

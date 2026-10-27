@@ -619,6 +619,15 @@ print(is_async_source(async_source))  # True
 print(is_sync_source(sync_source))    # True
 ```
 
+`AsyncToSyncAdapter` is a native `BaseDataSource`: its size limits and column
+helpers use the wrapped configuration and schema. Use its context manager to
+connect, then close the connection and owned event loop deterministically.
+Sample adapters share the owner's loop and connect their own sampled source;
+close samples before the owner. `close()` is idempotent and terminal. A schema
+or connection failure during entry cleans up partial connections. Calling the
+sync adapter from a running async event loop raises `RuntimeError`; use the
+async source directly in that context.
+
 ## Error Handling
 
 Define custom exceptions:
@@ -670,3 +679,8 @@ def get_my_datasource(data: Any, **kwargs):
 6. **Use type conversion utilities** - Leverage built-in converters for consistent types
 7. **Handle errors gracefully** - Use appropriate exception types
 8. **Document configuration** - Add docstrings to config classes
+
+
+The Core MCP profile also offers `sources_sample_source` to retain the actual sampled datasource within its approved owner. Release children before closing a borrowed provider/event loop; MCP enforces descendant-first cleanup and keeps ordinary `sources_sample` as an Arrow snapshot operation. See [native source lifecycle](../mcp.md).
+
+The same MCP source handle supports native public `read`, `profile`, `scan`, `mask` and `learn` facades through `sources_read`, `sources_profile`, `sources_scan`, `sources_mask` and `sources_learn`. Arrow results and learned schemas are retained separately and inherit source authorization and lifetime. Source connections remain available after a failed operation.

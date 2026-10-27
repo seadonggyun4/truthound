@@ -10,29 +10,26 @@ This module provides the foundational abstractions for the ML system:
 
 from __future__ import annotations
 
+import json
+import threading
 from abc import ABC, abstractmethod
+from collections.abc import Callable, Iterator  # noqa: TC003 - public annotation introspection
+from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
 from typing import (
-    TYPE_CHECKING,
     Any,
-    Callable,
     Generic,
-    Iterator,
     Protocol,
     TypeVar,
     runtime_checkable,
 )
-import threading
-import json
 
 import polars as pl
 
-if TYPE_CHECKING:
-    from truthound.validators.base import ValidationIssue
-
+from truthound.ml._training import atomic_fit
 
 # =============================================================================
 # Enums
@@ -394,9 +391,11 @@ class RuleLearningResult:
 
     def get_rules_for_column(self, column: str) -> list[LearnedRule]:
         """Get rules for a specific column."""
-        return [r for r in self.rules if column in (
-            [r.column] if isinstance(r.column, str) else list(r.column)
-        )]
+        return [
+            r
+            for r in self.rules
+            if column in ([r.column] if isinstance(r.column, str) else list(r.column))
+        ]
 
     def to_validation_suite(self) -> dict[str, Any]:
         """Convert to validation suite format."""
@@ -504,7 +503,7 @@ class MLModel(ABC, Generic[ConfigT]):
             config: Model configuration
             **kwargs: Additional parameters that override config
         """
-        self._config: ConfigT = config or self._default_config()  # type: ignore
+        self._config: ConfigT = deepcopy(config) if config is not None else self._default_config()  # type: ignore
         self._state: ModelState = ModelState.UNTRAINED
         self._error: Exception | None = None
         self._trained_at: datetime | None = None
@@ -513,8 +512,18 @@ class MLModel(ABC, Generic[ConfigT]):
 
         # Apply kwargs overrides
         for key, value in kwargs.items():
-            if hasattr(self._config, key):
-                object.__setattr__(self._config, key, value)
+            if key not in self._config.__dataclass_fields__:
+                raise ValueError(f"Unknown model setting: {key}")
+            object.__setattr__(self._config, key, deepcopy(value))
+        self._validate_sampling_config()
+
+    def __deepcopy__(self, memo):
+        """Clone native learned state while keeping locks process-local."""
+        cloned = object.__new__(type(self))
+        memo[id(self)] = cloned
+        for name, value in self.__dict__.items():
+            setattr(cloned, name, threading.RLock() if name == "_lock" else deepcopy(value, memo))
+        return cloned
 
     @property
     @abstractmethod
@@ -578,9 +587,7 @@ class MLModel(ABC, Generic[ConfigT]):
             NotImplementedError: If not supported
         """
         if not self.info.supports_online_learning:
-            raise NotImplementedError(
-                f"{self.info.name} does not support online learning"
-            )
+            raise NotImplementedError(f"{self.info.name} does not support online learning")
         # Default implementation: just refit
         self.fit(data)
 
@@ -604,12 +611,18 @@ class MLModel(ABC, Generic[ConfigT]):
 
         from truthound.ml.serialization import encode
 
-        model_data = {"format": "truthound-ml", "version": 2,
-                      "model": self.info.name, "payload": encode(self._serialize())}
+        model_data = {
+            "format": "truthound-ml",
+            "version": 2,
+            "model": self.info.name,
+            "payload": encode(self._serialize()),
+        }
         # Encode before opening the destination: unsupported values must not
         # destroy a previously saved model or silently turn into repr strings.
         content = json.dumps(model_data, indent=2, ensure_ascii=False, allow_nan=False)
-        path.write_text(content, encoding="utf-8")
+        from truthound.stores._filesystem_io import publish
+
+        publish(path, content.encode("utf-8"))
 
     def load(self, path: str | Path) -> None:
         """Load the model from disk.
@@ -631,26 +644,36 @@ class MLModel(ABC, Generic[ConfigT]):
             from truthound.ml.serialization import reject_constant, unique_object
 
             with open(path, encoding="utf-8") as f:
-                model_data = json.load(f, object_pairs_hook=unique_object,
-                                       parse_constant=reject_constant)
+                model_data = json.load(
+                    f, object_pairs_hook=unique_object, parse_constant=reject_constant
+                )
             if not isinstance(model_data, dict):
                 raise ValueError("Model document must be an object")
             if "format" in model_data:
                 from truthound.ml.serialization import decode
 
-                if (set(model_data) != {"format", "version", "model", "payload"}
-                        or model_data.get("format") != "truthound-ml"
-                        or model_data.get("version") != 2
-                        or model_data.get("model") != self.info.name):
+                if (
+                    set(model_data) != {"format", "version", "model", "payload"}
+                    or model_data.get("format") != "truthound-ml"
+                    or model_data.get("version") != 2
+                    or model_data.get("model") != self.info.name
+                ):
                     raise ValueError("Model format, version or identity mismatch")
                 model_data = decode(model_data["payload"])
             if model_data.get("info", {}).get("name") != self.info.name:
                 raise ValueError("Model identity mismatch")
-            self._deserialize(model_data)
-            self._state = ModelState.READY
+            with self._lock:
+                candidate = deepcopy(self)
+                candidate._deserialize(model_data)
+                candidate._state = ModelState.READY
+                candidate._error = None
+                self.__dict__.update(
+                    {key: value for key, value in candidate.__dict__.items() if key != "_lock"}
+                )
         except Exception as e:
-            self._state = ModelState.ERROR
-            self._error = e
+            if not self.is_trained:
+                self._state = ModelState.ERROR
+                self._error = e
             raise ModelLoadError(
                 f"Failed to load model: {e}",
                 model_name=self.info.name,
@@ -679,15 +702,14 @@ class MLModel(ABC, Generic[ConfigT]):
         """
         if "config" in data:
             self._config = type(self._config)(**data["config"])
+        self._validate_sampling_config()
         state = data.get("learned_state", {})
         if set(state) != set(self._state_fields):
             raise ValueError("Incomplete learned model state")
         for name in self._state_fields:
             setattr(self, name, state[name])
         self._trained_at = (
-            datetime.fromisoformat(data["trained_at"])
-            if data.get("trained_at")
-            else None
+            datetime.fromisoformat(data["trained_at"]) if data.get("trained_at") else None
         )
         self._training_samples = data.get("training_samples", 0)
 
@@ -722,10 +744,21 @@ class MLModel(ABC, Generic[ConfigT]):
 
         return row_count
 
+    def _validate_sampling_config(self) -> None:
+        size = self._config.sample_size
+        if size is not None and (type(size) is not int or size < 1):
+            raise ValueError("sample_size must be a positive integer or None")
+        seed = self._config.random_seed
+        if type(seed) is not int or not 0 <= seed < 2**64:
+            raise ValueError("random_seed must be an unsigned 64-bit integer")
+
     def _maybe_sample(self, data: pl.LazyFrame) -> pl.LazyFrame:
-        """Apply sampling if configured."""
+        """Select seeded row priorities with Core's shared native sampling plan."""
+        self._validate_sampling_config()
         if self._config.sample_size is not None:
-            return data.head(self._config.sample_size)
+            from truthound.profiler._sampling_native import ordered
+
+            return ordered(data, self._config.sample_size, self._config.random_seed)
         return data
 
     @property
@@ -758,11 +791,7 @@ class MLModel(ABC, Generic[ConfigT]):
         }
 
     def __repr__(self) -> str:
-        return (
-            f"<{self.__class__.__name__} "
-            f"name={self.info.name!r} "
-            f"state={self.state.value!r}>"
-        )
+        return f"<{self.__class__.__name__} name={self.info.name!r} state={self.state.value!r}>"
 
 
 # =============================================================================
@@ -820,6 +849,7 @@ class AnomalyDetector(MLModel[AnomalyConfig]):
             AnomalyResult with detected anomalies
         """
         import time
+
         start = time.perf_counter()
 
         if not self.is_trained:
@@ -927,15 +957,13 @@ class MLDriftDetector(MLModel[DriftConfig]):
             )
         return self.detect(self._reference_data, data)
 
+    @atomic_fit
     def fit(self, data: pl.LazyFrame) -> None:
         """Store reference data for drift detection.
 
         Args:
             data: Reference data to store
         """
-        import time
-
-        start = time.perf_counter()
         self._state = ModelState.TRAINING
 
         try:
@@ -968,7 +996,9 @@ class MLDriftDetector(MLModel[DriftConfig]):
         import io
 
         super()._deserialize(data)
-        self._reference_data = pl.read_ipc(io.BytesIO(data["reference_ipc"]), memory_map=False).lazy()
+        self._reference_data = pl.read_ipc(
+            io.BytesIO(data["reference_ipc"]), memory_map=False
+        ).lazy()
 
 
 class RuleLearner(MLModel[RuleLearningConfig]):
@@ -1013,9 +1043,6 @@ class RuleLearner(MLModel[RuleLearningConfig]):
         Args:
             data: Training data
         """
-        import time
-
-        start = time.perf_counter()
         self._state = ModelState.TRAINING
 
         try:
@@ -1084,9 +1111,9 @@ class ModelRegistry:
         model = model_cls()
     """
 
-    _instance: "ModelRegistry | None" = None
+    _instance: ModelRegistry | None = None
 
-    def __new__(cls) -> "ModelRegistry":
+    def __new__(cls) -> ModelRegistry:
         if cls._instance is None:
             cls._instance = super().__new__(cls)
             cls._instance._models: dict[str, type[MLModel]] = {}
@@ -1127,7 +1154,7 @@ class ModelRegistry:
         """
         with self._lock:
             if name in self._models:
-                model_class = self._models.pop(name)
+                self._models.pop(name)
                 # Remove from type index
                 for type_dict in self._by_type.values():
                     if name in type_dict:
@@ -1147,10 +1174,7 @@ class ModelRegistry:
         """
         with self._lock:
             if name not in self._models:
-                raise KeyError(
-                    f"Model '{name}' not found. "
-                    f"Available: {list(self._models.keys())}"
-                )
+                raise KeyError(f"Model '{name}' not found. Available: {list(self._models.keys())}")
             return self._models[name]
 
     def get_by_type(self, model_type: ModelType) -> dict[str, type[MLModel]]:
@@ -1197,9 +1221,11 @@ def register_model(
         class MyAnomalyDetector(AnomalyDetector):
             ...
     """
+
     def decorator(cls: type[MLModel]) -> type[MLModel]:
         model_registry.register(cls, name)
         return cls
+
     return decorator
 
 

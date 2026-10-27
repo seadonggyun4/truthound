@@ -567,6 +567,7 @@ nav:
       - Prompt Hardening: ai/prompt-hardening.md
       - Smoke and Release Gates: ai/release-gate.md
   - Release Notes:
+      - Truthound 3.3.0 Candidate: releases/truthound-3.3.0.md
       - Latest Verified Benchmark Summary: releases/latest-benchmark-summary.md
       - Truthound 3.1.10: releases/truthound-3.1.10.md
       - Truthound 3.1.9: releases/truthound-3.1.9.md

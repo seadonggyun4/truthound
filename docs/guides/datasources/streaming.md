@@ -483,3 +483,13 @@ from truthound.datasources.streaming import (
 | Module | `truthound.datasources.streaming` | `truthound.realtime.streaming` |
 
 Use Phase 5 streaming sources for periodic batch validation of recent messages. Use Phase 10 realtime streaming for continuous, event-driven validation with windowing and micro-batch processing.
+
+## Broker message processing from MCP
+
+Broker adapters use the separate `truthound.realtime` namespace.
+`ExactlyOnceProcessor.process_message(message)` processes one already-consumed
+message through the same native deduplication, transaction, source commit, sink
+output and statistics path as `run()`. It preserves the configured backend
+semantics; `recover()` rolls back pending transactions and is not proof of external
+exactly-once delivery. The development MCP profile provides approved broker owner,
+batch, ack, window and recovery controls in the [MCP guide](../mcp.md#native-broker-adapters-and-processing).

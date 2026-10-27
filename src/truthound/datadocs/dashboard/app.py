@@ -5,10 +5,8 @@ all components and state management for an interactive profile exploration
 experience.
 """
 
-from __future__ import annotations
-
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -58,85 +56,79 @@ class DashboardApp:
         self.config = config or DashboardConfig()
         self._app = None
         self._state = None
+        self._profile_data = None
 
     def _check_dependencies(self) -> None:
         """Check if Reflex is installed."""
         try:
             import reflex as rx  # noqa: F401
-        except ImportError:
+        except ImportError as error:
             raise ImportError(
-                "Dashboard requires Reflex. "
-                "Install with: pip install truthound[dashboard]"
-            )
+                "Dashboard requires Reflex. Install with: pip install truthound[dashboard]"
+            ) from error
 
     def _create_app(self) -> Any:
         """Create the Reflex application."""
         import reflex as rx
 
-        from truthound.datadocs.dashboard.state import DashboardState
-        from truthound.datadocs.dashboard import components as c
+        from truthound.datadocs.dashboard.state import ProfileState
+
+        if self._profile_data is None:
+            if self.config.profile_path:
+                self.load_profile(profile_path=self.config.profile_path)
+            elif self.config.profile_data is not None:
+                self.load_profile(profile_data=self.config.profile_data)
+        initial = ProfileState.from_profile(self._profile_data or {})
 
         # Create state class with Reflex decorators
         class State(rx.State):
             """Application state."""
 
             # Profile data
-            profile_data: dict = {}
-            row_count: int = 0
-            column_count: int = 0
-            memory_bytes: int = 0
-            quality_score: float = 100.0
-            columns: list = []
-            correlations: list = []
-            alerts: list = []
+            profile_data: dict[str, Any] = initial.raw_data
+            row_count: int = initial.row_count
+            column_count: int = initial.column_count
+            memory_bytes: int = initial.memory_bytes
+            quality_score: float = initial.quality_score
+            columns: list[dict[str, Any]] = initial.columns
+            correlations: list[tuple[str, str, float]] = initial.correlations
+            alerts: list[dict[str, str]] = initial.alerts
 
             # UI state
             sidebar_open: bool = True
             active_tab: str = "overview"
             selected_column: str = ""
             search_query: str = ""
-            theme: str = "light"
-            is_loading: bool = True
+            is_loading: bool = False
 
             def load_profile(self, data: dict) -> None:
                 """Load profile data into state."""
-                self.profile_data = data
-                self.row_count = data.get("row_count", 0)
-                self.column_count = data.get("column_count", 0)
-                self.memory_bytes = data.get("estimated_memory_bytes", 0)
-                self.columns = data.get("columns", [])
-
-                # Parse correlations
-                corrs = data.get("correlations", [])
-                if corrs and isinstance(corrs[0], dict):
-                    self.correlations = [
-                        (c.get("column1", ""), c.get("column2", ""), c.get("correlation", 0))
-                        for c in corrs
-                    ]
-                else:
-                    self.correlations = corrs
-
-                # Calculate quality
-                if self.columns:
-                    avg_null = sum(c.get("null_ratio", 0) for c in self.columns) / len(self.columns)
-                    self.quality_score = round((1 - avg_null) * 100, 1)
-
-                # Generate alerts
-                self.alerts = self._generate_alerts(data)
+                profile = ProfileState.from_profile(data)
+                self.profile_data = profile.raw_data
+                self.row_count = profile.row_count
+                self.column_count = profile.column_count
+                self.memory_bytes = profile.memory_bytes
+                self.columns = profile.columns
+                self.correlations = profile.correlations
+                self.quality_score = profile.quality_score
+                self.alerts = profile.alerts
                 self.is_loading = False
 
-            def _generate_alerts(self, data: dict) -> list:
-                """Generate alerts from profile."""
-                alerts = []
-                for col in data.get("columns", []):
-                    null_ratio = col.get("null_ratio", 0)
-                    if null_ratio > 0.5:
-                        alerts.append({
-                            "type": "warning" if null_ratio < 0.8 else "error",
-                            "title": f"High missing values in '{col.get('name', '')}'",
-                            "message": f"{null_ratio:.1%} of values are null",
-                        })
-                return alerts
+            @rx.var
+            def profile_json(self) -> str:
+                return json.dumps(self.profile_data, ensure_ascii=False, allow_nan=False, indent=2)
+
+            @rx.var
+            def pattern_json(self) -> str:
+                return json.dumps(
+                    [
+                        {"column": column.get("name", ""), "patterns": column.get("patterns", [])}
+                        for column in self.columns
+                    ],
+                    ensure_ascii=False,
+                    allow_nan=False,
+                    indent=2,
+                )
 
             def toggle_sidebar(self) -> None:
                 """Toggle sidebar."""
@@ -154,12 +146,8 @@ class DashboardApp:
                 """Set search query."""
                 self.search_query = query
 
-            def toggle_theme(self) -> None:
-                """Toggle theme."""
-                self.theme = "dark" if self.theme == "light" else "light"
-
             @rx.var
-            def filtered_columns(self) -> list:
+            def filtered_columns(self) -> list[dict[str, Any]]:
                 """Get filtered columns."""
                 cols = self.columns
                 if self.search_query:
@@ -243,7 +231,7 @@ class DashboardApp:
                             State.alerts,
                             lambda alert: rx.box(
                                 rx.hstack(
-                                    rx.icon("alert-triangle", color="yellow.500"),
+                                    rx.icon("triangle-alert", color="yellow.500"),
                                     rx.vstack(
                                         rx.text(alert["title"], font_weight="bold"),
                                         rx.text(alert["message"], size="2", color="gray.500"),
@@ -286,7 +274,9 @@ class DashboardApp:
                                 rx.hstack(
                                     rx.heading(col["name"], size="3"),
                                     rx.badge(
-                                        col.get("inferred_type", col.get("physical_type", "unknown")),
+                                        col.get(
+                                            "inferred_type", col.get("physical_type", "unknown")
+                                        ),
                                     ),
                                     width="100%",
                                     justify_content="space-between",
@@ -295,7 +285,8 @@ class DashboardApp:
                                     rx.vstack(
                                         rx.text("Null", size="1", color="gray.500"),
                                         rx.text(
-                                            (col.get("null_ratio", 0) * 100).to_string() + "%",
+                                            (col.get("null_ratio", 0).to(float) * 100).to_string()
+                                            + "%",
                                             font_weight="bold",
                                         ),
                                         spacing="0",
@@ -303,7 +294,8 @@ class DashboardApp:
                                     rx.vstack(
                                         rx.text("Unique", size="1", color="gray.500"),
                                         rx.text(
-                                            (col.get("unique_ratio", 0) * 100).to_string() + "%",
+                                            (col.get("unique_ratio", 0).to(float) * 100).to_string()
+                                            + "%",
                                             font_weight="bold",
                                         ),
                                         spacing="0",
@@ -366,6 +358,11 @@ class DashboardApp:
                         State.sidebar_open,
                         rx.box(
                             rx.vstack(
+                                *(
+                                    [rx.image(src=self.config.logo_url, alt=self.config.title)]
+                                    if self.config.logo_url
+                                    else []
+                                ),
                                 rx.heading(self.config.title, size="4", padding="4"),
                                 rx.divider(),
                                 rx.vstack(
@@ -374,15 +371,19 @@ class DashboardApp:
                                         rx.text("Overview"),
                                         width="100%",
                                         justify_content="start",
-                                        variant="ghost" if State.active_tab != "overview" else "solid",
+                                        variant=rx.cond(
+                                            State.active_tab != "overview", "ghost", "solid"
+                                        ),
                                         on_click=lambda: State.set_tab("overview"),
                                     ),
                                     rx.button(
-                                        rx.icon("columns"),
+                                        rx.icon("columns-2"),
                                         rx.text("Columns"),
                                         width="100%",
                                         justify_content="start",
-                                        variant="ghost" if State.active_tab != "columns" else "solid",
+                                        variant=rx.cond(
+                                            State.active_tab != "columns", "ghost", "solid"
+                                        ),
                                         on_click=lambda: State.set_tab("columns"),
                                     ),
                                     rx.button(
@@ -390,7 +391,9 @@ class DashboardApp:
                                         rx.text("Quality"),
                                         width="100%",
                                         justify_content="start",
-                                        variant="ghost" if State.active_tab != "quality" else "solid",
+                                        variant=rx.cond(
+                                            State.active_tab != "quality", "ghost", "solid"
+                                        ),
                                         on_click=lambda: State.set_tab("quality"),
                                     ),
                                     padding="4",
@@ -416,12 +419,11 @@ class DashboardApp:
                                 ),
                                 rx.spacer(),
                                 rx.button(
-                                    rx.cond(
-                                        State.theme == "light",
+                                    rx.color_mode_cond(
                                         rx.icon("moon"),
                                         rx.icon("sun"),
                                     ),
-                                    on_click=State.toggle_theme,
+                                    on_click=rx.toggle_color_mode,
                                     variant="ghost",
                                 ),
                                 width="100%",
@@ -451,21 +453,73 @@ class DashboardApp:
                                 padding="6",
                                 width="100%",
                             ),
+                            *(
+                                [
+                                    rx.box(
+                                        rx.heading("Correlations", size="4"),
+                                        rx.data_table(
+                                            data=State.correlations,
+                                            columns=["Column 1", "Column 2", "Correlation"],
+                                        ),
+                                        padding="6",
+                                        width="100%",
+                                    )
+                                ]
+                                if self.config.show_correlations
+                                else []
+                            ),
+                            *(
+                                [
+                                    rx.box(
+                                        rx.heading("Patterns", size="4"),
+                                        rx.code_block(State.pattern_json, language="json"),
+                                        padding="6",
+                                        width="100%",
+                                    )
+                                ]
+                                if self.config.show_patterns
+                                else []
+                            ),
+                            *(
+                                [
+                                    rx.box(
+                                        rx.heading("Profile data", size="4"),
+                                        rx.code_block(State.profile_json, language="json"),
+                                        padding="6",
+                                        width="100%",
+                                    )
+                                ]
+                                if self.config.show_raw_data
+                                else []
+                            ),
+                            *(
+                                [
+                                    rx.button(
+                                        "Export profile",
+                                        on_click=rx.download(
+                                            data=State.profile_json,
+                                            filename="truthound-profile.json",
+                                        ),
+                                    )
+                                ]
+                                if self.config.enable_export
+                                else []
+                            ),
                         ),
                         flex="1",
                     ),
                     width="100%",
                     height="100vh",
                 ),
-                bg=rx.cond(State.theme == "dark", "gray.900", "gray.50"),
+                bg=rx.color_mode_cond("gray.50", "gray.900"),
             )
 
         # Create app
-        app = rx.App()
+        app = rx.App(
+            theme=rx.theme(appearance=self.config.theme, accent_color=self.config.primary_color)
+        )
 
-        @app.add_page
-        def main():
-            return index()
+        app.add_page(index(), route="/", title=self.config.title)
 
         # Store state class for data loading
         self._state_class = State
@@ -473,7 +527,9 @@ class DashboardApp:
 
         return app
 
-    def load_profile(self, profile_path: str | Path | None = None, profile_data: dict | None = None) -> None:
+    def load_profile(
+        self, profile_path: str | Path | None = None, profile_data: dict | None = None
+    ) -> None:
         """Load profile data.
 
         Args:
@@ -482,9 +538,9 @@ class DashboardApp:
         """
         if profile_path:
             path = Path(profile_path)
-            with open(path, "r", encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 data = json.load(f)
-        elif profile_data:
+        elif profile_data is not None:
             data = profile_data
         else:
             raise ValueError("Must provide either profile_path or profile_data")
@@ -505,20 +561,26 @@ class DashboardApp:
             port: Server port (overrides config)
             debug: Debug mode (overrides config)
         """
-        if self._app is None:
-            self._create_app()
+        import tempfile
+        from dataclasses import replace
 
-        # Load profile if configured
-        if self.config.profile_path:
-            self.load_profile(profile_path=self.config.profile_path)
-        elif self.config.profile_data:
-            self.load_profile(profile_data=self.config.profile_data)
+        from truthound.datadocs.dashboard.server import ReflexDashboardServer
 
-        # Run the app
-        self._app.run(
-            host=host or self.config.host,
-            port=port or self.config.port,
+        config = replace(
+            self.config,
+            host=self.config.host if host is None else host,
+            port=self.config.port if port is None else port,
+            debug=self.config.debug if debug is None else debug,
         )
+        if self._profile_data is not None:
+            config = replace(config, profile_path=None, profile_data=self._profile_data)
+        with (
+            tempfile.TemporaryDirectory(prefix="truthound-reflex-dashboard-") as directory,
+            ReflexDashboardServer(Path(directory) / "project", config) as server,
+        ):
+            server.prepare()
+            server.start()
+            server.wait()
 
 
 def launch_dashboard(

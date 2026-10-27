@@ -686,3 +686,177 @@ def test_queue_authority_and_live_lease_block_new_effects(
     assert not receiver[0] and info["notifications"] == {"pending": 1}
     assert info["polls"] == 2
     assert info["state"] == ("active" if boundary == "live-owner" else boundary)
+
+
+@pytest.mark.parametrize("initial", ["expired", "failed"])
+def test_expiry_renewal_and_failed_restart_preserve_checkpoint(
+    runtime, monkeypatch, tmp_path, initial
+):
+    from truthound.mcp.durable_schema import read, storage, write
+
+    identity = register(runtime, monkeypatch, tmp_path)
+    assert worker(runtime).returncode == 0
+    store = storage(runtime[0]._session)
+    with store.transaction():
+        record = read(store, identity)
+        record["state"] = initial
+        if initial == "expired":
+            record["expires_at"] = 0
+        saved = record["checkpoint"]
+        write(store, identity, record)
+    action = "renew" if initial == "expired" else "restart"
+    options = {"lifetime_seconds": 3600} if action == "renew" else {}
+    request = control_request(runtime, identity, action, **options)
+    result = approve_update(runtime, request)
+    assert result["execution_status"] == "succeeded", result
+    assert result["data"]["state"] == "paused"
+    assert invoke(runtime[0], "schema_watch_update", **request) == result
+    assert read(store, identity)["checkpoint"] == saved
+    assert worker(runtime).returncode == 0
+    assert read(store, identity)["checkpoint"] == saved
+    assert (
+        approve_update(runtime, control_request(runtime, identity, "resume"))["execution_status"]
+        == "succeeded"
+    )
+    assert worker(runtime).returncode == 0
+    assert state(runtime[0], identity)[0]["polls"] == saved["polls"] + 1
+
+
+def test_definition_deletion_protects_unresolved_outbox_and_replays_receipt(
+    runtime, monkeypatch, tmp_path
+):
+    from truthound.mcp.durable_schema import read, storage, write
+
+    identity = register(runtime, monkeypatch, tmp_path)
+    invoke(runtime[0], "schema_watch_disable", watch_id=identity)
+    store = storage(runtime[0]._session)
+    with store.transaction():
+        record = read(store, identity)
+        record["outbox"] = [{"state": "unknown", "alert": {"alert_id": "unresolved"}}]
+        write(store, identity, record)
+    protected = approve_update(
+        runtime, control_request(runtime, identity, "delete", accept_history_loss=True)
+    )
+    assert protected["issues"] == [{"code": "invalid_control_state"}]
+    assert read(store, identity)["outbox"][0]["state"] == "unknown"
+    request = control_request(
+        runtime, identity, "delete", accept_history_loss=True, discard_unresolved=True
+    )
+    result = approve_update(runtime, request)
+    assert result["execution_status"] == "succeeded", result
+    assert result["data"]["state"] == "deleted"
+    assert invoke(runtime[0], "schema_watch_status", watch_id=identity)["issues"] == [
+        {"code": "invalid_handle"}
+    ]
+    assert store.connection.execute("SELECT COUNT(*) FROM mcp_schema_watches").fetchone()[0] == 0
+    assert invoke(runtime[0], "schema_watch_update", **request) == result
+    changed = dict(request, discard_unresolved=False)
+    assert invoke(runtime[0], "schema_watch_update", **changed)["issues"] == [
+        {"code": "idempotency_conflict"}
+    ]
+
+
+def test_history_retention_and_reset_keep_alert_ids_monotonic(
+    runtime, monkeypatch, tmp_path, receiver
+):
+    from truthound.mcp.durable_schema import read, storage, write
+
+    identity = register(runtime, monkeypatch, tmp_path)
+    assert worker(runtime).returncode == 0
+    for schema in ({"x": "Int64", "y": "String"}, {"x": "Int64"}):
+        change(tmp_path, schema)
+        assert worker(runtime).returncode == 0
+        assert worker(runtime).returncode == 0
+    store = storage(runtime[0]._session)
+    before = read(store, identity)
+    ids = {item["alert"]["alert_id"] for item in before["outbox"]}
+    assert len(ids) == 2
+    # Native queue retention permits history removal only after its outbox
+    # reference disappears; unresolved messages remain protected separately.
+    with store.transaction():
+        record = read(store, identity)
+        record["outbox"] = []
+        write(store, identity, record)
+    result = approve_update(
+        runtime, control_request(runtime, identity, "history_retention", retention={"max_count": 1})
+    )
+    assert result["execution_status"] == "succeeded", result
+    record = read(store, identity)
+    assert len(record["checkpoint"]["alerts"]) == len(record["checkpoint"]["versions"]) == 1
+    assert record["checkpoint"]["schemas"] == before["checkpoint"]["schemas"]
+    assert record["checkpoint"]["events"] == before["checkpoint"]["events"]
+    with store.transaction():
+        record["state"] = "failed"
+        record["checkpoint"]["schema_format"] = 0
+        write(store, identity, record)
+    denied = approve_update(runtime, control_request(runtime, identity, "restart"))
+    assert denied["issues"] == [{"code": "invalid_control_state"}]
+    reset = approve_update(
+        runtime,
+        control_request(
+            runtime, identity, "restart", reset_checkpoint=True, accept_history_loss=True
+        ),
+    )
+    assert reset["execution_status"] == "succeeded", reset
+    assert (
+        approve_update(runtime, control_request(runtime, identity, "resume"))["execution_status"]
+        == "succeeded"
+    )
+    assert worker(runtime).returncode == 0
+    change(tmp_path, {"x": "String"})
+    assert worker(runtime).returncode == 0
+    record = read(store, identity)
+    new_ids = {item["alert"]["alert_id"] for item in record["outbox"]}
+    assert new_ids and ids.isdisjoint(new_ids)
+    assert record["alert_counter"] > before["checkpoint"]["alert_counter"]
+
+
+def test_delete_receipt_commit_failure_restores_definition(runtime, monkeypatch, tmp_path):
+    from truthound.mcp.durable_schema import read, storage
+
+    identity = register(runtime, monkeypatch, tmp_path)
+    invoke(runtime[0], "schema_watch_disable", watch_id=identity)
+    request = control_request(runtime, identity, "delete", accept_history_loss=True)
+    store = storage(runtime[0]._session)
+    previous = read(store, identity)
+    original = store.finish_in_transaction
+
+    def fail(*args, **kwargs):
+        raise OSError("injected receipt publication failure")
+
+    monkeypatch.setattr(store, "finish_in_transaction", fail)
+    result = approve_update(runtime, request)
+    assert result["execution_status"] != "succeeded"
+    assert read(store, identity) == previous
+    monkeypatch.setattr(store, "finish_in_transaction", original)
+    result = invoke(runtime[0], "schema_watch_update", **request)
+    assert result["execution_status"] == "succeeded", result
+    path = runtime[1] / "bindings.json"
+    path.write_text(path.read_text() + "\n")
+    assert invoke(runtime[0], "schema_watch_update", **request)["execution_status"] != "succeeded"
+
+
+@pytest.mark.parametrize(
+    "options",
+    [
+        {"action": "delete"},
+        {"action": "restart", "reset_checkpoint": True},
+        {"action": "renew"},
+        {"action": "renew", "lifetime_seconds": 2592001},
+        {"action": "resume", "lifetime_seconds": 1},
+        {"action": "resume", "discard_unresolved": True},
+        {"action": "retention", "reset_checkpoint": True, "accept_history_loss": True},
+    ],
+)
+def test_lifecycle_fields_require_explicit_scoped_loss_and_duration(options):
+    from pydantic import ValidationError
+
+    from truthound.mcp.schema_watch_control import WatchUpdate
+
+    with pytest.raises(ValidationError):
+        WatchUpdate(
+            watch_id="watch_" + "a" * 64,
+            expected_revision="b" * 64,
+            idempotency_key="closed-lifecycle",
+            **options,
+        )

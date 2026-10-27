@@ -6,9 +6,8 @@ and dashboard components.
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any, Protocol, runtime_checkable
 
@@ -68,7 +67,7 @@ class ModelMetrics:
             "custom_metrics": dict(self.custom_metrics),
         }
 
-    def merge(self, other: "ModelMetrics") -> "ModelMetrics":
+    def merge(self, other: ModelMetrics) -> ModelMetrics:
         """Merge with another metrics snapshot."""
         merged_feature_drift = {**self.feature_drift, **other.feature_drift}
         merged_custom = {**self.custom_metrics, **other.custom_metrics}
@@ -135,7 +134,7 @@ class Alert:
     severity: AlertSeverity
     message: str
     metrics: ModelMetrics
-    triggered_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    triggered_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     resolved_at: datetime | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -401,8 +400,8 @@ class IModelMonitor(Protocol):
         prediction: Any,
         actual: Any | None = None,
         latency_ms: float = 0.0,
-    ) -> None:
-        """Record a prediction for monitoring.
+    ) -> str:
+        """Record a prediction and return its identity for pending feedback.
 
         Args:
             model_id: Model identifier

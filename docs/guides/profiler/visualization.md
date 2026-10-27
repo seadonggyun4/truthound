@@ -1,359 +1,124 @@
-# Visualization & HTML Reports
+# Visualization and HTML Reports
 
-This document describes the system for visualizing profile results and generating HTML reports.
+`truthound.profiler.visualization` provides native SVG, Plotly and ECharts chart
+renderers and a section-based HTML report generator. SVG needs no additional chart
+package. Install `truthound[profiler-visualization]` for Plotly; the supported
+package range is `plotly>=5.24,<7`.
 
-## Overview
-
-The visualization system implemented in `src/truthound/profiler/visualization.py` provides pure SVG-based chart rendering and HTML report generation.
-
-## ChartType
-
-```python
-class ChartType(Enum):
-    """Chart types"""
-
-    BAR = "bar"                     # Bar chart
-    HORIZONTAL_BAR = "horizontal_bar"  # Horizontal bar chart
-    PIE = "pie"                     # Pie chart
-    DONUT = "donut"                 # Donut chart
-    LINE = "line"                   # Line chart
-    AREA = "area"                   # Area chart
-    SCATTER = "scatter"             # Scatter plot
-    HISTOGRAM = "histogram"         # Histogram
-    HEATMAP = "heatmap"             # Heatmap
-    TABLE = "table"                 # Table
-    GAUGE = "gauge"                 # Gauge chart
-    SPARKLINE = "sparkline"         # Sparkline
-    TREEMAP = "treemap"             # Treemap
-    SANKEY = "sankey"               # Sankey diagram
-```
-
-## ReportTheme
-
-```python
-class ReportTheme(Enum):
-    """Report themes"""
-
-    LIGHT = "light"               # Light theme
-    DARK = "dark"                 # Dark theme
-    PROFESSIONAL = "professional" # Professional theme
-    MINIMAL = "minimal"           # Minimal theme
-    COLORFUL = "colorful"         # Colorful theme
-```
-
-## SectionType
-
-```python
-class SectionType(Enum):
-    """Report section types"""
-
-    OVERVIEW = "overview"               # Overview section
-    COLUMN_DETAILS = "column_details"   # Column details
-    DATA_QUALITY = "data_quality"       # Data quality
-    STATISTICS = "statistics"           # Statistics information
-    PATTERNS = "patterns"               # Pattern information
-    ALERTS = "alerts"                   # Alerts
-    RECOMMENDATIONS = "recommendations" # Recommendations
-    CUSTOM = "custom"                   # Custom section
-```
-
-## SVGChartRenderer
-
-Renders charts as pure SVG without external dependencies. Uses ChartData and ChartConfig for a unified interface.
+## Generate a Report
 
 ```python
 from truthound.profiler.visualization import (
-    SVGChartRenderer, ChartData, ChartConfig, ChartType
+    HTMLReportGenerator, ProfileData, ReportConfig, ReportTheme,
 )
-
-renderer = SVGChartRenderer()
-
-# Bar chart
-bar_data = ChartData(
-    labels=["A", "B", "C", "D", "E"],
-    values=[10, 25, 15, 30, 20],
-    title="Distribution",
+data = ProfileData(
+    table_name="example", row_count=3, column_count=1,
+    columns=[{"name": "amount", "inferred_type": "integer",
+              "null_ratio": 0, "unique_ratio": 1}],
 )
-bar_config = ChartConfig(chart_type=ChartType.BAR, width=400, height=300)
-bar_svg = renderer.render(bar_data, bar_config)
+generator = HTMLReportGenerator(ReportConfig(renderer="svg", theme=ReportTheme.LIGHT))
+html = generator.generate(data)
+generator.save(data, "profile.html")
+```
 
-# Pie chart
-pie_data = ChartData(
-    labels=["Cat A", "Cat B", "Cat C", "Cat D", "Cat E"],
-    values=[30, 25, 20, 15, 10],
+`ProfileDataConverter.from_dict(profile.to_dict())` accepts a native profile
+payload, including ISO `profiled_at`/`timestamp`. `generate_report(data, title="",
+theme="light", renderer="auto", config=None, output_path=None, **options)` accepts
+`ProfileData` or a dictionary; it returns HTML or the saved path. A supplied config
+takes precedence over convenience arguments.
+
+A per-call `generate(data, config=...)` override uses a separate renderer instance
+and does not change later calls, including when rendering fails. An explicitly
+injected chart renderer remains selected for that override. Table names are HTML
+escaped; chart JSON escapes script delimiters before embedding.
+
+## Configuration and Resources
+
+`ReportConfig` supports title/subtitle, theme, logo path/base64, TOC/timestamp/summary
+flags, sections, custom CSS/JS, `embed_resources`, language and renderer. Default
+sections are overview, data quality, column details, patterns and recommendations.
+Built-in themes are light, dark, professional, minimal and colorful. TOC links
+match the generated section anchors.
+
+`renderer="auto"` chooses Plotly when installed, otherwise SVG.
+`embed_resources=True` (default) embeds Plotly's actual installed JavaScript and
+adds no external script URL. This can add several MiB to a report; artifact budgets
+still apply. ECharts embedding requires a factory-supplied trusted JavaScript
+string via `EChartsChartRenderer(javascript=...)`. Missing embedded resources fail
+rather than silently loading a remote script. For explicitly selected CDN loading,
+use `embed_resources=False` with a renderer whose `use_cdn=True`. Opening that HTML
+requires access to its external script host. Native generation itself does not
+fetch those URLs.
+
+Custom CSS/JS, renderer implementations, section templates, themes and resource
+URLs are trusted application configuration. Escaping data does not sandbox this
+operator-supplied code. Do not put secrets or raw private records into public
+reports. Full profiles can contain values and recommendations; disclosure consent
+is distinct from rendering.
+
+## Charts and Sections
+
+```python
+from truthound.profiler.visualization import SVGChartRenderer, ChartData, ChartConfig, ChartType
+chart = SVGChartRenderer().render(
+    ChartData(labels=["A", "B"], values=[10, 20], title="Counts"),
+    ChartConfig(chart_type=ChartType.BAR, width=400, height=300),
 )
-pie_config = ChartConfig(chart_type=ChartType.PIE, width=300, height=300)
-pie_svg = renderer.render(pie_data, pie_config)
-
-# Histogram
-hist_data = ChartData(
-    labels=["0-10", "10-20", "20-30", "30-40"],
-    values=[5, 12, 8, 3],
-    title="Value Distribution",
-)
-hist_config = ChartConfig(chart_type=ChartType.HISTOGRAM, width=400, height=300)
-hist_svg = renderer.render(hist_data, hist_config)
-
-# Gauge chart
-gauge_data = ChartData(
-    values=[85],  # Current value
-    title="Completeness",
-    metadata={"min": 0, "max": 100},
-)
-gauge_config = ChartConfig(chart_type=ChartType.GAUGE, width=250, height=180)
-gauge_svg = renderer.render(gauge_data, gauge_config)
 ```
 
-## HTMLReportGenerator
+Check `renderer.supports_chart_type(type)` for the selected backend; enum membership
+does not mean every renderer implements every chart. Plotly and ECharts use
+script-safe JSON for chart data. Label/value pairs and table row lengths must
+align; interactive rendering rejects mismatches instead of silently truncating.
+Chart rendering and HTML generation are different from executing the page in a
+browser. A native Plotly 6.9.0 report with bundled JavaScript has been checked in a
+local browser; this is scoped evidence, not verification of every backend/version.
 
-Generates complete HTML reports. Accepts ProfileData objects or dicts as input.
+`section_registry` accepts trusted `SectionRenderer` implementations and
+`CustomSectionRenderer` callbacks. `ReportTemplate` provides template/CSS/JS helpers;
+it is not a wire-selected template engine.
 
-```python
-from truthound.profiler.visualization import (
-    HTMLReportGenerator, ReportConfig, ReportTheme, ProfileData
-)
+## Export
 
-# Configuration
-config = ReportConfig(
-    title="Data Profile Report",
-    subtitle="Generated by Truthound",
-    theme=ReportTheme.PROFESSIONAL,
-    include_toc=True,
-    include_timestamp=True,
-    include_summary=True,
-    sections=[
-        SectionType.OVERVIEW,
-        SectionType.DATA_QUALITY,
-        SectionType.COLUMN_DETAILS,
-        SectionType.PATTERNS,
-        SectionType.RECOMMENDATIONS,
-    ],
-)
+`HTMLReportGenerator.save()`, `ReportExporter.save_html()`, `to_file()` for
+HTML/JSON/PDF, and `to_pdf()` publish through a private sibling file, atomic
+replacement and file/directory flush. Rendering finishes before replacement.
+A failure after replacement may leave new content present; inspect the destination
+before retry. `render_pdf(profile, config=None)` and `to_pdf_bytes(html)` return
+native PDF bytes without writing a path.
 
-# Generate report
-generator = HTMLReportGenerator()
-html = generator.generate(profile_data, config)
+Install `truthound[pdf]` and the native WeasyPrint libraries. The legacy pdfkit
+fallback is used only if WeasyPrint cannot be imported; native rendering errors
+propagate instead of switching providers. On macOS, the calling process may need
+its installed native library directory in `DYLD_FALLBACK_LIBRARY_PATH` (for an
+Apple Silicon Homebrew installation, `/opt/homebrew/lib`). An isolated MCP factory
+must configure its own native library discovery. No system library paths are
+changed by Core.
 
-# Save to file
-generator.save(profile_data, "report.html", config)
+Profile PDF export selects static SVG automatically, even for a Plotly HTML
+configuration. SVG dimensions are explicit and fit A4 content width; JavaScript
+charts are not executed. Direct `to_pdf_bytes(html)` accepts caller-owned HTML,
+so its resources and native provider behavior remain the caller's responsibility.
+SVG bar charts support positive and negative values. Renderers reject mismatched
+label/value lengths, non-finite values and negative pie values instead of silently
+losing data or emitting invalid geometry.
 
-# Generate from dict
-html = generator.generate_from_dict(profile_dict, config)
-```
+## Approved MCP Visualization
 
-## ReportConfig
-
-```python
-@dataclass
-class ReportConfig:
-    """Report configuration"""
-
-    title: str = "Data Profile Report"
-    subtitle: str = ""
-    theme: ReportTheme = ReportTheme.LIGHT
-    logo_path: str | None = None        # Logo file path
-    logo_base64: str | None = None      # Base64 encoded logo
-    include_toc: bool = True            # Include table of contents
-    include_timestamp: bool = True      # Include timestamp
-    include_summary: bool = True        # Include summary
-    sections: list[SectionType] = field(default_factory=lambda: [
-        SectionType.OVERVIEW,
-        SectionType.DATA_QUALITY,
-        SectionType.COLUMN_DETAILS,
-        SectionType.PATTERNS,
-        SectionType.RECOMMENDATIONS,
-    ])
-    custom_css: str | None = None       # Custom CSS
-    custom_js: str | None = None        # Custom JavaScript
-    embed_resources: bool = True        # Embed resources
-    language: str = "en"                # Language code
-```
-
-## Section Renderers
-
-Each section is generated by a separate renderer (implementing the SectionRenderer protocol). Renderers receive SectionContent, ChartRenderer, and ThemeConfig as input.
-
-### OverviewSectionRenderer
-
-```python
-from truthound.profiler.visualization import (
-    OverviewSectionRenderer, SectionContent, SectionType
-)
-
-renderer = OverviewSectionRenderer()
-content = SectionContent(
-    section_type=SectionType.OVERVIEW,
-    title="Overview",
-    text_blocks=["Table: users", "Rows: 10,000 | Columns: 5"],
-    charts=[...],
-    tables=[...],
-)
-html = renderer.render(content, chart_renderer, theme)
-```
-
-### DataQualitySectionRenderer
-
-```python
-from truthound.profiler.visualization import DataQualitySectionRenderer
-
-renderer = DataQualitySectionRenderer()
-# Included content:
-# - Quality gauge chart
-# - Alert/warning display
-# - Per-column quality table
-```
-
-### ColumnDetailsSectionRenderer
-
-```python
-from truthound.profiler.visualization import ColumnDetailsSectionRenderer
-
-renderer = ColumnDetailsSectionRenderer()
-# For each column:
-# - Value distribution chart (BAR or HISTOGRAM)
-# - Column statistics table
-# - Collapsible support (collapsible=True)
-```
-
-### PatternsSectionRenderer
-
-```python
-from truthound.profiler.visualization import PatternsSectionRenderer
-
-renderer = PatternsSectionRenderer()
-# Included content:
-# - Pattern type pie chart
-# - Pattern detail table
-```
-
-### RecommendationsSectionRenderer
-
-```python
-from truthound.profiler.visualization import RecommendationsSectionRenderer
-
-renderer = RecommendationsSectionRenderer()
-# Included content:
-# - Recommendations list (text_blocks)
-# - Additional information table
-```
-
-## ReportExporter
-
-Supports export to various formats. HTML and JSON formats are supported by default.
-
-```python
-from truthound.profiler.visualization import ReportExporter, ProfileData
-
-exporter = ReportExporter()
-
-# HTML export
-html_str = exporter.to_html(profile_data, config)
-
-# JSON export
-json_str = exporter.to_json(profile_data)
-
-# Export to file
-exporter.to_file(profile_data, "report.html", format="html")
-exporter.to_file(profile_data, "profile.json", format="json")
-```
-
-## Theme Customization
-
-Custom themes can be created with ThemeConfig or registered in ThemeRegistry.
-
-```python
-from truthound.profiler.visualization import ThemeConfig, theme_registry, HTMLReportGenerator
-
-custom_theme = ThemeConfig(
-    name="my_theme",
-    primary_color="#3498db",
-    secondary_color="#2ecc71",
-    accent_color="#e74c3c",
-    background_color="#ffffff",
-    text_color="#333333",
-    border_color="#e0e0e0",
-    font_family="'Noto Sans KR', sans-serif",
-    header_bg="#f8f9fa",
-    card_bg="#ffffff",
-    shadow="0 2px 4px rgba(0,0,0,0.1)",
-    border_radius="8px",
-)
-
-# Register in registry
-theme_registry.register("my_theme", custom_theme)
-
-# Pass theme directly
-generator = HTMLReportGenerator(theme=custom_theme)
-```
-
-## Chart Rendering Methods
-
-| Output Format | Chart Engine | Characteristics |
-|---------------|--------------|-----------------|
-| HTML | ApexCharts | Interactive, requires JS |
-| PDF | SVG (pure) | No JS dependency, static |
-| Markdown | Text | ASCII art charts |
-
-```python
-# Interactive charts for HTML
-html_generator = HTMLReportGenerator(config)
-html = html_generator.generate(profile)  # Uses ApexCharts
-
-# Static SVG charts for PDF
-pdf_exporter = ReportExporter()
-pdf_exporter.export(profile, "report.pdf")  # Uses pure SVG
-```
-
-## Quick Report Generation
-
-```python
-from truthound.profiler.visualization import generate_report
-
-# Convenience function
-html = generate_report(profile)
-with open("report.html", "w") as f:
-    f.write(html)
-
-# Specify theme
-html = generate_report(profile, theme=ReportTheme.DARK)
-```
-
-## Comparison Reports
-
-Generate reports comparing multiple profiles.
-
-```python
-from truthound.profiler.visualization import compare_profiles
-
-# Compare multiple profiles
-html = compare_profiles(
-    profiles=[profile1, profile2, profile3],
-    labels=["Before", "After", "Latest"],
-    config=ReportConfig(title="Profile Comparison Report"),
-)
-
-# Included content:
-# - Profile overview comparison table (table name, row count, column count)
-# - Quality score comparison bar chart
-```
-
-## CLI Usage
-
-```bash
-# Generate HTML report
-th profile data.csv --output report.html --format html
-
-# Specify theme
-th profile data.csv --output report.html --theme dark
-
-# Generate PDF report
-th profile data.csv --output report.pdf --format pdf
-
-# Comparison report
-th compare-profiles profile1.json profile2.json --output comparison.html
-```
+A private `ProfilerRuntime.visualizers` map binds native `HTMLReportGenerator`
+objects and `visualization_slots` selects private output paths. `inspect` lists
+aliases. `visualization_export(profile_id, visualizer_id)` requires a complete
+retained native profile and returns a real `text/html` artifact under the normal
+owner budget. Set `export_format="pdf"` for an `application/pdf` artifact; HTML
+remains the default. The same format field applies to `visualization_save`. `visualization_save(profile_id, visualizer_id, visualization_slot_id)`
+checks rendered size before publishing to the selected slot and returns byte count
+and SHA-256, omitting the path. Both require exact approval and sensitive-result
+consent. Wire requests cannot supply CSS/JS, output paths or renderer imports.
+The native factory owns resource/CDN choices. Installed-worker tests cover HTML
+and native PDF artifact reading and exact saved-byte hashes. Save slots are fixed
+paths: the selected format determines bytes, not the path suffix.
 
 ## Next Steps
 
-- [Internationalization](i18n.md) - Generate multilingual reports
-- [Distributed Processing](distributed.md) - Parallel report generation at scale
+- [ML Inference](ml-inference.md)
+- [Quality Scoring](quality-scoring.md)

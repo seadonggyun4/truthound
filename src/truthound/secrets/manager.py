@@ -15,9 +15,13 @@ from __future__ import annotations
 
 import json
 import logging
+from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Iterator
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterator
 
 from truthound.secrets.base import (
     BaseSecretProvider,
@@ -27,7 +31,6 @@ from truthound.secrets.base import (
     SecretValue,
 )
 from truthound.secrets.providers import (
-    ChainedProvider,
     DotEnvProvider,
     EnvironmentProvider,
     FileProvider,
@@ -81,7 +84,7 @@ class SecretManagerConfig:
     audit_enabled: bool = True
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "SecretManagerConfig":
+    def from_dict(cls, data: dict[str, Any]) -> SecretManagerConfig:
         """Create config from dictionary."""
         providers = []
         for p in data.get("providers", []):
@@ -105,7 +108,7 @@ class SecretManagerConfig:
         )
 
     @classmethod
-    def from_file(cls, path: str | Path) -> "SecretManagerConfig":
+    def from_file(cls, path: str | Path) -> SecretManagerConfig:
         """Load config from JSON or YAML file."""
         path = Path(path)
 
@@ -122,8 +125,8 @@ class SecretManagerConfig:
                 import yaml
 
                 data = yaml.safe_load(content)
-            except ImportError:
-                raise ImportError("PyYAML required for YAML config files")
+            except ImportError as error:
+                raise ImportError("PyYAML required for YAML config files") from error
         else:
             raise ValueError(f"Unsupported config format: {suffix}")
 
@@ -244,7 +247,7 @@ class SecretManager:
         include_env: bool = True,
         include_dotenv: bool = True,
         dotenv_paths: list[str | Path] | None = None,
-    ) -> "SecretManager":
+    ) -> SecretManager:
         """Create manager with default provider chain.
 
         Args:
@@ -262,16 +265,14 @@ class SecretManager:
 
         if include_dotenv:
             if dotenv_paths:
-                manager.add_provider(
-                    DotEnvProvider(paths=dotenv_paths), priority=20
-                )
+                manager.add_provider(DotEnvProvider(paths=dotenv_paths), priority=20)
             else:
                 manager.add_provider(DotEnvProvider(), priority=20)
 
         return manager
 
     @classmethod
-    def from_config(cls, path: str | Path) -> "SecretManager":
+    def from_config(cls, path: str | Path) -> SecretManager:
         """Create manager from configuration file.
 
         Args:
@@ -308,9 +309,7 @@ class SecretManager:
         if self._default_provider is None:
             self._default_provider = provider_name
 
-        logger.debug(
-            f"Added provider '{provider_name}' with priority {priority}"
-        )
+        logger.debug(f"Added provider '{provider_name}' with priority {priority}")
 
     def remove_provider(self, name: str) -> bool:
         """Remove a provider by name.
@@ -353,9 +352,7 @@ class SecretManager:
 
     def _sorted_providers(self) -> Iterator[tuple[str, BaseSecretProvider]]:
         """Iterate providers in priority order."""
-        sorted_items = sorted(
-            self._providers.items(), key=lambda x: x[1][0]
-        )
+        sorted_items = sorted(self._providers.items(), key=lambda x: x[1][0])
         for name, (_, provider) in sorted_items:
             yield name, provider
 
@@ -388,10 +385,8 @@ class SecretManager:
             entry = self._providers.get(provider)
             if not entry:
                 if self._config.strict_mode and default is None:
-                    raise SecretProviderError(
-                        "manager", f"Provider not found: {provider}"
-                    )
-                return self._wrap_default(key, default)
+                    raise SecretProviderError("manager", f"Provider not found: {provider}")
+                return None if default is None else self._wrap_default(key, default)
 
             _, prov = entry
             try:
@@ -415,8 +410,10 @@ class SecretManager:
                     return secret
             except SecretNotFoundError:
                 continue
-            except Exception as e:
-                logger.warning(f"Provider {prov_name} error for '{key}': {e}")
+            except Exception:
+                # Provider exception text can contain credentials from a failed
+                # connection or SDK response. Retain a failure signal only.
+                logger.warning("Secret provider lookup failed")
                 continue
 
         # Not found in any provider
@@ -451,9 +448,7 @@ class SecretManager:
         Returns:
             Secret value string or None.
         """
-        secret = self.get(
-            key, provider=provider, version=version, field=field, default=default
-        )
+        secret = self.get(key, provider=provider, version=version, field=field, default=default)
         return secret.get_value() if secret else None
 
     def resolve_reference(self, ref: SecretReference) -> SecretValue | None:
@@ -542,23 +537,18 @@ class SecretManager:
             metadata={"is_default": True},
         )
 
-    def _audit(
-        self, key: str, provider: str, action: str, success: bool
-    ) -> None:
+    def _audit(self, key: str, provider: str, action: str, success: bool) -> None:
         """Log audit event."""
         if not self._config.audit_enabled:
             return
 
         logger.debug(
-            f"Secret access: key={key}, provider={provider}, "
-            f"action={action}, success={success}"
+            f"Secret access: key={key}, provider={provider}, action={action}, success={success}"
         )
 
         if self._audit_callback:
-            try:
+            with suppress(Exception):
                 self._audit_callback(key, provider, action, success)
-            except Exception:
-                pass
 
     def clear_cache(self, provider: str | None = None) -> None:
         """Clear cached secrets.

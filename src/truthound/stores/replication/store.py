@@ -7,9 +7,10 @@ adds cross-region replication capabilities.
 from __future__ import annotations
 
 import asyncio
-import time
+from contextlib import suppress
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
+from truthound.stores.base import StoreWriteError
 from truthound.stores.replication.base import (
     ReadPreference,
     ReplicaHealth,
@@ -19,8 +20,8 @@ from truthound.stores.replication.base import (
     ReplicationMetrics,
     ReplicationMode,
 )
-from truthound.stores.replication.syncer import ReplicationSyncer
 from truthound.stores.replication.monitor import ReplicationMonitor
+from truthound.stores.replication.syncer import ReplicationSyncer
 
 if TYPE_CHECKING:
     from truthound.stores.base import ValidationStore
@@ -53,7 +54,7 @@ class ReplicatedStore(Generic[T, ConfigT]):
 
     def __init__(
         self,
-        primary: "ValidationStore[ConfigT]",
+        primary: ValidationStore[ConfigT],
         config: ReplicationConfig | None = None,
     ) -> None:
         """Initialize replicated store.
@@ -77,9 +78,29 @@ class ReplicatedStore(Generic[T, ConfigT]):
         self._replication_queue: asyncio.Queue = asyncio.Queue()
         self._replication_task: asyncio.Task | None = None
         self._started = False
+        self._pending_replications: set[asyncio.Task] = set()
+        self._background_failures = 0
+
+    def _replication_finished(self, task) -> None:
+        self._pending_replications.discard(task)
+        if not task.cancelled() and task.exception() is not None:
+            self._background_failures += 1
+
+    def set_io_guard(self, guard) -> None:
+        """Check an owner-supplied authorization guard immediately before I/O.
+
+        Applies to background replication/health reads as well as writes. The
+        guard is trusted local code, not a serialized callback.
+        """
+        self._syncer.io_guard = guard
+
+    def _save_primary(self, item: T) -> str:
+        item_id = self._syncer._io(self._primary.save, item)
+        self._metrics.record_primary_write()
+        return item_id
 
     @property
-    def primary(self) -> "ValidationStore[ConfigT]":
+    def primary(self) -> ValidationStore[ConfigT]:
         """Get primary store."""
         return self._primary
 
@@ -107,7 +128,7 @@ class ReplicatedStore(Generic[T, ConfigT]):
             and target.state == ReplicaState.ACTIVE
         ]
 
-    def _select_read_replica(self) -> "ValidationStore[ConfigT] | None":
+    def _select_read_replica(self) -> ValidationStore[ConfigT] | None:
         """Select a replica for reading based on read preference."""
         preference = self._config.read_preference
 
@@ -115,6 +136,8 @@ class ReplicatedStore(Generic[T, ConfigT]):
             return None  # Use primary
 
         healthy = self._get_healthy_replicas()
+        if len(healthy) != sum(target.state == ReplicaState.ACTIVE for target in self._config.targets):
+            return False
         if not healthy:
             return None  # Fallback to primary
 
@@ -178,7 +201,7 @@ class ReplicatedStore(Generic[T, ConfigT]):
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        return all(r is True for r in results if not isinstance(r, Exception))
+        return all(r is True for r in results)
 
     async def _replicate_semi_sync(
         self,
@@ -187,50 +210,39 @@ class ReplicatedStore(Generic[T, ConfigT]):
     ) -> bool:
         """Replicate item to at least min_sync_replicas."""
         healthy = self._get_healthy_replicas()
-        if not healthy:
-            return True
+        if len(healthy) < self._config.min_sync_replicas:
+            return False
 
         tasks = [
             self._replicate_to_target(item_id, item, target)
             for target in healthy
         ]
-        done, pending = await asyncio.wait(
-            [asyncio.create_task(t) for t in tasks],
-            return_when=asyncio.FIRST_COMPLETED,
-        )
-
-        success_count = sum(
-            1 for task in done
-            if task.result() is True
-        )
-
-        # Wait for more if needed
-        while (
-            success_count < self._config.min_sync_replicas
-            and pending
-        ):
-            done_new, pending = await asyncio.wait(
-                pending,
-                return_when=asyncio.FIRST_COMPLETED,
-            )
-            success_count += sum(
-                1 for task in done_new
-                if task.result() is True
-            )
-
-        # Cancel remaining
-        for task in pending:
-            task.cancel()
-
-        return success_count >= self._config.min_sync_replicas
+        owned = [asyncio.create_task(t) for t in tasks]
+        pending = set(owned)
+        success_count = 0
+        try:
+            while success_count < self._config.min_sync_replicas and pending:
+                done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
+                success_count += sum(
+                    not task.cancelled() and task.exception() is None and task.result() is True
+                    for task in done
+                )
+            return success_count >= self._config.min_sync_replicas
+        finally:
+            for task in owned:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*owned, return_exceptions=True)
 
     async def _process_replication_queue(self) -> None:
         """Background task to process async replication queue."""
         while True:
             try:
                 item_id, item = await self._replication_queue.get()
-                await self._replicate_async(item_id, item)
-                self._replication_queue.task_done()
+                try:
+                    await self._replicate_async(item_id, item)
+                finally:
+                    self._replication_queue.task_done()
             except asyncio.CancelledError:
                 break
             except Exception:
@@ -254,20 +266,35 @@ class ReplicatedStore(Generic[T, ConfigT]):
 
     async def stop(self) -> None:
         """Stop replication services."""
-        if not self._started:
-            return
-
         await self._monitor.stop()
+        await self.flush()
 
         if self._replication_task:
             self._replication_task.cancel()
-            try:
+            with suppress(asyncio.CancelledError):
                 await self._replication_task
-            except asyncio.CancelledError:
-                pass
             self._replication_task = None
 
         self._started = False
+
+    async def flush(self) -> None:
+        """Drain work owned by this instance; inspect metrics for replica failures.
+
+        This is process-local draining, not a durable delivery receipt.
+        """
+        if self._replication_task is not None and not self._replication_task.done():
+            await self._replication_queue.join()
+        else:
+            while not self._replication_queue.empty():
+                item_id, item = self._replication_queue.get_nowait()
+                try:
+                    await self._replicate_async(item_id, item)
+                finally:
+                    self._replication_queue.task_done()
+        while self._pending_replications:
+            pending = tuple(self._pending_replications)
+            await asyncio.gather(*pending, return_exceptions=True)
+            self._pending_replications.difference_update(pending)
 
     def save(self, item: T) -> str:
         """Save an item to primary and replicate.
@@ -281,32 +308,36 @@ class ReplicatedStore(Generic[T, ConfigT]):
         Returns:
             Item ID.
         """
-        # Save to primary
-        item_id = self._primary.save(item)
-        self._metrics.record_primary_write()
+        if self._config.mode != ReplicationMode.ASYNC:
+            try:
+                asyncio.get_running_loop()
+            except RuntimeError:
+                pass
+            else:
+                raise RuntimeError("Use save_async from a running event loop")
+        item_id = self._save_primary(item)
 
         # Handle replication based on mode
         if self._config.mode == ReplicationMode.SYNC:
             # Run synchronously
             loop = asyncio.new_event_loop()
             try:
-                loop.run_until_complete(self._replicate_sync(item_id, item))
+                if not loop.run_until_complete(self._replicate_sync(item_id, item)):
+                    raise StoreWriteError("Primary saved but synchronous replication failed")
             finally:
                 loop.close()
 
         elif self._config.mode == ReplicationMode.SEMI_SYNC:
             loop = asyncio.new_event_loop()
             try:
-                loop.run_until_complete(self._replicate_semi_sync(item_id, item))
+                if not loop.run_until_complete(self._replicate_semi_sync(item_id, item)):
+                    raise StoreWriteError("Primary saved but required replica count was not reached")
             finally:
                 loop.close()
 
         elif self._config.mode == ReplicationMode.ASYNC:
             # Queue for background replication
-            try:
-                self._replication_queue.put_nowait((item_id, item))
-            except asyncio.QueueFull:
-                pass
+            self._replication_queue.put_nowait((item_id, item))
 
         return item_id
 
@@ -321,16 +352,19 @@ class ReplicatedStore(Generic[T, ConfigT]):
         """
         # Save to primary
         loop = asyncio.get_event_loop()
-        item_id = await loop.run_in_executor(None, self._primary.save, item)
-        self._metrics.record_primary_write()
+        item_id = await loop.run_in_executor(None, self._save_primary, item)
 
         # Replicate based on mode
         if self._config.mode == ReplicationMode.SYNC:
-            await self._replicate_sync(item_id, item)
+            if not await self._replicate_sync(item_id, item):
+                raise StoreWriteError("Primary saved but synchronous replication failed")
         elif self._config.mode == ReplicationMode.SEMI_SYNC:
-            await self._replicate_semi_sync(item_id, item)
+            if not await self._replicate_semi_sync(item_id, item):
+                raise StoreWriteError("Primary saved but required replica count was not reached")
         else:  # ASYNC
-            asyncio.create_task(self._replicate_async(item_id, item))
+            task = asyncio.create_task(self._replicate_async(item_id, item))
+            self._pending_replications.add(task)
+            task.add_done_callback(self._replication_finished)
 
         return item_id
 
@@ -347,11 +381,11 @@ class ReplicatedStore(Generic[T, ConfigT]):
 
         if replica is not None:
             try:
-                return replica.get(item_id)
+                return self._syncer._io(replica.get, item_id)
             except Exception:
                 pass  # Fallback to primary
 
-        return self._primary.get(item_id)
+        return self._syncer._io(self._primary.get, item_id)
 
     def delete(self, item_id: str) -> bool:
         """Delete an item from primary and replicas.
@@ -363,14 +397,12 @@ class ReplicatedStore(Generic[T, ConfigT]):
             True if deleted from primary.
         """
         # Delete from primary
-        deleted = self._primary.delete(item_id)
+        deleted = self._syncer._io(self._primary.delete, item_id)
 
         # Delete from replicas (best effort)
         for target in self._config.targets:
-            try:
-                target.store.delete(item_id)
-            except Exception:
-                pass
+            with suppress(Exception):
+                self._syncer._io(target.store.delete, item_id)
 
         return deleted
 
@@ -383,7 +415,7 @@ class ReplicatedStore(Generic[T, ConfigT]):
         Returns:
             True if exists.
         """
-        return self._primary.exists(item_id)
+        return self._syncer._io(self._primary.exists, item_id)
 
     def list_ids(self, **kwargs: Any) -> list[str]:
         """List item IDs.
@@ -391,7 +423,7 @@ class ReplicatedStore(Generic[T, ConfigT]):
         Returns:
             List of item IDs.
         """
-        return self._primary.list_ids(**kwargs)
+        return self._syncer._io(self._primary.list_ids, **kwargs)
 
     async def full_sync(self, target_name: str | None = None) -> dict[str, Any]:
         """Perform full synchronization to replicas.
@@ -427,9 +459,11 @@ class ReplicatedStore(Generic[T, ConfigT]):
             "metrics": self._metrics.to_dict(),
             "health": self._monitor.get_health_summary(),
             "queue_size": self._replication_queue.qsize(),
+            "pending_tasks": len(self._pending_replications),
+            "background_failures": self._background_failures,
         }
 
-    async def __aenter__(self) -> "ReplicatedStore[T, ConfigT]":
+    async def __aenter__(self) -> ReplicatedStore[T, ConfigT]:
         """Async context manager entry."""
         await self.start()
         return self

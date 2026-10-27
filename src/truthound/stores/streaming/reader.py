@@ -8,13 +8,12 @@ from __future__ import annotations
 
 import asyncio
 import gzip
+import hashlib
 import json
-import threading
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from io import BytesIO
+from collections.abc import AsyncIterator, Iterator  # noqa: TC003 - public annotation introspection
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, AsyncIterator, BinaryIO, Iterator
+from typing import TYPE_CHECKING, Any
 
 from truthound.stores.streaming.base import (
     ChunkInfo,
@@ -44,6 +43,20 @@ class ChunkNotFoundError(StreamReadError):
     """Chunk not found in storage."""
 
     pass
+
+
+def _validator_result(record):
+    """Typed verdict iteration must not interpret a legacy 'False' as truthy."""
+    from truthound.stores.results import ValidatorResult
+
+    if (
+        not isinstance(record, dict) or not isinstance(record.get("success"), bool)
+        or not isinstance(record.get("validator_name"), str) or not record["validator_name"]
+        or not isinstance(record.get("count", 0), int) or isinstance(record.get("count", 0), bool)
+        or record.get("count", 0) < 0
+    ):
+        raise StreamReadError("Native stream contains an untyped validation verdict")
+    return ValidatorResult.from_dict(record)
 
 
 class CorruptedChunkError(StreamReadError):
@@ -90,8 +103,33 @@ class CSVDeserializer(RecordDeserializer):
 
         text = data.decode("utf-8")
         reader = csv.DictReader(StringIO(text), fieldnames=self.columns)
+        columns = reader.fieldnames or []
+        record_column = columns[-1] if columns and columns[-1].startswith("__truthound_record_v1__") else None
         for row in reader:
-            yield dict(row)
+            if record_column is not None:
+                value = json.loads(row[record_column])
+                if not isinstance(value, dict):
+                    raise StreamReadError("Invalid native CSV record payload")
+                yield value
+            else:
+                yield dict(row)
+
+
+class ParquetDeserializer(RecordDeserializer):
+    def deserialize(self, data: bytes) -> Iterator[dict[str, Any]]:
+        from io import BytesIO
+
+        import polars as pl
+
+        frame = pl.read_parquet(BytesIO(data))
+        if frame.columns == ["__truthound_record_v1__"]:
+            for item in frame.get_column("__truthound_record_v1__"):
+                value = json.loads(item)
+                if not isinstance(value, dict):
+                    raise StreamReadError("Invalid native Parquet record payload")
+                yield value
+        else:
+            yield from frame.iter_rows(named=True)
 
 
 def get_deserializer(format: StreamingFormat, **kwargs: Any) -> RecordDeserializer:
@@ -100,6 +138,8 @@ def get_deserializer(format: StreamingFormat, **kwargs: Any) -> RecordDeserializ
         return JSONLDeserializer()
     elif format == StreamingFormat.CSV:
         return CSVDeserializer(columns=kwargs.get("columns"))
+    elif format == StreamingFormat.PARQUET:
+        return ParquetDeserializer()
     else:
         raise ValueError(f"Unsupported format: {format}")
 
@@ -142,7 +182,7 @@ class ZstdDecompressor(Decompressor):
             decompressor = zstd.ZstdDecompressor()
             return decompressor.decompress(data)
         except ImportError:
-            raise ImportError("zstandard library required for zstd decompression")
+            raise ImportError("zstandard library required for zstd decompression") from None
 
 
 class LZ4Decompressor(Decompressor):
@@ -154,7 +194,14 @@ class LZ4Decompressor(Decompressor):
 
             return lz4.frame.decompress(data)
         except ImportError:
-            raise ImportError("lz4 library required for lz4 decompression")
+            raise ImportError("lz4 library required for lz4 decompression") from None
+
+
+class SnappyDecompressor(Decompressor):
+    def decompress(self, data: bytes) -> bytes:
+        from truthound.stores.compression.providers import SnappyCompressor
+
+        return SnappyCompressor().decompress(data)
 
 
 def get_decompressor(compression: CompressionType) -> Decompressor:
@@ -167,6 +214,8 @@ def get_decompressor(compression: CompressionType) -> Decompressor:
         return ZstdDecompressor()
     elif compression == CompressionType.LZ4:
         return LZ4Decompressor()
+    elif compression == CompressionType.SNAPPY:
+        return SnappyDecompressor()
     else:
         raise ValueError(f"Unsupported compression: {compression}")
 
@@ -200,10 +249,18 @@ class BaseStreamReader(ABC):
         self.decompressor = decompressor or get_decompressor(config.compression)
 
         self.metrics = StreamingMetrics()
+        self._io_guard = None
         self._closed = False
         self._current_chunk_index = 0
         self._current_record_index = 0
         self._current_chunk_records: list[dict[str, Any]] = []
+
+    def set_io_guard(self, guard) -> None:
+        self._io_guard = guard
+
+    def _guard_io(self) -> None:
+        if self._io_guard is not None:
+            self._io_guard()
 
     @abstractmethod
     def _get_chunks(self) -> list[ChunkInfo]:
@@ -231,15 +288,25 @@ class BaseStreamReader(ABC):
         Returns:
             List of records in the chunk.
         """
+        self._guard_io()
         # Read compressed data
         compressed_data = self._read_chunk(chunk_info)
         self.metrics.bytes_read += len(compressed_data)
+        maximum = self.config.max_memory_mb * 1024 ** 2
+        if len(compressed_data) > maximum or chunk_info.byte_size and len(compressed_data) != chunk_info.byte_size:
+            raise StreamReadError("Native stream chunk size is inconsistent")
 
         # Decompress
         data = self.decompressor.decompress(compressed_data)
+        if len(data) > maximum:
+            raise StreamReadError("Native stream decoded chunk exceeds its memory bound")
+        if chunk_info.checksum and hashlib.md5(data).hexdigest() != chunk_info.checksum:
+            raise StreamReadError("Native stream chunk checksum changed")
 
         # Deserialize
         records = list(self.deserializer.deserialize(data))
+        if chunk_info.checksum and len(records) != chunk_info.record_count:
+            raise StreamReadError("Native stream chunk record count changed")
 
         self.metrics.record_read(len(records))
         self.metrics.record_chunk(is_write=False)
@@ -255,6 +322,7 @@ class BaseStreamReader(ABC):
         if self._closed:
             raise StreamReadError("Reader is closed")
 
+        self._guard_io()
         chunks = self._get_chunks()
 
         # Load next chunk if needed
@@ -284,6 +352,9 @@ class BaseStreamReader(ABC):
         if self._closed:
             raise StreamReadError("Reader is closed")
 
+        if size < 1:
+            raise ValueError("Native stream read batch size must be positive")
+
         records: list[dict[str, Any]] = []
         while len(records) < size:
             record = self.read()
@@ -304,19 +375,18 @@ class BaseStreamReader(ABC):
         finally:
             self.metrics.finish()
 
-    def iter_results(self) -> Iterator["ValidatorResult"]:
+    def iter_results(self) -> Iterator[ValidatorResult]:
         """Iterate over records as ValidatorResult objects."""
-        from truthound.stores.results import ValidatorResult
 
         for record in self:
-            yield ValidatorResult.from_dict(record)
+            yield _validator_result(record)
 
     def close(self) -> None:
         """Close the reader."""
         self._closed = True
         self._current_chunk_records = []
 
-    def __enter__(self) -> "BaseStreamReader":
+    def __enter__(self) -> BaseStreamReader:
         """Context manager entry."""
         self.metrics.start()
         return self
@@ -348,6 +418,7 @@ class StreamingResultReader(BaseStreamReader):
         self,
         run_path: Path | str,
         config: StreamingConfig | None = None,
+        *, manifest_filename: str = "_manifest.json",
     ):
         """Initialize the filesystem reader.
 
@@ -355,10 +426,14 @@ class StreamingResultReader(BaseStreamReader):
             run_path: Path to the run directory containing chunks.
             config: Streaming configuration (loaded from manifest if None).
         """
-        self.run_path = Path(run_path)
+        from truthound.stores.streaming._filesystem_io import component, contained_path
+
+        self.run_path = Path(run_path).absolute()
+        if self.run_path.is_symlink():
+            raise ValueError("Native stream directory cannot be a symlink")
 
         # Load manifest
-        manifest_path = self.run_path / "_manifest.json"
+        manifest_path = contained_path(self.run_path, component(manifest_filename))
         if manifest_path.exists():
             with open(manifest_path) as f:
                 manifest_data = json.load(f)
@@ -366,53 +441,11 @@ class StreamingResultReader(BaseStreamReader):
             self._chunks = self.session.chunks
             if config is None:
                 # Use config from manifest
-                config = StreamingConfig(
-                    format=StreamingFormat(
-                        manifest_data.get("config", {}).get("format", "jsonl")
-                    ),
-                    compression=CompressionType(
-                        manifest_data.get("config", {}).get("compression", "none")
-                    ),
-                )
+                config = self.session.config
         else:
-            self.session = None
-            self._chunks = self._discover_chunks()
-            if config is None:
-                config = StreamingConfig()
+            raise StreamReadError("Native stream manifest is missing; explicit reconciliation is required")
 
         super().__init__(config)
-
-    def _discover_chunks(self) -> list[ChunkInfo]:
-        """Discover chunks by scanning the directory."""
-        chunks: list[ChunkInfo] = []
-
-        # Look for chunk files
-        patterns = ["*.jsonl", "*.jsonl.gz", "*.ndjson", "*.ndjson.gz", "*.csv", "*.csv.gz"]
-        chunk_files: list[Path] = []
-        for pattern in patterns:
-            chunk_files.extend(self.run_path.glob(pattern))
-
-        # Filter out manifest and sort by name
-        chunk_files = [f for f in chunk_files if not f.name.startswith("_")]
-        chunk_files.sort(key=lambda p: p.name)
-
-        for idx, path in enumerate(chunk_files):
-            # Estimate record count from file size (rough)
-            byte_size = path.stat().st_size
-            estimated_records = max(1, byte_size // 200)  # ~200 bytes per record
-
-            chunk_info = ChunkInfo(
-                chunk_id=path.stem.replace(".jsonl", "").replace(".gz", ""),
-                chunk_index=idx,
-                record_count=estimated_records,
-                byte_size=byte_size,
-                start_offset=0,
-                end_offset=estimated_records,
-                path=str(path),
-            )
-            chunks.append(chunk_info)
-
-        return chunks
 
     def _get_chunks(self) -> list[ChunkInfo]:
         """Get list of chunks."""
@@ -420,7 +453,9 @@ class StreamingResultReader(BaseStreamReader):
 
     def _read_chunk(self, chunk_info: ChunkInfo) -> bytes:
         """Read a chunk from the filesystem."""
-        chunk_path = Path(chunk_info.path) if chunk_info.path else None
+        from truthound.stores.streaming._filesystem_io import contained_path
+
+        chunk_path = contained_path(self.run_path, chunk_info.path) if chunk_info.path else None
 
         if chunk_path is None or not chunk_path.exists():
             # Try to find the chunk
@@ -430,13 +465,16 @@ class StreamingResultReader(BaseStreamReader):
             raise ChunkNotFoundError(f"Chunk not found: {chunk_info.chunk_id}")
 
         with open(chunk_path, "rb") as f:
-            return f.read()
+            return f.read(self.config.max_memory_mb * 1024 ** 2 + 1)
 
     def _find_chunk_path(self, chunk_info: ChunkInfo) -> Path:
         """Find the path for a chunk."""
-        extensions = [".jsonl", ".jsonl.gz", ".ndjson", ".ndjson.gz"]
+        from truthound.stores.streaming._filesystem_io import component, contained_path
+
+        component(chunk_info.chunk_id)
+        extensions = [".jsonl", ".jsonl.gz", ".ndjson", ".ndjson.gz", ".csv", ".csv.gz", ".jsonl.zst", ".jsonl.lz4"]
         for ext in extensions:
-            path = self.run_path / f"{chunk_info.chunk_id}{ext}"
+            path = contained_path(self.run_path, f"{chunk_info.chunk_id}{ext}")
             if path.exists():
                 return path
         return self.run_path / f"{chunk_info.chunk_id}.jsonl"
@@ -451,7 +489,7 @@ class ChunkedResultReader(BaseStreamReader):
     def __init__(
         self,
         chunks: list[ChunkInfo],
-        chunk_loader: "ChunkLoader",
+        chunk_loader: ChunkLoader,
         config: StreamingConfig | None = None,
     ):
         """Initialize the chunked reader.
@@ -535,12 +573,7 @@ class AsyncStreamReader:
 
     def _get_loop(self) -> asyncio.AbstractEventLoop:
         """Get or create event loop."""
-        if self._loop is None:
-            try:
-                self._loop = asyncio.get_running_loop()
-            except RuntimeError:
-                self._loop = asyncio.get_event_loop()
-        return self._loop
+        return asyncio.get_running_loop()
 
     async def read(self) -> dict[str, Any] | None:
         """Read a single record asynchronously."""
@@ -552,14 +585,13 @@ class AsyncStreamReader:
         loop = self._get_loop()
         return await loop.run_in_executor(None, self._reader.read_batch, size)
 
-    async def read_result(self) -> "ValidatorResult | None":
+    async def read_result(self) -> ValidatorResult | None:
         """Read a single ValidatorResult asynchronously."""
-        from truthound.stores.results import ValidatorResult
 
         record = await self.read()
         if record is None:
             return None
-        return ValidatorResult.from_dict(record)
+        return _validator_result(record)
 
     async def close(self) -> None:
         """Close the reader asynchronously."""
@@ -577,14 +609,13 @@ class AsyncStreamReader:
             raise StopAsyncIteration
         return record
 
-    async def aiter_results(self) -> AsyncIterator["ValidatorResult"]:
+    async def aiter_results(self) -> AsyncIterator[ValidatorResult]:
         """Async iterate over ValidatorResults."""
-        from truthound.stores.results import ValidatorResult
 
         async for record in self:
-            yield ValidatorResult.from_dict(record)
+            yield _validator_result(record)
 
-    async def __aenter__(self) -> "AsyncStreamReader":
+    async def __aenter__(self) -> AsyncStreamReader:
         """Async context manager entry."""
         self._reader.metrics.start()
         return self

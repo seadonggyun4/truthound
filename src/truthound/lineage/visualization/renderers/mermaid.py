@@ -5,12 +5,17 @@ Produces Mermaid diagram syntax for Markdown-friendly visualization.
 
 from __future__ import annotations
 
+import re
+from html import escape
 from typing import TYPE_CHECKING
 
+from truthound.lineage.visualization._encoding import mermaid_label, safe_node_id
 from truthound.lineage.visualization.protocols import (
     IGraphRenderer,
-    RenderFormat,
     RenderConfig,
+    RenderFormat,
+    capture_render_config,
+    resolve_render_depth,
 )
 
 if TYPE_CHECKING:
@@ -73,7 +78,7 @@ class MermaidRenderer(IGraphRenderer):
 
     def render(
         self,
-        graph: "LineageGraph",
+        graph: LineageGraph,
         config: RenderConfig | None = None,
     ) -> str:
         """Render graph to Mermaid syntax.
@@ -85,17 +90,17 @@ class MermaidRenderer(IGraphRenderer):
         Returns:
             Mermaid diagram string
         """
-        config = config or RenderConfig(theme=self._theme)
+        config = capture_render_config(config, theme=self._theme)
         if config.theme == "light" and self._theme == "dark":
             config.theme = self._theme
         return self._build_mermaid(graph, config)
 
     def render_subgraph(
         self,
-        graph: "LineageGraph",
+        graph: LineageGraph,
         root_node_id: str,
         direction: str = "downstream",
-        max_depth: int = -1,
+        max_depth: int | None = None,
         config: RenderConfig | None = None,
     ) -> str:
         """Render subgraph from root node.
@@ -104,13 +109,14 @@ class MermaidRenderer(IGraphRenderer):
             graph: Full lineage graph
             root_node_id: Root node ID
             direction: "upstream", "downstream", or "both"
-            max_depth: Maximum depth
+            max_depth: Maximum depth; None inherits RenderConfig.max_depth
             config: Render configuration
 
         Returns:
             Mermaid diagram string
         """
-        config = config or RenderConfig()
+        config = capture_render_config(config, theme=self._theme)
+        max_depth = resolve_render_depth(max_depth, config)
 
         # Collect subgraph nodes
         subgraph_node_ids: set[str] = {root_node_id}
@@ -128,7 +134,8 @@ class MermaidRenderer(IGraphRenderer):
 
         # Filter edges to only those within subgraph
         subgraph_edges = [
-            edge for edge in graph.edges
+            edge
+            for edge in graph.edges
             if edge.source in subgraph_node_ids and edge.target in subgraph_node_ids
         ]
 
@@ -187,8 +194,8 @@ class MermaidRenderer(IGraphRenderer):
             if config.filter_edge_types and edge.edge_type.value not in config.filter_edge_types:
                 continue
 
-            source_id = getattr(edge, 'source_id', None) or getattr(edge, 'source', None)
-            target_id = getattr(edge, 'target_id', None) or getattr(edge, 'target', None)
+            source_id = getattr(edge, "source_id", None) or getattr(edge, "source", None)
+            target_id = getattr(edge, "target_id", None) or getattr(edge, "target", None)
 
             if source_id not in node_ids or target_id not in node_ids:
                 continue
@@ -209,8 +216,8 @@ class MermaidRenderer(IGraphRenderer):
         lines.append("    %% Styling")
         for node_type, ids in node_by_type.items():
             color = config.get_node_color(node_type)
-            safe_ids = ",".join(self._safe_id(nid) for nid in ids)
-            lines.append(f"    style {safe_ids} fill:{color}")
+            for node_id in ids:
+                lines.append(f"    style {self._safe_id(node_id)} fill:{color}")
 
         # Highlight nodes
         if config.highlight_nodes:
@@ -223,7 +230,7 @@ class MermaidRenderer(IGraphRenderer):
 
     def _build_mermaid(
         self,
-        graph: "LineageGraph",
+        graph: LineageGraph,
         config: RenderConfig,
     ) -> str:
         """Build Mermaid diagram string."""
@@ -270,8 +277,8 @@ class MermaidRenderer(IGraphRenderer):
                 continue
 
             # Handle both source/source_id attribute names
-            source_id = getattr(edge, 'source_id', None) or getattr(edge, 'source', None)
-            target_id = getattr(edge, 'target_id', None) or getattr(edge, 'target', None)
+            source_id = getattr(edge, "source_id", None) or getattr(edge, "source", None)
+            target_id = getattr(edge, "target_id", None) or getattr(edge, "target", None)
 
             if source_id not in node_ids or target_id not in node_ids:
                 continue
@@ -293,8 +300,8 @@ class MermaidRenderer(IGraphRenderer):
         lines.append("    %% Styling")
         for node_type, ids in node_by_type.items():
             color = config.get_node_color(node_type)
-            safe_ids = ",".join(self._safe_id(nid) for nid in ids)
-            lines.append(f"    style {safe_ids} fill:{color}")
+            for node_id in ids:
+                lines.append(f"    style {self._safe_id(node_id)} fill:{color}")
 
         # Highlight nodes
         if config.highlight_nodes:
@@ -306,19 +313,16 @@ class MermaidRenderer(IGraphRenderer):
         return "\n".join(lines)
 
     def _escape_label(self, text: str) -> str:
-        """Escape text for Mermaid labels."""
-        # Remove special characters that break Mermaid syntax
-        return text.replace('"', "'").replace("[", "(").replace("]", ")").replace("{", "(").replace("}", ")")
+        """Escape syntax while preserving the actual label text."""
+        return mermaid_label(text)
 
     def _safe_id(self, node_id: str) -> str:
-        """Convert node ID to safe Mermaid identifier."""
-        # Replace non-alphanumeric with underscore
-        safe = "".join(c if c.isalnum() else "_" for c in node_id)
-        return safe or "node"
+        """Convert a node ID without merging distinct native identities."""
+        return safe_node_id(node_id)
 
     def render_markdown(
         self,
-        graph: "LineageGraph",
+        graph: LineageGraph,
         config: RenderConfig | None = None,
         title: str = "Lineage Graph",
     ) -> str:
@@ -332,11 +336,16 @@ class MermaidRenderer(IGraphRenderer):
         Returns:
             Markdown string
         """
-        config = config or RenderConfig()
+        config = capture_render_config(config, theme=self._theme)
         mermaid = self.render(graph, config)
 
+        safe_title = re.sub(
+            r"([\\`*_{}\[\]()#+.!|>~-])",
+            r"\\\1",
+            escape(title).replace("\r", " ").replace("\n", " "),
+        )
         md_lines = [
-            f"# {title}",
+            f"# {safe_title}",
             "",
             "```mermaid",
             mermaid,
@@ -352,13 +361,15 @@ class MermaidRenderer(IGraphRenderer):
         for node_type, (left, right) in self.NODE_SHAPES.items():
             md_lines.append(f"| `{left}...{right}` | {node_type} |")
 
-        md_lines.extend([
-            "",
-            "## Edge Types",
-            "",
-            "| Arrow | Relationship |",
-            "|-------|--------------|",
-        ])
+        md_lines.extend(
+            [
+                "",
+                "## Edge Types",
+                "",
+                "| Arrow | Relationship |",
+                "|-------|--------------|",
+            ]
+        )
 
         for edge_type, arrow in self.EDGE_ARROWS.items():
             md_lines.append(f"| `{arrow}` | {edge_type} |")
@@ -367,7 +378,7 @@ class MermaidRenderer(IGraphRenderer):
 
     def render_html(
         self,
-        graph: "LineageGraph",
+        graph: LineageGraph,
         config: RenderConfig | None = None,
     ) -> str:
         """Render complete HTML page with Mermaid diagram.
@@ -379,7 +390,7 @@ class MermaidRenderer(IGraphRenderer):
         Returns:
             Complete HTML page
         """
-        config = config or RenderConfig(theme=self._theme)
+        config = capture_render_config(config, theme=self._theme)
         if config.theme == "light" and self._theme == "dark":
             config.theme = self._theme
         mermaid = self.render(graph, config)
@@ -395,7 +406,7 @@ class MermaidRenderer(IGraphRenderer):
 <head>
     <meta charset="utf-8">
     <title>Lineage Graph - Mermaid</title>
-    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@12.2.0/dist/mermaid.min.js"></script>
     <style>
         * {{
             margin: 0;
@@ -444,16 +455,17 @@ class MermaidRenderer(IGraphRenderer):
 <body>
     <div class="container">
         <div class="mermaid">
-{mermaid}
+{escape(mermaid)}
         </div>
     </div>
     <script>
         mermaid.initialize({{
             startOnLoad: true,
+            securityLevel: 'strict',
             theme: '{mermaid_theme}',
             flowchart: {{
                 useMaxWidth: false,
-                htmlLabels: true,
+                htmlLabels: false,
                 curve: 'basis',
                 nodeSpacing: 50,
                 rankSpacing: 80,

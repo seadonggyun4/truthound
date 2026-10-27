@@ -10,11 +10,11 @@ from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
+from truthound.execution._protocols import AggregationType
 from truthound.execution.base import (
     BaseExecutionEngine,
     ExecutionConfig,
 )
-from truthound.execution._protocols import AggregationType
 
 if TYPE_CHECKING:
     import numpy as np
@@ -99,10 +99,7 @@ class PolarsExecutionEngine(BaseExecutionEngine[ExecutionConfig]):
         exprs = [pl.col(c).null_count().alias(f"_null_{c}") for c in self.get_columns()]
         result = self._lf.select(exprs).collect()
 
-        null_counts = {
-            col: result[f"_null_{col}"][0]
-            for col in self.get_columns()
-        }
+        null_counts = {col: result[f"_null_{col}"][0] for col in self.get_columns()}
         self._set_cached(cache_key, null_counts)
         return null_counts
 
@@ -178,15 +175,19 @@ class PolarsExecutionEngine(BaseExecutionEngine[ExecutionConfig]):
         limit: int | None = None,
     ) -> dict[Any, int]:
         """Get value frequency counts for a column."""
+        self._validate_window(limit)
+        if limit == 0:
+            return {}
+        count_name = "__truthound_count" if column != "__truthound_count" else "__truthound_count_"
         counts = (
             self._lf.group_by(column)
-            .agg(pl.len().alias("count"))
-            .sort("count", descending=True)
+            .agg(pl.len().alias(count_name))
+            .sort(count_name, descending=True)
         )
-        if limit:
+        if limit is not None:
             counts = counts.limit(limit)
         result = counts.collect()
-        return dict(zip(result[column].to_list(), result["count"].to_list()))
+        return dict(zip(result[column].to_list(), result[count_name].to_list(), strict=True))
 
     # -------------------------------------------------------------------------
     # Aggregation Operations (Optimized)
@@ -233,8 +234,9 @@ class PolarsExecutionEngine(BaseExecutionEngine[ExecutionConfig]):
         limit: int | None = None,
     ) -> list[Any]:
         """Get distinct values from a column."""
+        self._validate_window(limit)
         unique = self._lf.select(column).unique()
-        if limit:
+        if limit is not None:
             unique = unique.limit(limit)
         return unique.collect()[column].to_list()
 
@@ -246,59 +248,36 @@ class PolarsExecutionEngine(BaseExecutionEngine[ExecutionConfig]):
     ) -> list[Any]:
         """Get values from a column."""
         lf = self._lf
-        if offset > 0:
-            lf = lf.slice(offset, limit or 1_000_000)
-        elif limit:
-            lf = lf.limit(limit)
+        self._validate_window(limit, offset)
+        lf = lf.slice(offset, limit)
         return lf.select(column).collect()[column].to_list()
 
     def get_sample_values(self, column: str, n: int = 5) -> list[Any]:
         """Get sample non-null values from a column."""
-        result = (
-            self._lf
-            .select(column)
-            .filter(pl.col(column).is_not_null())
-            .limit(n)
-            .collect()
-        )
+        self._validate_window(n)
+        result = self._lf.select(column).filter(pl.col(column).is_not_null()).limit(n).collect()
         return result[column].to_list()
 
     # -------------------------------------------------------------------------
     # Filter Operations
     # -------------------------------------------------------------------------
 
-    def filter_by_condition(self, condition: str) -> "PolarsExecutionEngine":
+    def filter_by_condition(self, condition: str) -> PolarsExecutionEngine:
         """Create a new engine with filtered data.
 
         Supports SQL-like conditions that are converted to Polars expressions.
         """
-        # For now, use Polars SQL context for parsing
-        # This provides SQL-like syntax support
-        try:
-            ctx = pl.SQLContext(data=self._lf)
-            filtered = ctx.execute(f"SELECT * FROM data WHERE {condition}")
-            return PolarsExecutionEngine(filtered, self._config)
-        except Exception:
-            # Fallback: try direct Polars expression
-            # This is limited to simple column expressions
-            raise NotImplementedError(
-                f"Condition '{condition}' cannot be parsed. "
-                "Use Polars expressions directly on the LazyFrame."
-            )
+        with pl.SQLContext(data=self._lf) as context:
+            filtered = context.execute(f"SELECT * FROM data WHERE {condition}")
+        return PolarsExecutionEngine(filtered, self._config)
 
     def count_matching(self, condition: str) -> int:
-        """Count rows matching a condition using SQL context."""
-        try:
-            ctx = pl.SQLContext(data=self._lf)
-            result = ctx.execute(
+        """Count matching rows, preserving native parse and source failures."""
+        with pl.SQLContext(data=self._lf) as context:
+            result = context.execute(
                 f"SELECT COUNT(*) as cnt FROM data WHERE {condition}"
             ).collect()
-            return result["cnt"][0]
-        except Exception:
-            raise NotImplementedError(
-                f"Condition '{condition}' cannot be parsed. "
-                "Use Polars expressions directly."
-            )
+        return result["cnt"][0]
 
     # -------------------------------------------------------------------------
     # Pattern Matching
@@ -306,33 +285,16 @@ class PolarsExecutionEngine(BaseExecutionEngine[ExecutionConfig]):
 
     def count_matching_regex(self, column: str, pattern: str) -> int:
         """Count values matching a regex pattern."""
-        result = (
-            self._lf
-            .select(
-                pl.col(column)
-                .str.contains(pattern)
-                .fill_null(False)
-                .sum()
-                .alias("count")
-            )
-            .collect()
-        )
+        result = self._lf.select(
+            pl.col(column).str.contains(pattern).fill_null(False).sum().alias("count")
+        ).collect()
         return result["count"][0]
 
     def count_not_matching_regex(self, column: str, pattern: str) -> int:
         """Count values not matching a regex pattern."""
-        result = (
-            self._lf
-            .select(
-                pl.col(column)
-                .str.contains(pattern)
-                .fill_null(True)
-                .not_()
-                .sum()
-                .alias("count")
-            )
-            .collect()
-        )
+        result = self._lf.select(
+            pl.col(column).str.contains(pattern).fill_null(True).not_().sum().alias("count")
+        ).collect()
         return result["count"][0]
 
     # -------------------------------------------------------------------------
@@ -377,11 +339,7 @@ class PolarsExecutionEngine(BaseExecutionEngine[ExecutionConfig]):
 
     def count_in_set(self, column: str, values: set[Any]) -> int:
         """Count values that are in a set."""
-        result = (
-            self._lf
-            .select(pl.col(column).is_in(list(values)).sum().alias("count"))
-            .collect()
-        )
+        result = self._lf.select(pl.col(column).is_in(list(values)).sum().alias("count")).collect()
         return result["count"][0]
 
     # -------------------------------------------------------------------------
@@ -390,6 +348,7 @@ class PolarsExecutionEngine(BaseExecutionEngine[ExecutionConfig]):
 
     def count_duplicates(self, columns: list[str]) -> int:
         """Count duplicate rows based on specified columns."""
+        self._duplicate_count_alias(columns)
         total = self.count_rows()
         unique = self._lf.select(columns).unique().select(pl.len()).collect().item()
         return total - unique
@@ -400,14 +359,17 @@ class PolarsExecutionEngine(BaseExecutionEngine[ExecutionConfig]):
         limit: int = 10,
     ) -> list[dict[str, Any]]:
         """Get sample duplicate values."""
+        self._validate_window(limit)
+        count_alias = self._duplicate_count_alias(columns)
+        if limit == 0:
+            return []
         dupes = (
-            self._lf
-            .group_by(columns)
-            .agg(pl.len().alias("_count"))
-            .filter(pl.col("_count") > 1)
-            .sort("_count", descending=True)
+            self._lf.group_by(columns)
+            .agg(pl.len().alias(count_alias))
+            .filter(pl.col(count_alias) > 1)
+            .sort(count_alias, descending=True)
             .limit(limit)
-            .drop("_count")
+            .drop(count_alias)
             .collect()
         )
         return dupes.to_dicts()
@@ -424,7 +386,7 @@ class PolarsExecutionEngine(BaseExecutionEngine[ExecutionConfig]):
         """Collect and return as DataFrame."""
         return self._lf.collect()
 
-    def to_numpy(self, columns: list[str] | None = None) -> "np.ndarray":
+    def to_numpy(self, columns: list[str] | None = None) -> np.ndarray:
         """Convert to numpy array."""
         from truthound.execution.base import ExecutionSizeError
 
@@ -439,17 +401,22 @@ class PolarsExecutionEngine(BaseExecutionEngine[ExecutionConfig]):
         if columns is None:
             # Get numeric columns
             numeric_types = {
-                pl.Int8, pl.Int16, pl.Int32, pl.Int64,
-                pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64,
-                pl.Float32, pl.Float64,
+                pl.Int8,
+                pl.Int16,
+                pl.Int32,
+                pl.Int64,
+                pl.UInt8,
+                pl.UInt16,
+                pl.UInt32,
+                pl.UInt64,
+                pl.Float32,
+                pl.Float64,
             }
-            columns = [
-                col for col, dtype in self._schema.items()
-                if type(dtype) in numeric_types
-            ]
+            columns = [col for col, dtype in self._schema.items() if type(dtype) in numeric_types]
 
         if not columns:
             import numpy as np
+
             return np.array([])
 
         return self._lf.select(columns).collect().to_numpy()
@@ -462,7 +429,7 @@ class PolarsExecutionEngine(BaseExecutionEngine[ExecutionConfig]):
         self,
         n: int = 1000,
         seed: int | None = None,
-    ) -> "PolarsExecutionEngine":
+    ) -> PolarsExecutionEngine:
         """Create a new engine with sampled data."""
         row_count = self.count_rows()
 
@@ -480,15 +447,15 @@ class PolarsExecutionEngine(BaseExecutionEngine[ExecutionConfig]):
     # Advanced Polars Operations
     # -------------------------------------------------------------------------
 
-    def select(self, *exprs: pl.Expr | str) -> "PolarsExecutionEngine":
+    def select(self, *exprs: pl.Expr | str) -> PolarsExecutionEngine:
         """Create a new engine with selected columns/expressions."""
         return PolarsExecutionEngine(self._lf.select(*exprs), self._config)
 
-    def filter(self, expr: pl.Expr) -> "PolarsExecutionEngine":
+    def filter(self, expr: pl.Expr) -> PolarsExecutionEngine:
         """Create a new engine with filtered data using Polars expression."""
         return PolarsExecutionEngine(self._lf.filter(expr), self._config)
 
-    def with_columns(self, *exprs: pl.Expr) -> "PolarsExecutionEngine":
+    def with_columns(self, *exprs: pl.Expr) -> PolarsExecutionEngine:
         """Create a new engine with additional columns."""
         return PolarsExecutionEngine(self._lf.with_columns(*exprs), self._config)
 

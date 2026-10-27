@@ -342,6 +342,14 @@ def test_manual_native_tracking_chain_preserves_graphs_and_metadata(graph):
             "column_mapping": {"x": [["source-2", "x"]]},
         },
         {
+            "action": "transformation",
+            "name": "transformed",
+            "sources": ["a", "source-2"],
+            "operation": "join",
+            "schema_spec": {"x": "Int64"},
+            "column_mapping": {"x": [["source-2", "x"]]},
+        },
+        {
             "action": "validation",
             "name": "checked",
             "sources": ["transformed"],
@@ -389,6 +397,28 @@ def test_manual_native_tracking_chain_preserves_graphs_and_metadata(graph):
             "output": tracker.track_output,
             "dependency": tracker.add_dependency,
         }
+        if "missing" in args.get("sources", []):
+            from truthound.lineage import NodeNotFoundError
+
+            before = copy.deepcopy(tracker.graph.to_dict())
+            with pytest.raises(NodeNotFoundError):
+                methods[event["action"]](**args)
+            assert tracker.graph.to_dict() == before
+            failed = invoke(adapter, "lineage_track", graph_id=current, event=event)
+            assert failed["execution_status"] == "failed"
+            retained = read(
+                adapter,
+                call(
+                    adapter,
+                    "lineage_query",
+                    query={
+                        "graph_id": current,
+                        "view": "graph",
+                    },
+                )["resource_id"],
+            )
+            assert semantics(retained) == semantics(before)
+            continue
         methods[event["action"]](**args)
         current = call(adapter, "lineage_track", graph_id=current, event=event)["resource_id"]
         actual = read(
@@ -732,3 +762,145 @@ def test_edits_are_atomic_derivations_and_cycles_cannot_corrupt_original(graph):
     assert invoke(adapter, "lineage_create", config={"persist_path": "/etc/out.json"})[
         "issues"
     ] == [{"code": "operator_configuration_required"}]
+
+
+def test_tracking_explicit_row_positions_survives_native_graph_export(graph):
+    adapter = graph[0]
+    graph = call(adapter, "lineage_create", config={"track_row_level": True})["resource_id"]
+    graph = call(
+        adapter, "lineage_track", graph_id=graph, event={"action": "source", "name": "input"}
+    )["resource_id"]
+    graph = call(
+        adapter,
+        "lineage_track",
+        graph_id=graph,
+        event={
+            "action": "transformation",
+            "name": "output",
+            "sources": ["input"],
+            "row_mapping": [{"row": 0, "sources": [{"node": "input", "row": 4}]}],
+        },
+    )["resource_id"]
+    node = read(
+        adapter,
+        call(
+            adapter, "lineage_query", query={"graph_id": graph, "view": "node", "node_id": "output"}
+        )["resource_id"],
+    )
+    assert node["metadata"]["properties"]["row_lineage"] == [
+        {"row": 0, "sources": [{"node": "input", "row": 4}]}
+    ]
+    response = invoke(
+        adapter,
+        "lineage_track",
+        graph_id=graph,
+        event={
+            "action": "transformation",
+            "name": "bad",
+            "sources": ["input"],
+            "row_mapping": [{"row": 0, "sources": []}, {"row": 0, "sources": []}],
+        },
+    )
+    assert response["execution_status"] == "failed"
+
+
+@pytest.mark.parametrize("enabled", [False, True])
+def test_explicit_sample_metadata_respects_native_opt_in(graph, enabled):
+    adapter = graph[0]
+    identity = call(adapter, "lineage_create", config={"store_samples": enabled})["resource_id"]
+    tracked = call(
+        adapter,
+        "lineage_track",
+        graph_id=identity,
+        event={"action": "source", "name": "sample-input", "properties": {"samples": [{"x": 1}]}},
+    )["resource_id"]
+    node = read(
+        adapter,
+        call(
+            adapter,
+            "lineage_query",
+            query={"graph_id": tracked, "view": "node", "node_id": "sample-input"},
+        )["resource_id"],
+    )
+    properties = node["metadata"]["properties"]
+    assert ("samples" in properties) is enabled
+    if enabled:
+        assert properties["samples"] == [{"x": 1}]
+    failed = invoke(
+        adapter,
+        "lineage_track",
+        graph_id=tracked,
+        event={
+            "action": "source",
+            "name": "oversized",
+            "properties": {"samples": [{"x": 1}] * 101},
+        },
+    )
+    if enabled:
+        assert failed["execution_status"] == "failed"
+        original = read(
+            adapter,
+            call(adapter, "lineage_query", query={"graph_id": tracked, "view": "graph"})[
+                "resource_id"
+            ],
+        )
+        assert [item["id"] for item in original["nodes"]] == ["sample-input"]
+    else:
+        assert failed["execution_status"] == "succeeded"
+
+
+@pytest.mark.parametrize(
+    "renderer,output_format,media_type",
+    [
+        ("d3", "html", "text/html"),
+        ("cytoscape", "html", "text/html"),
+        ("mermaid", "html", "text/html"),
+        ("mermaid", "markdown", "text/markdown"),
+    ],
+)
+def test_native_whole_graph_documents_return_exact_owned_artifacts(
+    graph, renderer, output_format, media_type
+):
+    from truthound.lineage.visualization import RenderConfig, get_renderer
+
+    adapter, identity, native = graph
+    settings = {"theme": "dark", "include_metadata": False, "width": 640, "height": 480}
+    target = get_renderer(renderer)
+    title = "Synthetic title" if output_format == "markdown" else None
+    expected = (
+        target.render_markdown(native, RenderConfig(**settings), title=title)
+        if output_format == "markdown"
+        else target.render_html(native, RenderConfig(**settings))
+    )
+    artifact = call(
+        adapter,
+        "lineage_render",
+        graph_id=identity,
+        renderer=renderer,
+        output_format=output_format,
+        settings=settings,
+        **({"title": title} if title else {}),
+    )
+    assert artifact["media_type"] == media_type
+    assert raw_artifact(adapter, artifact["resource_id"]) == expected.encode()
+    call(adapter, "resources_release", resource_id=identity)
+    assert (
+        invoke(adapter, "artifacts_read", resource_id=artifact["resource_id"])["execution_status"]
+        != "succeeded"
+    )
+
+
+@pytest.mark.parametrize(
+    "arguments",
+    [
+        {"renderer": "d3", "output_format": "png"},
+        {"renderer": "graphviz", "output_format": "html"},
+        {"renderer": "d3", "output_format": "html", "root_node_id": "a"},
+        {"renderer": "mermaid", "output_format": "html", "settings": {"width": 100_000}},
+        {"renderer": "d3", "title": "ignored title"},
+    ],
+)
+def test_document_renderer_rejects_incompatible_or_unbounded_controls(graph, arguments):
+    adapter, identity, _ = graph
+    reply = invoke(adapter, "lineage_render", graph_id=identity, **arguments)
+    assert reply["execution_status"] != "succeeded"

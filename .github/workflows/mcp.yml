@@ -41,7 +41,15 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
       - uses: astral-sh/setup-uv@v4
+      - name: Install native PDF provider prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y libpango-1.0-0 libpangoft2-1.0-0 poppler-utils fonts-noto-cjk
       - run: uv sync --python 3.11 --frozen --extra dev --extra mcp
       - run: uv run --frozen --extra dev --extra mcp python verification/mcp_ci_gate.py --expected-python 3.11 --shard-count 4 --shard-index ${{ matrix.shard }} --junitxml test-artifacts/mcp-${{ matrix.shard }}.xml
       - uses: actions/upload-artifact@v4
@@ -51,8 +59,54 @@ jobs:
           path: test-artifacts/*
           if-no-files-found: error
           retention-days: 7
+  native-container:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --python 3.11 --frozen --extra dev --extra mcp
+      - run: docker pull python:3.11-slim
+      - run: uv run --frozen --extra dev --extra mcp python verification/native_container_probe.py --output test-artifacts/native-container.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: truthound-native-container
+          path: test-artifacts/native-container.json
+          if-no-files-found: error
+          retention-days: 7
+  native-lineage:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - uses: astral-sh/setup-uv@v4
+      - name: Install native Graphviz and Unicode fonts
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y graphviz fonts-noto-cjk
+      - run: uv sync --python 3.11 --frozen --extra mcp --extra lineage-visualization
+      - run: uv run --frozen --extra mcp --extra lineage-visualization python verification/native_lineage_render_probe.py --output test-artifacts/native-lineage.json --web-cases test-artifacts/lineage-web-cases.json
+      - run: npm ci --prefix verification/lineage-web --ignore-scripts --no-audit --no-fund
+      - run: node verification/lineage-web/verify.mjs --input test-artifacts/lineage-web-cases.json --output test-artifacts/native-lineage-web.json
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: truthound-native-lineage
+          path: test-artifacts/*lineage*.json
+          if-no-files-found: error
+          retention-days: 7
   build:
-    needs: mcp-tests
+    needs: [mcp-tests, native-container, native-lineage]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -101,6 +155,10 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
       - uses: astral-sh/setup-uv@v4
       - run: uv sync --python ${{ matrix.python }} --frozen --extra dev --extra mcp
       - name: Verify platform-sensitive contracts with source and execution identity

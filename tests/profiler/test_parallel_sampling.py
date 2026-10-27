@@ -8,32 +8,30 @@ This module tests:
 """
 
 import time
-import pytest
-import polars as pl
 
+import polars as pl
+import pytest
+
+from truthound.profiler.enterprise_sampling import (
+    MemoryBudgetConfig,
+    SamplingQuality,
+)
 from truthound.profiler.parallel_sampling import (
-    # Configuration
-    ParallelSamplingConfig,
+    BlockTask,
     ExecutionMode,
-    SchedulingPolicy,
     # Core classes
     ParallelBlockSampler,
-    SketchBasedSampler,
-    WorkStealingQueue,
-    BlockTask,
-    BlockResult,
+    # Configuration
+    ParallelSamplingConfig,
     # Metrics
     ParallelSamplingMetrics,
+    SchedulingPolicy,
+    SketchBasedSampler,
+    WorkStealingQueue,
     # Convenience functions
     sample_parallel,
 )
-from truthound.profiler.enterprise_sampling import (
-    MemoryBudgetConfig,
-    ScaleCategory,
-    SamplingQuality,
-)
 from truthound.profiler.sampling import SamplingConfig
-
 
 # ============================================================================
 # Test Fixtures
@@ -515,7 +513,7 @@ class TestPerformance:
 
         start = time.perf_counter()
         result_single = sampler_single.sample(large_lf, base_config)
-        single_time = time.perf_counter() - start
+        assert time.perf_counter() - start >= result_single.metrics.sampling_time_ms / 1000
 
         # Multiple workers
         config_multi = ParallelSamplingConfig(
@@ -525,8 +523,76 @@ class TestPerformance:
 
         start = time.perf_counter()
         result_multi = sampler_multi.sample(large_lf, base_config)
-        multi_time = time.perf_counter() - start
+        assert time.perf_counter() - start >= result_multi.metrics.sampling_time_ms / 1000
 
         # Parallel should be at least somewhat faster
         # (not always guaranteed due to overhead, but usually true)
         assert result_single.metrics.sample_size == result_multi.metrics.sample_size
+
+
+@pytest.mark.parametrize("stealing", [False, True])
+def test_parallel_sample_materialized_count_seed_and_private_column(stealing):
+    frame = pl.DataFrame({"x": range(101), "__block_idx": range(101)}).lazy()
+    sampler = ParallelBlockSampler(ParallelSamplingConfig(
+        target_rows=17, block_size=20, max_workers=2, seed=0,
+        enable_work_stealing=stealing,
+    ))
+    first = sampler.sample(frame, SamplingConfig(max_rows=17)).data.collect()
+    second = sampler.sample(frame, SamplingConfig(max_rows=17))
+    assert first.height == second.metrics.sample_size == 17
+    assert first.equals(second.data.collect())
+    assert first["x"].equals(first["__block_idx"].rename("x"))
+
+
+@pytest.mark.parametrize("stealing", [False, True])
+def test_parallel_failure_is_not_partial_success_or_replayed(stealing, monkeypatch):
+    sampler = ParallelBlockSampler(ParallelSamplingConfig(
+        target_rows=2, block_size=10, max_workers=1,
+        enable_work_stealing=stealing,
+    ))
+    calls = []
+    def fail(frame, task):
+        calls.append(task.block_idx)
+        raise PermissionError("private source failure")
+    monkeypatch.setattr(sampler, "_process_single_block", fail)
+    with pytest.raises(PermissionError):
+        sampler.sample(pl.DataFrame({"x": range(30)}).lazy(), SamplingConfig(max_rows=2))
+    assert len(calls) == len(set(calls))
+
+
+@pytest.mark.parametrize("mode", [ExecutionMode.THREAD, ExecutionMode.PROCESS])
+def test_execution_mode_collects_snapshot_and_preserves_exact_rows(mode):
+    sampler = ParallelBlockSampler(ParallelSamplingConfig(
+        target_rows=7, block_size=10, max_workers=2, seed=0,
+        execution_mode=mode, prefetch_blocks=0,
+    ))
+    result = sampler.sample(pl.DataFrame({"x": range(31)}).lazy(), SamplingConfig(max_rows=7))
+    assert result.data.collect().height == result.metrics.sample_size == 7
+    assert result.data.collect()["x"].n_unique() == 7
+
+
+@pytest.mark.parametrize("field", ["time_budget_seconds", "chunk_timeout_seconds"])
+def test_parallel_deadline_rejects_late_result(field):
+    sampler = ParallelBlockSampler(ParallelSamplingConfig(
+        target_rows=2, block_size=10, max_workers=1, **{field: 1e-12},
+    ))
+    with pytest.raises(TimeoutError):
+        sampler.sample(pl.DataFrame({"x": range(30)}).lazy(), SamplingConfig(max_rows=2))
+
+
+@pytest.mark.parametrize('rows', [1, 30])
+def test_parallel_output_budget_is_enforced_even_for_full_scan(rows):
+    sampler = ParallelBlockSampler(ParallelSamplingConfig(
+        target_rows=2, block_size=10, max_workers=1,
+        memory_budget=MemoryBudgetConfig(max_memory_mb=1,reserved_memory_mb=0),
+    ))
+    with pytest.raises(MemoryError):
+        sampler.sample(pl.DataFrame({'x': ['x' * (2 * 1024 * 1024)] * rows}).lazy(), SamplingConfig(max_rows=2))
+
+
+def test_sketch_sampler_populates_native_sketches_from_retained_sample():
+    sampler = SketchBasedSampler(ParallelSamplingConfig(target_rows=17, seed=0))
+    result = sampler.sample(pl.DataFrame({'x': [3] * 101, '__sketch_idx': range(101)}).lazy(), SamplingConfig(max_rows=17))
+    assert result.data.collect().height == result.metrics.sample_size == 17
+    assert result.cardinality_sketches['x'].estimate() == 1
+    assert result.frequency_sketches['x'].estimate_frequency(3) == 17

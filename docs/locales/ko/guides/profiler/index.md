@@ -23,6 +23,32 @@ save_suite(suite, "rules.yaml", format="yaml")
 
 실무 운영 가이드에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
 
+## 네이티브 완료 상태와 설정
+
+`DataProfiler(config=ProfilerConfig(...))`는 키워드 설정을 받습니다.
+`sample_size`는 앞부분 행을 선택하고, 생성자에 명시한 기존 `sample_size` 인수가
+설정값을 재정의합니다. 기본 분석기는 `include_patterns`,
+`include_correlations`, `include_distributions`를 따릅니다. 별도로 전달한
+`ColumnProfiler`는 자체 설정을 유지합니다. 이 앞부분 표본 경로는 `random_seed`를
+사용하지 않으며, 다른 표본 알고리즘은 별도의 sampling API를 사용합니다.
+
+고급 `TableProfile`을 사용하기 전에 `profile.complete`를 확인합니다.
+분석기·타입 추론기·병렬 컬럼의 실패는 테이블 또는 컬럼의 `execution_issues`에
+예외 본문 없이 기록됩니다. 부분 결과는 확인할 수 있으며 `save_profile`/
+`load_profile`, `ProfileSerializer`, 사전 변환 후에도 실패 상태를 유지합니다.
+불완전 컬럼에는 검증기를 제안하지 않습니다. `generate_suite`는 불완전 입력에
+`IncompleteProfileError`를 발생시키며 선택한 규칙 생성기가 실패하면 부분 규칙을
+성공으로 반환하지 않고 `ProfilerError`를 발생시킵니다.
+
+고급 프로파일 복원기는 손상되거나 다른 형식인 입력을 성공한 빈 프로파일·생성
+suite로 만들지 않고 거부합니다. 복원 실패 시 원래 파일을 보존합니다. 증분 결과는
+`content_fingerprint`를 저장하며 네이티브 재사용은 표본 설정·hash와 개수를 비교합니다.
+불완전 컬럼과 지문 없는 기존 프로파일은 다시 분석합니다. 결정적 modulo 표본 밖
+변경은 놓칠 수 있습니다. `StreamingProfiler.profile_chunks(chunks)`는 네이티브
+`ChunkIterator`를 받아 오류 시 iterator를 닫고, 청크 스키마 변경을 거부하며,
+현재 실행의 컬럼 실패를 예외 본문 로그 없이 `execution_issues`에 보관합니다.
+이전 collector 오류가 새 실행을 불완전하게 만들지는 않습니다.
+
 ## Common 워크플로우s
 
 ### 워크플로우 1: 프로파일 and Validate 파이프라인
@@ -38,80 +64,64 @@ profile = th.profile("baseline.csv")
 suite = generate_suite(profile, strictness="medium")
 
 # Step 3: Validate new data using generated rules
-report = suite.execute(new_data)
+execution = suite.execute("new_data.csv")
 
-# Step 4: Check for issues
-if report.issues:
-    for issue in report.issues:
-        print(f"{issue.column}: {issue.issue_type} ({issue.severity})")
+# Step 4: Inspect native execution accounting
+print(execution.report["summary"])
+if not execution.success:
+    print(execution.failed_rules, execution.skipped_rules)
+    print([type(error).__name__ for error in execution.errors])
 ```
 
 ### 워크플로우 2: 스키마 Evolution Detection
 
 ```python
-from truthound.profiler import DataProfiler, ProfilerConfig
+from truthound.profiler import DataProfiler, ProfilerConfig, profile_file
 from truthound.profiler.evolution import SchemaEvolutionDetector
 
 # Profile old and new data
 config = ProfilerConfig(sample_size=10000)
-profiler = DataProfiler(config)
+profiler = DataProfiler(config=config)
 
-old_profile = profiler.profile_file("data_v1.csv")
-new_profile = profiler.profile_file("data_v2.csv")
+old_profile = profile_file("data_v1.csv", config=config)
+new_profile = profile_file("data_v2.csv", config=config)
 
 # Detect schema changes
 detector = SchemaEvolutionDetector()
-changes = detector.detect(old_profile, new_profile)
+changes = detector.detect_changes(
+    pl.scan_csv("data_v2.csv").collect_schema(),
+    pl.scan_csv("data_v1.csv").collect_schema(),
+)
 
 for change in changes:
     print(f"{change.change_type}: {change.description}")
-    if change.is_breaking:
+    if change.breaking:
         print(f"  WARNING: Breaking change detected!")
 ```
 
-### 워크플로우 3: Incremental 프로파일링 with 캐시
+### 워크플로우 3: 네이티브 프로파일 캐시
 
 ```python
-from truthound.profiler import ProfileCache, IncrementalProfiler
+from truthound.profiler import profile_file
+from truthound.profiler.caching import ProfileCache, FileCacheBackend, FileHashCacheKey
 
-# Setup cache
-cache = ProfileCache(cache_dir=".truthound/cache")
-
-# Check if profile is cached
-fingerprint = cache.compute_fingerprint("data.csv")
-if cache.exists(fingerprint):
-    profile = cache.get(fingerprint)
-    print("Using cached profile")
-else:
-    profile = th.profile("data.csv")
-    cache.set(fingerprint, profile)
-    print("Profile cached for future use")
+cache = ProfileCache(backend=FileCacheBackend(".truthound/cache"))
+key = FileHashCacheKey.from_file("data.csv")
+profile = cache.get_or_compute(key, lambda: profile_file("data.csv"))
 ```
 
-### 워크플로우 4: Large 파일 Streaming 프로파일
+### 워크플로우 4: 네이티브 청크 프로파일링
 
 ```python
-import polars as pl
-from truthound.profiler import StreamingPatternMatcher, IncrementalAggregation
+from truthound.profiler.streaming import StreamingProfiler
 
-# Setup streaming matcher for pattern detection
-matcher = StreamingPatternMatcher(
-    aggregation_strategy=IncrementalAggregation(),
-    chunk_size=100000,
-)
-
-# Process large file in chunks
-for chunk in pl.scan_csv("large_file.csv").iter_slices(100000):
-    for col in chunk.columns:
-        matcher.process_chunk(chunk, col)
-
-# Get aggregated results
-results = matcher.finalize()
-for col, patterns in results.items():
-    print(f"{col}: {patterns.pattern_name} ({patterns.match_ratio:.1%})")
+profile = StreamingProfiler(chunk_size=100_000).profile_file("large_file.csv")
+print(profile.row_count, profile.complete)
+for column in profile.columns:
+    print(column.name, column.null_ratio, column.execution_issues)
 ```
 
-실무 운영 가이드에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+---
 
 ## Full Documentation
 
@@ -126,7 +136,7 @@ for col, patterns in results.items():
 5. 실무 운영 가이드에서 Sampling, Strategies을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
 6. 실무 운영 가이드에서 Streaming, Pattern, Matching을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
 7. 실무 운영 가이드에서 Rule, Generation을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-8. [캐싱 & Incremental 프로파일링](#caching--incremental-profiling)
+8. [캐싱과 증분 프로파일링](#캐싱과-증분-프로파일링)
 9. [복원력 & Timeout](#resilience--timeout)
 10. [관측성](#observability)
 11. 실무 운영 가이드에서 Distributed, Processing을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
@@ -231,8 +241,8 @@ config = ProfilerConfig(
     include_patterns=True,
     include_correlations=False,
 )
-profiler = DataProfiler(config)
-profile = profiler.profile_file("large_data.parquet")
+profiler = DataProfiler(config=config)
+profile = profile_file("large_data.parquet", config=config)
 ```
 
 ### CLI
@@ -262,7 +272,7 @@ truthound list-categories   # schema, stats, pattern, completeness, etc.
 실무 운영 가이드에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
 
 ```python
-from truthound.profiler import DataProfiler, ProfilerConfig
+from truthound.profiler import DataProfiler, ProfilerConfig, profile_file
 
 config = ProfilerConfig(
     sample_size=50000,            # Max rows to analyze (None = all)
@@ -272,12 +282,12 @@ config = ProfilerConfig(
     top_n_values=10,              # Top/bottom values count
 )
 
-profiler = DataProfiler(config)
+profiler = DataProfiler(config=config)
 
 # Profile from various sources
 profile = profiler.profile(df.lazy())           # LazyFrame
-profile = profiler.profile_file("data.csv")     # File path
-profile = profiler.profile_dataframe(df)        # DataFrame
+profile = profile_file("data.csv")     # File path
+profile = profiler.profile(df.lazy())        # DataFrame
 ```
 
 ### Column프로파일러
@@ -695,64 +705,44 @@ with open("rules.json", "w") as f:
 
 실무 운영 가이드에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
 
-## 캐싱 & Incremental 프로파일링
+## 캐싱과 증분 프로파일링
 
-### Fingerprint-Based 캐싱
-
-실무 운영 가이드에서 관련 설정과 실행 흐름을(를) 다루는 항목입니다:
-
-```python
-from truthound.profiler import ProfileCache
-
-cache = ProfileCache(cache_dir=".truthound/cache")
-
-# Check if profile is cached
-fingerprint = cache.compute_fingerprint("data.csv")
-if cache.exists(fingerprint):
-    profile = cache.get(fingerprint)
-else:
-    profile = profiler.profile_file("data.csv")
-    cache.set(fingerprint, profile)
-```
-
-### Incremental 프로파일링
-
-실무 운영 가이드에서 Only을(를) 다루는 항목입니다:
+네이티브 캐시 키와 구성한 backend를 사용합니다. 파일 읽기 오류는 손상 항목을
+보존하고 `ProfileCacheReadError`를 발생시키며, 교체 실패는 기존 항목을 유지하고
+`ProfileCacheWriteError`를 발생시킵니다. 명시한 TTL 0은 기본값으로 바뀌지 않고
+즉시 만료합니다. 메모리·파일·Redis backend는 논리 키 glob 무효화를 지원하며
+지원하지 않는 사용자 backend는 `NotImplementedError`를 발생시킵니다. 파일 항목에는
+논리 키가 필요하며 패턴 삭제 전에 모든 항목을 검사합니다. 트랜잭션 캐시는 아닙니다.
 
 ```python
-from truthound.profiler import IncrementalProfiler
+from datetime import timedelta
+import polars as pl
+from truthound.profiler import profile_file
+from truthound.profiler.caching import FileCacheBackend, FileHashCacheKey, ProfileCache
+from truthound.profiler.incremental import IncrementalProfiler
 
-inc_profiler = IncrementalProfiler()
-
-# Initial profile
-profile_v1 = inc_profiler.profile("data_v1.csv")
-
-# Incremental update (only changed columns)
-profile_v2 = inc_profiler.update("data_v2.csv", previous=profile_v1)
-
-print(f"Columns re-profiled: {profile_v2.columns_updated}")
-print(f"Columns reused: {profile_v2.columns_cached}")
-```
-
-### 캐시 Backends
-
-| 실무 운영 가이드에서 Backend을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Description을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
-|---------|-------------|
-| 실무 운영 가이드에서 `memory`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | In-memory LRU 캐시 |
-| 실무 운영 가이드에서 `file`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | Disk-based JSON 캐시 |
-| 실무 운영 가이드에서 `redis`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Redis을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
-
-```python
-from truthound.profiler import CacheBackend, RedisCacheBackend
-
-# Redis cache with fallback
-cache = RedisCacheBackend(
-    host="redis.example.com",
-    fallback=FileCacheBackend(".truthound/cache"),
+cache = ProfileCache(
+    backend=FileCacheBackend(".truthound/cache"),
+    default_ttl=timedelta(hours=1),
 )
+key = FileHashCacheKey.from_file("data.csv")
+profile = cache.get_or_compute(key, lambda: profile_file("data.csv"))
+cache.invalidate(key)
+
+incremental = IncrementalProfiler()
+first = incremental.profile(pl.scan_csv("data_v1.csv"))
+second = incremental.profile(pl.scan_csv("data_v2.csv"), previous=first)
+print(incremental.last_profiled_columns)
+print(incremental.last_skipped_columns)
 ```
 
-실무 운영 가이드에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+증분 컬럼의 `content_fingerprint`에는 네이티브 modulo 표본과 설정이 담기며
+개수와 함께 재사용을 결정합니다. 기존 지문 없는 컬럼과 불완전 컬럼은 다시 분석합니다.
+선택 표본 밖의 변경은 놓칠 수 있습니다. Redis는 `RedisCacheBackend`를 명시적으로
+선택하고 `finally`에서 `close()`를 소유합니다. 생성자 인수로 fallback 캐시를 지정하지
+않습니다. 실제 원격 Redis 서비스 검증은 로컬·파일·합성 클라이언트 증거와 별개입니다.
+
+---
 
 ## 복원력 & Timeout
 
@@ -846,25 +836,22 @@ collector.profiles_total.inc(status="success")
 collector.columns_profiled.inc(data_type="string")
 ```
 
-### Progress Callbacks
+### 진행 콜백
+
+네이티브 스트리밍 콜백을 사용합니다. `DataProfiler` 생성자에는 `progress_callback` 인수가 없습니다.
 
 ```python
-from truthound.profiler import CallbackRegistry, ConsoleAdapter
+from truthound.profiler.streaming import StreamingProfiler
 
-# Console progress output
-callback = ConsoleAdapter(show_progress=True)
+def show_progress(progress):
+    print(progress.chunks_processed, progress.rows_processed)
 
-profiler = DataProfiler(config, progress_callback=callback)
-profile = profiler.profile_file("data.csv")
-
-# Custom callback
-def my_callback(event):
-    print(f"Progress: {event.progress:.0%} - {event.message}")
-
-profiler = DataProfiler(config, progress_callback=my_callback)
+profile = StreamingProfiler(chunk_size=100_000).profile_file(
+    "data.csv", progress_callback=show_progress,
+)
 ```
 
-실무 운영 가이드에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+---
 
 ## Distributed Processing
 
@@ -1419,7 +1406,7 @@ from truthound.profiler import (
 )
 
 try:
-    profile = profiler.profile_file("data.csv")
+    profile = profile_file("data.csv")
 except I18nAnalysisError as e:
     # Error message is automatically localized
     print(e.localized_message)
@@ -1571,48 +1558,29 @@ class ProfilerConfig:
 ### Main Functions
 
 ```python
-from truthound.profiler import (
-    profile_file,
-    generate_suite,
-    DataProfiler,
-    ProfilerConfig,
-)
+import polars as pl
+from truthound.profiler import DataProfiler, ProfilerConfig, profile_file, generate_suite
 from truthound.profiler.generators import save_suite
+from truthound.profiler.table_profiler import save_profile, load_profile
 
-# Profile a file
-profile = profile_file(
-    path: str,
-    config: ProfilerConfig | None = None,
-) -> TableProfile
-
-# Profile a DataFrame/LazyFrame using DataProfiler
-profiler = DataProfiler(config)
-profile = profiler.profile(lf: pl.LazyFrame) -> TableProfile
-profile = profiler.profile_dataframe(df: pl.DataFrame) -> TableProfile
-
-# Generate validation suite
+config = ProfilerConfig(sample_size=10_000)
+profile = profile_file("data.csv", config=config)
+profiler = DataProfiler(config=config)
+profile = profiler.profile(pl.scan_csv("data.csv"))
+save_profile(profile, "profile.json")
+restored = load_profile("profile.json")
 suite = generate_suite(
-    profile: TableProfile | ProfileReport | dict,
-    strictness: Strictness = Strictness.MEDIUM,
-    preset: str = "default",
-    include: list[str] | None = None,
-    exclude: list[str] | None = None,
-) -> ValidationSuite
-
-# Save suite to file
-save_suite(
-    suite: ValidationSuite,
-    path: str | Path,
-    format: str = "json",  # "json", "yaml", or "python"
-) -> None
-
-# Profile serialization
-import json
-with open("profile.json", "w") as f:
-    json.dump(profile.to_dict(), f, indent=2)
+    restored, strictness="medium", include_categories=["schema", "completeness"],
+    exclude_categories=None, min_confidence="medium", name="selected",
+)
+save_suite(suite, "rules.json", format="json")
 ```
 
-실무 운영 가이드에서 `quick_suite()`, `profile_file()`, `generate_suite()`, `save_suite()`, Note, There을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+`profile_dataframe`은 모듈 수준 편의 함수이며 기존 `DataProfiler`에는
+`profiler.profile(df.lazy())`를 사용합니다. preset은 `SuiteGeneratorConfig` 설정이며
+`generate_suite`의 인수가 아닙니다. `suite.execute(..., timeout_seconds=...)`는
+검증기별 소유 프로세스를 사용하므로 callable과 상태는 pickle 가능해야 합니다.
+스레드 시간 초과는 종료를 주장하거나 실행 중인 작업을 자동 재시도하지 않습니다.
 
 ### Data Types
 
@@ -1684,8 +1652,8 @@ config = ProfilerConfig(
 )
 
 # Profile data
-profiler = DataProfiler(config)
-profile = profiler.profile_file("sales_data.csv")
+profiler = DataProfiler(config=config)
+profile = profile_file("sales_data.csv", config=config)
 
 # Print summary
 print(f"Dataset: {profile.name}")
@@ -1695,8 +1663,8 @@ print(f"Columns: {profile.column_count}")
 for col in profile.columns:
     print(f"  {col.name}: {col.inferred_type.value}")
     print(f"    Null ratio: {col.null_ratio:.2%}")
-    if col.patterns:
-        print(f"    Pattern: {col.patterns[0].pattern_name}")
+    if col.detected_patterns:
+        print(f"    Pattern: {col.detected_patterns[0].pattern}")
 
 # Generate and save rules
 from truthound.profiler.generators import save_suite

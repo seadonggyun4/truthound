@@ -51,26 +51,28 @@ Example:
 from __future__ import annotations
 
 import logging
-import time
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Callable, Iterator
+from dataclasses import dataclass, field, replace
+from typing import TYPE_CHECKING, Any
 
 from truthound.execution.distributed.base import (
     BaseDistributedEngine,
     DistributedEngineConfig,
-    ExecutionMetrics,
 )
+from truthound.execution.distributed.policies import operation
 from truthound.execution.distributed.protocols import (
     AggregationScope,
     AggregationSpec,
     ComputeBackend,
     DistributedResult,
+    ExecutionMode,
     PartitionInfo,
     PartitionStrategy,
     get_aggregator,
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable, Iterator
+
     import pyarrow as pa
     from pyspark.sql import DataFrame as SparkDataFrame
     from pyspark.sql import SparkSession
@@ -110,16 +112,32 @@ class SparkEngineConfig(DistributedEngineConfig):
     shuffle_partitions: int = 200
     extra_spark_conf: dict[str, str] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        super().__post_init__()
+        for name in ("arrow_enabled", "adaptive_enabled"):
+            if type(getattr(self, name)) is not bool:
+                raise ValueError(f"{name} must be boolean")
+        for name in ("executor_cores", "shuffle_partitions"):
+            value = getattr(self, name)
+            if type(value) is not int or value < 1:
+                raise ValueError(f"{name} must be a positive integer")
+        if type(self.broadcast_threshold) is not int or self.broadcast_threshold < -1:
+            raise ValueError("broadcast_threshold must be an integer of at least -1")
+        if not isinstance(self.extra_spark_conf, dict) or not all(
+            isinstance(key, str) and key and isinstance(value, str)
+            for key, value in self.extra_spark_conf.items()
+        ):
+            raise ValueError("extra_spark_conf must map configuration names to strings")
+
 
 def _check_pyspark_available() -> None:
     """Check if PySpark is available."""
     try:
         import pyspark  # noqa: F401
-    except ImportError:
+    except ImportError as error:
         raise ImportError(
-            "pyspark is required for SparkExecutionEngine. "
-            "Install with: pip install pyspark"
-        )
+            "pyspark is required for SparkExecutionEngine. Install with: pip install pyspark"
+        ) from error
 
 
 # =============================================================================
@@ -151,9 +169,11 @@ class SparkExecutionEngine(BaseDistributedEngine[SparkEngineConfig]):
 
     def __init__(
         self,
-        spark_df: "SparkDataFrame",
+        spark_df: SparkDataFrame,
         config: SparkEngineConfig | None = None,
-        spark_session: "SparkSession | None" = None,
+        spark_session: SparkSession | None = None,
+        *,
+        _apply_defaults: bool = True,
     ) -> None:
         """Initialize Spark execution engine.
 
@@ -163,16 +183,41 @@ class SparkExecutionEngine(BaseDistributedEngine[SparkEngineConfig]):
             spark_session: Optional SparkSession (defaults to df's session).
         """
         _check_pyspark_available()
-        super().__init__(config)
+        super().__init__(
+            replace(config, extra_spark_conf=dict(config.extra_spark_conf))
+            if config is not None
+            else None
+        )
 
         self._df = spark_df
         self._spark = spark_session or spark_df.sparkSession
         self._schema = spark_df.schema
         self._columns = spark_df.columns
-        self._cached_row_count: int | None = None
+        self._owns_persistence = False
 
         # Configure Spark for optimal performance
         self._configure_spark()
+        if _apply_defaults and (
+            self._config.num_partitions
+            or self._config.partition_strategy != PartitionStrategy.ROW_HASH
+        ):
+            self._df = self._partition_native(
+                self._df, self._config.num_partitions or self._get_partition_count()
+            )
+        if _apply_defaults and self._config.checkpoint_enabled:
+            self._df = self.checkpoint()._df
+        if self._config.execution_mode == ExecutionMode.EAGER:
+            try:
+                self.persist()
+                self.count_rows()
+            except BaseException as original:
+                try:
+                    self.close()
+                except BaseException as cleanup:
+                    raise BaseExceptionGroup(
+                        "Spark initialization and cleanup failed", [original, cleanup]
+                    ) from None
+                raise
 
     @classmethod
     def _default_config(cls) -> SparkEngineConfig:
@@ -181,21 +226,20 @@ class SparkExecutionEngine(BaseDistributedEngine[SparkEngineConfig]):
 
     def _configure_spark(self) -> None:
         """Configure Spark session for optimal performance."""
+        self._spark.conf.set(
+            "spark.sql.execution.arrow.pyspark.enabled",
+            str(self._config.arrow_enabled).lower(),
+        )
         if self._config.arrow_enabled:
-            self._spark.conf.set(
-                "spark.sql.execution.arrow.pyspark.enabled",
-                "true",
-            )
             self._spark.conf.set(
                 "spark.sql.execution.arrow.pyspark.fallback.enabled",
                 "true",
             )
 
-        if self._config.adaptive_enabled:
-            self._spark.conf.set(
-                "spark.sql.adaptive.enabled",
-                "true",
-            )
+        self._spark.conf.set(
+            "spark.sql.adaptive.enabled",
+            str(self._config.adaptive_enabled).lower(),
+        )
 
         self._spark.conf.set(
             "spark.sql.autoBroadcastJoinThreshold",
@@ -218,9 +262,9 @@ class SparkExecutionEngine(BaseDistributedEngine[SparkEngineConfig]):
     @classmethod
     def from_dataframe(
         cls,
-        df: "SparkDataFrame",
+        df: SparkDataFrame,
         config: SparkEngineConfig | None = None,
-    ) -> "SparkExecutionEngine":
+    ) -> SparkExecutionEngine:
         """Create engine from existing Spark DataFrame.
 
         Args:
@@ -235,11 +279,11 @@ class SparkExecutionEngine(BaseDistributedEngine[SparkEngineConfig]):
     @classmethod
     def from_table(
         cls,
-        spark: "SparkSession",
+        spark: SparkSession,
         table_name: str,
         database: str | None = None,
         config: SparkEngineConfig | None = None,
-    ) -> "SparkExecutionEngine":
+    ) -> SparkExecutionEngine:
         """Create engine from Spark table.
 
         Args:
@@ -261,10 +305,10 @@ class SparkExecutionEngine(BaseDistributedEngine[SparkEngineConfig]):
     @classmethod
     def from_parquet(
         cls,
-        spark: "SparkSession",
+        spark: SparkSession,
         path: str,
         config: SparkEngineConfig | None = None,
-    ) -> "SparkExecutionEngine":
+    ) -> SparkExecutionEngine:
         """Create engine from Parquet files.
 
         Args:
@@ -290,12 +334,12 @@ class SparkExecutionEngine(BaseDistributedEngine[SparkEngineConfig]):
         return ComputeBackend.SPARK
 
     @property
-    def spark_dataframe(self) -> "SparkDataFrame":
+    def spark_dataframe(self) -> SparkDataFrame:
         """Get the underlying Spark DataFrame."""
         return self._df
 
     @property
-    def spark_session(self) -> "SparkSession":
+    def spark_session(self) -> SparkSession:
         """Get the Spark session."""
         return self._spark
 
@@ -312,6 +356,7 @@ class SparkExecutionEngine(BaseDistributedEngine[SparkEngineConfig]):
         """Get number of data partitions."""
         return self._df.rdd.getNumPartitions()
 
+    @operation
     def _get_partition_info(self) -> list[PartitionInfo]:
         """Get information about all partitions."""
         num_partitions = self._get_partition_count()
@@ -326,6 +371,7 @@ class SparkExecutionEngine(BaseDistributedEngine[SparkEngineConfig]):
             for i in range(num_partitions)
         ]
 
+    @operation
     def _execute_on_partitions(
         self,
         operation: str,
@@ -342,7 +388,6 @@ class SparkExecutionEngine(BaseDistributedEngine[SparkEngineConfig]):
         Returns:
             Results from all partitions.
         """
-        import time
 
         metrics = self._start_metrics(operation)
 
@@ -383,6 +428,7 @@ class SparkExecutionEngine(BaseDistributedEngine[SparkEngineConfig]):
         finally:
             self._end_metrics(metrics)
 
+    @operation
     def _aggregate_distributed(
         self,
         spec: AggregationSpec,
@@ -404,6 +450,14 @@ class SparkExecutionEngine(BaseDistributedEngine[SparkEngineConfig]):
         metrics = self._start_metrics("aggregate")
 
         try:
+            if (
+                spec.group_by
+                or spec.filter_condition
+                or spec.scope in {AggregationScope.GROUPED, AggregationScope.PARTITION}
+            ):
+                from truthound.execution.distributed.aggregations import execute_spec
+
+                return execute_spec(self._df, spec)
             results = {}
 
             # Group aggregations by type for batching
@@ -414,16 +468,19 @@ class SparkExecutionEngine(BaseDistributedEngine[SparkEngineConfig]):
                 "count": lambda c: F.count(F.lit(1)) if c == "*" else F.count(c),
                 "sum": F.sum,
                 "mean": F.avg,
+                "median": F.median,
                 "min": F.min,
                 "max": F.max,
                 "std": F.stddev,
                 "var": F.variance,
+                "first": F.first,
+                "last": F.last,
             }
 
             for agg in spec.aggregations:
                 if agg.operation in spark_agg_funcs:
                     spark_aggs.append(agg)
-                else:
+                elif agg.operation != "minmax":
                     custom_aggs.append(agg)
 
             # Execute native Spark aggregations in batch
@@ -463,7 +520,7 @@ class SparkExecutionEngine(BaseDistributedEngine[SparkEngineConfig]):
                     }
                 elif agg.operation == "distinct_count":
                     # Native Spark distinct count
-                    distinct_count = self._df.select(agg.column).distinct().count()
+                    distinct_count = self.count_distinct(agg.column)
                     results[agg.alias] = distinct_count
                 else:
                     # Use custom aggregator via map-reduce
@@ -513,10 +570,42 @@ class SparkExecutionEngine(BaseDistributedEngine[SparkEngineConfig]):
 
         return aggregator.finalize(final_state)
 
+    def iter_arrow_batches(self, batch_size=None):
+        """Stream native rows without collecting every partition into the driver."""
+        import pyarrow as pa
+        from pyspark.sql.pandas.types import to_arrow_schema
+
+        from truthound.execution.distributed.policies import batch_size as selected_size
+        from truthound.execution.distributed.policies import checked_batches
+
+        size = selected_size(self, batch_size)
+        schema = to_arrow_schema(self._schema)
+
+        def batches():
+            source = self._df.toLocalIterator(prefetchPartitions=False)
+            rows = []
+            observed = False
+            try:
+                for row in source:
+                    rows.append(row.asDict(recursive=True))
+                    if len(rows) == size:
+                        observed = True
+                        yield pa.RecordBatch.from_pylist(rows, schema=schema)
+                        rows = []
+                if rows or not observed:
+                    yield pa.RecordBatch.from_pylist(rows, schema=schema)
+            finally:
+                close = getattr(source, "close", None)
+                if close is not None:
+                    close()
+
+        return checked_batches(self, batches())
+
+    @operation
     def _to_arrow_batches(
         self,
         batch_size: int | None = None,
-    ) -> list["pa.RecordBatch"]:
+    ) -> list[pa.RecordBatch]:
         """Convert Spark DataFrame to Arrow batches.
 
         Uses Spark's native Arrow support when available for
@@ -530,13 +619,24 @@ class SparkExecutionEngine(BaseDistributedEngine[SparkEngineConfig]):
         """
         import pyarrow as pa
 
-        batch_size = batch_size or self._config.arrow_batch_size
+        from truthound.execution.distributed.policies import batch_size as selected_size
+
+        batch_size = selected_size(self, batch_size)
+        if self._config.execution_mode == ExecutionMode.STREAMING:
+            return list(self.iter_arrow_batches(batch_size))
 
         try:
             # Try native Arrow conversion (Spark 3.0+)
             # This is the most efficient path
+            from truthound.execution.distributed.policies import checked_batches
+
             arrow_batches = self._df._collect_as_arrow()
-            return arrow_batches
+            split = (
+                piece
+                for batch in arrow_batches
+                for piece in pa.Table.from_batches([batch]).to_batches(max_chunksize=batch_size)
+            )
+            return list(checked_batches(self, split))
         except AttributeError:
             # Fallback: Convert via Pandas with Arrow
             logger.debug("Falling back to Pandas-based Arrow conversion")
@@ -545,16 +645,20 @@ class SparkExecutionEngine(BaseDistributedEngine[SparkEngineConfig]):
                 # Use toPandas with Arrow enabled
                 pandas_df = self._df.toPandas()
                 table = pa.Table.from_pandas(pandas_df)
-                return table.to_batches(max_chunksize=batch_size)
-            except Exception as e:
-                logger.warning(f"Arrow conversion failed: {e}")
+                from truthound.execution.distributed.policies import checked_batches
+
+                return list(checked_batches(self, table.to_batches(max_chunksize=batch_size)))
+            except (MemoryError, TimeoutError):
+                raise
+            except Exception:
+                logger.warning("Arrow conversion failed; using native row iteration")
                 # Last resort: manual conversion
                 return self._manual_arrow_conversion(batch_size)
 
     def _manual_arrow_conversion(
         self,
         batch_size: int,
-    ) -> list["pa.RecordBatch"]:
+    ) -> list[pa.RecordBatch]:
         """Manual Arrow conversion for older Spark versions.
 
         Args:
@@ -563,32 +667,9 @@ class SparkExecutionEngine(BaseDistributedEngine[SparkEngineConfig]):
         Returns:
             List of Arrow record batches.
         """
-        import pyarrow as pa
+        return list(self.iter_arrow_batches(batch_size))
 
-        # Collect data in batches
-        batches = []
-        schema = self._infer_arrow_schema()
-
-        for partition in self._df.rdd.mapPartitions(
-            lambda it: [list(it)]
-        ).collect():
-            if not partition:
-                continue
-
-            # Convert partition to dict of arrays
-            data = {col: [] for col in self._columns}
-            for row in partition:
-                row_dict = row.asDict()
-                for col in self._columns:
-                    data[col].append(row_dict.get(col))
-
-            # Create record batch
-            batch = pa.RecordBatch.from_pydict(data, schema=schema)
-            batches.append(batch)
-
-        return batches
-
-    def _infer_arrow_schema(self) -> "pa.Schema":
+    def _infer_arrow_schema(self) -> pa.Schema:
         """Infer Arrow schema from Spark schema."""
         import pyarrow as pa
         from pyspark.sql.types import (
@@ -619,18 +700,18 @@ class SparkExecutionEngine(BaseDistributedEngine[SparkEngineConfig]):
         }
 
         fields = []
-        for field in self._schema.fields:
-            arrow_type = type_mapping.get(type(field.dataType), pa.string())
-            if isinstance(field.dataType, DecimalType):
+        for schema_field in self._schema.fields:
+            arrow_type = type_mapping.get(type(schema_field.dataType), pa.string())
+            if isinstance(schema_field.dataType, DecimalType):
                 arrow_type = pa.decimal128(
-                    field.dataType.precision,
-                    field.dataType.scale,
+                    schema_field.dataType.precision,
+                    schema_field.dataType.scale,
                 )
-            fields.append(pa.field(field.name, arrow_type, nullable=field.nullable))
+            fields.append(pa.field(schema_field.name, arrow_type, nullable=schema_field.nullable))
 
         return pa.schema(fields)
 
-    def _repartition(self, num_partitions: int) -> "SparkExecutionEngine":
+    def _repartition(self, num_partitions: int) -> SparkExecutionEngine:
         """Repartition the underlying DataFrame.
 
         Args:
@@ -639,10 +720,31 @@ class SparkExecutionEngine(BaseDistributedEngine[SparkEngineConfig]):
         Returns:
             New engine with repartitioned data.
         """
-        repartitioned = self._df.repartition(num_partitions)
-        return SparkExecutionEngine(repartitioned, self._config, self._spark)
+        repartitioned = self._partition_native(self._df, num_partitions)
+        return SparkExecutionEngine(repartitioned, self._config, self._spark, _apply_defaults=False)
 
-    def coalesce(self, num_partitions: int) -> "SparkExecutionEngine":
+    def _partition_native(self, data, count):
+        from pyspark.sql import DataFrame
+        from pyspark.sql import functions as F
+
+        strategy = self._config.partition_strategy
+        columns = self._config.selected_partition_columns(data.columns)
+        if strategy == PartitionStrategy.CUSTOM:
+            result = self._config.partitioner(data, count)
+            if not isinstance(result, DataFrame) or result.schema != data.schema:
+                raise ValueError("Custom partitioner changed the dataframe type or schema")
+            if result.rdd.getNumPartitions() != count:
+                raise ValueError("Custom partitioner returned a different partition count")
+            return result
+        if strategy in {PartitionStrategy.ROW_HASH, PartitionStrategy.COLUMN}:
+            return data.repartition(count, *[F.col(column) for column in columns])
+        if strategy == PartitionStrategy.ROW_RANGE:
+            return data.repartitionByRange(count, *[F.col(column) for column in columns])
+        from truthound.execution.distributed.partitioning import round_robin_spark
+
+        return round_robin_spark(data, count)
+
+    def coalesce(self, num_partitions: int) -> SparkExecutionEngine:
         """Coalesce partitions (no shuffle).
 
         Args:
@@ -651,25 +753,23 @@ class SparkExecutionEngine(BaseDistributedEngine[SparkEngineConfig]):
         Returns:
             New engine with coalesced data.
         """
+        self._config.validate_partition_count(num_partitions)
         coalesced = self._df.coalesce(num_partitions)
-        return SparkExecutionEngine(coalesced, self._config, self._spark)
+        return SparkExecutionEngine(coalesced, self._config, self._spark, _apply_defaults=False)
 
     # -------------------------------------------------------------------------
     # Core Operation Overrides (Native Spark)
     # -------------------------------------------------------------------------
 
+    @operation
     def count_rows(self) -> int:
         """Count rows using native Spark count."""
-        if self._cached_row_count is not None:
-            return self._cached_row_count
-
         cache_key = self._cache_key("count_rows")
         cached = self._get_cached(cache_key)
         if cached is not None:
             return cached
 
         count = self._df.count()
-        self._cached_row_count = count
         self._set_cached(cache_key, count)
         return count
 
@@ -677,6 +777,7 @@ class SparkExecutionEngine(BaseDistributedEngine[SparkEngineConfig]):
         """Get column names."""
         return self._columns
 
+    @operation
     def count_nulls(self, column: str) -> int:
         """Count nulls using native Spark filter."""
         from pyspark.sql import functions as F
@@ -690,6 +791,7 @@ class SparkExecutionEngine(BaseDistributedEngine[SparkEngineConfig]):
         self._set_cached(cache_key, count)
         return count
 
+    @operation
     def count_nulls_all(self) -> dict[str, int]:
         """Count nulls in all columns using batch aggregation."""
         from pyspark.sql import functions as F
@@ -707,14 +809,12 @@ class SparkExecutionEngine(BaseDistributedEngine[SparkEngineConfig]):
 
         row = self._df.agg(*exprs).collect()[0]
 
-        result = {
-            col: row[f"{col}_nulls"] or 0
-            for col in self._columns
-        }
+        result = {col: row[f"{col}_nulls"] or 0 for col in self._columns}
 
         self._set_cached(cache_key, result)
         return result
 
+    @operation
     def count_distinct(self, column: str) -> int:
         """Count distinct values using native Spark."""
         from pyspark.sql import functions as F
@@ -728,6 +828,7 @@ class SparkExecutionEngine(BaseDistributedEngine[SparkEngineConfig]):
         self._set_cached(cache_key, count)
         return count
 
+    @operation
     def get_stats(self, column: str) -> dict[str, Any]:
         """Get column statistics using native Spark aggregations."""
         from pyspark.sql import functions as F
@@ -759,6 +860,7 @@ class SparkExecutionEngine(BaseDistributedEngine[SparkEngineConfig]):
         self._set_cached(cache_key, stats)
         return stats
 
+    @operation
     def get_quantiles(
         self,
         column: str,
@@ -771,10 +873,11 @@ class SparkExecutionEngine(BaseDistributedEngine[SparkEngineConfig]):
             return cached
 
         # approxQuantile with 0.01 relative error
-        result = self._df.approxQuantile(column, quantiles, 0.01)
+        result = self._df.approxQuantile(column, [float(q) for q in quantiles], 0.01)
         self._set_cached(cache_key, result)
         return result
 
+    @operation
     def get_value_counts(
         self,
         column: str,
@@ -788,11 +891,7 @@ class SparkExecutionEngine(BaseDistributedEngine[SparkEngineConfig]):
         if cached is not None:
             return cached
 
-        counts = (
-            self._df.groupBy(column)
-            .agg(F.count("*").alias("count"))
-            .orderBy(F.desc("count"))
-        )
+        counts = self._df.groupBy(column).agg(F.count("*").alias("count")).orderBy(F.desc("count"))
 
         if limit:
             counts = counts.limit(limit)
@@ -803,9 +902,9 @@ class SparkExecutionEngine(BaseDistributedEngine[SparkEngineConfig]):
         self._set_cached(cache_key, result)
         return result
 
+    @operation
     def count_duplicates(self, columns: list[str]) -> int:
         """Count duplicates using native Spark operations."""
-        from pyspark.sql import functions as F
 
         cache_key = self._cache_key("count_duplicates", tuple(columns))
         cached = self._get_cached(cache_key)
@@ -819,6 +918,7 @@ class SparkExecutionEngine(BaseDistributedEngine[SparkEngineConfig]):
         self._set_cached(cache_key, duplicates)
         return duplicates
 
+    @operation
     def count_matching_regex(self, column: str, pattern: str) -> int:
         """Count values matching regex using Spark rlike."""
         from pyspark.sql import functions as F
@@ -832,6 +932,7 @@ class SparkExecutionEngine(BaseDistributedEngine[SparkEngineConfig]):
         self._set_cached(cache_key, count)
         return count
 
+    @operation
     def count_in_range(
         self,
         column: str,
@@ -842,9 +943,7 @@ class SparkExecutionEngine(BaseDistributedEngine[SparkEngineConfig]):
         """Count values in range using native Spark filter."""
         from pyspark.sql import functions as F
 
-        cache_key = self._cache_key(
-            "count_in_range", column, min_value, max_value, inclusive
-        )
+        cache_key = self._cache_key("count_in_range", column, min_value, max_value, inclusive)
         cached = self._get_cached(cache_key)
         if cached is not None:
             return cached
@@ -852,27 +951,18 @@ class SparkExecutionEngine(BaseDistributedEngine[SparkEngineConfig]):
         condition = None
 
         if min_value is not None:
-            if inclusive:
-                condition = F.col(column) >= min_value
-            else:
-                condition = F.col(column) > min_value
+            condition = F.col(column) >= min_value if inclusive else F.col(column) > min_value
 
         if max_value is not None:
-            max_cond = (
-                F.col(column) <= max_value
-                if inclusive
-                else F.col(column) < max_value
-            )
+            max_cond = F.col(column) <= max_value if inclusive else F.col(column) < max_value
             condition = condition & max_cond if condition is not None else max_cond
 
-        if condition is None:
-            count = self.count_rows()
-        else:
-            count = self._df.filter(condition).count()
+        count = self.count_rows() if condition is None else self._df.filter(condition).count()
 
         self._set_cached(cache_key, count)
         return count
 
+    @operation
     def count_in_set(self, column: str, values: set[Any]) -> int:
         """Count values in set using Spark isin."""
         from pyspark.sql import functions as F
@@ -894,8 +984,8 @@ class SparkExecutionEngine(BaseDistributedEngine[SparkEngineConfig]):
         self,
         n: int = 1000,
         seed: int | None = None,
-    ) -> "SparkExecutionEngine":
-        """Create sampled engine using Spark's native sampling.
+    ) -> SparkExecutionEngine:
+        """Create an exact-size sample using Spark's randomized row ordering.
 
         Args:
             n: Target number of rows.
@@ -909,26 +999,19 @@ class SparkExecutionEngine(BaseDistributedEngine[SparkEngineConfig]):
         if row_count <= n:
             return self
 
-        fraction = min((n * 1.1) / row_count, 1.0)
+        from pyspark.sql import functions as F
 
-        if seed is not None:
-            sampled = self._df.sample(
-                withReplacement=False,
-                fraction=fraction,
-                seed=seed,
-            )
-        else:
-            sampled = self._df.sample(withReplacement=False, fraction=fraction)
+        # A fractional sample is only an expected size; limit cannot fill a
+        # short sample. Random ordering returns min(n, row_count) without reuse.
+        sampled = self._df.orderBy(F.rand(seed)).limit(n)
 
-        sampled = sampled.limit(n)
-
-        return SparkExecutionEngine(sampled, self._config, self._spark)
+        return SparkExecutionEngine(sampled, self._config, self._spark, _apply_defaults=False)
 
     # -------------------------------------------------------------------------
     # Spark-Specific Methods
     # -------------------------------------------------------------------------
 
-    def persist(self, storage_level: str = "MEMORY_AND_DISK") -> "SparkExecutionEngine":
+    def persist(self, storage_level: str = "MEMORY_AND_DISK") -> SparkExecutionEngine:
         """Persist the DataFrame.
 
         Args:
@@ -943,23 +1026,42 @@ class SparkExecutionEngine(BaseDistributedEngine[SparkEngineConfig]):
             "MEMORY_ONLY": StorageLevel.MEMORY_ONLY,
             "MEMORY_AND_DISK": StorageLevel.MEMORY_AND_DISK,
             "DISK_ONLY": StorageLevel.DISK_ONLY,
-            "MEMORY_ONLY_SER": StorageLevel.MEMORY_ONLY_SER,
+            # PySpark stores Python objects serialized; the JVM-only legacy
+            # constant is absent from supported PySpark SDKs.
+            "MEMORY_ONLY_SER": StorageLevel.MEMORY_ONLY,
         }
 
-        level = levels.get(storage_level, StorageLevel.MEMORY_AND_DISK)
+        if storage_level not in levels:
+            raise ValueError("Unsupported Spark storage level")
+        level = levels[storage_level]
+        previous = self._df.storageLevel
+        if not (previous.useDisk or previous.useMemory or previous.useOffHeap):
+            self._owns_persistence = True
         self._df.persist(level)
         return self
 
-    def unpersist(self) -> "SparkExecutionEngine":
+    def unpersist(self) -> SparkExecutionEngine:
         """Unpersist the DataFrame.
 
         Returns:
             Self after unpersisting.
         """
-        self._df.unpersist()
+        self._df.unpersist(blocking=True)
+        self._owns_persistence = False
         return self
 
-    def checkpoint(self) -> "SparkExecutionEngine":
+    def close(self) -> None:
+        """Release only persistence selected and created by this engine."""
+        if self._owns_persistence:
+            self.unpersist()
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        try:
+            self.close()
+        finally:
+            super().__exit__(exc_type, exc_val, exc_tb)
+
+    def checkpoint(self) -> SparkExecutionEngine:
         """Checkpoint the DataFrame for fault tolerance.
 
         Returns:
@@ -969,7 +1071,7 @@ class SparkExecutionEngine(BaseDistributedEngine[SparkEngineConfig]):
             self._spark.sparkContext.setCheckpointDir(self._config.checkpoint_dir)
 
         checkpointed = self._df.checkpoint()
-        return SparkExecutionEngine(checkpointed, self._config, self._spark)
+        return SparkExecutionEngine(checkpointed, self._config, self._spark, _apply_defaults=False)
 
     def explain(self, extended: bool = False) -> str:
         """Get the execution plan.
@@ -991,7 +1093,7 @@ class SparkExecutionEngine(BaseDistributedEngine[SparkEngineConfig]):
         finally:
             sys.stdout = old_stdout
 
-    def sql(self, query: str) -> "SparkExecutionEngine":
+    def sql(self, query: str) -> SparkExecutionEngine:
         """Execute SQL query on this DataFrame.
 
         Args:
@@ -1006,6 +1108,6 @@ class SparkExecutionEngine(BaseDistributedEngine[SparkEngineConfig]):
 
         try:
             result_df = self._spark.sql(query.format(table=view_name))
-            return SparkExecutionEngine(result_df, self._config, self._spark)
+            return SparkExecutionEngine(result_df, self._config, self._spark, _apply_defaults=False)
         finally:
             self._spark.catalog.dropTempView(view_name)

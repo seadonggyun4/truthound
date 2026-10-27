@@ -13,7 +13,6 @@ from unittest.mock import MagicMock, patch
 import polars as pl
 import pytest
 
-
 # =============================================================================
 # Caching Tests
 # =============================================================================
@@ -103,8 +102,8 @@ class TestMemoryCacheBackend:
 
     def test_basic_operations(self):
         """Test basic get/set/delete operations."""
-        from truthound.profiler.caching import MemoryCacheBackend, CacheEntry
         from truthound.profiler.base import TableProfile
+        from truthound.profiler.caching import CacheEntry, MemoryCacheBackend
 
         backend = MemoryCacheBackend(max_size=100)
 
@@ -126,8 +125,8 @@ class TestMemoryCacheBackend:
 
     def test_ttl_expiration(self):
         """Test TTL-based expiration."""
-        from truthound.profiler.caching import MemoryCacheBackend, CacheEntry
         from truthound.profiler.base import TableProfile
+        from truthound.profiler.caching import CacheEntry, MemoryCacheBackend
 
         backend = MemoryCacheBackend()
 
@@ -148,8 +147,8 @@ class TestMemoryCacheBackend:
 
     def test_lru_eviction(self):
         """Test LRU eviction when max size is reached."""
-        from truthound.profiler.caching import MemoryCacheBackend, CacheEntry
         from truthound.profiler.base import TableProfile
+        from truthound.profiler.caching import CacheEntry, MemoryCacheBackend
 
         backend = MemoryCacheBackend(max_size=3)
 
@@ -165,8 +164,8 @@ class TestMemoryCacheBackend:
 
     def test_cache_stats(self):
         """Test cache statistics."""
-        from truthound.profiler.caching import MemoryCacheBackend, CacheEntry
         from truthound.profiler.base import TableProfile
+        from truthound.profiler.caching import CacheEntry, MemoryCacheBackend
 
         backend = MemoryCacheBackend()
 
@@ -190,8 +189,8 @@ class TestFileCacheBackend:
 
     def test_basic_operations(self):
         """Test basic get/set/delete operations."""
-        from truthound.profiler.caching import FileCacheBackend, CacheEntry
         from truthound.profiler.base import TableProfile
+        from truthound.profiler.caching import CacheEntry, FileCacheBackend
 
         with tempfile.TemporaryDirectory() as tmpdir:
             backend = FileCacheBackend(cache_dir=tmpdir, compress=False)
@@ -214,8 +213,8 @@ class TestFileCacheBackend:
 
     def test_compression(self):
         """Test compressed storage."""
-        from truthound.profiler.caching import FileCacheBackend, CacheEntry
         from truthound.profiler.base import TableProfile
+        from truthound.profiler.caching import CacheEntry, FileCacheBackend
 
         with tempfile.TemporaryDirectory() as tmpdir:
             backend = FileCacheBackend(cache_dir=tmpdir, compress=True)
@@ -235,8 +234,8 @@ class TestProfileCache:
 
     def test_get_or_compute(self):
         """Test cache-through pattern."""
-        from truthound.profiler.caching import ProfileCache, CacheKey
         from truthound.profiler.base import TableProfile
+        from truthound.profiler.caching import CacheKey, ProfileCache
 
         cache = ProfileCache(backend="memory")
 
@@ -261,8 +260,8 @@ class TestProfileCache:
 
     def test_disabled_cache(self):
         """Test cache when disabled."""
-        from truthound.profiler.caching import ProfileCache, CacheKey
         from truthound.profiler.base import TableProfile
+        from truthound.profiler.caching import CacheKey, ProfileCache
 
         cache = ProfileCache(backend="memory", enabled=False)
 
@@ -399,7 +398,7 @@ class TestProfilerTelemetry:
 
     def test_span_context(self):
         """Test span context manager."""
-        from truthound.profiler.observability import ProfilerTelemetry, InMemorySpanExporter
+        from truthound.profiler.observability import InMemorySpanExporter, ProfilerTelemetry
 
         exporter = InMemorySpanExporter()
         telemetry = ProfilerTelemetry(exporter=exporter, sample_rate=1.0)
@@ -417,7 +416,7 @@ class TestProfilerTelemetry:
 
     def test_nested_spans(self):
         """Test nested span contexts."""
-        from truthound.profiler.observability import ProfilerTelemetry, InMemorySpanExporter
+        from truthound.profiler.observability import InMemorySpanExporter, ProfilerTelemetry
 
         exporter = InMemorySpanExporter()
         telemetry = ProfilerTelemetry(exporter=exporter, sample_rate=1.0)
@@ -440,11 +439,11 @@ class TestProfilerTelemetry:
     def test_traced_decorator(self):
         """Test @traced decorator."""
         from truthound.profiler.observability import (
-            ProfilerTelemetry,
             InMemorySpanExporter,
-            traced,
-            set_telemetry,
+            ProfilerTelemetry,
             get_telemetry,
+            set_telemetry,
+            traced,
         )
 
         exporter = InMemorySpanExporter()
@@ -551,7 +550,7 @@ class TestQualityMetrics:
 
     def test_from_confusion_matrix(self):
         """Test creating metrics from confusion matrix."""
-        from truthound.profiler.quality import QualityMetrics, ConfusionMatrix, QualityLevel
+        from truthound.profiler.quality import ConfusionMatrix, QualityLevel, QualityMetrics
 
         matrix = ConfusionMatrix(
             true_positives=95,
@@ -578,7 +577,7 @@ class TestValidationRule:
 
     def test_pattern_rule(self):
         """Test pattern-based validation rule."""
-        from truthound.profiler.quality import ValidationRule, RuleType
+        from truthound.profiler.quality import RuleType, ValidationRule
 
         rule = ValidationRule(
             name="email_pattern",
@@ -591,7 +590,7 @@ class TestValidationRule:
 
     def test_range_rule(self):
         """Test range validation rule."""
-        from truthound.profiler.quality import ValidationRule, RuleType
+        from truthound.profiler.quality import RuleType, ValidationRule
 
         rule = ValidationRule(
             name="age_range",
@@ -607,7 +606,7 @@ class TestValidationRule:
 
     def test_allowed_values_rule(self):
         """Test allowed values validation rule."""
-        from truthound.profiler.quality import ValidationRule, RuleType
+        from truthound.profiler.quality import RuleType, ValidationRule
 
         rule = ValidationRule(
             name="status",
@@ -624,7 +623,7 @@ class TestRuleQualityScorer:
 
     def test_score_pattern_rule(self):
         """Test scoring a pattern rule."""
-        from truthound.profiler.quality import RuleQualityScorer, ValidationRule, RuleType
+        from truthound.profiler.quality import RuleQualityScorer, RuleType, ValidationRule
 
         df = pl.DataFrame({
             "email": [
@@ -650,7 +649,7 @@ class TestRuleQualityScorer:
 
     def test_compare_rules(self):
         """Test comparing multiple rules."""
-        from truthound.profiler.quality import RuleQualityScorer, ValidationRule, RuleType
+        from truthound.profiler.quality import RuleQualityScorer, RuleType, ValidationRule
 
         df = pl.DataFrame({
             "value": [10, 20, 30, 40, 50, 60, 70, 80, 90, 100]
@@ -684,28 +683,26 @@ class TestRuleQualityScorer:
 class TestQualityTrendAnalyzer:
     """Tests for QualityTrendAnalyzer."""
 
-    def test_record_and_analyze(self):
+    def test_record_and_analyze(self, tmp_path):
         """Test recording and analyzing trends."""
-        from truthound.profiler.quality import QualityTrendAnalyzer, QualityMetrics
+        from truthound.profiler.quality import QualityMetrics, QualityTrendAnalyzer
 
-        with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as f:
-            analyzer = QualityTrendAnalyzer(storage_path=f.name)
+        analyzer = QualityTrendAnalyzer(storage_path=tmp_path / "trend.json")
 
-            # Record improving metrics with significant change
-            for i in range(10):
-                metrics = QualityMetrics(
-                    precision=0.5 + i * 0.05,  # 0.5 -> 0.95
-                    recall=0.5 + i * 0.05,
-                    f1_score=0.5 + i * 0.05,
-                )
-                analyzer.record("rule1", metrics, data_size=1000)
+        # Record improving metrics with significant change
+        for i in range(10):
+            metrics = QualityMetrics(
+                precision=0.5 + i * 0.05,  # 0.5 -> 0.95
+                recall=0.5 + i * 0.05,
+                f1_score=0.5 + i * 0.05,
+            )
+            analyzer.record("rule1", metrics, data_size=1000)
 
-            trend = analyzer.analyze_trend("rule1")
+        trend = analyzer.analyze_trend("rule1")
 
-            # Either improving or stable is acceptable
-            assert trend.get("trend") in ["improving", "stable"]
-            assert trend.get("points_analyzed") == 10
-
+        # Either improving or stable is acceptable
+        assert trend.get("trend") in ["improving", "stable"]
+        assert trend.get("points_analyzed") == 10
 
 # =============================================================================
 # Custom Patterns Tests
@@ -846,8 +843,8 @@ class TestPatternRegistry:
     def test_register_pattern(self):
         """Test registering patterns programmatically."""
         from truthound.profiler.custom_patterns import (
-            PatternRegistry,
             PatternConfig,
+            PatternRegistry,
             register_pattern,
         )
 
@@ -868,7 +865,7 @@ class TestPatternRegistry:
 
     def test_match_patterns(self):
         """Test pattern matching."""
-        from truthound.profiler.custom_patterns import PatternRegistry, PatternConfig
+        from truthound.profiler.custom_patterns import PatternConfig, PatternRegistry
 
         registry = PatternRegistry()
         registry.clear()
@@ -947,12 +944,12 @@ class TestP2Integration:
 
     def test_cached_profiling_with_telemetry(self):
         """Test caching with telemetry."""
-        from truthound.profiler.caching import ProfileCache, CacheKey
-        from truthound.profiler.observability import (
-            ProfilerTelemetry,
-            InMemorySpanExporter,
-        )
         from truthound.profiler.base import TableProfile
+        from truthound.profiler.caching import CacheKey, ProfileCache
+        from truthound.profiler.observability import (
+            InMemorySpanExporter,
+            ProfilerTelemetry,
+        )
 
         exporter = InMemorySpanExporter()
         telemetry = ProfilerTelemetry(exporter=exporter, sample_rate=1.0)
@@ -984,8 +981,8 @@ class TestP2Integration:
 
     def test_quality_scoring_with_custom_patterns(self):
         """Test quality scoring with custom pattern rules."""
-        from truthound.profiler.quality import RuleQualityScorer, ValidationRule, RuleType
         from truthound.profiler.custom_patterns import load_default_patterns, pattern_registry
+        from truthound.profiler.quality import RuleQualityScorer, RuleType, ValidationRule
 
         # Clear and load default patterns
         pattern_registry.clear()
@@ -1024,3 +1021,109 @@ class TestP2Integration:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+@pytest.mark.parametrize('rule', [
+    {'min_value': 0, 'nullable': True},
+    {'allowed_values': {1}, 'nullable': False},
+    {'pattern': r'^1', 'nullable': False},
+    {'validate_fn': lambda value: value == 1, 'nullable': True},
+])
+def test_quality_column_predictions_match_scalar_rule(rule):
+    from truthound.profiler.quality import RuleType, ValidationRule
+    values = ['1', 'bad', None] if 'pattern' in rule else [-1, 1, None]
+    native = ValidationRule('selected', RuleType.CUSTOM, column='x', **rule)
+    assert native.validate_column(pl.DataFrame({'x': values}), 'x').to_list() == [native.validate(value) for value in values]
+
+
+def test_quality_cache_does_not_reuse_changed_data_labels_or_rule():
+    from truthound.profiler.quality import RuleQualityScorer, RuleType, ValidationRule
+    scorer = RuleQualityScorer()
+    rule = ValidationRule('selected', RuleType.RANGE, column='x', min_value=0, nullable=False)
+    first = scorer.score(rule, pl.DataFrame({'x': [1, 2]}), pl.Series([True, True]))
+    assert first.metrics.f1_score == 1
+    changed = scorer.score(rule, pl.DataFrame({'x': [-1, -2]}), pl.Series([True, True]))
+    assert changed.metrics.f1_score == 0
+    labels = scorer.score(rule, pl.DataFrame({'x': [1, 2]}), pl.Series([False, False]))
+    assert labels.metrics.f1_score == 0
+    rule.min_value = 5
+    assert scorer.score(rule, pl.DataFrame({'x': [1, 2]}), pl.Series([True, True])).metrics.f1_score == 0
+
+
+def test_quality_sampling_rejects_misaligned_labels_and_keeps_global_rng():
+    import random
+
+    from truthound.profiler.quality import RuleType, SamplingQualityEstimator, ValidationRule
+    estimator = SamplingQualityEstimator(sample_size=2, random_seed=7)
+    rule = ValidationRule('selected', RuleType.RANGE, column='x', min_value=0, nullable=False)
+    frame = pl.DataFrame({'x': [-1, 1, 2, -2]})
+    before = random.getstate()
+    score = estimator.estimate(rule, frame, pl.Series([False, True, True, False]))
+    assert score.confusion_matrix.total == 2 and random.getstate() == before
+    with pytest.raises(ValueError):
+        estimator.estimate(rule, frame, pl.Series([True]))
+    with pytest.raises(ValueError):
+        estimator.estimate(rule, frame, pl.Series([True, True, None, False]))
+
+
+def test_quality_cross_validation_small_data_labels_and_confidence_levels():
+    from truthound.profiler.quality import (
+        CrossValidationEstimator,
+        RuleType,
+        SamplingQualityEstimator,
+        ValidationRule,
+    )
+    rule = ValidationRule('selected', RuleType.RANGE, column='x', min_value=0, nullable=False)
+    frame = pl.DataFrame({'x': [1, -1]})
+    labels = pl.Series([True, False])
+    estimator = CrossValidationEstimator(n_folds=5, random_seed=1)
+    assert estimator.estimate(rule, frame, labels).confusion_matrix.total == 2
+    assert estimator.estimate(rule, frame, ~labels).f1_score == 0
+    assert estimator.estimate(rule, frame.head(0)).sample_size == 0
+    wide = SamplingQualityEstimator(confidence_level=.99).estimate(rule, frame, labels).precision_ci
+    narrow = SamplingQualityEstimator(confidence_level=.80).estimate(rule, frame, labels).precision_ci
+    assert wide[1] - wide[0] > narrow[1] - narrow[0]
+
+
+def test_quality_history_reopens_native_metrics_and_preserves_two_writers(tmp_path):
+    from truthound.profiler.quality import ConfusionMatrix, QualityMetrics, QualityTrendAnalyzer
+    path = tmp_path / 'quality.json'
+    first, second = QualityTrendAnalyzer(path), QualityTrendAnalyzer(path)
+    metrics = QualityMetrics.from_confusion_matrix(ConfusionMatrix(2, 1, 0, 0), 3, 3)
+    first.record('one', metrics)
+    second.record('two', metrics)
+    reopened = QualityTrendAnalyzer(path)
+    assert reopened.get_history('one')[0]['metrics']['confusion_matrix']['true_positives'] == 2
+    assert reopened.get_history('two')[0]['metrics']['quality_level'] == 'excellent'
+    assert reopened.get_history('one', limit=0) == []
+
+
+def test_quality_history_corruption_is_not_silently_overwritten(tmp_path):
+    from truthound.profiler.quality import QualityTrendAnalyzer
+    path = tmp_path / 'quality.json'
+    path.write_text('{broken')
+    with pytest.raises(ValueError):
+        QualityTrendAnalyzer(path)
+    assert path.read_text() == '{broken'
+
+
+@pytest.mark.parametrize('after_publish', [False, True])
+def test_quality_history_failed_publication_is_fenced_and_fresh_owner_observes_disk(tmp_path, monkeypatch, after_publish):
+    from truthound.profiler import _quality_history
+    from truthound.profiler.quality import QualityMetrics, QualityTrendAnalyzer
+    path = tmp_path / 'quality.json'
+    owner = QualityTrendAnalyzer(path)
+    owner.record('rule', QualityMetrics(f1_score=.5))
+    original = _quality_history.save
+    def failed(*args):
+        if after_publish:
+            original(*args)
+        raise OSError('synthetic-publication-failure')
+    monkeypatch.setattr(_quality_history, 'save', failed)
+    with pytest.raises(OSError):
+        owner.record('rule', QualityMetrics(f1_score=.9))
+    with pytest.raises(RuntimeError, match='Reopen'):
+        owner.record('rule', QualityMetrics(f1_score=1))
+    history = QualityTrendAnalyzer(path).get_history('rule')
+    assert len(history) == (2 if after_publish else 1)
+    assert history[-1]['metrics']['f1_score'] == (.9 if after_publish else .5)

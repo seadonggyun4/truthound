@@ -27,20 +27,14 @@ import hashlib
 import struct
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime
 from enum import Enum, auto
-from typing import Any, Callable, Generic, TypeVar
+from typing import Any, TypeVar
 
 from truthound.stores.compression.base import (
     CompressionAlgorithm,
-    CompressionConfig,
     CompressionError,
-    CompressionMetrics,
-    CompressionResult,
     Compressor,
-    Decompressor,
 )
-
 
 # =============================================================================
 # Exceptions
@@ -213,7 +207,6 @@ class DeduplicationTransform(Transform):
                 references.append(idx)
 
         # Calculate stats
-        original_size = len(data)
         dedup_ratio = len(unique_blocks) / len(blocks) if blocks else 1.0
 
         self._stats = {
@@ -231,7 +224,16 @@ class DeduplicationTransform(Transform):
         output = bytearray()
         # Header: magic, block_size, num_unique, num_refs, last_block_size
         last_block_size = len(blocks[-1]) if blocks else 0
-        output.extend(struct.pack("<4sIIII", b"DDUP", self.block_size, len(unique_blocks), len(references), last_block_size))
+        output.extend(
+            struct.pack(
+                "<4sIIII",
+                b"DDUP",
+                self.block_size,
+                len(unique_blocks),
+                len(references),
+                last_block_size,
+            )
+        )
 
         # Unique blocks
         for block in unique_blocks:
@@ -259,7 +261,9 @@ class DeduplicationTransform(Transform):
             raise TransformError("Invalid dedup magic", self.name)
 
         offset = 4
-        block_size, num_unique, num_refs, last_block_size = struct.unpack("<IIII", data[offset : offset + 16])
+        block_size, num_unique, num_refs, last_block_size = struct.unpack(
+            "<IIII", data[offset : offset + 16]
+        )
         offset += 16
 
         # Read unique blocks
@@ -390,7 +394,9 @@ class RunLengthTransform(Transform):
         while i < len(data):
             # Count consecutive bytes
             run_length = 1
-            while i + run_length < len(data) and data[i + run_length] == data[i] and run_length < 255:
+            while (
+                i + run_length < len(data) and data[i + run_length] == data[i] and run_length < 255
+            ):
                 run_length += 1
 
             if run_length >= self.min_run:
@@ -404,7 +410,11 @@ class RunLengthTransform(Transform):
                 while i < len(data):
                     # Check if next is a run
                     next_run = 1
-                    while i + next_run < len(data) and data[i + next_run] == data[i] and next_run < 255:
+                    while (
+                        i + next_run < len(data)
+                        and data[i + next_run] == data[i]
+                        and next_run < 255
+                    ):
                         next_run += 1
                     if next_run >= self.min_run:
                         break
@@ -495,7 +505,7 @@ class PipelineStage:
         elif self.stage_type == StageType.CHECKSUM:
             return self._add_checksum(data)
         else:
-            return data
+            raise PipelineError("Unsupported native compression stage", self.name)
 
     def reverse(self, data: bytes) -> bytes:
         """Reverse the stage processing."""
@@ -509,7 +519,7 @@ class PipelineStage:
         elif self.stage_type == StageType.CHECKSUM:
             return self._verify_checksum(data)
         else:
-            return data
+            raise PipelineError("Unsupported native reverse compression stage", self.name)
 
     def _add_checksum(self, data: bytes) -> bytes:
         """Add checksum to data."""
@@ -554,7 +564,9 @@ class PipelineMetrics:
     output_size: int = 0
     overall_ratio: float = 0.0
 
-    def add_stage_metric(self, stage_name: str, input_size: int, output_size: int, time_ms: float) -> None:
+    def add_stage_metric(
+        self, stage_name: str, input_size: int, output_size: int, time_ms: float
+    ) -> None:
         """Add metrics for a stage."""
         self.stage_metrics[stage_name] = {
             "input_size": input_size,
@@ -575,7 +587,9 @@ class PipelineMetrics:
             "input_size": self.input_size,
             "output_size": self.output_size,
             "overall_ratio": round(self.overall_ratio, 2),
-            "space_savings_percent": round((1 - self.output_size / self.input_size) * 100, 2) if self.input_size > 0 else 0.0,
+            "space_savings_percent": round((1 - self.output_size / self.input_size) * 100, 2)
+            if self.input_size > 0
+            else 0.0,
             "stages": self.stage_metrics,
         }
 
@@ -634,8 +648,28 @@ class CompressionPipeline:
         self.name = name
         self._stages: list[PipelineStage] = []
         self._enabled = True
+        self._execution_guard = None
 
-    def add_stage(self, stage: PipelineStage) -> "CompressionPipeline":
+    def set_execution_guard(self, guard):
+        if guard is not None and not callable(guard):
+            raise TypeError("Execution guard must be callable")
+        self._execution_guard = guard
+
+    def _guard_execution(self):
+        if self._execution_guard is not None:
+            self._execution_guard()
+
+    @staticmethod
+    def _check_output(data, maximum):
+        if not isinstance(data, bytes):
+            raise PipelineError("Native compression stages must return bytes")
+        if maximum is not None:
+            if type(maximum) is not int or maximum <= 0:
+                raise ValueError("Pipeline output limit must be a positive integer")
+            if len(data) > maximum:
+                raise PipelineError("Native compression output exceeds configured limit")
+
+    def add_stage(self, stage: PipelineStage) -> CompressionPipeline:
         """Add a stage to the pipeline.
 
         Args:
@@ -647,7 +681,7 @@ class CompressionPipeline:
         self._stages.append(stage)
         return self
 
-    def add_transform(self, transform: Transform, name: str | None = None) -> "CompressionPipeline":
+    def add_transform(self, transform: Transform, name: str | None = None) -> CompressionPipeline:
         """Add a transform stage.
 
         Args:
@@ -661,7 +695,9 @@ class CompressionPipeline:
         stage = PipelineStage(name=stage_name, stage_type=StageType.TRANSFORM, processor=transform)
         return self.add_stage(stage)
 
-    def add_compression(self, compressor: Compressor, name: str | None = None) -> "CompressionPipeline":
+    def add_compression(
+        self, compressor: Compressor, name: str | None = None
+    ) -> CompressionPipeline:
         """Add a compression stage.
 
         Args:
@@ -675,7 +711,7 @@ class CompressionPipeline:
         stage = PipelineStage(name=stage_name, stage_type=StageType.COMPRESS, processor=compressor)
         return self.add_stage(stage)
 
-    def add_checksum(self, name: str = "checksum") -> "CompressionPipeline":
+    def add_checksum(self, name: str = "checksum") -> CompressionPipeline:
         """Add a checksum verification stage.
 
         Args:
@@ -687,7 +723,7 @@ class CompressionPipeline:
         stage = PipelineStage(name=name, stage_type=StageType.CHECKSUM, processor=None)
         return self.add_stage(stage)
 
-    def process(self, data: bytes) -> PipelineResult:
+    def process(self, data: bytes, *, max_output_bytes: int | None = None) -> PipelineResult:
         """Process data through the pipeline.
 
         Args:
@@ -698,6 +734,8 @@ class CompressionPipeline:
         """
         import time
 
+        self._guard_execution()
+        self._check_output(data, max_output_bytes)
         metrics = PipelineMetrics()
         metrics.input_size = len(data)
         stage_order: list[str] = []
@@ -706,6 +744,7 @@ class CompressionPipeline:
         current_data = data
 
         for stage in self._stages:
+            self._guard_execution()
             if not stage.enabled:
                 continue
 
@@ -714,8 +753,10 @@ class CompressionPipeline:
 
             try:
                 current_data = stage.process(current_data)
-            except Exception as e:
-                raise PipelineError(f"Stage failed: {e}", stage.name)
+            except Exception:
+                raise PipelineError("Native compression stage failed", stage.name) from None
+            self._guard_execution()
+            self._check_output(current_data, max_output_bytes)
 
             stage_time = (time.perf_counter() - stage_start) * 1000
             metrics.add_stage_metric(stage.name, input_size, len(current_data), stage_time)
@@ -732,7 +773,7 @@ class CompressionPipeline:
             config_snapshot=self._get_config_snapshot(),
         )
 
-    def reverse(self, data: bytes) -> bytes:
+    def reverse(self, data: bytes, *, max_output_bytes: int | None = None) -> bytes:
         """Reverse pipeline processing.
 
         Args:
@@ -741,21 +782,26 @@ class CompressionPipeline:
         Returns:
             Original data.
         """
+        self._guard_execution()
+        self._check_output(data, max_output_bytes)
         current_data = data
 
         # Reverse stages in reverse order
         for stage in reversed(self._stages):
+            self._guard_execution()
             if not stage.enabled:
                 continue
 
             try:
                 current_data = stage.reverse(current_data)
-            except Exception as e:
-                raise PipelineError(f"Reverse stage failed: {e}", stage.name)
+            except Exception:
+                raise PipelineError("Native reverse compression stage failed", stage.name) from None
+            self._guard_execution()
+            self._check_output(current_data, max_output_bytes)
 
         return current_data
 
-    def enable_stage(self, name: str, enabled: bool = True) -> "CompressionPipeline":
+    def enable_stage(self, name: str, enabled: bool = True) -> CompressionPipeline:
         """Enable or disable a stage by name.
 
         Args:
@@ -771,7 +817,7 @@ class CompressionPipeline:
                 break
         return self
 
-    def remove_stage(self, name: str) -> "CompressionPipeline":
+    def remove_stage(self, name: str) -> CompressionPipeline:
         """Remove a stage by name.
 
         Args:
@@ -802,7 +848,7 @@ class CompressionPipeline:
             ],
         }
 
-    def clone(self, new_name: str | None = None) -> "CompressionPipeline":
+    def clone(self, new_name: str | None = None) -> CompressionPipeline:
         """Create a copy of this pipeline.
 
         Args:
@@ -835,7 +881,9 @@ def create_json_pipeline() -> CompressionPipeline:
     from truthound.stores.compression.providers import get_compressor
 
     return (
-        CompressionPipeline("json").add_transform(DeduplicationTransform(block_size=1024)).add_compression(get_compressor(CompressionAlgorithm.GZIP))
+        CompressionPipeline("json")
+        .add_transform(DeduplicationTransform(block_size=1024))
+        .add_compression(get_compressor(CompressionAlgorithm.GZIP))
     )
 
 
@@ -844,7 +892,11 @@ def create_binary_pipeline() -> CompressionPipeline:
     from truthound.stores.compression.providers import get_compressor, is_algorithm_available
 
     # Prefer ZSTD, fall back to GZIP
-    algo = CompressionAlgorithm.ZSTD if is_algorithm_available(CompressionAlgorithm.ZSTD) else CompressionAlgorithm.GZIP
+    algo = (
+        CompressionAlgorithm.ZSTD
+        if is_algorithm_available(CompressionAlgorithm.ZSTD)
+        else CompressionAlgorithm.GZIP
+    )
 
     return (
         CompressionPipeline("binary")
@@ -859,7 +911,11 @@ def create_timeseries_pipeline() -> CompressionPipeline:
     from truthound.stores.compression.providers import get_compressor, is_algorithm_available
 
     # Prefer ZSTD, fall back to GZIP
-    algo = CompressionAlgorithm.ZSTD if is_algorithm_available(CompressionAlgorithm.ZSTD) else CompressionAlgorithm.GZIP
+    algo = (
+        CompressionAlgorithm.ZSTD
+        if is_algorithm_available(CompressionAlgorithm.ZSTD)
+        else CompressionAlgorithm.GZIP
+    )
 
     return (
         CompressionPipeline("timeseries")

@@ -6,12 +6,13 @@ for cache implementations.
 
 from __future__ import annotations
 
+import math
 from abc import ABC, abstractmethod
+from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Any, Generic, Protocol, TypeVar, runtime_checkable
-
 
 T = TypeVar("T")
 
@@ -54,11 +55,11 @@ class CacheConfig:
 
     def validate(self) -> None:
         """Validate configuration values."""
-        if self.max_size <= 0:
+        if type(self.max_size) is not int or self.max_size <= 0:
             raise ValueError("max_size must be positive")
-        if self.max_memory_mb <= 0:
+        if not math.isfinite(self.max_memory_mb) or self.max_memory_mb <= 0:
             raise ValueError("max_memory_mb must be positive")
-        if self.ttl_seconds < 0:
+        if not math.isfinite(self.ttl_seconds) or self.ttl_seconds < 0:
             raise ValueError("ttl_seconds must be non-negative")
         if self.eviction_batch_size <= 0:
             raise ValueError("eviction_batch_size must be positive")
@@ -133,28 +134,39 @@ class CacheMetrics:
     memory_bytes: int = 0
     _total_get_time_ms: float = 0.0
     _total_set_time_ms: float = 0.0
+    enabled: bool = True
 
     def record_hit(self, time_ms: float = 0.0) -> None:
         """Record a cache hit."""
+        if not self.enabled:
+            return
         self.hits += 1
         self._total_get_time_ms += time_ms
 
     def record_miss(self, time_ms: float = 0.0) -> None:
         """Record a cache miss."""
+        if not self.enabled:
+            return
         self.misses += 1
         self._total_get_time_ms += time_ms
 
     def record_set(self, time_ms: float = 0.0) -> None:
         """Record a cache set."""
+        if not self.enabled:
+            return
         self.sets += 1
         self._total_set_time_ms += time_ms
 
     def record_eviction(self, count: int = 1) -> None:
         """Record evictions."""
+        if not self.enabled:
+            return
         self.evictions += count
 
     def record_expiration(self, count: int = 1) -> None:
         """Record expirations."""
+        if not self.enabled:
+            return
         self.expirations += count
 
     def update_size(self, size: int, memory_bytes: int) -> None:
@@ -245,9 +257,9 @@ class BaseCache(ABC, Generic[T]):
         Args:
             config: Cache configuration.
         """
-        self._config = config or CacheConfig()
+        self._config = deepcopy(config) if config is not None else CacheConfig()
         self._config.validate()
-        self._metrics = CacheMetrics()
+        self._metrics = CacheMetrics(enabled=self._config.enable_statistics)
 
     @property
     def config(self) -> CacheConfig:
@@ -289,6 +301,10 @@ class BaseCache(ABC, Generic[T]):
         """Clear all entries."""
         pass
 
+    def expiring_keys(self, threshold_percent: float) -> list[str]:
+        """List native entries due for source refresh; custom caches opt in."""
+        raise NotImplementedError("This cache does not expose refresh metadata")
+
     def get_many(self, keys: list[str]) -> dict[str, T]:
         """Get multiple values by keys.
 
@@ -305,9 +321,7 @@ class BaseCache(ABC, Generic[T]):
                 result[key] = value
         return result
 
-    def set_many(
-        self, items: dict[str, T], ttl_seconds: float | None = None
-    ) -> None:
+    def set_many(self, items: dict[str, T], ttl_seconds: float | None = None) -> None:
         """Set multiple values.
 
         Args:

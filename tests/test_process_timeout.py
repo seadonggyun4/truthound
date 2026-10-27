@@ -441,65 +441,38 @@ class TestThreadExecutionStrategy:
         assert strategy.is_available()
 
 
-class TestProcessExecutionStrategy:
-    """Tests for process-based execution.
+def native_process_value():
+    return 42
 
-    Note: Process-based execution requires functions to be picklable.
-    Local functions and lambdas cannot be pickled, so these tests verify
-    that the strategy properly handles both success and failure cases.
-    """
+
+def native_process_failure():
+    raise ValueError("synthetic-private-process-failure")
+
+
+def native_process_forever():
+    while True:
+        time.sleep(1)
+
+
+class TestProcessExecutionStrategy:
+    """Require actual importable native work; serialization failure is no substitute."""
 
     def test_successful_execution(self):
-        """Test successful function execution in process.
-
-        Note: Local lambdas cannot be pickled for process execution.
-        This test verifies proper error handling for unpicklable functions.
-        """
         strategy = ProcessExecutionStrategy()
-
-        # Lambda cannot be pickled - expect serialization failure
-        result = strategy.execute(lambda: 42, timeout_seconds=10.0)
-
-        # Process execution with local lambda should fail due to pickling
-        # This is expected behavior - verify error is handled gracefully
-        if not result.success:
-            assert "serialize" in str(result.error).lower() or "pickle" in str(result.error).lower()
-        else:
-            # If it somehow succeeds (some environments may handle this)
-            assert result.value == 42
-            assert result.metrics.backend_used == ExecutionBackend.PROCESS
+        result = strategy.execute(native_process_value, timeout_seconds=10.0)
+        assert result.success and result.value == 42
+        assert result.metrics.backend_used == ExecutionBackend.PROCESS
 
     def test_exception_handling(self):
-        """Test exception is captured from process."""
-        strategy = ProcessExecutionStrategy()
-
-        def failing_func():
-            raise ValueError("test error")
-
-        result = strategy.execute(failing_func, timeout_seconds=10.0)
-
-        # Local function can't be pickled, so this will fail
-        assert not result.success
-        assert result.error is not None
+        result = ProcessExecutionStrategy().execute(native_process_failure, timeout_seconds=10.0)
+        assert not result.success and not result.timed_out
+        assert result.error.error_type == "ValueError"
+        assert "synthetic-private-process-failure" not in str(result.error)
 
     def test_timeout_terminates_process(self):
-        """Test that timeout actually terminates the process.
-
-        Note: Since local functions can't be pickled, we test that
-        the strategy handles this gracefully with proper error reporting.
-        """
-        strategy = ProcessExecutionStrategy(graceful_timeout=0.1)
-
-        def infinite_loop():
-            while True:
-                pass
-
-        result = strategy.execute(infinite_loop, timeout_seconds=0.5)
-
-        # Should fail - either due to timeout or pickling error
-        assert not result.success
-        # Either timed out or failed to serialize
-        assert result.timed_out or result.error is not None
+        result = ProcessExecutionStrategy(graceful_timeout=0.1).execute(native_process_forever, timeout_seconds=0.5)
+        assert result.timed_out and result.metrics.was_terminated
+        assert result.error is None
 
     def test_unpicklable_function_error(self):
         """Test handling of unpicklable functions."""

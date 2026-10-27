@@ -789,6 +789,18 @@ def with_timeout(func: Callable) -> Callable:
 # ValidationIssue
 # ============================================================================
 
+@dataclass(frozen=True)
+class ValidationSamplingInfo:
+    """Observed sample provenance; issue counts are never extrapolated."""
+
+    total_rows: int
+    sample_rows: int
+    seed: int | None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"total_rows": self.total_rows, "sample_rows": self.sample_rows, "seed": self.seed}
+
+
 @dataclass
 class ValidationIssue:
     """Represents a single data quality issue found during validation.
@@ -823,6 +835,7 @@ class ValidationIssue:
 
     # -- PHASE 5 fields --
     exception_info: ExceptionInfo | None = None
+    sampling: ValidationSamplingInfo | None = None
 
     # ------------------------------------------------------------------ #
     # Convenience accessors (delegate to result when available)
@@ -880,6 +893,8 @@ class ValidationIssue:
             d["result"] = self.result.to_dict()
         if self.exception_info is not None:
             d["exception_info"] = self.exception_info.to_dict()
+        if self.sampling is not None:
+            d["sampling"] = self.sampling.to_dict()
         return d
 
 

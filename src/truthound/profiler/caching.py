@@ -27,25 +27,24 @@ Example:
 
 from __future__ import annotations
 
+import fnmatch
 import gzip
 import hashlib
 import json
 import os
-import pickle
-import shutil
+import tempfile
 import threading
-import time
 from abc import ABC, abstractmethod
+from collections.abc import Callable  # noqa: TC003 - public runtime annotations
+from contextlib import ExitStack
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Generic, Protocol, TypeVar
+from typing import Any, Protocol
 
 from truthound.datasources._polars_compat import polars_to_pandas_frame
-from truthound.profiler.base import TableProfile
+from truthound.profiler.base import TableProfile  # noqa: TC001 - public runtime annotations
 from truthound.profiler.schema import ProfileSerializer
-
 
 # =============================================================================
 # Cache Key Protocol
@@ -110,7 +109,7 @@ class FileHashCacheKey(CacheKey):
         version: str = "1",
         quick_hash: bool = False,
         sample_size: int = 1024 * 1024,  # 1MB sample for quick hash
-    ) -> "FileHashCacheKey":
+    ) -> FileHashCacheKey:
         """Create cache key from file.
 
         Args:
@@ -201,7 +200,7 @@ class DataFrameHashCacheKey(CacheKey):
         namespace: str = "profile",
         version: str = "1",
         sample_rows: int = 1000,
-    ) -> "DataFrameHashCacheKey":
+    ) -> DataFrameHashCacheKey:
         """Create cache key from DataFrame.
 
         Args:
@@ -264,6 +263,7 @@ class CacheEntry:
     compressed: bool = False
     size_bytes: int = 0
     metadata: dict[str, Any] = field(default_factory=dict)
+    cache_key: str | None = None
 
     def is_expired(self) -> bool:
         """Check if entry has expired."""
@@ -286,10 +286,11 @@ class CacheEntry:
             "access_count": self.access_count,
             "last_accessed": self.last_accessed.isoformat(),
             "metadata": self.metadata,
+            "cache_key": self.cache_key,
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "CacheEntry":
+    def from_dict(cls, data: dict[str, Any]) -> CacheEntry:
         """Deserialize from dictionary."""
         serializer = ProfileSerializer()
         profile = serializer.deserialize(data["profile"])
@@ -305,6 +306,7 @@ class CacheEntry:
             access_count=data.get("access_count", 0),
             last_accessed=datetime.fromisoformat(data.get("last_accessed", data["created_at"])),
             metadata=data.get("metadata", {}),
+            cache_key=data.get("cache_key"),
         )
 
 
@@ -380,6 +382,18 @@ class CacheBackend(ABC):
         """
         pass
 
+    def set_io_guard(self, guard) -> None:
+        self._io_guard = guard
+
+    def _guard_io(self) -> None:
+        guard = getattr(self, "_io_guard", None)
+        if guard is not None:
+            guard()
+
+    def invalidate_by_pattern(self, pattern: str) -> int:
+        """Backends must explicitly support logical keys, never pretend success."""
+        raise NotImplementedError("Native cache backend does not support pattern invalidation")
+
     def get_stats(self) -> dict[str, Any]:
         """Get cache statistics.
 
@@ -435,7 +449,7 @@ class MemoryCacheBackend(CacheBackend):
         ttl: timedelta | None = None,
     ) -> None:
         with self._lock:
-            if ttl:
+            if ttl is not None:
                 entry.expires_at = datetime.now() + ttl
 
             self._cache[key] = entry
@@ -467,6 +481,14 @@ class MemoryCacheBackend(CacheBackend):
                 return False
             return True
 
+    def invalidate_by_pattern(self, pattern: str) -> int:
+        with self._lock:
+            keys = [key for key in self._cache if fnmatch.fnmatchcase(key, pattern)]
+            for key in keys:
+                self._guard_io()
+                del self._cache[key]
+            return len(keys)
+
     def get_stats(self) -> dict[str, Any]:
         with self._lock:
             total = self._hits + self._misses
@@ -490,6 +512,18 @@ class MemoryCacheBackend(CacheBackend):
             key=lambda k: self._cache[k].last_accessed,
         )
         del self._cache[lru_key]
+
+
+class ProfileCacheReadError(RuntimeError):
+    """Native cached state could not be read; the original evidence is retained."""
+
+
+class ProfileCacheCloseError(RuntimeError):
+    """Native cache resources were all attempted but cleanup failed."""
+
+
+class ProfileCacheWriteError(RuntimeError):
+    """Native cache replacement failed; no partial entry is published."""
 
 
 class FileCacheBackend(CacheBackend):
@@ -526,41 +560,47 @@ class FileCacheBackend(CacheBackend):
         suffix = ".json.gz" if self.compress else ".json"
         return self.cache_dir / f"{key_hash}{suffix}"
 
+    def set_io_guard(self, guard) -> None:
+        self._io_guard = guard
+
+    def _guard_io(self) -> None:
+        guard = getattr(self, "_io_guard", None)
+        if guard is not None:
+            guard()
+
+    def _read_entry(self, path: Path) -> CacheEntry:
+        self._guard_io()
+        try:
+            if self.compress:
+                with gzip.open(path, "rt", encoding="utf-8") as stream:
+                    data = json.load(stream)
+            else:
+                with path.open(encoding="utf-8") as stream:
+                    data = json.load(stream)
+            return CacheEntry.from_dict(data)
+        except (OSError, ValueError, TypeError, KeyError, AttributeError) as error:
+            raise ProfileCacheReadError(
+                f"Native profile cache read failed ({type(error).__name__})"
+            ) from None
+
     def get(self, key: str) -> CacheEntry | None:
         path = self._get_path(key)
-
         with self._lock:
+            self._guard_io()
             if not path.exists():
                 self._misses += 1
                 return None
-
-            try:
-                if self.compress:
-                    with gzip.open(path, "rt", encoding="utf-8") as f:
-                        data = json.load(f)
-                else:
-                    with open(path, "r", encoding="utf-8") as f:
-                        data = json.load(f)
-
-                entry = CacheEntry.from_dict(data)
-
-                if entry.is_expired():
-                    path.unlink(missing_ok=True)
-                    self._misses += 1
-                    return None
-
-                entry.touch()
-                self._hits += 1
-
-                # Update file with new access stats
-                self._save_entry(path, entry)
-
-                return entry
-
-            except (json.JSONDecodeError, KeyError, OSError):
+            entry = self._read_entry(path)
+            if entry.is_expired():
+                self._guard_io()
                 path.unlink(missing_ok=True)
                 self._misses += 1
                 return None
+            entry.touch()
+            entry.cache_key = key
+            self._save_entry(path, entry)
+            self._hits += 1
+            return entry
 
     def set(
         self,
@@ -568,10 +608,11 @@ class FileCacheBackend(CacheBackend):
         entry: CacheEntry,
         ttl: timedelta | None = None,
     ) -> None:
-        if ttl:
+        if ttl is not None:
             entry.expires_at = datetime.now() + ttl
 
         path = self._get_path(key)
+        entry.cache_key = key
 
         with self._lock:
             self._save_entry(path, entry)
@@ -580,20 +621,35 @@ class FileCacheBackend(CacheBackend):
             self._maybe_cleanup()
 
     def _save_entry(self, path: Path, entry: CacheEntry) -> None:
-        """Save entry to file."""
-        data = entry.to_dict()
-
-        if self.compress:
-            with gzip.open(path, "wt", encoding="utf-8") as f:
-                json.dump(data, f)
-        else:
-            with open(path, "w", encoding="utf-8") as f:
-                json.dump(data, f)
+        """Serialize privately, then replace the complete entry in one rename."""
+        self._guard_io()
+        descriptor, temporary_name = tempfile.mkstemp(prefix=".profile-cache-", dir=self.cache_dir)
+        os.close(descriptor)
+        temporary = Path(temporary_name)
+        try:
+            data = entry.to_dict()
+            if self.compress:
+                with gzip.open(temporary, "wt", encoding="utf-8") as stream:
+                    json.dump(data, stream)
+            else:
+                with temporary.open("w", encoding="utf-8") as stream:
+                    json.dump(data, stream)
+            with temporary.open("rb+") as stream:
+                os.fsync(stream.fileno())
+            self._guard_io()
+            os.replace(temporary, path)
+        except Exception as error:
+            raise ProfileCacheWriteError(
+                f"Native profile cache write failed ({type(error).__name__})"
+            ) from None
+        finally:
+            temporary.unlink(missing_ok=True)
 
     def delete(self, key: str) -> bool:
         path = self._get_path(key)
 
         with self._lock:
+            self._guard_io()
             if path.exists():
                 path.unlink()
                 return True
@@ -601,15 +657,42 @@ class FileCacheBackend(CacheBackend):
 
     def clear(self) -> int:
         with self._lock:
+            self._guard_io()
             count = 0
             for path in self.cache_dir.glob("*.json*"):
+                self._guard_io()
                 path.unlink()
                 count += 1
             return count
 
     def exists(self, key: str) -> bool:
         path = self._get_path(key)
-        return path.exists()
+        with self._lock:
+            self._guard_io()
+            if not path.exists():
+                return False
+            entry = self._read_entry(path)
+            if entry.is_expired():
+                self._guard_io()
+                path.unlink(missing_ok=True)
+                return False
+            return True
+
+    def invalidate_by_pattern(self, pattern: str) -> int:
+        with self._lock:
+            self._guard_io()
+            selected = []
+            # Validate every key/index mapping before the first deletion.
+            for path in self.cache_dir.glob("*.json*"):
+                entry = self._read_entry(path)
+                if not isinstance(entry.cache_key, str) or self._get_path(entry.cache_key) != path:
+                    raise ProfileCacheReadError("Native profile cache logical key is unavailable")
+                if fnmatch.fnmatchcase(entry.cache_key, pattern):
+                    selected.append(path)
+            for path in selected:
+                self._guard_io()
+                path.unlink()
+            return len(selected)
 
     def get_stats(self) -> dict[str, Any]:
         with self._lock:
@@ -642,6 +725,7 @@ class FileCacheBackend(CacheBackend):
         for path in cache_files:
             if total_size <= max_bytes * 0.8:  # Clean to 80%
                 break
+            self._guard_io()
             size = path.stat().st_size
             path.unlink()
             total_size -= size
@@ -713,7 +797,7 @@ class RedisCacheBackend(CacheBackend):
             raise ImportError(
                 "Redis support requires the 'redis' package. "
                 "Install with: pip install redis"
-            )
+            ) from None
 
         # Create connection pool with timeout settings
         try:
@@ -739,12 +823,15 @@ class RedisCacheBackend(CacheBackend):
 
         except Exception as e:
             self._connected = False
-            self._last_error = str(e)
+            self._last_error = type(e).__name__
             self._last_error_time = datetime.now()
-            if not lazy_connect:
-                raise RedisConnectionError(
-                    f"Failed to connect to Redis at {host}:{port}: {e}"
-                ) from e
+            try:
+                self.close()
+            except ProfileCacheCloseError as cleanup_error:
+                self._last_error += f"; cleanup={type(cleanup_error).__name__}"
+            raise RedisConnectionError(
+                f"Native Redis connection failed ({type(e).__name__})"
+            ) from None
 
     @property
     def connection_info(self) -> dict[str, Any]:
@@ -763,13 +850,14 @@ class RedisCacheBackend(CacheBackend):
 
     def _make_key(self, key: str) -> str:
         """Create Redis key with prefix."""
+        self._guard_io()
         return f"{self.prefix}{key}"
 
     def _handle_error(self, e: Exception, operation: str) -> None:
         """Handle and record errors."""
         with self._lock:
             self._errors += 1
-            self._last_error = f"{operation}: {e}"
+            self._last_error = f"{operation}: {type(e).__name__}"
             self._last_error_time = datetime.now()
 
             # Check if it's a connection error
@@ -798,7 +886,7 @@ class RedisCacheBackend(CacheBackend):
             self._connected = True
         except self._RedisError as e:
             self._handle_error(e, "get")
-            raise RedisConnectionError(f"Redis get failed: {e}") from e
+            raise RedisConnectionError(f"Redis get failed ({type(e).__name__})") from None
 
         if data is None:
             with self._lock:
@@ -806,14 +894,15 @@ class RedisCacheBackend(CacheBackend):
             return None
 
         try:
-            entry_dict = json.loads(data.decode("utf-8"))
+            entry_dict = json.loads(data if isinstance(data, str) else data.decode("utf-8"))
             entry = CacheEntry.from_dict(entry_dict)
 
             if entry.is_expired():
                 try:
                     self._client.delete(redis_key)
-                except self._RedisError:
-                    pass  # Ignore delete errors for expired entries
+                except self._RedisError as error:
+                    self._handle_error(error, "expire")
+                    raise RedisConnectionError(f"Redis expiration cleanup failed ({type(error).__name__})") from None
                 with self._lock:
                     self._misses += 1
                 return None
@@ -824,15 +913,10 @@ class RedisCacheBackend(CacheBackend):
 
             return entry
 
-        except (json.JSONDecodeError, KeyError, TypeError) as e:
-            # Corrupted entry - try to delete
-            try:
-                self._client.delete(redis_key)
-            except self._RedisError:
-                pass
-            with self._lock:
-                self._misses += 1
-            return None
+        except (ValueError, KeyError, TypeError, AttributeError) as error:
+            raise ProfileCacheReadError(
+                f"Native profile cache read failed ({type(error).__name__})"
+            ) from None
 
     def set(
         self,
@@ -840,25 +924,28 @@ class RedisCacheBackend(CacheBackend):
         entry: CacheEntry,
         ttl: timedelta | None = None,
     ) -> None:
-        if ttl:
+        if ttl is not None:
             entry.expires_at = datetime.now() + ttl
 
         redis_key = self._make_key(key)
+        if ttl is not None and ttl.total_seconds() <= 0:
+            self.delete(key)
+            return
 
         try:
             data = json.dumps(entry.to_dict()).encode("utf-8")
         except (TypeError, ValueError) as e:
-            raise ValueError(f"Failed to serialize cache entry: {e}") from e
+            raise ProfileCacheWriteError(f"Native profile cache serialization failed ({type(e).__name__})") from None
 
         try:
-            if ttl:
+            if ttl is not None:
                 self._client.setex(redis_key, ttl, data)
             else:
                 self._client.set(redis_key, data)
             self._connected = True
         except self._RedisError as e:
             self._handle_error(e, "set")
-            raise RedisConnectionError(f"Redis set failed: {e}") from e
+            raise RedisConnectionError(f"Redis set failed ({type(e).__name__})") from None
 
     def delete(self, key: str) -> bool:
         redis_key = self._make_key(key)
@@ -868,20 +955,35 @@ class RedisCacheBackend(CacheBackend):
             return result
         except self._RedisError as e:
             self._handle_error(e, "delete")
-            raise RedisConnectionError(f"Redis delete failed: {e}") from e
+            raise RedisConnectionError(f"Redis delete failed ({type(e).__name__})") from None
+
+    def _matching_keys(self, pattern: str):
+        keys = set()
+        prefix = "".join("\\" + char if char in "\\*?[]" else char for char in self.prefix)
+        cursor = 0
+        while True:
+            self._guard_io()
+            cursor, page = self._client.scan(cursor=cursor, match=prefix + "*", count=100)
+            for key in page:
+                name = key.decode("utf-8") if isinstance(key, bytes) else key
+                if name.startswith(self.prefix) and fnmatch.fnmatchcase(name[len(self.prefix):], pattern):
+                    keys.add(key)
+            if int(cursor) == 0:
+                return keys
+
+    def invalidate_by_pattern(self, pattern: str) -> int:
+        try:
+            keys = self._matching_keys(pattern)
+            if not keys:
+                return 0
+            self._guard_io()
+            return self._client.delete(*keys)
+        except self._RedisError as error:
+            self._handle_error(error, "invalidate_by_pattern")
+            raise RedisConnectionError(f"Redis pattern invalidation failed ({type(error).__name__})") from None
 
     def clear(self) -> int:
-        pattern = f"{self.prefix}*"
-        try:
-            keys = self._client.keys(pattern)
-            if keys:
-                result = self._client.delete(*keys)
-                self._connected = True
-                return result
-            return 0
-        except self._RedisError as e:
-            self._handle_error(e, "clear")
-            raise RedisConnectionError(f"Redis clear failed: {e}") from e
+        return self.invalidate_by_pattern("*")
 
     def exists(self, key: str) -> bool:
         redis_key = self._make_key(key)
@@ -891,7 +993,7 @@ class RedisCacheBackend(CacheBackend):
             return result
         except self._RedisError as e:
             self._handle_error(e, "exists")
-            raise RedisConnectionError(f"Redis exists failed: {e}") from e
+            raise RedisConnectionError(f"Redis exists failed ({type(e).__name__})") from None
 
     def get_stats(self) -> dict[str, Any]:
         with self._lock:
@@ -911,11 +1013,11 @@ class RedisCacheBackend(CacheBackend):
 
             # Try to get key count
             try:
-                pattern = f"{self.prefix}*"
-                keys = self._client.keys(pattern)
-                stats["key_count"] = len(keys)
-            except self._RedisError:
+                stats["key_count"] = len(self._matching_keys("*"))
+            except self._RedisError as error:
+                self._handle_error(error, "get_stats")
                 stats["key_count"] = -1
+                stats["errors"] = self._errors
 
             if self._last_error:
                 stats["last_error"] = self._last_error
@@ -927,12 +1029,17 @@ class RedisCacheBackend(CacheBackend):
             return stats
 
     def close(self) -> None:
-        """Close the connection pool."""
+        """Attempt both owned resources even when an earlier close fails."""
         try:
-            self._pool.disconnect()
+            with ExitStack() as stack:
+                for name, method in (("_pool", "disconnect"), ("_client", "close")):
+                    close = getattr(getattr(self, name, None), method, None)
+                    if callable(close):
+                        stack.callback(close)
+        except Exception as error:
+            raise ProfileCacheCloseError(f"Native profile cache close failed ({type(error).__name__})") from None
+        finally:
             self._connected = False
-        except Exception:
-            pass
 
 
 # =============================================================================
@@ -1047,6 +1154,17 @@ class ProfileCache:
             options = backend_options or {}
             self._backend = cache_backend_registry.create(backend, **options)
 
+    def set_execution_guard(self, guard) -> None:
+        self._execution_guard = guard
+        setter = getattr(self._backend, "set_io_guard", None)
+        if callable(setter):
+            setter(guard)
+
+    def _guard_execution(self) -> None:
+        guard = getattr(self, "_execution_guard", None)
+        if guard is not None:
+            guard()
+
     @property
     def backend(self) -> CacheBackend:
         """Access the underlying backend."""
@@ -1061,6 +1179,7 @@ class ProfileCache:
         Returns:
             Cached profile or None
         """
+        self._guard_execution()
         if not self.enabled:
             return None
 
@@ -1082,6 +1201,7 @@ class ProfileCache:
             ttl: Time-to-live (uses default if not specified)
             metadata: Additional metadata to store
         """
+        self._guard_execution()
         if not self.enabled:
             return
 
@@ -1093,7 +1213,7 @@ class ProfileCache:
         self._backend.set(
             key.to_string(),
             entry,
-            ttl=ttl or self.default_ttl,
+            ttl=ttl if ttl is not None else self.default_ttl,
         )
 
     def get_or_compute(
@@ -1126,6 +1246,7 @@ class ProfileCache:
             return cached
 
         # Compute profile
+        self._guard_execution()
         profile = compute_fn()
 
         # Store in cache
@@ -1142,6 +1263,7 @@ class ProfileCache:
         Returns:
             True if entry was invalidated
         """
+        self._guard_execution()
         return self._backend.delete(key.to_string())
 
     def invalidate_by_pattern(self, pattern: str) -> int:
@@ -1155,9 +1277,8 @@ class ProfileCache:
         Returns:
             Number of entries invalidated
         """
-        # This is a simplified implementation
-        # Full pattern matching would require backend support
-        return 0
+        self._guard_execution()
+        return self._backend.invalidate_by_pattern(pattern)
 
     def clear(self) -> int:
         """Clear all cache entries.
@@ -1165,6 +1286,7 @@ class ProfileCache:
         Returns:
             Number of entries cleared
         """
+        self._guard_execution()
         return self._backend.clear()
 
     def get_stats(self) -> dict[str, Any]:
@@ -1173,10 +1295,11 @@ class ProfileCache:
         Returns:
             Dictionary with cache statistics
         """
+        self._guard_execution()
         stats = self._backend.get_stats()
         stats["enabled"] = self.enabled
         stats["default_ttl_seconds"] = (
-            self.default_ttl.total_seconds() if self.default_ttl else None
+            self.default_ttl.total_seconds() if self.default_ttl is not None else None
         )
         return stats
 

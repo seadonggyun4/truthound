@@ -18,6 +18,8 @@ def execute(request: dict) -> dict:
     from truthound.mcp.catalog import CATALOG
     from truthound.mcp.tables import inline_table, page
 
+    native_failed = False
+    profile_result = None
     operation = request["operation"]
     arguments = CATALOG[operation].input_type.model_validate(request["arguments"])
     if operation == "schedules_preview":
@@ -186,24 +188,33 @@ def execute(request: dict) -> dict:
         "profilers_profile",
         "profilers_generate_rules",
     }:
-        if operation == "profilers_generate_rules":
-            from truthound.mcp.profiling import generate_rules
+        from truthound.profiler.errors import IncompleteProfileError
 
-            payload = generate_rules(arguments, frame)
-        elif operation == "profilers_profile":
-            from truthound.mcp.profiling import execute as profile
+        try:
+            if operation == "profilers_generate_rules":
+                from truthound.mcp.profiling import generate_rules
 
-            result = profile(arguments, frame)
-        else:
-            result = th.profile(frame) if operation == "assets_profile" else th.scan(frame)
-        if operation != "profilers_generate_rules":
-            payload = result.to_dict()
+                payload, profile_result = generate_rules(arguments, frame)
+            elif operation == "profilers_profile":
+                from truthound.mcp.profiling import execute as profile
+
+                profile_result = result = profile(arguments, frame)
+            else:
+                result = th.profile(frame) if operation == "assets_profile" else th.scan(frame)
+            if operation != "profilers_generate_rules":
+                payload = result.to_dict()
+        except IncompleteProfileError as error:
+            native_failed = True
+            profile_result = error.profile
+            payload = profile_result.to_dict()
         with BoundedWriter(Path(request["output_path"]), request["output_budget"]) as sink:
             sink.write(json.dumps(encode(payload), allow_nan=False).encode())
         media_type = (
             "application/vnd.truthound."
             + (
-                "generated-rules"
+                "advanced-profile"
+                if native_failed
+                else "generated-rules"
                 if operation == "profilers_generate_rules"
                 else "advanced-profile"
                 if operation == "profilers_profile"
@@ -319,6 +330,7 @@ def execute(request: dict) -> dict:
     return {
         "resource_created": True,
         "media_type": media_type,
-        "row_count": frame.height,
-        "column_count": frame.width,
+        "row_count": profile_result.row_count if profile_result is not None else frame.height,
+        "column_count": profile_result.column_count if profile_result is not None else frame.width,
+        **({"native_failed": True} if native_failed else {}),
     }

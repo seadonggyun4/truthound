@@ -526,7 +526,7 @@ class TestPluginScaffold:
 
         plugin_file = next(f for f in result.files if "plugin.py" in str(f.path))
         assert "DataSourcePlugin" in plugin_file.content
-        assert "get_datasources" in plugin_file.content
+        assert "get_datasource_types" in plugin_file.content
         assert "connect" in plugin_file.content
         assert "read" in plugin_file.content
 

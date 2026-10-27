@@ -13,13 +13,12 @@ import json
 import threading
 import time
 from abc import ABC, abstractmethod
-from contextlib import contextmanager
+from contextlib import suppress
 from dataclasses import dataclass, field
 from datetime import datetime
 from io import BytesIO, StringIO
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, BinaryIO, Callable, Iterator, TextIO
-from uuid import uuid4
+from typing import TYPE_CHECKING, Any, BinaryIO
 
 from truthound.stores.streaming.base import (
     ChunkInfo,
@@ -99,55 +98,60 @@ class JSONLSerializer(RecordSerializer):
 
 
 class CSVSerializer(RecordSerializer):
-    """CSV serializer."""
+    """Readable CSV columns plus a versioned JSON record column for exact types."""
+
+    RECORD_COLUMN = "__truthound_record_v1__"
 
     def __init__(self, columns: list[str] | None = None):
         self.columns = columns
+        self._explicit_columns = columns is not None
         self._header_written = False
+        self._record_column = self.RECORD_COLUMN
 
     def serialize(self, record: dict[str, Any]) -> bytes:
-        """Serialize a single record to CSV format."""
-        import csv
-        from io import StringIO
-
-        output = StringIO()
-        if self.columns is None:
-            self.columns = list(record.keys())
-
-        writer = csv.DictWriter(output, fieldnames=self.columns, extrasaction="ignore")
-
-        if not self._header_written:
-            writer.writeheader()
-            self._header_written = True
-
-        writer.writerow(record)
-        return output.getvalue().encode("utf-8")
+        return self.serialize_batch([record])
 
     def serialize_batch(self, records: list[dict[str, Any]]) -> bytes:
-        """Serialize a batch of records to CSV format."""
         import csv
-        from io import StringIO
 
         if not records:
             return b""
-
-        output = StringIO()
         if self.columns is None:
-            self.columns = list(records[0].keys())
-
-        writer = csv.DictWriter(output, fieldnames=self.columns, extrasaction="ignore")
-
+            self.columns = list(dict.fromkeys(key for record in records for key in record))
+        while self._record_column in self.columns:
+            self._record_column += "_"
+        output = StringIO()
+        writer = csv.DictWriter(output, fieldnames=[*self.columns, self._record_column], extrasaction="ignore")
         if not self._header_written:
             writer.writeheader()
             self._header_written = True
-
         for record in records:
-            writer.writerow(record)
-
+            original = {key: record.get(key) for key in self.columns} if self._explicit_columns else record
+            writer.writerow({**record, self._record_column: json.dumps(original, ensure_ascii=False, default=str)})
         return output.getvalue().encode("utf-8")
 
     def get_content_type(self) -> str:
         return "text/csv"
+
+
+class ParquetSerializer(RecordSerializer):
+    """Independent Parquet chunks with JSON records, including empty structures."""
+
+    def serialize(self, record: dict[str, Any]) -> bytes:
+        return self.serialize_batch([record])
+
+    def serialize_batch(self, records: list[dict[str, Any]]) -> bytes:
+        from io import BytesIO
+
+        import polars as pl
+
+        output = BytesIO()
+        pl.DataFrame({"__truthound_record_v1__": [json.dumps(record, ensure_ascii=False, default=str) for record in records]},
+                     schema={"__truthound_record_v1__": pl.String}).write_parquet(output, compression="uncompressed")
+        return output.getvalue()
+
+    def get_content_type(self) -> str:
+        return "application/vnd.apache.parquet"
 
 
 def get_serializer(format: StreamingFormat, **kwargs: Any) -> RecordSerializer:
@@ -156,6 +160,8 @@ def get_serializer(format: StreamingFormat, **kwargs: Any) -> RecordSerializer:
         return JSONLSerializer()
     elif format == StreamingFormat.CSV:
         return CSVSerializer(columns=kwargs.get("columns"))
+    elif format == StreamingFormat.PARQUET:
+        return ParquetSerializer()
     else:
         raise ValueError(f"Unsupported format: {format}")
 
@@ -216,7 +222,7 @@ class ZstdCompressor(Compressor):
 
                 self._compressor = zstd.ZstdCompressor(level=self.level)
             except ImportError:
-                raise ImportError("zstandard library required for zstd compression")
+                raise ImportError("zstandard library required for zstd compression") from None
         return self._compressor
 
     def compress(self, data: bytes) -> bytes:
@@ -236,10 +242,22 @@ class LZ4Compressor(Compressor):
 
             return lz4.frame.compress(data)
         except ImportError:
-            raise ImportError("lz4 library required for lz4 compression")
+            raise ImportError("lz4 library required for lz4 compression") from None
 
     def get_extension(self) -> str:
         return ".lz4"
+
+
+class SnappyCompressor(Compressor):
+    """Reuse Core's native Snappy provider and standard raw block format."""
+
+    def compress(self, data: bytes) -> bytes:
+        from truthound.stores.compression.providers import SnappyCompressor as NativeSnappy
+
+        return NativeSnappy().compress(data)
+
+    def get_extension(self) -> str:
+        return ".snappy"
 
 
 def get_compressor(compression: CompressionType, **kwargs: Any) -> Compressor:
@@ -252,6 +270,8 @@ def get_compressor(compression: CompressionType, **kwargs: Any) -> Compressor:
         return ZstdCompressor(level=kwargs.get("level", 3))
     elif compression == CompressionType.LZ4:
         return LZ4Compressor()
+    elif compression == CompressionType.SNAPPY:
+        return SnappyCompressor()
     else:
         raise ValueError(f"Unsupported compression: {compression}")
 
@@ -345,13 +365,15 @@ class BaseStreamWriter(ABC):
             serializer: Record serializer (auto-selected if None).
             compressor: Data compressor (auto-selected if None).
         """
+        config.validate()
         self.session = session
+        self.session.config = config
         self.config = config
         self.serializer = serializer or get_serializer(config.format)
         self.compressor = compressor or get_compressor(config.compression)
 
         self.buffer = WriteBuffer(
-            max_records=config.buffer_size,
+            max_records=min(config.buffer_size, config.chunk_size),
             max_bytes=config.max_memory_mb * 1024 * 1024 // 4,  # 25% of max memory
         )
 
@@ -359,51 +381,67 @@ class BaseStreamWriter(ABC):
         self._chunk_index = len(session.chunks)
         self._record_offset = sum(c.record_count for c in session.chunks)
         self._closed = False
+        self._closing = False
+        self._failure = None
+        self._io_guard = None
+        self._ownership_lease = None
         self._lock = threading.RLock()
 
         # Auto-flush timer
         self._last_flush_time = time.time()
         self._flush_timer: threading.Timer | None = None
 
-        if config.flush_interval_seconds > 0:
-            self._start_flush_timer()
+
+    def set_io_guard(self, guard) -> None:
+        self._io_guard = guard
+
+    def _guard_io(self) -> None:
+        if self._io_guard is not None:
+            self._io_guard()
+
+    def _ensure_writable(self) -> None:
+        if self._failure is not None:
+            raise self._failure
+        if self._closed:
+            raise StreamWriteError("Writer is closed")
+        self._guard_io()
+
+    def _fail(self, error, stage="flush"):
+        if self._failure is None:
+            self._failure = StreamFlushError(f"Native streaming {stage} failed ({type(error).__name__})")
+            self.session.status = StreamStatus.FAILED
+            self.metrics.record_error(f"{stage}:{type(error).__name__}")
+        return self._failure
 
     def _start_flush_timer(self) -> None:
-        """Start the auto-flush timer."""
+        if self._closed or self._closing or self._failure is not None or self.config.flush_interval_seconds <= 0 or self.buffer.is_empty():
+            return
         if self._flush_timer is not None:
-            self._flush_timer.cancel()
-
-        self._flush_timer = threading.Timer(
-            self.config.flush_interval_seconds,
-            self._auto_flush,
-        )
+            return
+        self._flush_timer = threading.Timer(self.config.flush_interval_seconds, self._auto_flush)
         self._flush_timer.daemon = True
         self._flush_timer.start()
 
     def _auto_flush(self) -> None:
-        """Auto-flush callback."""
-        if not self._closed and not self.buffer.is_empty():
-            try:
+        self._flush_timer = None
+        if self._closed or self._closing or self._failure is not None:
+            return
+        try:
+            if not self.buffer.is_empty():
                 self.flush()
-            except Exception:
-                pass  # Ignore auto-flush errors
-        if not self._closed:
+        except Exception as error:
+            self._fail(error, "background_flush")
+        finally:
             self._start_flush_timer()
 
     def write(self, record: dict[str, Any]) -> None:
-        """Write a single record.
-
-        Args:
-            record: The record to write.
-        """
-        if self._closed:
-            raise StreamWriteError("Writer is closed")
-
         with self._lock:
+            self._ensure_writable()
             if self.buffer.add(record):
                 self.flush()
+            self._start_flush_timer()
 
-    def write_result(self, result: "ValidatorResult") -> None:
+    def write_result(self, result: ValidatorResult) -> None:
         """Write a ValidatorResult.
 
         Args:
@@ -412,19 +450,13 @@ class BaseStreamWriter(ABC):
         self.write(result.to_dict())
 
     def write_batch(self, records: list[dict[str, Any]]) -> None:
-        """Write a batch of records.
-
-        Args:
-            records: The records to write.
-        """
-        if self._closed:
-            raise StreamWriteError("Writer is closed")
-
+        # Apply the native buffer/chunk boundary to each record, not one huge batch.
         with self._lock:
-            if self.buffer.add_batch(records):
-                self.flush()
+            self._ensure_writable()
+            for record in records:
+                self.write(record)
 
-    def write_results(self, results: list["ValidatorResult"]) -> None:
+    def write_results(self, results: list[ValidatorResult]) -> None:
         """Write a batch of ValidatorResults.
 
         Args:
@@ -433,83 +465,54 @@ class BaseStreamWriter(ABC):
         self.write_batch([r.to_dict() for r in results])
 
     def flush(self) -> ChunkInfo:
-        """Flush buffered records to storage.
-
-        Returns:
-            Information about the written chunk.
-        """
-        if self._closed:
-            raise StreamWriteError("Writer is closed")
-
         with self._lock:
-            records = self.buffer.clear()
+            self._ensure_writable()
+            records = list(self.buffer.records)
             if not records:
-                return ChunkInfo(
-                    chunk_id="",
-                    chunk_index=-1,
-                    record_count=0,
-                    byte_size=0,
-                    start_offset=self._record_offset,
-                    end_offset=self._record_offset,
-                )
-
-            # Serialize
-            data = self.serializer.serialize_batch(records)
-
-            # Compute checksum before compression
-            checksum = hashlib.md5(data).hexdigest()
-
-            # Compress
-            compressed_data = self.compressor.compress(data)
-
-            # Create chunk info
-            chunk_id = f"{self.session.run_id}_chunk_{self._chunk_index:06d}"
-            chunk_info = ChunkInfo(
-                chunk_id=chunk_id,
-                chunk_index=self._chunk_index,
-                record_count=len(records),
-                byte_size=len(compressed_data),
-                start_offset=self._record_offset,
-                end_offset=self._record_offset + len(records),
-                checksum=checksum,
-            )
-
-            # Write to storage
+                return ChunkInfo("", -1, 0, 0, self._record_offset, self._record_offset)
             try:
-                self._write_chunk(chunk_info, compressed_data)
-            except Exception as e:
-                # Retry logic
-                for attempt in range(self.config.max_retries):
+                if isinstance(self.serializer, CSVSerializer) and getattr(self, "independent_chunks", True):
+                    self.serializer._header_written = False
+                data = self.serializer.serialize_batch(records)
+                maximum = self.config.max_memory_mb * 1024 ** 2
+                if len(data) > maximum:
+                    raise StreamBufferOverflowError("Native serialized chunk exceeds its memory bound")
+                checksum = hashlib.md5(data).hexdigest()
+                compressed_data = self.compressor.compress(data)
+                if len(compressed_data) > maximum:
+                    raise StreamBufferOverflowError("Native encoded chunk exceeds its memory bound")
+                chunk_info = ChunkInfo(
+                    chunk_id=f"{self.session.run_id}_chunk_{self._chunk_index:06d}",
+                    chunk_index=self._chunk_index, record_count=len(records),
+                    byte_size=len(compressed_data), start_offset=self._record_offset,
+                    end_offset=self._record_offset + len(records), checksum=checksum,
+                )
+                # Retry requires a backend's explicit idempotent-write contract.
+                retries = self.config.max_retries if getattr(self, "idempotent_chunk_write", False) else 0
+                for attempt in range(retries + 1):
+                    self._guard_io()
                     try:
-                        time.sleep(self.config.retry_delay_seconds * (2**attempt))
                         self._write_chunk(chunk_info, compressed_data)
-                        self.metrics.retry_count += 1
                         break
                     except Exception:
-                        if attempt == self.config.max_retries - 1:
-                            self.metrics.record_error(str(e))
-                            raise StreamFlushError(f"Failed to write chunk: {e}")
-
-            # Update state
-            self.session.chunks.append(chunk_info)
-            self._chunk_index += 1
-            self._record_offset += len(records)
-            self._last_flush_time = time.time()
-
-            # Update metrics
-            self.metrics.record_write(len(records), len(compressed_data))
-            self.metrics.record_chunk(is_write=True)
-            self.metrics.flush_count += 1
-
-            # Checkpoint if needed
-            if (
-                self.config.enable_checkpoints
-                and self._record_offset - self.session.checkpoint_offset
-                >= self.config.checkpoint_interval
-            ):
-                self._write_checkpoint()
-
-            return chunk_info
+                        if attempt == retries:
+                            raise
+                        self.metrics.retry_count += 1
+                        time.sleep(self.config.retry_delay_seconds * 2 ** attempt)
+                self.buffer.clear()
+                self.session.chunks.append(chunk_info)
+                self._chunk_index += 1
+                self._record_offset += len(records)
+                self._last_flush_time = time.time()
+                self.metrics.record_write(len(records), len(compressed_data))
+                self.metrics.record_chunk(is_write=True)
+                self.metrics.flush_count += 1
+                if self.config.enable_checkpoints and self._record_offset - self.session.checkpoint_offset >= self.config.checkpoint_interval:
+                    self._guard_io()
+                    self._write_checkpoint()
+                return chunk_info
+            except Exception as error:
+                raise self._fail(error) from None
 
     @abstractmethod
     def _write_chunk(self, chunk_info: ChunkInfo, data: bytes) -> None:
@@ -520,6 +523,10 @@ class BaseStreamWriter(ABC):
             data: Compressed chunk data.
         """
         pass
+
+    def _abort(self) -> None:
+        """Release resources without publishing a completed stream."""
+        return None
 
     def _write_checkpoint(self) -> None:
         """Write a checkpoint for recovery."""
@@ -533,47 +540,106 @@ class BaseStreamWriter(ABC):
         pass
 
     def close(self) -> None:
-        """Close the writer and finalize."""
-        if self._closed:
-            return
+        try:
+            self._close_impl()
+        finally:
+            if self._closed and self._ownership_lease is not None:
+                self._ownership_lease.close()
+                self._ownership_lease = None
 
+    def abort(self) -> None:
+        """Stop without flushing pending records; retain terminal failure evidence."""
+        self._closing = True
+        timer, self._flush_timer = self._flush_timer, None
+        if timer is not None:
+            timer.cancel()
+            if timer is not threading.current_thread():
+                timer.join(timeout=1)
+                if timer.is_alive():
+                    raise self._fail(StreamWriteError("Native background flush is still running"), "abort")
         with self._lock:
-            # Stop flush timer
-            if self._flush_timer is not None:
-                self._flush_timer.cancel()
-                self._flush_timer = None
+            if self._closed:
+                return
+            try:
+                self._abort()
+                self._closed = True
+                if self.session.status != StreamStatus.FAILED:
+                    self.session.status = StreamStatus.ABORTED
+                self.metrics.finish()
+                self.session.updated_at = datetime.now()
+                self._guard_io()
+                self._write_session_state()
+            except Exception as error:
+                raise self._fail(error, "abort") from None
+            finally:
+                if self._closed and self._ownership_lease is not None:
+                    self._ownership_lease.close()
+                    self._ownership_lease = None
 
-            # Flush remaining records
-            if not self.buffer.is_empty():
-                self.flush()
-
-            # Update session
-            self.session.status = StreamStatus.COMPLETED
-            self.session.updated_at = datetime.now()
-            self.metrics.finish()
-
-            # Write final state
-            self._write_session_state()
-            self._finalize()
-
-            self._closed = True
+    def _close_impl(self) -> None:
+        self._closing = True
+        timer, self._flush_timer = self._flush_timer, None
+        if timer is not None:
+            timer.cancel()
+            if timer is not threading.current_thread():
+                timer.join(timeout=1)
+                if timer.is_alive():
+                    raise self._fail(StreamWriteError("Native background flush is still running"), "close")
+        with self._lock:
+            if self._closed:
+                if self._failure is not None:
+                    raise self._failure
+                return
+            if self._failure is not None or self.session.status == StreamStatus.FAILED:
+                self.session.status = StreamStatus.FAILED
+                self.metrics.finish()
+                try:
+                    self._abort()
+                except Exception as error:
+                    self.metrics.record_error("abort:" + type(error).__name__)
+                else:
+                    self._closed = True
+                with suppress(Exception):
+                    self._guard_io()
+                    self._write_session_state()
+                raise self._failure or self._fail(StreamWriteError("Native session failed"), "close")
+            try:
+                if not self.buffer.is_empty():
+                    self.flush()
+                self._guard_io()
+                self.session.updated_at = datetime.now()
+                self.metrics.finish()
+                self._finalize()
+                self.session.status = StreamStatus.COMPLETED
+                self._write_session_state()
+                self._closed = True
+            except Exception as error:
+                failure = self._fail(error, "close")
+                with suppress(Exception):
+                    self._abort()
+                    self._closed = True
+                with suppress(Exception):
+                    self._guard_io()
+                    self._write_session_state()
+                raise failure from None
 
     @abstractmethod
     def _finalize(self) -> None:
         """Finalize the stream (e.g., create manifest)."""
         pass
 
-    def __enter__(self) -> "BaseStreamWriter":
+    def __enter__(self) -> BaseStreamWriter:
         """Context manager entry."""
         self.metrics.start()
         self.session.status = StreamStatus.ACTIVE
         return self
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        """Context manager exit."""
-        if exc_type is not None:
-            self.session.status = StreamStatus.FAILED
-            self.metrics.record_error(str(exc_val))
+        if exc_val is not None:
+            self._fail(exc_val, "context")
+            with suppress(StreamFlushError):
+                self.close()
+            return
         self.close()
 
 
@@ -595,6 +661,8 @@ class StreamingResultWriter(BaseStreamWriter):
         base_path: Path | str,
         serializer: RecordSerializer | None = None,
         compressor: Compressor | None = None,
+        manifest_filename: str = "_manifest.json",
+        require_manifest: bool = False,
     ):
         """Initialize the filesystem writer.
 
@@ -605,13 +673,40 @@ class StreamingResultWriter(BaseStreamWriter):
             serializer: Record serializer.
             compressor: Data compressor.
         """
+        from truthound.stores.streaming._filesystem_io import component, contained_path
+
+        component(session.run_id)
+        component(manifest_filename)
+        selected = Path(base_path).resolve()
+        run_path = contained_path(selected, selected / session.run_id)
         super().__init__(session, config, serializer, compressor)
         self.base_path = Path(base_path)
+        self.manifest_filename = manifest_filename
         self.base_path.mkdir(parents=True, exist_ok=True)
 
         # Create run directory
-        self.run_path = self.base_path / session.run_id
-        self.run_path.mkdir(parents=True, exist_ok=True)
+        self.run_path = run_path
+        from truthound.stores.streaming._filesystem_io import StreamFileLease, run_lease_path
+
+        self._ownership_lease = StreamFileLease(run_lease_path(self.base_path, session.run_id))
+        try:
+            if require_manifest and not self.run_path.is_dir():
+                raise RuntimeError("Native stream run no longer exists")
+            self.run_path.mkdir(parents=True, exist_ok=True)
+            manifest = contained_path(self.run_path, self.manifest_filename)
+            if require_manifest and not manifest.exists():
+                raise RuntimeError("Native stream manifest is missing; reconciliation is required")
+            if manifest.exists():
+                with manifest.open(encoding="utf-8") as stream:
+                    stored = StreamSession.from_dict(json.load(stream))
+                if stored.session_id != session.session_id or stored.status in {
+                    StreamStatus.COMPLETED, StreamStatus.ABORTED,
+                } or [chunk.to_dict() for chunk in stored.chunks] != [chunk.to_dict() for chunk in session.chunks]:
+                    raise RuntimeError("Stale native stream state requires reconciliation before writing")
+        except BaseException:
+            self._ownership_lease.close()
+            self._ownership_lease = None
+            raise
 
     def _get_chunk_path(self, chunk_info: ChunkInfo) -> Path:
         """Get the file path for a chunk."""
@@ -623,29 +718,25 @@ class StreamingResultWriter(BaseStreamWriter):
         }.get(self.config.format, ".jsonl")
 
         ext += self.compressor.get_extension()
-        return self.run_path / f"{chunk_info.chunk_id}{ext}"
+        from truthound.stores.streaming._filesystem_io import component, contained_path
+
+        return contained_path(self.run_path, component(chunk_info.chunk_id) + ext)
 
     def _write_chunk(self, chunk_info: ChunkInfo, data: bytes) -> None:
         """Write a chunk to the filesystem."""
         chunk_path = self._get_chunk_path(chunk_info)
         chunk_info.path = str(chunk_path)
 
-        # Atomic write: write to temp file then rename
-        temp_path = chunk_path.with_suffix(chunk_path.suffix + ".tmp")
-        try:
-            with open(temp_path, "wb") as f:
-                f.write(data)
-            temp_path.rename(chunk_path)
-        except Exception:
-            if temp_path.exists():
-                temp_path.unlink()
-            raise
+        from truthound.stores.streaming._filesystem_io import publish
+
+        publish(chunk_path, data, replace=False)
 
     def _write_session_state(self) -> None:
         """Write session state to a manifest file."""
-        manifest_path = self.run_path / "_manifest.json"
-        with open(manifest_path, "w") as f:
-            json.dump(self.session.to_dict(), f, indent=2, default=str)
+        from truthound.stores.streaming._filesystem_io import contained_path, publish
+
+        manifest_path = contained_path(self.run_path, self.manifest_filename)
+        publish(manifest_path, json.dumps(self.session.to_dict(), indent=2, default=str).encode("utf-8"))
 
     def _finalize(self) -> None:
         """Create final manifest."""
@@ -658,6 +749,8 @@ class BufferedStreamWriter(BaseStreamWriter):
 
     Accumulates all records in memory and writes on close.
     """
+
+    independent_chunks = True
 
     def __init__(
         self,
@@ -674,25 +767,43 @@ class BufferedStreamWriter(BaseStreamWriter):
         """
         super().__init__(session, config)
         self.output = output or BytesIO()
+        if not self.output.seekable():
+            raise ValueError("A native buffered stream requires a seekable binary output")
         self._all_records: list[dict[str, Any]] = []
 
     def _write_chunk(self, chunk_info: ChunkInfo, data: bytes) -> None:
-        """Accumulate chunk data in memory."""
-        self.output.write(data)
+        """Publish one valid document, rather than concatenate codec/file frames."""
+        from truthound.stores.streaming.reader import get_decompressor, get_deserializer
+
+        incoming = list(get_deserializer(self.config.format).deserialize(
+            get_decompressor(self.config.compression).decompress(data)
+        ))
+        records = self._all_records + incoming
+        serialized = get_serializer(self.config.format).serialize_batch(records)
+        if len(serialized) > self.config.max_memory_mb * 1024 ** 2:
+            raise StreamBufferOverflowError("Native buffered output exceeds its memory bound")
+        content = self.compressor.compress(serialized)
+        self._guard_io()
+        self.output.seek(0)
+        written = self.output.write(content)
+        if written != len(content):
+            raise StreamWriteError("Native buffered output acknowledged a short write")
+        self.output.truncate()
+        self._all_records = records
 
     def _write_session_state(self) -> None:
         """No-op for buffered writer."""
         pass
 
     def _finalize(self) -> None:
-        """No-op for buffered writer."""
-        pass
+        """Flush the caller's output; ownership remains with the caller."""
+        self.output.flush()
 
     def get_output(self) -> bytes:
         """Get the accumulated output."""
         if isinstance(self.output, BytesIO):
             return self.output.getvalue()
-        return b""
+        raise TypeError("Native get_output requires an in-memory output")
 
 
 class AsyncStreamWriter:
@@ -708,44 +819,45 @@ class AsyncStreamWriter:
             writer: The underlying synchronous writer.
         """
         self._writer = writer
-        self._loop = asyncio.get_event_loop()
+
+    def _get_loop(self):
+        return asyncio.get_running_loop()
 
     async def write(self, record: dict[str, Any]) -> None:
         """Write a single record asynchronously."""
-        await self._loop.run_in_executor(None, self._writer.write, record)
+        await self._get_loop().run_in_executor(None, self._writer.write, record)
 
-    async def write_result(self, result: "ValidatorResult") -> None:
+    async def write_result(self, result: ValidatorResult) -> None:
         """Write a ValidatorResult asynchronously."""
-        await self._loop.run_in_executor(None, self._writer.write_result, result)
+        await self._get_loop().run_in_executor(None, self._writer.write_result, result)
 
     async def write_batch(self, records: list[dict[str, Any]]) -> None:
         """Write a batch of records asynchronously."""
-        await self._loop.run_in_executor(None, self._writer.write_batch, records)
+        await self._get_loop().run_in_executor(None, self._writer.write_batch, records)
 
-    async def write_results(self, results: list["ValidatorResult"]) -> None:
+    async def write_results(self, results: list[ValidatorResult]) -> None:
         """Write a batch of ValidatorResults asynchronously."""
-        await self._loop.run_in_executor(None, self._writer.write_results, results)
+        await self._get_loop().run_in_executor(None, self._writer.write_results, results)
 
     async def flush(self) -> ChunkInfo:
         """Flush buffered records asynchronously."""
-        return await self._loop.run_in_executor(None, self._writer.flush)
+        return await self._get_loop().run_in_executor(None, self._writer.flush)
 
     async def close(self) -> None:
         """Close the writer asynchronously."""
-        await self._loop.run_in_executor(None, self._writer.close)
+        await self._get_loop().run_in_executor(None, self._writer.close)
 
-    async def __aenter__(self) -> "AsyncStreamWriter":
+    async def abort(self) -> None:
+        await self._get_loop().run_in_executor(None, self._writer.abort)
+
+    async def __aenter__(self) -> AsyncStreamWriter:
         """Async context manager entry."""
         self._writer.metrics.start()
         self._writer.session.status = StreamStatus.ACTIVE
         return self
 
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        """Async context manager exit."""
-        if exc_type is not None:
-            self._writer.session.status = StreamStatus.FAILED
-            self._writer.metrics.record_error(str(exc_val))
-        await self.close()
+        await self._get_loop().run_in_executor(None, self._writer.__exit__, exc_type, exc_val, exc_tb)
 
     @property
     def session(self) -> StreamSession:

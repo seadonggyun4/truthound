@@ -375,3 +375,62 @@ store = CachedStore(versioned, cache)
 - [Replication](replication.md) - Cross-region data replication
 - [Observability](observability.md) - Audit, metrics, tracing
 - [Tiering](tiering.md) - Hot/Warm/Cold/Archive storage
+
+
+CachedStore get, get_many, refresh and warm treat only StoreNotFoundError as absence. Other underlying read failures propagate instead of returning None or a successful partial batch. Earlier entries may already have warmed the cache before a later read fails. Refreshing a genuinely deleted record evicts its stale cache entry. Cache failures themselves remain visible.
+
+
+## Cache modes and owned background writes
+
+READ_THROUGH fills on reads and invalidates on saves. WRITE_THROUGH writes the
+store before caching a snapshot. CACHE_ASIDE bypasses implicit caching; use the
+cache or explicit warm/refresh/invalidate methods. WRITE_BEHIND requires a stable
+nonempty item.id, snapshots each submitted item and uses one instance-owned
+worker thread. save returns an accepted ID, not a durable-write receipt. The
+queue is bounded by max_pending_writes (default 1000 items); it is not a byte
+reservation or durable journal. Cache eviction can remove a queued value before
+the write completes. list_ids lists durable records. Process loss can lose queued
+writes; flush before handing data off, and close the wrapper before its provider.
+Providers used in this mode must permit calls on the worker thread.
+
+flush waits for owned work and returns the cumulative completed count. close and
+context exit flush and join the worker; they do not close the borrowed underlying
+store. Delete and refresh flush first to preserve ordering. A failed background
+write may already have changed storage: it becomes outcome_unknown, blocks new
+submissions and prevents automatic replay. get_stats().write_behind exposes only
+counts, closed/outcome_unknown and an opaque uncertain_token. After operator
+reconciliation, reconcile_write(token, "confirm" | "discard" | "retry") acknowledges
+or drops that queue entry, or retries it with accept_duplicate_risk=True. Confirm
+is an operator assertion, discard is not a rollback, and retry may duplicate a
+write. The exact token prevents resolving a different queued write. Failed close
+retains the queue for explicit reconciliation. set_io_guard checks immediately
+before worker I/O. No raw exception message is included in queue statistics.
+
+Approved MCP cache_flush and cache_reconcile expose these native controls.
+Reconciliation requires write_token and cache_resolution; retry additionally
+requires accept_duplicate_risk: true. Provider configuration, queue limits and
+physical paths remain factory-owned. MCP shutdown drains the wrapper before
+factory teardown. Actual installed-worker tests cover file-store flush, cache
+invalidation, new-owner reading and owned-process termination.
+
+The default wrapper cache honors `CacheConfig.eviction_policy` through native
+InMemoryCache. All four native backends enforce `max_memory_mb` using bounded
+estimates of retained Python values (including built-in containers and dataclass
+fields, avoiding cycles). Oversized replacement rejects before removing the old
+entry; ordinary additions evict by the selected backend policy. This is an
+estimate, not a whole-process heap reservation: opaque objects, external buffers,
+mutable values and allocator overhead can differ. Configuration is copied and
+nonfinite limits/TTLs are rejected. `enable_statistics=False` disables hit/miss/
+set/eviction timing counters while retaining size/memory accounting.
+
+`warm_on_startup=True` loads at most `max_size` durable IDs when constructing the
+wrapper. `background_refresh=True` uses an owned periodic thread and native
+`expiring_keys(threshold_percent)` metadata; it refreshes `store:` entries whose
+remaining TTL falls below the configured percentage. TTL zero does not start an
+expiration refresh thread. Custom caches must implement that metadata port if
+refresh is enabled. Providers must permit calls on this thread. Refresh serializes
+with wrapper operations, honors the I/O guard and flushes pending writes first.
+Statistics expose maintenance running/failures/refreshes; failures are counted
+without raw exception text and subsequent sweeps retain their delay. close stops
+and joins maintenance before draining writes. Process exit does not retain cache,
+refresh history or pending write-behind entries.

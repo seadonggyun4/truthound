@@ -1942,6 +1942,30 @@
       }
     },
     "truthound.ml.drift_detection.concept.ConceptDriftConfig": {
+      "adwin_clock": {
+        "required": false,
+        "type": {
+          "kind": "int"
+        }
+      },
+      "adwin_delta": {
+        "required": false,
+        "type": {
+          "kind": "float"
+        }
+      },
+      "adwin_max_buckets": {
+        "required": false,
+        "type": {
+          "kind": "int"
+        }
+      },
+      "adwin_min_window_length": {
+        "required": false,
+        "type": {
+          "kind": "int"
+        }
+      },
       "cache_predictions": {
         "required": false,
         "type": {
@@ -2004,7 +2028,13 @@
       "method": {
         "required": false,
         "type": {
-          "kind": "str"
+          "kind": "literal",
+          "values": [
+            "correlation",
+            "ddm",
+            "adwin",
+            "page_hinkley"
+          ]
         }
       },
       "min_samples_per_window": {
@@ -2031,6 +2061,49 @@
           "kind": "int"
         }
       },
+      "page_hinkley_alpha": {
+        "required": false,
+        "type": {
+          "kind": "float"
+        }
+      },
+      "page_hinkley_delta": {
+        "required": false,
+        "type": {
+          "kind": "float"
+        }
+      },
+      "page_hinkley_mode": {
+        "required": false,
+        "type": {
+          "kind": "literal",
+          "values": [
+            "up",
+            "down",
+            "both"
+          ]
+        }
+      },
+      "page_hinkley_threshold": {
+        "required": false,
+        "type": {
+          "kind": "float"
+        }
+      },
+      "prediction_column": {
+        "required": false,
+        "type": {
+          "items": [
+            {
+              "kind": "str"
+            },
+            {
+              "kind": "null"
+            }
+          ],
+          "kind": "union"
+        }
+      },
       "random_seed": {
         "required": false,
         "type": {
@@ -2049,6 +2122,20 @@
           "items": [
             {
               "kind": "int"
+            },
+            {
+              "kind": "null"
+            }
+          ],
+          "kind": "union"
+        }
+      },
+      "stream_column": {
+        "required": false,
+        "type": {
+          "items": [
+            {
+              "kind": "str"
             },
             {
               "kind": "null"
@@ -3696,64 +3783,64 @@
     "truthound.core.suite.SchemaSpec": "07b2088b8ffe2b42d8239c639db5184531fc9661ab72e4cc1b809b4148b0c607",
     "truthound.core.suite.SeverityPolicy": "03d1b94a1ac75af059abb06143a3daddf336a16939779e715adb6926915945c4",
     "truthound.core.suite.ValidationSuite": "a1c07e3b1e3925877eabb86ca02b42e73f215cf1b18b3535389d6a042e234737",
-    "truthound.drift.detectors.AndersonDarlingDetector": "ed1615c84a59007e8141ff7dc3e87d936176e894c8844a225e4f359e1eba98c0",
-    "truthound.drift.detectors.BhattacharyyaDetector": "a42d2dfb2ffebe760526877b2062fb49d69c3816ec64207fc834101e4e0c8ea3",
-    "truthound.drift.detectors.ChiSquareDetector": "00f08fbfd5cdf7b402fab33e1f238646bf5be56582281a900b000d3b9bf148c9",
-    "truthound.drift.detectors.CramervonMisesDetector": "1609ede9aa1acc7c6c7919518a3f453315db1d995863114bcc5191f6fd5a3fb0",
-    "truthound.drift.detectors.DriftDetector": "a4c972849de18b0d4a05f63586a9994f1def4b20a153c0cc449548d6dce14a05",
-    "truthound.drift.detectors.EnergyDetector": "6fdfc46aa94960eed7cbbba4031ee42f20423464ef7afda01e59bdab813904d4",
-    "truthound.drift.detectors.HellingerDetector": "65a38857c4368ac0457c2c676cba9a2eaa9ae1730a4ca562327689bc26ce12f2",
-    "truthound.drift.detectors.JensenShannonDetector": "ddfe9e633ae0ee0ad773751524c45435ba1929b1847a85b825ab9a69010918ec",
-    "truthound.drift.detectors.KLDivergenceDetector": "68469fc8fd556c341a2c1c5c0b61de7c5d402379f552cc1a45df56d095ff8a4d",
-    "truthound.drift.detectors.KSTestDetector": "818f02721a8b502743ffc90fd478cb6c3f0ec2701bed96411d95274e878fd24d",
-    "truthound.drift.detectors.MMDDetector": "5af0fbd98fb259afa131c54e022e02678bfe443bc860c5a5cafe05084850cfac",
-    "truthound.drift.detectors.PSIDetector": "e796ba9f071184cdca8734b5d38e4dfac9ca0fec9ae18c7d2ef1b63af9026ec4",
-    "truthound.drift.detectors.TotalVariationDetector": "b46c5f21198ad5b6415692fa33432ba3ffb71ecf23a484190193b0e72ebe09fd",
-    "truthound.drift.detectors.WassersteinDetector": "2709fe93df49e17b574110667f29ea8def12d1a4a582a5a33a5c1015ea732eeb",
+    "truthound.drift.detectors.AndersonDarlingDetector": "b743bb004e7c747eb55593447e5892a5ac5a4167ef2c3e82fa0c5cf53c42839c",
+    "truthound.drift.detectors.BhattacharyyaDetector": "d2f460cea3d6975b769edb9e3f77b7f82a89a8f00b3361b8ffc77e13663a1b83",
+    "truthound.drift.detectors.ChiSquareDetector": "d13cc38d222674f3495545c6f9df6655753cc28f97e4d01fac0a1eab44e24951",
+    "truthound.drift.detectors.CramervonMisesDetector": "95e5296e9e9c2d576938523214e2fa568f35823874cd093a9bd1feb6e5fa869c",
+    "truthound.drift.detectors.DriftDetector": "816bc5f347feae6660a6a883673cefdef5e8e04eeb7937c35ff4a66ea26d9b0d",
+    "truthound.drift.detectors.EnergyDetector": "2a818f519dbff8d8fe3cac5f7a090755c1227890f70c7ab5301ba86700971863",
+    "truthound.drift.detectors.HellingerDetector": "90f29a09879a5dbe744416422d0a8e24121ceff80660299314e91fd7b89d86a3",
+    "truthound.drift.detectors.JensenShannonDetector": "c439a62c3206cddb50eb808c5cf3437a9b1305ea1c542c41ba97633982766769",
+    "truthound.drift.detectors.KLDivergenceDetector": "936e5f24a260d1422b23b732d3dcf3a76abb48296b736114a65b44663ac5b584",
+    "truthound.drift.detectors.KSTestDetector": "bfea329ae5d2ddc34753d03c5c86da079642600fc8d8055eea2a50dd9ce79f5e",
+    "truthound.drift.detectors.MMDDetector": "fbdb6ec22fd527e1d310b4261c543e870fa1788c8efcd4bf88a28a8fc70810d1",
+    "truthound.drift.detectors.PSIDetector": "28e37d7b65a1d8033e275e64034ccab328bedd2cef8e0211e726fcec56426f51",
+    "truthound.drift.detectors.TotalVariationDetector": "e16e343bffa9c70a224ca9a03102e8a7e34ac3cfbb18ed3824ab002cf35058db",
+    "truthound.drift.detectors.WassersteinDetector": "186c8b86b51d40d0142a32d5f0d962db351b1dc0b66f6b9d591655572ade0d43",
     "truthound.lineage.base.ColumnLineage": "b62499c643974bc62e2158ead67bac321a99e2aa3c12fba2527479716351eafd",
     "truthound.lineage.base.EdgeType": "1e260f7c7d93c927adff5a1d37dd04469a913dc6dfd6a746e32e92737fab4f1c",
     "truthound.lineage.base.LineageConfig": "ab197a871c0e67cdc4a43a5c0843ce558969c9ebd6620a3cb6eb4d9fdc04f936",
-    "truthound.lineage.base.LineageEdge": "6a7429774c88657f99d97387e70083058a866daa02f5430f0980a191c5106273",
-    "truthound.lineage.base.LineageGraph": "649397d57f1be79982c19bb08f5cac3105ac38b706e71f7314b5ad288fa9141c",
-    "truthound.lineage.base.LineageMetadata": "0a29e75a7b1695b4668b4d19d166ac83ceb8ebb706e8436dee26ae4e54330382",
-    "truthound.lineage.base.LineageNode": "4789f811dd2a407a79e15b379f947de3b45b354ad2c699e57f07dc42b002247c",
+    "truthound.lineage.base.LineageEdge": "c4add629ee38da82ded65a0ef5ba36e22813e4671fa3d7e8500dbedecd34f9d8",
+    "truthound.lineage.base.LineageGraph": "0ed8f9131248e7f2b2b0c8c9a3d89a8806711236ab4581de039722202b614f15",
+    "truthound.lineage.base.LineageMetadata": "d35254089786f42e92c4a44df6271d7e452ffcea4e15d3910c616527c8e20c4e",
+    "truthound.lineage.base.LineageNode": "3f036e50b891b5fb9b0effab1e6a1b22d62a63aab3b9e3246eeeb502321203c0",
     "truthound.lineage.base.NodeType": "822d233f7740c829097f426eeba29659af89ed529d7ab63400bc4bb2782e60f5",
     "truthound.lineage.base.OperationType": "d0b08d48c20a2d65d156e29a6276b9eec824fa1269b910b92fe31e027e305dc4",
     "truthound.lineage.impact_analysis.ImpactAnalyzer": "fe7574eb66caa62c8b0006593dba485099b6e181aa5bd0226bf95cdf448e0334",
-    "truthound.lineage.tracker.LineageTracker": "5050fcfba8346ce9d331d44f0ada25ac16580a060e8b99434d4496385c90e9b0",
-    "truthound.lineage.visualization.protocols.IGraphRenderer": "b4a56b09cf6bbfbb6d3a335fdc8c1dba6667b7b46d8ec29df11d931671dfe969",
-    "truthound.lineage.visualization.protocols.RenderConfig": "5cb9c19311620e87852abeddcb917fe4754932578cfd78b1c17c470afab083b2",
+    "truthound.lineage.tracker.LineageTracker": "7276d35679c8f1989aecde85de13c69d39f6070718effb9ce0a6368021324494",
+    "truthound.lineage.visualization.protocols.IGraphRenderer": "e4d1d9ffc59d3ace330c54aa754722c3ef1b9231b16b10cbb335c18facc60335",
+    "truthound.lineage.visualization.protocols.RenderConfig": "bb62d1b796b3e0ebdafe404960670710ff777edc06d14a5a5bdff45d01e3bcf8",
     "truthound.lineage.visualization.protocols.RenderFormat": "ac489945f7217e366fe6dee0e75972fb4ec1036a6a57d4ccfd8b93609281e561",
-    "truthound.lineage.visualization.renderers.cytoscape.CytoscapeRenderer": "3c40e8d63672f77e2a0dd68f4d95a7f407739fbf286927f46ff09af2a5a7b90e",
-    "truthound.lineage.visualization.renderers.d3.D3Renderer": "d74f67a7c5a91d651a896b6376c0fb0ed09bd72917c70b8ffbf96d3028dc96de",
-    "truthound.lineage.visualization.renderers.graphviz.GraphvizRenderer": "0bff139dad6698f4ef5480d4c7c7928ae2c6befc5994a5b0fec267cb2e46da2e",
-    "truthound.lineage.visualization.renderers.mermaid.MermaidRenderer": "3f317019aab07d9ec130cdc51d2d05e95fca9e94ba0c3537345536309b7deb5f",
-    "truthound.ml.anomaly_models.ensemble.EnsembleAnomalyDetector": "fdf2a6ce079157f386da1d7371f4f2f0421c25967f8c61fdfb8556156061db2b",
+    "truthound.lineage.visualization.renderers.cytoscape.CytoscapeRenderer": "0a654353be73948aed2fee09ac4ad29cc89a0f7fabca6975cac2203478a55d43",
+    "truthound.lineage.visualization.renderers.d3.D3Renderer": "e867493fec1d7a53f921efd11553052b415028aa4dd3cf70870f2f2487d8286b",
+    "truthound.lineage.visualization.renderers.graphviz.GraphvizRenderer": "542f7cdd58308f91f2d7650bbad511a5de1fbeef42eaf3954fbef925a209bb0e",
+    "truthound.lineage.visualization.renderers.mermaid.MermaidRenderer": "8cc8756098adcfe05457c1709194c7ed9706877efd13c13988925acf5ab95756",
+    "truthound.ml.anomaly_models.ensemble.EnsembleAnomalyDetector": "36927a7c7caac34b0966a4816c06bf41c63631442479bc7edabc15676a982b72",
     "truthound.ml.anomaly_models.ensemble.EnsembleConfig": "98fcd069672d301c6d9c27d36a0b794140455985fecbe6913569c63a62d5bd00",
     "truthound.ml.anomaly_models.ensemble.EnsembleStrategy": "6c37a0da14ce9536be7373944ea79c672813a639101d16e8bc59dd816a27ba8a",
     "truthound.ml.anomaly_models.isolation_forest.IsolationForestConfig": "3edef16dcbd5e4fb83a93c4bb862d6ec598efabd8bbe9a708f701dc89df6e2b7",
-    "truthound.ml.anomaly_models.isolation_forest.IsolationForestDetector": "d19f1a58c4606931c83ddcee1ca8c91b5d9ae639f1a967c2c2fba5714f1bd917",
+    "truthound.ml.anomaly_models.isolation_forest.IsolationForestDetector": "8cea79ca6b580b4d50559c0e3f2c3267c4a2b4eda1d9ef877ec4ad6211da4e71",
     "truthound.ml.anomaly_models.statistical.IQRAnomalyDetector": "63f88e93e78cf9329c953bfa187580846a2d3be36604aa0aae67e6484e604259",
     "truthound.ml.anomaly_models.statistical.MADAnomalyDetector": "5be46c12ec9c6dfe58888f2fa1e1f238d41704a6b7f11715bf2138b9a0b79001",
-    "truthound.ml.anomaly_models.statistical.StatisticalAnomalyDetector": "cb46b209d3b5c767e14a73ea35ee60bf14fcb1932ec1fdacec585248fd565b77",
+    "truthound.ml.anomaly_models.statistical.StatisticalAnomalyDetector": "2f0037d9e32732fc2a270a48814b6bed90ce465256d64ebab083b7b14dee13df",
     "truthound.ml.anomaly_models.statistical.StatisticalConfig": "0122f80a6d325ef1ac07dcaaf95664eb1f44f6c3a2524e7cc8e7c86a6e2266f1",
     "truthound.ml.anomaly_models.statistical.ZScoreAnomalyDetector": "78f01d5f53de87bcc6f81a03c4edc370acb9bee03f4b8d11cf051e540433d073",
     "truthound.ml.base.AnomalyConfig": "699d735a43bdd4e185f199289cffd351812f12d7263bf09533a714c41c205e9c",
     "truthound.ml.base.AnomalyDetector": "a69bfeeeee8affd7b735446672f2e36d25eb8bd9cc5eeb8579c03240cbcc6a5c",
     "truthound.ml.base.DriftConfig": "235a952ec53c3ba568e01d6d6e380dff099587c063e35cfb533a6a94593fd02a",
     "truthound.ml.base.MLConfig": "1a0f99e054bc7ca47dcf68482a8d2dcc52c36f3e34f07d9037c2dba427421801",
-    "truthound.ml.base.MLDriftDetector": "59d6d14569e6069d29f485ae5da803d4aea287b4074115eee66fdc61a33d385a",
-    "truthound.ml.base.MLModel": "8db96a80153b2f928c983a0a0d904a899e48369549accf90e00b9d7cb877855b",
-    "truthound.ml.base.RuleLearner": "da008637c30efbc88f2ff4656e0b442bde5d23fbd7bbd14965ee2aa3585df211",
+    "truthound.ml.base.MLDriftDetector": "b8ee9a57c9fb5dd43caf3d848d88f0ca9db60bb3bee8792e7d78a0398a725b2e",
+    "truthound.ml.base.MLModel": "118d2c0ae8d4a16685ac669b06ea8e39ac39962532eca1dbc2e8cdd14f47d0e3",
+    "truthound.ml.base.RuleLearner": "7c50380bd35a49c45a7c0b3aa7c6a5aab0cfc1502c413cbe4f17ea1b72845898",
     "truthound.ml.base.RuleLearningConfig": "984f773679f71c2018a1de5881cdb504be9c64dd53a2f6bc57ad0ed189160b76",
-    "truthound.ml.drift_detection.concept.ConceptDriftConfig": "5d75c0a2a610992523e69cb5faec389a86642517bd2369b56fb15f7453c2eac5",
-    "truthound.ml.drift_detection.concept.ConceptDriftDetector": "45a365123d5adc35836a952078e032873ff16d22f1a40d40b5bc5cd4ccb6c5ef",
+    "truthound.ml.drift_detection.concept.ConceptDriftConfig": "9910d24cb8bf68a2364294f1f963e6fe7ceef94dcef4904ae9bd7e4b41271226",
+    "truthound.ml.drift_detection.concept.ConceptDriftDetector": "a2316eeec057ec10bc211b55f1ba53e0bda41619b18e0ae14977efe1742ff69d",
     "truthound.ml.drift_detection.distribution.DistributionDriftConfig": "233c9f2cade0457b824dbce3c7e3544a5dcfdec05551631d82d54858934b5876",
-    "truthound.ml.drift_detection.distribution.DistributionDriftDetector": "7abc65698549f29a621dcebe0233ee70db1aadc1380138b898d79c1db516f92f",
+    "truthound.ml.drift_detection.distribution.DistributionDriftDetector": "66fe0583e851e1a54648e24f3a80125bf5406dc2794977aed7c3a74ea1ec16a7",
     "truthound.ml.drift_detection.feature.FeatureDriftConfig": "6ecc6742be0853f09a27aa13f6b6c6120ee161ed492ff798ef93d800160bffff",
-    "truthound.ml.drift_detection.feature.FeatureDriftDetector": "233219a4c48fb71849fa9f3c6bbc788ea94a827629077d7d2f12dc80b0a63894",
+    "truthound.ml.drift_detection.feature.FeatureDriftDetector": "00d2528b1f1e442c396af1acd74ca0d83a5215af38ffa9a51ecc0a84ee333fbf",
     "truthound.ml.drift_detection.multivariate.MultivariateDriftConfig": "8d89a5c3a1ba5d6353623cc98be03b4cf3b5ae830452abb96c3c8f33e55c5fcb",
-    "truthound.ml.drift_detection.multivariate.MultivariateDriftDetector": "b9c644b925068f04addb61268636ddcc4fcc1e84f5a728200af5a17e0595c8ca",
+    "truthound.ml.drift_detection.multivariate.MultivariateDriftDetector": "1e5001c9f9cde1ea8deb6af1da84a1166d64097795ac57b90bddf9e6187c62e4",
     "truthound.ml.rule_learning.constraint_miner.ConstraintMiner": "d8626cbf2446c17f3a95fefbfbe8fb7f24f1f6fdd082313857c3fc413069e911",
     "truthound.ml.rule_learning.constraint_miner.ConstraintMinerConfig": "55c00ccaf1f0e83f8d43195e5befdd3b62ec178884254ea7b65a655621aca4eb",
     "truthound.ml.rule_learning.pattern_learner.PatternLearnerConfig": "9d507cd33f8a4da5d96a9dce62946adb1ce9cab645ceb4c24d6b239f4f226a94",
@@ -3761,14 +3848,14 @@
     "truthound.ml.rule_learning.profile_learner.DataProfileRuleLearner": "b70146a78dc0043b5d56f980aa6c15fbe679e92c7f836d5f1128e1a18780b27b",
     "truthound.ml.rule_learning.profile_learner.ProfileLearnerConfig": "15d0f74e906fd864bb8f19e69bb563bcda475db0ea66d02518d1aa76404a7f83",
     "truthound.profiler.base.DataType": "4739749bf806c9d691b498903757497ffe4c0daf92052188d91717c269af1002",
-    "truthound.profiler.base.Profiler": "cbf1c44f08acd2e1cc74728ceb8caead1a87e74f0f46c08d8f93b21b56c2ce6d",
+    "truthound.profiler.base.Profiler": "ea53267c8988ea50c0104af78500a3421375260ed108f83019d15f233eba7b50",
     "truthound.profiler.base.ProfilerConfig": "72ec32a8d6ca8e0fa42ccf055bf8ebbad20b8f724fcb710b05643fd99dccf9dc",
-    "truthound.profiler.base.TableProfile": "6f5d042b37b6ea25ff28d2acd7a65c9d60c4585fadae0a41120e6a29ff614835",
+    "truthound.profiler.base.TableProfile": "8b56a485affd92445f617a324ab5f8208a92d214a86e0443dfbf441d747ed0d0",
     "truthound.profiler.base.TypeInferrer": "bca17cdff0b517f242d48799e0332206ef559bdaf6e20e0d39d0627333bf638b",
     "truthound.profiler.column_profiler.BasicStatsAnalyzer": "4daef3c38b2808fd2ca0414bfd0f5ffc6e58dcab9942cd7b2ef34b4d93181e49",
     "truthound.profiler.column_profiler.CardinalityTypeInferrer": "57d4667ec1172cd518ccae5a4183be643b13771d2f24c1c23a2fdcb9a86c15d4",
     "truthound.profiler.column_profiler.ColumnAnalyzer": "6cc1f7d7dd426036e8401814749b4e47c473e47875ef5814e6b257e34fb25673",
-    "truthound.profiler.column_profiler.ColumnProfiler": "2c197c43e1b5a1ef3dad6885b985642b059e0bdc0e37a59bacbf6bf2d23b2d71",
+    "truthound.profiler.column_profiler.ColumnProfiler": "26a76968d3e17c7eea4f22f6740320111f3bfceb2bf43e6260c75a2a0aac4dc8",
     "truthound.profiler.column_profiler.DatetimeAnalyzer": "6eb20abf700ec9bc2e4e14aa591d960d31f268791b1e746c9c61c5462742d103",
     "truthound.profiler.column_profiler.NumericAnalyzer": "b0e13865d62ba2da4c1f0dfb6700db59ee9129c45d8f43edf03da445b711d674",
     "truthound.profiler.column_profiler.PatternAnalyzer": "3181d05e5ac99b6bed65dd14340eaa718806dcc31bc6f56a49abd9eeb0cc3c89",
@@ -3782,12 +3869,12 @@
     "truthound.profiler.evolution.breaking_alerts.ImpactAnalyzer": "b42f386eef00068a05a5c275e22a6fec386fdd4dff9a115dfed15c11e72b8a47",
     "truthound.profiler.evolution.changes.SchemaChange": "931f71af10d9d843a5659f67fbcc0c509d8568eab5e6ec2477f2b4fc6ec619bf",
     "truthound.profiler.evolution.changes.SchemaChangeSummary": "e80256f1c07fd1d3ee26d556969bae8c1e814d7eb5ea1f2b8d17ffde88157265",
-    "truthound.profiler.evolution.compatibility.ColumnPresenceChecker": "030dc98c5669f6409cf33b21324f038c9d1877ddcbda4a13b11c693939e6a1cb",
+    "truthound.profiler.evolution.compatibility.ColumnPresenceChecker": "9419ac9dd63c81af827ee4bca78a4fccbd3cf9023db8f187de0db0594faa9f13",
     "truthound.profiler.evolution.compatibility.CompatibilityResult": "28b7272c75a34e7017095c1380aa81f2b7d3e9461d07ec4a61c6febbf0278e2f",
     "truthound.profiler.evolution.compatibility.CompatibilityRule": "afbd7912488fbdafe3406c518399f83c807d1e97ccdf90086177053e1577885d",
-    "truthound.profiler.evolution.compatibility.NullabilityCompatibilityChecker": "046f4b7667fa398be4a9608b51964707b338ed38c9c70a323875014388418393",
-    "truthound.profiler.evolution.compatibility.SchemaCompatibilityAnalyzer": "fe09448d212d0c1f4f132a09396e93588848a86beb32bbaa618089cc37acec7e",
-    "truthound.profiler.evolution.compatibility.TypeCompatibilityChecker": "18d084cce4f7ac7d6017b66cc0dd776fcf553c740a45b82c97e86ab7b73bf2d2",
+    "truthound.profiler.evolution.compatibility.NullabilityCompatibilityChecker": "4be776b0321d353b2538784584318f5ab475a5c3b3e9222a3054af33ada743d1",
+    "truthound.profiler.evolution.compatibility.SchemaCompatibilityAnalyzer": "755120cb11ec2307ff95d559a3d2eb2ce4d4a3d099c45c666da4e910b9aacd0a",
+    "truthound.profiler.evolution.compatibility.TypeCompatibilityChecker": "afbdf182d6d26c5ed20fbee9e262bd8150417b280eebb98bd3b4fa76391b436b",
     "truthound.profiler.evolution.detector.SchemaEvolutionDetector": "e4895379c83055786b1d4b58f14589c300e89b581392afd4cd8e3a6d6cc91136",
     "truthound.profiler.evolution.history.FileSchemaHistory": "2c60ea3deecbfdfec7f91be9f3d1c1b6e7a960f19b07090a81242c8eaf49a5dc",
     "truthound.profiler.evolution.history.GitLikeVersionStrategy": "1c66b3a1e22a2a58761cbccaad083e00cebdd951628fb3c9f93f5a8a37ffb02f",
@@ -3822,8 +3909,8 @@
     "truthound.profiler.generators.pattern_rules.PatternRuleGenerator": "89eb00e6882849b3d364674e719972d46711d0f1c7703e811e28d17979b7733c",
     "truthound.profiler.generators.schema_rules.SchemaRuleGenerator": "c53211cb9ef95d57caf9592c5913f019a1030cb0834ccf373ecd33ca5ba5ee38",
     "truthound.profiler.generators.stats_rules.StatsRuleGenerator": "9798b48672448e0ef3b7c5aab7aac0b30ed47c0765e2767c03a2220538875327",
-    "truthound.profiler.table_profiler.CorrelationAnalyzer": "991a3df32c189657848a977db30aa8d1c2883a76ae028203c5f84bf2f2534d0e",
-    "truthound.profiler.table_profiler.DataProfiler": "49060378743e1bf6055fba0403d72a2bdc66529f5e93b13cc6ee2ae1a0860928",
+    "truthound.profiler.table_profiler.CorrelationAnalyzer": "6b6709bee7ebef810a08ce13041b51cb8d4fdac296ed8db566341bf71acdfa7a",
+    "truthound.profiler.table_profiler.DataProfiler": "157a49f1a7a86489a19b4c3fe6a288fe17fdfb104aa4fb784195f3ae08496975",
     "truthound.profiler.table_profiler.DuplicateRowAnalyzer": "d127002a184afaed9b9a7800454ee8c5e7b7990fe0f15f97115576a48028f26a",
     "truthound.profiler.table_profiler.MemoryEstimator": "ce7ed809b01b28952bd6be28dce25a17c17bef12a4905973c4198f2a4cec2f0b",
     "truthound.profiler.table_profiler.TableAnalyzer": "c7fc6514e5c5495f5d5dcd312048ac3031ff910b63afa25b6af8cb40feffb2f6",

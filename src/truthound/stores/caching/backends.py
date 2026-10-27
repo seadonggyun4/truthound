@@ -7,23 +7,22 @@ including LRU, LFU, and TTL-based caches.
 from __future__ import annotations
 
 import heapq
+import math
 import random
-import sys
 import threading
 import time
 from collections import OrderedDict
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import Any, Generic, TypeVar
+from typing import Generic, TypeVar
 
+from truthound.stores.caching._memory import estimate, make_room
 from truthound.stores.caching.base import (
     BaseCache,
     CacheConfig,
     CacheEntry,
-    CacheMetrics,
     EvictionPolicy,
 )
-
 
 T = TypeVar("T")
 
@@ -46,6 +45,19 @@ class InMemoryCache(BaseCache[T]):
         self._cache: dict[str, CacheEntry[T]] = {}
         self._lock = threading.RLock()
         self._total_memory_bytes = 0
+
+    def expiring_keys(self, threshold_percent: float) -> list[str]:
+        if not 0 <= threshold_percent <= 100:
+            raise ValueError("Invalid refresh threshold")
+        with self._lock:
+            due = []
+            for key, value in self._cache.items():
+                entry = getattr(value, "entry", value)
+                if entry.expires_at is not None:
+                    ttl = (entry.expires_at - entry.created_at).total_seconds()
+                    if entry.ttl_remaining_seconds <= ttl * threshold_percent / 100:
+                        due.append(key)
+            return due
 
     @property
     def size(self) -> int:
@@ -81,10 +93,13 @@ class InMemoryCache(BaseCache[T]):
         """Set value with optional TTL."""
         start_time = time.monotonic()
         ttl = ttl_seconds if ttl_seconds is not None else self._config.ttl_seconds
+        if not math.isfinite(ttl) or ttl < 0:
+            raise ValueError("Cache TTL must be finite and nonnegative")
 
         with self._lock:
             # Calculate size
-            size_bytes = sys.getsizeof(value)
+            size_bytes = estimate(value, self._config.max_memory_mb * 1024 * 1024)
+            make_room(self, key, size_bytes)
 
             # Create entry
             expires_at = None
@@ -101,7 +116,10 @@ class InMemoryCache(BaseCache[T]):
             # Check if we need to evict
             if key not in self._cache and len(self._cache) >= self._config.max_size:
                 # Evict at least 1, but don't evict more than needed to make room
-                evict_count = min(self._config.eviction_batch_size, max(1, len(self._cache) - self._config.max_size + 1))
+                evict_count = min(
+                    self._config.eviction_batch_size,
+                    max(1, len(self._cache) - self._config.max_size + 1),
+                )
                 self._evict(evict_count)
 
             # Remove old entry if exists
@@ -172,10 +190,7 @@ class InMemoryCache(BaseCache[T]):
         elif policy == EvictionPolicy.TTL:
             # Remove expired first, then oldest
             now = datetime.now()
-            expired = [
-                k for k, v in self._cache.items()
-                if v.expires_at and v.expires_at <= now
-            ]
+            expired = [k for k, v in self._cache.items() if v.expires_at and v.expires_at <= now]
             for key in expired[:count]:
                 self._remove_entry(key)
                 evicted += 1
@@ -246,6 +261,19 @@ class LRUCache(BaseCache[T]):
         self._lock = threading.RLock()
         self._total_memory_bytes = 0
 
+    def expiring_keys(self, threshold_percent: float) -> list[str]:
+        if not 0 <= threshold_percent <= 100:
+            raise ValueError("Invalid refresh threshold")
+        with self._lock:
+            due = []
+            for key, value in self._cache.items():
+                entry = getattr(value, "entry", value)
+                if entry.expires_at is not None:
+                    ttl = (entry.expires_at - entry.created_at).total_seconds()
+                    if entry.ttl_remaining_seconds <= ttl * threshold_percent / 100:
+                        due.append(key)
+            return due
+
     @property
     def size(self) -> int:
         """Get current number of entries."""
@@ -283,9 +311,12 @@ class LRUCache(BaseCache[T]):
         """Set value with optional TTL."""
         start_time = time.monotonic()
         ttl = ttl_seconds if ttl_seconds is not None else self._config.ttl_seconds
+        if not math.isfinite(ttl) or ttl < 0:
+            raise ValueError("Cache TTL must be finite and nonnegative")
 
         with self._lock:
-            size_bytes = sys.getsizeof(value)
+            size_bytes = estimate(value, self._config.max_memory_mb * 1024 * 1024)
+            make_room(self, key, size_bytes)
 
             expires_at = None
             if ttl > 0:
@@ -390,6 +421,19 @@ class LFUCache(BaseCache[T]):
         self._lock = threading.RLock()
         self._total_memory_bytes = 0
 
+    def expiring_keys(self, threshold_percent: float) -> list[str]:
+        if not 0 <= threshold_percent <= 100:
+            raise ValueError("Invalid refresh threshold")
+        with self._lock:
+            due = []
+            for key, value in self._cache.items():
+                entry = getattr(value, "entry", value)
+                if entry.expires_at is not None:
+                    ttl = (entry.expires_at - entry.created_at).total_seconds()
+                    if entry.ttl_remaining_seconds <= ttl * threshold_percent / 100:
+                        due.append(key)
+            return due
+
     @property
     def size(self) -> int:
         """Get current number of entries."""
@@ -429,9 +473,12 @@ class LFUCache(BaseCache[T]):
         """Set value with optional TTL."""
         start_time = time.monotonic()
         ttl = ttl_seconds if ttl_seconds is not None else self._config.ttl_seconds
+        if not math.isfinite(ttl) or ttl < 0:
+            raise ValueError("Cache TTL must be finite and nonnegative")
 
         with self._lock:
-            size_bytes = sys.getsizeof(value)
+            size_bytes = estimate(value, self._config.max_memory_mb * 1024 * 1024)
+            make_room(self, key, size_bytes)
 
             expires_at = None
             if ttl > 0:
@@ -537,6 +584,19 @@ class TTLCache(BaseCache[T]):
         self._lock = threading.RLock()
         self._total_memory_bytes = 0
 
+    def expiring_keys(self, threshold_percent: float) -> list[str]:
+        if not 0 <= threshold_percent <= 100:
+            raise ValueError("Invalid refresh threshold")
+        with self._lock:
+            due = []
+            for key, value in self._cache.items():
+                entry = getattr(value, "entry", value)
+                if entry.expires_at is not None:
+                    ttl = (entry.expires_at - entry.created_at).total_seconds()
+                    if entry.ttl_remaining_seconds <= ttl * threshold_percent / 100:
+                        due.append(key)
+            return due
+
     @property
     def size(self) -> int:
         """Get current number of entries."""
@@ -571,9 +631,12 @@ class TTLCache(BaseCache[T]):
         """Set value with TTL."""
         start_time = time.monotonic()
         ttl = ttl_seconds if ttl_seconds is not None else self._config.ttl_seconds
+        if not math.isfinite(ttl) or ttl < 0:
+            raise ValueError("Cache TTL must be finite and nonnegative")
 
         with self._lock:
-            size_bytes = sys.getsizeof(value)
+            size_bytes = estimate(value, self._config.max_memory_mb * 1024 * 1024)
+            make_room(self, key, size_bytes)
 
             expires_at = None
             expiry_timestamp = float("inf")
@@ -637,10 +700,7 @@ class TTLCache(BaseCache[T]):
         now = time.monotonic()
 
         # First evict expired entries
-        expired_keys = [
-            k for k, exp in self._expiry_times.items()
-            if exp <= now
-        ]
+        expired_keys = [k for k, exp in self._expiry_times.items() if exp <= now]
         for key in expired_keys[:count]:
             self._remove_entry(key)
             evicted += 1
@@ -669,10 +729,7 @@ class TTLCache(BaseCache[T]):
         """
         with self._lock:
             now = time.monotonic()
-            expired_keys = [
-                k for k, exp in self._expiry_times.items()
-                if exp <= now
-            ]
+            expired_keys = [k for k, exp in self._expiry_times.items() if exp <= now]
 
             for key in expired_keys:
                 self._remove_entry(key)

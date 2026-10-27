@@ -6,22 +6,39 @@ which signers and certificates are trusted.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import logging
+import threading
+from copy import deepcopy
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
+from functools import wraps
 from pathlib import Path
 from typing import Any
 
-from truthound.plugins.security.protocols import TrustLevel
 from truthound.plugins.security.exceptions import (
-    CertificateError,
-    CertificateNotFoundError,
     CertificateRevokedError,
 )
+from truthound.plugins.security.protocols import TrustLevel
+from truthound.stores._filesystem_io import publish
 
 logger = logging.getLogger(__name__)
+
+
+def _mutation(method):
+    @wraps(method)
+    def invoke(self, *args, **kwargs):
+        with self._lock:
+            certificates, signers = deepcopy(self._certificates), dict(self._signer_trust)
+            try:
+                return method(self, *args, **kwargs)
+            except BaseException:
+                self._certificates, self._signer_trust = certificates, signers
+                raise
+
+    return invoke
 
 
 @dataclass
@@ -31,7 +48,7 @@ class CertificateEntry:
     cert_id: str
     certificate: bytes
     trust_level: TrustLevel
-    added_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    added_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     expires_at: datetime | None = None
     revoked_at: datetime | None = None
     revocation_reason: str = ""
@@ -47,7 +64,7 @@ class CertificateEntry:
         """Check if certificate is expired."""
         if self.expires_at is None:
             return False
-        return datetime.now(timezone.utc) > self.expires_at
+        return datetime.now(UTC) > self.expires_at
 
     @property
     def is_valid(self) -> bool:
@@ -90,7 +107,8 @@ class TrustStoreImpl:
             store_path: Path to persist store (optional)
             auto_save: Whether to auto-save after modifications
         """
-        self._store_path = store_path
+        self._lock = threading.RLock()
+        self._store_path = Path(store_path) if store_path is not None else None
         self._auto_save = auto_save
         self._certificates: dict[str, CertificateEntry] = {}
         self._signer_trust: dict[str, TrustLevel] = {}
@@ -99,6 +117,7 @@ class TrustStoreImpl:
         if store_path and store_path.exists():
             self._load()
 
+    @_mutation
     def add_trusted_certificate(
         self,
         certificate: bytes,
@@ -115,6 +134,10 @@ class TrustStoreImpl:
         Returns:
             Certificate ID
         """
+        if not isinstance(certificate, bytes) or not certificate:
+            raise ValueError("Certificate must contain bytes")
+        trust_level = TrustLevel(trust_level)
+        metadata = deepcopy(metadata or {})
         # Generate certificate ID from hash
         cert_id = self._compute_cert_id(certificate)
 
@@ -139,6 +162,8 @@ class TrustStoreImpl:
                     metadata={**existing.metadata, **(metadata or {})},
                 )
                 self._certificates[cert_id] = existing
+                if self._auto_save:
+                    self._save()
             return cert_id
 
         # Create new entry
@@ -154,6 +179,7 @@ class TrustStoreImpl:
         signer_id = self._extract_signer_id(certificate)
         if signer_id:
             self._signer_trust[signer_id] = trust_level
+            entry.metadata["signer_id"] = signer_id
 
         logger.info(f"Added certificate {cert_id} with trust level {trust_level.value}")
 
@@ -162,6 +188,7 @@ class TrustStoreImpl:
 
         return cert_id
 
+    @_mutation
     def remove_certificate(self, cert_id: str) -> bool:
         """Remove a certificate from trust store.
 
@@ -188,6 +215,7 @@ class TrustStoreImpl:
 
         return True
 
+    @_mutation
     def revoke_certificate(
         self,
         cert_id: str,
@@ -212,7 +240,7 @@ class TrustStoreImpl:
             trust_level=TrustLevel.REVOKED,
             added_at=entry.added_at,
             expires_at=entry.expires_at,
-            revoked_at=datetime.now(timezone.utc),
+            revoked_at=datetime.now(UTC),
             revocation_reason=reason,
             metadata=entry.metadata,
         )
@@ -265,6 +293,7 @@ class TrustStoreImpl:
         """
         return self._signer_trust.get(signer_id, TrustLevel.UNKNOWN)
 
+    @_mutation
     def set_signer_trust(
         self,
         signer_id: str,
@@ -276,7 +305,9 @@ class TrustStoreImpl:
             signer_id: Signer identifier
             trust_level: Trust level to set
         """
-        self._signer_trust[signer_id] = trust_level
+        if not isinstance(signer_id, str) or not signer_id:
+            raise ValueError("Signer ID must be nonempty text")
+        self._signer_trust[signer_id] = TrustLevel(trust_level)
 
         if self._auto_save:
             self._save()
@@ -287,7 +318,7 @@ class TrustStoreImpl:
         Returns:
             List of certificate info dicts
         """
-        return [entry.to_dict() for entry in self._certificates.values()]
+        return deepcopy([entry.to_dict() for entry in self._certificates.values()])
 
     def list_trusted_signers(self) -> list[str]:
         """List all trusted signer IDs.
@@ -325,40 +356,71 @@ class TrustStoreImpl:
             return
 
         data = {
+            "format_version": 2,
             "certificates": {
-                cert_id: entry.to_dict()
+                cert_id: {
+                    **entry.to_dict(),
+                    "certificate": base64.b64encode(entry.certificate).decode("ascii"),
+                }
                 for cert_id, entry in self._certificates.items()
             },
             "signer_trust": {
-                signer_id: level.value
-                for signer_id, level in self._signer_trust.items()
+                signer_id: level.value for signer_id, level in self._signer_trust.items()
             },
         }
 
         self._store_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(self._store_path, "w") as f:
-            json.dump(data, f, indent=2)
+        publish(self._store_path, json.dumps(data, indent=2).encode("utf-8"))
 
     def _load(self) -> None:
         """Load trust store from file."""
         if not self._store_path or not self._store_path.exists():
             return
 
-        try:
-            with open(self._store_path, "r") as f:
-                data = json.load(f)
+        with self._store_path.open("rb") as stream:
+            content = stream.read(8 * 1024 * 1024 + 1)
+        if len(content) > 8 * 1024 * 1024:
+            raise ValueError("Trust store exceeds 8 MiB")
+        data = json.loads(content)
+        if not isinstance(data, dict) or data.get("format_version", 1) not in (1, 2):
+            raise ValueError("Unsupported trust store format")
+        signers = {}
+        for name, level in data.get("signer_trust", {}).items():
+            if not isinstance(name, str) or not name:
+                raise ValueError("Invalid signer identity")
+            signers[name] = TrustLevel(level)
+        certificates = {}
+        for cert_id, item in data.get("certificates", {}).items():
+            if "certificate" not in item:
+                raise ValueError(
+                    "Legacy certificate metadata must be reimported with certificate bytes"
+                )
+            certificate = base64.b64decode(item["certificate"], validate=True)
+            if (
+                not certificate
+                or self._compute_cert_id(certificate) != cert_id
+                or item["cert_id"] != cert_id
+            ):
+                raise ValueError("Certificate digest mismatch")
+            dates = {}
+            for key in ("added_at", "expires_at", "revoked_at"):
+                value = item.get(key)
+                dates[key] = datetime.fromisoformat(value) if value is not None else None
+                if dates[key] is not None and dates[key].utcoffset() is None:
+                    raise ValueError("Certificate timestamps must have a timezone")
+            if dates["added_at"] is None or not isinstance(item.get("metadata", {}), dict):
+                raise ValueError("Invalid certificate metadata")
+            certificates[cert_id] = CertificateEntry(
+                cert_id=cert_id,
+                certificate=certificate,
+                trust_level=TrustLevel(item["trust_level"]),
+                revocation_reason=item.get("revocation_reason", ""),
+                metadata=deepcopy(item.get("metadata", {})),
+                **dates,
+            )
+        self._certificates, self._signer_trust = certificates, signers
 
-            # Load signer trust
-            for signer_id, level_str in data.get("signer_trust", {}).items():
-                self._signer_trust[signer_id] = TrustLevel(level_str)
-
-            # Note: Certificate bytes are not stored in JSON, only metadata
-            # Certificates must be re-added after loading
-
-            logger.info(f"Loaded trust store from {self._store_path}")
-        except Exception as e:
-            logger.error(f"Failed to load trust store: {e}")
-
+    @_mutation
     def clear(self) -> None:
         """Clear all certificates and trust levels."""
         self._certificates.clear()

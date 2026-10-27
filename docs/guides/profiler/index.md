@@ -23,6 +23,35 @@ save_suite(suite, "rules.yaml", format="yaml")
 
 ---
 
+## Native completion and configuration
+
+`DataProfiler(config=ProfilerConfig(...))` accepts keyword configuration. Its
+`sample_size` selects the leading rows, with an explicit legacy constructor
+`sample_size` overriding the config. Default analyzers honor `include_patterns`,
+`include_correlations` and `include_distributions`; an explicitly supplied
+`ColumnProfiler` keeps its own configuration. This head-sampling path does not
+use `random_seed` for random selection. Use the separate sampling API when that
+algorithm is required.
+
+Check `profile.complete` before consuming an advanced `TableProfile`. Failed
+analyzers, type inferrers or parallel columns are recorded in `execution_issues`
+on the table or columns without exception bodies. Partial results remain
+inspectable and preserve their failure status through `save_profile`/`load_profile`,
+`ProfileSerializer` and dictionary conversion. Incomplete columns receive no
+validator suggestions. `generate_suite` rejects incomplete input with
+`IncompleteProfileError`, and a selected rule generator failure raises
+`ProfilerError` instead of silently returning partial rules.
+
+Advanced profile loaders reject malformed/wrong-format payloads instead of
+inventing an empty successful profile or generated suite. Failed restore preserves
+the original file. Incremental output stores `content_fingerprint`; native reuse
+compares the sampling configuration/hash and counts, and refreshes incomplete
+columns or older profiles without a fingerprint. The deterministic modulo sample
+can miss unsampled changes. `StreamingProfiler.profile_chunks(chunks)` accepts a
+native `ChunkIterator`, closes its iterator on error, rejects changing chunk
+schemas, and retains current-run column failures in `execution_issues` without
+logging exception bodies. Historical collector errors do not taint a new run.
+
 ## Common Workflows
 
 ### Workflow 1: Profile and Validate Pipeline
@@ -38,77 +67,61 @@ profile = th.profile("baseline.csv")
 suite = generate_suite(profile, strictness="medium")
 
 # Step 3: Validate new data using generated rules
-report = suite.execute(new_data)
+execution = suite.execute("new_data.csv")
 
-# Step 4: Check for issues
-if report.issues:
-    for issue in report.issues:
-        print(f"{issue.column}: {issue.issue_type} ({issue.severity})")
+# Step 4: Inspect native execution accounting
+print(execution.report["summary"])
+if not execution.success:
+    print(execution.failed_rules, execution.skipped_rules)
+    print([type(error).__name__ for error in execution.errors])
 ```
 
 ### Workflow 2: Schema Evolution Detection
 
 ```python
-from truthound.profiler import DataProfiler, ProfilerConfig
+from truthound.profiler import DataProfiler, ProfilerConfig, profile_file
 from truthound.profiler.evolution import SchemaEvolutionDetector
 
 # Profile old and new data
 config = ProfilerConfig(sample_size=10000)
-profiler = DataProfiler(config)
+profiler = DataProfiler(config=config)
 
-old_profile = profiler.profile_file("data_v1.csv")
-new_profile = profiler.profile_file("data_v2.csv")
+old_profile = profile_file("data_v1.csv", config=config)
+new_profile = profile_file("data_v2.csv", config=config)
 
 # Detect schema changes
 detector = SchemaEvolutionDetector()
-changes = detector.detect(old_profile, new_profile)
+changes = detector.detect_changes(
+    pl.scan_csv("data_v2.csv").collect_schema(),
+    pl.scan_csv("data_v1.csv").collect_schema(),
+)
 
 for change in changes:
     print(f"{change.change_type}: {change.description}")
-    if change.is_breaking:
+    if change.breaking:
         print(f"  WARNING: Breaking change detected!")
 ```
 
-### Workflow 3: Incremental Profiling with Cache
+### Workflow 3: Cached Native Profiles
 
 ```python
-from truthound.profiler import ProfileCache, IncrementalProfiler
+from truthound.profiler import profile_file
+from truthound.profiler.caching import ProfileCache, FileCacheBackend, FileHashCacheKey
 
-# Setup cache
-cache = ProfileCache(cache_dir=".truthound/cache")
-
-# Check if profile is cached
-fingerprint = cache.compute_fingerprint("data.csv")
-if cache.exists(fingerprint):
-    profile = cache.get(fingerprint)
-    print("Using cached profile")
-else:
-    profile = th.profile("data.csv")
-    cache.set(fingerprint, profile)
-    print("Profile cached for future use")
+cache = ProfileCache(backend=FileCacheBackend(".truthound/cache"))
+key = FileHashCacheKey.from_file("data.csv")
+profile = cache.get_or_compute(key, lambda: profile_file("data.csv"))
 ```
 
-### Workflow 4: Large File Streaming Profile
+### Workflow 4: Chunked Native Profiling
 
 ```python
-import polars as pl
-from truthound.profiler import StreamingPatternMatcher, IncrementalAggregation
+from truthound.profiler.streaming import StreamingProfiler
 
-# Setup streaming matcher for pattern detection
-matcher = StreamingPatternMatcher(
-    aggregation_strategy=IncrementalAggregation(),
-    chunk_size=100000,
-)
-
-# Process large file in chunks
-for chunk in pl.scan_csv("large_file.csv").iter_slices(100000):
-    for col in chunk.columns:
-        matcher.process_chunk(chunk, col)
-
-# Get aggregated results
-results = matcher.finalize()
-for col, patterns in results.items():
-    print(f"{col}: {patterns.pattern_name} ({patterns.match_ratio:.1%})")
+profile = StreamingProfiler(chunk_size=100_000).profile_file("large_file.csv")
+print(profile.row_count, profile.complete)
+for column in profile.columns:
+    print(column.name, column.null_ratio, column.execution_issues)
 ```
 
 ---
@@ -231,8 +244,8 @@ config = ProfilerConfig(
     include_patterns=True,
     include_correlations=False,
 )
-profiler = DataProfiler(config)
-profile = profiler.profile_file("large_data.parquet")
+profiler = DataProfiler(config=config)
+profile = profile_file("large_data.parquet", config=config)
 ```
 
 ### CLI
@@ -262,7 +275,7 @@ truthound list-categories   # schema, stats, pattern, completeness, etc.
 The main profiling class that orchestrates column and table analysis.
 
 ```python
-from truthound.profiler import DataProfiler, ProfilerConfig
+from truthound.profiler import DataProfiler, ProfilerConfig, profile_file
 
 config = ProfilerConfig(
     sample_size=50000,            # Max rows to analyze (None = all)
@@ -272,12 +285,12 @@ config = ProfilerConfig(
     top_n_values=10,              # Top/bottom values count
 )
 
-profiler = DataProfiler(config)
+profiler = DataProfiler(config=config)
 
 # Profile from various sources
 profile = profiler.profile(df.lazy())           # LazyFrame
-profile = profiler.profile_file("data.csv")     # File path
-profile = profiler.profile_dataframe(df)        # DataFrame
+profile = profile_file("data.csv")     # File path
+profile = profiler.profile(df.lazy())        # DataFrame
 ```
 
 ### ColumnProfiler
@@ -697,60 +710,42 @@ with open("rules.json", "w") as f:
 
 ## Caching & Incremental Profiling
 
-### Fingerprint-Based Caching
-
-The profiler caches results based on file fingerprints:
-
-```python
-from truthound.profiler import ProfileCache
-
-cache = ProfileCache(cache_dir=".truthound/cache")
-
-# Check if profile is cached
-fingerprint = cache.compute_fingerprint("data.csv")
-if cache.exists(fingerprint):
-    profile = cache.get(fingerprint)
-else:
-    profile = profiler.profile_file("data.csv")
-    cache.set(fingerprint, profile)
-```
-
-### Incremental Profiling
-
-Only re-profile columns that have changed:
+Use native cache keys and a configured backend. File reads preserve corrupt
+entries and raise `ProfileCacheReadError`; failed replacement raises
+`ProfileCacheWriteError` while retaining the committed entry. Explicit TTL zero
+expires immediately instead of falling back to the default. Memory/file/Redis
+backends support logical-key glob invalidation; unsupported custom backends raise
+`NotImplementedError`. File entries need their stored logical key, and all entries
+are checked before pattern deletion. This is not a transactional cache.
 
 ```python
-from truthound.profiler import IncrementalProfiler
+from datetime import timedelta
+import polars as pl
+from truthound.profiler import profile_file
+from truthound.profiler.caching import FileCacheBackend, FileHashCacheKey, ProfileCache
+from truthound.profiler.incremental import IncrementalProfiler
 
-inc_profiler = IncrementalProfiler()
-
-# Initial profile
-profile_v1 = inc_profiler.profile("data_v1.csv")
-
-# Incremental update (only changed columns)
-profile_v2 = inc_profiler.update("data_v2.csv", previous=profile_v1)
-
-print(f"Columns re-profiled: {profile_v2.columns_updated}")
-print(f"Columns reused: {profile_v2.columns_cached}")
-```
-
-### Cache Backends
-
-| Backend | Description |
-|---------|-------------|
-| `memory` | In-memory LRU cache |
-| `file` | Disk-based JSON cache |
-| `redis` | Redis backend (optional) |
-
-```python
-from truthound.profiler import CacheBackend, RedisCacheBackend
-
-# Redis cache with fallback
-cache = RedisCacheBackend(
-    host="redis.example.com",
-    fallback=FileCacheBackend(".truthound/cache"),
+cache = ProfileCache(
+    backend=FileCacheBackend(".truthound/cache"),
+    default_ttl=timedelta(hours=1),
 )
+key = FileHashCacheKey.from_file("data.csv")
+profile = cache.get_or_compute(key, lambda: profile_file("data.csv"))
+cache.invalidate(key)
+
+incremental = IncrementalProfiler()
+first = incremental.profile(pl.scan_csv("data_v1.csv"))
+second = incremental.profile(pl.scan_csv("data_v2.csv"), previous=first)
+print(incremental.last_profiled_columns)
+print(incremental.last_skipped_columns)
 ```
+
+Persisted incremental columns include `content_fingerprint`; the native modulo
+sample, counts and sampling configuration determine reuse. Older/incomplete
+columns are refreshed. Changes outside the selected sample can be missed.
+Use `RedisCacheBackend` explicitly for Redis and own its `close()` in `finally`;
+constructor arguments do not provide a fallback cache. Real remote Redis service
+validation is separate from local/file and synthetic-client evidence.
 
 ---
 
@@ -848,20 +843,17 @@ collector.columns_profiled.inc(data_type="string")
 
 ### Progress Callbacks
 
+Use the native streaming callback; `DataProfiler` has no `progress_callback` constructor argument.
+
 ```python
-from truthound.profiler import CallbackRegistry, ConsoleAdapter
+from truthound.profiler.streaming import StreamingProfiler
 
-# Console progress output
-callback = ConsoleAdapter(show_progress=True)
+def show_progress(progress):
+    print(progress.chunks_processed, progress.rows_processed)
 
-profiler = DataProfiler(config, progress_callback=callback)
-profile = profiler.profile_file("data.csv")
-
-# Custom callback
-def my_callback(event):
-    print(f"Progress: {event.progress:.0%} - {event.message}")
-
-profiler = DataProfiler(config, progress_callback=my_callback)
+profile = StreamingProfiler(chunk_size=100_000).profile_file(
+    "data.csv", progress_callback=show_progress,
+)
 ```
 
 ---
@@ -1419,7 +1411,7 @@ from truthound.profiler import (
 )
 
 try:
-    profile = profiler.profile_file("data.csv")
+    profile = profile_file("data.csv")
 except I18nAnalysisError as e:
     # Error message is automatically localized
     print(e.localized_message)
@@ -1571,48 +1563,30 @@ class ProfilerConfig:
 ### Main Functions
 
 ```python
-from truthound.profiler import (
-    profile_file,
-    generate_suite,
-    DataProfiler,
-    ProfilerConfig,
-)
+import polars as pl
+from truthound.profiler import DataProfiler, ProfilerConfig, profile_file, generate_suite
 from truthound.profiler.generators import save_suite
+from truthound.profiler.table_profiler import save_profile, load_profile
 
-# Profile a file
-profile = profile_file(
-    path: str,
-    config: ProfilerConfig | None = None,
-) -> TableProfile
-
-# Profile a DataFrame/LazyFrame using DataProfiler
-profiler = DataProfiler(config)
-profile = profiler.profile(lf: pl.LazyFrame) -> TableProfile
-profile = profiler.profile_dataframe(df: pl.DataFrame) -> TableProfile
-
-# Generate validation suite
+config = ProfilerConfig(sample_size=10_000)
+profile = profile_file("data.csv", config=config)
+profiler = DataProfiler(config=config)
+profile = profiler.profile(pl.scan_csv("data.csv"))
+save_profile(profile, "profile.json")
+restored = load_profile("profile.json")
 suite = generate_suite(
-    profile: TableProfile | ProfileReport | dict,
-    strictness: Strictness = Strictness.MEDIUM,
-    preset: str = "default",
-    include: list[str] | None = None,
-    exclude: list[str] | None = None,
-) -> ValidationSuite
-
-# Save suite to file
-save_suite(
-    suite: ValidationSuite,
-    path: str | Path,
-    format: str = "json",  # "json", "yaml", or "python"
-) -> None
-
-# Profile serialization
-import json
-with open("profile.json", "w") as f:
-    json.dump(profile.to_dict(), f, indent=2)
+    restored, strictness="medium", include_categories=["schema", "completeness"],
+    exclude_categories=None, min_confidence="medium", name="selected",
+)
+save_suite(suite, "rules.json", format="json")
 ```
 
-**Note**: There is no `quick_suite()` function. Use `profile_file()` + `generate_suite()` + `save_suite()` instead.
+`profile_dataframe` is a module-level convenience function; use
+`profiler.profile(df.lazy())` on an existing `DataProfiler`. Presets belong to
+`SuiteGeneratorConfig`, not a `preset` argument to `generate_suite`.
+Per-validator `suite.execute(..., timeout_seconds=...)` uses an owned native
+process; callables and validator state must be picklable. Thread timeouts do not
+claim termination and do not automatically retry still-running work.
 
 ### Data Types
 
@@ -1684,8 +1658,8 @@ config = ProfilerConfig(
 )
 
 # Profile data
-profiler = DataProfiler(config)
-profile = profiler.profile_file("sales_data.csv")
+profiler = DataProfiler(config=config)
+profile = profile_file("sales_data.csv", config=config)
 
 # Print summary
 print(f"Dataset: {profile.name}")
@@ -1695,8 +1669,8 @@ print(f"Columns: {profile.column_count}")
 for col in profile.columns:
     print(f"  {col.name}: {col.inferred_type.value}")
     print(f"    Null ratio: {col.null_ratio:.2%}")
-    if col.patterns:
-        print(f"    Pattern: {col.patterns[0].pattern_name}")
+    if col.detected_patterns:
+        print(f"    Pattern: {col.detected_patterns[0].pattern}")
 
 # Generate and save rules
 from truthound.profiler.generators import save_suite

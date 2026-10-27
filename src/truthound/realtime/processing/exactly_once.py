@@ -8,29 +8,28 @@ Provides exactly-once processing guarantees through:
 
 from __future__ import annotations
 
-from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from enum import Enum
-from typing import Any, AsyncIterator, Callable, Generic, TypeVar
-import asyncio
 import hashlib
 import logging
 import uuid
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
+from enum import Enum
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
-from truthound.realtime.protocols import (
-    IStreamSource,
-    IStreamSink,
-    IStateStore,
-    StreamMessage,
-    MessageBatch,
-    StreamingError,
-)
 from truthound.realtime.processing.state import (
     IStateBackend,
     MemoryStateBackend,
-    StateManager,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from truthound.realtime.protocols import (
+        IStreamSink,
+        IStreamSource,
+        StreamMessage,
+    )
 
 
 logger = logging.getLogger(__name__)
@@ -67,7 +66,7 @@ class ProcessingContext:
     message: StreamMessage
     transaction_id: str
     attempt: int = 1
-    started_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    started_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -124,9 +123,7 @@ class OffsetDeduplication(DeduplicationStrategy):
         key = f"{message.topic}:{message.partition}"
         last_offset = await self._state.get(self._namespace, key)
 
-        if last_offset is not None and message.offset <= last_offset:
-            return True
-        return False
+        return last_offset is not None and message.offset <= last_offset
 
     async def mark_processed(self, message: StreamMessage) -> None:
         key = f"{message.topic}:{message.partition}"
@@ -200,10 +197,12 @@ class Transaction:
 
     id: str
     state: TransactionState = TransactionState.NONE
-    started_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    started_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     messages: list[StreamMessage] = field(default_factory=list)
     outputs: list[StreamMessage] = field(default_factory=list)
-    state_changes: list[tuple[str, str, Any]] = field(default_factory=list)  # (namespace, key, value)
+    state_changes: list[tuple[str, str, Any]] = field(
+        default_factory=list
+    )  # (namespace, key, value)
     error: Exception | None = None
 
 
@@ -299,7 +298,7 @@ class TransactionManager:
                 txn.id,
                 {
                     "state": TransactionState.COMMITTED.value,
-                    "committed_at": datetime.now(timezone.utc).isoformat(),
+                    "committed_at": datetime.now(UTC).isoformat(),
                     "message_count": len(txn.messages),
                     "output_count": len(txn.outputs),
                 },
@@ -336,7 +335,7 @@ class TransactionManager:
                 txn.id,
                 {
                     "state": TransactionState.ROLLED_BACK.value,
-                    "rolled_back_at": datetime.now(timezone.utc).isoformat(),
+                    "rolled_back_at": datetime.now(UTC).isoformat(),
                     "error": str(txn.error) if txn.error else None,
                 },
             )
@@ -435,10 +434,12 @@ class ExactlyOnceProcessor(Generic[T, R]):
         if dedup_strategy:
             self._dedup = dedup_strategy
         elif guarantee == ProcessingGuarantee.EXACTLY_ONCE:
-            self._dedup = CompositeDeduplication([
-                OffsetDeduplication(self._state),
-                ContentHashDeduplication(self._state),
-            ])
+            self._dedup = CompositeDeduplication(
+                [
+                    OffsetDeduplication(self._state),
+                    ContentHashDeduplication(self._state),
+                ]
+            )
         else:
             self._dedup = None
 
@@ -475,15 +476,9 @@ class ExactlyOnceProcessor(Generic[T, R]):
                 if max_messages and processed >= max_messages:
                     break
 
-                result = await self._process_message(message)
-
+                result = await self.process_message(message)
                 if result.success and not result.deduplicated:
                     processed += 1
-                    self._processed_count += 1
-                elif result.deduplicated:
-                    self._duplicate_count += 1
-                else:
-                    self._error_count += 1
 
         finally:
             self._running = False
@@ -492,6 +487,21 @@ class ExactlyOnceProcessor(Generic[T, R]):
     async def stop(self) -> None:
         """Stop the processor."""
         self._running = False
+
+    async def process_message(self, message: StreamMessage[T]) -> ProcessingResult[R]:
+        """Process one already-consumed message through the native transaction path.
+
+        Uses the same processing, deduplication, commits and statistics as ``run``.
+        Recovery retains the backend's native rollback semantics.
+        """
+        result = await self._process_message(message)
+        if result.success and not result.deduplicated:
+            self._processed_count += 1
+        elif result.deduplicated:
+            self._duplicate_count += 1
+        else:
+            self._error_count += 1
+        return result
 
     async def _process_message(self, message: StreamMessage[T]) -> ProcessingResult[R]:
         """Process a single message with exactly-once semantics.
@@ -503,6 +513,7 @@ class ExactlyOnceProcessor(Generic[T, R]):
             Processing result
         """
         import time
+
         start_time = time.perf_counter()
 
         # Check for duplicates

@@ -19,13 +19,13 @@ import threading
 import time
 from abc import ABC, abstractmethod
 from collections import defaultdict
+from collections.abc import Generator  # noqa: TC003 - public annotation introspection
 from contextlib import contextmanager
 from dataclasses import dataclass, field
-from datetime import datetime
-from http.server import HTTPServer, BaseHTTPRequestHandler
-from typing import Any, Callable, Generator, TypeVar
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from typing import Any, TypeVar
 
-from truthound.stores.observability.config import MetricsConfig, MetricsExportFormat
+from truthound.stores.observability.config import MetricsConfig
 
 T = TypeVar("T")
 
@@ -416,9 +416,15 @@ class PrometheusMetricsBackend(InMemoryMetricsBackend):
     def stop_http_server(self) -> None:
         """Stop the HTTP server."""
         if self._server:
-            self._server.shutdown()
-            self._server = None
-            self._server_thread = None
+            server, thread = self._server, self._server_thread
+            try:
+                server.shutdown()
+            finally:
+                server.server_close()
+                if thread is not None:
+                    thread.join(timeout=5)
+                self._server = None
+                self._server_thread = None
 
     def push_to_gateway(self, job: str = "truthound") -> bool:
         """Push metrics to Prometheus Push Gateway."""
@@ -441,10 +447,10 @@ class PrometheusMetricsBackend(InMemoryMetricsBackend):
 class MetricsRegistry:
     """Registry for managing metrics across multiple stores."""
 
-    _instance: "MetricsRegistry | None" = None
+    _instance: MetricsRegistry | None = None
     _lock = threading.Lock()
 
-    def __new__(cls) -> "MetricsRegistry":
+    def __new__(cls) -> MetricsRegistry:
         with cls._lock:
             if cls._instance is None:
                 cls._instance = super().__new__(cls)
@@ -539,9 +545,10 @@ class StoreMetrics:
             self.backend.counter("operations_failed_total", labels=op_labels)
 
     # CRUD metrics
-    def record_save(self, duration_seconds: float, size_bytes: int = 0) -> None:
-        """Record a save operation."""
-        self.record_operation("save", duration_seconds)
+    def record_save(self, duration_seconds: float, size_bytes: int = 0, *, record_operation: bool = True) -> None:
+        """Record save metrics; skip the operation when an observer already records it."""
+        if record_operation:
+            self.record_operation("save", duration_seconds)
         if size_bytes > 0:
             self.backend.histogram(
                 "save_size_bytes",
@@ -561,9 +568,10 @@ class StoreMetrics:
         """Record a delete operation."""
         self.record_operation("delete", duration_seconds)
 
-    def record_query(self, duration_seconds: float, result_count: int = 0) -> None:
-        """Record a query operation."""
-        self.record_operation("query", duration_seconds)
+    def record_query(self, duration_seconds: float, result_count: int = 0, *, record_operation: bool = True) -> None:
+        """Record query metrics; skip the operation when an observer already records it."""
+        if record_operation:
+            self.record_operation("query", duration_seconds)
         self.backend.histogram(
             "query_result_count",
             result_count,

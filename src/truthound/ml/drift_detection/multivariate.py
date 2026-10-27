@@ -6,22 +6,20 @@ across multiple features simultaneously.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from math import sqrt
 from typing import Any
 
 import polars as pl
 
+from truthound.ml._training import atomic_fit
 from truthound.ml.base import (
     DriftConfig,
     DriftResult,
     MLDriftDetector,
-    ModelInfo,
-    ModelNotTrainedError,
     ModelState,
     ModelTrainingError,
-    ModelType,
     register_model,
 )
 
@@ -62,7 +60,14 @@ class MultivariateDriftDetector(MLDriftDetector):
         >>> result = detector.detect(reference_data, current_data)
     """
 
-    _state_fields = ("_reference_corr_matrix", "_reference_means", "_reference_stds", "_columns", "_pca_components", "_pca_explained_var")
+    _state_fields = (
+        "_reference_corr_matrix",
+        "_reference_means",
+        "_reference_stds",
+        "_columns",
+        "_pca_components",
+        "_pca_explained_var",
+    )
 
     def __init__(self, config: MultivariateDriftConfig | None = None, **kwargs: Any):
         super().__init__(config, **kwargs)
@@ -86,6 +91,7 @@ class MultivariateDriftDetector(MLDriftDetector):
     def _get_description(self) -> str:
         return "Multivariate drift detection considering feature correlations"
 
+    @atomic_fit
     def fit(self, data: pl.LazyFrame) -> None:
         """Compute reference multivariate statistics.
 
@@ -94,7 +100,7 @@ class MultivariateDriftDetector(MLDriftDetector):
         """
         import time
 
-        start = time.perf_counter()
+        time.perf_counter()
         self._state = ModelState.TRAINING
 
         try:
@@ -104,26 +110,29 @@ class MultivariateDriftDetector(MLDriftDetector):
             # Get numeric columns
             schema = df.schema
             numeric_types = {
-                pl.Int8, pl.Int16, pl.Int32, pl.Int64,
-                pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64,
-                pl.Float32, pl.Float64,
+                pl.Int8,
+                pl.Int16,
+                pl.Int32,
+                pl.Int64,
+                pl.UInt8,
+                pl.UInt16,
+                pl.UInt32,
+                pl.UInt64,
+                pl.Float32,
+                pl.Float64,
             }
 
             if self.config.columns:
                 self._columns = [
-                    c for c in self.config.columns
+                    c
+                    for c in self.config.columns
                     if c in schema and type(schema[c]) in numeric_types
                 ]
             else:
-                self._columns = [
-                    c for c in schema.keys()
-                    if type(schema[c]) in numeric_types
-                ]
+                self._columns = [c for c in schema if type(schema[c]) in numeric_types]
 
             if len(self._columns) < 2:
-                raise ValueError(
-                    "Multivariate drift requires at least 2 numeric columns"
-                )
+                raise ValueError("Multivariate drift requires at least 2 numeric columns")
 
             # Compute correlation matrix
             self._reference_corr_matrix = self._compute_correlation_matrix(df)
@@ -132,10 +141,12 @@ class MultivariateDriftDetector(MLDriftDetector):
             self._reference_means = []
             self._reference_stds = []
             for col in self._columns:
-                stats = df.select([
-                    pl.col(col).mean().alias("mean"),
-                    pl.col(col).std().alias("std"),
-                ]).row(0)
+                stats = df.select(
+                    [
+                        pl.col(col).mean().alias("mean"),
+                        pl.col(col).std().alias("std"),
+                    ]
+                ).row(0)
                 self._reference_means.append(stats[0] or 0.0)
                 self._reference_stds.append(stats[1] or 1.0)
 
@@ -163,16 +174,14 @@ class MultivariateDriftDetector(MLDriftDetector):
 
         for i, col_i in enumerate(self._columns):
             matrix[i][i] = 1.0  # Diagonal is 1
-            for j, col_j in enumerate(self._columns[i+1:], i+1):
+            for j, col_j in enumerate(self._columns[i + 1 :], i + 1):
                 corr = self._compute_correlation(df, col_i, col_j)
                 matrix[i][j] = corr
                 matrix[j][i] = corr  # Symmetric
 
         return matrix
 
-    def _compute_correlation(
-        self, df: pl.DataFrame, col1: str, col2: str
-    ) -> float:
+    def _compute_correlation(self, df: pl.DataFrame, col1: str, col2: str) -> float:
         """Compute Pearson correlation between two columns."""
         valid = df.select([col1, col2]).drop_nulls()
         if len(valid) < 2:
@@ -185,7 +194,7 @@ class MultivariateDriftDetector(MLDriftDetector):
         mean_x = sum(x) / n
         mean_y = sum(y) / n
 
-        cov = sum((xi - mean_x) * (yi - mean_y) for xi, yi in zip(x, y))
+        cov = sum((xi - mean_x) * (yi - mean_y) for xi, yi in zip(x, y, strict=True))
         std_x = sqrt(sum((xi - mean_x) ** 2 for xi in x))
         std_y = sqrt(sum((yi - mean_y) ** 2 for yi in y))
 
@@ -223,10 +232,9 @@ class MultivariateDriftDetector(MLDriftDetector):
         cov_matrix = [[0.0] * n_features for _ in range(n_features)]
         for i in range(n_features):
             for j in range(n_features):
-                cov = sum(
-                    standardized[i][k] * standardized[j][k]
-                    for k in range(n_samples)
-                ) / (n_samples - 1)
+                cov = sum(standardized[i][k] * standardized[j][k] for k in range(n_samples)) / (
+                    n_samples - 1
+                )
                 cov_matrix[i][j] = cov
 
         # Power iteration to find principal components
@@ -239,6 +247,7 @@ class MultivariateDriftDetector(MLDriftDetector):
         for _ in range(n_components):
             # Random initial vector
             import random
+
             rng = random.Random(self.config.random_seed)
             v = [rng.gauss(0, 1) for _ in range(n_features)]
 
@@ -286,6 +295,7 @@ class MultivariateDriftDetector(MLDriftDetector):
             DriftResult with multivariate drift analysis
         """
         import time
+
         start = time.perf_counter()
 
         curr_df = current.collect()
@@ -324,7 +334,7 @@ class MultivariateDriftDetector(MLDriftDetector):
         else:
             drift_type = "multivariate_shift"
 
-        elapsed = (time.perf_counter() - start) * 1000
+        (time.perf_counter() - start) * 1000
 
         return DriftResult(
             is_drifted=is_drifted,
@@ -361,7 +371,7 @@ class MultivariateDriftDetector(MLDriftDetector):
                         f"{self._columns[i]}-{self._columns[j]}: {ref_corr:.2f}->{curr_corr:.2f}"
                     )
 
-        avg_diff = total_diff / n_pairs if n_pairs > 0 else 0.0
+        total_diff / n_pairs if n_pairs > 0 else 0.0
 
         # Column scores based on average correlation change per column
         column_scores = []
@@ -369,9 +379,7 @@ class MultivariateDriftDetector(MLDriftDetector):
             col_diffs = []
             for j in range(n):
                 if i != j:
-                    diff = abs(
-                        self._reference_corr_matrix[i][j] - current_corr[i][j]
-                    )
+                    diff = abs(self._reference_corr_matrix[i][j] - current_corr[i][j])
                     col_diffs.append(diff)
             avg_col_diff = sum(col_diffs) / len(col_diffs) if col_diffs else 0.0
             column_scores.append((col, avg_col_diff))
@@ -385,9 +393,7 @@ class MultivariateDriftDetector(MLDriftDetector):
 
         return drift_score, column_scores, details
 
-    def _detect_pca_drift(
-        self, df: pl.DataFrame
-    ) -> tuple[float, list[tuple[str, float]], str]:
+    def _detect_pca_drift(self, df: pl.DataFrame) -> tuple[float, list[tuple[str, float]], str]:
         """Detect drift in PCA space."""
         if self._pca_components is None:
             # Fall back to correlation method
@@ -424,9 +430,7 @@ class MultivariateDriftDetector(MLDriftDetector):
 
         # Compare to reference variance
         max_var_diff = 0.0
-        for i, (ref_var, curr_var) in enumerate(zip(
-            self._pca_explained_var or [], current_var
-        )):
+        for ref_var, curr_var in zip(self._pca_explained_var or [], current_var, strict=True):
             if ref_var > 0:
                 rel_diff = abs(curr_var - ref_var) / ref_var
                 max_var_diff = max(max_var_diff, rel_diff)
@@ -437,9 +441,7 @@ class MultivariateDriftDetector(MLDriftDetector):
         column_scores = []
         for i, col in enumerate(self._columns):
             # Sum of absolute loadings across components
-            loading_sum = sum(
-                abs(comp[i]) for comp in self._pca_components
-            )
+            loading_sum = sum(abs(comp[i]) for comp in self._pca_components)
             column_scores.append((col, loading_sum * drift_score))
 
         details = f"Max variance change ratio: {max_var_diff:.3f}"
@@ -460,16 +462,10 @@ class MultivariateDriftDetector(MLDriftDetector):
         n = len(self._columns)
 
         # Mean difference vector
-        diff = [
-            current_means[i] - self._reference_means[i]
-            for i in range(n)
-        ]
+        diff = [current_means[i] - self._reference_means[i] for i in range(n)]
 
         # Standardize by reference std
-        standardized_diff = [
-            diff[i] / (self._reference_stds[i] or 1.0)
-            for i in range(n)
-        ]
+        standardized_diff = [diff[i] / (self._reference_stds[i] or 1.0) for i in range(n)]
 
         # Simple Mahalanobis approximation (assuming diagonal covariance)
         mahal_sq = sum(d * d for d in standardized_diff)

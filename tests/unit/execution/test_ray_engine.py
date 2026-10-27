@@ -3,11 +3,9 @@
 This module tests the Ray-native distributed execution engine.
 """
 
-import pytest
-from unittest.mock import MagicMock, patch, PropertyMock
-from dataclasses import dataclass
-from typing import Any
+from unittest.mock import MagicMock, patch
 
+import pytest
 
 # =============================================================================
 # Test Fixtures
@@ -17,11 +15,10 @@ from typing import Any
 @pytest.fixture
 def mock_ray_available():
     """Mock ray availability check."""
-    with patch(
-        "truthound.execution.distributed.ray_engine._check_ray_available"
-    ) as check_mock, patch(
-        "truthound.execution.distributed.ray_engine._ensure_ray_initialized"
-    ) as init_mock:
+    with (
+        patch("truthound.execution.distributed.ray_engine._check_ray_available") as check_mock,
+        patch("truthound.execution.distributed.ray_engine._ensure_ray_initialized") as init_mock,
+    ):
         yield check_mock, init_mock
 
 
@@ -114,8 +111,8 @@ class TestRayExecutionEngineCore:
 
     def test_backend_type(self, mock_ray_available, mock_ray_dataset):
         """Test backend type property."""
-        from truthound.execution.distributed.ray_engine import RayExecutionEngine
         from truthound.execution.distributed.protocols import ComputeBackend
+        from truthound.execution.distributed.ray_engine import RayExecutionEngine
 
         engine = RayExecutionEngine(mock_ray_dataset)
 
@@ -182,8 +179,8 @@ class TestRayExecutionEngineFactoryMethods:
     def test_from_dataset_with_config(self, mock_ray_available, mock_ray_dataset):
         """Test creating engine with custom config."""
         from truthound.execution.distributed.ray_engine import (
-            RayExecutionEngine,
             RayEngineConfig,
+            RayExecutionEngine,
         )
 
         config = RayEngineConfig(
@@ -258,14 +255,35 @@ class TestRayExecutionEngineContextManager:
 class TestRayExecutionEngineIntegration:
     """Integration tests requiring actual ray."""
 
-    @pytest.fixture(autouse=True)
+    @pytest.fixture(scope="class", autouse=True)
     def setup_ray(self):
-        """Initialize ray for tests."""
+        """Own one local Ray lifetime and close it after this test class."""
+        import os
+        import tempfile
+
         import ray
-        if not ray.is_initialized():
-            ray.init(num_cpus=2, ignore_reinit_error=True)
-        yield
-        # Don't shutdown ray between tests
+
+        if ray.is_initialized():
+            raise RuntimeError("Ray unit contracts require their own local lifetime")
+        with (
+            patch.dict(os.environ, {"RAY_USAGE_STATS_ENABLED": "0", "RAY_ADDRESS": "local"}),
+            tempfile.TemporaryDirectory(
+                prefix="th-ray-unit-", dir="/tmp" if os.name == "posix" else tempfile.gettempdir()
+            ) as directory,
+        ):
+            try:
+                ray.init(
+                    address="local",
+                    num_cpus=4,
+                    num_gpus=0,
+                    include_dashboard=False,
+                    object_store_memory=80 * 1024**2,
+                    _node_ip_address="127.0.0.1",
+                    _temp_dir=directory,
+                )
+                yield
+            finally:
+                ray.shutdown()
 
     def test_from_items_integration(self, sample_data):
         """Test creating engine from list of items."""
@@ -332,11 +350,22 @@ class TestRayExecutionEngineIntegration:
 
         engine = RayExecutionEngine.from_items(sample_data)
         original_blocks = engine.num_partitions
+        assert original_blocks > 0
 
         new_engine = engine.repartition(4)
 
         assert new_engine.num_partitions == 4
         assert new_engine.count_rows() == 10
+
+    def test_configured_statistics_preserve_population_ddof(self, sample_data):
+        from truthound.execution.distributed.protocols import AggregationSpec
+        from truthound.execution.distributed.ray_engine import RayExecutionEngine
+
+        engine = RayExecutionEngine.from_items(sample_data)
+        spec = AggregationSpec().add("id", "std", ddof=0).add("id", "var", ddof=0)
+        result = engine._aggregate_distributed(spec)
+        assert result["id_std"] == pytest.approx(8.25**0.5)
+        assert result["id_var"] == pytest.approx(8.25)
 
     def test_take_integration(self, sample_data):
         """Test take operation."""
@@ -352,8 +381,9 @@ class TestRayExecutionEngineIntegration:
     def test_to_pandas_integration(self, sample_data):
         """Test conversion to pandas."""
         pytest.importorskip("pandas")
-        from truthound.execution.distributed.ray_engine import RayExecutionEngine
         import pandas as pd
+
+        from truthound.execution.distributed.ray_engine import RayExecutionEngine
 
         engine = RayExecutionEngine.from_items(sample_data)
 
@@ -365,8 +395,9 @@ class TestRayExecutionEngineIntegration:
     def test_to_arrow_integration(self, sample_data):
         """Test conversion to Arrow."""
         pytest.importorskip("pyarrow")
-        from truthound.execution.distributed.ray_engine import RayExecutionEngine
         import pyarrow as pa
+
+        from truthound.execution.distributed.ray_engine import RayExecutionEngine
 
         engine = RayExecutionEngine.from_items(sample_data)
 
@@ -380,8 +411,9 @@ class TestRayExecutionEngineIntegration:
         pytest.importorskip("polars")
         pytest.importorskip("pyarrow")
 
-        from truthound.execution.distributed.ray_engine import RayExecutionEngine
         import polars as pl
+
+        from truthound.execution.distributed.ray_engine import RayExecutionEngine
 
         engine = RayExecutionEngine.from_items(sample_data)
 
@@ -430,16 +462,15 @@ class TestRayEngineRegistry:
 
     def test_auto_detect_ray_dataset(self, mock_ray_available, mock_ray_dataset):
         """Test auto-detection of Ray Dataset."""
+        from truthound.execution.distributed.protocols import ComputeBackend
         from truthound.execution.distributed.registry import (
             get_engine_registry,
         )
-        from truthound.execution.distributed.protocols import ComputeBackend
 
         # Mock the module detection
-        type(mock_ray_dataset).__module__ = PropertyMock(return_value="ray.data")
-        type(mock_ray_dataset).__name__ = PropertyMock(return_value="Dataset")
+        dataset = type("Dataset", (), {"__module__": "ray.data.dataset"})()
 
         registry = get_engine_registry()
-        backend = registry._detect_backend(mock_ray_dataset)
+        backend = registry._detect_backend(dataset)
 
         assert backend == ComputeBackend.RAY

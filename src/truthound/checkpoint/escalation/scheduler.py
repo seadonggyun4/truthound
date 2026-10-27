@@ -9,10 +9,12 @@ from __future__ import annotations
 import asyncio
 import logging
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from contextlib import suppress
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Any, Callable, Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +36,7 @@ class JobStatus(str, Enum):
     FAILED = "failed"
     CANCELLED = "cancelled"
     PAUSED = "paused"
+    UNKNOWN = "unknown"
 
 
 @dataclass
@@ -132,6 +135,7 @@ class SchedulerConfig:
     cleanup_interval_seconds: int = 3600
     cleanup_age_hours: int = 24
     apscheduler_config: dict[str, Any] = field(default_factory=dict)
+    journal_path: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary."""
@@ -144,6 +148,7 @@ class SchedulerConfig:
             "cleanup_interval_seconds": self.cleanup_interval_seconds,
             "cleanup_age_hours": self.cleanup_age_hours,
             "apscheduler_config": self.apscheduler_config,
+            "journal_path": self.journal_path,
         }
 
 
@@ -248,7 +253,28 @@ class BaseEscalationScheduler(ABC):
         self._executor = executor
         self._is_running = False
         self._jobs: dict[str, ScheduledJob] = {}
+        self._active_tasks: set[asyncio.Task] = set()
         self._jobs_by_record: dict[str, set[str]] = {}
+        self._journal = None
+        if self._config.journal_path:
+            from truthound.checkpoint.escalation.journal import ExecutionJournal
+
+            self._journal = ExecutionJournal(self._config.journal_path)
+
+    def recover_pending(self) -> None:
+        """Restore only unclaimed work; interrupted claims remain quarantined."""
+        if self._journal is None:
+            return
+        for identity, payload in self._journal.pending():
+            if not identity.startswith("job:"):
+                continue
+            job = ScheduledJob.from_dict(payload)
+            self._jobs[job.id] = job
+            self._jobs_by_record.setdefault(job.record_id, set()).add(job.id)
+        for job in self._jobs.values():
+            if job.status == JobStatus.PENDING:
+                self._remove_job_from_backend(job.id)
+                self._schedule_job(job)
 
     @property
     def config(self) -> SchedulerConfig:
@@ -303,6 +329,8 @@ class BaseEscalationScheduler(ABC):
             metadata=metadata or {},
         )
 
+        if self._journal:
+            self._journal.enqueue("job:" + job.id, job.to_dict())
         self._jobs[job_id] = job
 
         # Track jobs by record
@@ -342,6 +370,8 @@ class BaseEscalationScheduler(ABC):
             return False
 
         if job.status in (JobStatus.PENDING, JobStatus.PAUSED):
+            if self._journal and not self._journal.cancel_pending("job:" + job.id):
+                return False
             job.status = JobStatus.CANCELLED
             self._remove_job_from_backend(job_id)
             logger.info(f"Cancelled job {job_id}")
@@ -371,6 +401,10 @@ class BaseEscalationScheduler(ABC):
         if not job or job.status != JobStatus.PENDING:
             return None
 
+        if self._journal:
+            self._journal.update_pending(
+                "job:" + job.id, replace(job, scheduled_at=new_time).to_dict()
+            )
         job.scheduled_at = new_time
         self._reschedule_in_backend(job)
         logger.info(f"Rescheduled job {job_id} to {new_time}")
@@ -383,9 +417,24 @@ class BaseEscalationScheduler(ABC):
         pass
 
     async def _execute_job(self, job: ScheduledJob) -> None:
+        """Track all backend executions so an owner can drain before closing."""
+        task = asyncio.current_task()
+        if task is not None:
+            self._active_tasks.add(task)
+        try:
+            await self._execute_claimed_job(job)
+        finally:
+            self._active_tasks.discard(task)
+
+    async def _execute_claimed_job(self, job: ScheduledJob) -> None:
         """Execute a scheduled job."""
         if not self._executor:
             logger.error(f"No executor set for job {job.id}")
+            return
+
+        if job.status != JobStatus.PENDING:
+            return
+        if self._journal and not self._journal.claim("job:" + job.id):
             return
 
         job.status = JobStatus.RUNNING
@@ -398,12 +447,21 @@ class BaseEscalationScheduler(ABC):
                     result,
                     timeout=self._config.job_timeout_seconds,
                 )
+            if self._journal:
+                self._journal.finish("job:" + job.id, "completed")
             job.status = JobStatus.COMPLETED
             logger.info(f"Job {job.id} completed successfully")
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             job.last_error = f"Job timed out after {self._config.job_timeout_seconds}s"
             self._handle_job_failure(job)
+
+        except asyncio.CancelledError:
+            if self._journal:
+                job.status = JobStatus.UNKNOWN
+                with suppress(Exception):
+                    self._journal.finish("job:" + job.id, "unknown")
+            raise
 
         except Exception as e:
             job.last_error = str(e)
@@ -412,15 +470,16 @@ class BaseEscalationScheduler(ABC):
 
     def _handle_job_failure(self, job: ScheduledJob) -> None:
         """Handle a failed job."""
+        if self._journal:
+            job.status = JobStatus.UNKNOWN
+            with suppress(Exception):
+                self._journal.finish("job:" + job.id, "unknown")
+            return
         if job.can_retry:
             job.status = JobStatus.PENDING
-            job.scheduled_at = datetime.now() + timedelta(
-                seconds=self._config.retry_delay_seconds
-            )
+            job.scheduled_at = datetime.now() + timedelta(seconds=self._config.retry_delay_seconds)
             self._schedule_job(job)
-            logger.info(
-                f"Job {job.id} scheduled for retry at {job.scheduled_at}"
-            )
+            logger.info(f"Job {job.id} scheduled for retry at {job.scheduled_at}")
         else:
             job.status = JobStatus.FAILED
             logger.error(f"Job {job.id} failed after {job.attempts} attempts")
@@ -431,9 +490,11 @@ class BaseEscalationScheduler(ABC):
         to_remove = []
 
         for job_id, job in self._jobs.items():
-            if job.status in (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED):
-                if job.created_at < threshold:
-                    to_remove.append(job_id)
+            if (
+                job.status in (JobStatus.COMPLETED, JobStatus.FAILED, JobStatus.CANCELLED)
+                and job.created_at < threshold
+            ):
+                to_remove.append(job_id)
 
         for job_id in to_remove:
             job = self._jobs.pop(job_id)
@@ -492,9 +553,7 @@ class AsyncioScheduler(BaseEscalationScheduler):
         pending = list(asyncio.all_tasks(loop))
 
         if pending and not loop.is_running():
-            loop.run_until_complete(
-                asyncio.gather(*pending, return_exceptions=True)
-            )
+            loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
 
         asyncio.set_event_loop(None)
         loop.close()
@@ -509,6 +568,7 @@ class AsyncioScheduler(BaseEscalationScheduler):
         self._is_running = True
 
         # Schedule periodic check for due jobs
+        self.recover_pending()
         loop = self._get_or_create_event_loop()
         self._check_task = loop.create_task(self._periodic_check())
         self._cleanup_task = loop.create_task(self._periodic_cleanup())
@@ -536,18 +596,26 @@ class AsyncioScheduler(BaseEscalationScheduler):
 
     def _schedule_job(self, job: ScheduledJob) -> None:
         """Schedule a job with asyncio."""
+        if self._journal and not self._is_running:
+            return
         delay = (job.scheduled_at - datetime.now()).total_seconds()
         if delay < 0:
             delay = 0
 
         async def delayed_execute() -> None:
             await asyncio.sleep(delay)
-            if job.status == JobStatus.PENDING:
+            if job.is_due:
                 await self._execute_job(job)
 
         loop = self._get_or_create_event_loop()
         task = loop.create_task(delayed_execute())
         self._tasks[job.id] = task
+
+        def finished(completed):
+            if self._tasks.get(job.id) is completed:
+                self._tasks.pop(job.id, None)
+
+        task.add_done_callback(finished)
 
     def _remove_job_from_backend(self, job_id: str) -> None:
         """Remove a job from asyncio tasks."""
@@ -584,7 +652,7 @@ class APSchedulerWrapper(BaseEscalationScheduler):
     Uses APScheduler for robust, persistent job scheduling
     with support for multiple job stores.
 
-    Requires: pip install apscheduler>=4.0
+    Requires: pip install apscheduler>=3.10,<4.0
     """
 
     def __init__(
@@ -626,11 +694,11 @@ class APSchedulerWrapper(BaseEscalationScheduler):
 
         except ImportError:
             logger.warning(
-                "APScheduler not installed. Install with: pip install apscheduler>=4.0"
+                "APScheduler not installed. Install with: pip install apscheduler>=3.10,<4.0"
             )
             raise RuntimeError(
-                "APScheduler not available. Install with: pip install apscheduler>=4.0"
-            )
+                "APScheduler not available. Install the checkpoint-scheduler extra"
+            ) from None
 
     def start(self) -> None:
         """Start the scheduler."""
@@ -640,6 +708,7 @@ class APSchedulerWrapper(BaseEscalationScheduler):
         self._ensure_initialized()
         self._scheduler.start()
         self._is_running = True
+        self.recover_pending()
 
         # Schedule cleanup job
         self._scheduler.add_job(
@@ -659,14 +728,16 @@ class APSchedulerWrapper(BaseEscalationScheduler):
 
         if self._scheduler:
             self._scheduler.shutdown(wait=True)
-
+        self._scheduler = None
+        self._initialized = False
         self._is_running = False
         logger.info("APScheduler stopped")
 
     def _schedule_job(self, job: ScheduledJob) -> None:
         """Schedule a job with APScheduler."""
         if not self._scheduler:
-            logger.error("Scheduler not initialized")
+            if not self._journal:
+                logger.error("Scheduler not initialized")
             return
 
         trigger = self._DateTrigger(run_date=job.scheduled_at)
@@ -683,10 +754,8 @@ class APSchedulerWrapper(BaseEscalationScheduler):
     def _remove_job_from_backend(self, job_id: str) -> None:
         """Remove a job from APScheduler."""
         if self._scheduler:
-            try:
+            with suppress(Exception):
                 self._scheduler.remove_job(job_id)
-            except Exception:
-                pass  # Job may not exist
 
     def _reschedule_in_backend(self, job: ScheduledJob) -> None:
         """Reschedule a job in APScheduler."""
@@ -725,6 +794,7 @@ class InMemoryScheduler(BaseEscalationScheduler):
     def start(self) -> None:
         """Start the scheduler."""
         self._is_running = True
+        self.recover_pending()
         logger.info("InMemoryScheduler started")
 
     def stop(self) -> None:

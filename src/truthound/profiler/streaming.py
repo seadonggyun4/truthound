@@ -13,19 +13,19 @@ Key features:
 from __future__ import annotations
 
 import time
-from abc import ABC, abstractmethod
+from collections.abc import Callable, Iterator
+from contextlib import ExitStack
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Iterator, Protocol, Sequence, TypeVar
+from typing import Protocol
 
 import polars as pl
 
 from truthound.profiler.base import (
     ColumnProfile,
-    DataType,
     DistributionStats,
-    PatternMatch,
+    ProfileExecutionIssue,
     ProfilerConfig,
     TableProfile,
     ValueFrequency,
@@ -34,9 +34,7 @@ from truthound.profiler.errors import (
     AnalysisError,
     ErrorCollector,
     ErrorSeverity,
-    MemoryError as ProfilerMemoryError,
 )
-
 
 # =============================================================================
 # Incremental Statistics
@@ -447,6 +445,44 @@ class StreamingProfiler:
         self.error_collector = error_collector or ErrorCollector()
         self.pattern_sample_limit = pattern_sample_limit
 
+    def set_execution_guard(self, guard) -> None:
+        """Guard each chunk/column/progress callback before effects."""
+        self._execution_guard = guard
+
+    def _guard_execution(self) -> None:
+        guard = getattr(self, "_execution_guard", None)
+        if guard is not None:
+            guard()
+
+    def profile_chunks(
+        self, chunks: ChunkIterator, *, name: str = "", source: str = "",
+        progress_callback: ProgressCallback | None = None,
+    ) -> TableProfile:
+        """Profile native chunks and close the iterator even on failure."""
+        self._guard_execution()
+        iterator = iter(chunks)
+
+        guard = self._guard_execution
+
+        class OwnedChunks:
+            total_chunks = chunks.total_chunks
+
+            def __iter__(self):
+                while True:
+                    guard()
+                    try:
+                        chunk = next(iterator)
+                    except StopIteration:
+                        return
+                    yield chunk
+
+        with ExitStack() as stack:
+            for value in (iterator,) if iterator is chunks else (chunks, iterator):
+                close = getattr(value, "close", None)
+                if callable(close):
+                    stack.callback(close)
+            return self._profile_chunks(OwnedChunks(), name, source, progress_callback)
+
     def profile_file(
         self,
         path: str | Path,
@@ -467,7 +503,7 @@ class StreamingProfiler:
         path = Path(path)
         iterator = FileChunkIterator(path, chunk_size=self.chunk_size)
 
-        return self._profile_chunks(
+        return self.profile_chunks(
             iterator,
             name=name or path.stem,
             source=str(path),
@@ -493,7 +529,7 @@ class StreamingProfiler:
         """
         iterator = DataFrameChunkIterator(df, chunk_size=self.chunk_size)
 
-        return self._profile_chunks(
+        return self.profile_chunks(
             iterator,
             name=name,
             source="in_memory",
@@ -518,6 +554,7 @@ class StreamingProfiler:
         Returns:
             Complete table profile
         """
+        first_error = self.error_collector.error_count
         start_time = time.perf_counter()
         progress = StreamingProgress(total_chunks=chunks.total_chunks)
 
@@ -528,11 +565,15 @@ class StreamingProfiler:
 
         # Process chunks
         for chunk in chunks:
+            self._guard_execution()
             if schema is None:
                 schema = chunk.schema
                 # Initialize stats for each column
                 for col_name in schema.names():
                     column_stats[col_name] = IncrementalStats()
+
+            if chunk.schema != schema:
+                raise AnalysisError("Streaming chunk schema changed")
 
             total_rows += len(chunk)
             progress.chunks_processed += 1
@@ -541,6 +582,7 @@ class StreamingProfiler:
 
             # Update each column's stats
             for col_name, dtype in schema.items():
+                self._guard_execution()
                 is_numeric = self._is_numeric(dtype)
                 is_string = self._is_string(dtype)
 
@@ -557,6 +599,7 @@ class StreamingProfiler:
 
             # Call progress callback
             if progress_callback:
+                self._guard_execution()
                 progress_callback(progress)
 
         if schema is None:
@@ -568,6 +611,7 @@ class StreamingProfiler:
                 profile_duration_ms=(time.perf_counter() - start_time) * 1000,
             )
 
+        current_errors = self.error_collector.errors[first_error:]
         # Build column profiles
         column_profiles = []
         for col_name, dtype in schema.items():
@@ -583,13 +627,17 @@ class StreamingProfiler:
                 unique_ratio=stats.unique_ratio,
                 is_unique=stats.distinct_count == (stats.count - stats.null_count),
                 is_constant=stats.distinct_count <= 1,
-                distribution=stats.to_distribution_stats() if self._is_numeric(dtype) else None,
+                distribution=stats.to_distribution_stats() if self.config.include_distributions and self._is_numeric(dtype) else None,
                 top_values=stats.get_top_values(self.config.top_n_values),
                 bottom_values=stats.get_bottom_values(self.config.top_n_values),
                 min_length=stats.min_length if self._is_string(dtype) else None,
                 max_length=stats.max_length if self._is_string(dtype) else None,
                 avg_length=stats.avg_length if self._is_string(dtype) else None,
                 empty_string_count=stats.empty_string_count if self._is_string(dtype) else 0,
+                execution_issues=tuple(
+                    ProfileExecutionIssue("streaming_column", "streaming", type(row.error.cause or row.error).__name__, col_name)
+                    for row in current_errors if row.error.column == col_name
+                ),
                 profiled_at=datetime.now(),
             )
             column_profiles.append(profile)

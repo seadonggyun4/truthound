@@ -2,6 +2,21 @@
 
 Compare two datasets and detect data drift. This command identifies distributional changes between a baseline and current dataset.
 
+## Input validation
+
+Core `truthound.drift.compare` and MCP comparisons preserve an explicit threshold
+of `0`; only `None` selects the method default. Thresholds must be finite and
+nonnegative; p-value detectors additionally require at most `1`. Sample sizes
+must be positive integers and are validated before reading sources. Every named
+column must exist in both datasets, without duplicates; default column order
+follows the baseline. Nulls are omitted by native detectors, but numeric NaN and
+infinity fail explicitly instead of producing an apparent no-drift result.
+Histogram bin counts must be positive integers; Energy/MMD sample caps require
+at least two, and MMD accepts only `rbf`, `linear`, or `polynomial` with a finite,
+positive explicit bandwidth. Settings are revalidated on detection after mutation.
+KS walks sorted empirical distributions without rescanning every row per value;
+its existing asymptotic p-value approximation is unchanged.
+
 ## Synopsis
 
 ```bash

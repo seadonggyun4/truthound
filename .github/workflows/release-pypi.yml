@@ -10,7 +10,7 @@ on:
       version:
         description: Version to publish. Must match pyproject.toml.
         required: true
-        default: "3.2.0"
+        default: "3.3.0"
         type: string
 
 permissions:

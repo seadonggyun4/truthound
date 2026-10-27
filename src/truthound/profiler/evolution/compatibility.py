@@ -23,6 +23,15 @@ from truthound.profiler.evolution.protocols import CompatibilityChecker
 logger = logging.getLogger(__name__)
 
 
+class CompatibilityAnalysisError(RuntimeError):
+    """A requested native rule failed; no compatibility result was produced."""
+
+    def __init__(self, rule_index: int, error_type: str):
+        self.rule_index = rule_index
+        self.error_type = error_type
+        super().__init__("Native schema compatibility rule failed")
+
+
 class CompatibilityRule(ABC):
     """Abstract base class for compatibility rules.
 
@@ -95,7 +104,7 @@ class TypeCompatibilityChecker(CompatibilityRule):
 
         common_cols = set(old_schema.keys()) & set(new_schema.keys())
 
-        for col in common_cols:
+        for col in sorted(common_cols):
             old_type = old_schema[col]
             new_type = new_schema[col]
 
@@ -127,6 +136,19 @@ class NullabilityCompatibilityChecker(CompatibilityRule):
     Nullable to non-nullable is breaking.
     """
 
+    def __init__(self, old_nullable: dict[str, bool] | None = None,
+                 new_nullable: dict[str, bool] | None = None):
+        if (old_nullable is None) != (new_nullable is None):
+            raise ValueError("Both declared nullability maps are required")
+        for mapping in (old_nullable, new_nullable):
+            if mapping is not None and (
+                not isinstance(mapping, dict)
+                or any(not isinstance(key, str) or type(value) is not bool for key, value in mapping.items())
+            ):
+                raise ValueError("Declared nullability requires column names and boolean values")
+        self._old_nullable = dict(old_nullable) if old_nullable is not None else None
+        self._new_nullable = dict(new_nullable) if new_nullable is not None else None
+
     @property
     def name(self) -> str:
         return "nullability_compatibility"
@@ -137,9 +159,24 @@ class NullabilityCompatibilityChecker(CompatibilityRule):
         new_schema: dict[str, Any],
     ) -> tuple[bool, list[SchemaChange]]:
         """Check nullability compatibility."""
-        # Note: Polars doesn't have explicit nullability in schema
-        # This rule would need additional metadata to check
-        return True, []
+        # Polars dtypes alone do not declare nullability. Preserve type-only
+        # callers without inferring constraints from a sample's observed nulls.
+        if self._old_nullable is None:
+            return True, []
+        old, new = self._old_nullable, self._new_nullable
+        if old.keys() - old_schema.keys() or new.keys() - new_schema.keys():
+            raise ValueError("Declared nullability contains unknown schema columns")
+        issues = []
+        for column in sorted(old_schema.keys() & new_schema.keys()):
+            if (column in old) != (column in new):
+                raise ValueError("A common column requires both nullability declarations")
+            if column in old and old[column] and not new[column]:
+                issues.append(SchemaChange(
+                    change_type=ChangeType.NULLABLE_CHANGED, column=column,
+                    old_value=True, new_value=False, breaking=True,
+                    description="Declared nullable column became non-nullable",
+                ))
+        return not issues, issues
 
 
 class ColumnPresenceChecker(CompatibilityRule):
@@ -163,7 +200,7 @@ class ColumnPresenceChecker(CompatibilityRule):
 
         removed = set(old_schema.keys()) - set(new_schema.keys())
 
-        for col in removed:
+        for col in sorted(removed):
             is_compatible = False
             issues.append(SchemaChange(
                 change_type=ChangeType.COLUMN_REMOVED,
@@ -231,8 +268,20 @@ class SchemaCompatibilityAnalyzer(CompatibilityChecker):
             rules: Custom compatibility rules.
             strict: If True, any issue fails compatibility.
         """
-        self._rules = rules or [cls() for cls in self.DEFAULT_RULES]
+        if type(strict) is not bool:
+            raise ValueError("strict must be boolean")
+        self._rules = list(rules) if rules else [cls() for cls in self.DEFAULT_RULES]
         self._strict = strict
+        self._execution_guard = None
+
+    def set_execution_guard(self, guard) -> None:
+        if guard is not None and not callable(guard):
+            raise TypeError("Execution guard must be callable")
+        self._execution_guard = guard
+
+    def _guard_execution(self) -> None:
+        if self._execution_guard is not None:
+            self._execution_guard()
 
     def is_compatible(
         self,
@@ -266,6 +315,7 @@ class SchemaCompatibilityAnalyzer(CompatibilityChecker):
         Returns:
             Compatibility result with detailed analysis.
         """
+        self._guard_execution()
         old = self._normalize_schema(old_schema)
         new = self._normalize_schema(new_schema)
 
@@ -273,20 +323,33 @@ class SchemaCompatibilityAnalyzer(CompatibilityChecker):
         all_compatible = True
         rules_checked: list[str] = []
 
-        for rule in self._rules:
+        for index, rule in enumerate(self._rules):
+            self._guard_execution()
             try:
+                name = rule.name
+                if not isinstance(name, str) or not name:
+                    raise TypeError("A compatibility rule requires a name")
                 is_compatible, issues = rule.check(old, new)
-                rules_checked.append(rule.name)
+                if type(is_compatible) is not bool or not isinstance(issues, list) or any(
+                    not isinstance(issue, SchemaChange) for issue in issues
+                ):
+                    raise TypeError("A compatibility rule returned an invalid verdict")
+                rules_checked.append(name)
                 all_issues.extend(issues)
 
                 if not is_compatible:
                     all_compatible = False
 
             except Exception as e:
-                logger.warning(f"Rule {rule.name} failed: {e}")
+                raise CompatibilityAnalysisError(index, type(e).__name__) from None
+            self._guard_execution()
 
         # Determine compatibility level
-        level = self._determine_level(old, new, all_issues, all_compatible)
+        if self._strict and all_issues:
+            all_compatible = False
+            level = CompatibilityLevel.NONE
+        else:
+            level = self._determine_level(old, new, all_issues, all_compatible)
 
         return CompatibilityResult(
             is_compatible=all_compatible,

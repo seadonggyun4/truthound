@@ -7,22 +7,24 @@ import json
 import tempfile
 from pathlib import Path
 
-import pytest
 import polars as pl
+import pytest
 
 # =============================================================================
 # Distributed Processing Tests
 # =============================================================================
-
 from truthound.profiler.distributed import (
-    BackendType,
-    PartitionStrategy,
-    PartitionInfo,
-    WorkerResult,
     BackendConfig,
-    LocalBackend,
     BackendRegistry,
+    BackendType,
+    LocalBackend,
+    PartitionInfo,
+    PartitionStrategy,
+    WorkerResult,
     get_available_backends,
+)
+from truthound.profiler.visualization import (
+    compare_profiles as compare_profile_reports,
 )
 
 
@@ -92,17 +94,17 @@ class TestDistributed:
 # =============================================================================
 
 from truthound.profiler.ml_inference import (
-    FeatureType,
+    EnsembleModel,
     Feature,
+    FeatureType,
     FeatureVector,
     InferenceResult,
-    NameFeatureExtractor,
-    ValueFeatureExtractor,
-    StatisticalFeatureExtractor,
-    RuleBasedModel,
-    NaiveBayesModel,
-    EnsembleModel,
     MLTypeInferrer,
+    NaiveBayesModel,
+    NameFeatureExtractor,
+    RuleBasedModel,
+    StatisticalFeatureExtractor,
+    ValueFeatureExtractor,
     create_inference_model,
 )
 
@@ -197,23 +199,23 @@ class TestMLInference:
 # =============================================================================
 
 from truthound.profiler.auto_threshold import (
-    TuningStrategy,
-    ThresholdType,
-    ColumnThresholds,
-    TableThresholds,
-    StrictnessPreset,
-    ConservativeStrategy,
-    BalancedStrategy,
-    PermissiveStrategy,
     AdaptiveStrategy,
-    StatisticalStrategy,
+    BalancedStrategy,
+    ColumnThresholds,
+    ConservativeStrategy,
     DomainAwareStrategy,
+    PermissiveStrategy,
+    StatisticalStrategy,
     StrategyRegistry,
-    ThresholdTuner,
+    StrictnessPreset,
+    TableThresholds,
     ThresholdTester,
-    tune_thresholds,
-    get_available_strategies,
+    ThresholdTuner,
+    ThresholdType,
+    TuningStrategy,
     create_tuner,
+    get_available_strategies,
+    tune_thresholds,
 )
 
 
@@ -304,27 +306,26 @@ class TestAutoThreshold:
 # =============================================================================
 
 from truthound.profiler.visualization import (
+    COLOR_PALETTES,
+    THEME_CONFIGS,
+    ChartConfig,
+    ChartData,
+    ChartRendererRegistry,
     ChartType,
     ColorScheme,
-    ReportTheme,
-    SectionType,
-    COLOR_PALETTES,
-    ChartData,
-    ChartConfig,
-    ThemeConfig,
-    SectionContent,
-    ReportConfig,
-    ProfileData,
-    THEME_CONFIGS,
-    ChartRendererRegistry,
-    ThemeRegistry,
-    SVGChartRenderer,
-    ReportTemplate,
-    ProfileDataConverter,
     HTMLReportGenerator,
+    ProfileData,
+    ProfileDataConverter,
+    ReportConfig,
     ReportExporter,
+    ReportTemplate,
+    ReportTheme,
+    SectionContent,
+    SectionType,
+    SVGChartRenderer,
+    ThemeConfig,
+    ThemeRegistry,
     generate_report,
-    compare_profiles as compare_profile_reports,
 )
 
 
@@ -786,3 +787,185 @@ class TestP3Integration:
                 config = ChartConfig(chart_type=chart_type)
                 svg = renderer.render(data, config)
                 assert "<svg" in svg or "No data" in svg
+
+
+def test_ml_inference_config_threshold_and_context_are_honored(monkeypatch):
+    from truthound.profiler.base import DataType
+    from truthound.profiler.ml_inference import InferenceModel, InferrerConfig, model_registry
+    class SelectedModel(InferenceModel):
+        def predict(self, features):
+            return [(DataType.INTEGER, .4), (DataType.STRING, .3)]
+        def train(self, data):
+            pass
+    monkeypatch.setitem(model_registry._models, 'selected-test-model', SelectedModel)
+    inferrer = MLTypeInferrer(config=InferrerConfig(model='selected-test-model', confidence_threshold=.8))
+    context = {'table_name': 'selected'}
+    result = inferrer.infer(pl.Series('x', [1, 2]), context)
+    assert result.inferred_type == DataType.UNKNOWN
+    assert result.alternatives[0] == (DataType.INTEGER, .4)
+    assert context == {'table_name': 'selected'}
+
+
+def test_ml_inference_does_not_cache_only_column_head_or_mutable_custom_state():
+    from truthound.profiler.base import DataType
+    from truthound.profiler.ml_inference import InferenceModel
+    class CountingModel(InferenceModel):
+        def __init__(self): self.calls = 0
+        def predict(self, features):
+            self.calls += 1
+            return [(DataType.INTEGER if self.calls == 1 else DataType.STRING, 1.)]
+        def train(self, data): pass
+    model = CountingModel()
+    inferrer = MLTypeInferrer(model=model)
+    first = inferrer.infer(pl.Series('x', list(range(10)) + [1]))
+    second = inferrer.infer(pl.Series('x', list(range(10)) + [None]), {'table_name': 'new'})
+    assert first.inferred_type == DataType.INTEGER
+    assert second.inferred_type == DataType.STRING and model.calls == 2
+
+
+def test_ml_extractor_failure_is_not_silent_success():
+    from truthound.profiler.ml_inference import FeatureExtractor, FeatureExtractorRegistry
+    class FailedExtractor(FeatureExtractor):
+        name = 'failed'
+        def extract(self, column, context):
+            raise RuntimeError('synthetic-private-extractor')
+    registry = FeatureExtractorRegistry()
+    registry.register(FailedExtractor())
+    with pytest.raises(RuntimeError):
+        registry.extract_all(pl.Series('x', [1]), {})
+
+
+def test_ml_ensemble_persists_native_children_and_rejects_corruption(tmp_path):
+    from truthound.profiler.base import DataType
+    from truthound.profiler.ml_inference import Feature, FeatureType, FeatureVector
+    model = EnsembleModel()
+    features = FeatureVector('x', [Feature('selected', .7, FeatureType.STATISTICAL)])
+    model.train([(features, DataType.INTEGER), (features, DataType.INTEGER)])
+    expected = model.predict(features)
+    path = tmp_path / 'ensemble.json'
+    model.save(path)
+    assert path.is_file()
+    restored = EnsembleModel()
+    restored.load(path)
+    assert restored.predict(features) == expected
+    path.write_text('{broken')
+    with pytest.raises(ValueError):
+        restored.load(path)
+    assert restored.predict(features) == expected
+
+
+def test_ml_failed_training_fences_inference_and_keeps_failed_feedback():
+    from truthound.profiler.base import DataType
+    from truthound.profiler.ml_inference import InferenceModel
+    class FailedModel(InferenceModel):
+        def predict(self, features):
+            return [(DataType.INTEGER, 1.)]
+        def train(self, data):
+            raise RuntimeError('synthetic-train-failure')
+    inferrer = MLTypeInferrer(model=FailedModel())
+    column = pl.Series('x', [1, 2])
+    for _ in range(99):
+        inferrer.provide_feedback(column, DataType.INTEGER)
+    with pytest.raises(RuntimeError, match='synthetic-train-failure'):
+        inferrer.provide_feedback(column, DataType.INTEGER)
+    with pytest.raises(RuntimeError, match='Reopen'):
+        inferrer.infer(column)
+    assert len(inferrer._feedback_buffer) == 100
+
+
+def test_ml_cooperating_writers_reject_stale_model_before_training(tmp_path):
+    from truthound.profiler.base import DataType
+    from truthound.profiler.ml_inference import InferrerConfig
+    path = tmp_path / 'native.json'
+    config = InferrerConfig(model='naive_bayes', model_path=str(path), feedback_batch_size=1)
+    first, stale = MLTypeInferrer(config=config), MLTypeInferrer(config=config)
+    values = pl.Series('x', [1, 2])
+    first.provide_feedback(values, DataType.INTEGER)
+    with pytest.raises(RuntimeError, match='snapshot changed'):
+        stale.provide_feedback(values, DataType.STRING)
+    restored = MLTypeInferrer(config=config)
+    assert restored.infer(values).inferred_type == DataType.INTEGER
+    with pytest.raises(RuntimeError, match='Reopen'):
+        stale.infer(values)
+
+
+def test_profile_report_escapes_names_and_restores_override_after_failure(monkeypatch):
+    from truthound.profiler.visualization import (
+        HTMLReportGenerator,
+        ProfileData,
+        ReportConfig,
+        ReportTheme,
+    )
+    data = ProfileData('<img src=x onerror=alert(1)>', 1, 0, [])
+    generator = HTMLReportGenerator(ReportConfig(renderer='svg', title='Original'))
+    original = generator.config
+    text = generator.generate(data, ReportConfig(renderer='svg', theme=ReportTheme.DARK, title='Override'))
+    assert '<img src=x onerror=alert(1)>' not in text
+    assert generator.config is original
+    def fail(*args):
+        raise RuntimeError('render-failed')
+    monkeypatch.setattr(HTMLReportGenerator, '_render_summary', fail)
+    with pytest.raises(RuntimeError):
+        generator.generate(data, ReportConfig(renderer='svg'))
+    assert generator.config is original
+
+
+def test_native_chart_script_cannot_be_terminated_by_profile_labels():
+    from truthound.profiler.visualization import (
+        ChartConfig,
+        ChartData,
+        ChartType,
+        EChartsChartRenderer,
+    )
+    renderer = EChartsChartRenderer()
+    html = renderer.render(ChartData(labels=['</script><img src=x onerror=alert(1)>'], values=[1]), ChartConfig(chart_type=ChartType.BAR))
+    assert '</script><img' not in html
+    assert html.count('</script>') == 1
+
+
+@pytest.mark.parametrize('backend', ['plotly', 'echarts'])
+def test_interactive_chart_rejects_misaligned_series_and_nonfinite_values(backend):
+    from truthound.profiler.visualization import (
+        ChartConfig,
+        ChartData,
+        ChartType,
+        EChartsChartRenderer,
+        PlotlyChartRenderer,
+    )
+    renderer = PlotlyChartRenderer() if backend == 'plotly' else EChartsChartRenderer()
+    with pytest.raises(ValueError):
+        renderer.render(ChartData(labels=['a', 'b'], values=[1]), ChartConfig(chart_type=ChartType.BAR))
+    with pytest.raises(ValueError):
+        renderer.render(ChartData(labels=['a'], values=[float('nan')]), ChartConfig(chart_type=ChartType.BAR))
+
+
+@pytest.mark.parametrize('format', ['html', 'json'])
+def test_report_export_uses_atomic_publication_and_preserves_previous_file(tmp_path, monkeypatch, format):
+    import truthound.stores._filesystem_io as native_io
+    target = tmp_path / ('report.' + format)
+    target.write_bytes(b'previous')
+    def fail(path, payload):
+        raise OSError('synthetic publication failure')
+    monkeypatch.setattr(native_io, 'publish', fail)
+    with pytest.raises(OSError):
+        ReportExporter().to_file(ProfileData(table_name='atomic', row_count=1, column_count=0, columns=[]), target, format=format)
+    assert target.read_bytes() == b'previous'
+
+
+@pytest.mark.parametrize('kind', [ChartType.BAR, ChartType.HORIZONTAL_BAR])
+def test_svg_negative_values_have_valid_visible_geometry(kind):
+    import xml.etree.ElementTree as ET
+    document = SVGChartRenderer().render(ChartData(labels=['debit', 'credit'], values=[-2, 3]), ChartConfig(chart_type=kind))
+    rectangles = ET.fromstring(document).findall('.//{http://www.w3.org/2000/svg}rect')
+    assert len(rectangles) == 2
+    assert all(float(item.attrib['height']) > 0 and float(item.attrib['width']) > 0 for item in rectangles)
+
+
+def test_svg_rejects_mismatched_series_instead_of_silently_dropping_values():
+    with pytest.raises(ValueError, match='matching'):
+        SVGChartRenderer().render(ChartData(labels=['one'], values=[1, 2]), ChartConfig(chart_type=ChartType.BAR))
+
+
+def test_unknown_explicit_renderer_is_rejected_instead_of_silent_svg_fallback():
+    with pytest.raises(ValueError, match='renderer'):
+        HTMLReportGenerator(ReportConfig(renderer='unregistered-renderer'))

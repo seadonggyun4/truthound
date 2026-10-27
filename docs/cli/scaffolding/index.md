@@ -180,3 +180,7 @@ truthound new plugin custom_db \
 - [Custom Validator Tutorial](../../tutorials/custom-validator.md)
 - [Plugin System](../../concepts/plugins.md)
 - [Validators Guide](../../guides/validators.md)
+
+Generated Python and package metadata preserve quotes, backslashes and newlines in descriptions and author names. Component names must be importable identifiers and cannot be Python keywords. Plugin packages require Python 3.11 or newer; lower or malformed `--python` versions fail before any files are emitted. The generated tests and examples use the current Core contracts.
+
+Scaffolds reject unknown severity values, nonfinite/reversed range bounds, invalid or unsupported regexes, malformed column lists and options used with incompatible templates before emitting files. Reporter extensions must be filename suffixes and content types cannot contain control characters. Generated reporters honor `include_passed=True` and `max_issues=0`.

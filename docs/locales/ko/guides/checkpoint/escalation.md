@@ -753,3 +753,21 @@ escalation:
         cancel() from any state → CANCELLED
         error from any state → FAILED
 ```
+
+## 영구 로컬 실행
+
+애플리케이션·운영자 코드에서 `SchedulerConfig(journal_path="/private/state/incidents.sqlite")`와
+`EscalationEngineConfig(store_type="sqlite", store_config={"database": "/private/state/incidents.sqlite"}, scheduler_config=...)`를
+지정합니다. 둘은 같은 파일 기반 SQLite DB여야 하며 상위 폴더·알림 handler는 운영자가
+관리합니다. 영구 모드는 handler 호출 전에 사건 상태·알림 의도를 저장하고, 완료와 다음
+예약을 함께 커밋합니다. 중단·실패한 전송은 unknown으로 남아 후속 escalation을 차단하며
+자동 재전송하지 않습니다. 대기 예약은 프로세스 재시작 후 복구되며 네이티브 정책 변경 시
+복구 작업을 격리합니다.
+
+`recovery_status(limit=100, offset=0)`은 제한된 실행 ID·상태를 반환합니다. 정지 상태의
+`await recovery_resolve(identity, "completed" | "cancelled")`는 운영자가 확인한 결과만
+기록하며 알림을 보내지 않습니다. 완료 확인은 동일한 정책의 다음 수준을 예약하고 폐기는
+다음 예약을 만들지 않습니다. `await recovery_forget(identities)`는 명시한 완료·취소
+기록만 삭제하며 unknown 증거는 보호합니다. `stop()`은 재시작을 위한 단독 소유권을
+유지하고 `await close()`는 실행 종료 후 소유권·자원을 해제합니다. 외부의 정확히 한 번
+전달이나 OS 서비스 자동 재시작을 보장하지 않습니다.

@@ -98,34 +98,40 @@ def list_plugins(
         if name not in manager.registry:
             try:
                 temp = cls()
-                plugins_data.append({
-                    "name": name,
-                    "version": temp.version,
-                    "type": temp.plugin_type.value,
-                    "state": "discovered",
-                    "description": temp.info.description[:50] if temp.info.description else "",
-                    "author": temp.info.author,
-                })
+                plugins_data.append(
+                    {
+                        "name": name,
+                        "version": temp.version,
+                        "type": temp.plugin_type.value,
+                        "state": "discovered",
+                        "description": temp.info.description[:50] if temp.info.description else "",
+                        "author": temp.info.author,
+                    }
+                )
             except Exception:
-                plugins_data.append({
-                    "name": name,
-                    "version": "?",
-                    "type": "?",
-                    "state": "discovered",
-                    "description": "",
-                    "author": "",
-                })
+                plugins_data.append(
+                    {
+                        "name": name,
+                        "version": "?",
+                        "type": "?",
+                        "state": "discovered",
+                        "description": "",
+                        "author": "",
+                    }
+                )
 
     # Add loaded plugins
     for plugin in manager.registry:
-        plugins_data.append({
-            "name": plugin.name,
-            "version": plugin.version,
-            "type": plugin.plugin_type.value,
-            "state": plugin.state.value,
-            "description": plugin.info.description[:50] if plugin.info.description else "",
-            "author": plugin.info.author,
-        })
+        plugins_data.append(
+            {
+                "name": plugin.name,
+                "version": plugin.version,
+                "type": plugin.plugin_type.value,
+                "state": plugin.state.value,
+                "description": plugin.info.description[:50] if plugin.info.description else "",
+                "author": plugin.info.author,
+            }
+        )
 
     # Apply filters
     if plugin_type:
@@ -245,20 +251,20 @@ def plugin_info(
         content = f"""[bold cyan]Name:[/] {info.name}
 [bold cyan]Version:[/] {info.version}
 [bold cyan]Type:[/] {info.plugin_type.value}
-[bold cyan]Description:[/] {info.description or 'N/A'}
-[bold cyan]Author:[/] {info.author or 'N/A'}
-[bold cyan]Homepage:[/] {info.homepage or 'N/A'}
-[bold cyan]License:[/] {info.license or 'N/A'}
+[bold cyan]Description:[/] {info.description or "N/A"}
+[bold cyan]Author:[/] {info.author or "N/A"}
+[bold cyan]Homepage:[/] {info.homepage or "N/A"}
+[bold cyan]License:[/] {info.license or "N/A"}
 
 [bold yellow]Compatibility:[/]
-  Min Truthound: {info.min_truthound_version or 'Any'}
-  Max Truthound: {info.max_truthound_version or 'Any'}
+  Min Truthound: {info.min_truthound_version or "Any"}
+  Max Truthound: {info.max_truthound_version or "Any"}
 
 [bold yellow]Dependencies:[/]
-  Plugins: {', '.join(info.dependencies) or 'None'}
-  Python: {', '.join(info.python_dependencies) or 'None'}
+  Plugins: {", ".join(info.dependencies) or "None"}
+  Python: {", ".join(info.python_dependencies) or "None"}
 
-[bold yellow]Tags:[/] {', '.join(info.tags) or 'None'}"""
+[bold yellow]Tags:[/] {", ".join(info.tags) or "None"}"""
 
         console.print(Panel(content, title=f"Plugin: {info.name}"))
     else:
@@ -370,9 +376,10 @@ def create_plugin(
 ) -> None:
     """Create a new plugin from template."""
     # Validate plugin name
+    import keyword
     import re
 
-    if not re.match(r"^[a-z][a-z0-9_-]*$", name):
+    if not re.fullmatch(r"[a-z][a-z0-9_-]*", name) or keyword.iskeyword(name.replace("-", "_")):
         typer.echo(
             "Invalid plugin name. Must start with lowercase letter and "
             "contain only lowercase letters, numbers, hyphens, and underscores.",
@@ -382,12 +389,12 @@ def create_plugin(
 
     # Create plugin directory
     plugin_dir = output_dir / f"truthound-plugin-{name}"
-    plugin_dir.mkdir(parents=True, exist_ok=True)
+    from truthound.cli_modules.scaffolding.base import ScaffoldResult
+
+    generated = ScaffoldResult(success=True)
 
     # Create package directory
     pkg_name = name.replace("-", "_")
-    pkg_dir = plugin_dir / pkg_name
-    pkg_dir.mkdir(exist_ok=True)
 
     # Create __init__.py
     init_content = f'''"""Truthound plugin: {name}"""
@@ -396,15 +403,15 @@ from {pkg_name}.plugin import {_to_class_name(name)}Plugin
 
 __all__ = ["{_to_class_name(name)}Plugin"]
 '''
-    (pkg_dir / "__init__.py").write_text(init_content)
+    generated.add_file(f"{pkg_name}/__init__.py", init_content)
 
     # Create plugin.py
     plugin_content = _generate_plugin_template(name, plugin_type, author)
-    (pkg_dir / "plugin.py").write_text(plugin_content)
+    generated.add_file(f"{pkg_name}/plugin.py", plugin_content)
 
     # Create pyproject.toml
     pyproject_content = _generate_pyproject(name, plugin_type, author)
-    (plugin_dir / "pyproject.toml").write_text(pyproject_content)
+    generated.add_file("pyproject.toml", pyproject_content)
 
     # Create README.md
     readme_content = f"""# Truthound Plugin: {name}
@@ -429,14 +436,25 @@ manager.discover_plugins()
 manager.load_plugin("{name}")
 ```
 """
-    (plugin_dir / "README.md").write_text(readme_content)
+    generated.add_file("README.md", readme_content)
+    if any(
+        (plugin_dir / item.path).exists() or (plugin_dir / item.path).is_symlink()
+        for item in generated.files
+    ):
+        typer.echo("Refusing to overwrite existing plugin files.", err=True)
+        raise typer.Exit(1)
+    try:
+        generated.write_files(plugin_dir)
+    except (ValueError, OSError) as error:
+        typer.echo(f"Cannot write plugin template: {error}", err=True)
+        raise typer.Exit(1) from error
 
     typer.echo(f"Created plugin template at: {plugin_dir}")
     typer.echo("\nNext steps:")
     typer.echo(f"  1. cd {plugin_dir}")
     typer.echo(f"  2. Edit {pkg_name}/plugin.py to implement your plugin")
     typer.echo("  3. pip install -e .")
-    typer.echo("  4. truthound plugin list")
+    typer.echo("  4. truthound plugins list")
 
 
 def _to_class_name(name: str) -> str:
@@ -513,62 +531,23 @@ class {class_name}Plugin(ValidatorPlugin):
 '''
 
     elif plugin_type == "reporter":
-        return f'''"""Plugin implementation for {name}."""
+        from truthound.cli_modules.scaffolding import PluginScaffold, ScaffoldConfig
 
-from truthound.plugins import (
-    ReporterPlugin,
-    PluginInfo,
-    PluginType,
-)
-from truthound.reporters.base import ValidationReporter, ReporterConfig
-from truthound.core import ValidationResult
-
-
-class {class_name}Reporter(ValidationReporter[ReporterConfig]):
-    """Custom reporter implementation."""
-
-    name = "{name}"
-    file_extension = ".txt"
-    content_type = "text/plain"
-
-    def render(self, data: ValidationResult) -> str:
-        """Render validation result to string.
-
-        Args:
-            data: Validation result to render.
-
-        Returns:
-            Rendered string.
-        """
-        # TODO: Implement your rendering logic here
-        lines = [
-            f"Validation Report: {{data.source}}",
-            f"Total Issues: {{len(data.issues)}}",
-            "",
-        ]
-
-        for issue in data.issues:
-            lines.append(f"- {{issue.column}}: {{issue.issue_type}} ({{issue.severity.value}})")
-
-        return "\\n".join(lines)
-
-
-class {class_name}Plugin(ReporterPlugin):
-    """Plugin that provides custom reporters."""
-
-    def _get_plugin_name(self) -> str:
-        return "{name}"
-
-    def _get_plugin_version(self) -> str:
-        return "0.1.0"
-
-    def _get_description(self) -> str:
-        return "Custom reporter for Truthound"
-
-    def get_reporters(self) -> dict[str, type]:
-        """Return reporter classes to register."""
-        return {{"{name}": {class_name}Reporter}}
-'''
+        normalized = name.replace("-", "_")
+        generated = PluginScaffold().generate(
+            ScaffoldConfig(
+                name=normalized,
+                template_variant="reporter",
+                author=author or "",
+                include_tests=False,
+            )
+        )
+        if not generated.success:
+            raise ValueError("Reporter plugin template could not be generated")
+        content = next(
+            item.content for item in generated.files if item.path == Path(normalized) / "plugin.py"
+        )
+        return content.replace(json.dumps(normalized), json.dumps(name))
 
     elif plugin_type == "hook":
         return f'''"""Plugin implementation for {name}."""
@@ -634,7 +613,7 @@ class {class_name}Plugin(Plugin[PluginConfig]):
             version="0.1.0",
             plugin_type=PluginType.CUSTOM,
             description="Custom plugin for Truthound",
-            author="{author or ''}",
+            author={json.dumps(author or "")},
         )
 
     def setup(self) -> None:
@@ -668,9 +647,9 @@ description = "A {plugin_type} plugin for Truthound"
 readme = "README.md"
 license = {{text = "MIT"}}
 authors = [
-    {{name = "{author or 'Your Name'}", email = "your@email.com"}}
+    {{name = {json.dumps(author or "Your Name")}, email = "your@email.com"}}
 ]
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "truthound>={DEFAULT_TRUTHOUND_PLUGIN_MIN_VERSION}",
 ]
@@ -679,7 +658,6 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
 ]

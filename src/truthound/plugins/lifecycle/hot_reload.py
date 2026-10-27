@@ -9,17 +9,17 @@ This module provides hot reloading of plugins without restart:
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import inspect
 import logging
-import os
+import math
+from collections.abc import Callable  # noqa: TC003 - public annotation introspection
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from enum import Enum, auto
 from pathlib import Path
-from typing import Any, Callable, TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from truthound.plugins.base import Plugin
-    from truthound.plugins.lifecycle.manager import LifecycleManager
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -27,9 +27,9 @@ logger = logging.getLogger(__name__)
 class ReloadStrategy(Enum):
     """Strategy for reloading plugins."""
 
-    GRACEFUL = auto()   # Wait for in-flight operations to complete
+    GRACEFUL = auto()  # Wait for in-flight operations to complete
     IMMEDIATE = auto()  # Stop immediately and reload
-    ROLLING = auto()    # Reload incrementally (for multi-instance)
+    ROLLING = auto()  # Reload incrementally (for multi-instance)
 
 
 @dataclass
@@ -51,7 +51,7 @@ class ReloadResult:
     duration_ms: float = 0.0
     error: str | None = None
     rolled_back: bool = False
-    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
 
 
 @dataclass
@@ -69,334 +69,258 @@ class WatchHandle:
 
 
 class FileWatcher:
-    """Watches files for changes.
+    """Owned asynchronous file polling with awaited callbacks and visible errors."""
 
-    Uses polling for cross-platform compatibility.
-    On Linux, could be extended to use inotify for better performance.
-    """
-
-    def __init__(
-        self,
-        poll_interval: float = 1.0,
-    ) -> None:
-        """Initialize file watcher.
-
-        Args:
-            poll_interval: Seconds between polls
-        """
+    def __init__(self, poll_interval: float = 1.0) -> None:
+        if (
+            isinstance(poll_interval, bool)
+            or not math.isfinite(poll_interval)
+            or poll_interval <= 0
+        ):
+            raise ValueError("poll_interval must be finite and positive")
         self._poll_interval = poll_interval
         self._watches: dict[str, WatchHandle] = {}
-        self._file_mtimes: dict[Path, float] = {}
+        self._retired: list[asyncio.Task] = []
+
+    def _snapshot(self, path: Path, recursive: bool) -> dict[Path, bytes]:
+        if path.is_dir():
+            paths = sorted(path.rglob("*.py") if recursive else path.glob("*.py"))
+        else:
+            paths = [path]
+        snapshot = {}
+        for selected in paths:
+            try:
+                with selected.open("rb") as stream:
+                    snapshot[selected] = hashlib.file_digest(stream, "sha256").digest()
+            except FileNotFoundError:
+                continue
+        return snapshot
 
     async def watch(
-        self,
-        path: Path,
-        callback: Callable[[Path], None],
-        recursive: bool = True,
+        self, path: Path, callback: Callable[[Path], Any], recursive: bool = True
     ) -> WatchHandle:
-        """Start watching a path for changes.
-
-        Args:
-            path: File or directory to watch
-            callback: Called when changes detected
-            recursive: Watch subdirectories
-
-        Returns:
-            WatchHandle for cancellation
-        """
+        path = Path(path).absolute()
         plugin_id = str(path)
-
-        # Get initial mtimes
-        self._update_mtimes(path, recursive)
-
-        # Create watch task
-        task = asyncio.create_task(
-            self._watch_loop(path, callback, recursive)
-        )
-
-        handle = WatchHandle(
-            plugin_id=plugin_id,
-            path=path,
-            task=task,
-        )
+        if plugin_id in self._watches:
+            raise ValueError("Path is already watched")
+        initial = self._snapshot(path, recursive)
+        task = asyncio.create_task(self._watch_loop(path, callback, recursive, initial))
+        handle = WatchHandle(plugin_id=plugin_id, path=path, task=task)
         self._watches[plugin_id] = handle
-
-        logger.debug(f"Started watching: {path}")
         return handle
 
-    async def _watch_loop(
-        self,
-        path: Path,
-        callback: Callable[[Path], None],
-        recursive: bool,
-    ) -> None:
-        """Main watch loop."""
-        try:
-            while True:
-                await asyncio.sleep(self._poll_interval)
-
-                # Check for changes
-                changed = self._check_changes(path, recursive)
-                if changed:
-                    logger.info(f"Changes detected in: {changed}")
-                    callback(changed[0])
-
-        except asyncio.CancelledError:
-            logger.debug(f"Watch cancelled for: {path}")
-
-    def _update_mtimes(self, path: Path, recursive: bool) -> None:
-        """Update stored modification times."""
-        if path.is_file():
-            self._file_mtimes[path] = path.stat().st_mtime
-        elif path.is_dir():
-            for py_file in self._iter_files(path, recursive):
-                self._file_mtimes[py_file] = py_file.stat().st_mtime
-
-    def _check_changes(self, path: Path, recursive: bool) -> list[Path]:
-        """Check for file changes."""
-        changed: list[Path] = []
-
-        if path.is_file():
-            if self._file_changed(path):
-                changed.append(path)
-        elif path.is_dir():
-            for py_file in self._iter_files(path, recursive):
-                if self._file_changed(py_file):
-                    changed.append(py_file)
-
-        return changed
-
-    def _file_changed(self, path: Path) -> bool:
-        """Check if a single file changed."""
-        if not path.exists():
-            return path in self._file_mtimes
-
-        try:
-            current_mtime = path.stat().st_mtime
-            stored_mtime = self._file_mtimes.get(path, 0)
-
-            if current_mtime != stored_mtime:
-                self._file_mtimes[path] = current_mtime
-                return True
-        except OSError:
-            pass
-
-        return False
-
-    def _iter_files(self, path: Path, recursive: bool):
-        """Iterate over Python files in a directory."""
-        if recursive:
-            yield from path.rglob("*.py")
-        else:
-            yield from path.glob("*.py")
+    async def _watch_loop(self, path, callback, recursive, previous):
+        while True:
+            await asyncio.sleep(self._poll_interval)
+            current = self._snapshot(path, recursive)
+            changed = sorted(
+                key
+                for key in previous.keys() | current.keys()
+                if previous.get(key) != current.get(key)
+            )
+            previous = current
+            for selected in changed:
+                result = callback(selected)
+                if inspect.isawaitable(result):
+                    await result
 
     def stop(self, plugin_id: str) -> bool:
-        """Stop watching a path.
-
-        Args:
-            plugin_id: Watch handle ID
-
-        Returns:
-            True if stopped, False if not found
-        """
         handle = self._watches.pop(plugin_id, None)
-        if handle:
-            handle.cancel()
-            return True
-        return False
+        if handle is None:
+            return False
+        handle.cancel()
+        if handle.task is not None:
+            self._retired.append(handle.task)
+        return True
 
     def stop_all(self) -> None:
-        """Stop all watchers."""
-        for handle in self._watches.values():
-            handle.cancel()
-        self._watches.clear()
-        self._file_mtimes.clear()
+        for plugin_id in list(self._watches):
+            self.stop(plugin_id)
+
+    async def aclose(self) -> None:
+        """Cancel and join every owned task, reporting callback/read failures."""
+        self.stop_all()
+        tasks, self._retired = self._retired, []
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        errors = [result for result in results if isinstance(result, Exception)]
+        if errors:
+            raise ExceptionGroup("File watcher failed", errors)
 
 
 class HotReloadManager:
-    """Manages hot reloading of plugins.
+    """Reload through the shared PluginManager with observed cleanup and rollback.
 
-    Provides safe reloading with rollback on failure.
-
-    Example:
-        >>> manager = HotReloadManager(lifecycle_manager)
-        >>> result = await manager.reload("my-plugin")
-        >>> if not result.success:
-        ...     print(f"Reload failed: {result.error}")
+    Operator factories return a fresh plugin class. Imports and callback effects
+    remain trusted; restoration creates a fresh old-class instance, not a rollback
+    of external side effects or arbitrary in-memory state.
     """
 
     def __init__(
         self,
-        lifecycle_manager: "LifecycleManager",
-        plugin_loader: Callable[[str], "Plugin"] | None = None,
-        default_strategy: ReloadStrategy = ReloadStrategy.GRACEFUL,
-    ) -> None:
-        """Initialize hot reload manager.
+        lifecycle_manager,
+        plugin_loader=None,
+        default_strategy=ReloadStrategy.GRACEFUL,
+        *,
+        timeout=30.0,
+    ):
+        from truthound.plugins.manager import PluginManager
 
-        Args:
-            lifecycle_manager: Lifecycle manager instance
-            plugin_loader: Function to load plugins
-            default_strategy: Default reload strategy
-        """
-        self._lifecycle = lifecycle_manager
+        if not isinstance(lifecycle_manager, PluginManager):
+            raise TypeError("Hot reload requires the shared PluginManager")
+        if isinstance(timeout, bool) or not math.isfinite(timeout) or timeout <= 0:
+            raise ValueError("timeout must be finite and positive")
+        self._manager = lifecycle_manager
         self._loader = plugin_loader
         self._default_strategy = default_strategy
+        self._timeout = timeout
+        self._lock = asyncio.Lock()
+        self._condition = asyncio.Condition()
+        self._active = {}
+        self._reloading = set()
         self._watcher = FileWatcher()
-        self._plugin_states: dict[str, Any] = {}  # For rollback
-        self._watches: dict[str, WatchHandle] = {}
+        self._watches = {}
+        self._closed = False
+        self.last_results = {}
 
-    async def reload(
-        self,
-        plugin_id: str,
-        strategy: ReloadStrategy | None = None,
-    ) -> ReloadResult:
-        """Reload a plugin.
+    @asynccontextmanager
+    async def operation(self, plugin_id):
+        """Track cooperative callers so graceful reload can drain their work."""
+        async with self._condition:
+            if self._closed or plugin_id in self._reloading:
+                raise RuntimeError("Plugin reload is pending or owner is closed")
+            self._active[plugin_id] = self._active.get(plugin_id, 0) + 1
+        try:
+            yield self._manager.get_plugin(plugin_id)
+        finally:
+            async with self._condition:
+                self._active[plugin_id] -= 1
+                self._condition.notify_all()
 
-        Args:
-            plugin_id: Plugin to reload
-            strategy: Reload strategy (uses default if None)
+    def _guard(self):
+        guard = getattr(self._manager, "_execution_guard", None)
+        if guard is not None:
+            guard()
 
-        Returns:
-            ReloadResult with operation details
-        """
+    async def reload(self, plugin_id, strategy=None):
+        from truthound.plugins.base import Plugin, PluginState
+
         strategy = strategy or self._default_strategy
-        start_time = asyncio.get_event_loop().time()
+        started = asyncio.get_running_loop().time()
+        rolled_back = False
+        error_type = None
+        async with self._lock:
+            if self._closed:
+                raise RuntimeError("Hot reload owner is closed")
+            self._reloading.add(plugin_id)
+            try:
+                if strategy not in (ReloadStrategy.GRACEFUL, ReloadStrategy.IMMEDIATE):
+                    raise ValueError(
+                        "A single manager does not provide rolling multi-instance reload"
+                    )
+                if self._loader is None:
+                    raise ValueError("An operator plugin class loader is required")
+                if strategy == ReloadStrategy.GRACEFUL:
+                    async with self._condition:
+                        await asyncio.wait_for(
+                            self._condition.wait_for(lambda: self._active.get(plugin_id, 0) == 0),
+                            self._timeout,
+                        )
+                self._guard()
+                candidate = self._loader(plugin_id)
+                if inspect.isawaitable(candidate):
+                    candidate = await asyncio.wait_for(candidate, self._timeout)
+                if not isinstance(candidate, type) or not issubclass(candidate, Plugin):
+                    raise TypeError("Plugin loader must return a Plugin class")
+                with self._manager._lock:
+                    previous = self._manager.get_plugin(plugin_id)
+                    old_class, config = type(previous), previous.config
+                    active = previous.state == PluginState.ACTIVE
+                    # Signed bindings require an explicit operator renewal workflow.
+                    if plugin_id in getattr(self._manager, "_signed_plugins", {}):
+                        raise ValueError("Unload and renew the signed class binding explicitly")
+                    self._guard()
+                    receipt = self._manager.unload_plugin(plugin_id, detailed=True)
+                    if not receipt.success:
+                        raise RuntimeError(
+                            "Previous plugin cleanup failed; replacement not started"
+                        )
+                    self._manager._discovered_classes[plugin_id] = candidate
+                    try:
+                        self._guard()
+                        loaded = self._manager.load_plugin(
+                            plugin_id, config=config, activate=active
+                        )
+                        if loaded.name != plugin_id:
+                            receipt = self._manager.unload_plugin(loaded.name, detailed=True)
+                            if not receipt.success:
+                                raise ExceptionGroup(
+                                    "Candidate identity cleanup failed", [RuntimeError("cleanup")]
+                                )
+                            raise ValueError("Replacement plugin identity changed")
+                    except Exception as error:
+                        clean = not isinstance(error.__cause__, ExceptionGroup) and not isinstance(
+                            error, ExceptionGroup
+                        )
+                        if self._manager.is_plugin_loaded(plugin_id):
+                            clean = (
+                                self._manager.unload_plugin(plugin_id, detailed=True).success
+                                and clean
+                            )
+                        self._manager._discovered_classes[plugin_id] = old_class
+                        if clean:
+                            try:
+                                self._guard()
+                                self._manager.load_plugin(plugin_id, config=config, activate=active)
+                                rolled_back = True
+                            except Exception:
+                                rolled_back = False
+                        raise error
+            except Exception as error:
+                error_type = type(error).__name__
+            finally:
+                self._reloading.discard(plugin_id)
+        result = ReloadResult(
+            success=error_type is None,
+            plugin_id=plugin_id,
+            strategy=strategy,
+            duration_ms=(asyncio.get_running_loop().time() - started) * 1000,
+            error=error_type,
+            rolled_back=rolled_back,
+        )
+        self.last_results[plugin_id] = result
+        return result
 
-        try:
-            if strategy == ReloadStrategy.GRACEFUL:
-                result = await self._reload_graceful(plugin_id)
-            elif strategy == ReloadStrategy.IMMEDIATE:
-                result = await self._reload_immediate(plugin_id)
-            elif strategy == ReloadStrategy.ROLLING:
-                result = await self._reload_rolling(plugin_id)
-            else:
-                raise ValueError(f"Unknown strategy: {strategy}")
+    async def watch(self, plugin_id, plugin_path, auto_reload=True):
+        if self._closed:
+            raise RuntimeError("Hot reload owner is closed")
+        if plugin_id in self._watches:
+            raise ValueError("Plugin is already watched")
 
-            duration = (asyncio.get_event_loop().time() - start_time) * 1000
-
-            return ReloadResult(
-                success=True,
-                plugin_id=plugin_id,
-                strategy=strategy,
-                duration_ms=duration,
-            )
-
-        except Exception as e:
-            duration = (asyncio.get_event_loop().time() - start_time) * 1000
-
-            # Attempt rollback
-            rolled_back = await self._rollback(plugin_id)
-
-            return ReloadResult(
-                success=False,
-                plugin_id=plugin_id,
-                strategy=strategy,
-                duration_ms=duration,
-                error=str(e),
-                rolled_back=rolled_back,
-            )
-
-    async def _reload_graceful(self, plugin_id: str) -> None:
-        """Graceful reload - wait for operations to complete."""
-        # Save state for rollback
-        await self._save_state(plugin_id)
-
-        # Wait for in-flight operations (implementation-specific)
-        await asyncio.sleep(0.1)
-
-        # Deactivate
-        logger.info(f"Gracefully reloading plugin: {plugin_id}")
-
-        # Reload module (simplified - full implementation would
-        # use importlib.reload)
-        if self._loader:
-            self._loader(plugin_id)
-
-    async def _reload_immediate(self, plugin_id: str) -> None:
-        """Immediate reload - stop and reload now."""
-        await self._save_state(plugin_id)
-        logger.info(f"Immediately reloading plugin: {plugin_id}")
-
-        if self._loader:
-            self._loader(plugin_id)
-
-    async def _reload_rolling(self, plugin_id: str) -> None:
-        """Rolling reload - for multi-instance scenarios."""
-        # In a multi-instance setup, this would reload one instance at a time
-        await self._reload_graceful(plugin_id)
-
-    async def _save_state(self, plugin_id: str) -> None:
-        """Save plugin state for rollback."""
-        # Store any state that needs to be restored on rollback
-        self._plugin_states[plugin_id] = {
-            "lifecycle_state": self._lifecycle.get_state(plugin_id),
-            "saved_at": datetime.now(timezone.utc),
-        }
-
-    async def _rollback(self, plugin_id: str) -> bool:
-        """Attempt to rollback a failed reload.
-
-        Args:
-            plugin_id: Plugin to rollback
-
-        Returns:
-            True if rollback succeeded
-        """
-        saved_state = self._plugin_states.pop(plugin_id, None)
-        if not saved_state:
-            return False
-
-        try:
-            logger.info(f"Rolling back plugin: {plugin_id}")
-            # Restore previous state
-            # Full implementation would restore the previous plugin code
-            return True
-        except Exception as e:
-            logger.error(f"Rollback failed for {plugin_id}: {e}")
-            return False
-
-    async def watch(
-        self,
-        plugin_id: str,
-        plugin_path: Path,
-        auto_reload: bool = True,
-    ) -> WatchHandle:
-        """Start watching a plugin for changes.
-
-        Args:
-            plugin_id: Plugin identifier
-            plugin_path: Path to watch
-            auto_reload: Automatically reload on changes
-
-        Returns:
-            WatchHandle for cancellation
-        """
-        def on_change(path: Path) -> None:
+        async def on_change(path):
             if auto_reload:
-                asyncio.create_task(self.reload(plugin_id))
+                result = await self.reload(plugin_id)
+                if not result.success:
+                    raise RuntimeError("Automatic plugin reload failed")
 
         handle = await self._watcher.watch(plugin_path, on_change)
         self._watches[plugin_id] = handle
         return handle
 
-    def stop_watch(self, plugin_id: str) -> bool:
-        """Stop watching a plugin.
-
-        Args:
-            plugin_id: Plugin to stop watching
-
-        Returns:
-            True if stopped
-        """
+    def stop_watch(self, plugin_id):
         handle = self._watches.pop(plugin_id, None)
-        if handle:
-            handle.cancel()
-            return True
-        return self._watcher.stop(plugin_id)
+        return self._watcher.stop(handle.plugin_id) if handle else False
 
-    def stop_all_watches(self) -> None:
-        """Stop all file watches."""
-        for handle in self._watches.values():
-            handle.cancel()
+    def stop_all_watches(self):
         self._watches.clear()
         self._watcher.stop_all()
+
+    async def aclose(self):
+        self._closed = True
+        self.stop_all_watches()
+        await self._watcher.aclose()
+        async with self._lock:
+            pass
+        async with self._condition:
+            await asyncio.wait_for(
+                self._condition.wait_for(lambda: not any(self._active.values())), self._timeout
+            )

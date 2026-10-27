@@ -7,6 +7,7 @@ backpressure strategies used in streaming stores.
 from __future__ import annotations
 
 import asyncio
+import math
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -58,6 +59,28 @@ class BackpressureConfig:
 
     def validate(self) -> None:
         """Validate configuration values."""
+        if type(self.enabled) is not bool:
+            raise ValueError("enabled must be boolean")
+        for name in ("queue_depth_threshold", "adaptive_window_size"):
+            value = getattr(self, name)
+            if type(value) is not int or value < 1:
+                raise ValueError(f"{name} must be a positive integer")
+        for name in (
+            "memory_threshold_percent",
+            "latency_threshold_ms",
+            "min_pause_ms",
+            "max_pause_ms",
+            "base_rate",
+            "min_rate",
+            "recovery_rate",
+            "sampling_interval_ms",
+            "pressure_decay_factor",
+        ):
+            value = getattr(self, name)
+            if type(value) not in {int, float} or not math.isfinite(value):
+                raise ValueError(f"{name} must be finite numeric data")
+        if self.sampling_interval_ms <= 0:
+            raise ValueError("sampling_interval_ms must be positive")
         if not 0 <= self.memory_threshold_percent <= 100:
             raise ValueError("memory_threshold_percent must be between 0 and 100")
         if self.queue_depth_threshold <= 0:
@@ -282,6 +305,16 @@ class BaseBackpressure(ABC):
         self._state = BackpressureState(current_rate=self._config.base_rate)
         self._lock = asyncio.Lock()
         self._semaphore: asyncio.Semaphore | None = None
+        self._execution_guard = None
+
+    def set_execution_guard(self, guard):
+        if guard is not None and not callable(guard):
+            raise TypeError("Execution guard must be callable")
+        self._execution_guard = guard
+
+    def _guard_execution(self):
+        if self._execution_guard is not None:
+            self._execution_guard()
 
     @property
     def config(self) -> BackpressureConfig:
@@ -305,6 +338,17 @@ class BaseBackpressure(ABC):
         latency_ms: float | None = None,
     ) -> None:
         """Update metrics with new values."""
+        self._guard_execution()
+        # Validate the entire observation before changing even the first metric.
+        for name, value in (("memory_percent", memory_percent), ("latency_ms", latency_ms)):
+            if value is not None and (
+                type(value) not in {int, float} or not math.isfinite(value) or value < 0
+            ):
+                raise ValueError(f"Invalid {name}")
+        if memory_percent is not None and memory_percent > 100:
+            raise ValueError("memory_percent must be between 0 and 100")
+        if queue_depth is not None and (type(queue_depth) is not int or queue_depth < 0):
+            raise ValueError("queue_depth must be a non-negative integer")
         if memory_percent is not None:
             self._metrics.update_memory(memory_percent)
         if queue_depth is not None:
@@ -341,19 +385,25 @@ class BaseBackpressure(ABC):
         Returns:
             True if acquired, False if should drop.
         """
+        self._guard_execution()
         if not self._config.enabled:
             return True
 
         async with self._lock:
+            self._guard_execution()
             if self.should_pause():
                 pause_duration = self.calculate_pause_duration()
                 self._state.set_paused(True)
                 self._metrics.record_pause(pause_duration * 1000)
-                await asyncio.sleep(pause_duration)
-                self._state.set_paused(False)
+                try:
+                    await asyncio.sleep(pause_duration)
+                finally:
+                    self._state.set_paused(False)
+                self._guard_execution()
 
             # Update rate
             new_rate = self.calculate_rate()
+            self._guard_execution()
             self._state.adjust_rate(new_rate)
 
             # Check if we should throttle
@@ -365,11 +415,13 @@ class BaseBackpressure(ABC):
 
     def release(self) -> None:
         """Release after operation completes."""
+        self._guard_execution()
         # Decay pressure over time
         if self._state.consecutive_low_pressure > 5:
             self._state.update_pressure(PressureLevel.NONE)
 
     def reset(self) -> None:
         """Reset to initial state."""
+        self._guard_execution()
         self._metrics = BackpressureMetrics()
         self._state = BackpressureState(current_rate=self._config.base_rate)

@@ -19,6 +19,76 @@ def _tracker(graph):
     return tracker
 
 
+def apply_tracking_event(tracker, event):
+    values = event.model_dump(exclude={"action"}, exclude_none=True)
+    values.update(values.pop("properties", {}))
+    if "schema_spec" in values:
+        values["schema"] = values.pop("schema_spec")
+    if event.action == "source":
+        tracker.track_source(**values)
+    elif event.action == "transformation":
+        if values.get("row_mapping") is not None:
+            values["row_mapping"] = {
+                item["row"]: [(source["node"], source["row"]) for source in item["sources"]]
+                for item in values["row_mapping"]
+            }
+        tracker.track_transformation(**values)
+    elif event.action == "validation":
+        tracker.track_validation(**values)
+    elif event.action == "output":
+        tracker.track_output(**values)
+    elif event.action == "dependency":
+        from truthound.lineage import EdgeType
+
+        tracker.add_dependency(event.source_id, event.target_id, EdgeType(event.edge_type))
+
+
+def render_media_type(arguments):
+    formats = {
+        "html": "text/html",
+        "markdown": "text/markdown",
+        "svg": "image/svg+xml",
+        "png": "image/png",
+    }
+    return formats.get(
+        arguments.output_format,
+        "application/json" if arguments.renderer in {"d3", "cytoscape"} else "text/plain",
+    )
+
+
+def render_artifact(graph, arguments):
+    definitions = contracts()["lineage"]
+    renderer = _known_type(definitions["renderers"][arguments.renderer])()
+    config = convert(definitions["render_config"], arguments.settings, build=True)
+    media_type = "application/json" if arguments.renderer in {"d3", "cytoscape"} else "text/plain"
+    if arguments.output_format == "html":
+        text = renderer.render_html(graph, config=config)
+        media_type = "text/html"
+    elif arguments.output_format == "markdown":
+        text = renderer.render_markdown(
+            graph,
+            config=config,
+            title=arguments.title if arguments.title is not None else "Lineage Graph",
+        )
+        media_type = "text/markdown"
+    elif arguments.output_format in {"svg", "png"}:
+        render = renderer.render_svg if arguments.output_format == "svg" else renderer.render_png
+        text = render(graph, config=config)
+        media_type = "image/svg+xml" if arguments.output_format == "svg" else "image/png"
+    elif arguments.root_node_id is None:
+        text = renderer.render(graph, config=config)
+    else:
+        graph.get_node(arguments.root_node_id)
+        text = renderer.render_subgraph(
+            graph,
+            arguments.root_node_id,
+            direction=arguments.direction,
+            max_depth=config.max_depth,
+            config=config,
+        )
+    return text if isinstance(text, bytes) else text.encode("utf-8"), media_type
+
+
 def execute(request, arguments):
     from truthound.lineage import ImpactLevel, NodeType
 
@@ -62,23 +132,7 @@ def execute(request, arguments):
             graph.clear()
     if operation == "lineage_track":
         tracker = _tracker(graph)
-        event = arguments.event
-        values = event.model_dump(exclude={"action"}, exclude_none=True)
-        values.update(values.pop("properties", {}))
-        if "schema_spec" in values:
-            values["schema"] = values.pop("schema_spec")
-        if event.action == "source":
-            tracker.track_source(**values)
-        elif event.action == "transformation":
-            tracker.track_transformation(**values)
-        elif event.action == "validation":
-            tracker.track_validation(**values)
-        elif event.action == "output":
-            tracker.track_output(**values)
-        elif event.action == "dependency":
-            from truthound.lineage import EdgeType
-
-            tracker.add_dependency(event.source_id, event.target_id, EdgeType(event.edge_type))
+        apply_tracking_event(tracker, arguments.event)
         graph = tracker.graph
     if operation == "lineage_export":
         with BoundedWriter(Path(request["output_path"]), request["output_budget"]) as sink:
@@ -90,26 +144,12 @@ def execute(request, arguments):
             "column_count": None,
         }
     if operation == "lineage_render":
-        renderer = _known_type(definitions["renderers"][arguments.renderer])()
-        config = convert(definitions["render_config"], arguments.settings, build=True)
-        if arguments.root_node_id is None:
-            text = renderer.render(graph, config=config)
-        else:
-            graph.get_node(arguments.root_node_id)
-            text = renderer.render_subgraph(
-                graph,
-                arguments.root_node_id,
-                direction=arguments.direction,
-                max_depth=config.max_depth,
-                config=config,
-            )
+        content, media_type = render_artifact(graph, arguments)
         with BoundedWriter(Path(request["output_path"]), request["output_budget"]) as sink:
-            sink.write(text.encode("utf-8"))
+            sink.write(content)
         return {
             "resource_created": True,
-            "media_type": "application/json"
-            if arguments.renderer in {"d3", "cytoscape"}
-            else "text/plain",
+            "media_type": media_type,
             "row_count": None,
             "column_count": None,
         }

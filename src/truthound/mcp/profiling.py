@@ -29,6 +29,16 @@ class SchemaCompatibility(WireModel):
         default=None, max_length=16
     )
     strict: bool = False
+    baseline_nullability: Annotated[dict[Annotated[str, Field(min_length=1, max_length=1024)], bool], Field(max_length=1000)] | None = None
+    current_nullability: Annotated[dict[Annotated[str, Field(min_length=1, max_length=1024)], bool], Field(max_length=1000)] | None = None
+
+    @model_validator(mode="after")
+    def nullable_pair(self):
+        if (self.baseline_nullability is None) != (self.current_nullability is None):
+            raise ValueError("Both declared nullability maps are required")
+        if self.baseline_nullability is not None and self.rules and "nullability" not in self.rules:
+            raise ValueError("Declared nullability requires the nullability rule")
+        return self
 
 
 def schema_compatibility(arguments, baseline, current):
@@ -41,8 +51,14 @@ def schema_compatibility(arguments, baseline, current):
     classes = {key: _known_type(prefix + value) for key, value in targets.items()}
     _known_type(prefix + "CompatibilityResult")
     _known_type("truthound.profiler.evolution.changes.SchemaChange")
+    selection = arguments.rules
+    if arguments.baseline_nullability is not None and not selection:
+        selection = ["types", "nullability", "column_presence"]
     analyzer = _known_type(prefix + "SchemaCompatibilityAnalyzer")(
-        rules=None if arguments.rules is None else [classes[name]() for name in arguments.rules],
+        rules=None if selection is None else [
+            classes[name](old_nullable=arguments.baseline_nullability, new_nullable=arguments.current_nullability)
+            if name == "nullability" else classes[name]() for name in selection
+        ],
         strict=arguments.strict,
     )
     result = analyzer.analyze(baseline.schema, current.schema)
@@ -205,8 +221,7 @@ def generate_rules(arguments, frame):
     generator = component("rule_generators", arguments.generator, build=True)
     _known_type("truthound.profiler.generators.base.GeneratedRule")
     _known_type("truthound.profiler.base.TableProfile")
-    # Call one explicit generator: the native suite aggregator suppresses
-    # generator exceptions, which would hide an incomplete result here.
+    # Execute exactly the selected native generator after the profile completeness check.
     strictness = Strictness(arguments.strictness)
     rules = (
         generator.generate(profile, strictness)
@@ -217,8 +232,8 @@ def generate_rules(arguments, frame):
         return [
             {"validator_class": rule.validator_class, "config": rule.to_validator_config()}
             for rule in rules
-        ]
-    return [rule.to_dict() for rule in rules]
+        ], profile
+    return [rule.to_dict() for rule in rules], profile
 
 
 def execute(arguments, frame):
@@ -237,12 +252,18 @@ def execute(arguments, frame):
     _known_type("truthound.profiler.column_profiler.ColumnProfiler")
     cls = _known_type("truthound.profiler.table_profiler.DataProfiler")
     assert cls is DataProfiler
-    columns = ColumnProfiler(
-        analyzers=groups["column_analyzers"], type_inferrers=groups["type_inferrers"], config=config
-    )
     options = fields(
         row["components"]["profiler"]["DataProfiler"]["fields"], arguments.options, build=True
     )
-    return cls(
+    config = cls._effective_config(config, options)
+    columns = ColumnProfiler(
+        analyzers=groups["column_analyzers"], type_inferrers=groups["type_inferrers"], config=config
+    )
+    result = cls(
         config=config, column_profiler=columns, table_analyzers=groups["table_analyzers"], **options
     ).profile(frame.lazy(), name=arguments.name, source=arguments.source)
+    if not result.complete:
+        from truthound.profiler.errors import IncompleteProfileError
+
+        raise IncompleteProfileError(result)
+    return result

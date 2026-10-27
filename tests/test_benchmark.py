@@ -321,7 +321,7 @@ class TestTextDataGenerator:
     def test_generate_pii(self):
         """Test PII data generation."""
         generator = TextDataGenerator(seed=42)
-        config = GeneratorConfig(row_count=500)
+        config = GeneratorConfig(row_count=500, null_ratio=0)
 
         df = generator.generate(config)
 

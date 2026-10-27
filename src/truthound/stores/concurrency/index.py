@@ -23,17 +23,16 @@ from __future__ import annotations
 import json
 import os
 import threading
-import time
+from collections.abc import Callable, Iterator  # noqa: TC003 - public annotation introspection
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Iterator, TypeVar
+from typing import Any, TypeVar
 
-from truthound.stores.concurrency.locks import LockMode
+from truthound.stores._filesystem_io import component, contained_path, read_json, validate_values
+from truthound.stores.concurrency.atomic import atomic_read, atomic_write
 from truthound.stores.concurrency.manager import FileLockManager, get_default_manager
-from truthound.stores.concurrency.atomic import atomic_write, atomic_read, AtomicFileWriter
-
 
 T = TypeVar("T")
 
@@ -67,7 +66,7 @@ class IndexEntry:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "IndexEntry":
+    def from_dict(cls, data: dict[str, Any]) -> IndexEntry:
         """Create from dictionary."""
         return cls(
             item_id=data["item_id"],
@@ -135,7 +134,7 @@ class IndexTransaction:
 
     def __init__(
         self,
-        index: "ConcurrentIndex",
+        index: ConcurrentIndex,
         snapshot: IndexSnapshot,
     ) -> None:
         """Initialize the transaction.
@@ -167,9 +166,8 @@ class IndexTransaction:
         """
         self._check_active()
 
-        if self._snapshot.contains(item_id) or item_id in self._pending_adds:
-            if item_id not in self._pending_removes:
-                raise ValueError(f"Item already exists: {item_id}")
+        if (self._snapshot.contains(item_id) or item_id in self._pending_adds) and item_id not in self._pending_removes:
+            raise ValueError(f"Item already exists: {item_id}")
 
         entry = IndexEntry(item_id=item_id, metadata=metadata)
         self._pending_adds[item_id] = entry
@@ -201,10 +199,7 @@ class IndexTransaction:
         if existing is None:
             raise KeyError(f"Item not found: {item_id}")
 
-        if merge:
-            new_metadata = {**existing.metadata, **metadata}
-        else:
-            new_metadata = metadata
+        new_metadata = {**existing.metadata, **metadata} if merge else metadata
 
         entry = IndexEntry(
             item_id=item_id,
@@ -366,6 +361,9 @@ class ConcurrentIndex:
             lock_manager: Lock manager to use.
             wal_enabled: Whether to use write-ahead logging.
         """
+        component(index_filename)
+        if type(wal_enabled) is not bool:
+            raise ValueError("wal_enabled must be boolean")
         self._base_path = Path(base_path)
         self._index_path = self._base_path / index_filename
         self._wal_path = self._base_path / f"{index_filename}.wal"
@@ -377,33 +375,45 @@ class ConcurrentIndex:
         self._cache_version: int = 0
         self._cache_lock = threading.RLock()
         self._loaded = False
+        self._uncertain = False
+
+    def _check_state_paths(self):
+        for path in (self._index_path, self._wal_path):
+            contained_path(self._base_path, path.absolute())
+            if path.exists() and not path.is_file():
+                raise ValueError("Concurrent index state must be a regular file")
 
     def initialize(self) -> None:
         """Initialize the index, loading from disk if exists."""
-        with self._cache_lock:
+        self._check_state_paths()
+        if self._uncertain:
+            raise RuntimeError("Concurrent index commit is uncertain; reopen for recovery")
+        if self._loaded:
+            return
+        self._base_path.mkdir(parents=True, exist_ok=True)
+        # Every path takes the file lock before the cache lock.
+        with self._lock_manager.write_lock(self._index_path), self._cache_lock:
             if self._loaded:
                 return
-
-            self._base_path.mkdir(parents=True, exist_ok=True)
-
-            # Recover from WAL if needed
-            if self._wal_enabled and self._wal_path.exists():
-                self._recover_from_wal()
-
-            # Load index from disk or create empty
             if self._index_path.exists():
                 self._load_from_disk()
             else:
-                # Create empty index file
                 self._save_to_disk()
-
+            if self._wal_enabled and self._wal_path.exists():
+                self._recover_from_wal()
             self._loaded = True
 
     def _load_from_disk(self) -> None:
         """Load index from disk file."""
         try:
+            self._check_state_paths()
             content = atomic_read(self._index_path, lock_manager=self._lock_manager)
-            data = json.loads(content.decode("utf-8"))
+            data = read_json(content)
+            validate_values(data)
+            if not isinstance(data, dict) or not isinstance(data.get("entries"), dict):
+                raise ValueError("Invalid concurrent index shape")
+            if type(data.get("version", 0)) is not int or data.get("version", 0) < 0:
+                raise ValueError("Invalid concurrent index version")
 
             self._cache.clear()
             for item_id, entry_data in data.get("entries", {}).items():
@@ -417,13 +427,13 @@ class ConcurrentIndex:
 
             self._cache_version = data.get("version", 0)
 
-        except (json.JSONDecodeError, OSError):
-            # Index corrupted or missing, start fresh
-            self._cache.clear()
-            self._cache_version = 0
+        except (ValueError, TypeError, KeyError, OSError):
+            self._uncertain = True
+            raise ValueError("Concurrent index is unreadable; evidence retained") from None
 
     def _save_to_disk(self) -> None:
         """Save index to disk file."""
+        self._check_state_paths()
         data = {
             "version": self._cache_version,
             "updated_at": datetime.now().isoformat(),
@@ -432,49 +442,62 @@ class ConcurrentIndex:
             },
         }
 
-        content = json.dumps(data, indent=2, default=str)
-        atomic_write(
-            self._index_path,
-            content,
-            lock_manager=self._lock_manager,
-        )
+        validate_values(data)
+        content = json.dumps(data, indent=2, default=str, allow_nan=False)
+        try:
+            result = atomic_write(
+                self._index_path, content, lock_manager=self._lock_manager,
+            )
+        except BaseException:
+            self._uncertain = True
+            raise
+        if not result.success:
+            self._uncertain = True
+            raise OSError("Concurrent index commit is uncertain; recovery required")
 
     def _recover_from_wal(self) -> None:
         """Recover uncommitted changes from write-ahead log."""
         try:
-            with open(self._wal_path, "r") as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
+            self._check_state_paths()
+            recovered = dict(self._cache)
+            with self._wal_path.open() as stream:
+                for line in stream:
+                    if not line.strip():
                         continue
-
-                    operation = json.loads(line)
-                    op_type = operation.get("type")
-                    item_id = operation.get("item_id")
-
-                    if op_type == "add" or op_type == "update":
-                        entry_data = operation.get("entry", {})
-                        self._cache[item_id] = IndexEntry.from_dict(entry_data)
-                    elif op_type == "remove":
-                        self._cache.pop(item_id, None)
-
-            # Save recovered state and remove WAL
+                    operation = read_json(line)
+                    validate_values(operation)
+                    kind, identity = operation["type"], operation["item_id"]
+                    if not isinstance(identity, str):
+                        raise ValueError("Invalid WAL identity")
+                    if kind in {"add", "update"}:
+                        entry = IndexEntry.from_dict(operation["entry"])
+                        if entry.item_id != identity:
+                            raise ValueError("WAL identity mismatch")
+                        recovered[identity] = entry
+                    elif kind == "remove":
+                        recovered.pop(identity, None)
+                    else:
+                        raise ValueError("Invalid WAL operation")
+            self._cache = recovered
             self._cache_version += 1
             self._save_to_disk()
-            self._wal_path.unlink(missing_ok=True)
-
-        except (json.JSONDecodeError, OSError):
-            # WAL corrupted, ignore
-            self._wal_path.unlink(missing_ok=True)
+            self._wal_path.unlink()
+        except BaseException:
+            self._uncertain = True
+            # Never erase a corrupt or incompletely persisted recovery record.
+            raise
 
     def _write_wal(self, operations: list[dict[str, Any]]) -> None:
         """Write operations to write-ahead log."""
         if not self._wal_enabled:
             return
 
-        with open(self._wal_path, "a") as f:
-            for op in operations:
-                f.write(json.dumps(op, default=str) + "\n")
+        validate_values(operations)
+        lines = [json.dumps(op, default=str, allow_nan=False) + "\n" for op in operations]
+        self._check_state_paths()
+        descriptor = os.open(self._wal_path, os.O_WRONLY | os.O_APPEND | os.O_CREAT | getattr(os, "O_NOFOLLOW", 0), 0o600)
+        with os.fdopen(descriptor, "a", encoding="utf-8") as f:
+            f.writelines(lines)
             f.flush()
             os.fsync(f.fileno())
 
@@ -494,11 +517,11 @@ class ConcurrentIndex:
         """
         self.initialize()
 
-        with self._cache_lock:
-            return IndexSnapshot(
-                entries=dict(self._cache),
-                version=self._cache_version,
-            )
+        with self._lock_manager.write_lock(self._index_path), self._cache_lock:
+            self._load_from_disk()
+            if self._wal_enabled and self._wal_path.exists():
+                self._recover_from_wal()
+            return IndexSnapshot(entries=dict(self._cache), version=self._cache_version)
 
     def begin_transaction(self) -> IndexTransaction:
         """Start a transaction for batch updates.
@@ -551,48 +574,52 @@ class ConcurrentIndex:
         Args:
             txn: The transaction to apply.
         """
-        with self._lock_manager.write_lock(self._index_path):
-            with self._cache_lock:
-                # Check for conflicts (optimistic concurrency)
-                current_snapshot = self.snapshot()
-                if current_snapshot.version != txn._snapshot.version:
-                    # Check if any modified entries have changed
-                    for item_id in list(txn._pending_updates.keys()) + list(
-                        txn._pending_removes
+        with self._lock_manager.write_lock(self._index_path), self._cache_lock:
+            # Check for conflicts (optimistic concurrency)
+            current_snapshot = self.snapshot()
+            if current_snapshot.version != txn._snapshot.version:
+                # Check if any modified entries have changed
+                for item_id in (
+                    list(txn._pending_adds) + list(txn._pending_updates) + list(txn._pending_removes)
+                ):
+                    old_entry = txn._snapshot.get(item_id)
+                    new_entry = current_snapshot.get(item_id)
+
+                    if old_entry is None and new_entry is not None:
+                        raise RuntimeError(
+                            f"Conflict: {item_id} was added concurrently"
+                        )
+                    if old_entry is not None and new_entry is None:
+                        raise RuntimeError(
+                            f"Conflict: {item_id} was removed concurrently"
+                        )
+                    if (
+                        old_entry is not None
+                        and new_entry is not None
+                        and old_entry.version != new_entry.version
                     ):
-                        old_entry = txn._snapshot.get(item_id)
-                        new_entry = current_snapshot.get(item_id)
+                        raise RuntimeError(
+                            f"Conflict: {item_id} was modified concurrently"
+                        )
 
-                        if old_entry is None and new_entry is not None:
-                            raise RuntimeError(
-                                f"Conflict: {item_id} was added concurrently"
-                            )
-                        if old_entry is not None and new_entry is None:
-                            raise RuntimeError(
-                                f"Conflict: {item_id} was removed concurrently"
-                            )
-                        if (
-                            old_entry is not None
-                            and new_entry is not None
-                            and old_entry.version != new_entry.version
-                        ):
-                            raise RuntimeError(
-                                f"Conflict: {item_id} was modified concurrently"
-                            )
+            # Write to WAL first
+            wal_operations = []
+            for item_id, entry in txn._pending_adds.items():
+                wal_operations.append(
+                    {"type": "add", "item_id": item_id, "entry": entry.to_dict()}
+                )
+            for item_id, entry in txn._pending_updates.items():
+                wal_operations.append(
+                    {"type": "update", "item_id": item_id, "entry": entry.to_dict()}
+                )
+            for item_id in txn._pending_removes:
+                wal_operations.append({"type": "remove", "item_id": item_id})
 
-                # Write to WAL first
-                wal_operations = []
-                for item_id, entry in txn._pending_adds.items():
-                    wal_operations.append(
-                        {"type": "add", "item_id": item_id, "entry": entry.to_dict()}
-                    )
-                for item_id, entry in txn._pending_updates.items():
-                    wal_operations.append(
-                        {"type": "update", "item_id": item_id, "entry": entry.to_dict()}
-                    )
-                for item_id in txn._pending_removes:
-                    wal_operations.append({"type": "remove", "item_id": item_id})
-
+            # A caller-data error must not leave a replayable transaction prefix.
+            # This preflight also applies when WAL is disabled.
+            validate_values(wal_operations)
+            json.dumps(wal_operations, default=str, allow_nan=False)
+            try:
                 if wal_operations:
                     self._write_wal(wal_operations)
 
@@ -611,6 +638,9 @@ class ConcurrentIndex:
 
                 # Clear WAL after successful write
                 self._clear_wal()
+            except BaseException:
+                self._uncertain = True
+                raise
 
     # Convenience methods for simple operations
 
@@ -764,17 +794,14 @@ class ConcurrentIndex:
             # Scan files
             count = 0
             for file_path in self._base_path.glob(file_pattern):
-                if file_path.name.startswith("_"):
+                if file_path == self._index_path:
                     continue
 
-                try:
-                    result = metadata_extractor(file_path)
-                    if result:
-                        item_id, metadata = result
-                        txn.add(item_id, metadata)
-                        count += 1
-                except Exception:
-                    continue
+                result = metadata_extractor(file_path)
+                if result:
+                    item_id, metadata = result
+                    txn.add(item_id, metadata)
+                    count += 1
 
             txn.commit()
 

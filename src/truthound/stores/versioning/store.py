@@ -162,7 +162,7 @@ class VersionedStore(ValidationStore[ConfigT], Generic[ConfigT]):
         self._versioning_config = config or VersioningConfig()
         self._version_store = version_store or InMemoryVersionStore()
         self._strategy = self._create_strategy()
-        self._initialized = False
+        super().__init__(base_store.config)
 
     @classmethod
     def _default_config(cls) -> ConfigT:

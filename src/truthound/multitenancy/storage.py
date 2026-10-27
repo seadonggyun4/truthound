@@ -7,27 +7,23 @@ from simple in-memory stores for testing to production-ready database stores.
 from __future__ import annotations
 
 import json
-import os
 import threading
 import time
-from abc import ABC
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from truthound.multitenancy.core import (
     IsolationLevel,
     Tenant,
-    TenantError,
-    TenantNotFoundError,
+    TenantMetadata,
     TenantQuota,
     TenantSettings,
     TenantStatus,
     TenantStore,
     TenantTier,
 )
-
 
 # =============================================================================
 # In-Memory Storage (Testing & Development)
@@ -92,7 +88,7 @@ class MemoryTenantStore(TenantStore):
         """Save a tenant (create or update)."""
         with self._lock:
             # Update timestamp
-            tenant.updated_at = datetime.now(timezone.utc)
+            tenant.updated_at = datetime.now(UTC)
 
             # Remove old slug index if updating
             if tenant.id in self._tenants:
@@ -271,7 +267,7 @@ class FileTenantStore(TenantStore):
     def save(self, tenant: Tenant) -> None:
         """Save a tenant (create or update)."""
         with self._lock:
-            tenant.updated_at = datetime.now(timezone.utc)
+            tenant.updated_at = datetime.now(UTC)
             file_path = self._tenant_file(tenant.id)
 
             # Backup if updating and backup enabled
@@ -402,9 +398,12 @@ class SQLiteTenantStore(TenantStore):
             owner_email=row["owner_email"] or "",
             quota=TenantQuota(**quota_data) if quota_data else TenantQuota(),
             settings=TenantSettings(**settings_data) if settings_data else TenantSettings(),
+            metadata=TenantMetadata(**metadata_data) if metadata_data else TenantMetadata(),
             created_at=datetime.fromisoformat(row["created_at"]),
             updated_at=datetime.fromisoformat(row["updated_at"]),
-            suspended_at=datetime.fromisoformat(row["suspended_at"]) if row["suspended_at"] else None,
+            suspended_at=datetime.fromisoformat(row["suspended_at"])
+            if row["suspended_at"]
+            else None,
         )
 
     def get(self, tenant_id: str) -> Tenant | None:
@@ -456,7 +455,7 @@ class SQLiteTenantStore(TenantStore):
     def save(self, tenant: Tenant) -> None:
         """Save a tenant (create or update)."""
         with self._lock:
-            tenant.updated_at = datetime.now(timezone.utc)
+            tenant.updated_at = datetime.now(UTC)
             cursor = self._conn.cursor()
             cursor.execute(
                 """

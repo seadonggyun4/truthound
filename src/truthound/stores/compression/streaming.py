@@ -27,18 +27,18 @@ import struct
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, BinaryIO, Callable, Generator, Iterator
+from typing import TYPE_CHECKING, Any, BinaryIO
+
+if TYPE_CHECKING:
+    from collections.abc import Generator, Iterator
 
 from truthound.stores.compression.base import (
     CompressionAlgorithm,
-    CompressionConfig,
     CompressionError,
     CompressionLevel,
-    CompressionMetrics,
     DecompressionError,
 )
 from truthound.stores.compression.providers import get_compressor
-
 
 # =============================================================================
 # Streaming Protocol
@@ -273,19 +273,10 @@ class GzipStreamReader(StreamReader):
 
 
 class StreamingCompressor:
-    """Generic streaming compressor supporting multiple algorithms.
+    """Emit independent complete native frames at each flush boundary.
 
-    Context manager that handles streaming compression with configurable
-    chunk sizes and flush intervals.
-
-    Example:
-        >>> with StreamingCompressor(algorithm=CompressionAlgorithm.GZIP) as compressor:
-        ...     for chunk in data_generator():
-        ...         compressed = compressor.write(chunk)
-        ...         if compressed:
-        ...             output.write(compressed)
-        ...     final = compressor.finalize()
-        ...     output.write(final)
+    The paired StreamingDecompressor accepts one complete returned frame per
+    write. For transport fragments use a native codec stream reader instead.
     """
 
     def __init__(
@@ -295,153 +286,160 @@ class StreamingCompressor:
         buffer_size: int = 64 * 1024,
         flush_threshold: int = 1024 * 1024,
     ) -> None:
-        """Initialize streaming compressor.
-
-        Args:
-            algorithm: Compression algorithm.
-            level: Compression level.
-            buffer_size: Internal buffer size.
-            flush_threshold: Threshold for automatic flush.
-        """
-        self.algorithm = algorithm
-        self.level = level
-        self.buffer_size = buffer_size
-        self.flush_threshold = flush_threshold
-
+        for value in (buffer_size, flush_threshold):
+            if type(value) is not int or value < 1:
+                raise ValueError("Stream buffer sizes must be positive integers")
+        self.algorithm, self.level = algorithm, level
+        self.buffer_size, self.flush_threshold = buffer_size, flush_threshold
         self._buffer = io.BytesIO()
-        self._output_buffer = io.BytesIO()
         self._compressor = get_compressor(algorithm, level=level)
         self._metrics = StreamingMetrics()
-        self._finalized = False
+        self._finalized = self._failed = False
+        self._execution_guard = None
 
-    def __enter__(self) -> "StreamingCompressor":
-        """Enter context."""
+    def set_execution_guard(self, guard) -> None:
+        self._execution_guard = guard
+
+    def _check_guard(self):
+        if self._execution_guard is not None:
+            self._execution_guard()
+
+    def _require_open(self):
+        self._check_guard()
+        if self._finalized or self._failed:
+            raise CompressionError("Compression stream is no longer writable")
+
+    def __enter__(self) -> StreamingCompressor:
         self._metrics.start_time = time.time()
         return self
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        """Exit context."""
-        if not self._finalized:
+        if exc_type is not None or self._failed:
+            self.abort()
+        elif not self._finalized:
             self.finalize()
 
     def write(self, data: bytes) -> bytes:
-        """Write data to compression stream.
-
-        Args:
-            data: Data chunk to compress.
-
-        Returns:
-            Compressed data if flush threshold reached, else empty.
-        """
-        self._buffer.write(data)
-        self._metrics.bytes_in += len(data)
-        self._metrics.chunks_processed += 1
-
-        # Check if we should flush
-        if self._buffer.tell() >= self.flush_threshold:
-            return self.flush()
-
-        return b""
+        self._require_open()
+        if not isinstance(data, bytes):
+            raise ValueError("Compression input must be bytes")
+        try:
+            for offset in range(0, len(data), self.buffer_size):
+                self._check_guard()
+                self._buffer.write(data[offset : offset + self.buffer_size])
+            self._metrics.bytes_in += len(data)
+            self._metrics.chunks_processed += 1
+            return self.flush() if self._buffer.tell() >= self.flush_threshold else b""
+        except BaseException:
+            self._failed = True
+            raise
 
     def flush(self) -> bytes:
-        """Flush buffered data.
-
-        Returns:
-            Compressed data.
-        """
+        self._require_open()
         data = self._buffer.getvalue()
-        self._buffer.seek(0)
-        self._buffer.truncate()
-
         if not data:
             return b""
-
-        compressed = self._compressor.compress(data)
-        self._metrics.bytes_out += len(compressed)
-
-        return compressed
+        try:
+            compressed = self._compressor.compress(data)
+            self._check_guard()
+            self._buffer.seek(0)
+            self._buffer.truncate()
+            self._metrics.bytes_out += len(compressed)
+            return compressed
+        except BaseException:
+            self._metrics.errors += 1
+            self._failed = True
+            raise
 
     def finalize(self) -> bytes:
-        """Finalize compression and get remaining data.
-
-        Returns:
-            Final compressed data.
-        """
         if self._finalized:
             return b""
-
+        self._require_open()
+        remaining = self.flush()
         self._finalized = True
         self._metrics.end_time = time.time()
-
-        # Flush remaining data
-        remaining = self.flush()
         self._metrics.update_ratio()
-
         return remaining
+
+    def abort(self) -> None:
+        self._failed = True
+        self._buffer.seek(0)
+        self._buffer.truncate()
+        self._metrics.end_time = time.time()
+
+    @property
+    def buffered_bytes(self) -> int:
+        return self._buffer.tell()
 
     @property
     def metrics(self) -> StreamingMetrics:
-        """Get compression metrics."""
         return self._metrics
 
 
 class StreamingDecompressor:
-    """Generic streaming decompressor.
+    """Decode one complete native frame per write; failure is terminal."""
 
-    Example:
-        >>> with StreamingDecompressor(algorithm=CompressionAlgorithm.GZIP) as decompressor:
-        ...     for chunk in compressed_generator():
-        ...         decompressed = decompressor.write(chunk)
-        ...         process(decompressed)
-    """
-
-    def __init__(
-        self,
-        algorithm: CompressionAlgorithm = CompressionAlgorithm.GZIP,
-    ) -> None:
-        """Initialize streaming decompressor.
-
-        Args:
-            algorithm: Compression algorithm.
-        """
+    def __init__(self, algorithm: CompressionAlgorithm = CompressionAlgorithm.GZIP) -> None:
         self.algorithm = algorithm
         self._compressor = get_compressor(algorithm)
         self._metrics = StreamingMetrics()
-        self._finalized = False
+        self._finalized = self._failed = False
+        self._execution_guard = None
 
-    def __enter__(self) -> "StreamingDecompressor":
-        """Enter context."""
+    def set_execution_guard(self, guard) -> None:
+        self._execution_guard = guard
+
+    def _check_guard(self):
+        if self._execution_guard is not None:
+            self._execution_guard()
+
+    def __enter__(self) -> StreamingDecompressor:
         self._metrics.start_time = time.time()
         return self
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
-        """Exit context."""
-        self._metrics.end_time = time.time()
-        self._metrics.update_ratio()
+        if exc_type is not None or self._failed:
+            self.abort()
+        else:
+            self.finalize()
 
     def write(self, data: bytes) -> bytes:
-        """Write compressed data and get decompressed output.
-
-        Args:
-            data: Compressed data chunk.
-
-        Returns:
-            Decompressed data.
-        """
-        self._metrics.bytes_in += len(data)
-        self._metrics.chunks_processed += 1
-
+        self._check_guard()
+        if self._finalized or self._failed:
+            raise DecompressionError("Compression stream is no longer readable")
+        if not isinstance(data, bytes):
+            raise ValueError("Compressed input must be bytes")
         try:
             decompressed = self._compressor.decompress(data)
+            self._check_guard()
+            self._metrics.bytes_in += len(data)
             self._metrics.bytes_out += len(decompressed)
+            self._metrics.chunks_processed += 1
             return decompressed
-        except Exception as e:
+        except BaseException:
+            self._failed = True
             self._metrics.errors += 1
-            raise DecompressionError(f"Stream decompression failed: {e}")
+            raise
+
+    def finalize(self) -> bytes:
+        self._check_guard()
+        if self._failed:
+            raise DecompressionError("Compression stream failed")
+        self._finalized = True
+        self._metrics.end_time = time.time()
+        self._metrics.update_ratio()
+        return b""
+
+    def abort(self) -> None:
+        self._failed = True
+        self._metrics.end_time = time.time()
+
+    @property
+    def buffered_bytes(self) -> int:
+        return 0
 
     @property
     def metrics(self) -> StreamingMetrics:
-        """Get decompression metrics."""
         return self._metrics
 
 
@@ -493,7 +491,14 @@ class ChunkIndex:
 
         # Write header
         output.write(b"CIDX")  # Magic
-        output.write(struct.pack("<BIQ", list(CompressionAlgorithm).index(self.algorithm), self.chunk_size, len(self.chunks)))
+        output.write(
+            struct.pack(
+                "<BIQ",
+                list(CompressionAlgorithm).index(self.algorithm),
+                self.chunk_size,
+                len(self.chunks),
+            )
+        )
 
         # Write chunks
         for chunk in self.chunks:
@@ -512,38 +517,39 @@ class ChunkIndex:
         return output.getvalue()
 
     @classmethod
-    def from_bytes(cls, data: bytes) -> "ChunkIndex":
-        """Deserialize index from bytes."""
-        if len(data) < 13 or data[:4] != b"CIDX":
-            raise CompressionError("Invalid chunk index format")
-
-        algo_idx, chunk_size, num_chunks = struct.unpack("<BIQ", data[4:17])
-        algorithm = list(CompressionAlgorithm)[algo_idx]
-
-        index = cls(algorithm=algorithm, chunk_size=chunk_size)
-        offset = 17
-
-        for _ in range(num_chunks):
-            idx, orig_size, comp_size, chunk_offset, checksum_len = struct.unpack("<IIIIQ", data[offset : offset + 24])
-            offset += 24
-
-            checksum = data[offset : offset + checksum_len]
-            offset += checksum_len
-
-            index.chunks.append(
-                ChunkInfo(
-                    index=idx,
-                    original_size=orig_size,
-                    compressed_size=comp_size,
-                    offset=chunk_offset,
-                    checksum=checksum,
+    def from_bytes(cls, data: bytes) -> ChunkIndex:
+        try:
+            if len(data) < 17 or data[:4] != b"CIDX":
+                raise DecompressionError("Invalid chunk index format")
+            algo_idx, chunk_size, num_chunks = struct.unpack("<BIQ", data[4:17])
+            if algo_idx >= len(CompressionAlgorithm) or num_chunks > (len(data) - 17) // 24:
+                raise DecompressionError("Invalid chunk index bounds")
+            index = cls(algorithm=list(CompressionAlgorithm)[algo_idx], chunk_size=chunk_size)
+            offset = 17
+            for _ in range(num_chunks):
+                number, original, compressed, start, checksum_size = struct.unpack(
+                    "<IIIIQ", data[offset : offset + 24]
                 )
-            )
-
-            index.total_original_size += orig_size
-            index.total_compressed_size += comp_size
-
-        return index
+                offset += 24
+                if checksum_size not in {0, 16} or offset + checksum_size > len(data):
+                    raise DecompressionError("Invalid chunk checksum metadata")
+                index.chunks.append(
+                    ChunkInfo(
+                        index=number,
+                        original_size=original,
+                        compressed_size=compressed,
+                        offset=start,
+                        checksum=data[offset : offset + checksum_size],
+                    )
+                )
+                offset += checksum_size
+                index.total_original_size += original
+                index.total_compressed_size += compressed
+            if offset != len(data):
+                raise DecompressionError("Trailing chunk index bytes")
+            return index
+        except (struct.error, IndexError, ValueError) as error:
+            raise DecompressionError("Invalid chunk index") from error
 
 
 class ChunkedCompressor:
@@ -585,10 +591,69 @@ class ChunkedCompressor:
             algorithm: Compression algorithm.
             level: Compression level.
         """
+        if type(chunk_size) is not int or not 1 <= chunk_size <= 16 * 1024 * 1024:
+            raise ValueError("Invalid compression chunk size")
+        self._execution_guard = None
         self.chunk_size = chunk_size
         self.algorithm = algorithm
         self.level = level
         self._compressor = get_compressor(algorithm, level=level)
+
+    def set_execution_guard(self, guard) -> None:
+        self._execution_guard = guard
+
+    def _check_guard(self):
+        if self._execution_guard is not None:
+            self._execution_guard()
+
+    def _validate_index(self, index, payload_size=None):
+        if index.algorithm != self.algorithm or index.chunk_size != self.chunk_size:
+            raise DecompressionError("Chunk index does not match selected codec")
+        offset = original = 0
+        for number, chunk in enumerate(index.chunks):
+            if (
+                type(chunk.index) is not int
+                or chunk.index != number
+                or type(chunk.offset) is not int
+                or chunk.offset != offset
+                or type(chunk.original_size) is not int
+                or not 1 <= chunk.original_size <= self.chunk_size
+                or type(chunk.compressed_size) is not int
+                or chunk.compressed_size < 1
+                or len(chunk.checksum) not in {0, 16}
+                or (number < len(index.chunks) - 1 and chunk.original_size != self.chunk_size)
+            ):
+                raise DecompressionError("Invalid compression chunk metadata")
+            offset += chunk.compressed_size
+            original += chunk.original_size
+        if (
+            index.total_original_size != original
+            or index.total_compressed_size != offset
+            or (payload_size is not None and payload_size != offset)
+        ):
+            raise DecompressionError("Chunk index size mismatch")
+
+    @staticmethod
+    def _check_output_limit(size, maximum):
+        if maximum is not None:
+            if type(maximum) is not int or maximum < 0:
+                raise ValueError("Invalid output size limit")
+            if size > maximum:
+                raise DecompressionError("Chunk output size limit exceeded")
+
+    def _decode_chunk(self, data, info):
+        import hashlib
+
+        self._check_guard()
+        if len(data) != info.compressed_size:
+            raise DecompressionError("Compressed chunk size mismatch")
+        result = self._compressor.decompress(data)
+        self._check_guard()
+        if len(result) != info.original_size or (
+            info.checksum and hashlib.md5(result).digest() != info.checksum
+        ):
+            raise DecompressionError("Compression chunk checksum or size mismatch")
+        return result
 
     def compress(self, data: bytes) -> tuple[bytes, ChunkIndex]:
         """Compress data in chunks.
@@ -606,7 +671,9 @@ class ChunkedCompressor:
         # Split into chunks and compress
         for i, start in enumerate(range(0, len(data), self.chunk_size)):
             chunk = data[start : start + self.chunk_size]
+            self._check_guard()
             compressed = self._compressor.compress(chunk)
+            self._check_guard()
 
             # Calculate checksum
             import hashlib
@@ -663,7 +730,9 @@ class ChunkedCompressor:
 
         return output.getvalue()
 
-    def decompress(self, data: bytes, index: ChunkIndex | None = None) -> bytes:
+    def decompress(
+        self, data: bytes, index: ChunkIndex | None = None, *, max_output_bytes: int | None = None
+    ) -> bytes:
         """Decompress chunked data.
 
         Args:
@@ -673,67 +742,90 @@ class ChunkedCompressor:
         Returns:
             Decompressed data.
         """
-        # Check for embedded header
-        if data[: len(self.MAGIC)] == self.MAGIC:
-            return self._decompress_with_header(data)
-
+        self._check_guard()
         if index is None:
+            if data[: len(self.MAGIC)] == self.MAGIC:
+                return self._decompress_with_header(data, max_output_bytes=max_output_bytes)
             raise CompressionError("Chunk index required for decompression")
+        self._validate_index(index, len(data))
+        self._check_output_limit(index.total_original_size, max_output_bytes)
+        return b"".join(
+            self._decode_chunk(data[info.offset : info.offset + info.compressed_size], info)
+            for info in index.chunks
+        )
 
-        output = io.BytesIO()
-        for chunk_info in index.chunks:
-            chunk_data = data[chunk_info.offset : chunk_info.offset + chunk_info.compressed_size]
-            decompressed = self._compressor.decompress(chunk_data)
-
-            # Verify checksum
-            if chunk_info.checksum:
-                import hashlib
-
-                actual = hashlib.md5(decompressed).digest()
-                if actual != chunk_info.checksum:
-                    raise DecompressionError(f"Checksum mismatch for chunk {chunk_info.index}")
-
-            output.write(decompressed)
-
-        return output.getvalue()
-
-    def _decompress_with_header(self, data: bytes) -> bytes:
-        """Decompress data with embedded header."""
-        # Parse header
+    def _decompress_with_header(self, data: bytes, *, max_output_bytes: int | None = None) -> bytes:
         if len(data) < self.HEADER_SIZE:
-            raise DecompressionError("Data too short")
-
-        magic, version, algo_idx, chunk_size, num_chunks, index_offset = struct.unpack(self.HEADER_FORMAT, data[: self.HEADER_SIZE])
-
-        if magic != self.MAGIC:
-            raise DecompressionError("Invalid magic")
-
-        # Parse index
-        index = ChunkIndex.from_bytes(data[index_offset:])
-
-        # Decompress chunks
-        compressed_data = data[self.HEADER_SIZE : index_offset]
-        return self.decompress(compressed_data, index)
+            raise DecompressionError("Incomplete chunk header")
+        magic, version, algorithm, chunk_size, count, offset = struct.unpack(
+            self.HEADER_FORMAT, data[: self.HEADER_SIZE]
+        )
+        if (
+            magic != self.MAGIC
+            or version != self.VERSION
+            or algorithm != list(CompressionAlgorithm).index(self.algorithm)
+            or chunk_size != self.chunk_size
+            or not self.HEADER_SIZE <= offset <= len(data)
+        ):
+            raise DecompressionError("Chunk header does not match selected codec")
+        index = ChunkIndex.from_bytes(data[offset:])
+        if count != len(index.chunks):
+            raise DecompressionError("Chunk header count mismatch")
+        return self.decompress(
+            data[self.HEADER_SIZE : offset], index, max_output_bytes=max_output_bytes
+        )
 
     def decompress_chunk(self, data: bytes, index: ChunkIndex, chunk_index: int) -> bytes:
-        """Decompress a specific chunk.
+        self._check_guard()
+        self._validate_index(index, len(data))
+        if type(chunk_index) is not int or not 0 <= chunk_index < len(index.chunks):
+            raise DecompressionError("Chunk index out of range")
+        info = index.chunks[chunk_index]
+        return self._decode_chunk(data[info.offset : info.offset + info.compressed_size], info)
 
-        Args:
-            data: Compressed data.
-            index: Chunk index.
-            chunk_index: Index of chunk to decompress.
+    def decompress_range(
+        self, data: bytes, start: int, end: int, *, max_output_bytes: int | None = None
+    ) -> bytes:
+        """Read a plaintext range from a native embedded-index bundle."""
+        self._check_guard()
+        if len(data) < self.HEADER_SIZE:
+            raise DecompressionError("Incomplete chunk header")
+        magic, version, algorithm, chunk_size, count, offset = struct.unpack(
+            self.HEADER_FORMAT, data[: self.HEADER_SIZE]
+        )
+        if (
+            magic != self.MAGIC
+            or version != self.VERSION
+            or algorithm != list(CompressionAlgorithm).index(self.algorithm)
+            or chunk_size != self.chunk_size
+            or not self.HEADER_SIZE <= offset <= len(data)
+        ):
+            raise DecompressionError("Chunk header does not match selected codec")
+        index = ChunkIndex.from_bytes(data[offset:])
+        payload = data[self.HEADER_SIZE : offset]
+        self._validate_index(index, len(payload))
+        if (
+            count != len(index.chunks)
+            or type(start) is not int
+            or type(end) is not int
+            or not 0 <= start <= end <= index.total_original_size
+        ):
+            raise DecompressionError("Invalid compression range or chunk count")
+        self._check_output_limit(end - start, max_output_bytes)
+        if start == end:
+            return b""
+        first = start // self.chunk_size
+        last = (end - 1) // self.chunk_size
+        output = b"".join(
+            self._decode_chunk(payload[info.offset : info.offset + info.compressed_size], info)
+            for info in index.chunks[first : last + 1]
+        )
+        relative = start - first * self.chunk_size
+        return output[relative : relative + end - start]
 
-        Returns:
-            Decompressed chunk data.
-        """
-        if chunk_index >= len(index.chunks):
-            raise CompressionError(f"Chunk index {chunk_index} out of range")
-
-        chunk_info = index.chunks[chunk_index]
-        chunk_data = data[chunk_info.offset : chunk_info.offset + chunk_info.compressed_size]
-        return self._compressor.decompress(chunk_data)
-
-    def compress_iter(self, data_iter: Iterator[bytes]) -> Generator[tuple[bytes, ChunkInfo], None, ChunkIndex]:
+    def compress_iter(
+        self, data_iter: Iterator[bytes]
+    ) -> Generator[tuple[bytes, ChunkInfo], None, ChunkIndex]:
         """Compress data from iterator, yielding chunks.
 
         Args:
@@ -764,7 +856,9 @@ class ChunkedCompressor:
                 buffer.truncate()
                 buffer.write(remaining)
 
+                self._check_guard()
                 compressed = self._compressor.compress(chunk)
+                self._check_guard()
                 checksum = hashlib.md5(chunk).digest()
 
                 chunk_info = ChunkInfo(
@@ -786,7 +880,9 @@ class ChunkedCompressor:
         # Process remaining data
         remaining = buffer.getvalue()
         if remaining:
+            self._check_guard()
             compressed = self._compressor.compress(remaining)
+            self._check_guard()
             checksum = hashlib.md5(remaining).digest()
 
             chunk_info = ChunkInfo(
@@ -804,29 +900,23 @@ class ChunkedCompressor:
 
         return index
 
-    def decompress_iter(self, chunks_iter: Iterator[bytes], index: ChunkIndex) -> Generator[bytes, None, None]:
-        """Decompress chunks from iterator.
-
-        Args:
-            chunks_iter: Iterator yielding compressed chunks.
-            index: Chunk index.
-
-        Yields:
-            Decompressed data chunks.
-        """
-        import hashlib
-
-        for i, chunk_data in enumerate(chunks_iter):
-            if i >= len(index.chunks):
-                break
-
-            chunk_info = index.chunks[i]
-            decompressed = self._compressor.decompress(chunk_data)
-
-            # Verify checksum
-            if chunk_info.checksum:
-                actual = hashlib.md5(decompressed).digest()
-                if actual != chunk_info.checksum:
-                    raise DecompressionError(f"Checksum mismatch for chunk {i}")
-
-            yield decompressed
+    def decompress_iter(
+        self, chunks_iter: Iterator[bytes], index: ChunkIndex
+    ) -> Generator[bytes, None, None]:
+        """Decode every indexed chunk, rejecting missing and extra input frames."""
+        self._check_guard()
+        self._validate_index(index)
+        iterator = iter(chunks_iter)
+        for info in index.chunks:
+            self._check_guard()
+            try:
+                data = next(iterator)
+            except StopIteration as error:
+                raise DecompressionError("Missing compressed chunk") from error
+            yield self._decode_chunk(data, info)
+        self._check_guard()
+        try:
+            next(iterator)
+        except StopIteration:
+            return
+        raise DecompressionError("Extra compressed chunk")

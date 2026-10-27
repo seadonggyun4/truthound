@@ -65,3 +65,5 @@
 - [아키텍처](../concepts/architecture.md)
 - [Plugin 플랫폼](../concepts/plugins.md)
 - [마이그레이션 to 3.0](migration-3.0.md)
+
+`RunPresentation.to_legacy_view(include_passed=True)`는 실제 통과한 검사를 호환 결과 행에 추가하며 기본값은 이슈 행만 반환합니다. 실행 통계는 유지됩니다. 생성된 reporter와 플러그인 템플릿은 이 네이티브 변환을 재사용합니다. 생성된 reporter에서 `max_issues=0`이면 상세 행을 출력하지 않고 실행 요약은 유지합니다.

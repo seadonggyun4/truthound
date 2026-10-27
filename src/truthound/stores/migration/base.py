@@ -7,11 +7,11 @@ schema migration implementations must follow.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime  # noqa: TC003 - public dataclass annotation introspection
 from enum import Enum
-from typing import Any, Callable, Protocol, runtime_checkable
-
+from typing import Any, Protocol, runtime_checkable
 
 # =============================================================================
 # Exceptions
@@ -110,7 +110,7 @@ class SchemaVersion:
         return f"{self.major}.{self.minor}.{self.patch}"
 
     @classmethod
-    def parse(cls, version_str: str) -> "SchemaVersion":
+    def parse(cls, version_str: str) -> SchemaVersion:
         """Parse a version string.
 
         Args:
@@ -132,7 +132,7 @@ class SchemaVersion:
         except (ValueError, IndexError) as e:
             raise ValueError(f"Invalid version string: {version_str}") from e
 
-    def is_compatible_with(self, other: "SchemaVersion") -> bool:
+    def is_compatible_with(self, other: SchemaVersion) -> bool:
         """Check if this version is compatible with another.
 
         Major version must match for compatibility.
@@ -256,6 +256,14 @@ class MigrationConfig:
     validate_after_migrate: bool = True
     batch_size: int = 100
     max_retries: int = 3
+
+    def __post_init__(self) -> None:
+        current = SchemaVersion.parse(self.current_version)
+        minimum = SchemaVersion.parse(self.min_supported_version)
+        if current < minimum:
+            raise ValueError("current_version must be at least min_supported_version")
+        if self.batch_size < 1 or self.max_retries < 1:
+            raise ValueError("batch_size and max_retries must be positive")
 
 
 # =============================================================================

@@ -5,8 +5,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from math import log, sqrt
-from typing import Any
+from math import isfinite, log, sqrt
+from numbers import Real
 
 import polars as pl
 
@@ -66,6 +66,53 @@ class DriftDetector(ABC):
         """
         pass
 
+    def _validate_config(self) -> None:
+        threshold = self.threshold
+        if (
+            isinstance(threshold, bool)
+            or not isinstance(threshold, Real)
+            or not isfinite(threshold)
+            or threshold < 0
+        ):
+            raise ValueError("threshold must be finite and nonnegative")
+        if (
+            self.name in {"ks_test", "chi_square", "cramer_von_mises", "anderson_darling"}
+            and threshold > 1
+        ):
+            raise ValueError("P-value threshold must be between zero and one")
+        for field, minimum in (("n_bins", 1), ("max_samples", 2)):
+            value = getattr(self, field, None)
+            if hasattr(self, field) and (type(value) is not int or value < minimum):
+                raise ValueError(f"{field} must be an integer >= {minimum}")
+        if hasattr(self, "kernel") and self.kernel not in {"rbf", "linear", "polynomial"}:
+            raise ValueError("Unknown MMD kernel")
+        bandwidth = getattr(self, "bandwidth", None)
+        if bandwidth is not None and (
+            isinstance(bandwidth, bool)
+            or not isinstance(bandwidth, Real)
+            or not isfinite(bandwidth)
+            or bandwidth <= 0
+        ):
+            raise ValueError("bandwidth must be finite and positive")
+
+    def _validate_inputs(self, baseline: pl.Series, current: pl.Series) -> None:
+        self._validate_config()
+        numeric_only = self.name in {
+            "ks_test",
+            "psi",
+            "kl_divergence",
+            "wasserstein",
+            "cramer_von_mises",
+            "anderson_darling",
+            "energy",
+            "mmd",
+        }
+        for series in (baseline, current):
+            if numeric_only and not series.dtype.is_numeric() and len(series.drop_nulls()):
+                raise TypeError("Detector requires numeric columns on both sides")
+            if series.dtype.is_float() and not series.drop_nulls().is_finite().all():
+                raise ValueError("Drift input contains NaN or infinity")
+
     @staticmethod
     def _get_drift_level(statistic: float, thresholds: tuple[float, float, float]) -> DriftLevel:
         """Determine drift level based on thresholds."""
@@ -95,14 +142,23 @@ class KSTestDetector(DriftDetector):
             threshold: P-value threshold for significance (default 0.05).
         """
         self.threshold = threshold
+        self._validate_config()
 
     def detect(self, baseline: pl.Series, current: pl.Series) -> DriftResult:
         """Perform two-sample Kolmogorov-Smirnov test."""
+        self._validate_inputs(baseline, current)
         # Check if data is numeric
         numeric_types = {
-            pl.Int8, pl.Int16, pl.Int32, pl.Int64,
-            pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64,
-            pl.Float32, pl.Float64,
+            pl.Int8,
+            pl.Int16,
+            pl.Int32,
+            pl.Int64,
+            pl.UInt8,
+            pl.UInt16,
+            pl.UInt32,
+            pl.UInt64,
+            pl.Float32,
+            pl.Float64,
         }
 
         if baseline.dtype not in numeric_types:
@@ -136,11 +192,13 @@ class KSTestDetector(DriftDetector):
         all_values = sorted(set(b + c))
 
         max_diff = 0.0
+        left = right = 0
         for val in all_values:
-            ecdf1 = sum(1 for x in b if x <= val) / n1
-            ecdf2 = sum(1 for x in c if x <= val) / n2
-            diff = abs(ecdf1 - ecdf2)
-            max_diff = max(max_diff, diff)
+            while left < n1 and b[left] <= val:
+                left += 1
+            while right < n2 and c[right] <= val:
+                right += 1
+            max_diff = max(max_diff, abs(left / n1 - right / n2))
 
         # Approximate p-value using asymptotic formula
         en = sqrt(n1 * n2 / (n1 + n2))
@@ -165,10 +223,7 @@ class KSTestDetector(DriftDetector):
             return 1.0
         # Kolmogorov distribution approximation
         lam = d * d
-        p = 2 * sum(
-            ((-1) ** (k - 1)) * (2.718281828 ** (-2 * k * k * lam))
-            for k in range(1, 101)
-        )
+        p = 2 * sum(((-1) ** (k - 1)) * (2.718281828 ** (-2 * k * k * lam)) for k in range(1, 101))
         return max(0.0, min(1.0, p))
 
 
@@ -191,14 +246,23 @@ class PSIDetector(DriftDetector):
         """
         self.n_bins = n_bins
         self.threshold = threshold
+        self._validate_config()
 
     def detect(self, baseline: pl.Series, current: pl.Series) -> DriftResult:
         """Calculate Population Stability Index."""
+        self._validate_inputs(baseline, current)
         # Check if data is numeric
         numeric_types = {
-            pl.Int8, pl.Int16, pl.Int32, pl.Int64,
-            pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64,
-            pl.Float32, pl.Float64,
+            pl.Int8,
+            pl.Int16,
+            pl.Int32,
+            pl.Int64,
+            pl.UInt8,
+            pl.UInt16,
+            pl.UInt32,
+            pl.UInt64,
+            pl.Float32,
+            pl.Float64,
         }
 
         if baseline.dtype not in numeric_types:
@@ -241,7 +305,9 @@ class PSIDetector(DriftDetector):
                 details="No variation in data",
             )
 
-        bin_edges = [min_val + i * (max_val - min_val) / self.n_bins for i in range(self.n_bins + 1)]
+        bin_edges = [
+            min_val + i * (max_val - min_val) / self.n_bins for i in range(self.n_bins + 1)
+        ]
         bin_edges[-1] = max_val + 1  # Ensure max value is included
 
         # Calculate bin proportions
@@ -262,7 +328,7 @@ class PSIDetector(DriftDetector):
         # Calculate PSI
         psi = sum(
             (cp - bp) * log(cp / bp) if bp > 0 and cp > 0 else 0
-            for bp, cp in zip(baseline_props, current_props)
+            for bp, cp in zip(baseline_props, current_props, strict=True)
         )
 
         drifted = psi >= self.threshold
@@ -294,9 +360,11 @@ class ChiSquareDetector(DriftDetector):
             threshold: P-value threshold for significance.
         """
         self.threshold = threshold
+        self._validate_config()
 
     def detect(self, baseline: pl.Series, current: pl.Series) -> DriftResult:
         """Perform Chi-square test on categorical distributions."""
+        self._validate_inputs(baseline, current)
         b = baseline.drop_nulls().to_list()
         c = current.drop_nulls().to_list()
 
@@ -399,9 +467,11 @@ class JensenShannonDetector(DriftDetector):
         """
         self.n_bins = n_bins
         self.threshold = threshold
+        self._validate_config()
 
     def detect(self, baseline: pl.Series, current: pl.Series) -> DriftResult:
         """Calculate Jensen-Shannon divergence."""
+        self._validate_inputs(baseline, current)
         b = baseline.drop_nulls()
         c = current.drop_nulls()
 
@@ -433,7 +503,7 @@ class JensenShannonDetector(DriftDetector):
             )
 
         # Calculate JS divergence
-        m = [(pi + qi) / 2 for pi, qi in zip(p, q)]
+        m = [(pi + qi) / 2 for pi, qi in zip(p, q, strict=True)]
         js = 0.5 * self._kl_divergence(p, m) + 0.5 * self._kl_divergence(q, m)
 
         # JS divergence is bounded [0, log(2)] ≈ [0, 0.693]
@@ -452,9 +522,7 @@ class JensenShannonDetector(DriftDetector):
             method=self.name,
         )
 
-    def _numeric_distributions(
-        self, b: pl.Series, c: pl.Series
-    ) -> tuple[list[float], list[float]]:
+    def _numeric_distributions(self, b: pl.Series, c: pl.Series) -> tuple[list[float], list[float]]:
         """Get binned distributions for numeric data."""
         b_list = b.to_list()
         c_list = c.to_list()
@@ -497,7 +565,7 @@ class JensenShannonDetector(DriftDetector):
     @staticmethod
     def _kl_divergence(p: list[float], q: list[float]) -> float:
         """Calculate KL divergence."""
-        return sum(pi * log(pi / qi) for pi, qi in zip(p, q) if pi > 0 and qi > 0)
+        return sum(pi * log(pi / qi) for pi, qi in zip(p, q, strict=True) if pi > 0 and qi > 0)
 
 
 class KLDivergenceDetector(DriftDetector):
@@ -519,14 +587,23 @@ class KLDivergenceDetector(DriftDetector):
         """
         self.n_bins = n_bins
         self.threshold = threshold
+        self._validate_config()
 
     def detect(self, baseline: pl.Series, current: pl.Series) -> DriftResult:
         """Calculate Kullback-Leibler divergence."""
+        self._validate_inputs(baseline, current)
         # Check if data is numeric
         numeric_types = {
-            pl.Int8, pl.Int16, pl.Int32, pl.Int64,
-            pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64,
-            pl.Float32, pl.Float64,
+            pl.Int8,
+            pl.Int16,
+            pl.Int32,
+            pl.Int64,
+            pl.UInt8,
+            pl.UInt16,
+            pl.UInt32,
+            pl.UInt64,
+            pl.Float32,
+            pl.Float64,
         }
 
         if baseline.dtype not in numeric_types:
@@ -567,7 +644,9 @@ class KLDivergenceDetector(DriftDetector):
                 details="No variation in data",
             )
 
-        bin_edges = [min_val + i * (max_val - min_val) / self.n_bins for i in range(self.n_bins + 1)]
+        bin_edges = [
+            min_val + i * (max_val - min_val) / self.n_bins for i in range(self.n_bins + 1)
+        ]
         bin_edges[-1] = max_val + 1  # Ensure max value is included
 
         # Calculate bin proportions with smoothing
@@ -587,7 +666,7 @@ class KLDivergenceDetector(DriftDetector):
         q = get_proportions(c, bin_edges)  # current distribution
 
         # Calculate KL divergence: KL(P||Q) = sum(p * log(p/q))
-        kl_div = sum(pi * log(pi / qi) for pi, qi in zip(p, q) if pi > 0 and qi > 0)
+        kl_div = sum(pi * log(pi / qi) for pi, qi in zip(p, q, strict=True) if pi > 0 and qi > 0)
 
         drifted = kl_div >= self.threshold
         level = self._get_drift_level(kl_div, (0.05, 0.1, 0.2))
@@ -620,14 +699,23 @@ class WassersteinDetector(DriftDetector):
                       The statistic is normalized by baseline std for comparability.
         """
         self.threshold = threshold
+        self._validate_config()
 
     def detect(self, baseline: pl.Series, current: pl.Series) -> DriftResult:
         """Calculate Wasserstein (Earth Mover's) distance."""
+        self._validate_inputs(baseline, current)
         # Check if data is numeric
         numeric_types = {
-            pl.Int8, pl.Int16, pl.Int32, pl.Int64,
-            pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64,
-            pl.Float32, pl.Float64,
+            pl.Int8,
+            pl.Int16,
+            pl.Int32,
+            pl.Int64,
+            pl.UInt8,
+            pl.UInt16,
+            pl.UInt32,
+            pl.UInt64,
+            pl.Float32,
+            pl.Float64,
         }
 
         if baseline.dtype not in numeric_types:
@@ -722,14 +810,23 @@ class CramervonMisesDetector(DriftDetector):
             threshold: P-value threshold for significance (default 0.05).
         """
         self.threshold = threshold
+        self._validate_config()
 
     def detect(self, baseline: pl.Series, current: pl.Series) -> DriftResult:
         """Perform two-sample Cramér-von Mises test."""
+        self._validate_inputs(baseline, current)
         # Check if data is numeric
         numeric_types = {
-            pl.Int8, pl.Int16, pl.Int32, pl.Int64,
-            pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64,
-            pl.Float32, pl.Float64,
+            pl.Int8,
+            pl.Int16,
+            pl.Int32,
+            pl.Int64,
+            pl.UInt8,
+            pl.UInt16,
+            pl.UInt32,
+            pl.UInt64,
+            pl.Float32,
+            pl.Float64,
         }
 
         if baseline.dtype not in numeric_types:
@@ -770,7 +867,7 @@ class CramervonMisesDetector(DriftDetector):
             while j < n and pooled[j][0] == pooled[i][0]:
                 j += 1
             avg_rank = (i + j + 1) / 2  # Average rank for ties
-            for k in range(i, j):
+            for _k in range(i, j):
                 ranks.append(avg_rank)
             i = j
 
@@ -832,14 +929,23 @@ class AndersonDarlingDetector(DriftDetector):
             threshold: P-value threshold for significance (default 0.05).
         """
         self.threshold = threshold
+        self._validate_config()
 
     def detect(self, baseline: pl.Series, current: pl.Series) -> DriftResult:
         """Perform two-sample Anderson-Darling test."""
+        self._validate_inputs(baseline, current)
         # Check if data is numeric
         numeric_types = {
-            pl.Int8, pl.Int16, pl.Int32, pl.Int64,
-            pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64,
-            pl.Float32, pl.Float64,
+            pl.Int8,
+            pl.Int16,
+            pl.Int32,
+            pl.Int64,
+            pl.UInt8,
+            pl.UInt16,
+            pl.UInt32,
+            pl.UInt64,
+            pl.Float32,
+            pl.Float64,
         }
 
         if baseline.dtype not in numeric_types:
@@ -965,9 +1071,11 @@ class HellingerDetector(DriftDetector):
         """
         self.n_bins = n_bins
         self.threshold = threshold
+        self._validate_config()
 
     def detect(self, baseline: pl.Series, current: pl.Series) -> DriftResult:
         """Calculate Hellinger distance between two distributions."""
+        self._validate_inputs(baseline, current)
         b = baseline.drop_nulls()
         c = current.drop_nulls()
 
@@ -999,7 +1107,7 @@ class HellingerDetector(DriftDetector):
             )
 
         # Calculate Hellinger distance: H(P,Q) = (1/√2) * √(Σ(√p_i - √q_i)²)
-        sum_sq = sum((sqrt(pi) - sqrt(qi)) ** 2 for pi, qi in zip(p, q))
+        sum_sq = sum((sqrt(pi) - sqrt(qi)) ** 2 for pi, qi in zip(p, q, strict=True))
         hellinger = sqrt(sum_sq) / sqrt(2)
 
         # Ensure bounded [0, 1]
@@ -1017,9 +1125,7 @@ class HellingerDetector(DriftDetector):
             method=self.name,
         )
 
-    def _numeric_distributions(
-        self, b: pl.Series, c: pl.Series
-    ) -> tuple[list[float], list[float]]:
+    def _numeric_distributions(self, b: pl.Series, c: pl.Series) -> tuple[list[float], list[float]]:
         """Get binned distributions for numeric data."""
         b_list = b.to_list()
         c_list = c.to_list()
@@ -1087,9 +1193,11 @@ class BhattacharyyaDetector(DriftDetector):
         """
         self.n_bins = n_bins
         self.threshold = threshold
+        self._validate_config()
 
     def detect(self, baseline: pl.Series, current: pl.Series) -> DriftResult:
         """Calculate Bhattacharyya distance between two distributions."""
+        self._validate_inputs(baseline, current)
         b = baseline.drop_nulls()
         c = current.drop_nulls()
 
@@ -1121,7 +1229,7 @@ class BhattacharyyaDetector(DriftDetector):
             )
 
         # Calculate Bhattacharyya coefficient: BC = Σ√(p_i * q_i)
-        bc = sum(sqrt(pi * qi) for pi, qi in zip(p, q))
+        bc = sum(sqrt(pi * qi) for pi, qi in zip(p, q, strict=True))
         bc = max(0.0001, min(1.0, bc))  # Clamp to avoid log(0)
 
         # Bhattacharyya distance: D_B = -ln(BC)
@@ -1140,9 +1248,7 @@ class BhattacharyyaDetector(DriftDetector):
             details=f"bc_coeff={bc:.4f}",
         )
 
-    def _numeric_distributions(
-        self, b: pl.Series, c: pl.Series
-    ) -> tuple[list[float], list[float]]:
+    def _numeric_distributions(self, b: pl.Series, c: pl.Series) -> tuple[list[float], list[float]]:
         """Get binned distributions for numeric data."""
         b_list = b.to_list()
         c_list = c.to_list()
@@ -1212,9 +1318,11 @@ class TotalVariationDetector(DriftDetector):
         """
         self.n_bins = n_bins
         self.threshold = threshold
+        self._validate_config()
 
     def detect(self, baseline: pl.Series, current: pl.Series) -> DriftResult:
         """Calculate Total Variation distance between two distributions."""
+        self._validate_inputs(baseline, current)
         b = baseline.drop_nulls()
         c = current.drop_nulls()
 
@@ -1246,7 +1354,7 @@ class TotalVariationDetector(DriftDetector):
             )
 
         # Calculate Total Variation distance: TV(P,Q) = (1/2) * Σ|p_i - q_i|
-        tv = 0.5 * sum(abs(pi - qi) for pi, qi in zip(p, q))
+        tv = 0.5 * sum(abs(pi - qi) for pi, qi in zip(p, q, strict=True))
 
         # Ensure bounded [0, 1]
         tv = max(0.0, min(1.0, tv))
@@ -1263,9 +1371,7 @@ class TotalVariationDetector(DriftDetector):
             method=self.name,
         )
 
-    def _numeric_distributions(
-        self, b: pl.Series, c: pl.Series
-    ) -> tuple[list[float], list[float]]:
+    def _numeric_distributions(self, b: pl.Series, c: pl.Series) -> tuple[list[float], list[float]]:
         """Get binned distributions for numeric data."""
         b_list = b.to_list()
         c_list = c.to_list()
@@ -1335,14 +1441,23 @@ class EnergyDetector(DriftDetector):
         """
         self.threshold = threshold
         self.max_samples = max_samples
+        self._validate_config()
 
     def detect(self, baseline: pl.Series, current: pl.Series) -> DriftResult:
         """Calculate Energy distance between two distributions."""
+        self._validate_inputs(baseline, current)
         # Check if data is numeric
         numeric_types = {
-            pl.Int8, pl.Int16, pl.Int32, pl.Int64,
-            pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64,
-            pl.Float32, pl.Float64,
+            pl.Int8,
+            pl.Int16,
+            pl.Int32,
+            pl.Int64,
+            pl.UInt8,
+            pl.UInt16,
+            pl.UInt32,
+            pl.UInt64,
+            pl.Float32,
+            pl.Float64,
         }
 
         if baseline.dtype not in numeric_types:
@@ -1372,10 +1487,10 @@ class EnergyDetector(DriftDetector):
         # Subsample for computational efficiency
         if len(b) > self.max_samples:
             step = len(b) // self.max_samples
-            b = b[::step][:self.max_samples]
+            b = b[::step][: self.max_samples]
         if len(c) > self.max_samples:
             step = len(c) // self.max_samples
-            c = c[::step][:self.max_samples]
+            c = c[::step][: self.max_samples]
 
         n, m = len(b), len(c)
 
@@ -1457,14 +1572,23 @@ class MMDDetector(DriftDetector):
         self.kernel = kernel
         self.bandwidth = bandwidth
         self.max_samples = max_samples
+        self._validate_config()
 
     def detect(self, baseline: pl.Series, current: pl.Series) -> DriftResult:
         """Calculate Maximum Mean Discrepancy between two distributions."""
+        self._validate_inputs(baseline, current)
         # Check if data is numeric
         numeric_types = {
-            pl.Int8, pl.Int16, pl.Int32, pl.Int64,
-            pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64,
-            pl.Float32, pl.Float64,
+            pl.Int8,
+            pl.Int16,
+            pl.Int32,
+            pl.Int64,
+            pl.UInt8,
+            pl.UInt16,
+            pl.UInt32,
+            pl.UInt64,
+            pl.Float32,
+            pl.Float64,
         }
 
         if baseline.dtype not in numeric_types:
@@ -1494,10 +1618,10 @@ class MMDDetector(DriftDetector):
         # Subsample for computational efficiency
         if len(b) > self.max_samples:
             step = len(b) // self.max_samples
-            b = b[::step][:self.max_samples]
+            b = b[::step][: self.max_samples]
         if len(c) > self.max_samples:
             step = len(c) // self.max_samples
-            c = c[::step][:self.max_samples]
+            c = c[::step][: self.max_samples]
 
         n, m = len(b), len(c)
 
@@ -1513,7 +1637,7 @@ class MMDDetector(DriftDetector):
             if dists:
                 dists.sort()
                 median_dist = dists[len(dists) // 2]
-                gamma = 1.0 / (2 * median_dist ** 2) if median_dist > 0 else 1.0
+                gamma = 1.0 / (2 * median_dist**2) if median_dist > 0 else 1.0
             else:
                 gamma = 1.0
         else:

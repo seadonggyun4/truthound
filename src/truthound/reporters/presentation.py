@@ -227,8 +227,10 @@ class RunPresentation:
     issue_counts_by_column: dict[str, int] = field(default_factory=dict)
     generated_at: datetime = field(default_factory=datetime.now)
 
-    def to_legacy_view(self) -> LegacyValidationResultView:
-        """Expose a compatibility view for legacy renderers."""
+    def to_legacy_view(self, *, include_passed: bool = False) -> LegacyValidationResultView:
+        """Expose legacy issue rows, optionally followed by successful checks."""
+        if type(include_passed) is not bool:
+            raise ValueError("include_passed must be a boolean")
         stats = LegacyStatisticsView(
             total_validators=self.summary.total_checks,
             passed_validators=self.summary.passed_checks,
@@ -256,6 +258,12 @@ class RunPresentation:
             )
             for issue in self.issues
         )
+        if include_passed:
+            result_rows += tuple(
+                LegacyValidatorResultView(validator_name=check.name, success=True)
+                for check in self.checks
+                if check.success
+            )
         return LegacyValidationResultView(
             run_id=self.run_id,
             run_time=self.run_time,
@@ -283,8 +291,7 @@ def build_run_presentation(
     )
     checks = tuple(_check_to_presentation(check) for check in run_result.checks)
     execution_issues = tuple(
-        _execution_issue_to_presentation(issue)
-        for issue in run_result.execution_issues
+        _execution_issue_to_presentation(issue) for issue in run_result.execution_issues
     )
     severity_counts = {
         "critical": 0,

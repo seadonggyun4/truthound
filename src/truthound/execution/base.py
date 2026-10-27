@@ -7,18 +7,17 @@ which are responsible for running validation operations on data.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from copy import deepcopy
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 from truthound.execution._protocols import (
     AggregationType,
-    ExecutionEngineProtocol,
 )
 
 if TYPE_CHECKING:
     import numpy as np
     import polars as pl
-    from truthound.datasources.base import BaseDataSource
 
 
 # =============================================================================
@@ -77,6 +76,14 @@ class ExecutionConfig:
     cache_results: bool = True
     parallel: bool = True
 
+    def __post_init__(self):
+        for name in ("max_rows_for_numpy", "max_rows_for_polars", "sample_size_for_stats"):
+            value = getattr(self, name)
+            if type(value) is not int or value < 1:
+                raise ValueError(f"{name} must be a positive integer")
+        if type(self.cache_results) is not bool or type(self.parallel) is not bool:
+            raise ValueError("Execution flags must be boolean")
+
 
 ConfigT = TypeVar("ConfigT", bound=ExecutionConfig)
 
@@ -105,8 +112,15 @@ class BaseExecutionEngine(ABC, Generic[ConfigT]):
         Args:
             config: Optional configuration.
         """
-        self._config = config or self._default_config()
+        self._config = replace(config) if config is not None else self._default_config()
         self._cache: dict[str, Any] = {}
+
+    @staticmethod
+    def _validate_window(limit: int | None = None, offset: int = 0) -> None:
+        if limit is not None and (type(limit) is not int or limit < 0):
+            raise ValueError("limit must be a nonnegative integer or None")
+        if type(offset) is not int or offset < 0:
+            raise ValueError("offset must be a nonnegative integer")
 
     @classmethod
     def _default_config(cls) -> ConfigT:
@@ -156,12 +170,12 @@ class BaseExecutionEngine(ABC, Generic[ConfigT]):
         pass
 
     @abstractmethod
-    def to_polars_lazyframe(self) -> "pl.LazyFrame":
+    def to_polars_lazyframe(self) -> pl.LazyFrame:
         """Convert to Polars LazyFrame."""
         pass
 
     @abstractmethod
-    def sample(self, n: int = 1000, seed: int | None = None) -> "BaseExecutionEngine":
+    def sample(self, n: int = 1000, seed: int | None = None) -> BaseExecutionEngine:
         """Create a new engine with sampled data."""
         pass
 
@@ -198,12 +212,11 @@ class BaseExecutionEngine(ABC, Generic[ConfigT]):
 
         Default implementation uses Polars. Override for optimization.
         """
-        lf = self.to_polars_lazyframe()
-        result = lf.select(column).unique().collect()
-        values = result[column].to_list()
-        if limit:
-            return values[:limit]
-        return values
+        self._validate_window(limit)
+        lf = self.to_polars_lazyframe().select(column).unique()
+        if limit is not None:
+            lf = lf.limit(limit)
+        return lf.collect()[column].to_list()
 
     def get_column_values(
         self,
@@ -215,11 +228,9 @@ class BaseExecutionEngine(ABC, Generic[ConfigT]):
 
         Default implementation uses Polars. Override for optimization.
         """
+        self._validate_window(limit, offset)
         lf = self.to_polars_lazyframe()
-        if offset > 0:
-            lf = lf.slice(offset, limit or 1_000_000)
-        elif limit:
-            lf = lf.limit(limit)
+        lf = lf.slice(offset, limit)
         return lf.select(column).collect()[column].to_list()
 
     def get_sample_values(self, column: str, n: int = 5) -> list[Any]:
@@ -255,18 +266,20 @@ class BaseExecutionEngine(ABC, Generic[ConfigT]):
         limit: int | None = None,
     ) -> dict[Any, int]:
         """Get value frequency counts for a column."""
+        self._validate_window(limit)
+        if limit == 0:
+            return {}
         import polars as pl
 
         lf = self.to_polars_lazyframe()
+        count_name = "__truthound_count" if column != "__truthound_count" else "__truthound_count_"
         counts = (
-            lf.group_by(column)
-            .agg(pl.len().alias("count"))
-            .sort("count", descending=True)
+            lf.group_by(column).agg(pl.len().alias(count_name)).sort(count_name, descending=True)
         )
-        if limit:
+        if limit is not None:
             counts = counts.limit(limit)
         result = counts.collect()
-        return dict(zip(result[column].to_list(), result["count"].to_list()))
+        return dict(zip(result[column].to_list(), result[count_name].to_list(), strict=True))
 
     # -------------------------------------------------------------------------
     # Default Implementations - Aggregation Operations
@@ -329,13 +342,16 @@ class BaseExecutionEngine(ABC, Generic[ConfigT]):
         Default implementation uses filter + count. Override for SQL pushdown.
         """
         filtered = self.filter_by_condition(condition)
-        return filtered.count_rows()
+        if filtered is self:
+            return self.count_rows()
+        with filtered:
+            return filtered.count_rows()
 
     def count_not_matching(self, condition: str) -> int:
         """Count rows not matching a condition."""
         return self.count_rows() - self.count_matching(condition)
 
-    def filter_by_condition(self, condition: str) -> "BaseExecutionEngine":
+    def filter_by_condition(self, condition: str) -> BaseExecutionEngine:
         """Create a new engine with filtered data.
 
         Default implementation parses condition for Polars.
@@ -356,10 +372,7 @@ class BaseExecutionEngine(ABC, Generic[ConfigT]):
         import polars as pl
 
         lf = self.to_polars_lazyframe()
-        result = (
-            lf.select(pl.col(column).str.contains(pattern).sum().alias("count"))
-            .collect()
-        )
+        result = lf.select(pl.col(column).str.contains(pattern).sum().alias("count")).collect()
         return result["count"][0]
 
     def count_not_matching_regex(self, column: str, pattern: str) -> int:
@@ -379,28 +392,21 @@ class BaseExecutionEngine(ABC, Generic[ConfigT]):
         max_value: Any | None = None,
         inclusive: bool = True,
     ) -> int:
-        """Count values within a range."""
+        """Count values within a range; absent bounds include every row."""
         import polars as pl
 
+        if min_value is None and max_value is None:
+            return self.count_rows()
         lf = self.to_polars_lazyframe()
         expr = pl.col(column)
 
         if min_value is not None:
-            if inclusive:
-                expr = expr.ge(min_value)
-            else:
-                expr = expr.gt(min_value)
+            expr = expr.ge(min_value) if inclusive else expr.gt(min_value)
 
         if max_value is not None:
             max_expr = pl.col(column)
-            if inclusive:
-                max_expr = max_expr.le(max_value)
-            else:
-                max_expr = max_expr.lt(max_value)
-            if min_value is not None:
-                expr = expr & max_expr
-            else:
-                expr = max_expr
+            max_expr = max_expr.le(max_value) if inclusive else max_expr.lt(max_value)
+            expr = expr & max_expr if min_value is not None else max_expr
 
         result = lf.select(expr.sum().alias("count")).collect()
         return result["count"][0]
@@ -425,10 +431,7 @@ class BaseExecutionEngine(ABC, Generic[ConfigT]):
         import polars as pl
 
         lf = self.to_polars_lazyframe()
-        result = (
-            lf.select(pl.col(column).is_in(list(values)).sum().alias("count"))
-            .collect()
-        )
+        result = lf.select(pl.col(column).is_in(list(values)).sum().alias("count")).collect()
         return result["count"][0]
 
     def count_not_in_set(self, column: str, values: set[Any]) -> int:
@@ -441,10 +444,26 @@ class BaseExecutionEngine(ABC, Generic[ConfigT]):
     # Default Implementations - Duplicate Operations
     # -------------------------------------------------------------------------
 
+    def _duplicate_count_alias(self, columns):
+        if (
+            not isinstance(columns, list)
+            or not columns
+            or any(not isinstance(column, str) or not column for column in columns)
+            or len(set(columns)) != len(columns)
+        ):
+            raise ValueError("Duplicate grouping requires unique nonempty column names")
+        if set(columns) - set(self.get_columns()):
+            raise ValueError("Unknown duplicate grouping column")
+        alias = "_count"
+        while alias in columns:
+            alias += "_"
+        return alias
+
     def count_duplicates(self, columns: list[str]) -> int:
         """Count duplicate rows based on specified columns."""
         import polars as pl
 
+        self._duplicate_count_alias(columns)
         lf = self.to_polars_lazyframe()
         total = self.count_rows()
         unique = lf.select(columns).unique().select(pl.len()).collect().item()
@@ -458,16 +477,20 @@ class BaseExecutionEngine(ABC, Generic[ConfigT]):
         """Get sample duplicate values."""
         import polars as pl
 
+        self._validate_window(limit)
+        count_alias = self._duplicate_count_alias(columns)
+        if limit == 0:
+            return []
         lf = self.to_polars_lazyframe()
 
         # Find duplicates
         dupes = (
             lf.group_by(columns)
-            .agg(pl.len().alias("_count"))
-            .filter(pl.col("_count") > 1)
-            .sort("_count", descending=True)
+            .agg(pl.len().alias(count_alias))
+            .filter(pl.col(count_alias) > 1)
+            .sort(count_alias, descending=True)
             .limit(limit)
-            .drop("_count")
+            .drop(count_alias)
             .collect()
         )
 
@@ -477,7 +500,7 @@ class BaseExecutionEngine(ABC, Generic[ConfigT]):
     # Default Implementations - Conversion Methods
     # -------------------------------------------------------------------------
 
-    def to_numpy(self, columns: list[str] | None = None) -> "np.ndarray":
+    def to_numpy(self, columns: list[str] | None = None) -> np.ndarray:
         """Convert to numpy array.
 
         Default implementation uses Polars as intermediary.
@@ -498,16 +521,21 @@ class BaseExecutionEngine(ABC, Generic[ConfigT]):
         if columns is None:
             # Get numeric columns only
             import polars as pl
+
             schema = lf.collect_schema()
             numeric_types = {
-                pl.Int8, pl.Int16, pl.Int32, pl.Int64,
-                pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64,
-                pl.Float32, pl.Float64,
+                pl.Int8,
+                pl.Int16,
+                pl.Int32,
+                pl.Int64,
+                pl.UInt8,
+                pl.UInt16,
+                pl.UInt32,
+                pl.UInt64,
+                pl.Float32,
+                pl.Float64,
             }
-            columns = [
-                col for col, dtype in schema.items()
-                if type(dtype) in numeric_types
-            ]
+            columns = [col for col, dtype in schema.items() if type(dtype) in numeric_types]
 
         if not columns:
             return np.array([])
@@ -520,21 +548,24 @@ class BaseExecutionEngine(ABC, Generic[ConfigT]):
         columns: list[str] | None = None,
         max_rows: int | None = None,
         seed: int | None = 42,
-    ) -> "np.ndarray":
+    ) -> np.ndarray:
         """Convert to numpy array with automatic sampling if needed.
 
         This is a safer version that automatically samples large datasets.
         """
-        import numpy as np
 
-        max_rows = max_rows or self._config.max_rows_for_numpy
+        max_rows = self._config.max_rows_for_numpy if max_rows is None else max_rows
+        if type(max_rows) is not int or max_rows < 1:
+            raise ValueError("max_rows must be a positive integer")
         row_count = self.count_rows()
 
-        engine = self
         if row_count > max_rows:
             engine = self.sample(n=max_rows, seed=seed)
-
-        return engine.to_numpy(columns)
+            if engine is self:
+                return self.to_numpy(columns)
+            with engine:
+                return engine.to_numpy(columns)
+        return self.to_numpy(columns)
 
     # -------------------------------------------------------------------------
     # Caching
@@ -547,13 +578,13 @@ class BaseExecutionEngine(ABC, Generic[ConfigT]):
     def _get_cached(self, key: str) -> Any | None:
         """Get a cached result."""
         if self._config.cache_results:
-            return self._cache.get(key)
+            return deepcopy(self._cache.get(key))
         return None
 
     def _set_cached(self, key: str, value: Any) -> None:
         """Set a cached result."""
         if self._config.cache_results:
-            self._cache[key] = value
+            self._cache[key] = deepcopy(value)
 
     def clear_cache(self) -> None:
         """Clear the result cache."""
@@ -563,7 +594,7 @@ class BaseExecutionEngine(ABC, Generic[ConfigT]):
     # Context Manager
     # -------------------------------------------------------------------------
 
-    def __enter__(self) -> "BaseExecutionEngine":
+    def __enter__(self) -> BaseExecutionEngine:
         """Context manager entry."""
         return self
 

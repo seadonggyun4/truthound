@@ -13,12 +13,11 @@ from pathlib import Path
 from typing import Any
 
 from truthound.datasources._polars_compat import polars_to_pandas_frame
+from truthound.datasources.base import DataSourceError
 from truthound.datasources.sql.base import (
     BaseSQLDataSource,
     SQLDataSourceConfig,
 )
-from truthound.datasources.base import DataSourceError
-
 
 # =============================================================================
 # Configuration
@@ -146,7 +145,8 @@ class SQLiteDataSource(BaseSQLDataSource):
         # SQLite uses PRAGMA table_info
         if self._table is None:
             raise ValueError("Cannot get table schema in query mode")
-        return f"PRAGMA table_info({self._quote_identifier(self._table)})"
+        schema = self._quote_identifier(self._config.schema_name or "main")
+        return f"PRAGMA {schema}.table_info({self._quote_identifier(self._table)})"
 
     def _fetch_schema(self) -> list[tuple[str, str]]:
         """Fetch schema from SQLite database.
@@ -240,7 +240,7 @@ class SQLiteDataSource(BaseSQLDataSource):
         df: Any,
         table: str,
         database: str | None = None,
-    ) -> "SQLiteDataSource":
+    ) -> SQLiteDataSource:
         """Create SQLite data source from a DataFrame.
 
         This is useful for testing SQL operations on in-memory data.
@@ -275,9 +275,8 @@ class SQLiteDataSource(BaseSQLDataSource):
 
         # Use temporary file if no database specified (in-memory doesn't persist across connections)
         if database is None:
-            temp_file = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
-            database = temp_file.name
-            temp_file.close()
+            with tempfile.NamedTemporaryFile(suffix=".db", delete=False) as temp_file:
+                database = temp_file.name
 
         # Create database and insert data
         conn = sqlite3.connect(database)

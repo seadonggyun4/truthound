@@ -45,3 +45,12 @@ When an applied suite is merged into the deterministic auto-suite:
 - explicit `validators=` on `th.check(...)` bypasses applied-suite merging
 
 This keeps the human-approved path explicit and predictable.
+
+## Approved MCP lifecycle
+
+The development Core MCP profile exposes the native lifecycle through a pinned
+operator provider/source/context factory. Proposal decisions and application need
+separate exact approvals and the previous native `artifact_sha256` as
+`expected_sha256`. Native actor identity is fixed; stale revisions fail before
+mutation. Workspace paths and provider credentials are not accepted from the model.
+See the [MCP contract](../guides/mcp.md#native-ai-proposal-review-and-application).

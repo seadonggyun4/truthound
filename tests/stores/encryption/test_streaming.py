@@ -119,11 +119,11 @@ class TestStreamingHeader:
 
     def test_checksum_verification(self):
         """Test checksum verification."""
-        header = StreamingHeader()
+        header = StreamingHeader(base_nonce=b"x" * 12)
         serialized = bytearray(header.to_bytes())
 
         # Corrupt data before checksum
-        serialized[10] ^= 0xFF
+        serialized[11] ^= 0xFF
 
         with pytest.raises(IntegrityError):
             StreamingHeader.from_bytes(bytes(serialized))

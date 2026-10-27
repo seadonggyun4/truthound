@@ -1,35 +1,39 @@
 """Container-based sandbox engine using Docker/Podman.
 
-This engine provides maximum isolation by running code in containers:
-- Complete filesystem isolation
-- Network isolation
-- Resource limits via cgroups
-- Seccomp profiles for syscall filtering
+Selected container restrictions and owned lifecycle with data-only results.
+Selected syscall denials apply inside Linux workers. Explicit host path grants
+are mounted separately from the image filesystem and owned IPC workspace.
 """
 
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
-import os
+import math
 import pickle
 import shutil
 import tempfile
+from copy import deepcopy
 from pathlib import Path
-from typing import Any, Callable
+from typing import TYPE_CHECKING, Any
+from uuid import uuid4
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+from truthound.plugins.security.exceptions import (
+    SandboxError,
+    SandboxResourceError,
+    SandboxTimeoutError,
+)
 from truthound.plugins.security.protocols import (
     IsolationLevel,
-    SecurityPolicy,
     SandboxContext,
+    SecurityPolicy,
 )
+from truthound.plugins.security.sandbox._ipc import read_result
+from truthound.plugins.security.sandbox._linux_syscalls import SUPPORTED
 from truthound.plugins.security.sandbox.context import SandboxContextImpl
-from truthound.plugins.security.exceptions import (
-    SandboxTimeoutError,
-    SandboxResourceError,
-    SandboxError,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -37,11 +41,11 @@ logger = logging.getLogger(__name__)
 class ContainerSandboxEngine:
     """Container-based sandbox engine using Docker or Podman.
 
-    Provides the strongest isolation by running code in containers.
+    Runs selected trusted callables under explicit container restrictions.
     Automatically detects and uses Docker or Podman.
 
     Features:
-        - Complete filesystem isolation
+        - Separate root filesystem with an owned writable IPC mount
         - Network isolation (configurable)
         - Memory and CPU limits via cgroups
         - Read-only filesystem option
@@ -59,6 +63,8 @@ class ContainerSandboxEngine:
         self,
         image: str = DEFAULT_IMAGE,
         runtime: str | None = None,
+        *,
+        max_result_bytes: int = 16 * 1024 * 1024,
     ) -> None:
         """Initialize the container sandbox engine.
 
@@ -66,10 +72,17 @@ class ContainerSandboxEngine:
             image: Default Docker image to use
             runtime: Container runtime ("docker" or "podman"), auto-detected if None
         """
+        if type(max_result_bytes) is not int or max_result_bytes < 256:
+            raise ValueError("max_result_bytes must be an integer of at least 256")
+        self.max_result_bytes = max_result_bytes
         self._image = image
         self._runtime = runtime
         self._contexts: dict[str, SandboxContextImpl] = {}
         self._container_ids: list[str] = []
+        self._tasks = {}
+        self._cleanup_tasks = set()
+        self._temp_dirs = set()
+        self._pending = {}
 
     async def _detect_runtime(self) -> str:
         """Detect available container runtime."""
@@ -80,7 +93,8 @@ class ContainerSandboxEngine:
         for runtime in ["docker", "podman"]:
             try:
                 process = await asyncio.create_subprocess_exec(
-                    runtime, "version",
+                    runtime,
+                    "version",
                     stdout=asyncio.subprocess.DEVNULL,
                     stderr=asyncio.subprocess.DEVNULL,
                 )
@@ -91,9 +105,32 @@ class ContainerSandboxEngine:
             except FileNotFoundError:
                 continue
 
-        raise SandboxError(
-            "No container runtime available. Install Docker or Podman."
-        )
+        raise SandboxError("No container runtime available. Install Docker or Podman.")
+
+    @staticmethod
+    def _host_mounts(policy):
+        limits = policy.resource_limits
+        if limits.writable_paths and not policy.allow_file_write:
+            raise ValueError("Writable host paths require allow_file_write")
+        mounts = {}
+        for paths, writable in ((limits.allowed_paths, False), (limits.writable_paths, True)):
+            if not isinstance(paths, (tuple, list)):
+                raise ValueError("Host paths must be a sequence of absolute paths")
+            for value in paths:
+                if not isinstance(value, str) or any(char in value for char in (",", "\0", "\n")):
+                    raise ValueError("Invalid host mount path")
+                path = Path(value)
+                if not path.is_absolute() or str(path.resolve()) != str(path):
+                    raise ValueError("Host grants require canonical absolute paths")
+                if path == Path("/") or any(
+                    path == root or root in path.parents
+                    for root in (Path("/workspace"), Path("/proc"), Path("/sys"), Path("/dev"))
+                ):
+                    raise ValueError("Reserved host mount destination")
+                if not path.is_file() and not path.is_dir():
+                    raise ValueError("Host grants require an existing regular file or directory")
+                mounts[str(path)] = mounts.get(str(path), False) or writable
+        return sorted(mounts.items())
 
     def create_sandbox(
         self,
@@ -109,9 +146,27 @@ class ContainerSandboxEngine:
         Returns:
             SandboxContext for execution
         """
+        for name in ("allow_network", "allow_subprocess", "allow_file_write"):
+            if type(getattr(policy, name)) is not bool:
+                raise ValueError("Container policy flags must be boolean")
+        self._host_mounts(policy)
+        limits = policy.resource_limits
+        if set(limits.denied_syscalls) - SUPPORTED:
+            raise ValueError("Unsupported container syscall policy")
+        for value in (limits.max_memory_mb, limits.max_file_descriptors):
+            if type(value) is not int or value < 0:
+                raise ValueError("Memory and descriptor limits must be nonnegative integers")
+        for value in (limits.max_execution_time_sec, limits.max_cpu_percent):
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(value)
+                or value <= 0
+            ):
+                raise ValueError("Time and CPU limits must be finite and positive")
         context = SandboxContextImpl(
             plugin_id=plugin_id,
-            policy=policy,
+            policy=deepcopy(policy),
         )
         self._contexts[context.sandbox_id] = context
         logger.debug(f"Created container sandbox context for {plugin_id}")
@@ -141,7 +196,8 @@ class ContainerSandboxEngine:
             SandboxError: If container execution fails
         """
         impl = self._get_impl(context)
-        impl.mark_started()
+        if impl.started_at is not None or not impl.is_alive():
+            raise ValueError("Sandbox context is single-use")
         policy = context.policy
         limits = policy.resource_limits
 
@@ -150,21 +206,43 @@ class ContainerSandboxEngine:
 
         # Create temporary directory
         temp_dir = Path(tempfile.mkdtemp(prefix="truthound_container_"))
+        self._temp_dirs.add(temp_dir)
+        impl.mark_started()
+        self._tasks[context.sandbox_id] = asyncio.current_task()
         data_path = temp_dir / "data.pkl"
-        result_path = temp_dir / "result.pkl"
+        result_path = temp_dir / "result.json"
         script_path = temp_dir / "executor.py"
 
+        process = None
+        creation = None
+        startup = None
+        container_id = None
+        token = uuid4().hex
+        owned_name = "truthound-worker-" + token
         try:
             # Serialize function and data
             with open(data_path, "wb") as f:
-                pickle.dump({
-                    "func": func,
-                    "args": args,
-                    "kwargs": kwargs,
-                }, f)
+                pickle.dump(
+                    {
+                        "func": func,
+                        "args": args,
+                        "kwargs": kwargs,
+                    },
+                    f,
+                )
+
+            shutil.copyfile(
+                Path(__file__).resolve().parents[4] / "ml" / "serialization.py",
+                temp_dir / "values.py",
+            )
+
+            shutil.copyfile(
+                Path(__file__).resolve().parent.parent / "_linux_syscalls.py",
+                temp_dir / "syscalls.py",
+            )
 
             # Create executor script
-            script = self._create_executor_script()
+            script = self._create_executor_script(policy)
             with open(script_path, "w") as f:
                 f.write(script)
 
@@ -175,20 +253,30 @@ class ContainerSandboxEngine:
                 temp_dir=temp_dir,
             )
 
-            # Execute container
-            process = await asyncio.create_subprocess_exec(
-                *container_cmd,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
+            container_cmd[2:2] = ["--name", owned_name, "--label", "org.truthound.worker=" + token]
+            self._pending[owned_name] = token
+            creation = asyncio.create_task(self._create_container(container_cmd))
+            container_id = await asyncio.shield(creation)
+            impl.set_container_id(container_id)
+            startup = asyncio.create_task(
+                asyncio.create_subprocess_exec(
+                    runtime,
+                    "start",
+                    "--attach",
+                    container_id,
+                    stdout=asyncio.subprocess.DEVNULL,
+                    stderr=asyncio.subprocess.DEVNULL,
+                )
             )
+            process = await asyncio.shield(startup)
 
             try:
                 # Wait with timeout
                 stdout, stderr = await asyncio.wait_for(
                     process.communicate(),
-                    timeout=limits.max_execution_time_sec + 10,
+                    timeout=limits.max_execution_time_sec,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 process.kill()
                 await process.wait()
                 impl.mark_terminated()
@@ -198,49 +286,98 @@ class ContainerSandboxEngine:
                     sandbox_id=context.sandbox_id,
                     timeout_seconds=limits.max_execution_time_sec,
                     execution_time=impl.execution_time_sec,
-                )
+                ) from None
 
             impl.mark_finished()
 
-            # Check for result
-            if not result_path.exists():
-                stderr_text = stderr.decode() if stderr else "No output"
-                raise SandboxError(
-                    f"Container produced no result. stderr: {stderr_text}",
-                    plugin_id=context.plugin_id,
-                    sandbox_id=context.sandbox_id,
-                )
-
-            # Load result
-            with open(result_path, "rb") as f:
-                result_data = pickle.load(f)
-
-            if result_data.get("success"):
-                return result_data.get("result")
-
-            # Handle errors
-            error_type = result_data.get("error", "UnknownError")
-            error_msg = result_data.get("message", "Unknown error")
-
-            if error_type == "MemoryError":
+            if process.returncode == 137:
                 raise SandboxResourceError(
-                    f"Container memory limit exceeded: {error_msg}",
-                    plugin_id=context.plugin_id,
-                    sandbox_id=context.sandbox_id,
-                    resource_type="memory",
+                    "Container was killed; memory exhaustion is possible",
+                    resource_type="container",
                     limit=limits.max_memory_mb,
                 )
-            else:
-                raise SandboxError(
-                    f"Container error ({error_type}): {error_msg}",
-                    plugin_id=context.plugin_id,
-                    sandbox_id=context.sandbox_id,
-                )
+            if process.returncode != 0:
+                raise SandboxError("Container worker failed", plugin_id=context.plugin_id)
+            return read_result(
+                result_path,
+                self.max_result_bytes,
+                plugin_id=context.plugin_id,
+                sandbox_id=context.sandbox_id,
+                memory_limit=limits.max_memory_mb,
+            )
 
         finally:
-            # Cleanup temp directory
-            if temp_dir.exists():
-                shutil.rmtree(temp_dir, ignore_errors=True)
+
+            async def release():
+                owned_id = container_id
+                if creation is not None and owned_id is None:
+                    try:
+                        owned_id = await creation
+                    except Exception:
+                        owned_id = await self._reconcile_creation(owned_name, token)
+                if owned_id is not None:
+                    await self._kill_container(owned_id)
+                self._pending.pop(owned_name, None)
+                attached = process
+                if attached is None and startup is not None:
+                    attached = await startup
+                if attached is not None and attached.returncode is None:
+                    attached.kill()
+                    await attached.wait()
+                shutil.rmtree(temp_dir)
+                self._temp_dirs.discard(temp_dir)
+                impl.mark_finished()
+                self._tasks.pop(context.sandbox_id, None)
+
+            cleanup = asyncio.create_task(release())
+            self._cleanup_tasks.add(cleanup)
+            await asyncio.shield(cleanup)
+            self._cleanup_tasks.discard(cleanup)
+
+    async def _reconcile_creation(self, name, token):
+        process = await asyncio.create_subprocess_exec(
+            self._runtime,
+            "container",
+            "ls",
+            "--all",
+            "--no-trunc",
+            "--filter",
+            "name=^/" + name + "$",
+            "--filter",
+            "label=org.truthound.worker=" + token,
+            "--format",
+            "{{.ID}}",
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        output, _ = await process.communicate()
+        if process.returncode:
+            raise SandboxError("Container creation outcome remains unknown")
+        identity = output.decode("ascii", errors="replace").strip()
+        if not identity:
+            return None
+        if len(identity) != 64 or any(c not in "0123456789abcdef" for c in identity):
+            raise SandboxError("Invalid owned container identity")
+        if identity not in self._container_ids:
+            self._container_ids.append(identity)
+        return identity
+
+    async def _create_container(self, command):
+        process = await asyncio.create_subprocess_exec(
+            *command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        output, _ = await process.communicate()
+        identity = output.decode("ascii", errors="replace").strip()
+        if (
+            process.returncode
+            or len(identity) != 64
+            or any(c not in "0123456789abcdef" for c in identity)
+        ):
+            raise SandboxError("Container creation failed")
+        self._container_ids.append(identity)
+        return identity
 
     def _build_container_command(
         self,
@@ -252,118 +389,157 @@ class ContainerSandboxEngine:
         limits = policy.resource_limits
 
         cmd = [
-            runtime, "run",
-            "--rm",  # Auto-remove container
-            f"--memory={limits.max_memory_mb}m",
+            runtime,
+            "create",
+            "--pull=never",
             f"--cpus={limits.max_cpu_percent / 100}",
             f"--network={'bridge' if policy.allow_network else 'none'}",
-            "-v", f"{temp_dir}:/workspace:rw",
-            "-w", "/workspace",
+            "-v",
+            f"{temp_dir}:/workspace:rw",
+            "-w",
+            "/workspace",
         ]
+
+        if limits.max_memory_mb:
+            cmd.append(f"--memory={limits.max_memory_mb}m")
+        if limits.max_file_descriptors:
+            cmd.append(
+                f"--ulimit=nofile={limits.max_file_descriptors}:{limits.max_file_descriptors}"
+            )
+
+        for path, writable in self._host_mounts(policy):
+            mount = f"type=bind,source={path},target={path}"
+            if not writable:
+                mount += ",readonly"
+            cmd.extend(["--mount", mount])
 
         # Add read-only root filesystem if not allowing file writes
         if not policy.allow_file_write:
-            cmd.extend([
-                "--read-only",
-                "--tmpfs", "/tmp:rw,noexec,nosuid",
-            ])
+            cmd.extend(
+                [
+                    "--read-only",
+                    "--tmpfs",
+                    "/tmp:rw,noexec,nosuid",
+                ]
+            )
 
         # Add security options
-        cmd.extend([
-            "--security-opt", "no-new-privileges",
-            "--cap-drop", "ALL",
-        ])
+        cmd.extend(
+            [
+                "--security-opt",
+                "no-new-privileges",
+                "--cap-drop",
+                "ALL",
+            ]
+        )
 
         # Add image and command
-        cmd.extend([
-            self._image,
-            "python", "/workspace/executor.py",
-        ])
+        cmd.extend(
+            [
+                self._image,
+                "python",
+                "/workspace/executor.py",
+            ]
+        )
 
         return cmd
 
-    def _create_executor_script(self) -> str:
+    def _create_executor_script(self, policy) -> str:
         """Create Python script for container execution."""
-        return '''
-import sys
+        return f"""
+import asyncio
+import importlib.util
+import json
 import pickle
+import resource
 
+spec = importlib.util.spec_from_file_location("_truthound_values", "/workspace/values.py")
+codec = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(codec)
+
+def save(value):
+    content = json.dumps(value, allow_nan=False).encode("utf-8")
+    if len(content) > {self.max_result_bytes}:
+        raise ValueError("Result exceeds IPC budget")
+    with open("/workspace/result.json", "wb") as stream:
+        stream.write(content)
+
+stage = "limits"
 try:
-    # Load data
-    with open("/workspace/data.pkl", "rb") as f:
-        data = pickle.load(f)
-
-    func = data["func"]
-    args = data["args"]
-    kwargs = data["kwargs"]
-
-    # Execute
-    result = func(*args, **kwargs)
-
-    # Save result
-    with open("/workspace/result.pkl", "wb") as f:
-        pickle.dump({"success": True, "result": result}, f)
-
-except MemoryError as e:
-    with open("/workspace/result.pkl", "wb") as f:
-        pickle.dump({"success": False, "error": "MemoryError", "message": str(e)}, f)
-except Exception as e:
-    with open("/workspace/result.pkl", "wb") as f:
-        pickle.dump({"success": False, "error": type(e).__name__, "message": str(e)}, f)
-'''
+    resource.setrlimit(resource.RLIMIT_FSIZE, ({self.max_result_bytes},) * 2)
+    syscall_spec = importlib.util.spec_from_file_location("_truthound_syscalls", "/workspace/syscalls.py")
+    syscalls = importlib.util.module_from_spec(syscall_spec)
+    syscall_spec.loader.exec_module(syscalls)
+    syscalls.install({tuple(policy.resource_limits.denied_syscalls)!r}, {policy.allow_subprocess!r})
+    with open("/workspace/data.pkl", "rb") as stream:
+        data = pickle.load(stream)
+    stage = "operation"
+    result = data["func"](*data["args"], **data["kwargs"])
+    if hasattr(result, "__await__"):
+        async def finish():
+            return await result
+        result = asyncio.run(finish())
+    stage = "result"
+    save({{"success": True, "result": codec.encode(result)}})
+except BaseException as error:
+    save({{"success": False, "error": type(error).__name__, "stage": stage}})
+"""
 
     def terminate(self, context: SandboxContext) -> None:
-        """Terminate sandbox container.
-
-        Args:
-            context: Sandbox to terminate
-        """
         impl = self._get_impl(context)
         impl.mark_terminated()
-
-        # Kill container if running
-        container_id = impl.container_id
-        if container_id and self._runtime:
-            try:
-                asyncio.create_task(self._kill_container(container_id))
-            except Exception:
-                pass
-
-        self._contexts.pop(context.sandbox_id, None)
+        task = self._tasks.get(context.sandbox_id)
+        if task is not None:
+            task.cancel()
 
     async def _kill_container(self, container_id: str) -> None:
-        """Kill a container by ID."""
-        if not self._runtime:
-            return
-        try:
-            process = await asyncio.create_subprocess_exec(
-                self._runtime, "rm", "-f", container_id,
-                stdout=asyncio.subprocess.DEVNULL,
-                stderr=asyncio.subprocess.DEVNULL,
-            )
-            await process.wait()
-        except Exception as e:
-            logger.warning(f"Failed to kill container {container_id}: {e}")
+        if container_id not in self._container_ids:
+            raise ValueError("Container is not owned by this engine")
+        process = await asyncio.create_subprocess_exec(
+            self._runtime,
+            "rm",
+            "--force",
+            container_id,
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        await process.wait()
+        if process.returncode:
+            raise SandboxError("Owned container removal failed")
+        self._container_ids.remove(container_id)
 
     async def cleanup(self) -> None:
-        """Clean up all sandbox resources."""
-        # Terminate all contexts
-        for context in list(self._contexts.values()):
-            self.terminate(context)
+        tasks = list(self._tasks.values())
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
+        results = await asyncio.gather(*self._cleanup_tasks, return_exceptions=True)
+        self._cleanup_tasks.clear()
+        failures = [result for result in results if isinstance(result, Exception)]
+        for name, token in list(self._pending.items()):
+            try:
+                await self._reconcile_creation(name, token)
+            except Exception as error:
+                failures.append(error)
+            else:
+                self._pending.pop(name, None)
+        for identity in list(self._container_ids):
+            try:
+                await self._kill_container(identity)
+            except Exception as error:
+                failures.append(error)
+        if failures:
+            raise ExceptionGroup("Container cleanup failed", failures)
+        for directory in list(self._temp_dirs):
+            shutil.rmtree(directory)
+            self._temp_dirs.remove(directory)
+        self._tasks.clear()
         self._contexts.clear()
 
-        # Kill any remaining containers
-        for container_id in self._container_ids:
-            await self._kill_container(container_id)
-        self._container_ids.clear()
-
     def _get_impl(self, context: SandboxContext) -> SandboxContextImpl:
-        """Get implementation from context."""
-        if isinstance(context, SandboxContextImpl):
-            return context
         impl = self._contexts.get(context.sandbox_id)
-        if impl is None:
-            raise ValueError(f"Unknown sandbox context: {context.sandbox_id}")
+        if impl is not context:
+            raise ValueError("Sandbox context is not owned by this engine")
         return impl
 
     async def check_available(self) -> bool:

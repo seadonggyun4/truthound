@@ -123,11 +123,14 @@ async def core_profile():
                 required|={"schedules_register","schedules_status","schedules_disable","storage_policy_register","storage_policy_status","storage_policy_disable"}
                 required|={"drift_catalog","drift_detect","profilers_catalog","profilers_profile","profilers_generate_rules","schemas_create","schemas_export"}
                 required|={"suites_create","suites_inspect","suites_validate","contexts_execute"}
-                required|={"sources_open_polars","sources_inspect","sources_sample","sources_validate_connection","sources_validate_columns","sources_check_size_limits","sources_validate"}
+                required|={"sources_read","sources_mask","sources_profile","sources_scan","sources_learn","sources_open_polars","sources_inspect","sources_sample","sources_validate_connection","sources_validate_columns","sources_check_size_limits","sources_validate"}
                 required|={"sources_open_sqlite","sources_open_duckdb","streams_open","streams_next","streams_inspect"}
                 required|={"lineage_catalog","lineage_create","lineage_edit","lineage_query","lineage_render","lineage_impact","lineage_critical_paths","lineage_what_if_delete","lineage_schema_impact","lineage_dependency_chain"}
                 required|={"models_catalog","models_create","models_inspect","models_fit","models_partial_fit","models_predict","models_score","models_rules","models_fit_predict","models_learn_rules","models_detect","models_diagnostics"}
                 required|={"models_save","models_restore","schema_audit_contract","schema_audit_create","schema_audit_inspect","schema_audit_standards","schema_audit_implementation"}
+                required.update({'brokers_execute', 'secret_services_open', 'dashboards_execute', 'dashboards_open', 'store_services_execute', 'profiler_services_open', 'profiler_services_execute', 'streaming_store_services_open', 'streaming_store_services_execute', 'plugin_services_open', 'security_services_execute', 'rate_limit_services_open', 'ai_services_open', 'execution_services_open', 'store_services_open', 'telemetry_services_open', 'audit_services_execute', 'sources_sample_source', 'brokers_open', 'execution_services_execute', 'secret_services_execute', 'tenant_services_execute', 'audit_services_open', 'ai_services_execute', 'telemetry_services_execute', 'security_services_open', 'rate_limit_services_execute', 'plugin_services_execute', 'tenant_services_open'})
+                required.update({'benchmark_services_execute', 'documentation_services_open', 'documentation_services_execute', 'openlineage_services_open', 'benchmark_services_open', 'store_utilities_execute', 'store_utilities_open', 'ml_services_open', 'ml_services_execute', 'openlineage_services_execute'})
+                required.update({"lineage_services_open", "lineage_services_execute"})
                 assert names==required|{"check_file","profile_file","scan_pii"}
                 import importlib.util
                 if importlib.util.find_spec("duckdb") is None:

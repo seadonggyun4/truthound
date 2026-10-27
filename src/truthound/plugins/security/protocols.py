@@ -83,16 +83,18 @@ class TrustLevel(str, Enum):
 class ResourceLimits:
     """Resource limits for sandboxed execution.
 
-    All limits are enforced by the sandbox engine. Values of 0 or negative
-    mean unlimited (not recommended for untrusted code).
+    Enforcement depends on the selected engine. Process execution requires a
+    positive finite wall deadline; zero memory/file-descriptor limits disable
+    those native limits. Negative process limits are rejected. CPU percentages,
+    path lists and syscall policies are not process-worker OS isolation.
 
     Attributes:
         max_memory_mb: Maximum memory in megabytes
         max_cpu_percent: Maximum CPU usage (0-100)
         max_execution_time_sec: Maximum execution time in seconds
         max_file_descriptors: Maximum open file descriptors
-        allowed_paths: Paths the plugin can access (read-only by default)
-        writable_paths: Paths the plugin can write to
+        allowed_paths: Explicit host paths mounted read-only by container workers
+        writable_paths: Explicit writable host mounts (requires allow_file_write)
         denied_syscalls: System calls to block (Linux-specific)
     """
 

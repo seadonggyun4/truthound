@@ -8,16 +8,17 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from truthound.execution._protocols import AggregationType
 from truthound.execution.base import (
     BaseExecutionEngine,
     ExecutionConfig,
     ExecutionSizeError,
 )
-from truthound.execution._protocols import AggregationType
 
 if TYPE_CHECKING:
     import numpy as np
     import polars as pl
+
     from truthound.datasources.sql.base import BaseSQLDataSource
 
 
@@ -38,7 +39,7 @@ class SQLExecutionEngine(BaseExecutionEngine[ExecutionConfig]):
 
     def __init__(
         self,
-        datasource: "BaseSQLDataSource",
+        datasource: BaseSQLDataSource,
         config: ExecutionConfig | None = None,
     ) -> None:
         """Initialize SQL execution engine.
@@ -51,7 +52,7 @@ class SQLExecutionEngine(BaseExecutionEngine[ExecutionConfig]):
         self._source = datasource
 
     @property
-    def datasource(self) -> "BaseSQLDataSource":
+    def datasource(self) -> BaseSQLDataSource:
         """Get the underlying data source."""
         return self._source
 
@@ -155,26 +156,11 @@ class SQLExecutionEngine(BaseExecutionEngine[ExecutionConfig]):
         if cached is not None:
             return cached
 
-        query = self._source.build_stats_query(column)
-        result = self._execute_query(query)
+        # Complete statistics share Core's numeric/null semantics and bounded
+        # materialization contract instead of fabricating unavailable values.
+        from truthound.execution.polars_engine import PolarsExecutionEngine
 
-        if not result:
-            return {}
-
-        row = result[0]
-        stats = {
-            "count": row.get("count", 0),
-            "null_count": row.get("null_count", 0),
-            "mean": row.get("mean"),
-            "min": row.get("min"),
-            "max": row.get("max"),
-            "sum": row.get("sum"),
-            # Standard SQL doesn't have median/std - set to None
-            "std": None,
-            "median": None,
-            "q25": None,
-            "q75": None,
-        }
+        stats = PolarsExecutionEngine(self.to_polars_lazyframe(), self._config).get_stats(column)
 
         self._set_cached(cache_key, stats)
         return stats
@@ -185,6 +171,9 @@ class SQLExecutionEngine(BaseExecutionEngine[ExecutionConfig]):
         limit: int | None = None,
     ) -> dict[Any, int]:
         """Get value frequency counts using SQL."""
+        self._validate_window(limit)
+        if limit == 0:
+            return {}
         col = self._quote(column)
         query = f"""
             SELECT {col} as value, COUNT(*) as cnt
@@ -192,10 +181,7 @@ class SQLExecutionEngine(BaseExecutionEngine[ExecutionConfig]):
             GROUP BY {col}
             ORDER BY cnt DESC
         """
-        if limit:
-            query += f" LIMIT {limit}"
-
-        result = self._execute_query(query)
+        result = self._execute_query(self._page_query(query, column, limit, projection="*"))
         return {row["value"]: row["cnt"] for row in result}
 
     # -------------------------------------------------------------------------
@@ -217,74 +203,117 @@ class SQLExecutionEngine(BaseExecutionEngine[ExecutionConfig]):
             AggregationType.NULL_COUNT: lambda c: f"SUM(CASE WHEN {c} IS NULL THEN 1 ELSE 0 END)",
         }
 
-        select_parts = []
-        keys = []
-
-        for col, agg_type in aggregations.items():
-            key = f"{col}_{agg_type.value}"
+        if not aggregations:
+            return {}
+        if set(aggregations) - set(self.get_columns()):
+            raise ValueError("Unknown aggregation column")
+        selected = {column: AggregationType(kind) for column, kind in aggregations.items()}
+        fallback = {column: kind for column, kind in selected.items() if kind not in agg_sql}
+        # Reuse the Core implementation and its conversion bound. Unsupported
+        # pushdown must not look like a successfully computed null statistic.
+        result = super().aggregate(fallback) if fallback else {}
+        parts, keys = [], []
+        for column, kind in selected.items():
+            if kind not in agg_sql:
+                continue
+            key = f"{column}_{kind.value}"
             keys.append(key)
-
-            quoted_col = self._quote(col)
-            if agg_type in agg_sql:
-                select_parts.append(f"{agg_sql[agg_type](quoted_col)} as {key}")
-            else:
-                # Unsupported in SQL, will return None
-                select_parts.append(f"NULL as {key}")
-
-        query = f"SELECT {', '.join(select_parts)} FROM {self._source.full_table_name}"
-        result = self._execute_query(query)
-
-        if not result:
-            return {key: None for key in keys}
-
-        return {key: result[0].get(key) for key in keys}
+            expression = agg_sql[kind](self._quote(column))
+            if kind == AggregationType.NULL_COUNT:
+                expression = f"COALESCE({expression}, 0)"
+            parts.append(f"{expression} AS {self._quote(key)}")
+        if parts:
+            rows = self._execute_query(
+                f"SELECT {', '.join(parts)} FROM {self._source.full_table_name}"
+            )
+            result.update({key: rows[0].get(key) if rows else None for key in keys})
+        return {
+            f"{column}_{kind.value}": result[f"{column}_{kind.value}"]
+            for column, kind in selected.items()
+        }
 
     # -------------------------------------------------------------------------
     # Value Operations
     # -------------------------------------------------------------------------
 
-    def get_distinct_values(
+    def _page_query(
         self,
+        query: str,
         column: str,
-        limit: int | None = None,
-    ) -> list[Any]:
-        """Get distinct values using SQL."""
+        limit: int | None,
+        offset: int = 0,
+        *,
+        projection: str | None = None,
+    ) -> str:
+        self._validate_window(limit, offset)
+        query = query.strip()
+        dialect = getattr(self._source, "materialization_dialect", "limit")
         col = self._quote(column)
-        query = f"SELECT DISTINCT {col} FROM {self._source.full_table_name}"
-        if limit:
-            query += f" LIMIT {limit}"
+        if dialect == "top":
+            if limit == 0:
+                prefix = "SELECT DISTINCT " if query.startswith("SELECT DISTINCT ") else "SELECT "
+                query = prefix + "TOP (0) " + query[len(prefix) :]
+            elif offset:
+                query += f" ORDER BY {col} OFFSET {offset} ROWS"
+                if limit is not None:
+                    query += f" FETCH NEXT {limit} ROWS ONLY"
+            elif limit is not None:
+                prefix = "SELECT DISTINCT " if query.startswith("SELECT DISTINCT ") else "SELECT "
+                query = prefix + f"TOP ({limit}) " + query[len(prefix) :]
+        elif dialect == "rownum":
+            from uuid import uuid4
 
-        result = self._execute_query(query)
-        return [row[column] for row in result]
+            number = "th_page_" + uuid4().hex
+            source = self._source._alias_subquery(query, "th_source")
+            query = f"SELECT th_source.*, ROWNUM {number} FROM {source}"
+            if limit is not None:
+                query += f" WHERE ROWNUM <= {offset + limit}"
+            query = f"SELECT {projection or col} FROM {self._source._alias_subquery(query, 'th_page')} WHERE {number} > {offset}"
+        else:
+            if limit is not None:
+                query += f" LIMIT {limit}"
+            elif offset:
+                root = self._source
+                seen = set()
+                while hasattr(root, "_parent") and id(root) not in seen:
+                    seen.add(id(root))
+                    root = root._parent
+                kind = root.source_type
+                if kind == "sqlite":
+                    query += " LIMIT -1"
+                elif kind == "mysql":
+                    query += " LIMIT 18446744073709551615"
+                elif kind not in {"postgresql", "redshift", "duckdb", "snowflake"}:
+                    query += " LIMIT 9223372036854775807"
+            if offset:
+                query += f" OFFSET {offset}"
+        return query
+
+    def _page_values(
+        self, query: str, column: str, limit: int | None, offset: int = 0
+    ) -> list[Any]:
+        return [
+            row[column]
+            for row in self._execute_query(self._page_query(query, column, limit, offset))
+        ]
+
+    def get_distinct_values(self, column: str, limit: int | None = None) -> list[Any]:
+        """Get distinct values using provider pagination."""
+        query = f"SELECT DISTINCT {self._quote(column)} FROM {self._source.full_table_name}"
+        return self._page_values(query, column, limit)
 
     def get_column_values(
-        self,
-        column: str,
-        limit: int | None = None,
-        offset: int = 0,
+        self, column: str, limit: int | None = None, offset: int = 0
     ) -> list[Any]:
-        """Get values from a column using SQL."""
-        col = self._quote(column)
-        query = f"SELECT {col} FROM {self._source.full_table_name}"
-        if limit:
-            query += f" LIMIT {limit}"
-        if offset > 0:
-            query += f" OFFSET {offset}"
-
-        result = self._execute_query(query)
-        return [row[column] for row in result]
+        """Get values with an explicit zero limit and provider-native offsets."""
+        query = f"SELECT {self._quote(column)} FROM {self._source.full_table_name}"
+        return self._page_values(query, column, limit, offset)
 
     def get_sample_values(self, column: str, n: int = 5) -> list[Any]:
-        """Get sample non-null values."""
+        """Get leading non-null values using provider pagination."""
         col = self._quote(column)
-        query = f"""
-            SELECT {col}
-            FROM {self._source.full_table_name}
-            WHERE {col} IS NOT NULL
-            LIMIT {n}
-        """
-        result = self._execute_query(query)
-        return [row[column] for row in result]
+        query = f"SELECT {col} FROM {self._source.full_table_name} WHERE {col} IS NOT NULL"
+        return self._page_values(query, column, n)
 
     # -------------------------------------------------------------------------
     # Filter Operations
@@ -301,54 +330,47 @@ class SQLExecutionEngine(BaseExecutionEngine[ExecutionConfig]):
         matching = self.count_matching(condition)
         return total - matching
 
-    def filter_by_condition(self, condition: str) -> "SQLExecutionEngine":
+    def filter_by_condition(self, condition: str) -> SQLExecutionEngine:
         """Create a filtered view using SQL.
 
         Note: This creates a subquery-based view, not a new table.
         """
-        # Create a wrapped data source with the condition
-        from truthound.datasources.sql.base import SampledSQLDataSource
+        from truthound.datasources.sql.base import FilteredSQLDataSource
 
-        # For now, return self with a note that full filtering
-        # would require more complex implementation
-        raise NotImplementedError(
-            "Full SQL filter_by_condition not yet implemented. "
-            "Use count_matching() for condition-based counting."
-        )
+        return SQLExecutionEngine(FilteredSQLDataSource(self._source, condition), self._config)
 
     # -------------------------------------------------------------------------
     # Pattern Matching
     # -------------------------------------------------------------------------
 
+    def _bound_parameter_style(self):
+        from truthound.datasources.sql.base import FilteredSQLDataSource, SampledSQLDataSource
+
+        source = self._source
+        while isinstance(source, (FilteredSQLDataSource, SampledSQLDataSource)):
+            source = source._parent
+        return {"sqlite": "?", "duckdb": "?", "postgresql": "%s", "mysql": "%s"}.get(
+            source.source_type
+        ), source.source_type
+
+    @staticmethod
+    def _parameter_sql_text(text, placeholder):
+        # Percent-style drivers also parse percent characters inside quoted SQL.
+        return text.replace("%", "%%") if placeholder == "%s" else text
+
+    def _bound_count_query(self, condition, placeholder):
+        table = self._parameter_sql_text(self._source.full_table_name, placeholder)
+        return f"SELECT COUNT(*) FROM {table} WHERE {condition}"
+
     def count_matching_regex(self, column: str, pattern: str) -> int:
-        """Count values matching a regex pattern.
-
-        Note: Regex syntax varies by database. This uses REGEXP for MySQL
-        and ~ for PostgreSQL.
-        """
-        col = self._quote(column)
-        source_type = self._source.source_type
-
-        if source_type == "postgresql":
-            query = f"""
-                SELECT COUNT(*)
-                FROM {self._source.full_table_name}
-                WHERE {col} ~ '{pattern}'
-            """
-        elif source_type == "mysql":
-            query = f"""
-                SELECT COUNT(*)
-                FROM {self._source.full_table_name}
-                WHERE {col} REGEXP '{pattern}'
-            """
-        elif source_type == "sqlite":
-            # SQLite doesn't have native regex support
-            # Fall back to Polars
+        """Use native bound regex operands where supported, otherwise bounded Polars."""
+        placeholder, source_type = self._bound_parameter_style()
+        if source_type not in {"postgresql", "mysql"}:
             return super().count_matching_regex(column, pattern)
-        else:
-            return super().count_matching_regex(column, pattern)
-
-        return self._execute_scalar(query)
+        operator = "~" if source_type == "postgresql" else "REGEXP"
+        col = self._parameter_sql_text(self._quote(column), placeholder)
+        query = self._bound_count_query(f"{col} {operator} {placeholder}", placeholder)
+        return self._source.execute_scalar(query, (pattern,))
 
     # -------------------------------------------------------------------------
     # Range Operations
@@ -362,22 +384,21 @@ class SQLExecutionEngine(BaseExecutionEngine[ExecutionConfig]):
         inclusive: bool = True,
     ) -> int:
         """Count values within a range using SQL."""
-        col = self._quote(column)
-        conditions = []
-
-        if min_value is not None:
-            op = ">=" if inclusive else ">"
-            conditions.append(f"{col} {op} {min_value}")
-
-        if max_value is not None:
-            op = "<=" if inclusive else "<"
-            conditions.append(f"{col} {op} {max_value}")
-
-        if not conditions:
+        if min_value is None and max_value is None:
             return self.count_rows()
-
-        condition = " AND ".join(conditions)
-        return self.count_matching(condition)
+        placeholder, _ = self._bound_parameter_style()
+        if placeholder is None:
+            return super().count_in_range(column, min_value, max_value, inclusive)
+        col = self._parameter_sql_text(self._quote(column), placeholder)
+        conditions, parameters = [], []
+        if min_value is not None:
+            conditions.append(f"{col} {'>=' if inclusive else '>'} {placeholder}")
+            parameters.append(min_value)
+        if max_value is not None:
+            conditions.append(f"{col} {'<=' if inclusive else '<'} {placeholder}")
+            parameters.append(max_value)
+        query = self._bound_count_query(" AND ".join(conditions), placeholder)
+        return self._source.execute_scalar(query, tuple(parameters))
 
     # -------------------------------------------------------------------------
     # Set Operations
@@ -388,62 +409,47 @@ class SQLExecutionEngine(BaseExecutionEngine[ExecutionConfig]):
         if not values:
             return 0
 
-        col = self._quote(column)
-
-        # Format values for SQL
-        formatted = []
-        for v in values:
-            if isinstance(v, str):
-                escaped = v.replace("'", "''")
-                formatted.append(f"'{escaped}'")
-            elif v is None:
-                continue  # NULL handled separately
-            else:
-                formatted.append(str(v))
-
-        if not formatted:
+        placeholder, _ = self._bound_parameter_style()
+        if placeholder is None:
+            return super().count_in_set(column, values)
+        parameters = tuple(value for value in values if value is not None)
+        if not parameters:
             return 0
-
-        condition = f"{col} IN ({', '.join(formatted)})"
-        return self.count_matching(condition)
+        col = self._parameter_sql_text(self._quote(column), placeholder)
+        condition = f"{col} IN ({', '.join([placeholder] * len(parameters))})"
+        return self._source.execute_scalar(self._bound_count_query(condition, placeholder), parameters)
 
     # -------------------------------------------------------------------------
     # Duplicate Operations
     # -------------------------------------------------------------------------
 
     def count_duplicates(self, columns: list[str]) -> int:
-        """Count duplicate rows using SQL."""
-        cols = ", ".join(self._quote(c) for c in columns)
-        query = f"""
-            SELECT COUNT(*) - COUNT(DISTINCT ({cols}))
-            FROM {self._source.full_table_name}
-        """
-        return self._execute_scalar(query)
+        """Count excess rows in native groups, including null-bearing groups."""
+        alias = self._quote(self._duplicate_count_alias(columns))
+        cols = ", ".join(self._quote(column) for column in columns)
+        grouped = f"SELECT COUNT(*) AS {alias} FROM {self._source.full_table_name} GROUP BY {cols}"
+        source = self._source._alias_subquery(grouped, "th_duplicates")
+        return self._execute_scalar(f"SELECT COALESCE(SUM({alias} - 1), 0) FROM {source}")
 
-    def get_duplicate_values(
-        self,
-        columns: list[str],
-        limit: int = 10,
-    ) -> list[dict[str, Any]]:
-        """Get sample duplicate values using SQL."""
-        cols = ", ".join(self._quote(c) for c in columns)
-        query = f"""
-            SELECT {cols}, COUNT(*) as cnt
-            FROM {self._source.full_table_name}
-            GROUP BY {cols}
-            HAVING COUNT(*) > 1
-            ORDER BY cnt DESC
-            LIMIT {limit}
-        """
-        result = self._execute_query(query)
-        # Remove the count column from results
-        return [{k: v for k, v in row.items() if k != "cnt"} for row in result]
+    def get_duplicate_values(self, columns: list[str], limit: int = 10) -> list[dict[str, Any]]:
+        """Return native duplicate groups with provider-specific pagination."""
+        self._validate_window(limit)
+        alias = self._quote(self._duplicate_count_alias(columns))
+        if limit == 0:
+            return []
+        cols = ", ".join(self._quote(column) for column in columns)
+        query = (
+            f"SELECT {cols}, COUNT(*) AS {alias} FROM {self._source.full_table_name} "
+            f"GROUP BY {cols} HAVING COUNT(*) > 1 ORDER BY {alias} DESC"
+        )
+        result = self._execute_query(self._page_query(query, columns[0], limit, projection=cols))
+        return [{column: row[column] for column in columns} for row in result]
 
     # -------------------------------------------------------------------------
     # Conversion Methods
     # -------------------------------------------------------------------------
 
-    def to_polars_lazyframe(self) -> "pl.LazyFrame":
+    def to_polars_lazyframe(self) -> pl.LazyFrame:
         """Convert to Polars LazyFrame by fetching data.
 
         Warning: This loads data into memory.
@@ -458,7 +464,7 @@ class SQLExecutionEngine(BaseExecutionEngine[ExecutionConfig]):
 
         return self._source.to_polars_lazyframe()
 
-    def to_numpy(self, columns: list[str] | None = None) -> "np.ndarray":
+    def to_numpy(self, columns: list[str] | None = None) -> np.ndarray:
         """Convert to numpy array.
 
         This fetches data from database and converts to numpy.
@@ -476,6 +482,7 @@ class SQLExecutionEngine(BaseExecutionEngine[ExecutionConfig]):
         if columns is None:
             # Get numeric columns
             from truthound.datasources._protocols import ColumnType
+
             schema = self._source.schema
             numeric_types = {ColumnType.INTEGER, ColumnType.FLOAT, ColumnType.DECIMAL}
             columns = [col for col, dtype in schema.items() if dtype in numeric_types]
@@ -500,7 +507,7 @@ class SQLExecutionEngine(BaseExecutionEngine[ExecutionConfig]):
         self,
         n: int = 1000,
         seed: int | None = None,
-    ) -> "SQLExecutionEngine":
+    ) -> SQLExecutionEngine:
         """Create a new engine with sampled data."""
         sampled_source = self._source.sample(n, seed)
         return SQLExecutionEngine(sampled_source, self._config)

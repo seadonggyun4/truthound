@@ -18,9 +18,36 @@ class SourceBindingOpen(WireModel):
     idempotency_key: Annotated[str, Field(min_length=8, max_length=128)]
 
 
-def resolve(policy, binding_id, *, checkpoint=False):
+def resolve(policy, binding_id, *, checkpoint=False, group=None):
     document, digest = load(policy)
-    capability = (document.checkpoints if checkpoint else document.sources).get(binding_id)
+    groups = {
+        "sources": document.sources,
+        "checkpoints": document.checkpoints,
+        "brokers": document.brokers,
+        "dashboards": document.dashboards,
+        "security_services": document.security_services,
+        "rate_limit_services": document.rate_limit_services,
+        "secret_services": document.secret_services,
+        "execution_services": document.execution_services,
+        "store_services": document.store_services,
+        "profiler_services": document.profiler_services,
+        "ml_services": document.ml_services,
+        "store_utilities": document.store_utilities,
+        "streaming_store_services": document.streaming_store_services,
+        "tenant_services": document.tenant_services,
+        "plugin_services": document.plugin_services,
+        "ai_services": document.ai_services,
+        "documentation_services": document.documentation_services,
+        "benchmark_services": document.benchmark_services,
+        "openlineage_services": document.openlineage_services,
+        "lineage_services": document.lineage_services,
+        "audit_services": document.audit_services,
+        "telemetry_services": document.telemetry_services,
+    }
+    selected = group or ("checkpoints" if checkpoint else "sources")
+    if selected not in groups:
+        raise MCPError("invalid_binding")
+    capability = groups[selected].get(binding_id)
     matches = [
         (name, spec)
         for name, spec in document.plugins.items()

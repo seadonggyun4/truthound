@@ -634,3 +634,23 @@ Full API documentation available at:
 - `truthound.profiler.evolution.ColumnRenameDetector`
 - `truthound.profiler.evolution.BreakingChangeAlertManager`
 - `truthound.profiler.evolution.ImpactAnalyzer`
+
+## Declared Schema Compatibility
+
+Compare declared nullability with `NullabilityCompatibilityChecker(old_nullable=..., new_nullable=...)`. Dtypes alone do not contain nullability, so constraints are not inferred from values or samples. Common-column declarations must be paired actual booleans. Nullable-to-non-nullable tightening is breaking. `strict=True` rejects every reported issue. Rule exceptions and invalid verdicts raise `CompatibilityAnalysisError` instead of becoming full compatibility. Execution guards apply around each native rule.
+
+```python
+import polars as pl
+from truthound.profiler.evolution import NullabilityCompatibilityChecker, SchemaCompatibilityAnalyzer
+
+analyzer = SchemaCompatibilityAnalyzer(
+    rules=[NullabilityCompatibilityChecker(
+        old_nullable={"x": True}, new_nullable={"x": False},
+    )],
+    strict=True,
+)
+report = analyzer.analyze({"x": pl.Int64}, {"x": pl.Int64})
+assert not report.is_compatible
+for issue in report.issues:
+    print(issue.change_type.value, issue.breaking)
+```

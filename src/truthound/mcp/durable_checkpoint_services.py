@@ -59,7 +59,7 @@ def persist(session, plan, metadata, payload):
     return {"snapshot_id": identity, "sha256": metadata["sha256"], "bytes": len(payload)}
 
 
-def read(session, identity, binding_id):
+def read(session, identity, binding_id, *, kind="escalation"):
     store = storage(session)
     row = store.connection.execute(
         "SELECT * FROM checkpoint_service_snapshots WHERE identity=?", (identity,)
@@ -75,7 +75,7 @@ def read(session, identity, binding_id):
     ):
         raise MCPError("invalid_control_state")
     authorize(session, metadata)
-    if metadata["checkpoint_binding"] != binding_id or metadata["service_kind"] != "escalation":
+    if metadata["checkpoint_binding"] != binding_id or metadata["service_kind"] != kind:
         raise MCPError("access_denied")
     if len(row["payload"]) > min(1024**2, session.policy.max_file_bytes):
         raise MCPError("resource_exhausted")

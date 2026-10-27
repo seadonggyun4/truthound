@@ -277,3 +277,5 @@ truthound plugins create enterprise-suite \
 - [Plugin Commands Overview](index.md)
 - [Plugin System](../../concepts/plugins.md)
 - [Scaffolding Commands](../scaffolding/index.md)
+
+Generated reporter plugins use the canonical `ValidationRunResult` and the shared Core presentation port, including optional passed checks. Author names are encoded in Python/TOML literals. Packages require Python 3.11 or newer. Existing generated target files and symlinks are rejected before writing; the command preserves existing user code. Individual file writes are atomic, not a transaction across all files.

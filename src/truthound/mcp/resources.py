@@ -57,13 +57,31 @@ class SessionResources:
         """Resident model state must retain and reauthorize all training inputs."""
         return self.bind_resident_inputs(identity, parents, kind="model")
 
+    def validate_resident_inputs(self, identity, parents, *, kind):
+        """Reject self/descendant dependencies before approval or graph mutation."""
+        self.get(identity, kind)
+        for parent in parents:
+            item = self.get(parent)
+            if item.kind not in ({"asset", "artifact", "graph"} if kind == "monitor" else {"asset", "artifact"}):
+                raise MCPError("invalid_handle")
+            pending, visited = [item.id], set()
+            while pending:
+                current = pending.pop()
+                if current == identity:
+                    raise MCPError("invalid_arguments")
+                if current in visited:
+                    continue
+                visited.add(current)
+                pending.extend(self._entries[current].parents)
+
     def bind_resident_inputs(self, identity, parents, *, kind):
         """Keep native resident state dependent on all observed input grants."""
         from dataclasses import replace
 
+        self.validate_resident_inputs(identity, parents, kind=kind)
         entry = self.get(identity, kind)
         bound = [self.get(parent) for parent in parents]
-        if any(item.kind not in {"asset", "artifact"} for item in bound):
+        if any(item.kind not in ({"asset", "artifact", "graph"} if kind == "monitor" else {"asset", "artifact"}) for item in bound):
             raise MCPError("invalid_handle")
         if bound:
             self._entries[identity] = replace(
@@ -155,7 +173,13 @@ class SessionResources:
             self.policy().authorize_origin(origin)
         if any(
             key in entry.metadata
-            for key in ("durable_policy", "source_binding", "monitor_binding", "checkpoint_binding")
+            for key in (
+                "durable_policy",
+                "source_binding",
+                "monitor_binding",
+                "checkpoint_binding",
+                "native_binding",
+            )
         ):
             if self.authorize_metadata is None:
                 raise MCPError("access_denied")
@@ -236,9 +260,11 @@ class BoundedWriter:
         self.stream = path.open("xb")
         self.maximum = maximum
         self.written = 0
+        self.exhausted = False
 
     def write(self, data):
         if len(data) > self.maximum - self.written:
+            self.exhausted = True
             raise MCPError("resource_exhausted")
         count = self.stream.write(data)
         self.written += count
@@ -252,3 +278,7 @@ class BoundedWriter:
 
     def __exit__(self, *args):
         self.stream.close()
+        # Native serializers can wrap Python sink exceptions. Preserve the
+        # quota verdict, including writers that catch a failed write internally.
+        if self.exhausted:
+            raise MCPError("resource_exhausted") from None

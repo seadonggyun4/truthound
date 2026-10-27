@@ -14,15 +14,16 @@ from __future__ import annotations
 import threading
 import time
 from collections import defaultdict
+from collections.abc import Iterator  # noqa: TC003 - public annotation introspection
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Callable, Iterator
 
 from truthound.stores.concurrency.locks import (
     LockHandle,
     LockMode,
     LockStrategy,
+    NoOpLockStrategy,
     get_default_lock_strategy,
 )
 
@@ -181,6 +182,8 @@ class FileLockManager:
         # Global lock tracking
         self._global_lock = threading.RLock()
         self._held_locks: dict[str, LockContext] = {}
+        self._owners: dict[str, dict[int, LockContext]] = defaultdict(dict)
+        self._waiting: dict[int, tuple[str, LockMode]] = {}
 
         # Statistics
         self._stats = LockStatistics() if enable_statistics else None
@@ -201,32 +204,35 @@ class FileLockManager:
             self._thread_locks.locks = {}
         return self._thread_locks.locks
 
-    def _check_deadlock(self, path: Path) -> None:
-        """Check for potential deadlock.
-
-        Simple cycle detection: if thread already holds locks and is
-        trying to acquire a new one, there's potential for deadlock.
-        """
-        if not self._enable_deadlock_detection:
-            return
-
-        thread_locks = self._get_thread_locks()
-        if thread_locks and str(path) not in thread_locks:
-            # Thread holds locks and is trying to acquire a new one
-            held_paths = [Path(p) for p in thread_locks.keys()]
-
-            # Check if any other thread is waiting for our locks
-            # while holding the lock we want
-            with self._global_lock:
-                target_key = str(path)
-                if target_key in self._held_locks:
-                    holder = self._held_locks[target_key]
-                    if holder.thread_id != threading.get_ident():
-                        # Another thread holds the lock we want
-                        # This is a potential deadlock scenario
+    def _check_deadlock(self, path: Path, mode: LockMode) -> None:
+        """Register a wait and reject only a cycle through incompatible owners."""
+        thread = threading.get_ident()
+        with self._global_lock:
+            self._waiting[thread] = (str(path), mode)
+            if not self._enable_deadlock_detection or isinstance(self._strategy, NoOpLockStrategy):
+                return
+            pending = [thread]
+            visited = set()
+            while pending:
+                waiter = pending.pop()
+                if waiter in visited:
+                    continue
+                visited.add(waiter)
+                request = self._waiting.get(waiter)
+                if request is None:
+                    continue
+                target, wanted_mode = request
+                for holder, context in self._owners.get(target, {}).items():
+                    if holder == waiter or (
+                        wanted_mode == LockMode.SHARED and context.handle.mode == LockMode.SHARED
+                    ):
+                        continue
+                    if holder == thread:
+                        self._waiting.pop(thread, None)
                         if self._stats:
                             self._stats.record_deadlock()
-                        raise DeadlockError(path, held_paths)
+                        raise DeadlockError(path, [Path(key) for key in self._get_thread_locks()])
+                    pending.append(holder)
 
     def lock(
         self,
@@ -264,16 +270,18 @@ class FileLockManager:
             return context.handle
 
         # Check for deadlock
-        self._check_deadlock(path)
+        if blocking:
+            self._check_deadlock(path, mode)
 
         # Acquire the lock
         start_time = time.time()
-        contended = self._strategy.is_locked(path)
-
         try:
+            contended = self._strategy.is_locked(path)
             handle = self._strategy.acquire(path, mode, effective_timeout, blocking)
-        except LockTimeout:
-            if self._stats:
+        except BaseException as error:
+            with self._global_lock:
+                self._waiting.pop(threading.get_ident(), None)
+            if self._stats and isinstance(error, LockTimeout):
                 self._stats.record_timeout()
             raise
 
@@ -284,6 +292,8 @@ class FileLockManager:
         thread_locks[path_key] = context
 
         with self._global_lock:
+            self._waiting.pop(context.thread_id, None)
+            self._owners[path_key][context.thread_id] = context
             self._held_locks[path_key] = context
 
         # Update statistics
@@ -317,12 +327,17 @@ class FileLockManager:
 
         # Actually release the lock
         hold_time = context.hold_time
-        self._strategy.release(handle)
-
-        # Clean up tracking
-        del thread_locks[path_key]
         with self._global_lock:
-            self._held_locks.pop(path_key, None)
+            self._strategy.release(handle)
+            # Publish release atomically with removal from the wait graph.
+            del thread_locks[path_key]
+            owners = self._owners[path_key]
+            owners.pop(threading.get_ident(), None)
+            if owners:
+                self._held_locks[path_key] = next(iter(owners.values()))
+            else:
+                self._owners.pop(path_key, None)
+                self._held_locks.pop(path_key, None)
 
         # Update statistics
         if self._stats:

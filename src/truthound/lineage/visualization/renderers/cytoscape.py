@@ -5,13 +5,16 @@ Produces JSON output compatible with Cytoscape.js graph library.
 
 from __future__ import annotations
 
-from typing import Any, TYPE_CHECKING
 import json
+from typing import TYPE_CHECKING, Any
 
+from truthound.lineage.visualization._encoding import javascript_json
 from truthound.lineage.visualization.protocols import (
     IGraphRenderer,
-    RenderFormat,
     RenderConfig,
+    RenderFormat,
+    capture_render_config,
+    resolve_render_depth,
 )
 
 if TYPE_CHECKING:
@@ -58,7 +61,7 @@ class CytoscapeRenderer(IGraphRenderer):
 
     def render(
         self,
-        graph: "LineageGraph",
+        graph: LineageGraph,
         config: RenderConfig | None = None,
     ) -> str:
         """Render graph to Cytoscape.js JSON.
@@ -70,7 +73,7 @@ class CytoscapeRenderer(IGraphRenderer):
         Returns:
             JSON string for Cytoscape.js
         """
-        config = config or RenderConfig(theme=self._theme)
+        config = capture_render_config(config, theme=self._theme)
         if config.theme == "light" and self._theme == "dark":
             config.theme = self._theme
         data = self._build_cytoscape_data(graph, config)
@@ -78,10 +81,10 @@ class CytoscapeRenderer(IGraphRenderer):
 
     def render_subgraph(
         self,
-        graph: "LineageGraph",
+        graph: LineageGraph,
         root_node_id: str,
         direction: str = "downstream",
-        max_depth: int = -1,
+        max_depth: int | None = None,
         config: RenderConfig | None = None,
     ) -> str:
         """Render subgraph from root node.
@@ -90,13 +93,14 @@ class CytoscapeRenderer(IGraphRenderer):
             graph: Full lineage graph
             root_node_id: Root node ID
             direction: "upstream", "downstream", or "both"
-            max_depth: Maximum depth
+            max_depth: Maximum depth; None inherits RenderConfig.max_depth
             config: Render configuration
 
         Returns:
             JSON string for Cytoscape.js
         """
-        config = config or RenderConfig()
+        config = capture_render_config(config, theme=self._theme)
+        max_depth = resolve_render_depth(max_depth, config)
 
         # Collect subgraph nodes
         subgraph_node_ids: set[str] = {root_node_id}
@@ -114,7 +118,8 @@ class CytoscapeRenderer(IGraphRenderer):
 
         # Filter edges to only those within subgraph
         subgraph_edges = [
-            edge for edge in graph.edges
+            edge
+            for edge in graph.edges
             if edge.source in subgraph_node_ids and edge.target in subgraph_node_ids
         ]
 
@@ -156,6 +161,7 @@ class CytoscapeRenderer(IGraphRenderer):
                     "label": node.name,
                     "type": node.node_type.value,
                     "color": config.get_node_color(node.node_type.value),
+                    "size": config.node_sizes.get(node.node_type.value, 30),
                     "highlighted": node.id in config.highlight_nodes,
                 },
                 "classes": node.node_type.value.lower(),
@@ -165,7 +171,9 @@ class CytoscapeRenderer(IGraphRenderer):
                 if hasattr(node, "metadata"):
                     node_data["data"]["description"] = node.metadata.description
                     node_data["data"]["owner"] = node.metadata.owner
-                    node_data["data"]["tags"] = list(node.metadata.tags) if node.metadata.tags else []
+                    node_data["data"]["tags"] = (
+                        list(node.metadata.tags) if node.metadata.tags else []
+                    )
                 if hasattr(node, "schema") and node.schema:
                     node_data["data"]["schema"] = node.schema
 
@@ -179,8 +187,8 @@ class CytoscapeRenderer(IGraphRenderer):
             if config.filter_edge_types and edge.edge_type.value not in config.filter_edge_types:
                 continue
 
-            source_id = getattr(edge, 'source_id', None) or getattr(edge, 'source', None)
-            target_id = getattr(edge, 'target_id', None) or getattr(edge, 'target', None)
+            source_id = getattr(edge, "source_id", None) or getattr(edge, "source", None)
+            target_id = getattr(edge, "target_id", None) or getattr(edge, "target", None)
 
             if source_id not in node_ids or target_id not in node_ids:
                 continue
@@ -198,7 +206,9 @@ class CytoscapeRenderer(IGraphRenderer):
             }
 
             if config.include_metadata and hasattr(edge, "metadata"):
-                edge_data["data"]["metadata"] = edge.metadata.to_dict() if hasattr(edge.metadata, "to_dict") else {}
+                edge_data["data"]["metadata"] = (
+                    edge.metadata.to_dict() if hasattr(edge.metadata, "to_dict") else {}
+                )
 
             elements.append(edge_data)
 
@@ -218,7 +228,7 @@ class CytoscapeRenderer(IGraphRenderer):
 
     def _build_cytoscape_data(
         self,
-        graph: "LineageGraph",
+        graph: LineageGraph,
         config: RenderConfig,
     ) -> dict[str, Any]:
         """Build Cytoscape.js data structure."""
@@ -245,6 +255,7 @@ class CytoscapeRenderer(IGraphRenderer):
                     "label": node.name,
                     "type": node.node_type.value,
                     "color": config.get_node_color(node.node_type.value),
+                    "size": config.node_sizes.get(node.node_type.value, 30),
                     "highlighted": node_id in config.highlight_nodes,
                 },
                 "classes": node.node_type.value.lower(),
@@ -254,7 +265,9 @@ class CytoscapeRenderer(IGraphRenderer):
                 if hasattr(node, "metadata"):
                     node_data["data"]["description"] = node.metadata.description
                     node_data["data"]["owner"] = node.metadata.owner
-                    node_data["data"]["tags"] = list(node.metadata.tags) if node.metadata.tags else []
+                    node_data["data"]["tags"] = (
+                        list(node.metadata.tags) if node.metadata.tags else []
+                    )
                 if hasattr(node, "schema") and node.schema:
                     node_data["data"]["schema"] = node.schema
 
@@ -269,8 +282,8 @@ class CytoscapeRenderer(IGraphRenderer):
                 continue
 
             # Handle both source/source_id attribute names
-            source_id = getattr(edge, 'source_id', None) or getattr(edge, 'source', None)
-            target_id = getattr(edge, 'target_id', None) or getattr(edge, 'target', None)
+            source_id = getattr(edge, "source_id", None) or getattr(edge, "source", None)
+            target_id = getattr(edge, "target_id", None) or getattr(edge, "target", None)
 
             if source_id not in node_ids or target_id not in node_ids:
                 continue
@@ -288,7 +301,9 @@ class CytoscapeRenderer(IGraphRenderer):
             }
 
             if config.include_metadata and hasattr(edge, "metadata"):
-                edge_data["data"]["metadata"] = edge.metadata.to_dict() if hasattr(edge.metadata, "to_dict") else {}
+                edge_data["data"]["metadata"] = (
+                    edge.metadata.to_dict() if hasattr(edge.metadata, "to_dict") else {}
+                )
 
             elements.append(edge_data)
 
@@ -320,8 +335,8 @@ class CytoscapeRenderer(IGraphRenderer):
                     "text-valign": "bottom",
                     "text-margin-y": 5,
                     "font-size": 12,
-                    "width": 30,
-                    "height": 30,
+                    "width": "data(size)",
+                    "height": "data(size)",
                     "color": text_color,
                 },
             },
@@ -353,7 +368,7 @@ class CytoscapeRenderer(IGraphRenderer):
 
     def render_html(
         self,
-        graph: "LineageGraph",
+        graph: LineageGraph,
         config: RenderConfig | None = None,
     ) -> str:
         """Render complete HTML page with Cytoscape.js visualization.
@@ -365,11 +380,11 @@ class CytoscapeRenderer(IGraphRenderer):
         Returns:
             Complete HTML page
         """
-        config = config or RenderConfig(theme=self._theme)
+        config = capture_render_config(config, theme=self._theme)
         if config.theme == "light" and self._theme == "dark":
             config.theme = self._theme
         data = self._build_cytoscape_data(graph, config)
-        data_json = json.dumps(data, indent=2, default=str)
+        data_json = javascript_json(json.dumps(data, indent=2, default=str))
 
         # Theme-specific styles
         is_dark = config.theme == "dark"
@@ -450,12 +465,17 @@ class CytoscapeRenderer(IGraphRenderer):
             const node = event.target;
             const data = node.data();
             infoPanel.style.display = 'block';
-            infoPanel.innerHTML = `
-                <h4>${{data.label}}</h4>
-                <p><strong>Type:</strong> ${{data.type}}</p>
-                ${{data.description ? `<p><strong>Description:</strong> ${{data.description}}</p>` : ''}}
-                ${{data.owner ? `<p><strong>Owner:</strong> ${{data.owner}}</p>` : ''}}
-            `;
+            infoPanel.replaceChildren();
+            const heading = document.createElement("h4");
+            heading.textContent = data.label;
+            infoPanel.appendChild(heading);
+            for (const [label, value] of [["Type", data.type], ["Description", data.description], ["Owner", data.owner]]) {{
+                if (value) {{
+                    const paragraph = document.createElement("p");
+                    paragraph.textContent = `${{label}}: ${{value}}`;
+                    infoPanel.appendChild(paragraph);
+                }}
+            }}
         }});
 
         cy.on('tap', (event) => {{

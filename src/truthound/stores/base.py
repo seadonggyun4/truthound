@@ -363,15 +363,24 @@ class BaseStore(ABC, Generic[T, ConfigT]):
         Yields:
             Items matching the query.
         """
+        if batch_size <= 0:
+            raise ValueError("batch_size must be positive")
+        if query.limit is not None and query.limit < 0:
+            raise ValueError("query limit must be non-negative")
         offset = query.offset
+        yielded = 0
         while True:
+            remaining = None if query.limit is None else query.limit - yielded
+            if remaining is not None and remaining <= 0:
+                break
+            size = batch_size if remaining is None else min(batch_size, remaining)
             batch_query = StoreQuery(
                 data_asset=query.data_asset,
                 start_time=query.start_time,
                 end_time=query.end_time,
                 status=query.status,
                 tags=query.tags,
-                limit=batch_size,
+                limit=size,
                 offset=offset,
                 order_by=query.order_by,
                 ascending=query.ascending,
@@ -379,10 +388,10 @@ class BaseStore(ABC, Generic[T, ConfigT]):
             batch = self.query(batch_query)
             if not batch:
                 break
+            batch = batch[:size]
             yield from batch
             offset += len(batch)
-            if query.limit and offset >= query.offset + query.limit:
-                break
+            yielded += len(batch)
 
     # -------------------------------------------------------------------------
     # Convenience Methods

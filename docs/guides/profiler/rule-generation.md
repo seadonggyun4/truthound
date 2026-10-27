@@ -44,7 +44,7 @@ class GeneratedRule:
     name: str                          # Rule name
     category: RuleCategory             # Rule category
     column: str | None                 # Target column (None = table level)
-    validator_type: str                # Validator class name
+    validator_class: str                # Validator class name
     parameters: dict[str, Any]         # Validator parameters
     confidence: RuleConfidence         # Confidence level
     description: str                   # Rule description
@@ -177,6 +177,11 @@ rules = generator.generate(profile)
 
 ## Unified Rule Generation
 
+Native `generate_suite` refuses incomplete profiles (including restored dictionaries)
+with `IncompleteProfileError`. A selected generator failure raises `ProfilerError`
+without including the original exception body; it cannot silently omit that generator.
+Inspect `profile.complete` and table/column `execution_issues` before generation.
+
 ```python
 from truthound.profiler import generate_suite, Strictness
 
@@ -184,13 +189,13 @@ from truthound.profiler import generate_suite, Strictness
 suite = generate_suite(
     profile,
     strictness=Strictness.STRICT,
-    include=["schema", "completeness"],  # Categories to include
-    exclude=["anomaly"],                  # Categories to exclude
+    include_categories=["schema", "completeness"],  # Categories to include
+    exclude_categories=["anomaly"],                  # Categories to exclude
 )
 
 # Review rules
 for rule in suite.rules:
-    print(f"{rule.name}: {rule.validator_type}")
+    print(f"{rule.name}: {rule.validator_class}")
     print(f"  Column: {rule.column}")
     print(f"  Confidence: {rule.confidence}")
 ```
@@ -211,7 +216,16 @@ for rule in suite.rules:
 ```python
 from truthound.profiler import generate_suite
 
-suite = generate_suite(profile, preset="ci_cd")
+from truthound.profiler.suite_config import SuiteGeneratorConfig
+
+config = SuiteGeneratorConfig.from_preset("ci_cd")
+suite = generate_suite(
+    profile, strictness=config.strictness,
+    include_categories=config.categories.include or None,
+    exclude_categories=config.categories.exclude or None,
+    min_confidence=config.confidence.min_level,
+    name=config.name,
+)
 ```
 
 ## Rule Export
@@ -291,7 +305,7 @@ class MyCustomGenerator(RuleGenerator):
                         name=f"{col.name}_unique",
                         category=RuleCategory.UNIQUENESS,
                         column=col.name,
-                        validator_type="UniqueValidator",
+                        validator_class="UniqueValidator",
                         parameters={},
                         confidence=RuleConfidence.HIGH,
                         description=f"{col.name} must be unique",

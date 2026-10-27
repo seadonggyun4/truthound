@@ -9,31 +9,44 @@ from __future__ import annotations
 import asyncio
 import concurrent.futures
 import logging
+import math
+import threading
 import time
-from dataclasses import dataclass, field
+from collections.abc import Callable  # noqa: TC003 - public runtime annotations
 from datetime import datetime
-from typing import Any, Callable, TYPE_CHECKING
+from functools import partial
+from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
-from truthound.profiler.integration.protocols import (
-    ExecutionContext,
-    ExecutionResult,
-    ValidationExecutor,
-    ExecutionListener,
-    ProgressReporter,
-)
 from truthound.profiler.integration.adapters import (
     ValidatorRegistry,
-    create_validator_from_rule,
+)
+from truthound.profiler.integration.protocols import (
+    ExecutionContext,
+    ExecutionListener,
+    ExecutionResult,
+    ProgressReporter,
+    ValidationExecutor,
 )
 
 if TYPE_CHECKING:
-    from truthound.profiler.generators.suite_generator import ValidationSuite
     from truthound.profiler.generators.base import GeneratedRule
+    from truthound.profiler.generators.suite_generator import ValidationSuite
     from truthound.validators.base import Validator
 
 logger = logging.getLogger(__name__)
+
+
+def _validate_native(validator, frame, guard=None):
+    if guard is not None:
+        guard()
+    value = validator.validate(frame)
+    if hasattr(value, "is_valid"):
+        return value.is_valid
+    if isinstance(value, list):
+        return not value
+    return bool(value)
 
 
 class SuiteExecutor(ValidationExecutor):
@@ -81,10 +94,46 @@ class SuiteExecutor(ValidationExecutor):
         self._registry = registry or ValidatorRegistry.get_instance()
         self._listeners = listeners or []
         self._progress_reporter = progress_reporter
+        self._listener_lock = threading.RLock()
+
+    def set_execution_guard(self, guard: Callable[[], None]) -> None:
+        """Install a trusted guard before factories, validators and listeners."""
+        self._execution_guard = guard
+
+    def _guard_execution(self) -> None:
+        guard = getattr(self, "_execution_guard", None)
+        if guard is not None:
+            guard()
+
+    def _validate(self, validator, frame, timeout_seconds):
+        self._guard_execution()
+        if timeout_seconds is None:
+            return _validate_native(validator, frame)
+        from truthound.profiler.process_timeout import ProcessExecutionStrategy
+
+        result = ProcessExecutionStrategy().execute(
+            partial(_validate_native, validator, frame, getattr(self, "_execution_guard", None)),
+            timeout_seconds=timeout_seconds,
+        )
+        if result.timed_out:
+            raise TimeoutError("Native validator deadline exceeded")
+        if not result.success:
+            raise result.error
+        return result.value
+
+    def _notify(self, event, result, *arguments):
+        with self._listener_lock:
+            for listener in self._listeners:
+                self._guard_execution()
+                try:
+                    getattr(listener, event)(*arguments)
+                except Exception as error:
+                    result.errors.append(error)
+                    logger.warning("Native execution listener failed (%s)", type(error).__name__)
 
     def execute(
         self,
-        suite: "ValidationSuite",
+        suite: ValidationSuite,
         data: Any,
         context: ExecutionContext | None = None,
     ) -> ExecutionResult:
@@ -105,12 +154,10 @@ class SuiteExecutor(ValidationExecutor):
             timeout_seconds=self._timeout_seconds,
         )
 
-        # Notify listeners
-        for listener in self._listeners:
-            try:
-                listener.on_suite_start(suite, ctx)
-            except Exception as e:
-                logger.warning(f"Listener error on suite start: {e}")
+        if ctx.timeout_seconds is not None and (
+            not math.isfinite(ctx.timeout_seconds) or ctx.timeout_seconds <= 0
+        ):
+            raise ValueError("Native validator timeout must be positive and finite")
 
         # Handle strictness as either enum or string
         strictness_value = (
@@ -125,6 +172,9 @@ class SuiteExecutor(ValidationExecutor):
             metadata={"suite_name": suite.name, "strictness": strictness_value},
         )
 
+        self._guard_execution()
+        self._notify("on_suite_start", result, suite, ctx)
+
         # Convert data to LazyFrame
         lf = self._to_lazyframe(data)
 
@@ -134,16 +184,21 @@ class SuiteExecutor(ValidationExecutor):
         result.metadata["total_rules"] = total_rules
 
         if ctx.dry_run:
-            return self._execute_dry_run(suite, rules, result)
+            self._execute_dry_run(suite, rules, result)
+            self._notify("on_suite_complete", result, result)
+            result.success = result.failed_rules == 0 and not result.errors
+            result.report = self._create_report(result)
+            return result
 
         # Convert rules to validators
-        validators: list[tuple["GeneratedRule", "Validator"]] = []
+        validators: list[tuple[GeneratedRule, Validator]] = []
         for rule in rules:
+            self._guard_execution()
             try:
-                validator = create_validator_from_rule(rule)
+                validator = self._registry.create_validator(rule)
                 validators.append((rule, validator))
             except Exception as e:
-                logger.warning(f"Failed to create validator for rule {rule.name}: {e}")
+                logger.warning("Native validator construction failed (%s)", type(e).__name__)
                 result.skipped_rules += 1
                 result.errors.append(e)
 
@@ -154,24 +209,20 @@ class SuiteExecutor(ValidationExecutor):
             self._execute_sequential(validators, lf, ctx, result)
 
         # Calculate final result
-        result.success = result.failed_rules == 0
+        result.success = result.failed_rules == 0 and not result.errors and result.skipped_rules == 0
         result.complete()
 
         # Create combined report
         result.report = self._create_report(result)
 
-        # Notify listeners
-        for listener in self._listeners:
-            try:
-                listener.on_suite_complete(result)
-            except Exception as e:
-                logger.warning(f"Listener error on suite complete: {e}")
-
+        self._notify("on_suite_complete", result, result)
+        result.success = result.failed_rules == 0 and not result.errors and result.skipped_rules == 0
+        result.report = self._create_report(result)
         return result
 
     async def execute_async(
         self,
-        suite: "ValidationSuite",
+        suite: ValidationSuite,
         data: Any,
         context: ExecutionContext | None = None,
     ) -> ExecutionResult:
@@ -186,7 +237,7 @@ class SuiteExecutor(ValidationExecutor):
             Execution result with report and metrics.
         """
         # Use thread pool for async execution
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         return await loop.run_in_executor(
             None,
             lambda: self.execute(suite, data, context),
@@ -216,7 +267,7 @@ class SuiteExecutor(ValidationExecutor):
 
     def _execute_sequential(
         self,
-        validators: list[tuple["GeneratedRule", "Validator"]],
+        validators: list[tuple[GeneratedRule, Validator]],
         lf: pl.LazyFrame,
         ctx: ExecutionContext,
         result: ExecutionResult,
@@ -227,34 +278,19 @@ class SuiteExecutor(ValidationExecutor):
         for idx, (rule, validator) in enumerate(validators):
             # Report progress
             if self._progress_reporter:
+                self._guard_execution()
                 self._progress_reporter.report_progress(idx + 1, total, rule.name)
 
-            # Notify listeners
-            for listener in self._listeners:
-                try:
-                    listener.on_rule_start(rule)
-                except Exception as e:
-                    logger.debug(f"Listener error: {e}")
+            self._guard_execution()
+            self._notify("on_rule_start", result, rule)
 
             start_time = time.perf_counter()
             success = False
             error: Exception | None = None
 
+            result.executed_rules += 1
             try:
-                # Execute validator
-                validation_result = validator.validate(lf)
-                # validate() returns list[ValidationIssue] - empty means valid
-                if hasattr(validation_result, 'is_valid'):
-                    # If it has is_valid attribute (e.g., ValidatorExecutionResult)
-                    success = validation_result.is_valid
-                elif isinstance(validation_result, list):
-                    # Standard return: empty list = valid, non-empty = issues found
-                    success = len(validation_result) == 0
-                else:
-                    # Default: trust the result
-                    success = bool(validation_result)
-                result.executed_rules += 1
-
+                success = self._validate(validator, lf, ctx.timeout_seconds)
                 if success:
                     result.passed_rules += 1
                 else:
@@ -264,27 +300,19 @@ class SuiteExecutor(ValidationExecutor):
                 error = e
                 result.failed_rules += 1
                 result.errors.append(e)
-                logger.error(f"Validator {rule.name} failed with error: {e}")
+                logger.error("Native validator execution failed (%s)", type(e).__name__)
 
-                for listener in self._listeners:
-                    try:
-                        listener.on_error(rule, e)
-                    except Exception:
-                        pass
+                self._notify("on_error", result, rule, e)
 
             duration_ms = (time.perf_counter() - start_time) * 1000
 
             # Report result
             if self._progress_reporter:
-                msg = str(error) if error else None
+                msg = type(error).__name__ if error else None
+                self._guard_execution()
                 self._progress_reporter.report_result(rule.name, success, msg)
 
-            # Notify listeners
-            for listener in self._listeners:
-                try:
-                    listener.on_rule_complete(rule, success, duration_ms)
-                except Exception:
-                    pass
+            self._notify("on_rule_complete", result, rule, success, duration_ms)
 
             # Check fail fast
             if ctx.fail_fast and not success:
@@ -293,7 +321,7 @@ class SuiteExecutor(ValidationExecutor):
 
     def _execute_parallel(
         self,
-        validators: list[tuple["GeneratedRule", "Validator"]],
+        validators: list[tuple[GeneratedRule, Validator]],
         lf: pl.LazyFrame,
         ctx: ExecutionContext,
         result: ExecutionResult,
@@ -302,22 +330,16 @@ class SuiteExecutor(ValidationExecutor):
         max_workers = ctx.max_workers or min(32, len(validators))
 
         def run_validator(
-            rule_validator: tuple["GeneratedRule", "Validator"],
-        ) -> tuple["GeneratedRule", bool, float, Exception | None]:
+            rule_validator: tuple[GeneratedRule, Validator],
+        ) -> tuple[GeneratedRule, bool, float, Exception | None]:
             rule, validator = rule_validator
             start = time.perf_counter()
             error = None
             success = False
 
+            self._notify("on_rule_start", result, rule)
             try:
-                validation_result = validator.validate(lf)
-                # validate() returns list[ValidationIssue] - empty means valid
-                if hasattr(validation_result, 'is_valid'):
-                    success = validation_result.is_valid
-                elif isinstance(validation_result, list):
-                    success = len(validation_result) == 0
-                else:
-                    success = bool(validation_result)
+                success = self._validate(validator, lf, ctx.timeout_seconds)
             except Exception as e:
                 error = e
 
@@ -329,12 +351,13 @@ class SuiteExecutor(ValidationExecutor):
                 executor.submit(run_validator, v): v for v in validators
             }
 
-            completed = 0
             total = len(validators)
 
-            for future in concurrent.futures.as_completed(futures):
+            for completed, future in enumerate(concurrent.futures.as_completed(futures), 1):
+                if future.cancelled():
+                    result.skipped_rules += 1
+                    continue
                 rule, success, duration, error = future.result()
-                completed += 1
                 result.executed_rules += 1
 
                 if error:
@@ -345,25 +368,35 @@ class SuiteExecutor(ValidationExecutor):
                 else:
                     result.failed_rules += 1
 
+                self._notify("on_rule_complete", result, rule, success and error is None, duration)
+                if error:
+                    self._notify("on_error", result, rule, error)
+                if ctx.fail_fast and (error is not None or not success):
+                    for pending in futures:
+                        pending.cancel()
+
                 if self._progress_reporter:
+                    self._guard_execution()
                     self._progress_reporter.report_progress(completed, total, rule.name)
+                    self._guard_execution()
                     self._progress_reporter.report_result(
                         rule.name,
                         success and error is None,
-                        str(error) if error else None,
+                        type(error).__name__ if error else None,
                     )
 
     def _execute_dry_run(
         self,
-        suite: "ValidationSuite",
-        rules: list["GeneratedRule"],
+        suite: ValidationSuite,
+        rules: list[GeneratedRule],
         result: ExecutionResult,
     ) -> ExecutionResult:
         """Execute a dry run without actually running validators."""
         for rule in rules:
+            self._guard_execution()
             try:
                 # Just try to create the validator
-                create_validator_from_rule(rule)
+                self._registry.create_validator(rule)
                 result.executed_rules += 1
                 result.passed_rules += 1
             except Exception as e:
@@ -371,7 +404,7 @@ class SuiteExecutor(ValidationExecutor):
                 result.failed_rules += 1
                 result.errors.append(e)
 
-        result.success = result.failed_rules == 0
+        result.success = result.failed_rules == 0 and not result.errors and result.skipped_rules == 0
         result.metadata["dry_run"] = True
         result.complete()
         return result
@@ -388,7 +421,7 @@ class SuiteExecutor(ValidationExecutor):
                 "pass_rate": result.pass_rate,
                 "execution_time_ms": result.execution_time_ms,
             },
-            "errors": [str(e) for e in result.errors],
+            "errors": [{"error_type": type(error).__name__} for error in result.errors],
             "metadata": result.metadata,
         }
 
@@ -401,7 +434,7 @@ class AsyncSuiteExecutor(SuiteExecutor):
 
     async def execute_async(
         self,
-        suite: "ValidationSuite",
+        suite: ValidationSuite,
         data: Any,
         context: ExecutionContext | None = None,
     ) -> ExecutionResult:
@@ -409,84 +442,22 @@ class AsyncSuiteExecutor(SuiteExecutor):
         ctx = context or ExecutionContext(
             parallel=self._parallel,
             fail_fast=self._fail_fast,
+            max_workers=self._max_workers,
+            timeout_seconds=self._timeout_seconds,
         )
-
-        result = ExecutionResult(
-            success=True,
-            report=None,
-            started_at=datetime.now(),
-            metadata={"suite_name": suite.name},
-        )
-
-        lf = self._to_lazyframe(data)
-        rules = list(suite.rules)
-
-        # Convert rules to validators
-        validators: list[tuple["GeneratedRule", "Validator"]] = []
-        for rule in rules:
-            try:
-                validator = create_validator_from_rule(rule)
-                validators.append((rule, validator))
-            except Exception as e:
-                result.skipped_rules += 1
-                result.errors.append(e)
-
-        # Execute with asyncio
-        if ctx.parallel:
-            tasks = [
-                self._run_validator_async(rule, validator, lf)
-                for rule, validator in validators
-            ]
-            results = await asyncio.gather(*tasks, return_exceptions=True)
-
-            for (rule, _), r in zip(validators, results):
-                result.executed_rules += 1
-                if isinstance(r, Exception):
-                    result.failed_rules += 1
-                    result.errors.append(r)
-                elif r:
-                    result.passed_rules += 1
-                else:
-                    result.failed_rules += 1
-        else:
-            for rule, validator in validators:
-                try:
-                    success = await self._run_validator_async(rule, validator, lf)
-                    result.executed_rules += 1
-                    if success:
-                        result.passed_rules += 1
-                    else:
-                        result.failed_rules += 1
-                except Exception as e:
-                    result.executed_rules += 1
-                    result.failed_rules += 1
-                    result.errors.append(e)
-
-                if ctx.fail_fast and result.failed_rules > 0:
-                    break
-
-        result.success = result.failed_rules == 0
-        result.complete()
-        result.report = self._create_report(result)
-        return result
+        # Both entry points use the same conversion, dry-run and failure accounting.
+        return await super().execute_async(suite, data, ctx)
 
     async def _run_validator_async(
         self,
-        rule: "GeneratedRule",
-        validator: "Validator",
+        rule: GeneratedRule,
+        validator: Validator,
         lf: pl.LazyFrame,
     ) -> bool:
-        """Run a single validator asynchronously."""
-        def run_validate() -> bool:
-            result = validator.validate(lf)
-            if hasattr(result, 'is_valid'):
-                return result.is_valid
-            elif isinstance(result, list):
-                return len(result) == 0
-            return bool(result)
-
-        loop = asyncio.get_event_loop()
-        return await loop.run_in_executor(None, run_validate)
+        """Use the same native validation and deadline path."""
+        return await asyncio.get_running_loop().run_in_executor(
+            None, partial(self._validate, validator, lf, self._timeout_seconds)
+        )
 
 
 class DryRunExecutor(SuiteExecutor):
@@ -494,7 +465,7 @@ class DryRunExecutor(SuiteExecutor):
 
     def execute(
         self,
-        suite: "ValidationSuite",
+        suite: ValidationSuite,
         data: Any,
         context: ExecutionContext | None = None,
     ) -> ExecutionResult:

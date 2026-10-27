@@ -7,21 +7,16 @@ BaseStore with schema migration capabilities.
 from __future__ import annotations
 
 import copy
-import json
 import logging
 from datetime import datetime
 from typing import Any, Generic, TypeVar
 
 from truthound.stores.base import (
-    BaseStore,
     StoreConfig,
     StoreNotFoundError,
     StoreQuery,
-    StoreReadError,
-    StoreWriteError,
     ValidationStore,
 )
-from truthound.stores.results import ValidationResult
 from truthound.stores.migration.base import (
     IncompatibleVersionError,
     MigrationConfig,
@@ -31,6 +26,7 @@ from truthound.stores.migration.base import (
     SchemaVersion,
 )
 from truthound.stores.migration.registry import MigrationRegistry, get_default_registry
+from truthound.stores.results import ValidationResult
 
 ConfigT = TypeVar("ConfigT", bound=StoreConfig)
 
@@ -88,6 +84,7 @@ class MigratableStore(ValidationStore[ConfigT], Generic[ConfigT]):
             config: Migration configuration.
             registry: Migration registry (uses default if None).
         """
+        self._io_guard = None
         self._base_store = base_store
         self._config = config or MigrationConfig()
         self._registry = registry or get_default_registry()
@@ -100,6 +97,27 @@ class MigratableStore(ValidationStore[ConfigT], Generic[ConfigT]):
             "errors": 0,
         }
 
+    def set_io_guard(self, guard) -> None:
+        """Set an optional trusted caller authorization check before native effects."""
+        self._io_guard = guard
+
+    def _guard(self) -> None:
+        if self._io_guard is not None:
+            self._io_guard()
+
+    def _backup(self, item: ValidationResult) -> None:
+        if self._config.backup_before_migrate:
+            data = copy.deepcopy(item.to_dict())
+            data["run_id"] = f"_backup_{item.id}"
+            data["metadata"] = {**data.get("metadata", {}), "_schema_migration_backup_of": item.id}
+            self._guard()
+            if self._base_store.exists(data["run_id"]):
+                existing = self._base_store.get(data["run_id"])
+                if existing.metadata.get("_schema_migration_backup_of") != item.id:
+                    raise ValueError("Migration backup identity conflict")
+            else:
+                self._base_store.save(ValidationResult.from_dict(data))
+
     @classmethod
     def _default_config(cls) -> ConfigT:
         """Create default configuration."""
@@ -107,6 +125,7 @@ class MigratableStore(ValidationStore[ConfigT], Generic[ConfigT]):
 
     def _do_initialize(self) -> None:
         """Initialize the store."""
+        self._guard()
         self._base_store.initialize()
 
     def _get_data_version(self, data: dict[str, Any]) -> SchemaVersion:
@@ -118,7 +137,10 @@ class MigratableStore(ValidationStore[ConfigT], Generic[ConfigT]):
         Returns:
             SchemaVersion (defaults to min version if not present).
         """
-        version_str = data.get(SCHEMA_VERSION_KEY, str(self._min_version))
+        version_str = data.get("metadata", {}).get(
+            SCHEMA_VERSION_KEY,
+            data.get("meta", {}).get(SCHEMA_VERSION_KEY, data.get(SCHEMA_VERSION_KEY, str(self._min_version))),
+        )
         return SchemaVersion.parse(version_str)
 
     def _set_data_version(self, data: dict[str, Any], version: SchemaVersion) -> None:
@@ -129,6 +151,7 @@ class MigratableStore(ValidationStore[ConfigT], Generic[ConfigT]):
             version: Version to set.
         """
         data[SCHEMA_VERSION_KEY] = str(version)
+        data["metadata"] = {**data.get("metadata", {}), SCHEMA_VERSION_KEY: str(version)}
 
     def _needs_migration(self, data: dict[str, Any]) -> bool:
         """Check if data needs migration.
@@ -174,32 +197,25 @@ class MigratableStore(ValidationStore[ConfigT], Generic[ConfigT]):
         except Exception as e:
             raise MigrationFailedError(
                 str(data_version), str(self._current_version), str(e)
-            )
+            ) from e
 
         # Apply migrations
         migrated_data = copy.deepcopy(data)
 
         for migration in path:
             try:
+                self._guard()
                 # Validate input
-                if self._config.validate_after_migrate:
-                    if not migration.validate_input(migrated_data):
-                        logger.warning(
-                            f"Input validation failed for migration "
-                            f"{migration.from_version} -> {migration.to_version}"
-                        )
+                if self._config.validate_after_migrate and not migration.validate_input(migrated_data):
+                    raise ValueError("Migration input validation failed")
 
                 # Apply migration
                 migrated_data = migration.migrate(migrated_data)
                 self._migration_stats["migrations_applied"] += 1
 
                 # Validate output
-                if self._config.validate_after_migrate:
-                    if not migration.validate_output(migrated_data):
-                        logger.warning(
-                            f"Output validation failed for migration "
-                            f"{migration.from_version} -> {migration.to_version}"
-                        )
+                if self._config.validate_after_migrate and not migration.validate_output(migrated_data):
+                    raise ValueError("Migration output validation failed")
 
                 logger.debug(
                     f"Applied migration: {migration.from_version} -> "
@@ -212,7 +228,7 @@ class MigratableStore(ValidationStore[ConfigT], Generic[ConfigT]):
                     str(migration.from_version),
                     str(migration.to_version),
                     str(e),
-                )
+                ) from e
 
         # Set new version
         self._set_data_version(migrated_data, self._current_version)
@@ -236,15 +252,12 @@ class MigratableStore(ValidationStore[ConfigT], Generic[ConfigT]):
         self.initialize()
 
         # Add current version to data
-        data = item.to_dict()
+        self._guard()
+        data = copy.deepcopy(item.to_dict())
         self._set_data_version(data, self._current_version)
 
         # Create new result with versioned data
         # Store the version in meta for persistence
-        if "meta" not in data:
-            data["meta"] = {}
-        data["meta"][SCHEMA_VERSION_KEY] = str(self._current_version)
-
         result = ValidationResult.from_dict(data)
         return self._base_store.save(result)
 
@@ -264,8 +277,12 @@ class MigratableStore(ValidationStore[ConfigT], Generic[ConfigT]):
         """
         self.initialize()
 
+        self._guard()
         result = self._base_store.get(item_id)
         data = result.to_dict()
+        # Required originals must remain readable without upgrading the backup.
+        if result.metadata.get("_schema_migration_backup_of"):
+            return result
 
         # Check for version in meta
         if "meta" in data and SCHEMA_VERSION_KEY in data["meta"]:
@@ -279,16 +296,17 @@ class MigratableStore(ValidationStore[ConfigT], Generic[ConfigT]):
                     str(data_version), str(self._current_version)
                 )
 
+            # Preserve the required original before executing user migrations.
+            if self._config.strategy == MigrationStrategy.LAZY:
+                self._backup(result)
             # Migrate data
             migrated_data = self._migrate_data(data)
 
             # Save migrated data if using lazy strategy
             if self._config.strategy == MigrationStrategy.LAZY:
                 migrated_result = ValidationResult.from_dict(migrated_data)
-                try:
-                    self._base_store.save(migrated_result)
-                except Exception as e:
-                    logger.warning(f"Failed to save migrated data: {e}")
+                self._guard()
+                self._base_store.save(migrated_result)
 
             return ValidationResult.from_dict(migrated_data)
 
@@ -317,12 +335,8 @@ class MigratableStore(ValidationStore[ConfigT], Generic[ConfigT]):
         results = []
 
         for item_id in ids:
-            try:
-                result = self.get(item_id)  # Uses migration
-                results.append(result)
-            except (StoreNotFoundError, StoreReadError, MigrationFailedError) as e:
-                logger.warning(f"Skipping {item_id}: {e}")
-                continue
+            # A partial result is not a successful complete query.
+            results.append(self.get(item_id))
 
         return results
 
@@ -347,7 +361,9 @@ class MigratableStore(ValidationStore[ConfigT], Generic[ConfigT]):
         self.initialize()
 
         start_time = datetime.now()
-        batch_size = batch_size or self._config.batch_size
+        batch_size = self._config.batch_size if batch_size is None else batch_size
+        if batch_size < 1 or self._config.max_retries < 1:
+            raise ValueError("batch_size and max_retries must be positive")
 
         result = MigrationResult(
             start_time=start_time,
@@ -364,10 +380,14 @@ class MigratableStore(ValidationStore[ConfigT], Generic[ConfigT]):
             batch_ids = all_ids[i : i + batch_size]
 
             for item_id in batch_ids:
+                self._guard()
                 try:
                     # Get item
                     item = self._base_store.get(item_id)
                     data = item.to_dict()
+                    if data.get("metadata", {}).get("_schema_migration_backup_of"):
+                        result.items_skipped += 1
+                        continue
 
                     # Check for version in meta
                     if "meta" in data and SCHEMA_VERSION_KEY in data["meta"]:
@@ -380,21 +400,15 @@ class MigratableStore(ValidationStore[ConfigT], Generic[ConfigT]):
                     data_version = self._get_data_version(data)
 
                     if dry_run:
+                        if data_version < self._min_version:
+                            raise IncompatibleVersionError(str(data_version), str(self._current_version))
+                        self._registry.find_path(str(data_version), str(self._current_version))
                         result.items_migrated += 1
                         result.migrations_applied.append(
                             f"{item_id}: {data_version} -> {self._current_version}"
                         )
                     else:
-                        # Backup if configured
-                        if self._config.backup_before_migrate:
-                            # Create backup by saving with different ID
-                            backup_data = data.copy()
-                            backup_data["run_id"] = f"_backup_{item_id}"
-                            backup_result = ValidationResult.from_dict(backup_data)
-                            try:
-                                self._base_store.save(backup_result)
-                            except Exception:
-                                pass
+                        self._backup(item)
 
                         # Migrate
                         migrated_data = self._migrate_data(data)
@@ -404,6 +418,7 @@ class MigratableStore(ValidationStore[ConfigT], Generic[ConfigT]):
                         retries = 0
                         while retries < self._config.max_retries:
                             try:
+                                self._guard()
                                 self._base_store.save(migrated_result)
                                 result.items_migrated += 1
                                 result.migrations_applied.append(
@@ -411,7 +426,7 @@ class MigratableStore(ValidationStore[ConfigT], Generic[ConfigT]):
                                     f"{self._current_version}"
                                 )
                                 break
-                            except Exception as e:
+                            except Exception:
                                 retries += 1
                                 if retries >= self._config.max_retries:
                                     raise
@@ -419,7 +434,7 @@ class MigratableStore(ValidationStore[ConfigT], Generic[ConfigT]):
                 except Exception as e:
                     result.items_failed += 1
                     result.errors.append(f"{item_id}: {str(e)}")
-                    logger.error(f"Migration failed for {item_id}: {e}")
+                    logger.error("Native store migration failed (%s)", type(e).__name__)
 
         result.end_time = datetime.now()
         return result
@@ -439,11 +454,15 @@ class MigratableStore(ValidationStore[ConfigT], Generic[ConfigT]):
 
         version_counts: dict[str, int] = {}
         needs_migration = 0
+        failed_items = 0
 
         for item_id in sample_ids:
+            self._guard()
             try:
                 item = self._base_store.get(item_id)
                 data = item.to_dict()
+                if data.get("metadata", {}).get("_schema_migration_backup_of"):
+                    continue
 
                 if "meta" in data and SCHEMA_VERSION_KEY in data["meta"]:
                     data[SCHEMA_VERSION_KEY] = data["meta"][SCHEMA_VERSION_KEY]
@@ -455,13 +474,14 @@ class MigratableStore(ValidationStore[ConfigT], Generic[ConfigT]):
                     needs_migration += 1
 
             except Exception:
-                continue
+                failed_items += 1
 
         return {
             "current_version": str(self._current_version),
             "min_supported_version": str(self._min_version),
             "total_items": len(all_ids),
             "sampled_items": sample_size,
+            "failed_items": failed_items,
             "needs_migration_estimated": (
                 int(needs_migration / sample_size * len(all_ids))
                 if sample_size > 0
@@ -482,6 +502,7 @@ class MigratableStore(ValidationStore[ConfigT], Generic[ConfigT]):
         """
         self.initialize()
 
+        self._guard()
         try:
             item = self._base_store.get(item_id)
             data = item.to_dict()
@@ -495,6 +516,8 @@ class MigratableStore(ValidationStore[ConfigT], Generic[ConfigT]):
             # Try migration if needed
             if needs_migration:
                 try:
+                    if data_version < self._min_version:
+                        raise IncompatibleVersionError(str(data_version), str(self._current_version))
                     path = self._registry.find_path(
                         str(data_version), str(self._current_version)
                     )

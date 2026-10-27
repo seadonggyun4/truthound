@@ -653,6 +653,10 @@ engine.aggregate({
 })
 ```
 
+Polars, Pandas and SQL duplicate operations count excess rows in groups, including groups containing null values. Duplicate samples preserve original columns named `_count` or `cnt`; internal count aliases cannot replace them. Group columns must be nonempty, unique and known. Sample `limit=0` returns no groups and negative limits fail. Pandas group samples normalize missing scalar keys to `None`. SQL counts use grouped subqueries instead of dialect-dependent multi-column `COUNT(DISTINCT ...)`; sample limits use the source pagination dialect.
+
+SQL `aggregate` computes median, standard deviation, variance, first and last through the shared bounded Polars fallback when they have no generic SQL implementation. Exceeding `max_rows_for_polars` raises `ExecutionSizeError`; unsupported pushdown is not reported as a computed null. Supported aggregations remain SQL operations, including quoted aliases for unusual column names; empty aggregation requests return `{}`. Mixed SQL/fallback requests can read the source separately and do not establish a database snapshot transaction.
+
 ### SQLExecutionEngine
 
 SQL engine with query pushdown.
@@ -1178,3 +1182,29 @@ source = OptimizedPandasDataSource(pandas_df, config=config)
 - **[Data Sources Architecture](../../concepts/datasources-architecture.md)** - Design patterns, extensibility guide, and quality assessment
 - **[Architecture Overview](../../concepts/architecture.md)** - Overall system architecture
 - **[Docs Overview](../../index.md)** - Main documentation
+
+
+## Execution engine view lifecycle
+
+`SQLExecutionEngine.filter_by_condition(condition)` returns a lazy SQL subquery engine. Its trusted SQL predicate is executed by the original provider; nested filtering and sampling preserve the view and borrow the parent connection. Keep the parent datasource alive until all views finish. Default engine temporary filter/count and safe NumPy samples enter/exit their child context, including errors, without closing the parent. The opt-in [Core MCP profile](../mcp.md#native-execution-engines-and-general-stores) selects operator-owned predicate/query/expression aliases and retains native child engines.
+
+
+The `execution-dask` extra installs the native Dask engine runtime. Distributed FIRST/LAST aggregations select values using native backend operations, preserving nulls and empty results; they never substitute counts. Native backend order applies, without promising a global order for unordered distributed data.
+
+SQL execution-engine `get_stats` now computes complete numeric statistics through
+Core's Polars implementation, including sample standard deviation, median and
+linear quartiles. It applies `max_rows_for_polars` before materialization and
+raises `ExecutionSizeError` above that budget instead of returning invented
+`None` statistics. This operation may transfer the bounded source to the client;
+individual supported aggregations still use SQL pushdown.
+
+Range and set operands use driver parameters for SQLite, DuckDB, PostgreSQL and
+MySQL, including filtered/sampled wrappers. PostgreSQL/MySQL regex patterns are
+also bound parameters. Other providers use bounded native Polars fallback for
+these operands; provider-specific regex syntax is retained only for native regex
+pushdown. Values containing quotes are data, not SQL fragments. Raw SQL condition
+APIs keep their existing explicit SQL contract. SQLite and DuckDB have local
+native regression evidence; this change does not claim fresh live-server evidence
+for PostgreSQL, MySQL or cloud providers.
+
+Execution engines treat a range with both bounds absent as all rows, including null rows; the complementary outside-range count is zero. The shared fallback follows the same contract.

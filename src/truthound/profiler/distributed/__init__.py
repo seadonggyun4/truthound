@@ -25,34 +25,34 @@ Example:
 """
 
 from truthound.profiler.distributed.base import (
-    BackendType,
-    PartitionStrategy,
-    PartitionInfo,
-    WorkerResult,
     BackendConfig,
-    DistributedBackend,
     BackendRegistry,
+    BackendType,
+    DistributedBackend,
+    PartitionInfo,
+    PartitionStrategy,
+    WorkerResult,
     backend_registry,
 )
-from truthound.profiler.distributed.local_backend import LocalBackend
 from truthound.profiler.distributed.dask_backend import (
     DaskBackend,
     DaskConfig,
 )
-from truthound.profiler.distributed.spark_backend import (
-    SparkBackend,
-    SparkConfig,
+from truthound.profiler.distributed.local_backend import LocalBackend
+from truthound.profiler.distributed.profiler import (
+    DistributedProfileConfig,
+    DistributedProfiler,
+    create_distributed_profiler,
+    get_available_backends,
+    profile_distributed,
 )
 from truthound.profiler.distributed.ray_backend import (
     RayBackend,
     RayConfig,
 )
-from truthound.profiler.distributed.profiler import (
-    DistributedProfiler,
-    DistributedProfileConfig,
-    create_distributed_profiler,
-    profile_distributed,
-    get_available_backends,
+from truthound.profiler.distributed.spark_backend import (
+    SparkBackend,
+    SparkConfig,
 )
 
 __all__ = [

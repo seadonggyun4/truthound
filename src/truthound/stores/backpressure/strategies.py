@@ -12,21 +12,15 @@ This module provides various backpressure strategies:
 from __future__ import annotations
 
 import asyncio
+import math
 import time
 from dataclasses import dataclass, field
-from datetime import datetime
-from typing import TYPE_CHECKING
 
 from truthound.stores.backpressure.base import (
     BackpressureConfig,
-    BackpressureMetrics,
-    BackpressureState,
     BaseBackpressure,
     PressureLevel,
 )
-
-if TYPE_CHECKING:
-    pass
 
 
 class MemoryBasedBackpressure(BaseBackpressure):
@@ -344,7 +338,19 @@ class TokenBucketBackpressure(BaseBackpressure):
             bucket_size: Maximum tokens in bucket. Defaults to base_rate.
         """
         super().__init__(config)
-        self._bucket_size = bucket_size or self._config.base_rate
+        self._bucket_size = bucket_size if bucket_size is not None else self._config.base_rate
+        if (
+            isinstance(self._bucket_size, bool)
+            or not isinstance(self._bucket_size, (int, float))
+            or not math.isfinite(self._bucket_size)
+            or self._bucket_size < 1
+        ):
+            raise ValueError("Token bucket size must be finite and at least one")
+        self._bucket = TokenBucketState(tokens=self._bucket_size)
+
+    def reset(self) -> None:
+        self._guard_execution()
+        super().reset()
         self._bucket = TokenBucketState(tokens=self._bucket_size)
 
     def _refill_tokens(self) -> None:
@@ -400,16 +406,19 @@ class TokenBucketBackpressure(BaseBackpressure):
 
     async def acquire(self) -> bool:
         """Acquire a token, waiting if necessary."""
+        self._guard_execution()
         if not self._config.enabled:
             return True
 
         async with self._lock:
+            self._guard_execution()
             self._refill_tokens()
 
             while self._bucket.tokens < 1.0:
                 wait_time = self.calculate_pause_duration()
                 self._metrics.record_pause(wait_time * 1000)
                 await asyncio.sleep(wait_time)
+                self._guard_execution()
                 self._refill_tokens()
 
             self._bucket.tokens -= 1.0
@@ -418,6 +427,9 @@ class TokenBucketBackpressure(BaseBackpressure):
 
     def try_acquire(self) -> bool:
         """Try to acquire a token without waiting."""
+        self._guard_execution()
+        if not self._config.enabled:
+            return True
         self._refill_tokens()
         if self._bucket.tokens >= 1.0:
             self._bucket.tokens -= 1.0
@@ -490,9 +502,7 @@ class AdaptiveBackpressure(BaseBackpressure):
         latency = self._metrics.current_latency_ms
         latency_threshold = self._config.latency_threshold_ms
         if latency > latency_threshold:
-            latency_score = min(
-                (latency - latency_threshold) / latency_threshold, 1.0
-            )
+            latency_score = min((latency - latency_threshold) / latency_threshold, 1.0)
 
         # Weighted combination
         return (
@@ -623,9 +633,7 @@ class CompositeBackpressure(BaseBackpressure):
 
         for strategy in self._strategies:
             strategy._update_pressure_level()
-            if level_order.index(strategy.state.pressure_level) > level_order.index(
-                max_level
-            ):
+            if level_order.index(strategy.state.pressure_level) > level_order.index(max_level):
                 max_level = strategy.state.pressure_level
 
         self._state.update_pressure(max_level)
@@ -658,11 +666,23 @@ class CompositeBackpressure(BaseBackpressure):
 
     async def acquire(self) -> bool:
         """Acquire from all strategies."""
+        self._guard_execution()
         results = await asyncio.gather(
             *[s.acquire() for s in self._strategies],
             return_exceptions=True,
         )
-        return all(r is True for r in results if not isinstance(r, Exception))
+        self._guard_execution()
+        failures = [value for value in results if isinstance(value, BaseException)]
+        if failures:
+            raise BaseExceptionGroup("Native backpressure acquisition failed", failures)
+        if any(type(value) is not bool for value in results):
+            raise TypeError("Native backpressure strategy must return a boolean verdict")
+        return all(results)
+
+    def set_execution_guard(self, guard):
+        super().set_execution_guard(guard)
+        for strategy in self._strategies:
+            strategy.set_execution_guard(guard)
 
     def release(self) -> None:
         """Release on all strategies."""

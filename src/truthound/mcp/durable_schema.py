@@ -29,10 +29,12 @@ class WatchInput(WireModel):
 
 class WatchState(WireModel):
     watch_id: str
-    state: Literal["active", "paused", "disabled", "failed", "expired"]
+    state: Literal["active", "paused", "disabled", "failed", "expired", "deleted"]
     revision: str
     retention: dict | None = None
     pruned_notifications: int = 0
+    history_retention: dict | None = None
+    pruned_history: int = 0
     expires_at: float
     polls: int
     notifications: dict[str, int]
@@ -90,6 +92,8 @@ def info(identity, record, store):
         state=record["state"],
         revision=store.digest(record),
         retention=record.get("retention"),
+        history_retention=record.get("history_retention"),
+        pruned_history=record.get("pruned_history", 0),
         pruned_notifications=record.get("pruned_notifications", 0),
         expires_at=record["expires_at"],
         polls=(record["checkpoint"] or {}).get("polls", 0),
@@ -207,7 +211,7 @@ async def tick(session, stop=None):
     """Bounded sweep. Lease owner identity prevents simultaneous poll/send attempts."""
     import psutil
 
-    from truthound.mcp.schema_watch_control import prune
+    from truthound.mcp.schema_watch_control import alert_counter, prune, prune_history
 
     store = storage(session)
     for row in store.connection.execute(
@@ -217,7 +221,12 @@ async def tick(session, stop=None):
             return
         identity = row[0]
         with store.transaction():
-            record = read(store, identity)
+            try:
+                record = read(store, identity)
+            except MCPError as error:
+                if error.code == "invalid_handle":
+                    continue  # An approved deletion won after the sweep snapshot.
+                raise
             busy = record["busy"]
             if busy:
                 if alive(busy):
@@ -225,9 +234,10 @@ async def tick(session, stop=None):
                 if busy["task"] == "deliver":
                     record["outbox"][busy["index"]]["state"] = "unknown"
                 record["busy"] = None
-            if record.get("retention"):
+            if record.get("retention") or record.get("history_retention"):
                 authorize(session, record)
                 prune(record)
+                prune_history(record)
             if store.clock() >= record["expires_at"] and record["state"] in {"active", "paused"}:
                 record["state"] = "expired"
             if record["state"] != "active":
@@ -269,6 +279,7 @@ async def tick(session, stop=None):
                 binding=binding.model_dump(),
                 options=record["options"],
                 checkpoint=record["checkpoint"],
+                alert_counter=alert_counter(record),
                 output_path=str(path),
                 budget=record["budget"],
             )
@@ -298,6 +309,7 @@ async def tick(session, stop=None):
                             if alert["alert_id"] not in previous_ids
                         )
                     latest["checkpoint"] = result
+                    latest["alert_counter"] = result["alert_counter"]
                     latest["due_at"] = store.clock() + record["options"]["poll_interval"]
                 latest["busy"] = None
                 write(store, identity, latest)  # Checkpoint and new outbox entries are atomic.

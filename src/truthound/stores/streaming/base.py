@@ -7,17 +7,18 @@ validation results that exceed available memory.
 
 from __future__ import annotations
 
-import asyncio
+import math
+import weakref
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from collections.abc import AsyncIterator, Iterator  # noqa: TC003 - public annotation introspection
+from dataclasses import dataclass, field, fields
 from datetime import datetime
 from enum import Enum
+from numbers import Integral, Real
 from typing import (
     TYPE_CHECKING,
     Any,
-    AsyncIterator,
     Generic,
-    Iterator,
     Protocol,
     TypeVar,
     runtime_checkable,
@@ -97,8 +98,45 @@ class StreamingConfig:
     max_retries: int = 3
     retry_delay_seconds: float = 1.0
 
+    def to_dict(self) -> dict[str, Any]:
+        """Persist algorithm settings without backend paths or credentials."""
+        return {
+            entry.name: value.value if isinstance(value, Enum) else value
+            for entry in fields(StreamingConfig)
+            for value in (getattr(self, entry.name),)
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> StreamingConfig:
+        values = {entry.name: data[entry.name] for entry in fields(StreamingConfig) if entry.name in data}
+        if "format" in values:
+            values["format"] = StreamingFormat(values["format"])
+        if "compression" in values:
+            values["compression"] = CompressionType(values["compression"])
+        result = cls(**values)
+        result.validate()
+        return result
+
     def validate(self) -> None:
         """Validate configuration values."""
+        self.format = StreamingFormat(self.format)
+        self.compression = CompressionType(self.compression)
+        for name in ("enable_checkpoints", "enable_metrics"):
+            if not isinstance(getattr(self, name), bool):
+                raise ValueError(f"{name} must be boolean")
+        for name in ("chunk_size", "buffer_size", "max_memory_mb", "checkpoint_interval", "max_retries"):
+            value = getattr(self, name)
+            minimum = 0 if name == "max_retries" else 1
+            if isinstance(value, bool) or not isinstance(value, Integral):
+                raise ValueError(f"{name} must be a {'non-negative' if minimum == 0 else 'positive'} integer")
+            setattr(self, name, int(value))
+        for name in ("flush_interval_seconds", "retry_delay_seconds"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, Real) or not math.isfinite(value):
+                raise ValueError(f"{name} must be finite and non-negative")
+            setattr(self, name, float(value))
+        if self.max_retries < 0 or self.retry_delay_seconds < 0:
+            raise ValueError("Streaming retry settings must be non-negative")
         if self.chunk_size <= 0:
             raise ValueError("chunk_size must be positive")
         if self.buffer_size <= 0:
@@ -249,7 +287,7 @@ class ChunkInfo:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "ChunkInfo":
+    def from_dict(cls, data: dict[str, Any]) -> ChunkInfo:
         """Create from dictionary."""
         return cls(
             chunk_id=data["chunk_id"],
@@ -301,6 +339,7 @@ class StreamSession:
             "run_id": self.run_id,
             "data_asset": self.data_asset,
             "status": self.status.value,
+            "config": self.config.to_dict(),
             "metrics": self.metrics.to_dict(),
             "chunks": [c.to_dict() for c in self.chunks],
             "metadata": self.metadata,
@@ -310,14 +349,19 @@ class StreamSession:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "StreamSession":
+    def from_dict(cls, data: dict[str, Any]) -> StreamSession:
         """Create from dictionary."""
+        metrics = dict(data.get("metrics", {}))
+        for name in ("start_time", "end_time"):
+            if isinstance(metrics.get(name), str):
+                metrics[name] = datetime.fromisoformat(metrics[name])
         return cls(
             session_id=data["session_id"],
             run_id=data["run_id"],
             data_asset=data["data_asset"],
             status=StreamStatus(data.get("status", "pending")),
-            metrics=StreamingMetrics(**data.get("metrics", {})),
+            config=StreamingConfig.from_dict(data.get("config", {})),
+            metrics=StreamingMetrics(**metrics),
             chunks=[ChunkInfo.from_dict(c) for c in data.get("chunks", [])],
             metadata=data.get("metadata", {}),
             started_at=datetime.fromisoformat(data["started_at"]),
@@ -424,6 +468,14 @@ T = TypeVar("T")
 ConfigT = TypeVar("ConfigT", bound=StreamingConfig)
 
 
+class StreamingCloseError(RuntimeError):
+    """Every owned resource was attempted; cleanup failures remain visible."""
+
+    def __init__(self, failures):
+        self.error_types = tuple(type(error).__name__ for error in failures)
+        super().__init__("Native streaming store cleanup failed: " + ", ".join(self.error_types))
+
+
 class StreamingStore(ABC, Generic[T, ConfigT]):
     """Abstract base class for streaming stores.
 
@@ -445,6 +497,9 @@ class StreamingStore(ABC, Generic[T, ConfigT]):
         self._config.validate()
         self._initialized = False
         self._active_sessions: dict[str, StreamSession] = {}
+        self._writers = {}
+        self._readers = weakref.WeakSet()
+        self._io_guard = None
 
     @classmethod
     @abstractmethod
@@ -463,6 +518,7 @@ class StreamingStore(ABC, Generic[T, ConfigT]):
 
     def initialize(self) -> None:
         """Initialize the store."""
+        self._guard_io()
         if not self._initialized:
             self._do_initialize()
             self._initialized = True
@@ -472,13 +528,57 @@ class StreamingStore(ABC, Generic[T, ConfigT]):
         """Perform actual initialization."""
         pass
 
-    def close(self) -> None:
-        """Close the store and all active sessions."""
-        for session in list(self._active_sessions.values()):
-            self._close_session(session)
-        self._active_sessions.clear()
+    def set_io_guard(self, guard) -> None:
+        self._io_guard = guard
+        for child in (*self._writers.values(), *self._readers):
+            child.set_io_guard(guard)
 
-    def __enter__(self) -> "StreamingStore[T, ConfigT]":
+    def _guard_io(self) -> None:
+        if self._io_guard is not None:
+            self._io_guard()
+
+    def _assert_writer_available(self, session):
+        self._guard_io()
+        writer = self._writers.get(session.session_id)
+        if writer is not None and not writer._closed:
+            raise ValueError("A native writer already owns this streaming session")
+        if session.status in {StreamStatus.COMPLETED, StreamStatus.ABORTED, StreamStatus.FAILED}:
+            raise ValueError("A terminal native session cannot accept a new writer")
+
+    def _track_writer(self, session, writer):
+        writer.set_io_guard(self._io_guard)
+        self._writers[session.session_id] = writer
+        return writer
+
+    def _track_reader(self, reader):
+        reader.set_io_guard(self._io_guard)
+        self._readers.add(reader)
+        return reader
+
+    def close(self) -> None:
+        failures = []
+        for reader in list(self._readers):
+            try:
+                reader.close()
+                self._readers.discard(reader)
+            except Exception as error:
+                failures.append(error)
+        for identity, writer in list(self._writers.items()):
+            try:
+                writer.close()
+            except Exception as error:
+                failures.append(error)
+            finally:
+                if writer._closed:
+                    self._writers.pop(identity, None)
+        # Only a writer/finalize_result may publish completion. Closing a store
+        # with a restored or writer-less session must not overwrite another
+        # owner's newer durable state or acknowledge unwritten work.
+        self._active_sessions.clear()
+        if failures:
+            raise StreamingCloseError(failures)
+
+    def __enter__(self) -> StreamingStore[T, ConfigT]:
         """Context manager entry."""
         self.initialize()
         return self
@@ -686,7 +786,7 @@ class StreamingValidationStore(StreamingStore["ValidatorResult", ConfigT], Gener
     def stream_write_result(
         self,
         session: StreamSession,
-        result: "ValidatorResult",
+        result: ValidatorResult,
     ) -> None:
         """Write a single validator result to the stream.
 
@@ -700,7 +800,7 @@ class StreamingValidationStore(StreamingStore["ValidatorResult", ConfigT], Gener
     def stream_write_batch(
         self,
         session: StreamSession,
-        results: list["ValidatorResult"],
+        results: list[ValidatorResult],
     ) -> None:
         """Write a batch of validator results to the stream.
 
@@ -715,7 +815,7 @@ class StreamingValidationStore(StreamingStore["ValidatorResult", ConfigT], Gener
         self,
         session: StreamSession,
         additional_metadata: dict[str, Any] | None = None,
-    ) -> "ValidationResult":
+    ) -> ValidationResult:
         """Finalize the streaming session and create a ValidationResult.
 
         This aggregates all streamed results into a single ValidationResult
@@ -746,7 +846,7 @@ class StreamingValidationStore(StreamingStore["ValidatorResult", ConfigT], Gener
         self,
         run_id: str,
         batch_size: int = 1000,
-    ) -> Iterator["ValidatorResult"]:
+    ) -> Iterator[ValidatorResult]:
         """Iterate over failed results only.
 
         Args:
@@ -765,7 +865,7 @@ class StreamingValidationStore(StreamingStore["ValidatorResult", ConfigT], Gener
         run_id: str,
         column: str,
         batch_size: int = 1000,
-    ) -> Iterator["ValidatorResult"]:
+    ) -> Iterator[ValidatorResult]:
         """Iterate over results for a specific column.
 
         Args:
@@ -785,7 +885,7 @@ class StreamingValidationStore(StreamingStore["ValidatorResult", ConfigT], Gener
         run_id: str,
         severity: str,
         batch_size: int = 1000,
-    ) -> Iterator["ValidatorResult"]:
+    ) -> Iterator[ValidatorResult]:
         """Iterate over results with a specific severity.
 
         Args:

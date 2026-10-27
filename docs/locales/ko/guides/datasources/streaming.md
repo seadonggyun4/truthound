@@ -483,3 +483,12 @@ from truthound.datasources.streaming import (
 | 실무 운영 가이드에서 Module을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 `truthound.datasources.streaming`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 `truthound.realtime.streaming`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
 
 실무 운영 가이드에서 Phase을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+
+## MCP의 브로커 메시지 처리
+
+브로커 어댑터는 별도 `truthound.realtime` namespace를 사용합니다.
+`ExactlyOnceProcessor.process_message(message)`는 이미 소비한 한 메시지를 `run()`과
+동일한 네이티브 중복 제거·transaction·source 커밋·sink 전달·통계 경로로 처리합니다.
+구성한 backend 의미를 유지하며 `recover()`의 pending transaction rollback은 외부의
+정확히 한 번 전달 증거가 아닙니다. 개발 MCP 프로파일의 소유자·batch·ack·window·
+복구 제어는 [MCP 가이드](../mcp.md#네이티브-브로커와-처리-수명주기)에 설명합니다.

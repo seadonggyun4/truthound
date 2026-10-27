@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import hashlib
 from abc import ABC
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import TYPE_CHECKING, Any, Callable
 
 from truthound.multitenancy.core import (
@@ -139,11 +139,20 @@ class RowLevelPolicy:
     priority: int = 0
     enabled: bool = True
 
+    def __post_init__(self) -> None:
+        if not isinstance(self.name, str) or not self.name or not callable(self.condition):
+            raise ValueError("A row policy requires a name and callable condition")
+        if type(self.enabled) is not bool or type(self.priority) is not int:
+            raise ValueError("Row policy enabled and priority must be boolean and integer")
+
     def check(self, row: dict[str, Any], tenant: Tenant) -> bool:
         """Check if the policy allows access."""
         if not self.enabled:
             return True
-        return self.condition(row, tenant)
+        result = self.condition(row, tenant)
+        if type(result) is not bool:
+            raise TenantIsolationError("Row policy must return a boolean", tenant_id=tenant.id)
+        return result
 
 
 class RowLevelIsolation(IsolationStrategy):
@@ -179,8 +188,17 @@ class RowLevelIsolation(IsolationStrategy):
 
     def add_policy(self, policy: RowLevelPolicy) -> None:
         """Add a row-level security policy."""
+        if not isinstance(policy, RowLevelPolicy):
+            raise TypeError("A native RowLevelPolicy is required")
+        if any(current.name == policy.name for current in self._policies):
+            raise ValueError("A row policy with this name already exists")
         self._policies.append(policy)
         self._policies.sort(key=lambda p: p.priority, reverse=True)
+
+    @property
+    def policies(self) -> tuple[RowLevelPolicy, ...]:
+        """Return configuration snapshots without exposing the mutable list."""
+        return tuple(replace(policy) for policy in self._policies)
 
     def remove_policy(self, name: str) -> bool:
         """Remove a policy by name."""
@@ -209,10 +227,39 @@ class RowLevelIsolation(IsolationStrategy):
         elif self._fail_closed:
             return df.filter(pl.lit(False))
 
-        # Additional row-level policies would be applied here
-        # Note: Complex row-level policies may require collecting data
-        # For now, we return the tenant-filtered frame
-        return df
+        policies = tuple(replace(policy) for policy in self._policies)
+        validate_on_apply, fail_closed = self._validate_on_apply, self._fail_closed
+
+        def filter_batch(batch):
+            if validate_on_apply:
+                self.validate_isolation(tenant)
+            if not policies or batch.is_empty():
+                return batch
+            allowed = []
+            for row in batch.iter_rows(named=True):
+                permitted = True
+                for policy in policies:
+                    try:
+                        if not policy.check(row, tenant):
+                            permitted = False
+                            break
+                    except Exception:
+                        if not fail_closed:
+                            raise TenantIsolationError(
+                                "Row isolation policy evaluation failed", tenant_id=tenant.id,
+                            ) from None
+                        permitted = False
+                        break
+                allowed.append(permitted)
+            return batch.filter(pl.Series(allowed, dtype=pl.Boolean))
+
+        # Keep the native tenant predicate before callbacks. Optimizer projection
+        # or slice pushdown could otherwise remove policy columns or limit rows
+        # before denied rows have been filtered.
+        return df.map_batches(
+            filter_batch, schema=df.collect_schema(), predicate_pushdown=False,
+            projection_pushdown=False, slice_pushdown=False, streamable=True,
+        )
 
     def add_tenant_column(
         self,

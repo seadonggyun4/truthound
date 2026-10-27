@@ -21,8 +21,8 @@ from __future__ import annotations
 
 import logging
 from abc import ABC, abstractmethod
-from dataclasses import dataclass
-from typing import Any, Callable, TYPE_CHECKING
+from collections.abc import Callable  # noqa: TC003 - public runtime annotations
+from typing import TYPE_CHECKING, Any
 
 from truthound.profiler.integration.naming import resolve_validator_name
 
@@ -49,12 +49,12 @@ class RuleToValidatorAdapter(ABC):
     """
 
     @abstractmethod
-    def supports(self, rule: "GeneratedRule") -> bool:
+    def supports(self, rule: GeneratedRule) -> bool:
         """Check if this adapter supports the given rule."""
         ...
 
     @abstractmethod
-    def convert(self, rule: "GeneratedRule") -> "Validator":
+    def convert(self, rule: GeneratedRule) -> Validator:
         """Convert a generated rule to a validator."""
         ...
 
@@ -93,7 +93,7 @@ class DefaultRuleAdapter(RuleToValidatorAdapter):
         # ColumnTypeValidator: expected_type (single) -> expected_types (dict)
         def transform_column_type(
             value: Any,
-            rule: "GeneratedRule",
+            rule: GeneratedRule,
         ) -> dict[str, Any]:
             """Transform expected_type to expected_types dict."""
             if rule.columns:
@@ -107,7 +107,7 @@ class DefaultRuleAdapter(RuleToValidatorAdapter):
     def priority(self) -> int:
         return 0  # Lowest priority, fallback
 
-    def supports(self, rule: "GeneratedRule") -> bool:
+    def supports(self, rule: GeneratedRule) -> bool:
         """Supports any rule with a validator_class."""
         return bool(rule.validator_class)
 
@@ -115,7 +115,7 @@ class DefaultRuleAdapter(RuleToValidatorAdapter):
         self,
         validator_name: str,
         params: dict[str, Any],
-        rule: "GeneratedRule",
+        rule: GeneratedRule,
     ) -> dict[str, Any]:
         """Transform parameters based on validator-specific rules.
 
@@ -143,9 +143,10 @@ class DefaultRuleAdapter(RuleToValidatorAdapter):
 
         return transformed
 
-    def convert(self, rule: "GeneratedRule") -> "Validator":
+    def convert(self, rule: GeneratedRule) -> Validator:
         """Convert by importing and instantiating the validator class."""
         import inspect
+
         from truthound.validators import get_validator
 
         validator_name = rule.validator_class
@@ -173,23 +174,21 @@ class DefaultRuleAdapter(RuleToValidatorAdapter):
             expects_columns = False
 
         # Add columns only if not already consumed by transformer
-        if rule.columns and "columns" not in params and "column" not in params:
-            # Check if validator uses expected_types dict (columns already embedded)
-            if "expected_types" not in params:
-                if expects_column and not expects_columns and len(rule.columns) == 1:
-                    # Single-column validator: use 'column' parameter
-                    params["column"] = rule.columns[0]
-                else:
-                    # Multi-column validator or kwargs-based: use 'columns'
-                    params["columns"] = list(rule.columns)
+        if rule.columns and "columns" not in params and "column" not in params and "expected_types" not in params:
+            if expects_column and not expects_columns and len(rule.columns) == 1:
+                # Single-column validator: use 'column' parameter
+                params["column"] = rule.columns[0]
+            else:
+                # Multi-column validator or kwargs-based: use 'columns'
+                params["columns"] = list(rule.columns)
         if rule.mostly is not None:
             params["mostly"] = rule.mostly
 
         try:
             return validator_cls(**params)
         except Exception as e:
-            logger.error(f"Failed to create validator from rule {rule.name}: {e}")
-            raise ValueError(f"Cannot create validator from rule: {e}") from e
+            logger.error("Native validator construction failed (%s)", type(e).__name__)
+            raise ValueError("Native validator construction failed") from None
 
 
 class DynamicImportAdapter(RuleToValidatorAdapter):
@@ -203,10 +202,10 @@ class DynamicImportAdapter(RuleToValidatorAdapter):
     def priority(self) -> int:
         return 10
 
-    def supports(self, rule: "GeneratedRule") -> bool:
+    def supports(self, rule: GeneratedRule) -> bool:
         return bool(rule.validator_class)
 
-    def convert(self, rule: "GeneratedRule") -> "Validator":
+    def convert(self, rule: GeneratedRule) -> Validator:
         """Convert by dynamically importing the validator class."""
         import importlib
         import inspect
@@ -259,17 +258,15 @@ class DynamicImportAdapter(RuleToValidatorAdapter):
 
                         # Add columns only if not already consumed by transformer
                         final_params = dict(params)
-                        if rule.columns and "columns" not in final_params and "column" not in final_params:
-                            if "expected_types" not in final_params:
-                                if expects_column and not expects_columns and len(rule.columns) == 1:
-                                    # Single-column validator: use 'column' parameter
-                                    final_params["column"] = rule.columns[0]
-                                else:
-                                    # Multi-column validator or kwargs-based: use 'columns'
-                                    final_params["columns"] = list(rule.columns)
+                        if rule.columns and "columns" not in final_params and "column" not in final_params and "expected_types" not in final_params:
+                            if expects_column and not expects_columns and len(rule.columns) == 1:
+                                # Single-column validator: use 'column' parameter
+                                final_params["column"] = rule.columns[0]
+                            else:
+                                # Multi-column validator or kwargs-based: use 'columns'
+                                final_params["columns"] = list(rule.columns)
                         if rule.mostly is not None:
                             final_params["mostly"] = rule.mostly
-
                         return validator_cls(**final_params)
             except ImportError:
                 continue
@@ -290,19 +287,19 @@ class ValidatorRegistry:
         validator = registry.create_validator(rule)
     """
 
-    _instance: "ValidatorRegistry | None" = None
+    _instance: ValidatorRegistry | None = None
 
     def __init__(self) -> None:
         """Initialize the registry."""
         self._adapters: list[RuleToValidatorAdapter] = []
-        self._custom_factories: dict[str, Callable[["GeneratedRule"], "Validator"]] = {}
+        self._custom_factories: dict[str, Callable[[GeneratedRule], Validator]] = {}
 
         # Register default adapters
         self._adapters.append(DynamicImportAdapter())
         self._adapters.append(DefaultRuleAdapter())
 
     @classmethod
-    def get_instance(cls) -> "ValidatorRegistry":
+    def get_instance(cls) -> ValidatorRegistry:
         """Get the singleton instance."""
         if cls._instance is None:
             cls._instance = ValidatorRegistry()
@@ -336,7 +333,7 @@ class ValidatorRegistry:
     def register_factory(
         self,
         validator_class: str,
-        factory: Callable[["GeneratedRule"], "Validator"],
+        factory: Callable[[GeneratedRule], Validator],
     ) -> None:
         """Register a factory function for a specific validator class.
 
@@ -346,7 +343,7 @@ class ValidatorRegistry:
         """
         self._custom_factories[validator_class] = factory
 
-    def create_validator(self, rule: "GeneratedRule") -> "Validator":
+    def create_validator(self, rule: GeneratedRule) -> Validator:
         """Create a validator from a rule.
 
         Args:
@@ -369,8 +366,8 @@ class ValidatorRegistry:
                     return adapter.convert(rule)
                 except Exception as e:
                     logger.debug(
-                        f"Adapter {adapter.__class__.__name__} failed for rule "
-                        f"{rule.name}: {e}"
+                        "Native rule adapter %s failed (%s)",
+                        type(adapter).__name__, type(e).__name__,
                     )
                     continue
 
@@ -379,7 +376,7 @@ class ValidatorRegistry:
             f"(class: {rule.validator_class})"
         )
 
-    def can_create(self, rule: "GeneratedRule") -> bool:
+    def can_create(self, rule: GeneratedRule) -> bool:
         """Check if any adapter can create a validator for the rule.
 
         Args:
@@ -408,7 +405,7 @@ class ValidatorRegistry:
 _registry = ValidatorRegistry()
 
 
-def create_validator_from_rule(rule: "GeneratedRule") -> "Validator":
+def create_validator_from_rule(rule: GeneratedRule) -> Validator:
     """Create a validator from a generated rule.
 
     This is a convenience function using the global registry.
@@ -441,7 +438,7 @@ def register_rule_adapter(adapter: RuleToValidatorAdapter) -> None:
 
 def register_validator_factory(
     validator_class: str,
-    factory: Callable[["GeneratedRule"], "Validator"],
+    factory: Callable[[GeneratedRule], Validator],
 ) -> None:
     """Register a validator factory with the global registry.
 

@@ -693,3 +693,35 @@ def test_resident_worker_owns_actual_interpreter_and_preserves_environment(monke
         worker.close()
     assert worker.process.poll() is not None
     assert not Path(worker.directory.name).exists()
+
+
+@pytest.mark.parametrize("method", ["ddm", "adwin", "page_hinkley"])
+def test_resident_concept_stream_runs_selected_native_detector(adapter, method):
+    from truthound.ml import ConceptDriftDetector
+
+    config = {"method": method, "stream_column": "error", "detection_window": 1000}
+    reference = pl.DataFrame({"error": [0.0] * 1000})
+    current = pl.DataFrame({"error": [1.0] * 1000})
+    direct = ConceptDriftDetector(**config)
+    direct.fit(reference.lazy())
+    expected = direct.predict(current.lazy()).to_dict()
+    model = call(adapter, "models_create", algorithm="ConceptDriftDetector", config=config)
+    call(
+        adapter,
+        "models_fit",
+        model_id=model["model_id"],
+        asset_id=frame_asset(adapter, reference),
+        expected_revision=0,
+    )
+    retained = call(
+        adapter,
+        "models_predict",
+        model_id=model["model_id"],
+        asset_id=frame_asset(adapter, current),
+        expected_revision=1,
+    )
+    actual = decode(artifact(adapter, retained["resource_id"])["result"])
+    actual.pop("detected_at")
+    expected.pop("detected_at")
+    assert actual == expected
+    assert actual["is_drifted"]

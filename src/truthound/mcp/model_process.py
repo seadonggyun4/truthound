@@ -6,6 +6,9 @@ import subprocess
 import sys
 import tempfile
 import threading
+from contextlib import suppress
+
+import psutil
 
 from truthound.mcp.policy import MCPError
 
@@ -19,6 +22,9 @@ class OwnedModelProcess:
         self._timer = None
         self._closed = False
         self._close_lock = threading.Lock()
+        self._descendants = {}
+        self._descendants_lock = threading.Lock()
+        self._descendants_stop = threading.Event()
         environment = {
             key: value
             for key, value in os.environ.items()
@@ -49,10 +55,36 @@ class OwnedModelProcess:
                 cwd=self.directory.name,
                 env=environment,
             )
+            self._process_created = psutil.Process(self.process.pid).create_time()
         except BaseException:
+            if hasattr(self, "process"):
+                if self.process.poll() is None:
+                    self.process.kill()
+                self.process.wait(timeout=5)
             self.directory.cleanup()
             raise
+        self._descendants_thread = threading.Thread(target=self._watch_descendants, daemon=True)
+        self._descendants_thread.start()
         self.expire_after(ttl)
+
+    def _capture_descendants(self):
+        try:
+            parent = psutil.Process(self.process.pid)
+            if parent.create_time() != self._process_created:
+                return
+            for child in parent.children(recursive=True):
+                try:
+                    created = child.create_time()
+                    with self._descendants_lock:
+                        self._descendants[child.pid] = (child, created)
+                except (psutil.Error, OSError):
+                    continue
+        except (psutil.Error, OSError):
+            pass
+
+    def _watch_descendants(self):
+        while not self._descendants_stop.wait(0.05):
+            self._capture_descendants()
 
     def expire_after(self, seconds):
         if self._timer:
@@ -65,6 +97,9 @@ class OwnedModelProcess:
     def closed(self):
         return self._closed or self.process.poll() is not None
 
+    def _request_shutdown(self):
+        """Optional bounded native cleanup, with descendants already captured."""
+
     def close(self):
         with self._close_lock:
             if self._closed:
@@ -73,10 +108,30 @@ class OwnedModelProcess:
             if self._timer:
                 self._timer.cancel()
             try:
+                self._capture_descendants()
+                # Snapshot descendants before a graceful shutdown can reparent
+                # them. Provider cleanup is bounded; the captured tree is reaped
+                # even if the parent exits before its descendants do.
+                with suppress(Exception):
+                    self._request_shutdown()
+                self._capture_descendants()
+                self._descendants_stop.set()
+                self._descendants_thread.join(timeout=1)
+                with self._descendants_lock:
+                    recorded = list(self._descendants.values())
+                children = []
+                for child, created in reversed(recorded):
+                    with suppress(psutil.Error, OSError):
+                        if child.create_time() == created:
+                            child.kill()
+                            children.append(child)
                 if self.process.poll() is None:
                     self.process.kill()
                 self.process.wait(timeout=5)
+                if children:
+                    psutil.wait_procs(children, timeout=5)
             finally:
+                self._descendants_stop.set()
                 for stream in (self.process.stdin, self.process.stdout):
                     if stream:
                         stream.close()

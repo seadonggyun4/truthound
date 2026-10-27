@@ -11,17 +11,18 @@ Use for CI/CD integration to catch performance regressions.
 
 from __future__ import annotations
 
-import json
-import statistics
+import math
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
+from uuid import uuid4
 
-from truthound.benchmark.base import BenchmarkResult, BenchmarkMetrics
 from truthound.benchmark.runner import SuiteResult
 
+if TYPE_CHECKING:
+    from truthound.benchmark.base import BenchmarkResult
 
 # =============================================================================
 # Types and Enums
@@ -31,17 +32,17 @@ from truthound.benchmark.runner import SuiteResult
 class ComparisonResult(str, Enum):
     """Result of a benchmark comparison."""
 
-    BETTER = "better"       # Performance improved
-    SAME = "same"           # No significant change
-    WORSE = "worse"         # Performance degraded
+    BETTER = "better"  # Performance improved
+    SAME = "same"  # No significant change
+    WORSE = "worse"  # Performance degraded
     REGRESSION = "regression"  # Significant regression detected
 
 
 class ThresholdType(str, Enum):
     """Type of performance threshold."""
 
-    ABSOLUTE = "absolute"   # Fixed value (e.g., < 1.0s)
-    RELATIVE = "relative"   # Percentage change (e.g., < 10% slower)
+    ABSOLUTE = "absolute"  # Fixed value (e.g., < 1.0s)
+    RELATIVE = "relative"  # Percentage change (e.g., < 10% slower)
     PERCENTILE = "percentile"  # Based on historical percentile
 
 
@@ -77,6 +78,21 @@ class PerformanceThreshold:
     max_regression_percent: float | None = None
     max_p99_duration_seconds: float | None = None
 
+    def __post_init__(self):
+        if not isinstance(self.benchmark_name, str) or not self.benchmark_name:
+            raise ValueError("Threshold requires a benchmark name")
+        for value in (
+            self.max_duration_seconds,
+            self.min_throughput_rows_per_sec,
+            self.max_memory_mb,
+            self.max_regression_percent,
+            self.max_p99_duration_seconds,
+        ):
+            if value is not None and (
+                type(value) not in (int, float) or not math.isfinite(value) or value < 0
+            ):
+                raise ValueError("Threshold bounds must be finite nonnegative numbers")
+
     def check(
         self,
         result: BenchmarkResult,
@@ -92,51 +108,71 @@ class PerformanceThreshold:
             Tuple of (passed, list of violations)
         """
         violations = []
+        if result.benchmark_name != self.benchmark_name:
+            return False, ["Threshold does not match benchmark"]
+        if self.max_regression_percent is not None and baseline is None:
+            return False, ["Relative threshold requires a baseline"]
+        if baseline is not None and baseline.benchmark_name != result.benchmark_name:
+            return False, ["Baseline does not match benchmark"]
+        if not result.success or not result.metrics.durations:
+            return False, ["Benchmark did not produce successful measurements"]
+        if baseline is not None and (not baseline.success or not baseline.metrics.durations):
+            return False, ["Baseline did not produce successful measurements"]
 
         # Check absolute duration
-        if self.max_duration_seconds is not None:
-            if result.metrics.mean_duration > self.max_duration_seconds:
-                violations.append(
-                    f"Duration {result.metrics.mean_duration:.3f}s exceeds "
-                    f"max {self.max_duration_seconds:.3f}s"
-                )
+        if (self.max_duration_seconds is not None) and (
+            result.metrics.mean_duration > self.max_duration_seconds
+        ):
+            violations.append(
+                f"Duration {result.metrics.mean_duration:.3f}s exceeds "
+                f"max {self.max_duration_seconds:.3f}s"
+            )
 
         # Check throughput
-        if self.min_throughput_rows_per_sec is not None:
-            if result.metrics.rows_per_second < self.min_throughput_rows_per_sec:
-                violations.append(
-                    f"Throughput {result.metrics.rows_per_second:.0f} rows/s "
-                    f"below min {self.min_throughput_rows_per_sec:.0f} rows/s"
-                )
+        if (self.min_throughput_rows_per_sec is not None) and (
+            result.metrics.rows_per_second < self.min_throughput_rows_per_sec
+        ):
+            violations.append(
+                f"Throughput {result.metrics.rows_per_second:.0f} rows/s "
+                f"below min {self.min_throughput_rows_per_sec:.0f} rows/s"
+            )
 
         # Check memory
         if self.max_memory_mb is not None:
             peak_mb = result.metrics.peak_memory_bytes / (1024 * 1024)
             if peak_mb > self.max_memory_mb:
-                violations.append(
-                    f"Memory {peak_mb:.1f}MB exceeds max {self.max_memory_mb:.1f}MB"
-                )
+                violations.append(f"Memory {peak_mb:.1f}MB exceeds max {self.max_memory_mb:.1f}MB")
 
         # Check P99
-        if self.max_p99_duration_seconds is not None:
-            if result.metrics.p99_duration > self.max_p99_duration_seconds:
-                violations.append(
-                    f"P99 {result.metrics.p99_duration:.3f}s exceeds "
-                    f"max {self.max_p99_duration_seconds:.3f}s"
-                )
+        if (self.max_p99_duration_seconds is not None) and (
+            result.metrics.p99_duration > self.max_p99_duration_seconds
+        ):
+            violations.append(
+                f"P99 {result.metrics.p99_duration:.3f}s exceeds "
+                f"max {self.max_p99_duration_seconds:.3f}s"
+            )
 
         # Check regression against baseline
-        if self.max_regression_percent is not None and baseline is not None:
-            if baseline.metrics.mean_duration > 0:
-                pct_change = (
-                    (result.metrics.mean_duration - baseline.metrics.mean_duration)
-                    / baseline.metrics.mean_duration * 100
+        if (
+            self.max_regression_percent is not None
+            and baseline is not None
+            and baseline.metrics.mean_duration == 0
+            and result.metrics.mean_duration > 0
+        ):
+            violations.append("Positive duration exceeds zero-duration baseline")
+        if (self.max_regression_percent is not None and baseline is not None) and (
+            baseline.metrics.mean_duration > 0
+        ):
+            pct_change = (
+                (result.metrics.mean_duration - baseline.metrics.mean_duration)
+                / baseline.metrics.mean_duration
+                * 100
+            )
+            if pct_change > self.max_regression_percent:
+                violations.append(
+                    f"Regression of {pct_change:.1f}% exceeds "
+                    f"max {self.max_regression_percent:.1f}%"
                 )
-                if pct_change > self.max_regression_percent:
-                    violations.append(
-                        f"Regression of {pct_change:.1f}% exceeds "
-                        f"max {self.max_regression_percent:.1f}%"
-                    )
 
         return len(violations) == 0, violations
 
@@ -152,7 +188,7 @@ class PerformanceThreshold:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "PerformanceThreshold":
+    def from_dict(cls, data: dict[str, Any]) -> PerformanceThreshold:
         """Create from dictionary."""
         return cls(
             benchmark_name=data["benchmark_name"],
@@ -252,8 +288,16 @@ class BenchmarkComparator:
     def __init__(
         self,
         significance_threshold: float = 0.05,  # 5% change is significant
-        regression_threshold: float = 0.10,    # 10% slower is regression
+        regression_threshold: float = 0.10,  # 10% slower is regression
     ):
+        for value in (significance_threshold, regression_threshold):
+            if (
+                isinstance(value, bool)
+                or not isinstance(value, (int, float))
+                or not math.isfinite(value)
+                or value < 0
+            ):
+                raise ValueError("Comparison thresholds must be finite nonnegative numbers")
         self.significance_threshold = significance_threshold
         self.regression_threshold = regression_threshold
 
@@ -273,6 +317,11 @@ class BenchmarkComparator:
         Returns:
             Detailed comparison
         """
+        if any(
+            not result.success or not result.metrics.durations for result in (baseline, current)
+        ):
+            raise ValueError("Comparison requires successful measurements")
+
         if baseline.benchmark_name != current.benchmark_name:
             raise ValueError(
                 f"Cannot compare different benchmarks: "
@@ -282,38 +331,46 @@ class BenchmarkComparator:
         comparisons = []
 
         # Compare mean duration
-        comparisons.append(self._compare_metric(
-            "mean_duration",
-            baseline.metrics.mean_duration,
-            current.metrics.mean_duration,
-            is_lower_better=True,
-        ))
+        comparisons.append(
+            self._compare_metric(
+                "mean_duration",
+                baseline.metrics.mean_duration,
+                current.metrics.mean_duration,
+                is_lower_better=True,
+            )
+        )
 
         # Compare P95 duration
-        comparisons.append(self._compare_metric(
-            "p95_duration",
-            baseline.metrics.p95_duration,
-            current.metrics.p95_duration,
-            is_lower_better=True,
-        ))
+        comparisons.append(
+            self._compare_metric(
+                "p95_duration",
+                baseline.metrics.p95_duration,
+                current.metrics.p95_duration,
+                is_lower_better=True,
+            )
+        )
 
         # Compare throughput
         if baseline.metrics.rows_processed > 0 and current.metrics.rows_processed > 0:
-            comparisons.append(self._compare_metric(
-                "rows_per_second",
-                baseline.metrics.rows_per_second,
-                current.metrics.rows_per_second,
-                is_lower_better=False,
-            ))
+            comparisons.append(
+                self._compare_metric(
+                    "rows_per_second",
+                    baseline.metrics.rows_per_second,
+                    current.metrics.rows_per_second,
+                    is_lower_better=False,
+                )
+            )
 
         # Compare memory
         if baseline.metrics.peak_memory_bytes > 0 and current.metrics.peak_memory_bytes > 0:
-            comparisons.append(self._compare_metric(
-                "peak_memory_bytes",
-                baseline.metrics.peak_memory_bytes,
-                current.metrics.peak_memory_bytes,
-                is_lower_better=True,
-            ))
+            comparisons.append(
+                self._compare_metric(
+                    "peak_memory_bytes",
+                    baseline.metrics.peak_memory_bytes,
+                    current.metrics.peak_memory_bytes,
+                    is_lower_better=True,
+                )
+            )
 
         # Determine overall result
         overall = self._determine_overall_result(comparisons)
@@ -351,6 +408,11 @@ class BenchmarkComparator:
         Returns:
             List of comparisons
         """
+        names = [[item.benchmark_name for item in suite.results] for suite in (baseline, current)]
+        if any(not group or len(group) != len(set(group)) for group in names) or set(
+            names[0]
+        ) != set(names[1]):
+            raise ValueError("Suite comparison requires matching nonempty unique benchmarks")
         thresholds = thresholds or {}
         comparisons = []
 
@@ -377,7 +439,7 @@ class BenchmarkComparator:
     ) -> MetricComparison:
         """Compare a single metric."""
         if baseline_value == 0:
-            percent_change = 0.0 if current_value == 0 else float('inf')
+            percent_change = 0.0 if current_value == 0 else float("inf")
         else:
             percent_change = (current_value - baseline_value) / baseline_value
 
@@ -471,16 +533,14 @@ class RegressionDetector:
 
     def load_history(self) -> None:
         """Load historical results from disk."""
-        if not self.history_path.exists():
-            return
-
-        for file in sorted(self.history_path.glob("*.json")):
-            try:
-                data = json.loads(file.read_text())
-                # Simplified loading - in production would fully reconstruct
-                self._history.append(data)
-            except Exception:
-                pass
+        # Build a complete replacement first: corrupt history never produces a
+        # partially refreshed or repeatedly appended in-memory baseline set.
+        history = [
+            SuiteResult.load(file)
+            for file in sorted(self.history_path.glob("*.json"))
+            if file.name != "baseline.json"
+        ]
+        self._history = history
 
     def get_baseline(self) -> SuiteResult | None:
         """Get the most recent baseline result."""
@@ -488,10 +548,7 @@ class RegressionDetector:
         if not baseline_path.exists():
             return None
 
-        try:
-            return SuiteResult.load(baseline_path)
-        except Exception:
-            return None
+        return SuiteResult.load(baseline_path)
 
     def save_baseline(self, results: SuiteResult) -> None:
         """Save results as the new baseline."""
@@ -500,8 +557,8 @@ class RegressionDetector:
         results.save(baseline_path)
 
         # Also save timestamped version
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        history_path = self.history_path / f"results_{timestamp}.json"
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        history_path = self.history_path / f"results_{timestamp}_{uuid4().hex}.json"
         results.save(history_path)
 
     def check(

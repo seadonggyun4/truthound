@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from importlib.util import find_spec
+from threading import RLock
 from typing import Any
 
 from truthound.reporters.base import BaseReporter, ReporterError
@@ -19,6 +20,8 @@ ReporterConstructor = Callable[..., BaseReporter[Any, Any]]
 
 # Registry of reporter constructors
 _reporter_registry: dict[str, ReporterConstructor] = {}
+_reporter_registry_lock = RLock()
+_UNREGISTERED = object()
 
 # CI platform identifiers for routing
 _CI_PLATFORMS = frozenset({
@@ -53,10 +56,21 @@ def register_reporter(name: str) -> Callable[[ReporterConstructor], ReporterCons
     """
 
     def decorator(cls: ReporterConstructor) -> ReporterConstructor:
-        _reporter_registry[name] = cls
+        with _reporter_registry_lock:
+            _reporter_registry[name] = cls
         return cls
 
     return decorator
+
+
+def unregister_reporter(name: str, *, expected_constructor=None) -> bool:
+    """Remove only the expected registration, preserving another owner's replacement."""
+    with _reporter_registry_lock:
+        current = _reporter_registry.get(name, _UNREGISTERED)
+        if current is _UNREGISTERED or (expected_constructor is not None and current is not expected_constructor):
+            return False
+        del _reporter_registry[name]
+        return True
 
 
 def get_reporter(format: str, **kwargs: Any) -> BaseReporter[Any, Any]:
@@ -101,8 +115,10 @@ def get_reporter(format: str, **kwargs: Any) -> BaseReporter[Any, Any]:
     format = format.lower().strip()
 
     # Check if already registered
-    if format in _reporter_registry:
-        return _reporter_registry[format](**kwargs)
+    with _reporter_registry_lock:
+        constructor = _reporter_registry.get(format, _UNREGISTERED)
+    if constructor is not _UNREGISTERED:
+        return constructor(**kwargs)
 
     # Route CI platforms to CI reporter factory
     if format in _CI_PLATFORMS:

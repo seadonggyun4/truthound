@@ -9,13 +9,13 @@ Key Features:
     - Work stealing for load balancing
     - Memory-aware scheduling with backpressure
     - Progress tracking and cancellation support
-    - Automatic fallback to sequential processing on resource constraints
+    - Visible failures with cancellation and draining of owned work
 
 Design Principles:
-    - O(1) memory per worker regardless of block size
+    - Bounded submitted tasks and retained sample checks; query plans may allocate more
     - Graceful degradation under memory pressure
     - Thread-safe result aggregation
-    - Supports both sync and async interfaces
+    - Synchronous API with thread or spawn-process execution
 
 Usage:
     from truthound.profiler.parallel_sampling import (
@@ -26,7 +26,6 @@ Usage:
     config = ParallelSamplingConfig(
         target_rows=100_000,
         max_workers=4,
-        memory_budget_mb=1024,
     )
     sampler = ParallelBlockSampler(config)
     result = sampler.sample(lf)
@@ -34,43 +33,42 @@ Usage:
 
 from __future__ import annotations
 
-import gc
+import copy
 import logging
 import math
+import multiprocessing
 import os
 import queue
 import random
 import threading
 import time
 from concurrent.futures import (
-    Future,
+    ALL_COMPLETED,
+    FIRST_COMPLETED,
     ProcessPoolExecutor,
     ThreadPoolExecutor,
-    as_completed,
+    wait,
 )
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Any, Callable, Iterator, TypeVar
+from typing import Any, TypeVar
 
 import polars as pl
 
 from truthound.profiler.enterprise_sampling import (
-    BlockSamplingMetrics,
-    EnterpriseScaleConfig,
-    MemoryBudgetConfig,
-    MemoryMonitor,
-    ScaleCategory,
-    SamplingQuality,
-    TimeBudgetManager,
     BYTES_PER_ROW_ESTIMATE,
     MB,
+    BlockSamplingMetrics,
+    EnterpriseScaleConfig,
+    MemoryMonitor,
+    TimeBudgetManager,
 )
 from truthound.profiler.sampling import (
     SamplingConfig,
+    SamplingMethod,
     SamplingMetrics,
     SamplingResult,
     SamplingStrategy,
-    SamplingMethod,
 )
 
 logger = logging.getLogger(__name__)
@@ -118,6 +116,16 @@ class ParallelSamplingConfig(EnterpriseScaleConfig):
 
     def __post_init__(self) -> None:
         super().__post_init__()
+        for name in ("max_workers", "block_size", "prefetch_blocks"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ValueError(f"{name} must be a non-negative integer")
+        if not math.isfinite(self.chunk_timeout_seconds) or self.chunk_timeout_seconds < 0:
+            raise ValueError("chunk_timeout_seconds must be finite and non-negative")
+        if not isinstance(self.execution_mode, ExecutionMode):
+            raise ValueError("execution_mode must be an ExecutionMode")
+        if not isinstance(self.scheduling_policy, SchedulingPolicy):
+            raise ValueError("scheduling_policy must be a SchedulingPolicy")
         if self.max_workers == 0:
             self.max_workers = min(os.cpu_count() or 4, 8)
 
@@ -165,7 +173,7 @@ class BlockTask:
     def block_size(self) -> int:
         return self.end_row - self.start_row
 
-    def __lt__(self, other: "BlockTask") -> bool:
+    def __lt__(self, other: BlockTask) -> bool:
         """Enable priority queue ordering."""
         return self.priority > other.priority  # Higher priority first
 
@@ -243,6 +251,18 @@ class WorkStealingQueue:
         return all(q.empty() for q in self.queues)
 
 
+def _process_block_native(lf, task, timeout):
+    from truthound.profiler._sampling_native import ordered
+
+    started = time.perf_counter()
+    frame = ordered(lf.slice(task.start_row, task.block_size),
+                    task.target_samples, task.seed).collect()
+    elapsed = (time.perf_counter() - started) * 1000
+    if timeout > 0 and elapsed > timeout * 1000:
+        raise TimeoutError("Parallel sampling block deadline exceeded")
+    return BlockResult(task.block_idx, frame.lazy(), frame.height, elapsed)
+
+
 class ParallelBlockSampler(SamplingStrategy):
     """Parallel block-based sampling for large datasets.
 
@@ -262,7 +282,7 @@ class ParallelBlockSampler(SamplingStrategy):
     name = "parallel_block"
 
     def __init__(self, config: ParallelSamplingConfig | None = None):
-        self.config = config or ParallelSamplingConfig()
+        self.config = copy.deepcopy(config or ParallelSamplingConfig())
         self.memory_monitor = MemoryMonitor(self.config.memory_budget)
         self._executor: ThreadPoolExecutor | ProcessPoolExecutor | None = None
         self._work_queue: WorkStealingQueue | None = None
@@ -271,7 +291,11 @@ class ParallelBlockSampler(SamplingStrategy):
         self._backpressure_count = 0
         self._stolen_count = 0
 
-    def sample(
+    def sample(self, lf, config, total_rows=None) -> SamplingResult:
+        with self._lock:
+            return self._sample_locked(lf, config, total_rows)
+
+    def _sample_locked(
         self,
         lf: pl.LazyFrame,
         config: SamplingConfig,
@@ -300,7 +324,14 @@ class ParallelBlockSampler(SamplingStrategy):
         )
 
         if target_samples >= total_rows:
-            return self._create_full_scan_result(lf, total_rows, start_time)
+            frame = lf.collect()
+            if frame.height != total_rows:
+                raise RuntimeError("Parallel sampling source changed during full scan")
+            if frame.estimated_size() > self.config.memory_budget.available_memory_mb * MB:
+                raise MemoryError("Parallel sample exceeds the retained output memory budget")
+            if time_budget.is_expired:
+                raise TimeoutError("Parallel sampling time budget exceeded")
+            return self._create_full_scan_result(frame.lazy(), total_rows, start_time)
 
         # Calculate block parameters
         block_size = self.config.get_block_size(total_rows)
@@ -314,10 +345,19 @@ class ParallelBlockSampler(SamplingStrategy):
         )
 
         # Create block tasks
-        seed = self.config.seed or random.randint(0, 2**32 - 1)
+        seed = self.config.seed if self.config.seed is not None else random.SystemRandom().randint(0, 2**32 - 1)
         tasks = self._create_block_tasks(
             total_rows, block_size, samples_per_block, seed
         )
+
+        # Assign exact proportional quotas, including the final short block.
+        quotas = [task.block_size * target_samples // total_rows for task in tasks]
+        remainder = target_samples - sum(quotas)
+        order = sorted(range(len(tasks)), key=lambda i: -(tasks[i].block_size * target_samples % total_rows))
+        for index in order[:remainder]:
+            quotas[index] += 1
+        for task, quota in zip(tasks, quotas, strict=True):
+            task.target_samples = quota
 
         # Process blocks in parallel
         results = self._process_blocks_parallel(
@@ -367,101 +407,49 @@ class ParallelBlockSampler(SamplingStrategy):
         self._backpressure_count = 0
         self._stolen_count = 0
 
-        # Use work stealing queue for load balancing
-        if self.config.enable_work_stealing:
-            self._work_queue = WorkStealingQueue(num_workers)
-            for task in tasks:
-                self._work_queue.put(task)
-
-        try:
-            with ThreadPoolExecutor(max_workers=num_workers) as executor:
-                if self.config.enable_work_stealing:
-                    # Work stealing mode
-                    futures = []
-                    for worker_id in range(num_workers):
-                        future = executor.submit(
-                            self._worker_loop,
-                            lf,
-                            worker_id,
-                            time_budget,
-                        )
-                        futures.append(future)
-
-                    # Collect results from workers
-                    for future in as_completed(futures):
-                        worker_results = future.result()
-                        results.extend(worker_results)
-                else:
-                    # Simple parallel mode
-                    futures = {
-                        executor.submit(
-                            self._process_single_block,
-                            lf,
-                            task,
-                        ): task
-                        for task in tasks
-                    }
-
-                    for future in as_completed(futures):
-                        if time_budget.is_expired:
-                            logger.warning("Time budget expired, stopping parallel processing")
-                            break
-
-                        # Check memory pressure
-                        if self.memory_monitor.should_backpressure():
-                            self._backpressure_count += 1
-                            logger.warning("Memory pressure, triggering GC")
-                            self.memory_monitor.trigger_gc()
-
-                        try:
-                            result = future.result(
-                                timeout=self.config.chunk_timeout_seconds
-                            )
-                            results.append(result)
-                        except Exception as e:
-                            logger.error(f"Block processing failed: {e}")
-
-        except Exception as e:
-            logger.error(f"Parallel processing failed: {e}")
-            # Fallback to sequential
-            for task in tasks:
-                if time_budget.is_expired:
-                    break
-                try:
-                    result = self._process_single_block(lf, task)
-                    results.append(result)
-                except Exception as inner_e:
-                    logger.error(f"Sequential fallback failed for block {task.block_idx}: {inner_e}")
-
-        return results
-
-    def _worker_loop(
-        self,
-        lf: pl.LazyFrame,
-        worker_id: int,
-        time_budget: TimeBudgetManager,
-    ) -> list[BlockResult]:
-        """Worker loop for work stealing mode."""
-        results: list[BlockResult] = []
-
-        while not time_budget.is_expired:
-            task = self._work_queue.get(worker_id, timeout=0.5)
-            if task is None:
-                if self._work_queue.is_empty():
-                    break
-                continue
-
-            # Check memory before processing
-            if self.memory_monitor.should_backpressure():
-                self._backpressure_count += 1
-                self.memory_monitor.trigger_gc()
-
+        process_mode = self.config.execution_mode is ExecutionMode.PROCESS
+        executor = (ProcessPoolExecutor(max_workers=num_workers,
+                    mp_context=multiprocessing.get_context("spawn")) if process_mode
+                    else ThreadPoolExecutor(max_workers=num_workers))
+        ordered_tasks = sorted(tasks, key=lambda task: -task.priority) if self.config.scheduling_policy is SchedulingPolicy.PRIORITY else tasks
+        pending = set()
+        iterator = iter(ordered_tasks)
+        capacity = num_workers * (1 + self.config.prefetch_blocks)
+        sample_bytes = 0
+        memory_limit = self.config.memory_budget.available_memory_mb * MB
+        with executor:
             try:
-                result = self._process_single_block(lf, task)
-                results.append(result)
-                self._work_queue.mark_complete()
-            except Exception as e:
-                logger.error(f"Worker {worker_id} failed on block {task.block_idx}: {e}")
+                while True:
+                    if time_budget.is_expired:
+                        raise TimeoutError("Parallel sampling time budget exceeded")
+                    while len(pending) < capacity:
+                        task = next(iterator, None)
+                        if task is None:
+                            break
+                        if self.config.memory_budget.enable_monitoring and self.memory_monitor.should_backpressure():
+                            self._backpressure_count += 1
+                            self.memory_monitor.trigger_gc()
+                        if process_mode:
+                            future = executor.submit(_process_block_native, lf, task, self.config.chunk_timeout_seconds)
+                        else:
+                            future = executor.submit(self._process_single_block, lf, task)
+                        pending.add(future)
+                    if not pending:
+                        break
+                    done, pending = wait(pending, return_when=FIRST_COMPLETED if self.config.enable_work_stealing else ALL_COMPLETED)
+                    for future in done:
+                        result = future.result()
+                        sample_bytes += result.sampled_lf.collect().estimated_size()
+                        if sample_bytes > memory_limit:
+                            raise MemoryError("Parallel sample exceeds the retained output memory budget")
+                        results.append(result)
+            except BaseException:
+                for future in pending:
+                    future.cancel()
+                # Drain running work before the owner can reuse or close its source.
+                raise
+        if time_budget.is_expired or len(results) != len(tasks):
+            raise TimeoutError("Parallel sampling did not complete every block")
 
         return results
 
@@ -471,27 +459,7 @@ class ParallelBlockSampler(SamplingStrategy):
         task: BlockTask,
     ) -> BlockResult:
         """Process a single block and return sampled data."""
-        start_time = time.perf_counter()
-
-        # Extract and sample the block
-        sample_rate = task.target_samples / task.block_size
-        threshold = max(1, int(sample_rate * 10000))
-
-        block_lf = (
-            lf.slice(task.start_row, task.block_size)
-            .with_row_index("__block_idx")
-            .filter(pl.col("__block_idx").hash(task.seed) % 10000 < threshold)
-            .drop("__block_idx")
-        )
-
-        elapsed_ms = (time.perf_counter() - start_time) * 1000
-
-        return BlockResult(
-            block_idx=task.block_idx,
-            sampled_lf=block_lf,
-            actual_samples=task.target_samples,
-            processing_time_ms=elapsed_ms,
-        )
+        return _process_block_native(lf, task, self.config.chunk_timeout_seconds)
 
     def _create_result(
         self,
@@ -506,10 +474,14 @@ class ParallelBlockSampler(SamplingStrategy):
 
         # Merge all block samples
         if results:
-            sampled_frames = [r.sampled_lf for r in results]
+            sampled_frames = [r.sampled_lf for r in sorted(results, key=lambda item: item.block_idx)]
             merged_lf = pl.concat(sampled_frames)
         else:
             merged_lf = pl.LazyFrame()
+
+        actual_samples = sum(result.actual_samples for result in results)
+        if actual_samples != target_samples:
+            raise RuntimeError("Parallel sampling source changed or a block returned an invalid count")
 
         # Calculate metrics
         total_processing_time = sum(r.processing_time_ms for r in results)
@@ -573,6 +545,12 @@ class ParallelBlockSampler(SamplingStrategy):
         )
 
 
+@dataclass
+class SketchSamplingResult(SamplingResult):
+    cardinality_sketches: dict[str, Any] = field(default_factory=dict)
+    frequency_sketches: dict[str, Any] = field(default_factory=dict)
+
+
 class SketchBasedSampler(SamplingStrategy):
     """Sampler that uses probabilistic sketches for aggregation.
 
@@ -610,7 +588,7 @@ class SketchBasedSampler(SamplingStrategy):
         total_rows: int | None = None,
     ) -> SamplingResult:
         """Sample data with sketch-based aggregation."""
-        from truthound.profiler.sketches import HyperLogLog, CountMinSketch
+        from truthound.profiler.sketches import CountMinSketch, HyperLogLog
 
         start_time = time.perf_counter()
 
@@ -622,17 +600,14 @@ class SketchBasedSampler(SamplingStrategy):
             config.calculate_required_sample_size(total_rows),
         )
 
-        if target_samples >= total_rows:
-            return self._create_full_result(lf, total_rows, start_time)
-
         # Create sketches for each column
         schema = lf.collect_schema()
         hlls: dict[str, HyperLogLog] = {}
         cmss: dict[str, CountMinSketch] = {}
 
         from truthound.profiler.sketches.protocols import (
-            HyperLogLogConfig,
             CountMinSketchConfig,
+            HyperLogLogConfig,
         )
 
         for col in schema.names():
@@ -641,25 +616,29 @@ class SketchBasedSampler(SamplingStrategy):
                 CountMinSketchConfig(width=self.cms_width, depth=self.cms_depth)
             )
 
-        # Sample and collect sketches
-        sample_rate = target_samples / total_rows
-        seed = self.config.seed or random.randint(0, 2**32 - 1)
-        threshold = max(1, int(sample_rate * 10000))
-
-        sampled_lf = (
-            lf.with_row_index("__sketch_idx")
-            .filter(pl.col("__sketch_idx").hash(seed) % 10000 < threshold)
-            .drop("__sketch_idx")
-        )
+        from truthound.profiler._sampling_native import ordered
+        from truthound.profiler.enterprise_sampling import _check_native_budget
+        seed = self.config.seed if self.config.seed is not None else random.SystemRandom().randint(0, 2**32 - 1)
+        frame = ordered(lf, target_samples, seed).collect()
+        if frame.height != target_samples:
+            raise RuntimeError("Sampling source changed during sketch collection")
+        _check_native_budget(frame, self.config, start_time)
+        for column in frame:
+            for value in column:
+                hlls[column.name].add(value)
+                cmss[column.name].add(value)
+        _check_native_budget(frame, self.config, start_time)
+        sampled_lf = frame.lazy()
 
         elapsed_ms = (time.perf_counter() - start_time) * 1000
 
-        return SamplingResult(
+        return SketchSamplingResult(
+            cardinality_sketches=hlls, frequency_sketches=cmss,
             data=sampled_lf,
             metrics=SamplingMetrics(
                 original_size=total_rows,
                 sample_size=target_samples,
-                sampling_ratio=target_samples / total_rows,
+                sampling_ratio=target_samples / total_rows if total_rows else 1.0,
                 confidence_level=self.config.confidence_level,
                 margin_of_error=self.config.margin_of_error,
                 strategy_used="sketch_based",
@@ -668,7 +647,7 @@ class SketchBasedSampler(SamplingStrategy):
                 * BYTES_PER_ROW_ESTIMATE
                 / MB,
             ),
-            is_sampled=True,
+            is_sampled=target_samples < total_rows,
         )
 
     def _create_full_result(

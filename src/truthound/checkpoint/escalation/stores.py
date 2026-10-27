@@ -12,13 +12,16 @@ import sqlite3
 import threading
 from contextlib import contextmanager
 from datetime import datetime, timedelta
-from typing import Any, Iterator
+from typing import TYPE_CHECKING, Any
 
 from truthound.checkpoint.escalation.protocols import (
     BaseEscalationStore,
     EscalationRecord,
     EscalationStats,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 logger = logging.getLogger(__name__)
 
@@ -206,11 +209,14 @@ class SQLiteEscalationStore(BaseEscalationStore):
         """Get a cursor with automatic commit/rollback."""
         conn = self._get_connection()
         cursor = conn.cursor()
+        nested = conn.in_transaction
         try:
             yield cursor
-            conn.commit()
-        except Exception:
-            conn.rollback()
+            if not nested:
+                conn.commit()
+        except BaseException:
+            if not nested:
+                conn.rollback()
             raise
         finally:
             cursor.close()
@@ -490,7 +496,7 @@ class RedisEscalationStore(BaseEscalationStore):
 
                 self._client = redis.from_url(self._redis_url)
             except ImportError:
-                raise RuntimeError("Redis not available. Install with: pip install redis")
+                raise RuntimeError("Redis not available. Install with: pip install redis") from None
         return self._client
 
     def _record_key(self, record_id: str) -> str:
@@ -640,9 +646,9 @@ class RedisEscalationStore(BaseEscalationStore):
                     record.is_resolved
                     and record.resolved_at
                     and record.resolved_at < threshold
+                    and self.delete(record.id)
                 ):
-                    if self.delete(record.id):
-                        removed += 1
+                    removed += 1
 
         return removed
 

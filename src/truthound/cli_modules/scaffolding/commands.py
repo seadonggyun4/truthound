@@ -430,7 +430,7 @@ def new_plugin(
     python_version: Annotated[
         str,
         typer.Option("--python", help="Minimum Python version"),
-    ] = "3.10",
+    ] = "3.11",
 ) -> None:
     """Create a new Truthound plugin.
 

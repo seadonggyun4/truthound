@@ -6,13 +6,14 @@ This module provides a streaming-capable filesystem store that uses JSONL
 
 from __future__ import annotations
 
+import hashlib
 import json
-import os
 import shutil
-from dataclasses import dataclass, field
+from collections.abc import AsyncIterator, Iterator  # noqa: TC003 - public annotation introspection
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, AsyncIterator, Iterator
+from typing import TYPE_CHECKING, Any
 from uuid import uuid4
 
 from truthound.stores.streaming.base import (
@@ -20,20 +21,17 @@ from truthound.stores.streaming.base import (
     CompressionType,
     StreamingConfig,
     StreamingFormat,
-    StreamingMetrics,
-    StreamingStore,
     StreamingValidationStore,
     StreamSession,
     StreamStatus,
 )
 from truthound.stores.streaming.reader import (
     AsyncStreamReader,
-    BaseStreamReader,
     StreamingResultReader,
+    _validator_result,
 )
 from truthound.stores.streaming.writer import (
     AsyncStreamWriter,
-    BaseStreamWriter,
     StreamingResultWriter,
 )
 
@@ -66,6 +64,10 @@ class StreamingFileSystemConfig(StreamingConfig):
 # =============================================================================
 # Streaming Filesystem Store
 # =============================================================================
+
+
+class StreamingRecoveryRequired(RuntimeError):
+    """Stored bytes and the durable stream manifest require explicit reconciliation."""
 
 
 class StreamingFileSystemStore(StreamingValidationStore[StreamingFileSystemConfig]):
@@ -129,6 +131,90 @@ class StreamingFileSystemStore(StreamingValidationStore[StreamingFileSystemConfi
         super().__init__(config)
         self._base_path = Path(base_path)
 
+    def _run_path(self, run_id):
+        if not isinstance(run_id, str) or not run_id or run_id in {".", ".."} or any(value in run_id for value in ("/", "\\", "\x00")):
+            raise ValueError("A native stream run identifier must be one path component")
+        result = self._base_path / run_id
+        if result.is_symlink() or result.resolve().parent != self._base_path.resolve():
+            raise ValueError("Native stream run must remain inside the selected store")
+        return result
+
+    def _manifest_path(self, run_id):
+        name = self._config.manifest_filename
+        if not name or name in {".", ".."} or any(value in name for value in ("/", "\\", "\x00")):
+            raise ValueError("A native stream manifest must be one path component")
+        return self._run_path(run_id) / name
+
+    def get_session_for_run(self, run_id: str) -> StreamSession | None:
+        path = self._manifest_path(run_id)
+        self._guard_io()
+        if not path.exists():
+            return None
+        if path.is_symlink():
+            raise StreamingRecoveryRequired("Native stream manifest requires reconciliation")
+        with path.open(encoding="utf-8") as stream:
+            session = StreamSession.from_dict(json.load(stream))
+        if session.run_id != run_id:
+            raise StreamingRecoveryRequired("Native stream identity requires reconciliation")
+        return session
+
+    def list_sessions(self, limit: int = 100, offset: int = 0) -> list[StreamSession]:
+        if limit < 1 or offset < 0:
+            raise ValueError("Invalid native streaming session page")
+        self.initialize()
+        result = []
+        for run_id in sorted(self.list_runs()):
+            self._guard_io()
+            session = self.get_session_for_run(run_id)
+            if session is None:
+                raise StreamingRecoveryRequired("Native stream manifest is missing; reconciliation is required")
+            result.append(session)
+            if len(result) >= offset + limit:
+                break
+        return result[offset:]
+
+    def _validate_session_chunks(self, session):
+        from truthound.stores.streaming.reader import get_decompressor, get_deserializer
+
+        run_path = self._run_path(session.run_id)
+        expected, offset = set(), 0
+        maximum = session.config.max_memory_mb * 1024 ** 2
+        for index, chunk in enumerate(session.chunks):
+            self._guard_io()
+            path = Path(chunk.path)
+            if not path.is_absolute():
+                path = run_path / path.name
+            if path.is_symlink() or path.resolve().parent != run_path.resolve() or not path.is_file():
+                raise StreamingRecoveryRequired("Native stream chunk requires reconciliation")
+            if chunk.chunk_index != index or chunk.start_offset != offset or chunk.end_offset != offset + chunk.record_count:
+                raise StreamingRecoveryRequired("Native stream offsets require reconciliation")
+            if path.stat().st_size != chunk.byte_size or chunk.byte_size > maximum:
+                raise StreamingRecoveryRequired("Native stream size requires reconciliation")
+            with path.open("rb") as stream:
+                encoded = stream.read(maximum + 1)
+            decoded = get_decompressor(session.config.compression).decompress(encoded)
+            if chunk.checksum and hashlib.md5(decoded).hexdigest() != chunk.checksum:
+                raise StreamingRecoveryRequired("Native stream checksum requires reconciliation")
+            if len(list(get_deserializer(session.config.format).deserialize(decoded))) != chunk.record_count:
+                raise StreamingRecoveryRequired("Native stream record count requires reconciliation")
+            expected.add(path.name)
+            offset = chunk.end_offset
+        actual = {path.name for path in run_path.iterdir() if "_chunk_" in path.name}
+        if actual != expected:
+            raise StreamingRecoveryRequired("Unconfirmed native stream chunks require reconciliation")
+
+    def recovery_status(self, run_id: str) -> dict[str, Any]:
+        """Inspect exact retained evidence while no live writer owns the run."""
+        from truthound.stores.streaming.recovery import status
+
+        return status(self, run_id)
+
+    def reconcile_stream(self, run_id: str, *, resolution: str, expected_fingerprint: str) -> dict[str, Any]:
+        """Explicitly adopt or discard only unconfirmed chunks of a valid prefix."""
+        from truthound.stores.streaming.recovery import reconcile
+
+        return reconcile(self, run_id, resolution=resolution, expected_fingerprint=expected_fingerprint)
+
     @classmethod
     def _default_config(cls) -> StreamingFileSystemConfig:
         """Create default configuration."""
@@ -159,7 +245,12 @@ class StreamingFileSystemStore(StreamingValidationStore[StreamingFileSystemConfi
         Returns:
             A new streaming session.
         """
+        session_path = self._run_path(run_id)
+        self._manifest_path(run_id)
+        self._guard_io()
         self.initialize()
+        if session_path.exists():
+            raise ValueError("A native stream run already exists")
 
         session_id = f"{run_id}_{uuid4().hex[:8]}"
         session = StreamSession(
@@ -171,12 +262,12 @@ class StreamingFileSystemStore(StreamingValidationStore[StreamingFileSystemConfi
             metadata=metadata or {},
         )
 
-        # Create session directory
-        session_path = self._base_path / run_id
-        session_path.mkdir(parents=True, exist_ok=True)
+        from truthound.stores.streaming._filesystem_io import StreamFileLease, run_lease_path
 
-        # Write initial manifest
-        self._write_manifest(session)
+        with StreamFileLease(run_lease_path(self._base_path, run_id)):
+            self._guard_io()
+            session_path.mkdir(exist_ok=False)
+            self._write_manifest(session)
 
         self._active_sessions[session_id] = session
         return session
@@ -187,20 +278,11 @@ class StreamingFileSystemStore(StreamingValidationStore[StreamingFileSystemConfi
         if session_id in self._active_sessions:
             return self._active_sessions[session_id]
 
-        # Try to load from disk
-        for run_path in self._base_path.iterdir():
-            if not run_path.is_dir():
-                continue
-            manifest_path = run_path / self._config.manifest_filename
-            if manifest_path.exists():
-                try:
-                    with open(manifest_path) as f:
-                        data = json.load(f)
-                    session = StreamSession.from_dict(data)
-                    if session.session_id == session_id:
-                        return session
-                except (json.JSONDecodeError, KeyError):
-                    continue
+        self.initialize()
+        for run_id in sorted(self.list_runs()):
+            session = self.get_session_for_run(run_id)
+            if session is not None and session.session_id == session_id:
+                return session
 
         return None
 
@@ -220,48 +302,50 @@ class StreamingFileSystemStore(StreamingValidationStore[StreamingFileSystemConfi
         if session is None:
             raise ValueError(f"Session not found: {session_id}")
 
-        if session.status == StreamStatus.COMPLETED:
-            raise ValueError(f"Session already completed: {session_id}")
+        from truthound.stores.streaming._filesystem_io import StreamFileLease, run_lease_path
 
-        if session.status == StreamStatus.FAILED:
-            # Reset to active for retry
+        with StreamFileLease(run_lease_path(self._base_path, session.run_id)):
+            session = self.get_session_for_run(session.run_id)
+            if session is None or session.session_id != session_id:
+                raise StreamingRecoveryRequired("Native stream identity requires reconciliation")
+            self._validate_session_chunks(session)
+            if session.status == StreamStatus.COMPLETED:
+                raise ValueError("Session already completed")
+            if session.status == StreamStatus.ABORTED:
+                raise ValueError("An aborted native stream cannot be resumed")
             session.status = StreamStatus.ACTIVE
-
-        session.status = StreamStatus.ACTIVE
-        session.updated_at = datetime.now()
-
-        self._active_sessions[session_id] = session
+            session.updated_at = datetime.now()
+            self._write_manifest(session)
+            self._active_sessions[session_id] = session
         return session
 
     def _close_session(self, session: StreamSession) -> None:
         """Close and finalize a session."""
+        writer = self._writers.get(session.session_id)
+        if writer is not None and writer._closed:
+            self._active_sessions.pop(session.session_id, None)
+            return
         if session.session_id in self._active_sessions:
             del self._active_sessions[session.session_id]
-        session.status = StreamStatus.COMPLETED
+        if session.status not in {StreamStatus.FAILED, StreamStatus.ABORTED}:
+            session.status = StreamStatus.COMPLETED
         session.updated_at = datetime.now()
         # Only write manifest if directory exists
-        session_path = self._base_path / session.run_id
+        session_path = self._run_path(session.run_id)
         if session_path.exists():
             self._write_manifest(session)
 
     def _write_manifest(self, session: StreamSession) -> None:
         """Write session manifest to disk."""
-        session_path = self._base_path / session.run_id
-        manifest_path = session_path / self._config.manifest_filename
+        self._guard_io()
+        manifest_path = self._manifest_path(session.run_id)
 
         manifest_data = session.to_dict()
-        manifest_data["config"] = {
-            "format": self._config.format.value,
-            "compression": self._config.compression.value,
-            "chunk_size": self._config.chunk_size,
-            "buffer_size": self._config.buffer_size,
-        }
+        manifest_data["config"] = session.config.to_dict()
 
-        # Atomic write
-        temp_path = manifest_path.with_suffix(".tmp")
-        with open(temp_path, "w") as f:
-            json.dump(manifest_data, f, indent=2, default=str)
-        temp_path.rename(manifest_path)
+        from truthound.stores.streaming._filesystem_io import publish
+
+        publish(manifest_path, json.dumps(manifest_data, indent=2, default=str).encode("utf-8"))
 
     # -------------------------------------------------------------------------
     # Writer Operations
@@ -277,11 +361,14 @@ class StreamingFileSystemStore(StreamingValidationStore[StreamingFileSystemConfi
             A streaming writer instance.
         """
         self.initialize()
-        return StreamingResultWriter(
+        self._assert_writer_available(session)
+        return self._track_writer(session, StreamingResultWriter(
             session=session,
-            config=self._config,
+            config=session.config,
             base_path=self._base_path,
-        )
+            manifest_filename=self._config.manifest_filename,
+            require_manifest=True,
+        ))
 
     async def create_async_writer(self, session: StreamSession) -> AsyncStreamWriter:
         """Create an async writer for the session.
@@ -309,8 +396,12 @@ class StreamingFileSystemStore(StreamingValidationStore[StreamingFileSystemConfi
             A streaming reader instance.
         """
         self.initialize()
-        run_path = self._base_path / run_id
-        return StreamingResultReader(run_path, self._config)
+        run_path = self._run_path(run_id)
+        session = self.get_session_for_run(run_id)
+        if session is None:
+            raise StreamingRecoveryRequired("Native stream manifest is missing; reconciliation is required")
+        self._validate_session_chunks(session)
+        return self._track_reader(StreamingResultReader(run_path, manifest_filename=self._config.manifest_filename))
 
     async def create_async_reader(self, run_id: str) -> AsyncStreamReader:
         """Create an async reader for a run's results.
@@ -328,7 +419,7 @@ class StreamingFileSystemStore(StreamingValidationStore[StreamingFileSystemConfi
         self,
         run_id: str,
         batch_size: int = 1000,
-    ) -> Iterator["ValidatorResult"]:
+    ) -> Iterator[ValidatorResult]:
         """Iterate over results for a run.
 
         Args:
@@ -346,7 +437,7 @@ class StreamingFileSystemStore(StreamingValidationStore[StreamingFileSystemConfi
         self,
         run_id: str,
         batch_size: int = 1000,
-    ) -> AsyncIterator["ValidatorResult"]:
+    ) -> AsyncIterator[ValidatorResult]:
         """Async iterate over results for a run.
 
         Args:
@@ -376,54 +467,14 @@ class StreamingFileSystemStore(StreamingValidationStore[StreamingFileSystemConfi
         """
         self.initialize()
 
-        run_path = self._base_path / run_id
-        if not run_path.exists():
+        session = self.get_session_for_run(run_id)
+        if session is None:
+            if self._run_path(run_id).exists():
+                raise StreamingRecoveryRequired("Native stream manifest is missing; reconciliation is required")
             return []
+        return session.chunks
 
-        # Try to load from manifest
-        manifest_path = run_path / self._config.manifest_filename
-        if manifest_path.exists():
-            try:
-                with open(manifest_path) as f:
-                    data = json.load(f)
-                session = StreamSession.from_dict(data)
-                return session.chunks
-            except (json.JSONDecodeError, KeyError):
-                pass
-
-        # Fall back to discovery
-        return self._discover_chunks(run_path)
-
-    def _discover_chunks(self, run_path: Path) -> list[ChunkInfo]:
-        """Discover chunks by scanning the directory."""
-        chunks: list[ChunkInfo] = []
-
-        patterns = ["*.jsonl", "*.jsonl.gz", "*.jsonl.zst", "*.jsonl.lz4"]
-        chunk_files: list[Path] = []
-        for pattern in patterns:
-            chunk_files.extend(run_path.glob(pattern))
-
-        chunk_files = [f for f in chunk_files if not f.name.startswith("_")]
-        chunk_files.sort(key=lambda p: p.name)
-
-        for idx, path in enumerate(chunk_files):
-            byte_size = path.stat().st_size
-            estimated_records = max(1, byte_size // 200)
-
-            chunk_info = ChunkInfo(
-                chunk_id=path.stem.split(".")[0],
-                chunk_index=idx,
-                record_count=estimated_records,
-                byte_size=byte_size,
-                start_offset=0,
-                end_offset=estimated_records,
-                path=str(path),
-            )
-            chunks.append(chunk_info)
-
-        return chunks
-
-    def get_chunk(self, chunk_info: ChunkInfo) -> list["ValidatorResult"]:
+    def get_chunk(self, chunk_info: ChunkInfo) -> list[ValidatorResult]:
         """Get records from a specific chunk.
 
         Args:
@@ -432,23 +483,27 @@ class StreamingFileSystemStore(StreamingValidationStore[StreamingFileSystemConfi
         Returns:
             Records from the chunk.
         """
-        from truthound.stores.results import ValidatorResult
+        from truthound.stores.streaming._filesystem_io import contained_path
         from truthound.stores.streaming.reader import get_decompressor, get_deserializer
 
-        chunk_path = Path(chunk_info.path)
-        if not chunk_path.exists():
-            return []
-
-        with open(chunk_path, "rb") as f:
-            compressed_data = f.read()
-
-        decompressor = get_decompressor(self._config.compression)
-        deserializer = get_deserializer(self._config.format)
-
-        data = decompressor.decompress(compressed_data)
-        records = list(deserializer.deserialize(data))
-
-        return [ValidatorResult.from_dict(r) for r in records]
+        self._guard_io()
+        chunk_path = Path(chunk_info.path).absolute()
+        run_path = self._run_path(chunk_path.parent.name).absolute()
+        chunk_path = contained_path(run_path, chunk_path)
+        session = self.get_session_for_run(run_path.name)
+        if session is None or chunk_info.to_dict() not in [item.to_dict() for item in session.chunks]:
+            raise StreamingRecoveryRequired("Native stream chunk is not confirmed by its manifest")
+        with chunk_path.open("rb") as stream:
+            compressed_data = stream.read(session.config.max_memory_mb * 1024 ** 2 + 1)
+        if len(compressed_data) > session.config.max_memory_mb * 1024 ** 2:
+            raise StreamingRecoveryRequired("Native stream chunk exceeds its configured memory bound")
+        data = get_decompressor(session.config.compression).decompress(compressed_data)
+        if chunk_info.checksum and hashlib.md5(data).hexdigest() != chunk_info.checksum:
+            raise StreamingRecoveryRequired("Native stream checksum requires reconciliation")
+        records = list(get_deserializer(session.config.format).deserialize(data))
+        if len(records) != chunk_info.record_count:
+            raise StreamingRecoveryRequired("Native stream record count requires reconciliation")
+        return [_validator_result(record) for record in records]
 
     def delete_chunks(self, run_id: str) -> int:
         """Delete all chunks for a run.
@@ -461,17 +516,18 @@ class StreamingFileSystemStore(StreamingValidationStore[StreamingFileSystemConfi
         """
         self.initialize()
 
-        run_path = self._base_path / run_id
+        run_path = self._run_path(run_id)
         if not run_path.exists():
             return 0
 
-        chunks = self.list_chunks(run_id)
-        count = len(chunks)
+        from truthound.stores.streaming._filesystem_io import StreamFileLease, run_lease_path
 
-        # Delete the entire run directory
-        shutil.rmtree(run_path)
-
-        return count
+        with StreamFileLease(run_lease_path(self._base_path, run_id)):
+            self._guard_io()
+            chunks = self.list_chunks(run_id)
+            shutil.rmtree(run_path)
+            self._active_sessions = {key: value for key, value in self._active_sessions.items() if value.run_id != run_id}
+            return len(chunks)
 
     # -------------------------------------------------------------------------
     # Validation Result Operations
@@ -480,7 +536,7 @@ class StreamingFileSystemStore(StreamingValidationStore[StreamingFileSystemConfi
     def stream_write_result(
         self,
         session: StreamSession,
-        result: "ValidatorResult",
+        result: ValidatorResult,
     ) -> None:
         """Write a single validator result to the stream.
 
@@ -498,7 +554,7 @@ class StreamingFileSystemStore(StreamingValidationStore[StreamingFileSystemConfi
     def stream_write_batch(
         self,
         session: StreamSession,
-        results: list["ValidatorResult"],
+        results: list[ValidatorResult],
     ) -> None:
         """Write a batch of validator results to the stream.
 
@@ -514,17 +570,16 @@ class StreamingFileSystemStore(StreamingValidationStore[StreamingFileSystemConfi
 
     def _get_or_create_writer(self, session: StreamSession) -> StreamingResultWriter:
         """Get or create a writer for a session."""
-        writer_key = f"_writer_{session.session_id}"
-        if not hasattr(self, writer_key):
+        writer = self._writers.get(session.session_id)
+        if writer is None or writer._closed:
             writer = self.create_writer(session)
-            setattr(self, writer_key, writer)
-        return getattr(self, writer_key)
+        return writer
 
     def finalize_result(
         self,
         session: StreamSession,
         additional_metadata: dict[str, Any] | None = None,
-    ) -> "ValidationResult":
+    ) -> ValidationResult:
         """Finalize the streaming session and create a ValidationResult.
 
         Args:
@@ -540,21 +595,25 @@ class StreamingFileSystemStore(StreamingValidationStore[StreamingFileSystemConfi
             ValidationResult,
         )
 
-        # Close any active writer
-        writer_key = f"_writer_{session.session_id}"
-        if hasattr(self, writer_key):
-            writer = getattr(self, writer_key)
+        if session.status in {StreamStatus.FAILED, StreamStatus.ABORTED}:
+            raise StreamingRecoveryRequired("A failed native stream cannot produce a completed result")
+
+        # Include writers created directly as well as stream_write_* helpers.
+        writer = self._writers.get(session.session_id)
+        if writer is not None:
             writer.close()
-            delattr(self, writer_key)
+        self._validate_session_chunks(session)
+
 
         # Aggregate statistics from chunks
         total_validators = 0
         passed_validators = 0
         failed_validators = 0
+        total_issues = 0
         severity_counts = {"critical": 0, "high": 0, "medium": 0, "low": 0}
 
         # Read all results to compute statistics
-        all_results: list["ValidatorResult"] = []
+        all_results: list[ValidatorResult] = []
         for result in self.iter_results(session.run_id):
             all_results.append(result)
             total_validators += 1
@@ -562,6 +621,7 @@ class StreamingFileSystemStore(StreamingValidationStore[StreamingFileSystemConfi
                 passed_validators += 1
             else:
                 failed_validators += 1
+                total_issues += result.count
                 if result.severity and result.severity in severity_counts:
                     severity_counts[result.severity] += 1
 
@@ -577,12 +637,13 @@ class StreamingFileSystemStore(StreamingValidationStore[StreamingFileSystemConfi
             total_validators=total_validators,
             passed_validators=passed_validators,
             failed_validators=failed_validators,
-            total_issues=failed_validators,
+            total_issues=total_issues,
             critical_issues=severity_counts["critical"],
             high_issues=severity_counts["high"],
             medium_issues=severity_counts["medium"],
             low_issues=severity_counts["low"],
-            execution_time_ms=session.metrics.average_throughput,
+            execution_time_ms=(session.metrics.end_time - session.metrics.start_time).total_seconds() * 1000
+            if session.metrics.end_time is not None and session.metrics.start_time is not None else 0,
         )
 
         # Create final result
@@ -622,7 +683,7 @@ class StreamingFileSystemStore(StreamingValidationStore[StreamingFileSystemConfi
         """
         self.initialize()
 
-        run_path = self._base_path / run_id
+        run_path = self._run_path(run_id)
         manifest_path = run_path / self._config.manifest_filename
 
         if not manifest_path.exists():
@@ -661,7 +722,7 @@ class StreamingFileSystemStore(StreamingValidationStore[StreamingFileSystemConfi
 
         runs: list[str] = []
         for path in self._base_path.iterdir():
-            if path.is_dir() and not path.name.startswith("_"):
+            if path.is_dir() and not path.is_symlink() and not path.name.startswith("_"):
                 runs.append(path.name)
 
         return sorted(runs)
@@ -676,14 +737,11 @@ class StreamingFileSystemStore(StreamingValidationStore[StreamingFileSystemConfi
 
         cleaned = 0
         for run_id in self.list_runs():
-            run_path = self._base_path / run_id
+            run_path = self._run_path(run_id)
             manifest_path = run_path / self._config.manifest_filename
 
             if not manifest_path.exists():
-                # No manifest - remove
-                shutil.rmtree(run_path)
-                cleaned += 1
-                continue
+                raise StreamingRecoveryRequired("Native stream manifest is missing; explicit reconciliation is required")
 
             try:
                 with open(manifest_path) as f:
@@ -691,11 +749,10 @@ class StreamingFileSystemStore(StreamingValidationStore[StreamingFileSystemConfi
                 session = StreamSession.from_dict(data)
 
                 if session.status in (StreamStatus.FAILED, StreamStatus.ABORTED):
-                    shutil.rmtree(run_path)
+                    self.delete_chunks(run_id)
                     cleaned += 1
-            except (json.JSONDecodeError, KeyError):
-                shutil.rmtree(run_path)
-                cleaned += 1
+            except (json.JSONDecodeError, KeyError) as error:
+                raise StreamingRecoveryRequired("Corrupt native stream evidence requires explicit reconciliation") from error
 
         return cleaned
 
@@ -711,7 +768,7 @@ class StreamingFileSystemStore(StreamingValidationStore[StreamingFileSystemConfi
         self.initialize()
 
         if run_id:
-            run_path = self._base_path / run_id
+            run_path = self._run_path(run_id)
             if not run_path.exists():
                 return 0
             return sum(f.stat().st_size for f in run_path.rglob("*") if f.is_file())

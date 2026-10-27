@@ -6,15 +6,13 @@ Defines core abstractions for machine learning based type inference.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from copy import deepcopy
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, List, Optional, Protocol, Tuple, runtime_checkable
-
-import polars as pl
+from typing import Any, Protocol, runtime_checkable
 
 from truthound.profiler.base import DataType
-
 
 # =============================================================================
 # Configuration
@@ -54,9 +52,9 @@ class ModelConfig:
     validation_size: float = 0.2
     # Model persistence
     model_version: str = "1.0.0"
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    metadata: dict[str, Any] = field(default_factory=dict)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "model_type": self.model_type.value,
             "n_estimators": self.n_estimators,
@@ -70,6 +68,7 @@ class ModelConfig:
             "max_features": self.max_features,
             "cross_validation_folds": self.cross_validation_folds,
             "validation_size": self.validation_size,
+            "early_stopping": self.early_stopping,
             "model_version": self.model_version,
             "metadata": self.metadata,
         }
@@ -84,21 +83,37 @@ class ModelConfig:
 class TrainingData:
     """Container for training data."""
 
-    features: List[List[float]]
-    labels: List[DataType]
-    feature_names: List[str]
-    sample_ids: Optional[List[str]] = None
-    weights: Optional[List[float]] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
+    features: list[list[float]]
+    labels: list[DataType]
+    feature_names: list[str]
+    sample_ids: list[str] | None = None
+    weights: list[float] | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
     def __len__(self) -> int:
         return len(self.labels)
 
-    def to_numpy(self) -> Tuple[Any, Any]:
+    def to_numpy(self) -> tuple[Any, Any]:
         """Convert to numpy arrays."""
         import numpy as np
-        X = np.array(self.features)
-        y = np.array([d.value for d in self.labels])
+
+        X = np.asarray(self.features, dtype=float)
+        if X.ndim != 2 or not len(X) or X.shape != (len(self.labels), len(self.feature_names)):
+            raise ValueError("Training rows, labels and feature names must align")
+        if not np.isfinite(X).all() or len(set(self.feature_names)) != len(self.feature_names):
+            raise ValueError("Features must be finite and names unique")
+        if self.sample_ids is not None and len(self.sample_ids) != len(X):
+            raise ValueError("Sample IDs must align with rows")
+        if self.weights is not None:
+            weights = np.asarray(self.weights, dtype=float)
+            if (
+                weights.shape != (len(X),)
+                or not np.isfinite(weights).all()
+                or (weights < 0).any()
+                or not weights.sum() > 0
+            ):
+                raise ValueError("Weights must be finite, nonnegative and aligned")
+        y = np.array([DataType(d).value for d in self.labels])
         return X, y
 
 
@@ -108,20 +123,19 @@ class PredictionResult:
 
     predicted_type: DataType
     confidence: float
-    probabilities: Dict[DataType, float]
-    top_alternatives: List[Tuple[DataType, float]]
-    features_used: List[str] = field(default_factory=list)
+    probabilities: dict[DataType, float]
+    top_alternatives: list[tuple[DataType, float]]
+    features_used: list[str] = field(default_factory=list)
     model_version: str = ""
     inference_time_ms: float = 0.0
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "predicted_type": self.predicted_type.value,
             "confidence": self.confidence,
             "probabilities": {k.value: v for k, v in self.probabilities.items()},
             "top_alternatives": [
-                {"type": t.value, "confidence": c}
-                for t, c in self.top_alternatives
+                {"type": t.value, "confidence": c} for t, c in self.top_alternatives
             ],
             "features_used": self.features_used,
             "model_version": self.model_version,
@@ -137,14 +151,14 @@ class ModelMetrics:
     precision: float
     recall: float
     f1_score: float
-    confusion_matrix: Optional[List[List[int]]] = None
-    class_report: Optional[Dict[str, Dict[str, float]]] = None
-    feature_importances: Optional[Dict[str, float]] = None
-    cross_val_scores: Optional[List[float]] = None
+    confusion_matrix: list[list[int]] | None = None
+    class_report: dict[str, dict[str, float]] | None = None
+    feature_importances: dict[str, float] | None = None
+    cross_val_scores: list[float] | None = None
     training_time_seconds: float = 0.0
     trained_at: datetime = field(default_factory=datetime.now)
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             "accuracy": self.accuracy,
             "precision": self.precision,
@@ -168,11 +182,11 @@ class ModelMetrics:
 class ModelProtocol(Protocol):
     """Protocol for ML models."""
 
-    def predict(self, features: List[float]) -> PredictionResult:
+    def predict(self, features: list[float]) -> PredictionResult:
         """Predict type for a single sample."""
         ...
 
-    def predict_batch(self, features: List[List[float]]) -> List[PredictionResult]:
+    def predict_batch(self, features: list[list[float]]) -> list[PredictionResult]:
         """Predict types for multiple samples."""
         ...
 
@@ -196,24 +210,25 @@ class BaseModel(ABC):
     version: str = "1.0.0"
 
     def __init__(self, config: ModelConfig | None = None):
-        self.config = config or ModelConfig()
+        self.config = deepcopy(config) if config is not None else ModelConfig()
+        self.version = self.config.model_version
         self._model: Any = None
         self._label_encoder: Any = None
-        self._feature_names: List[str] = []
+        self._feature_names: list[str] = []
         self._trained = False
-        self._metrics: Optional[ModelMetrics] = None
+        self._metrics: ModelMetrics | None = None
 
     @property
     def is_trained(self) -> bool:
         return self._trained
 
     @abstractmethod
-    def predict(self, features: List[float]) -> PredictionResult:
+    def predict(self, features: list[float]) -> PredictionResult:
         """Predict type for a single sample."""
         pass
 
     @abstractmethod
-    def predict_batch(self, features: List[List[float]]) -> List[PredictionResult]:
+    def predict_batch(self, features: list[list[float]]) -> list[PredictionResult]:
         """Predict types for multiple samples."""
         pass
 
@@ -232,13 +247,15 @@ class BaseModel(ABC):
         """Load model from file."""
         pass
 
-    def get_metrics(self) -> Optional[ModelMetrics]:
+    def get_metrics(self) -> ModelMetrics | None:
         """Get training metrics."""
         return self._metrics
 
-    def get_feature_importances(self) -> Dict[str, float]:
+    def get_feature_importances(self) -> dict[str, float]:
         """Get feature importance scores."""
+        if self._metrics and self._metrics.feature_importances is not None:
+            return dict(self._metrics.feature_importances)
         if hasattr(self._model, "feature_importances_") and self._feature_names:
             importances = self._model.feature_importances_
-            return dict(zip(self._feature_names, importances))
+            return dict(zip(self._feature_names, importances, strict=True))
         return {}

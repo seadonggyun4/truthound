@@ -7,14 +7,17 @@ adds caching capabilities.
 from __future__ import annotations
 
 from enum import Enum
+from functools import wraps
+from threading import RLock
 from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
+from truthound.stores.base import StoreNotFoundError
+from truthound.stores.caching.backends import InMemoryCache
 from truthound.stores.caching.base import (
     BaseCache,
     CacheConfig,
     CacheMetrics,
 )
-from truthound.stores.caching.backends import LRUCache
 
 if TYPE_CHECKING:
     from truthound.stores.base import ValidationStore
@@ -22,6 +25,15 @@ if TYPE_CHECKING:
 
 T = TypeVar("T")
 ConfigT = TypeVar("ConfigT")
+
+
+def serialized(function):
+    @wraps(function)
+    def call(self, *args, **kwargs):
+        with self._operation_lock:
+            return function(self, *args, **kwargs)
+
+    return call
 
 
 class CacheMode(str, Enum):
@@ -53,12 +65,13 @@ class CachedStore(Generic[T, ConfigT]):
 
     def __init__(
         self,
-        store: "ValidationStore[ConfigT]",
+        store: ValidationStore[ConfigT],
         cache: BaseCache[T] | None = None,
         mode: CacheMode = CacheMode.WRITE_THROUGH,
         cache_reads: bool = True,
         cache_writes: bool = True,
         cache_config: CacheConfig | None = None,
+        max_pending_writes: int = 1000,
     ) -> None:
         """Initialize cached store.
 
@@ -70,16 +83,38 @@ class CachedStore(Generic[T, ConfigT]):
             cache_writes: Cache write results.
             cache_config: Configuration for default cache.
         """
+        self._operation_lock = RLock()
+        self._io_guard = None
         self._store = store
-        self._cache = cache or LRUCache[T](
-            config=cache_config or CacheConfig(),
+        self._cache = (
+            cache
+            if cache is not None
+            else InMemoryCache[T](
+                config=cache_config or CacheConfig(),
+            )
         )
-        self._mode = mode
-        self._cache_reads = cache_reads
-        self._cache_writes = cache_writes
+        self._mode = CacheMode(mode)
+        self._cache_reads = cache_reads and self._mode != CacheMode.CACHE_ASIDE
+        self._cache_writes = cache_writes and self._mode in {
+            CacheMode.WRITE_THROUGH,
+            CacheMode.WRITE_BEHIND,
+        }
+        self._write_behind = None
+        if self._mode == CacheMode.WRITE_BEHIND:
+            from truthound.stores.caching._write_behind import WriteBehind
+
+            self._write_behind = WriteBehind(store, max_pending_writes)
+        from truthound.stores.caching._maintenance import Maintenance
+
+        self._maintenance = Maintenance(self)
+        if self._cache.config.warm_on_startup:
+            from truthound.stores.base import StoreQuery
+
+            self.warm(self._store.list_ids(query=StoreQuery(limit=self._cache.config.max_size)))
+        self._maintenance.start()
 
     @property
-    def store(self) -> "ValidationStore[ConfigT]":
+    def store(self) -> ValidationStore[ConfigT]:
         """Get underlying store."""
         return self._store
 
@@ -102,6 +137,7 @@ class CachedStore(Generic[T, ConfigT]):
         """Generate cache key from item ID."""
         return f"store:{item_id}"
 
+    @serialized
     def get(self, item_id: str) -> T | None:
         """Get an item, using cache.
 
@@ -121,7 +157,7 @@ class CachedStore(Generic[T, ConfigT]):
         # Cache miss - get from store
         try:
             result = self._store.get(item_id)
-        except Exception:
+        except StoreNotFoundError:
             return None
 
         # Cache the result
@@ -130,6 +166,7 @@ class CachedStore(Generic[T, ConfigT]):
 
         return result
 
+    @serialized
     def save(self, item: T) -> str:
         """Save an item, updating cache.
 
@@ -140,14 +177,19 @@ class CachedStore(Generic[T, ConfigT]):
             Item ID.
         """
         # Save to store
-        item_id = self._store.save(item)
+        item_id = self._write_behind.submit(item) if self._write_behind else self._store.save(item)
 
         # Update cache
         if self._cache_writes:
-            self._cache.set(self._cache_key(item_id), item)
+            from copy import deepcopy
+
+            self._cache.set(self._cache_key(item_id), deepcopy(item))
+        else:
+            self._cache.delete(self._cache_key(item_id))
 
         return item_id
 
+    @serialized
     def delete(self, item_id: str) -> bool:
         """Delete an item, invalidating cache.
 
@@ -157,6 +199,7 @@ class CachedStore(Generic[T, ConfigT]):
         Returns:
             True if deleted.
         """
+        self.flush()
         # Invalidate cache first
         self._cache.delete(self._cache_key(item_id))
 
@@ -173,7 +216,7 @@ class CachedStore(Generic[T, ConfigT]):
             True if exists.
         """
         # Check cache first
-        if self._cache.exists(self._cache_key(item_id)):
+        if self._cache_reads and self._cache.exists(self._cache_key(item_id)):
             return True
 
         # Check store
@@ -190,6 +233,7 @@ class CachedStore(Generic[T, ConfigT]):
         """
         return self._store.list_ids(**kwargs)
 
+    @serialized
     def get_many(self, item_ids: list[str]) -> dict[str, T]:
         """Get multiple items.
 
@@ -222,11 +266,12 @@ class CachedStore(Generic[T, ConfigT]):
                     results[item_id] = result
                     if self._cache_reads:
                         self._cache.set(self._cache_key(item_id), result)
-            except Exception:
-                pass
+            except StoreNotFoundError:
+                continue
 
         return results
 
+    @serialized
     def invalidate(self, item_id: str) -> bool:
         """Invalidate a cache entry without deleting from store.
 
@@ -238,6 +283,7 @@ class CachedStore(Generic[T, ConfigT]):
         """
         return self._cache.delete(self._cache_key(item_id))
 
+    @serialized
     def invalidate_all(self) -> int:
         """Invalidate all cache entries.
 
@@ -246,6 +292,7 @@ class CachedStore(Generic[T, ConfigT]):
         """
         return self._cache.clear()
 
+    @serialized
     def refresh(self, item_id: str) -> T | None:
         """Refresh cache entry from store.
 
@@ -255,18 +302,24 @@ class CachedStore(Generic[T, ConfigT]):
         Returns:
             The refreshed item or None.
         """
+        self.flush()
+        if self._io_guard:
+            self._io_guard()
         # Get fresh from store
         try:
             result = self._store.get(item_id)
-        except Exception:
-            return None
+        except StoreNotFoundError:
+            result = None
 
         # Update cache
         if result is not None:
             self._cache.set(self._cache_key(item_id), result)
+        else:
+            self._cache.delete(self._cache_key(item_id))
 
         return result
 
+    @serialized
     def warm(self, item_ids: list[str]) -> int:
         """Warm cache with specific items.
 
@@ -283,23 +336,50 @@ class CachedStore(Generic[T, ConfigT]):
                 if result is not None:
                     self._cache.set(self._cache_key(item_id), result)
                     cached += 1
-            except Exception:
-                pass
+            except StoreNotFoundError:
+                continue
         return cached
+
+    def set_io_guard(self, guard) -> None:
+        self._io_guard = guard
+        if self._write_behind:
+            self._write_behind.guard = guard
+
+    def flush(self) -> int:
+        """Wait for owned writes; uncertain outcomes require explicit reconciliation."""
+        return self._write_behind.flush() if self._write_behind else 0
+
+    @serialized
+    def reconcile_write(
+        self, token: str, action: str, *, accept_duplicate_risk: bool = False
+    ) -> None:
+        if self._write_behind is None:
+            raise ValueError("Not a write-behind store")
+        identity = self._write_behind.resolve(
+            token, action, accept_duplicate_risk=accept_duplicate_risk
+        )
+        self._cache.delete(self._cache_key(identity))
+
+    def close(self) -> None:
+        self._maintenance.close()
+        if self._write_behind:
+            self._write_behind.close()
 
     def get_stats(self) -> dict[str, Any]:
         """Get cached store statistics."""
         return {
             "mode": self._mode.value,
+            "maintenance": self._maintenance.stats(),
+            "write_behind": self._write_behind.stats() if self._write_behind else None,
             "cache_reads": self._cache_reads,
             "cache_writes": self._cache_writes,
             "cache": self._cache.get_stats(),
         }
 
-    def __enter__(self) -> "CachedStore[T, ConfigT]":
+    def __enter__(self) -> CachedStore[T, ConfigT]:
         """Context manager entry."""
         return self
 
     def __exit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
         """Context manager exit."""
-        pass
+        self.close()

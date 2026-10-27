@@ -72,6 +72,16 @@ class TrackSource(TrackingMetadata):
     schema_spec: dict[Name, Name] | None = None
 
 
+class RowOrigin(WireModel):
+    node: Name
+    row: Annotated[int, Field(ge=0, le=2**63 - 1)]
+
+
+class RowMapping(WireModel):
+    row: Annotated[int, Field(ge=0, le=2**63 - 1)]
+    sources: Annotated[list[RowOrigin], Field(max_length=1000)]
+
+
 class TrackTransformation(TrackingMetadata):
     action: Literal["transformation"]
     name: Name
@@ -82,6 +92,15 @@ class TrackTransformation(TrackingMetadata):
     column_mapping: (
         dict[Name, list[Annotated[list[Name], Field(min_length=2, max_length=2)]]] | None
     ) = None
+    row_mapping: Annotated[list[RowMapping], Field(max_length=1000)] | None = None
+
+    @model_validator(mode="after")
+    def unique_rows(self):
+        if self.row_mapping is not None and len({item.row for item in self.row_mapping}) != len(
+            self.row_mapping
+        ):
+            raise MCPError("invalid_arguments")
+        return self
 
 
 class TrackValidation(TrackingMetadata):
@@ -116,15 +135,20 @@ class TrackDependency(WireModel):
     ] = "depends_on"
 
 
+TrackingEvent = Annotated[
+    TrackSource | TrackTransformation | TrackValidation | TrackOutput | TrackDependency,
+    Field(discriminator="action"),
+]
+
+
 class GraphTrack(GraphInput):
-    event: Annotated[
-        TrackSource | TrackTransformation | TrackValidation | TrackOutput | TrackDependency,
-        Field(discriminator="action"),
-    ]
+    event: TrackingEvent
 
 
-class GraphRender(GraphInput):
+class RenderSettings(WireModel):
     renderer: Literal["d3", "cytoscape", "graphviz", "mermaid"]
+    output_format: Literal["native", "html", "markdown", "svg", "png"] = "native"
+    title: Annotated[str, Field(max_length=1024)] | None = None
     settings: dict[str, JsonValue] = Field(default_factory=dict)
     root_node_id: Name | None = None
     direction: Literal["upstream", "downstream", "both"] = "downstream"
@@ -132,7 +156,29 @@ class GraphRender(GraphInput):
     @model_validator(mode="after")
     def constructor(self):
         lineage_fields("render_config", self.settings)
+        supported = {
+            "native": {"d3", "cytoscape", "graphviz", "mermaid"},
+            "html": {"d3", "cytoscape", "mermaid"},
+            "markdown": {"mermaid"},
+            "svg": {"graphviz"},
+            "png": {"graphviz"},
+        }
+        if (
+            self.renderer not in supported[self.output_format]
+            or (self.output_format != "native" and self.root_node_id is not None)
+            or (self.title is not None and self.output_format != "markdown")
+        ):
+            raise MCPError("invalid_arguments")
+        if self.output_format != "native":
+            for key in ("width", "height"):
+                value = self.settings.get(key, 1200 if key == "width" else 800)
+                if type(value) is not int or not 1 <= value <= 4096:
+                    raise MCPError("resource_exhausted")
         return self
+
+
+class GraphRender(RenderSettings, GraphInput):
+    pass
 
 
 class NodeAdd(WireModel):

@@ -5,18 +5,16 @@ Main application entry point for the Truthound dashboard.
 
 from __future__ import annotations
 
+import importlib
 import logging
 import os
-import subprocess
-import sys
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 import polars as pl
 
 from truthound.profiler.dashboard.config import DashboardConfig
-
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +22,7 @@ logger = logging.getLogger(__name__)
 def _check_streamlit() -> bool:
     """Check if Streamlit is available."""
     try:
-        import streamlit
+        importlib.import_module("streamlit")
         return True
     except ImportError:
         return False
@@ -47,7 +45,7 @@ class DashboardApp:
             config: Dashboard configuration
         """
         self.config = config or DashboardConfig()
-        self._profile_cache: Dict[str, Any] = {}
+        self._profile_cache: dict[str, Any] = {}
 
     def run(self) -> None:
         """Run the dashboard.
@@ -145,13 +143,13 @@ class DashboardApp:
         import streamlit as st
 
         from truthound.profiler.dashboard.components import (
-            render_overview,
             render_column_details,
-            render_quality_metrics,
-            render_patterns,
-            render_recommendations,
             render_data_preview,
             render_export_options,
+            render_overview,
+            render_patterns,
+            render_quality_metrics,
+            render_recommendations,
         )
 
         # Check if data is loaded
@@ -287,8 +285,9 @@ class DashboardApp:
 
     def _load_sample_data(self) -> None:
         """Load sample data for demonstration."""
-        import streamlit as st
         import random
+
+        import streamlit as st
 
         with st.spinner("Generating sample data..."):
             # Generate sample data
@@ -318,7 +317,7 @@ class DashboardApp:
             st.success("Sample data loaded!")
             st.rerun()
 
-    def _profile_dataframe(self, df: pl.DataFrame, name: str) -> Dict[str, Any]:
+    def _profile_dataframe(self, df: pl.DataFrame, name: str) -> dict[str, Any]:
         """Profile a DataFrame.
 
         Args:
@@ -428,49 +427,8 @@ def run_dashboard(config: DashboardConfig | None = None) -> None:
     Args:
         config: Dashboard configuration
     """
-    if not _check_streamlit():
-        raise ImportError(
-            "Streamlit is required for the dashboard. "
-            "Install with: pip install streamlit"
-        )
+    from truthound.profiler.dashboard.server import DashboardServer
 
-    config = config or DashboardConfig()
-
-    # Create a temporary script to run
-    script_content = f'''
-import sys
-sys.path.insert(0, "{Path(__file__).parent.parent.parent.parent}")
-
-from truthound.profiler.dashboard.app import DashboardApp
-from truthound.profiler.dashboard.config import DashboardConfig
-
-config = DashboardConfig(
-    host="{config.host}",
-    port={config.port},
-    theme="{config.theme.value}",
-    title="{config.title}",
-)
-
-app = DashboardApp(config)
-app.run()
-'''
-
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
-        f.write(script_content)
-        script_path = f.name
-
-    try:
-        # Run streamlit
-        cmd = [
-            sys.executable, "-m", "streamlit", "run",
-            script_path,
-            "--server.port", str(config.port),
-            "--server.address", config.host,
-            "--browser.gatherUsageStats", "false",
-        ]
-
-        logger.info(f"Starting dashboard on {config.host}:{config.port}")
-        subprocess.run(cmd)
-
-    finally:
-        os.unlink(script_path)
+    with DashboardServer(config) as server:
+        server.start()
+        server.wait()

@@ -368,3 +368,11 @@ for target in config.targets:
 - [관측성](observability.md) - 감사, metrics, tracing
 - 실무 운영 가이드에서 Caching, In-memory을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
 - 실무 운영 가이드에서 Tiering, Hot/Warm/Cold/Archive을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+
+
+## 실패와 종료 계약
+
+동기·준동기 저장 실패는 primary 쓰기가 존재할 수 있는 상태에서 `StoreWriteError`를 발생시킵니다. 무조건 재시도하지 않아야 합니다. event loop에서는 `save_async`를 사용하며 동기 `save`는 primary 쓰기 전에 이 사용을 거부합니다. `flush`·`stop`은 소유한 비동기 작업·대기 쓰기를 배출하고 실패는 통계로 남깁니다. queue는 영구 저장소가 아닙니다. batch·전체 동기화 실패는 `success=False`를 보존하며 전체 동기화 실패 시 대상을 unhealthy로 유지합니다. 신뢰된 로컬 `set_io_guard(callback)`은 background 읽기·쓰기를 포함한 primary·replica I/O 직전에 검사합니다. callback을 직렬화하지 않습니다. [MCP 저장소 계약](../mcp.md)은 고정 별칭·정확한 승인으로 네이티브 기능을 제공합니다.
+
+
+네이티브 복제 모니터는 동기·비동기 이벤트 handler를 등록 순서대로 기다리며 하나가 실패해도 나머지를 호출합니다. 직접 호출은 ExceptionGroup을 발생시키고 백그라운드 순회는 실패를 기록하며 같은 상태 전환의 callback을 자동 재시도하지 않습니다. 상태 검사 실패는 해당 복제본을 unhealthy로 표시하고 설정 간격과 다른 복제본 검사를 유지합니다. get_health_summary()는 running, 누적 monitor_failures/handler_failures와 최근 100개의 단계·복제본·handler 인덱스·시각을 제공하며 예외 본문은 포함하지 않습니다. stop()은 소유한 작업을 취소하고 종료를 기다립니다. MCP replication_stats는 비공개 이름 대신 공개 replica alias로 제한된 오류 기록을 반환합니다. 간격과 지연 한도는 유한 값이어야 합니다.

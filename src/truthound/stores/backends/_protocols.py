@@ -9,11 +9,7 @@ providing minimal but sufficient type coverage.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Protocol, runtime_checkable
-
-if TYPE_CHECKING:
-    from collections.abc import Callable
-
+from typing import Any, Protocol, runtime_checkable
 
 # =============================================================================
 # S3 Client Protocol (boto3)
@@ -23,8 +19,12 @@ if TYPE_CHECKING:
 class S3ResponseBody(Protocol):
     """Protocol for S3 response body stream."""
 
-    def read(self) -> bytes:
+    def read(self, amt: int | None = None) -> bytes:
         """Read all bytes from the response body."""
+        ...
+
+    def close(self) -> None:
+        """Release the response connection."""
         ...
 
 
@@ -47,7 +47,7 @@ class S3ClientProtocol(Protocol):
         """Check if a bucket exists and is accessible."""
         ...
 
-    def get_object(self, *, Bucket: str, Key: str) -> dict[str, Any]:
+    def get_object(self, *, Bucket: str, Key: str, IfMatch: str = ...) -> dict[str, Any]:
         """Retrieve an object from S3."""
         ...
 
@@ -63,16 +63,26 @@ class S3ClientProtocol(Protocol):
         ServerSideEncryption: str = ...,
         SSEKMSKeyId: str = ...,
         Tagging: str = ...,
+        IfMatch: str = ...,
+        IfNoneMatch: str = ...,
     ) -> dict[str, Any]:
         """Upload an object to S3."""
         ...
 
-    def head_object(self, *, Bucket: str, Key: str) -> dict[str, Any]:
+    def head_object(self, *, Bucket: str, Key: str, IfMatch: str = ...) -> dict[str, Any]:
         """Check if an object exists."""
         ...
 
-    def delete_object(self, *, Bucket: str, Key: str) -> dict[str, Any]:
+    def delete_object(self, *, Bucket: str, Key: str, IfMatch: str = ...) -> dict[str, Any]:
         """Delete an object from S3."""
+        ...
+
+    def get_paginator(self, operation_name: str) -> Any:
+        """Return a paginator for bounded object inventory pages."""
+        ...
+
+    def close(self) -> None:
+        """Release the owned native client."""
         ...
 
 
@@ -86,8 +96,17 @@ class GCSBlobProtocol(Protocol):
     """Protocol for GCS Blob object."""
 
     content_encoding: str | None
+    generation: int | str | None
+    size: int | None
+    name: str
 
-    def download_as_bytes(self) -> bytes:
+    def reload(self, *, if_generation_match: int = ...) -> None:
+        """Read provider metadata under an optional generation condition."""
+        ...
+
+    def download_as_bytes(
+        self, *, raw_download: bool = ..., if_generation_match: int = ...
+    ) -> bytes:
         """Download blob contents as bytes."""
         ...
 
@@ -95,6 +114,7 @@ class GCSBlobProtocol(Protocol):
         self,
         data: str | bytes,
         content_type: str = ...,
+        if_generation_match: int = ...,
     ) -> None:
         """Upload data to the blob."""
         ...
@@ -103,14 +123,18 @@ class GCSBlobProtocol(Protocol):
         """Check if the blob exists."""
         ...
 
-    def delete(self) -> None:
-        """Delete the blob."""
+    def delete(self, *, if_generation_match: int = ...) -> None:
+        """Delete the blob under its confirmed generation."""
         ...
 
 
 @runtime_checkable
 class GCSBucketProtocol(Protocol):
     """Protocol for GCS Bucket object."""
+
+    def list_blobs(self, *, prefix: str = ...) -> Any:
+        """Iterate the selected namespace inventory."""
+        ...
 
     def blob(self, blob_name: str) -> GCSBlobProtocol:
         """Get a blob reference."""
@@ -128,6 +152,10 @@ class GCSClientProtocol(Protocol):
     Defines the minimal interface used by GCSStore.
     """
 
+    def close(self) -> None:
+        """Release the owned Google client."""
+        ...
+
     def bucket(self, bucket_name: str) -> GCSBucketProtocol:
         """Get a bucket reference."""
         ...
@@ -137,7 +165,7 @@ class GCSClientProtocol(Protocol):
         cls,
         json_credentials_path: str,
         **kwargs: Any,
-    ) -> "GCSClientProtocol":
+    ) -> GCSClientProtocol:
         """Create client from service account credentials."""
         ...
 
@@ -155,7 +183,7 @@ class SQLConnectionProtocol(Protocol):
         """Execute a SQL statement."""
         ...
 
-    def __enter__(self) -> "SQLConnectionProtocol":
+    def __enter__(self) -> SQLConnectionProtocol:
         """Enter context manager."""
         ...
 
@@ -196,7 +224,7 @@ class SQLSessionProtocol(Protocol):
         """Commit the current transaction."""
         ...
 
-    def __enter__(self) -> "SQLSessionProtocol":
+    def __enter__(self) -> SQLSessionProtocol:
         """Enter context manager."""
         ...
 
@@ -253,6 +281,10 @@ class AzureBlobPropertiesProtocol(Protocol):
     etag: str | None
     content_length: int
 
+    def get(self, key: str, default: Any = None) -> Any:
+        """Read SDK property keys such as size, etag and blob_tier."""
+        ...
+
 
 @runtime_checkable
 class AzureBlobClientProtocol(Protocol):
@@ -273,7 +305,9 @@ class AzureBlobClientProtocol(Protocol):
         """Upload data to the blob."""
         ...
 
-    def download_blob(self) -> "AzureStorageStreamDownloaderProtocol":
+    def download_blob(
+        self, *, decompress: bool = ..., **kwargs: Any
+    ) -> AzureStorageStreamDownloaderProtocol:
         """Download the blob content."""
         ...
 
@@ -281,11 +315,15 @@ class AzureBlobClientProtocol(Protocol):
         """Check if the blob exists."""
         ...
 
-    def delete_blob(self) -> None:
+    def delete_blob(self, **kwargs: Any) -> None:
         """Delete the blob."""
         ...
 
-    def get_blob_properties(self) -> AzureBlobPropertiesProtocol:
+    def set_standard_blob_tier(self, tier: Any, **kwargs: Any) -> None:
+        """Request a tier change under ETag conditions and inspect the native response."""
+        ...
+
+    def get_blob_properties(self, **kwargs: Any) -> AzureBlobPropertiesProtocol:
         """Get blob properties."""
         ...
 
@@ -326,6 +364,10 @@ class AzureBlobServiceClientProtocol(Protocol):
     Defines the minimal interface used by AzureBlobStore.
     """
 
+    def close(self) -> None:
+        """Release the owned Azure client pipeline."""
+        ...
+
     def get_container_client(self, container: str) -> AzureContainerClientProtocol:
         """Get a container client."""
         ...
@@ -335,6 +377,6 @@ class AzureBlobServiceClientProtocol(Protocol):
         cls,
         conn_str: str,
         **kwargs: Any,
-    ) -> "AzureBlobServiceClientProtocol":
+    ) -> AzureBlobServiceClientProtocol:
         """Create client from connection string."""
         ...

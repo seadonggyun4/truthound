@@ -23,29 +23,29 @@ from __future__ import annotations
 
 import logging
 import threading
+from copy import deepcopy
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path  # noqa: TC003 - public configuration annotation introspection
 from typing import TYPE_CHECKING, Any
 
 from truthound.plugins.base import (
     Plugin,
+    PluginCompatibilityError,
     PluginConfig,
-    PluginInfo,
-    PluginType,
-    PluginState,
+    PluginDependencyError,
     PluginError,
+    PluginInfo,
     PluginLoadError,
     PluginNotFoundError,
-    PluginDependencyError,
-    PluginCompatibilityError,
+    PluginState,
+    PluginType,
 )
-from truthound.plugins.registry import PluginRegistry
-from truthound.plugins.hooks import HookManager, HookType
 from truthound.plugins.discovery import PluginDiscovery
+from truthound.plugins.hooks import HookManager, HookType
+from truthound.plugins.registry import PluginRegistry
 
 if TYPE_CHECKING:
     from truthound.core.contracts import CheckSpecFactory, DataAssetProvider
-
 
 
 logger = logging.getLogger(__name__)
@@ -56,6 +56,34 @@ def _default_host_version() -> str:
 
     return __version__
 
+
+@dataclass(frozen=True)
+class PluginCleanupResult:
+    """Completion of native cleanup callbacks, not proof of external delivery."""
+
+    name: str
+    deactivated: bool
+    teardown_completed: bool
+    removed: bool
+    hook_failed: bool = False
+    error_types: tuple[str, ...] = ()
+
+    @property
+    def success(self) -> bool:
+        return (
+            self.deactivated and self.teardown_completed and self.removed and not self.hook_failed
+        )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "name": self.name,
+            "deactivated": self.deactivated,
+            "teardown_completed": self.teardown_completed,
+            "removed": self.removed,
+            "hook_failed": self.hook_failed,
+            "error_types": list(self.error_types),
+            "success": self.success,
+        }
 
 
 @dataclass
@@ -79,6 +107,7 @@ class PluginManagerConfig:
     trust_store_path: Path | None = None
     enable_hot_reload: bool = False
     watch_for_changes: bool = False
+    strict_discovery: bool = True
 
 
 class PluginManager:
@@ -118,12 +147,13 @@ class PluginManager:
         Args:
             config: Manager configuration.
         """
-        self._config = config or PluginManagerConfig()
+        self._config = deepcopy(config) if config is not None else PluginManagerConfig()
         self._registry = PluginRegistry()
         self._hooks = HookManager()
         self._discovery = PluginDiscovery(
             plugin_dirs=self._config.plugin_dirs,
             scan_entrypoints=self._config.scan_entrypoints,
+            strict=self._config.strict_discovery,
         )
         self._discovered_classes: dict[str, type[Plugin]] = {}
         self._plugin_configs: dict[str, PluginConfig] = {}
@@ -131,6 +161,7 @@ class PluginManager:
         self._data_asset_providers: dict[str, Any] = {}
         self._reporter_bindings: dict[str, Any] = {}
         self._reporter_contracts: dict[str, int] = {}
+        self._global_reporter_bindings: dict[str, Any] = {}
         self._capabilities: dict[str, Any] = {}
         self._lock = threading.RLock()
         self._initialized = False
@@ -169,7 +200,7 @@ class PluginManager:
 
             # Auto-load if configured
             if self._config.auto_load:
-                self.load_all()
+                self._load_all_plugins()
 
             return self._discovered_classes
 
@@ -193,9 +224,14 @@ class PluginManager:
     # Stable extension ports
     # =========================================================================
 
-    def register_check_factory(self, name: str, factory: "CheckSpecFactory | Any") -> None:
+    def register_check_factory(self, name: str, factory: CheckSpecFactory | Any) -> None:
         """Register a validation check factory exposed by a plugin."""
         self._check_factories[name] = factory
+
+    def unregister_check_factory(self, name: str) -> bool:
+        """Remove a manager-local check-factory lookup."""
+        missing = object()
+        return self._check_factories.pop(name, missing) is not missing
 
     def get_check_factory(self, name: str) -> Any | None:
         """Return a registered validation check factory."""
@@ -204,6 +240,35 @@ class PluginManager:
     def iter_check_factories(self) -> dict[str, Any]:
         """Return a snapshot of registered validation check factories."""
         return dict(self._check_factories)
+
+    async def validate_async(self, check_factories, data=None, **settings):
+        """Run manager-local native providers/factories and detailed hooks."""
+        from truthound.plugins.workflows import validate_async
+
+        return await validate_async(self, check_factories, data, **settings)
+
+    def set_execution_guard(self, guard) -> None:
+        """Guard local provider/factory/reporter workflows and each native hook."""
+        self._hooks.set_execution_guard(guard)
+        self._execution_guard = guard
+
+    def validate(self, check_factories, data=None, **settings):
+        """Synchronous counterpart; use validate_async inside an event loop."""
+        from truthound.plugins.workflows import synchronous
+
+        return synchronous(self.validate_async(check_factories, data, **settings))
+
+    async def render_async(self, reporter_name, run):
+        """Render a canonical run through this manager's registered v3 port."""
+        from truthound.plugins.workflows import render_async
+
+        return await render_async(self, reporter_name, run)
+
+    def render(self, reporter_name, run):
+        """Synchronous registered-reporter rendering without path writes."""
+        from truthound.plugins.workflows import synchronous
+
+        return synchronous(self.render_async(reporter_name, run))
 
     def register_validator(self, validator_cls: type[Any]) -> None:
         """Compatibility wrapper for validator-class plugins."""
@@ -216,7 +281,7 @@ class PluginManager:
     def register_data_asset_provider(
         self,
         name: str,
-        provider: "DataAssetProvider | Any",
+        provider: DataAssetProvider | Any,
     ) -> None:
         """Register a data asset provider exposed by a plugin."""
         self._data_asset_providers[name] = provider
@@ -229,16 +294,44 @@ class PluginManager:
         """List registered data asset providers."""
         return sorted(self._data_asset_providers.keys())
 
+    def unregister_data_asset_provider(self, name: str) -> bool:
+        """Remove a provider lookup; the provider's owner retains cleanup authority."""
+        missing = object()
+        return self._data_asset_providers.pop(name, missing) is not missing
+
     def register_reporter(self, name: str, reporter: Any) -> None:
         """Register a reporter through the manager's stable port."""
-        self._reporter_bindings[name] = reporter
-        self._reporter_contracts[name] = int(getattr(reporter, "contract_version", 1))
-        try:
-            from truthound.reporters.factory import register_reporter
+        contract = int(getattr(reporter, "contract_version", 1))
+        with self._lock:
+            self._remove_global_reporter(name)
+            self._reporter_bindings[name] = reporter
+            self._reporter_contracts[name] = contract
+            # Configured objects belong to this manager. The global factory accepts
+            # constructors; placing an instance there breaks unrelated get_reporter calls.
+            if not isinstance(reporter, type) and callable(getattr(reporter, "render", None)):
+                return
+            try:
+                from truthound.reporters.factory import register_reporter
 
-            register_reporter(name)(reporter)
-        except Exception:
-            logger.debug("Reporter '%s' could not be added to the global factory.", name)
+                register_reporter(name)(reporter)
+                self._global_reporter_bindings[name] = reporter
+            except Exception:
+                logger.debug("Reporter '%s' could not be added to the global factory.", name)
+
+    def _remove_global_reporter(self, name: str) -> None:
+        from truthound.reporters.factory import unregister_reporter
+
+        constructor = self._global_reporter_bindings.pop(name, None)
+        if constructor is not None:
+            unregister_reporter(name, expected_constructor=constructor)
+
+    def unregister_reporter(self, name: str) -> bool:
+        """Remove the local port and only its own matching global constructor."""
+        with self._lock:
+            self._remove_global_reporter(name)
+            self._reporter_contracts.pop(name, None)
+            missing = object()
+            return self._reporter_bindings.pop(name, missing) is not missing
 
     def register_reporter_binding(self, name: str, reporter: Any) -> None:
         """Backward-compatible alias for reporter registration."""
@@ -279,6 +372,11 @@ class PluginManager:
     def register_capability(self, name: str, capability: Any) -> None:
         """Register an optional capability service."""
         self._capabilities[name] = capability
+
+    def unregister_capability(self, name: str) -> bool:
+        """Remove a local lookup without closing a possibly shared provider."""
+        missing = object()
+        return self._capabilities.pop(name, missing) is not missing
 
     def get_capability(self, name: str) -> Any | None:
         """Return a registered capability service."""
@@ -343,6 +441,9 @@ class PluginManager:
                     plugin_name=name,
                 ) from e
 
+            if plugin.name != name:
+                raise PluginLoadError("Discovered name does not match plugin identity", plugin_name=name)
+
             # Update state
             plugin._state = PluginState.LOADING
             plugin._manager = self
@@ -361,8 +462,15 @@ class PluginManager:
             except Exception as e:
                 plugin._state = PluginState.ERROR
                 plugin._error = e
+                try:
+                    plugin.teardown()
+                except Exception as cleanup_error:
+                    raise PluginLoadError(
+                        "Plugin setup and cleanup failed",
+                        plugin_name=name,
+                    ) from ExceptionGroup("Plugin setup/cleanup failures", [e, cleanup_error])
                 raise PluginLoadError(
-                    f"Plugin '{name}' setup failed: {e}",
+                    "Plugin setup failed; teardown completed",
                     plugin_name=name,
                 ) from e
 
@@ -387,6 +495,10 @@ class PluginManager:
             return plugin
 
     def load_all(self, activate: bool | None = None) -> list[Plugin]:
+        """Load all plugins, preserving individual failures in an ExceptionGroup."""
+        return self._load_all_plugins(activate)
+
+    def _load_all_plugins(self, activate: bool | None = None) -> list[Plugin]:
         """Load all discovered plugins.
 
         Args:
@@ -396,6 +508,7 @@ class PluginManager:
             List of loaded plugins.
         """
         loaded: list[Plugin] = []
+        errors: list[Exception] = []
 
         # Sort by priority
         plugins_by_priority = sorted(
@@ -407,9 +520,13 @@ class PluginManager:
             try:
                 plugin = self.load_plugin(name, activate=activate)
                 loaded.append(plugin)
-            except PluginError as e:
-                logger.error(f"Failed to load plugin {name}: {e}")
+            except Exception as error:
+                errors.append(error)
 
+        if errors:
+            raise ExceptionGroup(
+                "Some plugins failed to load; successful loads remain registered", errors
+            )
         return loaded
 
     def load_from_class(
@@ -497,51 +614,76 @@ class PluginManager:
                 plugin._state = PluginState.INACTIVE
                 self._registry.update_state(name, PluginState.INACTIVE)
                 logger.info(f"Deactivated plugin: {name}")
-            except Exception as e:
-                logger.error(f"Error deactivating plugin {name}: {e}")
+            except Exception as error:
+                plugin._error = error
+                logger.error("Plugin deactivation failed (%s)", type(error).__name__)
 
     # =========================================================================
     # Unloading
     # =========================================================================
 
-    def unload_plugin(self, name: str) -> None:
-        """Unload a plugin.
+    def unload_plugin(self, name: str, *, detailed: bool = False) -> PluginCleanupResult | None:
+        """Deactivate, attempt teardown, and remove an owned plugin.
 
-        Deactivates if active, runs teardown, and removes from registry.
-
-        Args:
-            name: Plugin name.
+        ``detailed=True`` returns callback outcomes without exception bodies.
+        The legacy default remains None; an authorization guard exception still
+        propagates after cleanup. Teardown is attempted even if an unload hook
+        is denied. Callback completion cannot guarantee provider-side cleanup.
         """
         with self._lock:
             plugin = self._registry.get(name)
-
-            # Deactivate first
+            errors = []
             if plugin.state == PluginState.ACTIVE:
                 self.deactivate_plugin(name)
-
+            deactivated = plugin.state != PluginState.ACTIVE
+            if not deactivated:
+                errors.append(type(plugin.error).__name__ if plugin.error else "PluginError")
             plugin._state = PluginState.UNLOADING
-
-            # Trigger hook before teardown
-            self._hooks.trigger(
-                HookType.ON_PLUGIN_UNLOAD,
-                plugin=plugin,
-                manager=self,
-            )
-
-            # Run teardown
+            hook_error = None
+            hook_failed = False
+            teardown_completed = False
             try:
-                plugin.teardown()
-            except Exception as e:
-                logger.error(f"Error in plugin {name} teardown: {e}")
-
-            # Remove from registry
-            self._registry.unregister(name)
-            plugin._manager = None
-
-            logger.info(f"Unloaded plugin: {name}")
+                outcomes = self._hooks.trigger_detailed(
+                    HookType.ON_PLUGIN_UNLOAD, plugin=plugin, manager=self
+                )
+                hook_failed = any(not row.success for row in outcomes)
+                errors.extend(
+                    row.error_type for row in outcomes if not row.success and row.error_type
+                )
+            except Exception as error:
+                hook_error = error
+                hook_failed = True
+                errors.append(type(error).__name__)
+            finally:
+                try:
+                    plugin.teardown()
+                    teardown_completed = True
+                except Exception as error:
+                    plugin._error = error
+                    errors.append(type(error).__name__)
+                    logger.error("Plugin teardown failed (%s)", type(error).__name__)
+                finally:
+                    self._registry.unregister(name)
+                    plugin._manager = None
+            receipt = PluginCleanupResult(
+                name,
+                deactivated,
+                teardown_completed,
+                name not in self._registry,
+                hook_failed,
+                tuple(errors),
+            )
+            if hook_error is not None and not detailed:
+                raise hook_error
+            logger.info("Unloaded plugin: %s", name)
+            return receipt if detailed else None
 
     def unload_all(self) -> None:
-        """Unload all plugins."""
+        """Unload every plugin and report all cleanup failures."""
+        self._unload_all_plugins()
+
+    def _unload_all_plugins(self) -> None:
+        """Synchronous lifecycle port shared with async facades."""
         # Unload in reverse priority order
         plugins = sorted(
             self._registry.list_all().items(),
@@ -549,11 +691,16 @@ class PluginManager:
             reverse=True,
         )
 
+        errors: list[Exception] = []
         for name, _ in plugins:
             try:
-                self.unload_plugin(name)
-            except Exception as e:
-                logger.error(f"Error unloading plugin {name}: {e}")
+                receipt = self.unload_plugin(name, detailed=True)
+                if not receipt.success:
+                    errors.append(PluginError("Plugin cleanup callbacks failed", plugin_name=name))
+            except Exception as error:
+                errors.append(error)
+        if errors:
+            raise ExceptionGroup("Plugin cleanup failed", errors)
 
     # =========================================================================
     # Configuration
@@ -569,7 +716,6 @@ class PluginManager:
             config: New configuration.
         """
         with self._lock:
-            old_config = self._plugin_configs.get(name)
             self._plugin_configs[name] = config
 
             # Update loaded plugin if exists
@@ -699,34 +845,41 @@ class PluginManager:
         Raises:
             PluginDependencyError: If dependencies are missing.
         """
-        missing: list[str] = []
+        from packaging.version import Version
 
-        for dep in plugin.info.dependencies:
-            # Check if dependency is loaded or discovered
-            if dep not in self._registry and dep not in self._discovered_classes:
-                missing.append(dep)
+        from truthound.plugins._dependencies import distribution_satisfied, plugin_requirements
 
+        missing = []
+        try:
+            for requirement, optional in plugin_requirements(
+                plugin.info, self._config.allow_missing_optional
+            ):
+                dependency = self._registry.get_or_none(requirement.name)
+                if dependency is None:
+                    if not optional:
+                        missing.append(str(requirement))
+                    continue
+                if (
+                    dependency.state
+                    not in {PluginState.LOADED, PluginState.ACTIVE, PluginState.INACTIVE}
+                    or self._config.strict_version_check
+                    and not requirement.specifier.contains(
+                        Version(dependency.version), prereleases=True
+                    )
+                ):
+                    missing.append(str(requirement))
+            for requirement in plugin.info.python_dependencies:
+                if not distribution_satisfied(requirement, self._config.strict_version_check):
+                    missing.append(requirement)
+        except ValueError as error:
+            raise PluginDependencyError(
+                "Invalid dependency requirement or version", plugin_name=plugin.name
+            ) from error
         if missing:
             raise PluginDependencyError(
-                f"Plugin '{plugin.name}' has missing dependencies: {', '.join(missing)}",
+                "Plugin dependencies are missing or incompatible",
                 plugin_name=plugin.name,
                 missing_deps=missing,
-            )
-
-        # Check Python dependencies
-        missing_python: list[str] = []
-        for dep in plugin.info.python_dependencies:
-            try:
-                __import__(dep.split("[")[0])  # Handle extras like pkg[extra]
-            except ImportError:
-                missing_python.append(dep)
-
-        if missing_python:
-            raise PluginDependencyError(
-                f"Plugin '{plugin.name}' requires Python packages: {', '.join(missing_python)}. "
-                f"Install with: pip install {' '.join(missing_python)}",
-                plugin_name=plugin.name,
-                missing_deps=missing_python,
             )
 
     def _check_compatibility(self, plugin: Plugin) -> None:
@@ -741,6 +894,11 @@ class PluginManager:
         host_version = self._config.host_version
 
         if not plugin.info.is_compatible(host_version):
+            if not self._config.strict_version_check:
+                logger.warning(
+                    "Plugin host compatibility is not established; strict version checks disabled"
+                )
+                return
             raise PluginCompatibilityError(
                 f"Plugin '{plugin.name}' is not compatible with Truthound {host_version}. "
                 f"Requires: {plugin.info.min_truthound_version} - {plugin.info.max_truthound_version}",
@@ -757,41 +915,41 @@ class PluginManager:
         Returns:
             List of plugin names in load order.
         """
-        # Build dependency graph
-        graph: dict[str, set[str]] = {}
+        from truthound.plugins._dependencies import plugin_requirements
+
+        graph = {}
         for name, cls in self._discovered_classes.items():
-            temp = cls()
-            deps = set(temp.info.dependencies)
-            graph[name] = deps
-
-        # Topological sort
-        result: list[str] = []
-        visited: set[str] = set()
-        temp_visited: set[str] = set()
-
-        def visit(name: str) -> None:
-            if name in temp_visited:
+            try:
+                requirements = plugin_requirements(cls().info, self._config.allow_missing_optional)
+            except ValueError as error:
                 raise PluginDependencyError(
-                    f"Circular dependency detected involving '{name}'",
-                    plugin_name=name,
-                )
-            if name in visited:
-                return
-
-            temp_visited.add(name)
-
-            for dep in graph.get(name, set()):
-                if dep in graph:  # Only visit if we have the dependency
-                    visit(dep)
-
-            temp_visited.remove(name)
-            visited.add(name)
-            result.append(name)
-
-        for name in graph:
-            if name not in visited:
-                visit(name)
-
+                    "Invalid dependency requirement", plugin_name=name
+                ) from error
+            dependencies = set()
+            for requirement, optional in requirements:
+                if requirement.name in self._discovered_classes:
+                    dependencies.add(requirement.name)
+                elif (
+                    requirement.name not in self._registry
+                    and not optional
+                    and self._config.strict_dependencies
+                ):
+                    raise PluginDependencyError(
+                        "Required plugin is not discovered or loaded",
+                        plugin_name=name,
+                        missing_deps=[str(requirement)],
+                    )
+            graph[name] = dependencies
+        result = []
+        while graph:
+            ready = sorted(name for name, dependencies in graph.items() if not dependencies)
+            if not ready:
+                raise PluginDependencyError("Circular plugin dependency detected")
+            result.extend(ready)
+            for name in ready:
+                del graph[name]
+            for dependencies in graph.values():
+                dependencies.difference_update(ready)
         return result
 
     # =========================================================================
@@ -804,17 +962,18 @@ class PluginManager:
         Unloads all plugins and clears state.
         """
         logger.info("Shutting down plugin manager")
-        self.unload_all()
+        self._unload_all_plugins()
         self._hooks.clear()
         self._discovered_classes.clear()
         self._plugin_configs.clear()
+        self._discovery.close()
         self._check_factories.clear()
         self._data_asset_providers.clear()
         self._reporter_bindings.clear()
         self._reporter_contracts.clear()
         self._capabilities.clear()
 
-    def __enter__(self) -> "PluginManager":
+    def __enter__(self) -> PluginManager:
         """Context manager entry."""
         return self
 

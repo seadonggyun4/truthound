@@ -12,6 +12,7 @@ various template variants:
 
 from __future__ import annotations
 
+import re
 from typing import Any, ClassVar
 
 from truthound._version import resolve_truthound_version
@@ -19,6 +20,8 @@ from truthound.cli_modules.scaffolding.base import (
     BaseScaffold,
     ScaffoldConfig,
     ScaffoldResult,
+    docstring_text,
+    quoted,
     register_scaffold,
 )
 
@@ -66,10 +69,18 @@ class PluginScaffold(BaseScaffold):
             },
             "python_version": {
                 "type": "str",
-                "default": "3.10",
+                "default": "3.11",
                 "description": "Minimum Python version",
             },
         }
+
+    def _validate_config(self, config: ScaffoldConfig, result: ScaffoldResult) -> None:
+        super()._validate_config(config, result)
+        minimum = config.extra.get("python_version", "3.11")
+        if not isinstance(minimum, str) or not re.fullmatch(r"3\.[0-9]+", minimum):
+            result.add_error("Python minimum must be a major.minor version")
+        elif tuple(map(int, minimum.split("."))) < (3, 11):
+            result.add_error("Truthound plugins require Python 3.11 or newer")
 
     def _generate_files(self, config: ScaffoldConfig, result: ScaffoldResult) -> None:
         """Generate plugin files based on variant."""
@@ -100,11 +111,24 @@ class PluginScaffold(BaseScaffold):
         # Generate tests
         if config.include_tests:
             self._generate_tests(config, result, pkg_name)
+        if config.include_examples:
+            example = f'''"""Exercise the generated plugin's local setup and cleanup."""
+from {pkg_name} import {config.class_name}Plugin
+
+if __name__ == "__main__":
+    plugin = {config.class_name}Plugin()
+    plugin.setup()
+    try:
+        print({{"name": plugin.name, "version": plugin.version}})
+    finally:
+        plugin.teardown()
+'''
+            result.add_file("examples/basic_usage.py", example, executable=True)
 
     def _generate_pyproject(self, config: ScaffoldConfig, result: ScaffoldResult) -> None:
         """Generate pyproject.toml."""
         pkg_name = config.name.replace("-", "_")
-        min_python = config.extra.get("python_version", "3.10")
+        min_python = config.extra.get("python_version", "3.11")
         min_truthound = config.extra.get(
             "min_truthound_version",
             DEFAULT_TRUTHOUND_PLUGIN_MIN_VERSION,
@@ -116,12 +140,12 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "truthound-plugin-{config.name}"
-version = "{config.version}"
-description = "{config.description or f'A {config.template_variant} plugin for Truthound'}"
+version = {quoted(config.version)}
+description = {quoted(config.description or f"A {config.template_variant} plugin for Truthound")}
 readme = "README.md"
-license = {{text = "{config.license_type}"}}
+license = {{text = {quoted(config.license_type)}}}
 authors = [
-    {{name = "{config.author or 'Your Name'}", email = "your@email.com"}}
+    {{name = {quoted(config.author or "Your Name")}, email = "your@email.com"}}
 ]
 requires-python = ">={min_python}"
 dependencies = [
@@ -132,7 +156,6 @@ classifiers = [
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Topic :: Software Development :: Quality Assurance",
@@ -148,9 +171,9 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/{config.author or 'yourusername'}/truthound-plugin-{config.name}"
-Repository = "https://github.com/{config.author or 'yourusername'}/truthound-plugin-{config.name}"
-Issues = "https://github.com/{config.author or 'yourusername'}/truthound-plugin-{config.name}/issues"
+Homepage = {quoted("https://github.com/" + (config.author or "yourusername") + "/truthound-plugin-" + config.name + "")}
+Repository = {quoted("https://github.com/" + (config.author or "yourusername") + "/truthound-plugin-" + config.name + "")}
+Issues = {quoted("https://github.com/" + (config.author or "yourusername") + "/truthound-plugin-" + config.name + "/issues")}
 
 [project.entry-points."truthound.plugins"]
 {config.name} = "{pkg_name}:{config.class_name}Plugin"
@@ -160,7 +183,7 @@ where = ["."]
 
 [tool.ruff]
 line-length = 100
-target-version = "py310"
+target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "N", "B", "A", "C4", "SIM"]
@@ -184,7 +207,7 @@ addopts = "-v --tb=short"
         """Generate README.md."""
         content = f'''# Truthound Plugin: {config.name}
 
-{config.description or f'A {config.template_variant} plugin for Truthound.'}
+{config.description or f"A {config.template_variant} plugin for Truthound."}
 
 ## Installation
 
@@ -195,7 +218,7 @@ pip install truthound-plugin-{config.name}
 Or install from source:
 
 ```bash
-git clone https://github.com/{config.author or 'yourusername'}/truthound-plugin-{config.name}
+git clone https://github.com/{config.author or "yourusername"}/truthound-plugin-{config.name}
 cd truthound-plugin-{config.name}
 pip install -e .
 ```
@@ -224,7 +247,7 @@ print(manager.registry.list_names())
 
 ```bash
 # Clone the repository
-git clone https://github.com/{config.author or 'yourusername'}/truthound-plugin-{config.name}
+git clone https://github.com/{config.author or "yourusername"}/truthound-plugin-{config.name}
 cd truthound-plugin-{config.name}
 
 # Install in development mode
@@ -252,7 +275,7 @@ mypy .
 ---
 
 *Version: {config.version}*
-*Author: {config.author or 'Unknown'}*
+*Author: {config.author or "Unknown"}*
 '''
         result.add_file("README.md", content)
 
@@ -262,12 +285,12 @@ mypy .
         """Generate package __init__.py."""
         content = f'''"""Truthound plugin: {config.name}
 
-{config.description or f'A {config.template_variant} plugin for Truthound.'}
+{docstring_text(config.description or f"A {config.template_variant} plugin for Truthound.")}
 """
 
 from {pkg_name}.plugin import {config.class_name}Plugin
 
-__version__ = "{config.version}"
+__version__ = {quoted(config.version)}
 __all__ = ["{config.class_name}Plugin"]
 '''
         result.add_file(f"{pkg_name}/__init__.py", content)
@@ -359,13 +382,13 @@ class {config.class_name}Plugin(ValidatorPlugin):
         return "{config.name}"
 
     def _get_plugin_version(self) -> str:
-        return "{config.version}"
+        return {quoted(config.version)}
 
     def _get_description(self) -> str:
-        return "{config.description or 'Custom validators for Truthound'}"
+        return {quoted(config.description or "Custom validators for Truthound")}
 
     def _get_author(self) -> str:
-        return "{config.author or ''}"
+        return {quoted(config.author or "")}
 
     def get_validators(self) -> list[type[Validator]]:
         """Return validator classes to register.
@@ -428,7 +451,7 @@ class {config.class_name}Reporter(ValidationReporter[{config.class_name}Reporter
             Rendered string.
         """
         presentation = self.present(data)
-        legacy_view = presentation.to_legacy_view()
+        legacy_view = presentation.to_legacy_view(include_passed=self._config.include_passed)
         lines = [
             f"Validation Report: {{presentation.source}}",
             f"Status: {{presentation.status}}",
@@ -437,7 +460,9 @@ class {config.class_name}Reporter(ValidationReporter[{config.class_name}Reporter
         ]
 
         for result in legacy_view.results:
-            if not result.success or self._config.include_passed:
+            if result.success:
+                lines.append(f"- {{result.validator_name}}: PASS")
+            else:
                 lines.append(
                     f"- {{result.column or 'table'}}: "
                     f"{{result.issue_type}} ({{result.severity}})"
@@ -453,13 +478,13 @@ class {config.class_name}Plugin(ReporterPlugin):
         return "{config.name}"
 
     def _get_plugin_version(self) -> str:
-        return "{config.version}"
+        return {quoted(config.version)}
 
     def _get_description(self) -> str:
-        return "{config.description or 'Custom reporter for Truthound'}"
+        return {quoted(config.description or "Custom reporter for Truthound")}
 
     def _get_author(self) -> str:
-        return "{config.author or ''}"
+        return {quoted(config.author or "")}
 
     def get_reporters(self) -> dict[str, type[ValidationReporter]]:
         """Return reporter classes to register.
@@ -572,13 +597,13 @@ class {config.class_name}Plugin(HookPlugin):
         return "{config.name}"
 
     def _get_plugin_version(self) -> str:
-        return "{config.version}"
+        return {quoted(config.version)}
 
     def _get_description(self) -> str:
-        return "{config.description or 'Event hooks for Truthound'}"
+        return {quoted(config.description or "Event hooks for Truthound")}
 
     def _get_author(self) -> str:
-        return "{config.author or ''}"
+        return {quoted(config.author or "")}
 
     def get_hooks(self) -> dict[str, Callable[..., Any]]:
         """Return hooks to register.
@@ -608,10 +633,10 @@ from typing import Any
 import polars as pl
 
 from truthound.plugins import DataSourcePlugin, PluginInfo, PluginType
-from truthound.datasources.base import DataSource, DataSourceConfig
+from truthound.datasources.base import BaseDataSource, DataSourceConfig
 
 
-class {config.class_name}DataSource(DataSource):
+class {config.class_name}DataSource(BaseDataSource):
     """Custom data source provided by {config.name} plugin.
 
     TODO: Implement connection and data reading logic.
@@ -621,7 +646,7 @@ class {config.class_name}DataSource(DataSource):
         >>> lf = ds.read()
     """
 
-    name = "{config.name}"
+    source_type = "{config.name}"
 
     def __init__(
         self,
@@ -636,7 +661,9 @@ class {config.class_name}DataSource(DataSource):
             config: Data source configuration.
             **kwargs: Additional arguments.
         """
-        super().__init__(config, **kwargs)
+        if config is not None and kwargs:
+            raise ValueError("Pass config or keyword settings, not both")
+        super().__init__(config or DataSourceConfig(**kwargs))
         self._connection_string = connection_string
         self._connection = None
 
@@ -680,14 +707,35 @@ class {config.class_name}DataSource(DataSource):
 
         raise NotImplementedError("Implement read() method")
 
-    def get_schema(self) -> dict[str, Any]:
+    @property
+    def schema(self) -> dict[str, Any]:
         """Get schema information from the data source.
 
         Returns:
             Dictionary with schema information.
         """
         # TODO: Implement schema retrieval
-        return {{}}
+        raise NotImplementedError("Implement schema discovery")
+
+
+    def to_polars_lazyframe(self) -> pl.LazyFrame:
+        return self.read()
+
+    def get_execution_engine(self):
+        from truthound.execution.polars_engine import PolarsExecutionEngine
+        return PolarsExecutionEngine(self.to_polars_lazyframe())
+
+    def sample(self, n: int = 1000, seed: int | None = None):
+        from truthound.datasources.polars_source import PolarsDataSource
+        frame = self.to_polars_lazyframe().collect()
+        return PolarsDataSource(frame.sample(n=min(n, frame.height), seed=seed))
+
+    def __enter__(self):
+        self.connect()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.disconnect()
 
 
 class {config.class_name}Plugin(DataSourcePlugin):
@@ -697,15 +745,15 @@ class {config.class_name}Plugin(DataSourcePlugin):
         return "{config.name}"
 
     def _get_plugin_version(self) -> str:
-        return "{config.version}"
+        return {quoted(config.version)}
 
     def _get_description(self) -> str:
-        return "{config.description or 'Custom data source for Truthound'}"
+        return {quoted(config.description or "Custom data source for Truthound")}
 
     def _get_author(self) -> str:
-        return "{config.author or ''}"
+        return {quoted(config.author or "")}
 
-    def get_datasources(self) -> dict[str, type[DataSource]]:
+    def get_datasource_types(self) -> dict[str, type[BaseDataSource]]:
         """Return data source classes to register.
 
         Returns:
@@ -718,140 +766,55 @@ class {config.class_name}Plugin(DataSourcePlugin):
     def _generate_action_plugin(
         self, config: ScaffoldConfig, result: ScaffoldResult, pkg_name: str
     ) -> None:
-        """Generate checkpoint action plugin template."""
-        content = f'''{self._get_header(config)}
+        """Generate a native action exposed through the stable capability port."""
+        content = f'''"""{docstring_text(config.description or "Custom checkpoint action plugin.")}"""
 
-from __future__ import annotations
-
-import logging
-from typing import Any
-
-from truthound.plugins import ActionPlugin, PluginInfo, PluginType
-from truthound.checkpoint.actions.base import CheckpointAction, ActionConfig
-from truthound.checkpoint.core import CheckpointResult
-
-logger = logging.getLogger(__name__)
+from dataclasses import dataclass, replace
+from truthound.plugins import Plugin, PluginInfo, PluginType
+from truthound.checkpoint.actions.base import BaseAction, ActionConfig, ActionResult
 
 
+@dataclass
 class {config.class_name}ActionConfig(ActionConfig):
-    """Configuration for {config.class_name} action.
-
-    Attributes:
-        enabled: Whether the action is enabled.
-        trigger_on: When to trigger (success, failure, always).
-        custom_option: Your custom configuration option.
-    """
-
-    enabled: bool = True
-    trigger_on: str = "always"
     custom_option: str = ""
 
 
-class {config.class_name}Action(CheckpointAction[{config.class_name}ActionConfig]):
-    """Custom checkpoint action provided by {config.name} plugin.
+class {config.class_name}Action(BaseAction[{config.class_name}ActionConfig]):
+    action_type = "{config.name}"
 
-    This action is triggered after checkpoint validation completes.
+    def __init__(self, config=None, **kwargs):
+        selected = replace(config, **kwargs) if config is not None else {config.class_name}ActionConfig(**kwargs)
+        super().__init__(selected)
 
-    Example:
-        >>> action = {config.class_name}Action(custom_option="value")
-        >>> action.execute(checkpoint_result)
-    """
+    @classmethod
+    def _default_config(cls):
+        return {config.class_name}ActionConfig()
 
-    name = "{config.name}"
-
-    def __init__(
-        self,
-        config: {config.class_name}ActionConfig | None = None,
-        **kwargs: Any,
-    ) -> None:
-        """Initialize the action.
-
-        Args:
-            config: Action configuration.
-            **kwargs: Additional arguments passed to config.
-        """
-        if config is None:
-            config = {config.class_name}ActionConfig(**kwargs)
-        super().__init__(config)
-
-    def execute(self, result: CheckpointResult) -> bool:
-        """Execute the action.
-
-        Args:
-            result: The checkpoint result to act on.
-
-        Returns:
-            True if action succeeded, False otherwise.
-        """
-        if not self._should_trigger(result):
-            logger.debug(f"[{config.name}] Skipping - trigger condition not met")
-            return True
-
-        try:
-            # TODO: Implement your action logic
-            logger.info(
-                f"[{config.name}] Executing action for checkpoint "
-                f"'{{result.checkpoint_name}}'"
-            )
-
-            # Example: Log results
-            logger.info(f"  Status: {{result.status.value}}")
-            logger.info(f"  Issues: {{result.issue_count}}")
-
-            if self._config.custom_option:
-                logger.info(f"  Custom option: {{self._config.custom_option}}")
-
-            return True
-
-        except Exception as e:
-            logger.error(f"[{config.name}] Action failed: {{e}}")
-            return False
-
-    def _should_trigger(self, result: CheckpointResult) -> bool:
-        """Check if action should trigger based on configuration.
-
-        Args:
-            result: The checkpoint result.
-
-        Returns:
-            True if should trigger, False otherwise.
-        """
-        if not self._config.enabled:
-            return False
-
-        trigger = self._config.trigger_on.lower()
-        if trigger == "always":
-            return True
-        elif trigger == "success":
-            return result.status.value == "success"
-        elif trigger == "failure":
-            return result.status.value in ("failure", "error")
-
-        return True
+    def _execute(self, checkpoint_result) -> ActionResult:
+        # Implement the domain effect and return a native ActionResult.
+        # The skeleton must not report success for an unimplemented action.
+        raise NotImplementedError("Implement the checkpoint action effect")
 
 
-class {config.class_name}Plugin(ActionPlugin):
-    """Plugin that provides custom checkpoint actions."""
+class {config.class_name}Plugin(Plugin):
+    @property
+    def info(self):
+        return PluginInfo(name="{config.name}", version={quoted(config.version)}, plugin_type=PluginType.CUSTOM, description={config.description!r})
 
-    def _get_plugin_name(self) -> str:
-        return "{config.name}"
+    def setup(self):
+        return None
 
-    def _get_plugin_version(self) -> str:
-        return "{config.version}"
+    def teardown(self):
+        return None
 
-    def _get_description(self) -> str:
-        return "{config.description or 'Custom checkpoint action for Truthound'}"
-
-    def _get_author(self) -> str:
-        return "{config.author or ''}"
-
-    def get_actions(self) -> dict[str, type[CheckpointAction]]:
-        """Return action classes to register.
-
-        Returns:
-            Dictionary of action name to class.
-        """
+    def get_actions(self):
         return {{"{config.name}": {config.class_name}Action}}
+
+    def register(self, manager):
+        manager.register_capability("{config.name}.action", {config.class_name}Action)
+
+    def unregister(self, manager):
+        manager.unregister_capability("{config.name}.action")
 '''
         result.add_file(f"{pkg_name}/plugin.py", content)
 
@@ -928,10 +891,12 @@ class {config.class_name}Reporter(ValidationReporter[{config.class_name}Reporter
 
     def render(self, data: "ValidationRunResult") -> str:
         presentation = self.present(data)
-        legacy_view = presentation.to_legacy_view()
+        legacy_view = presentation.to_legacy_view(include_passed=self._config.include_passed)
         lines = [f"Report: {{presentation.source}}"]
         for r in legacy_view.results:
-            if not r.success:
+            if r.success:
+                lines.append(f"- {{r.validator_name}}: PASS")
+            else:
                 lines.append(f"- {{r.column}}: {{r.issue_type}}")
         return "\\n".join(lines)
 
@@ -986,10 +951,10 @@ class {config.class_name}Plugin(Plugin[{config.class_name}PluginConfig]):
     def info(self) -> PluginInfo:
         return PluginInfo(
             name="{config.name}",
-            version="{config.version}",
+            version={quoted(config.version)},
             plugin_type=PluginType.CUSTOM,
-            description="{config.description or 'Full-featured Truthound plugin'}",
-            author="{config.author or ''}",
+            description={quoted(config.description or "Full-featured Truthound plugin")},
+            author={quoted(config.author or "")},
             tags=["validator", "reporter", "hooks"],
         )
 
@@ -1052,7 +1017,7 @@ class Test{config.class_name}Plugin:
         plugin = {config.class_name}Plugin()
 
         assert plugin.name == "{config.name}"
-        assert plugin.version == "{config.version}"
+        assert plugin.version == {quoted(config.version)}
 
     def test_plugin_setup(self):
         """Test plugin setup."""

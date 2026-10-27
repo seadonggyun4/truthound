@@ -10,7 +10,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Generic, TypeVar, Iterator
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 if TYPE_CHECKING:
     from truthound.checkpoint.checkpoint import Checkpoint
@@ -148,7 +148,7 @@ class BaseTrigger(ABC, Generic[ConfigT]):
         """Get the last run time."""
         return self._last_run
 
-    def attach(self, checkpoint: "Checkpoint") -> None:
+    def attach(self, checkpoint: Checkpoint) -> None:
         """Attach this trigger to a checkpoint.
 
         Args:
@@ -195,6 +195,25 @@ class BaseTrigger(ABC, Generic[ConfigT]):
         """Record that a run occurred."""
         self._run_count += 1
         self._last_run = datetime.now()
+
+    def export_runtime_state(self) -> dict[str, Any]:
+        """Export clocks for the same operator-defined trigger after restart.
+
+        Providers with additional mutable state must override both runtime hooks.
+        No constructor, import path or callback is loaded from persisted state.
+        """
+        return {
+            "run_count": self._run_count,
+            "last_run": self._last_run.isoformat() if self._last_run else None,
+        }
+
+    def restore_runtime_state(self, state: dict[str, Any]) -> None:
+        """Restore base execution history without resetting provider configuration."""
+        count = state["run_count"]
+        if type(count) is not int or count < 0:
+            raise ValueError("Invalid persisted trigger count")
+        last_run = datetime.fromisoformat(state["last_run"]) if state["last_run"] else None
+        self._run_count, self._last_run = count, last_run
 
     def should_continue(self) -> bool:
         """Check if trigger should continue running.

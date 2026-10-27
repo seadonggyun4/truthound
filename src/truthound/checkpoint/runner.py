@@ -40,6 +40,7 @@ class RunnerConfig:
     stop_on_error: bool = False
     max_failures: int = 10
     result_queue_size: int = 1000
+    journal_path: str | None = None
 
 
 class CheckpointRunner:
@@ -84,11 +85,145 @@ class CheckpointRunner:
         self._checkpoints: dict[str, Checkpoint] = {}
         self._running = False
         self._thread: threading.Thread | None = None
-        self._result_queue: Queue[CheckpointResult] = Queue(
-            maxsize=self._config.result_queue_size
-        )
+        self._result_queue: Queue[CheckpointResult] = Queue(maxsize=self._config.result_queue_size)
         self._lock = threading.RLock()
+        self._execution_lock = threading.RLock()
+        self._active_runs = 0
         self._consecutive_failures = 0
+        self._execution_guard = None
+        self._durable = None
+        self._closed = False
+        if self._config.journal_path:
+            from truthound.checkpoint.durable_runner import DurableRunnerState
+
+            self._durable = DurableRunnerState(self._config.journal_path)
+
+    def bind_recovery_scope(self, scope: str) -> None:
+        """Pin durable recovery to the current operator authorization."""
+        if self._durable:
+            self._durable.bind_scope(scope)
+
+    def set_execution_guard(self, guard) -> None:
+        """Check current operator authorization before every native action run."""
+        self._execution_guard = guard
+
+    def _ensure_owner(self):
+        if self._closed:
+            raise RuntimeError("Runner is closed")
+        if self._execution_guard:
+            self._execution_guard()
+        if self._durable:
+            self._durable.acquire_owner()
+
+    def close(self):
+        """Drain execution before releasing durable ownership."""
+        self.stop()
+        with self._lock:
+            if self._active_runs or (self._thread and self._thread.is_alive()):
+                raise RuntimeError("Runner execution has not stopped")
+            if self._durable and not self._closed:
+                self._durable.close()
+            self._closed = True
+
+    def recovery_status(self, *, limit=100, offset=0):
+        if not 1 <= limit <= 1000 or offset < 0:
+            raise ValueError("Invalid recovery page")
+        with self._lock:
+            rows = self._durable.attempts(limit=limit + 1, offset=offset) if self._durable else []
+            return {
+                "enabled": self._durable is not None,
+                "attempts": [
+                    {"identity": identity, "state": state} for identity, state, _ in rows[:limit]
+                ],
+                "next_offset": offset + limit if len(rows) > limit else None,
+            }
+
+    def recovery_resolve(self, identity, resolution):
+        """Confirm or discard an uncertain run without executing its actions."""
+        with self._lock:
+            self._ensure_owner()
+            if (
+                self._running
+                or self._active_runs
+                or (self._thread and self._thread.is_alive())
+                or not self._durable
+            ):
+                raise RuntimeError("Recovery requires a quiescent durable runner")
+            journal = self._durable
+            row = journal.connection.execute(
+                "SELECT payload FROM execution_attempts WHERE identity=?", (identity,)
+            ).fetchone()
+            if not row or not identity.startswith("runner:"):
+                raise ValueError("Unknown runner attempt")
+            import json
+
+            from truthound.checkpoint.durable_runner import configuration
+
+            payload = json.loads(row[0])
+            checkpoint = self._checkpoints.get(payload["checkpoint"])
+            with journal.transaction():
+                journal.resolve_unknown(identity, resolution)
+                if payload["trigger"] is not None:
+                    if checkpoint is None:
+                        raise ValueError("Missing checkpoint")
+                    triggers = [t for t in checkpoint.triggers if t.name == payload["trigger"]]
+                    if len(triggers) != 1 or configuration(triggers[0]) != payload["configuration"]:
+                        raise ValueError("Trigger definition changed")
+                    trigger = triggers[0]
+                    journal.restore_trigger(checkpoint, trigger)
+                    trigger.record_run()
+                    journal.save_trigger(checkpoint, trigger)
+            return {"identity": identity, "state": resolution}
+
+    def recovery_forget(self, identities):
+        with self._lock:
+            self._ensure_owner()
+            if (
+                self._running
+                or self._active_runs
+                or (self._thread and self._thread.is_alive())
+                or not self._durable
+            ):
+                raise RuntimeError("Retention requires a quiescent durable runner")
+            if any(not identity.startswith("runner:") for identity in identities):
+                raise ValueError("Invalid runner attempt identity")
+            return {"removed": self._durable.forget_terminal(identities)}
+
+    def _run_reserved(self, checkpoint, context=None, *, trigger=None, identity=None):
+        with self._execution_lock:
+            with self._lock:
+                self._ensure_owner()
+                journal = self._durable
+                if journal:
+                    if journal.blocked(checkpoint, trigger):
+                        raise RuntimeError("Checkpoint has an unresolved execution outcome")
+                    identity = identity or journal.reserve(checkpoint, trigger, context)
+                    if not journal.claim(identity):
+                        raise RuntimeError("Checkpoint execution already claimed")
+                self._active_runs += 1
+            try:
+                result = checkpoint.run(context=context)
+                self._dispatch_result_callback(
+                    result, suppress_errors=trigger is not None and journal is None
+                )
+                with self._lock:
+                    if journal:
+                        with journal.transaction():
+                            if trigger:
+                                trigger.record_run()
+                                journal.save_trigger(checkpoint, trigger)
+                            journal.finish(identity, "completed")
+                    elif trigger:
+                        trigger.record_run()
+                return result
+            except BaseException:
+                if journal:
+                    with suppress(Exception):
+                        journal.finish(identity, "unknown")
+                raise
+            finally:
+                with self._lock:
+                    self._active_runs -= 1
 
     @property
     def running(self) -> bool:
@@ -128,8 +263,51 @@ class CheckpointRunner:
                 return True
         return False
 
+    def edit_checkpoint(self, checkpoint_name: str, changes: dict[str, Any]):
+        """Edit declarative validation settings while all execution is quiescent.
+
+        Data sources, actions, routers and callbacks keep their existing owners.
+        Native callers may supply native validator objects in ``validators``.
+        """
+        from dataclasses import replace
+
+        from truthound.checkpoint._validation import validate_checkpoint_config
+
+        fields = {
+            "validators",
+            "validator_config",
+            "min_severity",
+            "auto_schema",
+            "run_name_template",
+            "tags",
+            "metadata",
+            "fail_on_critical",
+            "fail_on_high",
+            "timeout_seconds",
+            "sample_size",
+        }
+        if not changes or set(changes) - fields:
+            raise ValueError("Unsupported checkpoint definition setting")
+        with self._lock:
+            self._ensure_owner()
+            if self._running or self._active_runs or (self._thread and self._thread.is_alive()):
+                raise RuntimeError("Runner must be quiescent before editing checkpoints")
+            checkpoint = self._checkpoints[checkpoint_name]
+            candidate = replace(checkpoint.config, **changes)
+            if candidate.timeout_seconds <= 0 or (
+                candidate.sample_size is not None and candidate.sample_size <= 0
+            ):
+                raise ValueError("Checkpoint limits must be positive")
+            errors = validate_checkpoint_config(
+                candidate, actions=checkpoint.actions, triggers=checkpoint.triggers
+            )
+            if errors:
+                raise ValueError("; ".join(errors))
+            checkpoint._config = candidate
+            return checkpoint
+
     def edit_schedule(self, checkpoint_name: str, trigger_name: str, changes: dict[str, Any]):
-        """Edit an interval trigger while quiescent, retaining execution history.
+        """Edit interval, cron or shared provider settings, retaining history.
 
         Stopping is not sufficient if the worker has not actually exited. Refuse
         that case rather than racing an in-flight action or resetting its clock.
@@ -137,26 +315,63 @@ class CheckpointRunner:
         """
         from dataclasses import replace
 
-        from truthound.checkpoint.triggers.schedule import ScheduleTrigger
+        from truthound.checkpoint.triggers.schedule import CronTrigger, ScheduleTrigger
 
         with self._lock:
-            if self._running or (self._thread is not None and self._thread.is_alive()):
+            if (
+                self._running
+                or self._active_runs
+                or (self._thread is not None and self._thread.is_alive())
+            ):
                 raise RuntimeError("Runner must be quiescent before editing schedules")
             checkpoint = self._checkpoints[checkpoint_name]
             matches = [trigger for trigger in checkpoint.triggers if trigger.name == trigger_name]
-            if len(matches) != 1 or type(matches[0]) is not ScheduleTrigger:
-                raise ValueError("Expected one built-in interval trigger")
+            if len(matches) != 1:
+                raise ValueError("Expected one named trigger")
             trigger = matches[0]
             if not changes or "name" in changes:
                 raise ValueError("Supply configuration changes without renaming the trigger")
-            candidate = ScheduleTrigger(replace(trigger.config, **changes))
+            self._ensure_owner()
+            from dataclasses import fields as config_fields
+
+            from truthound.checkpoint.triggers.base import TriggerConfig
+
+            if type(trigger) not in {ScheduleTrigger, CronTrigger}:
+                common = {item.name for item in config_fields(TriggerConfig)} - {"name"}
+                if set(changes) - common:
+                    raise ValueError("Custom trigger edits accept shared settings only")
+                # Do not reconstruct providers, open connections or replace callbacks.
+                from copy import copy
+
+                candidate = copy(trigger)
+                candidate._config = replace(trigger.config, **changes)
+            else:
+                candidate = type(trigger)(replace(trigger.config, **changes))
             errors = candidate.validate_config()
             if errors:
                 raise ValueError("; ".join(errors))
             # Preserve the same trigger, run count, last run and attachment. A
             # replacement would look like a first run and could repeat actions.
-            trigger._config = candidate.config
-            trigger._next_run = None
+            if self._durable:
+                from truthound.checkpoint.durable_runner import configuration
+
+                self._durable.restore_trigger(
+                    checkpoint, trigger, compatible_configuration=configuration(candidate)
+                )
+                old_config = trigger.config
+                try:
+                    with self._durable.transaction():
+                        trigger._config = candidate.config
+                        self._durable.save_trigger(checkpoint, trigger)
+                except BaseException:
+                    trigger._config = old_config
+                    raise
+            else:
+                trigger._config = candidate.config
+            if type(trigger) in {ScheduleTrigger, CronTrigger}:
+                trigger._next_run = None
+            if type(trigger) is CronTrigger:
+                trigger._parsed_cron = None
             return trigger
 
     def run_once(
@@ -179,12 +394,7 @@ class CheckpointRunner:
                     raise ValueError(f"Checkpoint not found: {checkpoint}")
                 checkpoint = self._checkpoints[checkpoint]
 
-        result = checkpoint.run(context=context)
-
-        # Call callback
-        self._dispatch_result_callback(result)
-
-        return result
+        return self._run_reserved(checkpoint, context)
 
     def run_all(
         self,
@@ -203,10 +413,7 @@ class CheckpointRunner:
             checkpoints = list(self._checkpoints.values())
 
         for checkpoint in checkpoints:
-            result = checkpoint.run(context=context)
-            results.append(result)
-
-            self._dispatch_result_callback(result)
+            results.append(self._run_reserved(checkpoint, context))
 
         return results
 
@@ -222,10 +429,26 @@ class CheckpointRunner:
                 return
             if self._thread is not None and self._thread.is_alive():
                 raise RuntimeError("Previous runner thread has not stopped")
+            self._ensure_owner()
+            if self._durable:
+                from truthound.checkpoint.durable_runner import configuration
+
+                for checkpoint in self._checkpoints.values():
+                    names = [trigger.name for trigger in checkpoint.triggers]
+                    if len(names) != len(set(names)):
+                        raise ValueError("Durable trigger names must be unique")
+                    for trigger in checkpoint.triggers:
+                        configuration(trigger)
+                        self._durable.restore_trigger(checkpoint, trigger)
             self._running = True
             for checkpoint in self._checkpoints.values():
                 for trigger in checkpoint.triggers:
                     trigger.start()
+                    if self._durable:
+                        # start() hooks cannot reset already persisted execution history.
+                        self._durable.restore_trigger(checkpoint, trigger)
+                        with self._durable.transaction():
+                            self._durable.save_trigger(checkpoint, trigger)
 
         if blocking:
             self._run_loop()
@@ -275,30 +498,48 @@ class CheckpointRunner:
         with self._lock:
             checkpoints = list(self._checkpoints.values())
 
+        # Replay only reservations committed before their execution claim.
+        if self._durable:
+            self._ensure_owner()
+            for identity, payload in self._durable.pending():
+                if not identity.startswith("runner:"):
+                    continue
+                checkpoint = self._checkpoints.get(payload["checkpoint"])
+                if checkpoint is None:
+                    continue
+                matches = [t for t in checkpoint.triggers if t.name == payload["trigger"]]
+                trigger = matches[0] if len(matches) == 1 else None
+                if payload["trigger"] is not None:
+                    from truthound.checkpoint.durable_runner import configuration
+
+                    if (
+                        trigger is None
+                        or not trigger.enabled
+                        or configuration(trigger) != payload["configuration"]
+                    ):
+                        continue
+                result = self._run_reserved(
+                    checkpoint, payload["context"], trigger=trigger, identity=identity
+                )
+                self._enqueue_result(result)
+
         for checkpoint in checkpoints:
             for trigger in checkpoint.triggers:
                 if not trigger.enabled or not trigger.should_continue():
                     continue
-
+                if self._durable and self._durable.blocked(checkpoint, trigger):
+                    continue
                 result = trigger.should_trigger()
                 if result.should_run:
-                    # Run checkpoint
                     try:
-                        cp_result = checkpoint.run(
-                            context={"trigger": trigger.name, **result.context}
+                        cp_result = self._run_reserved(
+                            checkpoint, {"trigger": trigger.name, **result.context}, trigger=trigger
                         )
-                        trigger.record_run()
                         self._consecutive_failures = 0
-
-                        # Queue result
                         self._enqueue_result(cp_result)
-
-                        # Callback
-                        self._dispatch_result_callback(cp_result, suppress_errors=True)
-
-                    except Exception as e:
+                    except Exception as error:
                         self._consecutive_failures += 1
-                        self._dispatch_error_callback(e, suppress_errors=True)
+                        self._dispatch_error_callback(error, suppress_errors=True)
 
     def _enqueue_result(self, result: CheckpointResult) -> None:
         """Queue a completed result when capacity is available."""

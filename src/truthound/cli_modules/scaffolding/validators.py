@@ -12,12 +12,16 @@ various template variants:
 
 from __future__ import annotations
 
+import math
+import re
 from typing import Any, ClassVar
 
 from truthound.cli_modules.scaffolding.base import (
     BaseScaffold,
     ScaffoldConfig,
     ScaffoldResult,
+    docstring_text,
+    quoted,
     register_scaffold,
 )
 
@@ -83,6 +87,51 @@ class ValidatorScaffold(BaseScaffold):
             },
         }
 
+    def _validate_config(self, config: ScaffoldConfig, result: ScaffoldResult) -> None:
+        super()._validate_config(config, result)
+        options = config.extra
+        if options.get("severity", "MEDIUM") not in self.get_options()["severity"]["choices"]:
+            result.add_error("Invalid severity")
+        if not isinstance(options.get("category", config.category), str):
+            result.add_error("Category must be a string")
+        columns = options.get("columns")
+        if columns is not None and (
+            not isinstance(columns, (list, tuple))
+            or any(not isinstance(column, str) or not column for column in columns)
+        ):
+            result.add_error("Columns must be a list or tuple of column names")
+        bounds = [options.get(key) for key in ("min_value", "max_value")]
+        if any(value is not None for value in bounds) and config.template_variant != "range":
+            result.add_error("Range bounds require the range template")
+        if columns is not None and config.template_variant not in {
+            "column",
+            "pattern",
+            "range",
+            "full",
+        }:
+            result.add_error("Columns require a column-oriented template")
+        valid_bounds = all(
+            value is None or (type(value) is int or type(value) is float and math.isfinite(value))
+            for value in bounds
+        )
+        if not valid_bounds:
+            result.add_error("Range bounds must be finite numbers")
+        elif all(value is not None for value in bounds) and bounds[0] > bounds[1]:
+            result.add_error("Range minimum cannot exceed maximum")
+        pattern = options.get("pattern")
+        if pattern is not None:
+            if config.template_variant != "pattern":
+                result.add_error("Pattern requires the pattern template")
+            try:
+                import polars as pl
+
+                if not isinstance(pattern, str):
+                    raise ValueError("Invalid pattern type")
+                re.compile(pattern)
+                pl.Series([""]).str.contains(pattern)
+            except Exception:
+                result.add_error("Pattern must be a supported regular expression")
+
     def _generate_files(self, config: ScaffoldConfig, result: ScaffoldResult) -> None:
         """Generate validator files based on variant."""
         variant = config.template_variant
@@ -109,12 +158,14 @@ class ValidatorScaffold(BaseScaffold):
         self._generate_init(config, result)
 
         # Generate tests if requested
-        if config.include_tests:
+        if config.include_tests and variant != "full":
             self._generate_tests(config, result)
 
         # Generate docs if requested
-        if config.include_docs:
+        if config.include_docs and variant != "full":
             self._generate_docs(config, result)
+        if config.include_examples and variant != "full":
+            self._generate_example(config, result)
 
     def _generate_init(self, config: ScaffoldConfig, result: ScaffoldResult) -> None:
         """Generate __init__.py file."""
@@ -146,14 +197,14 @@ from truthound.types import Severity
 
 @custom_validator(
     name="{config.name}",
-    category="{category}",
-    description="{config.description or f'{config.title_name} validator'}",
-    version="{config.version}",
-    author="{config.author}",
-    tags=["{category}"],
+    category={quoted(category)},
+    description={quoted(config.description or f"{config.title_name} validator")},
+    version={quoted(config.version)},
+    author={quoted(config.author)},
+    tags=[{quoted(category)}],
 )
 class {config.class_name}Validator(Validator):
-    """{config.description or f'{config.title_name} validator.'}
+    """{docstring_text(config.description or f"{config.title_name} validator.")}
 
     This validator checks data quality based on custom business rules.
 
@@ -163,7 +214,7 @@ class {config.class_name}Validator(Validator):
     """
 
     name: str = "{config.name}"
-    category: str = "{category}"
+    category: str = {quoted(category)}
     default_severity: Severity = Severity.{severity}
 
     def __init__(
@@ -235,14 +286,14 @@ from truthound.types import Severity
 
 @custom_validator(
     name="{config.name}",
-    category="{category}",
-    description="{config.description or f'{config.title_name} column validator'}",
-    version="{config.version}",
-    author="{config.author}",
-    tags=["{category}", "column"],
+    category={quoted(category)},
+    description={quoted(config.description or f"{config.title_name} column validator")},
+    version={quoted(config.version)},
+    author={quoted(config.author)},
+    tags=[{quoted(category)}, "column"],
 )
 class {config.class_name}Validator(ColumnValidator):
-    """{config.description or f'{config.title_name} column validator.'}
+    """{docstring_text(config.description or f"{config.title_name} column validator.")}
 
     Validates each column that matches the configured criteria.
 
@@ -252,13 +303,13 @@ class {config.class_name}Validator(ColumnValidator):
     """
 
     name: str = "{config.name}"
-    category: str = "{category}"
+    category: str = {quoted(category)}
     default_severity: Severity = Severity.{severity}
 
     def __init__(
         self,
         config: ValidatorConfig | None = None,
-        columns: tuple[str, ...] | list[str] | None = None,
+        columns: tuple[str, ...] | list[str] | None = {config.extra.get("columns")!r},
         severity: Severity = Severity.{severity},
         **kwargs: Any,
     ) -> None:
@@ -314,7 +365,9 @@ class {config.class_name}Validator(ColumnValidator):
         """Generate pattern validator template."""
         severity = config.extra.get("severity", "MEDIUM")
         category = config.extra.get("category", config.category)
-        pattern = config.extra.get("pattern", r".*")
+        pattern = config.extra.get("pattern")
+        if pattern is None:
+            pattern = r".*"
 
         content = f'''{self._get_header(config)}
 
@@ -338,14 +391,14 @@ from truthound.types import Severity
 
 @custom_validator(
     name="{config.name}",
-    category="{category}",
-    description="{config.description or f'{config.title_name} pattern validator'}",
-    version="{config.version}",
-    author="{config.author}",
-    tags=["{category}", "pattern", "regex"],
+    category={quoted(category)},
+    description={quoted(config.description or f"{config.title_name} pattern validator")},
+    version={quoted(config.version)},
+    author={quoted(config.author)},
+    tags=[{quoted(category)}, "pattern", "regex"],
 )
 class {config.class_name}Validator(Validator, StringValidatorMixin, RegexValidatorMixin):
-    """{config.description or f'{config.title_name} pattern validator.'}
+    """{docstring_text(config.description or f"{config.title_name} pattern validator.")}
 
     Validates string values against a regex pattern.
 
@@ -355,14 +408,14 @@ class {config.class_name}Validator(Validator, StringValidatorMixin, RegexValidat
     """
 
     name: str = "{config.name}"
-    category: str = "{category}"
+    category: str = {quoted(category)}
     default_severity: Severity = Severity.{severity}
 
     def __init__(
         self,
         config: ValidatorConfig | None = None,
-        pattern: str = r"{pattern}",
-        columns: tuple[str, ...] | list[str] | None = None,
+        pattern: str = {pattern!r},
+        columns: tuple[str, ...] | list[str] | None = {config.extra.get("columns")!r},
         case_sensitive: bool = True,
         invert: bool = False,
         severity: Severity = Severity.{severity},
@@ -380,7 +433,7 @@ class {config.class_name}Validator(Validator, StringValidatorMixin, RegexValidat
             **kwargs: Additional keyword arguments
         """
         super().__init__(config, **kwargs)
-        self._pattern_str = pattern
+        self._pattern_str = pattern if case_sensitive else "(?i)" + pattern
         self._columns = columns
         self._case_sensitive = case_sensitive
         self._invert = invert
@@ -479,14 +532,14 @@ from truthound.types import Severity
 
 @custom_validator(
     name="{config.name}",
-    category="{category}",
-    description="{config.description or f'{config.title_name} range validator'}",
-    version="{config.version}",
-    author="{config.author}",
-    tags=["{category}", "range", "numeric"],
+    category={quoted(category)},
+    description={quoted(config.description or f"{config.title_name} range validator")},
+    version={quoted(config.version)},
+    author={quoted(config.author)},
+    tags=[{quoted(category)}, "range", "numeric"],
 )
 class {config.class_name}Validator(Validator, NumericValidatorMixin):
-    """{config.description or f'{config.title_name} range validator.'}
+    """{docstring_text(config.description or f"{config.title_name} range validator.")}
 
     Validates numeric values are within a specified range.
 
@@ -496,7 +549,7 @@ class {config.class_name}Validator(Validator, NumericValidatorMixin):
     """
 
     name: str = "{config.name}"
-    category: str = "{category}"
+    category: str = {quoted(category)}
     default_severity: Severity = Severity.{severity}
 
     def __init__(
@@ -504,7 +557,7 @@ class {config.class_name}Validator(Validator, NumericValidatorMixin):
         config: ValidatorConfig | None = None,
         min_value: float | int | None = {min_val_str},
         max_value: float | int | None = {max_val_str},
-        columns: tuple[str, ...] | list[str] | None = None,
+        columns: tuple[str, ...] | list[str] | None = {config.extra.get("columns")!r},
         inclusive: bool = True,
         severity: Severity = Severity.{severity},
         **kwargs: Any,
@@ -625,14 +678,14 @@ from truthound.types import Severity
 
 @custom_validator(
     name="{config.name}",
-    category="{category}",
-    description="{config.description or f'{config.title_name} comparison validator'}",
-    version="{config.version}",
-    author="{config.author}",
-    tags=["{category}", "comparison", "cross_column"],
+    category={quoted(category)},
+    description={quoted(config.description or f"{config.title_name} comparison validator")},
+    version={quoted(config.version)},
+    author={quoted(config.author)},
+    tags=[{quoted(category)}, "comparison", "cross_column"],
 )
 class {config.class_name}Validator(Validator):
-    """{config.description or f'{config.title_name} comparison validator.'}
+    """{docstring_text(config.description or f"{config.title_name} comparison validator.")}
 
     Compares values between columns.
 
@@ -654,7 +707,7 @@ class {config.class_name}Validator(Validator):
     """
 
     name: str = "{config.name}"
-    category: str = "{category}"
+    category: str = {quoted(category)}
     default_severity: Severity = Severity.{severity}
 
     OPERATORS = {{
@@ -762,7 +815,6 @@ class {config.class_name}Validator(Validator):
 
     def _generate_composite(self, config: ScaffoldConfig, result: ScaffoldResult) -> None:
         """Generate composite validator template."""
-        severity = config.extra.get("severity", "MEDIUM")
         category = config.extra.get("category", config.category)
 
         content = f'''{self._get_header(config)}
@@ -780,14 +832,14 @@ from truthound.types import Severity
 
 @custom_validator(
     name="{config.name}",
-    category="{category}",
-    description="{config.description or f'{config.title_name} composite validator'}",
-    version="{config.version}",
-    author="{config.author}",
-    tags=["{category}", "composite"],
+    category={quoted(category)},
+    description={quoted(config.description or f"{config.title_name} composite validator")},
+    version={quoted(config.version)},
+    author={quoted(config.author)},
+    tags=[{quoted(category)}, "composite"],
 )
 class {config.class_name}Validator(CompositeValidator):
-    """{config.description or f'{config.title_name} composite validator.'}
+    """{docstring_text(config.description or f"{config.title_name} composite validator.")}
 
     Combines multiple validators into one validation pass.
 
@@ -803,7 +855,7 @@ class {config.class_name}Validator(CompositeValidator):
     """
 
     name: str = "{config.name}"
-    category: str = "{category}"
+    category: str = {quoted(category)}
 
     def __init__(
         self,
@@ -989,18 +1041,62 @@ class Test{config.class_name}ValidatorPerformance:
         # Assert - should complete in reasonable time
         assert elapsed < 10.0, f"Validation took too long: {{elapsed:.2f}}s"
 '''
+        defaults = {}
+        if config.template_variant == "range":
+            defaults = {"min_value": 0, "max_value": 10, "columns": ["column1"]}
+        elif config.template_variant == "comparison":
+            defaults = {"left_column": "column1", "right_column": "column2"}
+        elif config.template_variant == "pattern":
+            defaults = {"pattern": "^[a-z]+$", "columns": ["column2"]}
+        constructor = f"{config.class_name}Validator"
+        content = content.replace(constructor + "()", "_configured_validator()")
+        content = content.replace(constructor + "(columns=", "_configured_validator(columns=")
+        content = content.replace(constructor + "(severity=", "_configured_validator(severity=")
+        helper = f"def _configured_validator(**kwargs):\n    options = {defaults!r}\n    options.update(kwargs)\n    return {constructor}(**options)\n\n\n"
+        content = content.replace(
+            f"class Test{config.class_name}Validator(",
+            helper + f"class Test{config.class_name}Validator(",
+            1,
+        )
+        invalid = {"column1": [None, 2, None, 4, None], "column2": ["a", None, "c", None, "e"]}
+        if config.template_variant == "pattern":
+            content = content.replace('"target_col": [1, 2, 3]', '"target_col": ["a", "b", "c"]')
+            invalid["column2"] = ["a", None, "123", None, "e"]
+        elif config.template_variant == "range":
+            invalid["column1"] = [-1, 2, 11, 4, 12]
+        elif config.template_variant == "comparison":
+            content = content.replace('["a", "b", "c", "d", "e"]', "[1, 2, 3, 4, 5]")
+            content = content.replace('["value"] * n_rows', "list(range(n_rows))")
+            invalid = {"column1": [1, 2, 3, 4, 5], "column2": [0, 2, 0, 4, 0]}
+        content = content.replace(
+            '"column1": [None, 2, None, 4, None],\n            "column2": ["a", None, "c", None, "e"],',
+            f'"column1": {invalid["column1"]!r},\n            "column2": {invalid["column2"]!r},',
+        )
+        content = content.replace(
+            'pl.LazyFrame({"column1": [None, 2, 3]})', f"pl.LazyFrame({invalid!r})"
+        )
+        if config.template_variant in {"pattern", "range", "comparison"}:
+            content = content.replace(
+                "        # assert_issue_count(issues, 2)\n        pass",
+                "        # assert_issue_count(issues, 2)\n        assert issues",
+            )
+        else:
+            content = content.replace(
+                "        # assert_issue_count(issues, 2)\n        pass",
+                "        # assert_issue_count(issues, 2)\n        assert isinstance(issues, list)",
+            )
         result.add_file(f"{config.name}/tests/__init__.py", "")
         result.add_file(f"{config.name}/tests/test_validator.py", content)
 
     def _generate_docs(self, config: ScaffoldConfig, result: ScaffoldResult) -> None:
         """Generate documentation file."""
-        content = f'''# {config.class_name}Validator
+        content = f"""# {config.class_name}Validator
 
 > {config.category} validator
 
 ## Description
 
-{config.description or 'TODO: Add description'}
+{config.description or "TODO: Add description"}
 
 ## Installation
 
@@ -1074,9 +1170,9 @@ issues = validator.validate(lf)
 ---
 
 *Version: {config.version}*
-*Author: {config.author or 'Unknown'}*
+*Author: {config.author or "Unknown"}*
 *License: {config.license_type}*
-'''
+"""
         result.add_file(f"{config.name}/docs/README.md", content)
 
     def _generate_example(self, config: ScaffoldConfig, result: ScaffoldResult) -> None:
@@ -1124,4 +1220,18 @@ def main():
 if __name__ == "__main__":
     main()
 '''
+        arguments = {}
+        if config.template_variant == "range":
+            arguments = {
+                "min_value": config.extra.get("min_value"),
+                "max_value": config.extra.get("max_value"),
+            }
+            if all(value is None for value in arguments.values()):
+                arguments["min_value"] = 0
+        elif config.template_variant == "comparison":
+            arguments = {"left_column": "id", "right_column": "value", "operator": "le"}
+        if arguments:
+            content = content.replace(
+                f"{config.class_name}Validator()", f"{config.class_name}Validator(**{arguments!r})"
+            )
         result.add_file(f"{config.name}/examples/basic_usage.py", content, executable=True)

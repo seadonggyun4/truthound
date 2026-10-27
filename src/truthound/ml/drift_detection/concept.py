@@ -6,9 +6,10 @@ indicating that the underlying concept has changed.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from copy import deepcopy
+from dataclasses import dataclass
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
 import polars as pl
 
@@ -16,11 +17,8 @@ from truthound.ml.base import (
     DriftConfig,
     DriftResult,
     MLDriftDetector,
-    ModelInfo,
-    ModelNotTrainedError,
     ModelState,
     ModelTrainingError,
-    ModelType,
     register_model,
 )
 
@@ -31,14 +29,24 @@ class ConceptDriftConfig(DriftConfig):
 
     Attributes:
         target_column: Target/label column name
-        method: Detection method ('ddm', 'adwin', 'page_hinkley')
+        method: Correlation analysis or a native streaming detector
         warning_threshold: Threshold for warning
         drift_threshold: Threshold for confirmed drift
         min_window: Minimum window size before checking for drift
     """
 
     target_column: str | None = None
-    method: str = "ddm"
+    method: Literal["correlation", "ddm", "adwin", "page_hinkley"] = "correlation"
+    stream_column: str | None = None
+    prediction_column: str | None = None
+    adwin_delta: float = 0.002
+    adwin_clock: int = 32
+    adwin_max_buckets: int = 5
+    adwin_min_window_length: int = 5
+    page_hinkley_delta: float = 0.005
+    page_hinkley_threshold: float = 50.0
+    page_hinkley_alpha: float = 0.9999
+    page_hinkley_mode: Literal["up", "down", "both"] = "both"
     warning_threshold: float = 2.0  # Standard deviations
     drift_threshold: float = 3.0
     min_window: int = 30
@@ -57,6 +65,7 @@ class ConceptDriftDetector(MLDriftDetector):
     - Monitoring prediction quality over time
     - Identifying regime changes in data
 
+    Correlation is the default; streaming methods require stream_column or predictions.
     Supports multiple detection methods:
     - DDM (Drift Detection Method): Monitors error rate
     - ADWIN: Adaptive windowing
@@ -72,6 +81,9 @@ class ConceptDriftDetector(MLDriftDetector):
 
     def __init__(self, config: ConceptDriftConfig | None = None, **kwargs: Any):
         super().__init__(config, **kwargs)
+        from truthound.ml.drift_detection._concept_stream import validate
+
+        validate(self.config)
         self._reference_correlations: dict[str, float] = {}
         self._reference_target_dist: dict[str, Any] = {}
         self._feature_columns: list[str] = []
@@ -89,15 +101,52 @@ class ConceptDriftDetector(MLDriftDetector):
     def _get_description(self) -> str:
         return "Concept drift detection for feature-target relationships"
 
+    def _get_model_version(self) -> str:
+        return "2.0.0"
+
+    def _deserialize(self, data):
+        data = deepcopy(data)
+        if data.get("info", {}).get("version") == "1.0.0" and "stream_column" not in data.get(
+            "config", {}
+        ):
+            # Version 1 method labels all executed correlation analysis.
+            data["config"]["method"] = "correlation"
+        super()._deserialize(data)
+        from truthound.ml.drift_detection._concept_stream import validate
+
+        validate(self.config)
+
     def fit(self, data: pl.LazyFrame) -> None:
+        """Stage training so failed refits preserve the working model."""
+        from truthound.ml.drift_detection._concept_stream import detector, validate, window
+
+        with self._lock:
+            candidate = deepcopy(self)
+            validate(candidate.config)
+            if candidate.config.method == "correlation":
+                candidate._fit_correlation(data)
+            else:
+                detector(candidate.config)
+                frame, values = window(candidate.config, data, reference=True)
+                candidate._reference_data = frame.lazy()
+                candidate._reference_correlations = {}
+                candidate._reference_target_dist = {}
+                candidate._feature_columns = []
+                candidate._training_samples = len(values)
+                candidate._trained_at = datetime.now()
+                candidate._state = ModelState.TRAINED
+            candidate._error = None
+            self.__dict__.update(
+                {key: value for key, value in candidate.__dict__.items() if key != "_lock"}
+            )
+
+    def _fit_correlation(self, data: pl.LazyFrame) -> None:
         """Learn reference correlations between features and target.
 
         Args:
             data: Reference data with target column
         """
-        import time
 
-        start = time.perf_counter()
         self._state = ModelState.TRAINING
 
         try:
@@ -115,37 +164,39 @@ class ConceptDriftDetector(MLDriftDetector):
             # Get feature columns
             schema = df.schema
             numeric_types = {
-                pl.Int8, pl.Int16, pl.Int32, pl.Int64,
-                pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64,
-                pl.Float32, pl.Float64,
+                pl.Int8,
+                pl.Int16,
+                pl.Int32,
+                pl.Int64,
+                pl.UInt8,
+                pl.UInt16,
+                pl.UInt32,
+                pl.UInt64,
+                pl.Float32,
+                pl.Float64,
             }
 
-            if self.config.feature_columns:
+            if self.config.feature_columns is not None:
+                if any(c not in df.columns or c == target_col for c in self.config.feature_columns):
+                    raise ValueError("Selected features must exist and differ from the target")
                 self._feature_columns = [
-                    c for c in self.config.feature_columns
-                    if c in df.columns and c != target_col
+                    c for c in self.config.feature_columns if c in df.columns and c != target_col
                 ]
             else:
                 self._feature_columns = [
-                    c for c in df.columns
-                    if c != target_col and type(schema[c]) in numeric_types
+                    c for c in df.columns if c != target_col and type(schema[c]) in numeric_types
                 ]
 
             # Compute feature-target correlations
             self._reference_correlations = {}
-            target_data = df[target_col].drop_nulls().cast(pl.Float64)
-
             for col in self._feature_columns:
-                try:
-                    corr = self._compute_correlation(df, col, target_col)
-                    self._reference_correlations[col] = corr
-                except Exception:
-                    self._reference_correlations[col] = 0.0
+                corr = self._compute_correlation(df, col, target_col)
+                self._reference_correlations[col] = corr
 
             # Store target distribution
             self._reference_target_dist = self._compute_target_distribution(df, target_col)
 
-            self._reference_data = data
+            self._reference_data = df.lazy()
             self._training_samples = row_count
             self._trained_at = datetime.now()
             self._state = ModelState.TRAINED
@@ -158,9 +209,7 @@ class ConceptDriftDetector(MLDriftDetector):
                 model_name=self.info.name,
             ) from e
 
-    def _compute_correlation(
-        self, df: pl.DataFrame, feature: str, target: str
-    ) -> float:
+    def _compute_correlation(self, df: pl.DataFrame, feature: str, target: str) -> float:
         """Compute Pearson correlation between feature and target."""
         # Filter out nulls from both columns
         valid = df.select([feature, target]).drop_nulls()
@@ -177,7 +226,7 @@ class ConceptDriftDetector(MLDriftDetector):
         mean_x = sum(x) / n
         mean_y = sum(y) / n
 
-        cov = sum((xi - mean_x) * (yi - mean_y) for xi, yi in zip(x, y))
+        cov = sum((xi - mean_x) * (yi - mean_y) for xi, yi in zip(x, y, strict=True))
         std_x = (sum((xi - mean_x) ** 2 for xi in x)) ** 0.5
         std_y = (sum((yi - mean_y) ** 2 for yi in y)) ** 0.5
 
@@ -186,9 +235,7 @@ class ConceptDriftDetector(MLDriftDetector):
 
         return cov / (std_x * std_y)
 
-    def _compute_target_distribution(
-        self, df: pl.DataFrame, target: str
-    ) -> dict[str, Any]:
+    def _compute_target_distribution(self, df: pl.DataFrame, target: str) -> dict[str, Any]:
         """Compute target column distribution."""
         data = df[target].drop_nulls()
 
@@ -198,7 +245,7 @@ class ConceptDriftDetector(MLDriftDetector):
             values = value_counts[target].to_list()
             counts = value_counts["count"].to_list()
             total = sum(counts)
-            proportions = {v: c / total for v, c in zip(values, counts)}
+            proportions = {v: c / total for v, c in zip(values, counts, strict=True)}
 
             return {
                 "type": "categorical",
@@ -207,13 +254,15 @@ class ConceptDriftDetector(MLDriftDetector):
             }
         else:
             # Numeric target
-            numeric_data = data.cast(pl.Float64)
-            stats = df.select([
-                pl.col(target).mean().alias("mean"),
-                pl.col(target).std().alias("std"),
-                pl.col(target).min().alias("min"),
-                pl.col(target).max().alias("max"),
-            ]).row(0)
+            data.cast(pl.Float64)  # Validate the numeric target before aggregation.
+            stats = df.select(
+                [
+                    pl.col(target).mean().alias("mean"),
+                    pl.col(target).std().alias("std"),
+                    pl.col(target).min().alias("min"),
+                    pl.col(target).max().alias("max"),
+                ]
+            ).row(0)
 
             return {
                 "type": "numeric",
@@ -239,23 +288,24 @@ class ConceptDriftDetector(MLDriftDetector):
         Returns:
             DriftResult with concept drift analysis
         """
-        import time
-        start = time.perf_counter()
 
+        from truthound.ml.drift_detection._concept_stream import detect, validate
+
+        validate(self.config)
+        if self.config.method != "correlation":
+            return detect(self.config, reference, current, columns)
         curr_df = current.collect()
-        target_col = self.config.target_column or curr_df.columns[-1]
+        target_col = self.config.target_column or self._reference_data.collect_schema().names()[-1]
 
         if target_col not in curr_df.columns:
-            return DriftResult(
-                is_drifted=False,
-                drift_score=0.0,
-                drift_type="error",
-                details=f"Target column '{target_col}' not found",
-            )
+            raise ValueError("Target column is missing from current data")
 
         # Determine columns to check
-        check_columns = columns or self._feature_columns
-        check_columns = [c for c in check_columns if c in curr_df.columns]
+        check_columns = self._feature_columns if columns is None else columns
+        if any(
+            c not in curr_df.columns or c not in self._reference_correlations for c in check_columns
+        ):
+            raise ValueError("Selected features must exist in current and trained reference data")
 
         # Check correlation changes
         column_scores: list[tuple[str, float]] = []
@@ -263,10 +313,7 @@ class ConceptDriftDetector(MLDriftDetector):
 
         for col in check_columns:
             ref_corr = self._reference_correlations.get(col, 0.0)
-            try:
-                curr_corr = self._compute_correlation(curr_df, col, target_col)
-            except Exception:
-                curr_corr = 0.0
+            curr_corr = self._compute_correlation(curr_df, col, target_col)
 
             # Correlation change score
             corr_diff = abs(curr_corr - ref_corr)
@@ -281,9 +328,7 @@ class ConceptDriftDetector(MLDriftDetector):
             column_scores.append((col, score))
 
             if score > 0.3:
-                correlation_changes.append(
-                    f"{col}: {ref_corr:.2f} -> {curr_corr:.2f}"
-                )
+                correlation_changes.append(f"{col}: {ref_corr:.2f} -> {curr_corr:.2f}")
 
         # Check target distribution change
         curr_target_dist = self._compute_target_distribution(curr_df, target_col)
@@ -316,20 +361,18 @@ class ConceptDriftDetector(MLDriftDetector):
         else:
             drift_type = "none"
 
-        elapsed = (time.perf_counter() - start) * 1000
-
         return DriftResult(
             is_drifted=is_drifted,
             drift_score=max_score,
             column_scores=tuple(column_scores),
             drift_type=drift_type,
             confidence=1.0 - avg_score,
-            details="; ".join(correlation_changes) if correlation_changes else "No significant changes",
+            details="; ".join(correlation_changes)
+            if correlation_changes
+            else "No significant changes",
         )
 
-    def _compute_target_drift(
-        self, ref: dict[str, Any], curr: dict[str, Any]
-    ) -> float:
+    def _compute_target_drift(self, ref: dict[str, Any], curr: dict[str, Any]) -> float:
         """Compute target distribution drift score."""
         # Handle case where ref is empty (fit() not called)
         if not ref or "type" not in ref:

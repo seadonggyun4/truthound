@@ -8,10 +8,9 @@ from __future__ import annotations
 
 import threading
 import time
-from abc import ABC
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from truthound.multitenancy.core import (
@@ -21,7 +20,6 @@ from truthound.multitenancy.core import (
     TenantQuota,
     TenantQuotaExceededError,
 )
-
 
 # =============================================================================
 # Usage Record
@@ -35,7 +33,7 @@ class UsageRecord:
     tenant_id: str
     resource_type: ResourceType
     amount: int
-    timestamp: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    timestamp: datetime = field(default_factory=lambda: datetime.now(UTC))
     metadata: dict[str, Any] = field(default_factory=dict)
 
 
@@ -56,7 +54,7 @@ class UsageSummary:
     @property
     def is_exceeded(self) -> bool:
         """Check if usage exceeds limit."""
-        return self.total_usage >= self.limit
+        return self.limit != 0 and self.total_usage >= self.limit
 
     @property
     def is_warning(self) -> bool:
@@ -84,8 +82,8 @@ class MemoryQuotaTracker(QuotaTracker):
 
     def __init__(self) -> None:
         # Structure: {tenant_id: {resource_type: [(timestamp, amount)]}}
-        self._usage: dict[str, dict[ResourceType, list[tuple[float, int]]]] = (
-            defaultdict(lambda: defaultdict(list))
+        self._usage: dict[str, dict[ResourceType, list[tuple[float, int]]]] = defaultdict(
+            lambda: defaultdict(list)
         )
         self._lock = threading.RLock()
 
@@ -176,10 +174,8 @@ class MemoryQuotaTracker(QuotaTracker):
         percentage = usage / limit if limit > 0 else 0.0
 
         window_seconds = self._get_window_seconds(window)
-        now = datetime.now(timezone.utc)
-        window_start = datetime.fromtimestamp(
-            time.time() - window_seconds, tz=timezone.utc
-        )
+        now = datetime.now(UTC)
+        window_start = datetime.fromtimestamp(time.time() - window_seconds, tz=UTC)
 
         return UsageSummary(
             tenant_id=tenant_id,
@@ -239,11 +235,11 @@ class RedisQuotaTracker(QuotaTracker):
                     password=self._config.password or None,
                     decode_responses=True,
                 )
-            except ImportError:
+            except ImportError as error:
                 raise ImportError(
                     "redis package is required for RedisQuotaTracker. "
                     "Install with: pip install redis"
-                )
+                ) from error
         return self._client
 
     def _get_key(
@@ -425,7 +421,7 @@ class QuotaEnforcer:
         tenant: Tenant,
         resource_type: ResourceType,
         amount: int = 1,
-    ) -> "QuotaContext":
+    ) -> QuotaContext:
         """Context manager for quota-tracked operations.
 
         Example:
@@ -442,9 +438,7 @@ class QuotaEnforcer:
     ) -> UsageSummary:
         """Get usage summary."""
         if isinstance(self._tracker, MemoryQuotaTracker):
-            return self._tracker.get_summary(
-                tenant.id, resource_type, tenant.quota, window
-            )
+            return self._tracker.get_summary(tenant.id, resource_type, tenant.quota, window)
 
         # Generic fallback
         usage = self._tracker.get_usage(tenant.id, resource_type, window)
@@ -453,8 +447,8 @@ class QuotaEnforcer:
             tenant_id=tenant.id,
             resource_type=resource_type,
             window=window,
-            window_start=datetime.now(timezone.utc),
-            window_end=datetime.now(timezone.utc),
+            window_start=datetime.now(UTC),
+            window_end=datetime.now(UTC),
             total_usage=usage,
             limit=limit,
             remaining=max(0, limit - usage),
@@ -489,7 +483,7 @@ class QuotaContext:
         self._amount = amount
         self._tracked = False
 
-    def __enter__(self) -> "QuotaContext":
+    def __enter__(self) -> QuotaContext:
         self._enforcer.require(self._tenant, self._resource_type, self._amount)
         return self
 

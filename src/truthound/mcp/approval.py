@@ -271,6 +271,24 @@ class ApprovalStore:
         with self.transaction():
             self.finish_in_transaction(identity, result)
 
+    def replay_committed(self, operation, *, key, request):
+        """Read an exact committed receipt without creating another intent.
+
+        Callers must include current authority in the request and reauthorize any
+        still-existing resource. This also supports receipts for deleted objects.
+        """
+        identity = self.digest({"idempotency_key": key})
+        intent = self.connection.execute(
+            "SELECT * FROM intents WHERE identity=?", (identity,)
+        ).fetchone()
+        if intent is None:
+            return None
+        if intent["operation"] != operation or intent["digest"] != self.digest(request):
+            raise MCPError("idempotency_conflict")
+        if intent["state"] == "succeeded":
+            return json.loads(intent["result"])
+        return None
+
     def committed_identity(self, key, operation, field):
         """Resolve a lost successful reply; the caller must reauthorize its record."""
         identity = self.digest({"idempotency_key": key})

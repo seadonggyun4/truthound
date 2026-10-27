@@ -12,23 +12,26 @@ from __future__ import annotations
 
 import json
 import time
+from collections.abc import Sequence  # noqa: TC003 - public runtime annotation resolution
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, field
+from contextlib import suppress
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Sequence
+from typing import Any
 
 import polars as pl
 
 from truthound.profiler.base import (
     ColumnProfile,
+    ProfileExecutionIssue,
     Profiler,
     ProfilerConfig,
     TableProfile,
     register_profiler,
+    validate_profile_payload,
 )
 from truthound.profiler.column_profiler import ColumnProfiler
-
 
 # =============================================================================
 # Helper Functions
@@ -231,15 +234,12 @@ class CorrelationAnalyzer(TableAnalyzer):
 
         for i, col1 in enumerate(numeric_cols):
             for col2 in numeric_cols[i + 1:]:
-                try:
-                    corr = df.select(
-                        pl.corr(col1, col2).alias("corr")
-                    )["corr"][0]
+                corr = df.select(
+                    pl.corr(col1, col2).alias("corr")
+                )["corr"][0]
 
-                    if corr is not None and abs(corr) >= config.correlation_threshold:
-                        correlations.append((col1, col2, float(corr)))
-                except Exception:
-                    pass
+                if corr is not None and abs(corr) >= config.correlation_threshold:
+                    correlations.append((col1, col2, float(corr)))
 
         return {"correlations": tuple(correlations)}
 
@@ -290,8 +290,10 @@ class DataProfiler(Profiler):
             parallel: Whether to profile columns in parallel
             **kwargs: Additional arguments passed to base Profiler
         """
-        super().__init__(**kwargs)
-        self.config = config or ProfilerConfig()
+        self.config = self._effective_config(config, kwargs)
+        base_names = ("sample_size", "include_patterns", "include_correlations", "top_n_values", "pattern_sample_size")
+        base_options = {name: getattr(self.config, name) for name in base_names}
+        super().__init__(**{**base_options, **kwargs})
         self.column_profiler = column_profiler or ColumnProfiler(config=self.config)
         self.parallel = parallel
 
@@ -306,6 +308,14 @@ class DataProfiler(Profiler):
             self.table_analyzers.append(
                 CorrelationAnalyzer(threshold=self.config.correlation_threshold)
             )
+
+    @staticmethod
+    def _effective_config(config, legacy_options):
+        current = config if config is not None else ProfilerConfig()
+        updates = {name: value for name, value in legacy_options.items() if name in current.__dataclass_fields__}
+        if any(getattr(current, name) != value for name, value in updates.items()):
+            return replace(current, **updates)
+        return current
 
     def add_table_analyzer(self, analyzer: TableAnalyzer) -> None:
         """Add a custom table analyzer."""
@@ -339,14 +349,15 @@ class DataProfiler(Profiler):
         # Get row count - use streaming for large datasets
         row_count = lf.select(pl.len()).collect(engine="streaming").item()
 
+        execution_issues = []
         # Profile columns
         if self.parallel and len(columns) > 1:
-            column_profiles = self._profile_columns_parallel(lf, schema)
+            column_profiles = self._profile_columns_parallel(lf, schema, execution_issues)
         else:
             column_profiles = self._profile_columns_sequential(lf, schema)
 
         # Run table-level analyzers
-        table_metrics = self._analyze_table(lf)
+        table_metrics = self._analyze_table(lf, execution_issues)
 
         # Build final profile
         duration_ms = (time.perf_counter() - start_time) * 1000
@@ -363,7 +374,12 @@ class DataProfiler(Profiler):
             source=source,
             profiled_at=datetime.now(),
             profile_duration_ms=duration_ms,
+            execution_issues=tuple(execution_issues),
         )
+
+    def set_execution_guard(self, guard) -> None:
+        super().set_execution_guard(guard)
+        self.column_profiler.set_execution_guard(guard)
 
     def _profile_columns_sequential(
         self,
@@ -381,6 +397,7 @@ class DataProfiler(Profiler):
         self,
         lf: pl.LazyFrame,
         schema: pl.Schema,
+        execution_issues=None,
     ) -> list[ColumnProfile]:
         """Profile columns in parallel."""
         profiles: list[ColumnProfile] = []
@@ -398,9 +415,9 @@ class DataProfiler(Profiler):
                 try:
                     profile = future.result()
                     profiles.append(profile)
-                except Exception:
-                    # Skip failed columns
-                    pass
+                except Exception as error:
+                    if execution_issues is not None:
+                        execution_issues.append(ProfileExecutionIssue("parallel_column", type(self.column_profiler).__name__, type(error).__name__, futures[future]))
 
         # Sort by original column order
         col_order = {name: i for i, (name, _) in enumerate(columns)}
@@ -408,15 +425,17 @@ class DataProfiler(Profiler):
 
         return profiles
 
-    def _analyze_table(self, lf: pl.LazyFrame) -> dict[str, Any]:
+    def _analyze_table(self, lf: pl.LazyFrame, execution_issues=None) -> dict[str, Any]:
         """Run all table-level analyzers."""
         metrics: dict[str, Any] = {}
         for analyzer in self.table_analyzers:
+            self._guard_execution()
             try:
                 result = analyzer.analyze(lf, self.config)
                 metrics.update(result)
-            except Exception:
-                pass
+            except Exception as error:
+                if execution_issues is not None:
+                    execution_issues.append(ProfileExecutionIssue("table_analyzer", analyzer.name, type(error).__name__))
         return metrics
 
 
@@ -543,8 +562,10 @@ def load_profile(path: str | Path) -> TableProfile:
     from truthound.profiler.base import DistributionStats, PatternMatch, ValueFrequency
 
     path = Path(path)
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         data = json.load(f)
+
+    validate_profile_payload(data)
 
     # Reconstruct column profiles
     columns = []
@@ -567,19 +588,14 @@ def load_profile(path: str | Path) -> TableProfile:
         if "min" in col_data:
             min_val = col_data.pop("min")
             if min_val != "-" and min_val is not None:
-                try:
-                    # Store as distribution min if numeric
+                with suppress(ValueError, TypeError):
                     float(min_val)
-                except (ValueError, TypeError):
-                    pass
 
         if "max" in col_data:
             max_val = col_data.pop("max")
             if max_val != "-" and max_val is not None:
-                try:
+                with suppress(ValueError, TypeError):
                     float(max_val)
-                except (ValueError, TypeError):
-                    pass
 
         # Ensure required fields have defaults
         if "physical_type" not in col_data:
@@ -629,6 +645,8 @@ def load_profile(path: str | Path) -> TableProfile:
         if "inferred_type" in col_data:
             col_data["inferred_type"] = DataType(col_data["inferred_type"])
 
+        col_data["execution_issues"] = ProfileExecutionIssue.from_profile_dict(col_data)
+        col_data.pop("complete", None)
         columns.append(ColumnProfile(**col_data))
 
     # Reconstruct correlations
@@ -649,4 +667,5 @@ def load_profile(path: str | Path) -> TableProfile:
         source=data.get("source", ""),
         profiled_at=datetime.fromisoformat(data["profiled_at"]) if "profiled_at" in data else datetime.now(),
         profile_duration_ms=data.get("profile_duration_ms", 0.0),
+        execution_issues=ProfileExecutionIssue.from_profile_dict(data),
     )

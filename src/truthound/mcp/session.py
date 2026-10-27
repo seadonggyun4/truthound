@@ -34,12 +34,20 @@ class MCPSession:
         self._monitors = None
         self._checkpoint_workers = set()
         self._checkpoint_services = None
+        self._brokers = None
+        self._ai_services = None
+        self._administration = {}
 
     @property
     def policy(self):
         return self.service.policy
 
     def _authorize_metadata(self, metadata):
+        if "native_binding" in metadata:
+            from truthound.mcp.bound_services import authorize
+
+            authorize(self, metadata)
+            return
         if "checkpoint_binding" in metadata:
             from truthound.mcp.checkpoints import authorize
 
@@ -77,11 +85,20 @@ class MCPSession:
             self._histories,
             self._monitors,
             self._checkpoint_services,
+            self._brokers,
+            self._ai_services,
+            *self._administration.values(),
         ):
             if controller is not None:
                 controller.release(identity)
 
     def close(self):
+        for controller in self._administration.values():
+            controller.close()
+        if self._ai_services is not None:
+            self._ai_services.close()
+        if self._brokers is not None:
+            self._brokers.close()
         if self._checkpoint_services is not None:
             self._checkpoint_services.close()
         for worker in tuple(self._checkpoint_workers):
@@ -303,7 +320,11 @@ class MCPSession:
         # Preserve unknown input content identity rather than hashing a binding label.
         input_digest = (
             None
-            if source_entry is not None and "source_binding" in source_entry.metadata
+            if source_entry is not None
+            and (
+                "source_binding" in source_entry.metadata
+                or source_entry.metadata.get("native_live_sample")
+            )
             else asset.sha256
         )
         entries = {asset.id: asset}
@@ -453,6 +474,7 @@ class MCPSession:
                     request["context"] = context.metadata
                 if source_worker is not None:
                     request["native_asset_id"] = asset.id
+                    request["source_key"] = source_entry.metadata.get("source_key", "root")
                     result = await source_worker.call(request, self.policy.timeout_seconds)
                 else:
                     result = await self.service._execute_request(request, directory)
@@ -543,6 +565,86 @@ class MCPSession:
     async def call(self, name, arguments):
         from truthound.mcp.catalog import CATALOG
 
+        for controller in self._administration.values():
+            controller.reap()
+        if name.startswith(
+            (
+                "documentation_services_",
+                "benchmark_services_",
+                "openlineage_services_",
+                "lineage_services_",
+                "audit_services_",
+                "telemetry_services_",
+                "dashboards_",
+                "security_services_",
+                "rate_limit_services_",
+                "secret_services_",
+                "execution_services_",
+                "store_services_",
+                "profiler_services_",
+                "ml_services_",
+                "store_utilities_",
+                "streaming_store_services_",
+                "tenant_services_",
+                "plugin_services_",
+            )
+        ):
+            from truthound.mcp.administration import AuditServices, TelemetryServices
+            from truthound.mcp.benchmark_services import BenchmarkServices
+            from truthound.mcp.dashboards import DashboardServices
+            from truthound.mcp.documentation_services import DocumentationServices
+            from truthound.mcp.execution_services import ExecutionServices
+            from truthound.mcp.governance import RateLimitServices, SecretServices
+            from truthound.mcp.lineage_services import LineageServices
+            from truthound.mcp.ml_services import MLServices
+            from truthound.mcp.openlineage_services import OpenLineageServices
+            from truthound.mcp.platform_services import PluginServices, SecurityServices
+            from truthound.mcp.profiler_services import ProfilerServices
+            from truthound.mcp.store_services import StoreServices
+            from truthound.mcp.store_utilities import StoreUtilities
+            from truthound.mcp.streaming_store_services import StreamingStoreServices
+            from truthound.mcp.tenancy import TenantServices
+
+            controllers = {
+                "documentation_services": DocumentationServices,
+                "benchmark_services": BenchmarkServices,
+                "openlineage_services": OpenLineageServices,
+                "lineage_services": LineageServices,
+                "audit_services": AuditServices,
+                "telemetry_services": TelemetryServices,
+                "dashboards": DashboardServices,
+                "security_services": SecurityServices,
+                "rate_limit_services": RateLimitServices,
+                "secret_services": SecretServices,
+                "execution_services": ExecutionServices,
+                "store_services": StoreServices,
+                "profiler_services": ProfilerServices,
+                "ml_services": MLServices,
+                "store_utilities": StoreUtilities,
+                "streaming_store_services": StreamingStoreServices,
+                "tenant_services": TenantServices,
+                "plugin_services": PluginServices,
+            }
+            group = next(group for group in controllers if name.startswith(group + "_"))
+            if group not in self._administration:
+                self._administration[group] = controllers[group](self)
+            return await self._administration[group].call(name, arguments)
+        if self._ai_services is not None:
+            self._ai_services.reap()
+        if name.startswith("ai_services_"):
+            from truthound.mcp.ai_services import AIServices
+
+            if self._ai_services is None:
+                self._ai_services = AIServices(self)
+            return await self._ai_services.call(name, arguments)
+        if self._brokers is not None:
+            self._brokers.reap()
+        if name.startswith("brokers_"):
+            from truthound.mcp.brokers import BrokerServices
+
+            if self._brokers is None:
+                self._brokers = BrokerServices(self)
+            return await self._brokers.call(name, arguments)
         if self._checkpoint_services is not None:
             self._checkpoint_services.reap()
         if name.startswith("checkpoint_services_"):
@@ -966,7 +1068,13 @@ class MCPSession:
                 request["provenance"] = self._provenance(digest)
                 result = await self.service._execute_request(request, directory)
                 if identity is not None:
+                    native_failed = (
+                        name in {"profilers_profile", "profilers_generate_rules"}
+                        and result.get("native_failed") is True
+                    )
                     expected = {"resource_created", "media_type", "row_count", "column_count"}
+                    if native_failed:
+                        expected.add("native_failed")
                     if set(result) != expected or result["resource_created"] is not True:
                         if result.get("execution_status") == "failed":
                             return result
@@ -980,7 +1088,10 @@ class MCPSession:
                         metadata={key: result[key] for key in ("row_count", "column_count")},
                     )
                     result = envelope(
-                        name, data=self._info(entry), provenance=request["provenance"]
+                        name,
+                        data=self._info(entry),
+                        provenance=request["provenance"],
+                        error="native_profile_incomplete" if native_failed else None,
                     )
                 CATALOG[name].output_type().model_validate(result)
                 if (

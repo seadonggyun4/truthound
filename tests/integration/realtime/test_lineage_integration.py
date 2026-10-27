@@ -7,9 +7,10 @@ visualization rendering, and OpenLineage integration.
 from __future__ import annotations
 
 import asyncio
-import pytest
 from datetime import datetime, timezone
 from typing import Any
+
+import pytest
 
 pytest_plugins = ["pytest_asyncio"]
 
@@ -28,7 +29,7 @@ class TestLineageTrackingIntegration:
     @pytest.fixture
     def tracker(self):
         """Create lineage tracker."""
-        from truthound.lineage import LineageTracker, LineageConfig
+        from truthound.lineage import LineageConfig, LineageTracker
 
         config = LineageConfig(
             auto_track=True,
@@ -148,8 +149,9 @@ class TestLineageVisualizationIntegration:
     def test_d3_renderer(self, sample_graph):
         """Test D3.js graph rendering."""
         import json
-        from truthound.lineage.visualization.renderers.d3 import D3Renderer
+
         from truthound.lineage.visualization.protocols import RenderConfig
+        from truthound.lineage.visualization.renderers.d3 import D3Renderer
 
         renderer = D3Renderer()
         config = RenderConfig(
@@ -175,8 +177,9 @@ class TestLineageVisualizationIntegration:
     def test_cytoscape_renderer(self, sample_graph):
         """Test Cytoscape.js graph rendering."""
         import json
-        from truthound.lineage.visualization.renderers.cytoscape import CytoscapeRenderer
+
         from truthound.lineage.visualization.protocols import RenderConfig
+        from truthound.lineage.visualization.renderers.cytoscape import CytoscapeRenderer
 
         renderer = CytoscapeRenderer()
         config = RenderConfig(layout="dagre")
@@ -199,8 +202,8 @@ class TestLineageVisualizationIntegration:
 
     def test_graphviz_renderer(self, sample_graph):
         """Test Graphviz DOT rendering."""
-        from truthound.lineage.visualization.renderers.graphviz import GraphvizRenderer
         from truthound.lineage.visualization.protocols import RenderConfig
+        from truthound.lineage.visualization.renderers.graphviz import GraphvizRenderer
 
         renderer = GraphvizRenderer()
         config = RenderConfig(
@@ -216,8 +219,8 @@ class TestLineageVisualizationIntegration:
 
     def test_mermaid_renderer(self, sample_graph):
         """Test Mermaid diagram rendering."""
-        from truthound.lineage.visualization.renderers.mermaid import MermaidRenderer
         from truthound.lineage.visualization.protocols import RenderConfig
+        from truthound.lineage.visualization.renderers.mermaid import MermaidRenderer
 
         renderer = MermaidRenderer()
         config = RenderConfig(orientation="LR")
@@ -232,9 +235,10 @@ class TestLineageVisualizationIntegration:
     def test_all_renderers_consistency(self, sample_graph):
         """Test that all renderers produce consistent node/edge counts."""
         import json
-        from truthound.lineage.visualization.renderers.d3 import D3Renderer
-        from truthound.lineage.visualization.renderers.cytoscape import CytoscapeRenderer
+
         from truthound.lineage.visualization.protocols import RenderConfig
+        from truthound.lineage.visualization.renderers.cytoscape import CytoscapeRenderer
+        from truthound.lineage.visualization.renderers.d3 import D3Renderer
 
         config = RenderConfig()
 
@@ -254,17 +258,23 @@ class TestOpenLineageIntegration:
     @pytest.fixture
     def emitter(self):
         """Create OpenLineage emitter."""
+        from tests.verification_support import receiver
         from truthound.lineage.integrations.openlineage import (
-            OpenLineageEmitter,
             OpenLineageConfig,
+            OpenLineageEmitter,
         )
 
-        config = OpenLineageConfig(
-            endpoint="http://localhost:5000/api/v1/lineage",
-            namespace="truthound-test",
-            producer="truthound-integration-test",
-        )
-        return OpenLineageEmitter(config)
+        with receiver() as remote:
+            config = OpenLineageConfig(
+                endpoint=remote.endpoint,
+                namespace="truthound-test",
+                producer="truthound-integration-test",
+            )
+            emitter = OpenLineageEmitter(config)
+            try:
+                yield emitter
+            finally:
+                emitter.close()
 
     def test_run_lifecycle(self, emitter):
         """Test OpenLineage run lifecycle events."""

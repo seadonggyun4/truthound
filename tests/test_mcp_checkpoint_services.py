@@ -892,3 +892,276 @@ def test_policy_edit_requires_exact_approval_and_replay_does_not_restore(runtime
     assert command(
         runtime, identity, "policy", key="after-replay", policy_name="approved-policy"
     ) == {"policy": None}
+
+
+def test_durable_engine_recovers_after_real_worker_and_session_loss(runtime, monkeypatch):
+    from truthound.mcp.service import MCPService
+
+    adapter, control, marker, _, _ = runtime
+    settings = control.parent / "escalation-settings.json"
+    settings.write_text(json.dumps({"durable": True, "crash": True}), encoding="utf-8")
+    identity = prepare(runtime, monkeypatch, "escalation")
+    request = dict(
+        binding_id="service",
+        service_id=identity,
+        command="trigger",
+        incident_id="crash-incident",
+        policy_name="approved-policy",
+        idempotency_key="crash-real-notification",
+    )
+    pending = invoke(adapter, "checkpoint_services_execute", **request)
+    store = ApprovalStore(control)
+    store.approve(pending["data"]["plan_id"])
+    store.close()
+    result = invoke(adapter, "checkpoint_services_execute", **request)
+    assert result["issues"] == [{"code": "outcome_unknown"}]
+    adapter.close()
+    settings.write_text(json.dumps({"durable": True}), encoding="utf-8")
+    recovered = MCPService(adapter.policy)
+    recovered._worker_argv = adapter._worker_argv
+    try:
+        reopened = approve(
+            recovered,
+            control,
+            "checkpoint_services_open",
+            kind="escalation",
+            binding_id="service",
+            idempotency_key="recover-new-session",
+        )["data"]["resource_id"]
+        new_runtime = (recovered, *runtime[1:])
+        status = command(new_runtime, reopened, "recovery_status")
+        assert [row["state"] for row in status["attempts"]] == ["unknown"]
+        command(new_runtime, reopened, "start")
+        existing = command(
+            new_runtime,
+            reopened,
+            "trigger",
+            incident_id="crash-incident",
+            policy_name="approved-policy",
+            key="new-session-existing",
+        )
+        assert existing["action"] == "trigger_existing"
+        command(new_runtime, reopened, "stop")
+        assert marker.read_text(encoding="utf-8").count("escalation-notify") == 1
+    finally:
+        recovered.close()
+
+
+def test_durable_recovery_pins_policy_scope_before_new_session_resume(runtime, monkeypatch):
+    from truthound.mcp.service import MCPService
+
+    adapter, control, _, _, _ = runtime
+    (control.parent / "escalation-settings.json").write_text(
+        json.dumps({"durable": True}), encoding="utf-8"
+    )
+    identity = prepare(runtime, monkeypatch, "escalation")
+    command(
+        runtime, identity, "trigger", incident_id="scope-incident", policy_name="approved-policy"
+    )
+    adapter.close()
+    changed = MCPService(replace(adapter.policy, max_items=adapter.policy.max_items - 1))
+    changed._worker_argv = adapter._worker_argv
+    try:
+        request = dict(
+            kind="escalation", binding_id="service", idempotency_key="changed-scope-open"
+        )
+        pending = invoke(changed, "checkpoint_services_open", **request)
+        store = ApprovalStore(control)
+        store.approve(pending["data"]["plan_id"])
+        store.close()
+        result = invoke(changed, "checkpoint_services_open", **request)
+        assert result["issues"] == [{"code": "outcome_unknown"}]
+    finally:
+        changed.close()
+
+
+def test_durable_runner_limits_survive_new_approved_session(runtime, monkeypatch):
+    from truthound.mcp.service import MCPService
+
+    adapter, control, marker, _, _ = runtime
+    (control.parent / "checkpoint-settings.json").write_text(
+        json.dumps({"durable": True}), encoding="utf-8"
+    )
+    identity = prepare(runtime, monkeypatch, "runner")
+    command(runtime, identity, "start")
+    deadline = time.monotonic() + 10
+    while "checkpoint-action" not in marker.read_text() and time.monotonic() < deadline:
+        time.sleep(0.01)
+    command(runtime, identity, "stop")
+    adapter.close()
+    recovered = MCPService(adapter.policy)
+    recovered._worker_argv = adapter._worker_argv
+    try:
+        identity = approve(
+            recovered,
+            control,
+            "checkpoint_services_open",
+            kind="runner",
+            binding_id="service",
+            idempotency_key="runner-new-session",
+        )["data"]["resource_id"]
+        state = (recovered, *runtime[1:])
+        command(state, identity, "start", key="runner-restart-start")
+        command(state, identity, "stop", key="runner-restart-stop")
+        status = command(state, identity, "recovery_status")
+        assert [row["state"] for row in status["attempts"]] == ["completed"]
+        assert marker.read_text().count("checkpoint-action") == 1
+    finally:
+        recovered.close()
+
+
+@pytest.mark.parametrize("backend", ["asyncio", "apscheduler"])
+def test_durable_pending_escalation_resumes_in_new_worker(runtime, monkeypatch, backend):
+    from truthound.mcp.service import MCPService
+
+    adapter, control, marker, _, _ = runtime
+    (control.parent / "escalation-settings.json").write_text(
+        json.dumps({"durable": True, "delay_minutes": 0, "scheduler": backend}), encoding="utf-8"
+    )
+    identity = prepare(runtime, monkeypatch, "escalation")
+    command(
+        runtime, identity, "trigger", incident_id="pending-incident", policy_name="approved-policy"
+    )
+    worker = adapter._session._checkpoint_services.workers[identity]
+    worker.process.kill()
+    worker.process.wait(timeout=5)
+    adapter.close()
+    recovered = MCPService(adapter.policy)
+    recovered._worker_argv = adapter._worker_argv
+    try:
+        identity = approve(
+            recovered,
+            control,
+            "checkpoint_services_open",
+            kind="escalation",
+            binding_id="service",
+            idempotency_key="pending-new-session",
+        )["data"]["resource_id"]
+        state = (recovered, *runtime[1:])
+        before = command(state, identity, "recovery_status")
+        assert sorted(row["state"] for row in before["attempts"]) == ["completed", "pending"]
+        command(state, identity, "start", key="pending-restart-start")
+        deadline = time.monotonic() + 10
+        while marker.read_text().count("escalation-notify") < 2 and time.monotonic() < deadline:
+            time.sleep(0.01)
+        command(state, identity, "stop", key="pending-restart-stop")
+        assert marker.read_text().count("escalation-notify") == 2
+        after = command(state, identity, "recovery_status", key="pending-restart-status")
+        assert all(row["state"] == "completed" for row in after["attempts"])
+    finally:
+        recovered.close()
+
+
+def test_checkpoint_definition_update_changes_native_validation_and_snapshot(runtime, monkeypatch):
+    from truthound.checkpoint import Checkpoint
+    from truthound.checkpoint.runner import CheckpointRunner
+    from truthound.mcp.validator_wire import constructor, settings
+
+    adapter, control, marker, _, _ = runtime
+    identity = prepare(runtime, monkeypatch, "runner")
+    patch = {
+        "checks": [{"validator": "column_exists", "settings": {"columns": ["missing"]}}],
+        "fail_on_high": True,
+        "tags": {"revision": "reviewed"},
+    }
+    command(
+        runtime,
+        identity,
+        "checkpoint_update",
+        checkpoint_name="approved-checkpoint",
+        checkpoint_update=patch,
+    )
+    result = command(runtime, identity, "run_once", checkpoint_name="approved-checkpoint")
+    check = patch["checks"][0]
+    native = Checkpoint(name="comparison", data_source={"x": [-1, 1]}, validators=["null"])
+    runner = CheckpointRunner().add_checkpoint(native)
+    runner.edit_checkpoint(
+        "comparison",
+        {
+            "validators": [
+                constructor(check["validator"])(
+                    **settings(check["validator"], check["settings"], build=True)
+                )
+            ],
+            "validator_config": {},
+            "fail_on_high": True,
+            "tags": patch["tags"],
+        },
+    )
+    direct = runner.run_once("comparison").to_dict()
+    assert result["result"]["status"] == direct["status"]
+    assert result["result"]["status"] != "success"
+    before = marker.read_text().count("checkpoint-action")
+    snapshot = command(
+        runtime, identity, "persist_configuration", checkpoint_names=["approved-checkpoint"]
+    )["snapshot_id"]
+    reopened = approve(
+        adapter,
+        control,
+        "checkpoint_services_open",
+        kind="runner",
+        binding_id="service",
+        snapshot_id=snapshot,
+        idempotency_key="runner-snapshot-open",
+    )["data"]["resource_id"]
+    restored = command(
+        runtime,
+        reopened,
+        "run_once",
+        key="restored-definition-run",
+        checkpoint_name="approved-checkpoint",
+    )
+    assert restored["result"]["status"] == direct["status"]
+    assert marker.read_text().count("checkpoint-action") == before + 1
+    invalid = invoke(
+        adapter,
+        "checkpoint_services_execute",
+        binding_id="service",
+        service_id=reopened,
+        command="checkpoint_update",
+        checkpoint_name="approved-checkpoint",
+        checkpoint_update={"data_source": "/private/secret"},
+        idempotency_key="reject-source-edit",
+    )
+    assert invalid["issues"] == [{"code": "invalid_arguments"}]
+
+
+def test_durable_runner_configuration_snapshot_keeps_consumed_schedule_slot(runtime, monkeypatch):
+    adapter, control, marker, _, _ = runtime
+    (control.parent / "checkpoint-settings.json").write_text(
+        json.dumps({"durable": True}), encoding="utf-8"
+    )
+    identity = prepare(runtime, monkeypatch, "runner")
+    command(runtime, identity, "start")
+    deadline = time.monotonic() + 10
+    while "checkpoint-action" not in marker.read_text() and time.monotonic() < deadline:
+        time.sleep(0.01)
+    command(runtime, identity, "stop")
+    edited = command(
+        runtime,
+        identity,
+        "schedule_update",
+        checkpoint_name="approved-checkpoint",
+        trigger_name="approved-schedule",
+        schedule_update={"interval_seconds": 120},
+    )
+    assert edited["trigger"]["run_count"] == 1
+    snapshot = command(
+        runtime, identity, "persist_configuration", checkpoint_names=["approved-checkpoint"]
+    )["snapshot_id"]
+    assert (
+        invoke(adapter, "resources_release", resource_id=identity)["execution_status"]
+        == "succeeded"
+    )
+    reopened = approve(
+        adapter,
+        control,
+        "checkpoint_services_open",
+        kind="runner",
+        binding_id="service",
+        snapshot_id=snapshot,
+        idempotency_key="durable-runner-definition-restore",
+    )["data"]["resource_id"]
+    command(runtime, reopened, "start", key="restored-durable-start")
+    command(runtime, reopened, "stop", key="restored-durable-stop")
+    assert marker.read_text().count("checkpoint-action") == 1

@@ -39,16 +39,18 @@ import re
 import threading
 from abc import ABC, abstractmethod
 from collections import defaultdict
+from copy import deepcopy
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Generic, Protocol, TypeVar
+from statistics import NormalDist
+from typing import TYPE_CHECKING, Any, Protocol
 
 import polars as pl
 
-from truthound.profiler.base import ColumnProfile, TableProfile, DataType
-
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 # =============================================================================
 # Types and Enums
@@ -65,7 +67,7 @@ class QualityLevel(str, Enum):
     UNACCEPTABLE = "unacceptable"  # F1 < 0.50
 
     @classmethod
-    def from_f1(cls, f1_score: float) -> "QualityLevel":
+    def from_f1(cls, f1_score: float) -> QualityLevel:
         """Determine quality level from F1 score."""
         if f1_score >= 0.95:
             return cls.EXCELLENT
@@ -237,7 +239,7 @@ class QualityMetrics:
         matrix: ConfusionMatrix,
         sample_size: int = 0,
         population_size: int = 0,
-    ) -> "QualityMetrics":
+    ) -> QualityMetrics:
         """Create metrics from confusion matrix."""
         metrics = cls(
             precision=matrix.precision,
@@ -364,38 +366,19 @@ class ValidationRule:
         if self.max_value is not None and value > self.max_value:
             return False
 
-        if self.allowed_values is not None and value not in self.allowed_values:
-            return False
-
-        return True
+        return not (self.allowed_values is not None and value not in self.allowed_values)
 
     def validate_column(self, df: pl.DataFrame, column: str) -> pl.Series:
         """Validate a column, returning boolean series."""
-        col = df.get_column(column)
+        def prediction(value):
+            result = self.validate(value)
+            if type(result) is not bool:
+                raise ValueError("Rule predictions must be boolean")
+            return result
 
-        # Handle nulls
-        is_null = col.is_null()
-        if self.nullable:
-            valid = is_null  # Nulls are valid if nullable
-        else:
-            valid = ~is_null  # Nulls are invalid if not nullable
-
-        # Apply rule-specific validation
-        non_null = ~is_null
-
-        if self.pattern:
-            valid = valid | (non_null & col.cast(pl.Utf8).str.contains(self.pattern))
-
-        elif self.min_value is not None or self.max_value is not None:
-            if self.min_value is not None:
-                valid = valid & (is_null | (col >= self.min_value))
-            if self.max_value is not None:
-                valid = valid & (is_null | (col <= self.max_value))
-
-        elif self.allowed_values is not None:
-            valid = valid | (non_null & col.is_in(list(self.allowed_values)))
-
-        return valid
+        return df.get_column(column).map_elements(
+            prediction, return_dtype=pl.Boolean, skip_nulls=False,
+        )
 
 
 # =============================================================================
@@ -432,6 +415,11 @@ class QualityEstimator(ABC):
         pass
 
 
+def _validate_quality_labels(labels, length):
+    if not isinstance(labels, pl.Series) or labels.dtype != pl.Boolean or len(labels) != length or labels.null_count():
+        raise ValueError("Quality labels must be aligned non-null boolean values")
+
+
 class SamplingQualityEstimator(QualityEstimator):
     """Estimates quality using statistical sampling.
 
@@ -447,6 +435,10 @@ class SamplingQualityEstimator(QualityEstimator):
         confidence_level: float = 0.95,
         random_seed: int | None = None,
     ):
+        if type(sample_size) is not int or sample_size < 1:
+            raise ValueError("sample_size must be positive")
+        if not 0 < confidence_level < 1:
+            raise ValueError("confidence_level must lie between zero and one")
         self.sample_size = sample_size
         self.confidence_level = confidence_level
         self.random_seed = random_seed
@@ -464,27 +456,24 @@ class SamplingQualityEstimator(QualityEstimator):
         if column is None or column not in data.columns:
             return QualityMetrics()
 
-        # Sample data if needed
         population_size = len(data)
+        if ground_truth is not None:
+            _validate_quality_labels(ground_truth, population_size)
+        indices = None
         if population_size > self.sample_size:
-            if self.random_seed is not None:
-                random.seed(self.random_seed)
-            indices = random.sample(range(population_size), self.sample_size)
+            indices = random.Random(self.random_seed).sample(range(population_size), self.sample_size)
             sample = data[indices]
-            sample_size = self.sample_size
         else:
             sample = data
-            sample_size = population_size
+        sample_size = len(sample)
 
         # Validate sample
         predictions = rule.validate_column(sample, column)
+        _validate_quality_labels(predictions, sample_size)
 
         # If we have ground truth, calculate confusion matrix
         if ground_truth is not None:
-            if len(ground_truth) > self.sample_size:
-                gt_sample = ground_truth[indices] if population_size > self.sample_size else ground_truth
-            else:
-                gt_sample = ground_truth
+            gt_sample = ground_truth[indices] if indices is not None else ground_truth
 
             matrix = self._calculate_confusion_matrix(predictions, gt_sample)
         else:
@@ -498,6 +487,9 @@ class SamplingQualityEstimator(QualityEstimator):
             sample_size=sample_size,
             population_size=population_size,
         )
+        z = NormalDist().inv_cdf((1 + self.confidence_level) / 2)
+        metrics.precision_ci = metrics._wilson_ci(matrix.true_positives, matrix.true_positives + matrix.false_positives, z)
+        metrics.recall_ci = metrics._wilson_ci(matrix.true_positives, matrix.true_positives + matrix.false_negatives, z)
         metrics.evaluation_duration_ms = duration_ms
 
         return metrics
@@ -511,10 +503,10 @@ class SamplingQualityEstimator(QualityEstimator):
         pred_array = predictions.to_numpy()
         truth_array = ground_truth.to_numpy()
 
-        tp = int(((pred_array == True) & (truth_array == True)).sum())
-        tn = int(((pred_array == False) & (truth_array == False)).sum())
-        fp = int(((pred_array == True) & (truth_array == False)).sum())
-        fn = int(((pred_array == False) & (truth_array == True)).sum())
+        tp = int((pred_array & truth_array).sum())
+        tn = int((~pred_array & ~truth_array).sum())
+        fp = int((pred_array & ~truth_array).sum())
+        fn = int((~pred_array & truth_array).sum())
 
         return ConfusionMatrix(
             true_positives=tp,
@@ -545,10 +537,10 @@ class SamplingQualityEstimator(QualityEstimator):
         estimated_fp_rate = 0.02  # Conservative estimate
         estimated_fn_rate = 0.05  # Conservative estimate
 
-        tp = int(valid_count * (1 - estimated_fp_rate))
         fp = int(valid_count * estimated_fp_rate)
-        tn = int(invalid_count * (1 - estimated_fn_rate))
+        tp = int(valid_count) - fp
         fn = int(invalid_count * estimated_fn_rate)
+        tn = int(invalid_count) - fn
 
         return ConfusionMatrix(
             true_positives=tp,
@@ -745,6 +737,8 @@ class CrossValidationEstimator(QualityEstimator):
         n_folds: int = 5,
         random_seed: int | None = None,
     ):
+        if type(n_folds) is not int or n_folds < 2:
+            raise ValueError("n_folds must be at least two")
         self.n_folds = n_folds
         self.random_seed = random_seed
 
@@ -761,27 +755,42 @@ class CrossValidationEstimator(QualityEstimator):
         if column is None or column not in data.columns:
             return QualityMetrics()
 
-        # Create folds
         n = len(data)
-        fold_size = n // self.n_folds
-
-        if self.random_seed is not None:
-            random.seed(self.random_seed)
-
+        if ground_truth is not None:
+            _validate_quality_labels(ground_truth, n)
+        if n == 0:
+            return QualityMetrics()
+        folds = min(n, self.n_folds)
+        fold_size = n // folds
         indices = list(range(n))
-        random.shuffle(indices)
+        random.Random(self.random_seed).shuffle(indices)
+        matrices = []
 
         # Evaluate on each fold
         fold_metrics: list[float] = []
-        for i in range(self.n_folds):
+        for i in range(folds):
             start_idx = i * fold_size
-            end_idx = start_idx + fold_size if i < self.n_folds - 1 else n
+            end_idx = start_idx + fold_size if i < folds - 1 else n
             fold_indices = indices[start_idx:end_idx]
 
             fold_data = data[fold_indices]
             predictions = rule.validate_column(fold_data, column)
+            _validate_quality_labels(predictions, len(fold_data))
+            if ground_truth is not None:
+                matrices.append(SamplingQualityEstimator()._calculate_confusion_matrix(
+                    predictions, ground_truth[fold_indices],
+                ))
             valid_ratio = predictions.sum() / len(predictions)
             fold_metrics.append(valid_ratio)
+
+        if ground_truth is not None:
+            matrix = ConfusionMatrix(**{
+                field: sum(getattr(item, field) for item in matrices)
+                for field in ("true_positives", "true_negatives", "false_positives", "false_negatives")
+            })
+            metrics = QualityMetrics.from_confusion_matrix(matrix, sample_size=n, population_size=n)
+            metrics.evaluation_duration_ms = (datetime.now() - start_time).total_seconds() * 1000
+            return metrics
 
         # Calculate consistency across folds
         mean_valid = sum(fold_metrics) / len(fold_metrics)
@@ -909,6 +918,7 @@ class RuleQualityScorer:
         estimator_options: dict[str, Any] | None = None,
         min_confidence: float = 0.5,
         quality_threshold: float = 0.70,
+        max_cache_entries: int = 128,
     ):
         """Initialize scorer.
 
@@ -918,6 +928,11 @@ class RuleQualityScorer:
             min_confidence: Minimum confidence for recommendations
             quality_threshold: Minimum F1 score for rule acceptance
         """
+        if type(max_cache_entries) is not int or max_cache_entries < 0:
+            raise ValueError("max_cache_entries must be nonnegative")
+        if not 0 <= min_confidence <= 1 or not 0 <= quality_threshold <= 1:
+            raise ValueError("Quality thresholds must lie between zero and one")
+        self.max_cache_entries = max_cache_entries
         self.min_confidence = min_confidence
         self.quality_threshold = quality_threshold
         self._cache: dict[str, RuleQualityScore] = {}
@@ -948,11 +963,11 @@ class RuleQualityScorer:
             Complete quality score
         """
         # Check cache
-        cache_key = self._make_cache_key(rule, data)
-        if use_cache:
+        cache_key = self._make_cache_key(rule, data, ground_truth) if use_cache and self.max_cache_entries else None
+        if cache_key is not None:
             with self._lock:
                 if cache_key in self._cache:
-                    return self._cache[cache_key]
+                    return deepcopy(self._cache[cache_key])
 
         # Estimate metrics
         metrics = self._estimator.estimate(rule, data, ground_truth)
@@ -971,9 +986,11 @@ class RuleQualityScorer:
         )
 
         # Cache result
-        if use_cache:
+        if cache_key is not None:
             with self._lock:
-                self._cache[cache_key] = score
+                if cache_key not in self._cache and len(self._cache) >= self.max_cache_entries:
+                    self._cache.pop(next(iter(self._cache)))
+                self._cache[cache_key] = deepcopy(score)
 
         return score
 
@@ -1060,17 +1077,27 @@ class RuleQualityScorer:
                 False,
             )
 
-    def _make_cache_key(
-        self,
-        rule: RuleProtocol | ValidationRule,
-        data: pl.DataFrame,
-    ) -> str:
-        """Create cache key for rule + data combination."""
-        rule_str = f"{rule.name}:{rule.rule_type}:{rule.column}"
-        data_hash = hashlib.sha256(
-            f"{len(data)}:{data.columns}".encode()
-        ).hexdigest()[:16]
-        return f"{rule_str}:{data_hash}"
+    def _make_cache_key(self, rule, data, ground_truth=None) -> str | None:
+        # Stateful custom estimators/callbacks cannot supply an implicit stable key.
+        if type(rule) is not ValidationRule or rule.validate_fn is not None or type(self._estimator) not in {
+            SamplingQualityEstimator, HeuristicQualityEstimator, CrossValidationEstimator,
+        }:
+            return None
+        state = dict(vars(rule))
+        state["allowed_values"] = sorted(rule.allowed_values, key=repr) if rule.allowed_values is not None else None
+        try:
+            settings = json.dumps(
+                [state, vars(self._estimator), self.min_confidence, self.quality_threshold],
+                sort_keys=True, allow_nan=False,
+            ).encode()
+        except (TypeError, ValueError):
+            return None
+        if any(dtype == pl.Object for dtype in data.dtypes):
+            return None
+        digest = hashlib.sha256(settings)
+        digest.update(data.serialize())
+        digest.update(b"labels:none" if ground_truth is None else ground_truth.to_frame().serialize())
+        return digest.hexdigest()
 
     def clear_cache(self) -> None:
         """Clear the score cache."""
@@ -1111,9 +1138,10 @@ class QualityTrendAnalyzer:
     """
 
     def __init__(self, storage_path: str | Path | None = None):
-        self.storage_path = Path(storage_path) if storage_path else None
+        self.storage_path = Path(storage_path).absolute() if storage_path else None
+        self._write_uncertain = False
         self._trends: dict[str, list[QualityTrendPoint]] = defaultdict(list)
-        self._lock = threading.Lock()
+        self._lock = threading.RLock()
 
         if self.storage_path and self.storage_path.exists():
             self._load()
@@ -1135,21 +1163,37 @@ class QualityTrendAnalyzer:
             data_size: Size of data evaluated
             notes: Optional notes
         """
-        point = QualityTrendPoint(
-            timestamp=timestamp or datetime.now(),
-            metrics=metrics,
-            data_size=data_size,
-            notes=notes,
-        )
+        from truthound.profiler._quality_history import writer_lock
 
+        if not isinstance(rule_name, str) or not rule_name or len(rule_name) > 512:
+            raise ValueError("Invalid rule name")
+        if type(data_size) is not int or data_size < 0:
+            raise ValueError("data_size must be nonnegative")
+        selected_time = timestamp or datetime.now(UTC)
+        if selected_time.tzinfo is not None:
+            selected_time = selected_time.astimezone(UTC).replace(tzinfo=None)
+        point = QualityTrendPoint(selected_time, deepcopy(metrics), data_size, notes)
         with self._lock:
-            self._trends[rule_name].append(point)
-            # Keep last 100 points per rule
-            if len(self._trends[rule_name]) > 100:
-                self._trends[rule_name] = self._trends[rule_name][-100:]
-
-        if self.storage_path:
-            self._save()
+            if self._write_uncertain:
+                raise RuntimeError("Reopen quality history after an unconfirmed write")
+            try:
+                with writer_lock(self.storage_path):
+                    if self.storage_path:
+                        self._load()
+                    previous = deepcopy(self._trends)
+                    self._trends[rule_name].append(point)
+                    self._trends[rule_name] = sorted(
+                        self._trends[rule_name], key=lambda item: item.timestamp,
+                    )[-100:]
+                    try:
+                        if self.storage_path:
+                            self._save()
+                    except BaseException:
+                        self._trends = previous
+                        raise
+            except BaseException:
+                self._write_uncertain = True
+                raise
 
     def analyze_trend(
         self,
@@ -1166,13 +1210,17 @@ class QualityTrendAnalyzer:
             Trend analysis results
         """
         with self._lock:
-            points = self._trends.get(rule_name, [])
+            if self.storage_path:
+                self._load()
+            points = deepcopy(self._trends.get(rule_name, []))
 
         if not points:
             return {"error": "No data available"}
 
         # Filter to window
-        cutoff = datetime.now() - timedelta(days=window_days)
+        if type(window_days) is not int or window_days < 1:
+            raise ValueError("window_days must be positive")
+        cutoff = datetime.now(UTC).replace(tzinfo=None) - timedelta(days=window_days)
         recent = [p for p in points if p.timestamp > cutoff]
 
         if len(recent) < 2:
@@ -1220,8 +1268,14 @@ class QualityTrendAnalyzer:
         Returns:
             List of historical measurements
         """
+        if type(limit) is not int or limit < 0:
+            raise ValueError("limit must be nonnegative")
+        if limit == 0:
+            return []
         with self._lock:
-            points = self._trends.get(rule_name, [])
+            if self.storage_path:
+                self._load()
+            points = deepcopy(self._trends.get(rule_name, []))
 
         return [
             {
@@ -1234,51 +1288,16 @@ class QualityTrendAnalyzer:
         ]
 
     def _save(self) -> None:
-        """Save trends to storage."""
-        if not self.storage_path:
-            return
+        from truthound.profiler._quality_history import save
 
-        data = {}
-        with self._lock:
-            for rule_name, points in self._trends.items():
-                data[rule_name] = [
-                    {
-                        "timestamp": p.timestamp.isoformat(),
-                        "metrics": p.metrics.to_dict(),
-                        "data_size": p.data_size,
-                        "notes": p.notes,
-                    }
-                    for p in points
-                ]
-
-        with open(self.storage_path, "w") as f:
-            json.dump(data, f)
+        if self.storage_path:
+            save(self.storage_path, self._trends)
 
     def _load(self) -> None:
-        """Load trends from storage."""
-        if not self.storage_path or not self.storage_path.exists():
-            return
+        from truthound.profiler._quality_history import load
 
-        try:
-            with open(self.storage_path) as f:
-                data = json.load(f)
-
-            for rule_name, points in data.items():
-                self._trends[rule_name] = [
-                    QualityTrendPoint(
-                        timestamp=datetime.fromisoformat(p["timestamp"]),
-                        metrics=QualityMetrics(**{
-                            k: v for k, v in p["metrics"].items()
-                            if k in QualityMetrics.__dataclass_fields__
-                            and k != "confusion_matrix"
-                        }),
-                        data_size=p.get("data_size", 0),
-                        notes=p.get("notes", ""),
-                    )
-                    for p in points
-                ]
-        except Exception:
-            pass
+        if self.storage_path:
+            self._trends = defaultdict(list, load(self.storage_path))
 
 
 # =============================================================================

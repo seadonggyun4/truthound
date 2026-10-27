@@ -210,7 +210,7 @@ class TestDaskExecutionEngineAggregations:
         """Test counting rows."""
         from truthound.execution.distributed.dask_engine import DaskExecutionEngine
 
-        mock_dask_df.__len__ = MagicMock(return_value=1000)
+        mock_dask_df.shape[0].compute.return_value = 1000
 
         engine = DaskExecutionEngine(mock_dask_df)
         count = engine.count_rows()
@@ -284,7 +284,7 @@ class TestDaskExecutionEngineCaching:
         """Test that count_rows result is cached."""
         from truthound.execution.distributed.dask_engine import DaskExecutionEngine
 
-        mock_dask_df.__len__ = MagicMock(return_value=1000)
+        mock_dask_df.shape[0].compute.return_value = 1000
 
         engine = DaskExecutionEngine(mock_dask_df)
 
@@ -294,8 +294,8 @@ class TestDaskExecutionEngineCaching:
         count2 = engine.count_rows()
 
         assert count1 == count2 == 1000
-        # __len__ should only be called once due to caching
-        assert mock_dask_df.__len__.call_count == 1
+        # The configured native scheduler executes the graph only once.
+        mock_dask_df.shape[0].compute.assert_called_once_with(scheduler="threads")
 
 
 # =============================================================================

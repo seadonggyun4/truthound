@@ -4,6 +4,21 @@ Truthound provides comprehensive data lineage tracking, impact analysis, and vis
 
 ---
 
+## Graph traversal and persistence
+
+Upstream/downstream depth limits use shortest reachable distance in the DAG,
+with breadth-first insertion order. Depth must be `-1` (unlimited) or a nonnegative
+integer. Traversal, cycle checks and tracker path queries use iterative walks,
+so deep graphs do not depend on Python's recursion limit. Tracker path queries
+return a shortest path. Graph saves serialize finite JSON before atomically
+publishing a private sibling file; serialization or pre-replacement I/O failures
+preserve the previous file. Directory synchronization failures after replacement
+remain errors and require reopening to inspect the actual published state.
+Graph/tracker constructors capture independent configuration. `max_history=0`
+retains no tracking history; negative/noninteger history limits are rejected.
+These controls do not add automatic external lineage collection.
+
+
 ## Table of Contents
 
 1. [Overview](#overview)
@@ -598,6 +613,39 @@ config = OpenLineageConfig(
 emitter = OpenLineageEmitter(config)
 ```
 
+### Delivery, failure and shutdown
+
+The emitter captures its configuration and run inputs. Only an HTTP 2xx response
+acknowledges a transition. Transport failures and non-2xx responses raise
+`OpenLineageEmissionError` with `run_id`, `event_type` and `outcome_unknown=True`;
+the prior acknowledged state remains unchanged. Inspect `unknown_runs` and use
+`resolve_unknown(run_id, delivered=True|False)` only after checking the receiver.
+Resolution records that determination without sending another event. An uncertain
+run cannot transition again until resolved; there are no automatic retries,
+redirects or environment-proxy routing. Receiver response bodies and credentials
+are excluded from delivery errors.
+
+`max_event_bytes` defaults to 1 MiB. Events must contain finite, acyclic JSON data
+within this limit. Graph emission snapshots and validates every planned event
+before the first request, and emits dataset names without copying raw samples.
+Network failure can still leave a graph partially delivered: completed runs stay
+completed and the failed transition remains uncertain. Do not replay the whole
+graph to recover it. This state belongs to the live emitter; it is not a durable
+journal and cannot establish delivery after process loss.
+
+Inside an event loop, await `start_run_async`, `emit_running_async`,
+`emit_complete_async`, `emit_fail_async`, `emit_abort_async`,
+`emit_from_graph_async` and `resolve_unknown_async`. Cancellation waits for the
+owned request to finish; it does not retract a request received by the server.
+Use `await emitter.aclose()` (or `async with`) to join pending work. Synchronous
+callers use `close()` or `with`. Closing does not automatically abort active runs.
+The synchronous state properties acquire the delivery lock; read them after
+awaiting pending work rather than while a request is in flight.
+
+Scalar custom facets are wrapped in a `value` object with facet metadata. Producer
+identifiers without a URI scheme receive a Truthound URI. Quality metrics use
+`inputFacets`; output row counts, including zero, use `outputFacets`.
+
 ### Manual Event Emission
 
 ```python
@@ -761,7 +809,7 @@ edge = LineageEdge(
 ## Thread Safety
 
 - `LineageGraph` uses `threading.RLock()` for all operations
-- `LineageTracker` uses thread-local storage for context
+- `LineageTracker` uses `ContextVar` to isolate and restore nested thread/task contexts
 - Global tracker access is thread-safe
 
 ---
@@ -793,3 +841,19 @@ except NodeNotFoundError as e:
 - [Impact Analysis](../ci-cd/index.md) - CI/CD integration
 - [OpenLineage](https://openlineage.io/) - OpenLineage specification
 - [Visualization](../datadocs/index.md) - Report visualization
+
+### Tracker configuration and durable edits
+
+`track_column_level=False` omits transformation column mappings. With `track_row_level=True`, `track_transformation(..., row_mapping={0: [("input", 4)]})` records explicit zero-based output/source row positions in node metadata `row_lineage`. Referenced nodes must be declared sources; positions must be nonnegative integers. This does not infer row provenance from arbitrary dataframe operations or retain row values. With row tracking disabled, row mappings are omitted. MCP accepts bounded `row_mapping` records containing `row` and `sources` (`node`, `row`), and rejects duplicate output positions.
+
+`with tracker.track("operation") as ctx` makes the tracker current within that context. Use `ctx.add_source(node_id)` and `ctx.add_target(node_id)` for existing graph nodes. On successful exit, `auto_track=True` creates an operation node and its input/output edges. Nested contexts restore the previous tracker; failed bodies do not create an operation node. `auto_track=False` retains context history without creating those edges. This is explicit instrumentation, not interception of unrelated Python or Polars operations.
+
+`persist_path` reopens an existing graph and publishes each successful tracker edit atomically. Invalid edits leave the previous graph and snapshot intact. Native file locks serialize cooperating writers; a stale snapshot cannot overwrite newer bytes. Snapshots are bounded to 16 MiB and symbolic links are rejected. Publication/acknowledgement failures fence further edits: reopen the tracker to inspect the actual committed file before continuing. Direct edits through `tracker.graph` and explicit `save()` remain separate graph operations; automatic persistence applies to tracker methods. Tracker edits publish a new graph snapshot, so obtain `tracker.graph` again after editing rather than mutating a previously retained graph reference. MCP does not accept caller-selected `persist_path`; its existing artifact lifecycle remains authoritative.
+
+
+
+`store_samples` now controls explicitly supplied `samples=[{column: value, ...}]` metadata on source, transformation, validation and output tracking. It is off by default and drops that reserved field from new tracking calls. When enabled, the tracker captures independent finite JSON rows, bounded to 100 rows and 64 KiB per node. Invalid or oversized samples do not publish a graph mutation. No source is read automatically. Existing/imported graph metadata is not retroactively erased by changing this flag. In MCP tracking events the explicit input is `properties.samples`; this opt-in does not read an asset or bypass its disclosure policy. Keep sensitive data out of shared graph exports.
+
+Native HTML rendering escapes graph labels as data, and DOT/Mermaid IDs remain distinct even when punctuation differs. Renderers capture configuration instead of changing caller-owned settings. Subgraph methods inherit `RenderConfig.max_depth` when their depth argument is omitted; explicit `-1` overrides it. D3 grid/circular/hierarchical layouts provide fixed coordinates; nodes blocked by cycles share the final hierarchical rank. Cytoscape uses selected node sizes. Graphviz SVG/PNG output fits within the configured width/height bounds with aspect ratio preserved; it requires the `lineage-visualization` extra and a system `dot`. Native Mermaid HTML pins Mermaid 12.2.0. Whole-graph HTML/Markdown/SVG/PNG is also available through [MCP](../mcp.md).
+
+Native tracking history captures completed context snapshots. Explicit saves to the configured primary graph file use the same version fence as tracking edits; a stale owner must reload the primary file before writing. Confirmed primary reload also resets an unconfirmed publication fence. History is memory-only and graph files serialize graph state, not callbacks or context history. Approved [MCP tracker sessions](../mcp.md) preserve this distinction.

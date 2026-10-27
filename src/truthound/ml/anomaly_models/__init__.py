@@ -12,14 +12,14 @@ Example:
     >>> result = detector.predict(test_data)
 """
 
+from truthound.ml.anomaly_models.ensemble import EnsembleAnomalyDetector
+from truthound.ml.anomaly_models.isolation_forest import IsolationForestDetector
 from truthound.ml.anomaly_models.statistical import (
-    StatisticalAnomalyDetector,
-    ZScoreAnomalyDetector,
     IQRAnomalyDetector,
     MADAnomalyDetector,
+    StatisticalAnomalyDetector,
+    ZScoreAnomalyDetector,
 )
-from truthound.ml.anomaly_models.isolation_forest import IsolationForestDetector
-from truthound.ml.anomaly_models.ensemble import EnsembleAnomalyDetector
 
 __all__ = [
     "StatisticalAnomalyDetector",

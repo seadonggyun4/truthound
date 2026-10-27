@@ -34,31 +34,32 @@ from __future__ import annotations
 
 import base64
 import hashlib
-import hmac
 import json
 import os
-import time
+import tempfile
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
-from datetime import datetime, timedelta, timezone
+from dataclasses import dataclass
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from threading import RLock
-from typing import Any, Callable, Iterator
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 from truthound.stores.encryption.base import (
     EncryptionAlgorithm,
+    EncryptionError,
     EncryptionKey,
     KeyDerivation,
     KeyDerivationConfig,
     KeyDerivationError,
     KeyError_,
-    KeyExpiredError,
     KeyType,
     generate_key,
     generate_key_id,
     generate_salt,
 )
-
 
 # =============================================================================
 # Key Derivation Functions
@@ -190,11 +191,7 @@ class PBKDF2KeyDeriver(BaseKeyDeriver):
             hash_name: Hash function (sha256, sha512).
             iterations: Number of iterations (higher = slower + more secure).
         """
-        kdf = (
-            KeyDerivation.PBKDF2_SHA512
-            if hash_name == "sha512"
-            else KeyDerivation.PBKDF2_SHA256
-        )
+        kdf = KeyDerivation.PBKDF2_SHA512 if hash_name == "sha512" else KeyDerivation.PBKDF2_SHA256
         super().__init__(kdf)
         self.hash_name = hash_name
         self.iterations = iterations
@@ -284,11 +281,7 @@ class HKDFKeyDeriver(BaseKeyDeriver):
         Args:
             hash_name: Hash function (sha256, sha512).
         """
-        kdf = (
-            KeyDerivation.HKDF_SHA512
-            if hash_name == "sha512"
-            else KeyDerivation.HKDF_SHA256
-        )
+        kdf = KeyDerivation.HKDF_SHA512 if hash_name == "sha512" else KeyDerivation.HKDF_SHA256
         super().__init__(kdf)
         self.hash_name = hash_name
 
@@ -442,6 +435,12 @@ class BaseKeyStore(ABC):
         """Check if a key exists."""
         return self.get(key_id) is not None
 
+    def create(self, key: EncryptionKey) -> None:
+        """Create without replacing a key; backends define concurrency scope."""
+        if self.exists(key.key_id):
+            raise EncryptionError("Native key identity already exists")
+        self.put(key)
+
 
 class InMemoryKeyStore(BaseKeyStore):
     """Thread-safe in-memory key storage.
@@ -461,6 +460,10 @@ class InMemoryKeyStore(BaseKeyStore):
     def put(self, key: EncryptionKey) -> None:
         with self._lock:
             self._keys[key.key_id] = key
+
+    def create(self, key: EncryptionKey) -> None:
+        with self._lock:
+            super().create(key)
 
     def delete(self, key_id: str) -> bool:
         with self._lock:
@@ -507,20 +510,27 @@ class FileKeyStore(BaseKeyStore):
             master_password: Password to derive master key (alternative to master_key).
         """
         self._path = Path(path)
-        self._path.mkdir(parents=True, exist_ok=True)
+        self._path.mkdir(mode=0o700, parents=True, exist_ok=True)
         self._lock = RLock()
 
         # Derive or use provided master key
-        if master_key:
+        if master_key is not None:
+            if not isinstance(master_key, bytes) or len(master_key) != 32:
+                raise EncryptionError("File key store requires a 32-byte master key")
             self._master_key = master_key
-        elif master_password:
+        elif master_password is not None:
             # Use fixed salt for master key (stored in .master_salt file)
             salt_file = self._path / ".master_salt"
             if salt_file.exists():
                 salt = salt_file.read_bytes()
             else:
                 salt = generate_salt(16)
-                salt_file.write_bytes(salt)
+                try:
+                    self._publish(salt_file, salt, create_only=True)
+                except FileExistsError:
+                    salt = salt_file.read_bytes()
+            if len(salt) != 16:
+                raise EncryptionError("Native master salt is invalid")
             self._master_key, _ = derive_key(master_password, salt=salt)
         else:
             # No encryption - store keys in plaintext (NOT RECOMMENDED)
@@ -531,6 +541,24 @@ class FileKeyStore(BaseKeyStore):
         # Sanitize key_id for filesystem
         safe_id = base64.urlsafe_b64encode(key_id.encode()).decode()
         return self._path / f"{safe_id}.key"
+
+    def _publish(self, path, data, *, create_only=False):
+        """Publish complete private bytes, retaining an old record on failure."""
+        if path.is_symlink():
+            raise EncryptionError("Native key record cannot be a symbolic link")
+        descriptor, name = tempfile.mkstemp(prefix=".truthound-key-", dir=self._path)
+        temporary = Path(name)
+        try:
+            with os.fdopen(descriptor, "wb") as stream:
+                stream.write(data)
+                stream.flush()
+                os.fsync(stream.fileno())
+            if create_only:
+                os.link(temporary, path)
+            else:
+                os.replace(temporary, path)
+        finally:
+            temporary.unlink(missing_ok=True)
 
     def _encrypt_key_data(self, data: bytes) -> bytes:
         """Encrypt key data with master key."""
@@ -555,6 +583,8 @@ class FileKeyStore(BaseKeyStore):
     def get(self, key_id: str) -> EncryptionKey | None:
         with self._lock:
             key_path = self._get_key_path(key_id)
+            if key_path.is_symlink():
+                raise EncryptionError("Native key record cannot be a symbolic link")
             if not key_path.exists():
                 return None
 
@@ -563,9 +593,9 @@ class FileKeyStore(BaseKeyStore):
                 data = self._decrypt_key_data(encrypted_data)
                 key_dict = json.loads(data.decode())
 
-                return EncryptionKey(
+                result = EncryptionKey(
                     key_id=key_dict["key_id"],
-                    key_material=base64.b64decode(key_dict["key_material"]),
+                    key_material=base64.b64decode(key_dict["key_material"], validate=True),
                     algorithm=EncryptionAlgorithm(key_dict["algorithm"]),
                     key_type=KeyType(key_dict["key_type"]),
                     created_at=datetime.fromisoformat(key_dict["created_at"]),
@@ -577,10 +607,26 @@ class FileKeyStore(BaseKeyStore):
                     version=key_dict["version"],
                     metadata=key_dict.get("metadata", {}),
                 )
+                if (
+                    result.key_id != key_id
+                    or type(result.version) is not int
+                    or result.version <= 0
+                ):
+                    raise ValueError("Native key identity or version is invalid")
+                return result
             except Exception:
-                return None
+                raise EncryptionError("Native key record is unreadable") from None
 
     def put(self, key: EncryptionKey) -> None:
+        self._put(key, create_only=False)
+
+    def create(self, key: EncryptionKey) -> None:
+        try:
+            self._put(key, create_only=True)
+        except FileExistsError:
+            raise EncryptionError("Native key identity already exists") from None
+
+    def _put(self, key: EncryptionKey, *, create_only):
         with self._lock:
             key_dict = {
                 "key_id": key.key_id,
@@ -597,15 +643,16 @@ class FileKeyStore(BaseKeyStore):
             encrypted_data = self._encrypt_key_data(data)
 
             key_path = self._get_key_path(key.key_id)
-            key_path.write_bytes(encrypted_data)
+            self._publish(key_path, encrypted_data, create_only=create_only)
 
     def delete(self, key_id: str) -> bool:
         with self._lock:
             key_path = self._get_key_path(key_id)
+            if key_path.is_symlink():
+                raise EncryptionError("Native key record cannot be a symbolic link")
             if key_path.exists():
-                # Overwrite with zeros before deletion
-                size = key_path.stat().st_size
-                key_path.write_bytes(b"\x00" * size)
+                # Unlink only. A failed unlink must not destroy the live key;
+                # filesystem removal is not a secure-erasure guarantee.
                 key_path.unlink()
                 return True
             return False
@@ -746,18 +793,33 @@ class KeyManager:
             config: Manager configuration.
             audit_hook: Callback for audit events.
         """
-        self._store = store or InMemoryKeyStore()
+        self._store = store if store is not None else InMemoryKeyStore()
         self._config = config or KeyManagerConfig()
         self._audit_hook = audit_hook
         self._lock = RLock()
+        self._execution_guard = None
+
+    def set_execution_guard(self, guard):
+        if guard is not None and not callable(guard):
+            raise TypeError("Execution guard must be callable")
+        self._execution_guard = guard
+
+    def _guard_execution(self):
+        if self._execution_guard is not None:
+            self._execution_guard()
 
     def _audit(self, event: str, details: dict[str, Any]) -> None:
         """Log audit event."""
+        self._guard_execution()
         if self._audit_hook:
-            self._audit_hook(event, {
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                **details,
-            })
+            self._audit_hook(
+                event,
+                {
+                    "timestamp": datetime.now(UTC).isoformat(),
+                    **details,
+                },
+            )
+            self._guard_execution()
 
     def create_key(
         self,
@@ -779,6 +841,7 @@ class KeyManager:
         Returns:
             New encryption key.
         """
+        self._guard_execution()
         with self._lock:
             key_id = key_id or generate_key_id()
             algorithm = algorithm or self._config.default_algorithm
@@ -786,9 +849,9 @@ class KeyManager:
 
             # Calculate expiration
             expires_at = None
-            effective_ttl = ttl or self._config.default_ttl
-            if effective_ttl:
-                expires_at = datetime.now(timezone.utc) + effective_ttl
+            effective_ttl = ttl if ttl is not None else self._config.default_ttl
+            if effective_ttl is not None:
+                expires_at = datetime.now(UTC) + effective_ttl
 
             key = EncryptionKey(
                 key_id=key_id,
@@ -799,12 +862,16 @@ class KeyManager:
                 metadata=metadata or {},
             )
 
-            self._store.put(key)
-            self._audit("key_created", {
-                "key_id": key_id,
-                "algorithm": algorithm.value,
-                "key_type": key_type.value,
-            })
+            self._guard_execution()
+            self._store.create(key)
+            self._audit(
+                "key_created",
+                {
+                    "key_id": key_id,
+                    "algorithm": algorithm.value,
+                    "key_type": key_type.value,
+                },
+            )
 
             return key
 
@@ -822,6 +889,7 @@ class KeyManager:
             KeyError_: If key not found.
             KeyExpiredError: If key has expired.
         """
+        self._guard_execution()
         key = self._store.get(key_id)
         if key is None:
             raise KeyError_(f"Key not found: {key_id}")
@@ -846,6 +914,7 @@ class KeyManager:
         Returns:
             New key version.
         """
+        self._guard_execution()
         with self._lock:
             old_key = self.get_key(key_id, validate=False)
 
@@ -859,12 +928,12 @@ class KeyManager:
                 metadata={
                     **old_key.metadata,
                     "previous_version": old_key.version,
-                    "rotated_at": datetime.now(timezone.utc).isoformat(),
+                    "rotated_at": datetime.now(UTC).isoformat(),
                 },
             )
 
-            if self._config.default_ttl:
-                new_key.expires_at = datetime.now(timezone.utc) + self._config.default_ttl
+            if self._config.default_ttl is not None:
+                new_key.expires_at = datetime.now(UTC) + self._config.default_ttl
 
             # Archive old key if requested
             if archive_old:
@@ -875,19 +944,25 @@ class KeyManager:
                     algorithm=old_key.algorithm,
                     key_type=old_key.key_type,
                     created_at=old_key.created_at,
-                    expires_at=datetime.now(timezone.utc) + self._config.rotation_overlap,
+                    expires_at=datetime.now(UTC) + self._config.rotation_overlap,
                     version=old_key.version,
                     metadata={**old_key.metadata, "archived": True},
                 )
-                self._store.put(archived_key)
+                self._guard_execution()
+                self._store.create(archived_key)
+                self._guard_execution()
 
             # Store new key
+            self._guard_execution()
             self._store.put(new_key)
-            self._audit("key_rotated", {
-                "key_id": key_id,
-                "old_version": old_key.version,
-                "new_version": new_key.version,
-            })
+            self._audit(
+                "key_rotated",
+                {
+                    "key_id": key_id,
+                    "old_version": old_key.version,
+                    "new_version": new_key.version,
+                },
+            )
 
             return new_key
 
@@ -900,6 +975,7 @@ class KeyManager:
         Returns:
             True if deleted.
         """
+        self._guard_execution()
         with self._lock:
             result = self._store.delete(key_id)
             if result:
@@ -920,8 +996,10 @@ class KeyManager:
         Returns:
             List of keys.
         """
+        self._guard_execution()
         keys = []
         for key_id in self._store.list_keys():
+            self._guard_execution()
             key = self._store.get(key_id)
             if key is None:
                 continue
@@ -946,10 +1024,12 @@ class KeyManager:
         Returns:
             Encryption key.
         """
-        try:
-            return self.get_key(key_id)
-        except KeyError_:
-            return self.create_key(key_id=key_id, **create_kwargs)
+        self._guard_execution()
+        with self._lock:
+            try:
+                return self.get_key(key_id)
+            except KeyError_:
+                return self.create_key(key_id=key_id, **create_kwargs)
 
     def cleanup_expired(self) -> int:
         """Delete all expired keys.
@@ -957,11 +1037,14 @@ class KeyManager:
         Returns:
             Number of keys deleted.
         """
+        self._guard_execution()
         deleted = 0
         for key_id in self._store.list_keys():
+            self._guard_execution()
             key = self._store.get(key_id)
             if key and key.is_expired:
-                self.delete_key(key_id)
+                if self.delete_key(key_id) is not True:
+                    raise EncryptionError("Native expired-key deletion is unconfirmed")
                 deleted += 1
         return deleted
 
@@ -993,26 +1076,23 @@ class EnvelopeEncryptedData:
 
     def to_bytes(self) -> bytes:
         """Serialize to bytes."""
-        header = json.dumps({
-            "kek_id": self.kek_id,
-            "algorithm": self.algorithm.value,
-            "key_len": len(self.encrypted_key),
-            "nonce_len": len(self.nonce),
-            "tag_len": len(self.tag),
-        }).encode()
+        header = json.dumps(
+            {
+                "kek_id": self.kek_id,
+                "algorithm": self.algorithm.value,
+                "key_len": len(self.encrypted_key),
+                "nonce_len": len(self.nonce),
+                "tag_len": len(self.tag),
+            }
+        ).encode()
 
         header_len = len(header).to_bytes(4, "big")
         return (
-            header_len
-            + header
-            + self.encrypted_key
-            + self.nonce
-            + self.encrypted_data
-            + self.tag
+            header_len + header + self.encrypted_key + self.nonce + self.encrypted_data + self.tag
         )
 
     @classmethod
-    def from_bytes(cls, data: bytes) -> "EnvelopeEncryptedData":
+    def from_bytes(cls, data: bytes) -> EnvelopeEncryptedData:
         """Deserialize from bytes."""
         header_len = int.from_bytes(data[:4], "big")
         header = json.loads(data[4 : 4 + header_len].decode())
@@ -1028,7 +1108,7 @@ class EnvelopeEncryptedData:
         nonce = data[offset : offset + nonce_len]
         offset += nonce_len
 
-        encrypted_data = data[offset : -tag_len]
+        encrypted_data = data[offset:-tag_len]
         tag = data[-tag_len:]
 
         return cls(

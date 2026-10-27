@@ -109,18 +109,14 @@ for rename in renames:
 ## Compatibility Analysis
 
 ```python
-from truthound.profiler.evolution import CompatibilityAnalyzer
+import polars as pl
+from truthound.profiler.evolution import SchemaCompatibilityAnalyzer
 
-analyzer = CompatibilityAnalyzer()
-
-report = analyzer.analyze(old_profile, new_profile)
-
-print(f"Compatible: {report.is_compatible}")
-print(f"Breaking changes: {len(report.breaking_changes)}")
-print(f"Warnings: {len(report.warnings)}")
-
-for breaking in report.breaking_changes:
-    print(f"  BREAKING: {breaking.description}")
+analyzer = SchemaCompatibilityAnalyzer()
+report = analyzer.analyze({"x": pl.Int32}, {"x": pl.Int64})
+print(report.is_compatible, report.level.value)
+for issue in report.issues:
+    print(issue.breaking, issue.description)
 ```
 
 ## Drift Severity Levels
@@ -190,13 +186,9 @@ watcher.watch("data.csv", baseline_profile)
 th compare profile_v1.json profile_v2.json
 
 # Detect schema changes
-th schema-diff old_profile.json new_profile.json
+truthound schema-diff 1.0.0 2.0.0 --format json
 
-# Compatibility analysis
-th check-compatibility old_profile.json new_profile.json
-
-# Check for breaking changes
-th check-breaking old_profile.json new_profile.json
+# Compatibility analysis uses SchemaCompatibilityAnalyzer in the Python example above.
 ```
 
 ## Integration Example

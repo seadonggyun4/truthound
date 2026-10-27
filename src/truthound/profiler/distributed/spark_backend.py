@@ -18,9 +18,10 @@ Example:
 
 from __future__ import annotations
 
+import importlib
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Callable, Optional
+from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
@@ -33,6 +34,9 @@ from truthound.profiler.distributed.base import (
     WorkerResult,
     backend_registry,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 logger = logging.getLogger(__name__)
@@ -105,6 +109,7 @@ class SparkBackend(DistributedBackend):
             config: Spark configuration
         """
         super().__init__(config or SparkConfig())
+        self._owns_spark = False
         self._spark = None
         self._sc = None
 
@@ -116,7 +121,7 @@ class SparkBackend(DistributedBackend):
     def is_available(self) -> bool:
         """Check if PySpark is available."""
         try:
-            import pyspark
+            importlib.import_module("pyspark")
             return True
         except ImportError:
             return False
@@ -147,6 +152,8 @@ class SparkBackend(DistributedBackend):
             for key, value in self.spark_config.to_spark_conf().items():
                 builder = builder.config(key, value)
 
+            from pyspark import SparkContext
+            self._owns_spark = SparkContext._active_spark_context is None
             self._spark = builder.getOrCreate()
             self._sc = self._spark.sparkContext
 
@@ -160,7 +167,10 @@ class SparkBackend(DistributedBackend):
     def shutdown(self) -> None:
         """Stop Spark session."""
         if self._spark is not None:
-            self._spark.stop()
+            if self._owns_spark:
+                self._spark.stop()
+            self._owns_spark = False
+            self._current_df = None
             self._spark = None
             self._sc = None
             self._initialized = False
@@ -171,6 +181,7 @@ class SparkBackend(DistributedBackend):
         data: pl.DataFrame | pl.LazyFrame | str,
         num_partitions: int | None = None,
         strategy: PartitionStrategy = PartitionStrategy.ROW_BASED,
+        sample_size: int | None = None,
     ) -> list[PartitionInfo]:
         """Distribute data across Spark executors.
 
@@ -189,48 +200,39 @@ class SparkBackend(DistributedBackend):
         if isinstance(data, str):
             # Load from path
             spark_df = self._spark.read.parquet(data)
-        elif isinstance(data, pl.LazyFrame):
-            # Collect and convert
-            pdf = data.collect().to_pandas()
-            spark_df = self._spark.createDataFrame(pdf)
-        elif isinstance(data, pl.DataFrame):
-            pdf = data.to_pandas()
-            spark_df = self._spark.createDataFrame(pdf)
+        elif isinstance(data, (pl.LazyFrame, pl.DataFrame)):
+            from pyspark.sql.pandas.types import from_arrow_schema
+            frame = data.collect() if isinstance(data, pl.LazyFrame) else data
+            schema = from_arrow_schema(frame.to_arrow().schema)
+            spark_df = self._spark.createDataFrame(frame.rows(), schema=schema)
         else:
             raise TypeError(f"Unsupported data type: {type(data)}")
 
+        if sample_size is not None:
+            spark_df = spark_df.limit(sample_size)
         # Determine partitions
         row_count = spark_df.count()
         if num_partitions is None:
             # Aim for ~1M rows per partition
             num_partitions = max(1, row_count // 1_000_000)
             # But at least as many as default parallelism
-            num_partitions = max(num_partitions, self._spark.sparkContext.defaultParallelism)
+            num_partitions = self.config.parallelism or max(num_partitions, self._spark.sparkContext.defaultParallelism)
 
-        # Repartition data
-        spark_df = spark_df.repartition(num_partitions)
+        from pyspark.sql import functions as F
 
-        # Create partition info
-        rows_per_partition = row_count // num_partitions
-        partitions = []
-
-        for i in range(num_partitions):
-            start_row = i * rows_per_partition
-            end_row = (i + 1) * rows_per_partition if i < num_partitions - 1 else row_count
-
-            partitions.append(PartitionInfo(
-                partition_id=i,
-                total_partitions=num_partitions,
-                start_row=start_row,
-                end_row=end_row,
-                columns=spark_df.columns,
-                metadata={"spark_df_id": id(spark_df)},
-            ))
-
-        # Store reference to Spark DataFrame
+        from truthound.profiler.distributed._partitions import column_groups, expand
+        if not isinstance(strategy, PartitionStrategy):
+            raise ValueError("Unknown partition strategy")
+        requested = num_partitions
+        groups = column_groups(spark_df.columns, requested, strategy)
+        physical = 1 if strategy is PartitionStrategy.COLUMN_BASED else max(1, (requested + len(groups) - 1) // len(groups))
+        if strategy is PartitionStrategy.HASH:
+            spark_df = spark_df.repartition(physical, *[F.col("`" + name.replace("`", "``") + "`") for name in spark_df.columns])
+        else:
+            spark_df = spark_df.repartition(physical)
+        self._publish_checkpoint(lambda directory: spark_df.write.mode("error").parquet(str(directory)))
         self._current_df = spark_df
-
-        return partitions
+        return expand(physical, spark_df.columns, requested, strategy)
 
     def map_partitions(
         self,
@@ -251,65 +253,31 @@ class SparkBackend(DistributedBackend):
         if not self._initialized:
             self.initialize()
 
-        import time
 
         # Use the stored Spark DataFrame
         spark_df = getattr(self, "_current_df", None)
         if spark_df is None:
             raise ValueError("No distributed data available. Call distribute_data first.")
 
-        results = []
+        policy = self.config
+        columns = spark_df.columns
 
-        # Process each partition
-        def process_partition(partition_data):
-            """Process a single Spark partition."""
+        def process_partition(index, rows):
             import polars as pl
 
-            # Convert to Polars for processing
-            rows = list(partition_data)
-            if not rows:
-                return []
+            from truthound.profiler.distributed.base import execute_partition
+            records = [row.asDict(recursive=True) for row in rows]
+            frame = pl.from_dicts(records, infer_schema_length=None) if records else pl.DataFrame(schema={name: pl.Null for name in columns})
+            return [execute_partition(func, partition, frame.select(partition.columns), policy)
+                    for partition in partitions if partition.metadata["source_partition"] == index]
 
-            # Convert to Polars DataFrame
-            df = pl.DataFrame(rows)
+        return spark_df.rdd.mapPartitionsWithIndex(process_partition).collect()
 
-            # Calculate basic stats
-            stats = {}
-            for col in df.columns:
-                series = df.get_column(col)
-                stats[col] = {
-                    "count": len(series),
-                    "null_count": series.null_count(),
-                    "distinct_count": series.n_unique(),
-                }
-
-                if series.dtype.is_numeric():
-                    non_null = series.drop_nulls()
-                    if len(non_null) > 0:
-                        stats[col].update({
-                            "min": float(non_null.min()),
-                            "max": float(non_null.max()),
-                            "mean": float(non_null.mean()),
-                        })
-
-            return [stats]
-
-        # Map over partitions
-        rdd = spark_df.rdd.mapPartitions(process_partition)
-        partition_results = rdd.collect()
-
-        # Convert to WorkerResult format
-        for i, stats_list in enumerate(partition_results):
-            if stats_list:
-                stats = stats_list[0] if isinstance(stats_list, list) else stats_list
-                results.append(WorkerResult(
-                    partition_id=i,
-                    column_stats=stats,
-                    row_count=sum(s.get("count", 0) for s in stats.values()),
-                    processing_time_ms=0,  # Not tracked per partition
-                ))
-
-        return results
+    def sample_column(self, name, limit):
+        from pyspark.sql import functions as F
+        column = F.col("`" + name.replace("`", "``") + "`")
+        rows = self._current_df.select(column).where(column.isNotNull()).limit(limit).collect()
+        return pl.DataFrame({name: [row[0] for row in rows]}, schema={name: pl.String})
 
     def aggregate_results(
         self,
@@ -323,51 +291,30 @@ class SparkBackend(DistributedBackend):
         Returns:
             Aggregated column statistics
         """
-        if not results:
-            return {}
-
-        # Gather all columns
-        all_columns = set()
-        for result in results:
-            all_columns.update(result.column_stats.keys())
-
+        from pyspark.sql import functions as F
+        from pyspark.sql.types import NumericType, StringType
+        if any(result.errors for result in results):
+            raise RuntimeError("Native profiling partition failed")
+        frame = getattr(self, "_current_df", None)
+        if frame is None:
+            raise RuntimeError("No active native profiling input")
         aggregated = {}
-
-        for col in all_columns:
-            col_stats = [r.column_stats.get(col, {}) for r in results if col in r.column_stats]
-
-            if not col_stats:
-                continue
-
-            # Aggregate counts
-            total_count = sum(s.get("count", 0) for s in col_stats)
-            total_null = sum(s.get("null_count", 0) for s in col_stats)
-
-            # For distinct count, we can only estimate (could use HLL)
-            max_distinct = max((s.get("distinct_count", 0) for s in col_stats), default=0)
-
-            aggregated[col] = {
-                "count": total_count,
-                "null_count": total_null,
-                "null_ratio": total_null / total_count if total_count > 0 else 0,
-                "distinct_count_estimate": max_distinct,  # Lower bound
-            }
-
-            # Aggregate numeric stats
-            mins = [s.get("min") for s in col_stats if s.get("min") is not None]
-            maxs = [s.get("max") for s in col_stats if s.get("max") is not None]
-            means = [s.get("mean") for s in col_stats if s.get("mean") is not None]
-            counts = [s.get("count", 0) for s in col_stats]
-
-            if mins:
-                aggregated[col]["min"] = min(mins)
-            if maxs:
-                aggregated[col]["max"] = max(maxs)
-            if means and sum(counts) > 0:
-                # Weighted average
-                weighted_mean = sum(m * c for m, c in zip(means, counts)) / sum(counts)
-                aggregated[col]["mean"] = weighted_mean
-
+        for schema_field in frame.schema:
+            column = F.col("`" + schema_field.name.replace("`", "``") + "`")
+            expressions = [F.count(F.lit(1)).alias("row_count"),
+                           F.sum(column.isNull().cast("long")).alias("null_count"),
+                           (F.countDistinct(column) + F.max(column.isNull().cast("long"))).alias("distinct_count")]
+            if isinstance(schema_field.dataType, NumericType):
+                expressions += [F.avg(column).alias("mean"), F.stddev_samp(column).alias("std"),
+                                F.min(column).alias("min_value"), F.max(column).alias("max_value")]
+            elif isinstance(schema_field.dataType, StringType):
+                length = F.length(column)
+                expressions += [F.min(length).alias("min_length"), F.max(length).alias("max_length"), F.avg(length).alias("avg_length")]
+            values = frame.agg(*expressions).first().asDict()
+            values["null_count"] = values["null_count"] or 0
+            values["distinct_count"] = values["distinct_count"] or 0
+            values["dtype"] = schema_field.dataType.typeName()
+            aggregated[schema_field.name] = values
         return aggregated
 
 

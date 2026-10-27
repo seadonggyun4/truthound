@@ -54,15 +54,18 @@ def compare(
         DriftReport with per-column drift analysis.
 
     Example:
-        >>> import truthound as th
-        >>> drift = th.compare("train.csv", "production.csv")
+        >>> from truthound.drift import compare
+        >>> drift = compare("train.csv", "production.csv")
         >>> print(drift)
         >>> if drift.has_high_drift:
         ...     print("Warning: Significant data drift detected!")
 
         >>> # For large datasets, use sampling
-        >>> drift = th.compare("big_train.csv", "big_prod.csv", sample_size=10000)
+        >>> drift = compare("big_train.csv", "big_prod.csv", sample_size=10000)
     """
+    if sample_size is not None and (type(sample_size) is not int or sample_size <= 0):
+        raise ValueError("sample_size must be a positive integer")
+    detectors = _get_detectors(method, threshold)
     # Load data
     baseline_lf = to_lazyframe(baseline)
     current_lf = to_lazyframe(current)
@@ -86,20 +89,28 @@ def compare(
     common_cols = baseline_cols & current_cols
 
     if columns is not None:
-        compare_cols = [c for c in columns if c in common_cols]
+        if any(column not in common_cols for column in columns):
+            raise ValueError("Selected columns must exist in both datasets")
+        if len(columns) != len(set(columns)):
+            raise ValueError("Selected columns must be unique")
+        compare_cols = list(columns)
     else:
-        compare_cols = list(common_cols)
-
-    # Prepare detectors
-    detectors = _get_detectors(method, threshold)
+        compare_cols = [column for column in baseline_df.columns if column in common_cols]
 
     # Analyze each column
     column_drifts: list[ColumnDrift] = []
 
     numeric_types = {
-        pl.Int8, pl.Int16, pl.Int32, pl.Int64,
-        pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64,
-        pl.Float32, pl.Float64,
+        pl.Int8,
+        pl.Int16,
+        pl.Int32,
+        pl.Int64,
+        pl.UInt8,
+        pl.UInt16,
+        pl.UInt32,
+        pl.UInt64,
+        pl.Float32,
+        pl.Float64,
     }
 
     for col in compare_cols:
@@ -130,12 +141,8 @@ def compare(
         result = detector.detect(comparison_baseline, comparison_current)
 
         # Collect statistics
-        baseline_stats = _compute_stats(
-            comparison_baseline, comparison_dtype, numeric_types
-        )
-        current_stats = _compute_stats(
-            comparison_current, comparison_dtype, numeric_types
-        )
+        baseline_stats = _compute_stats(comparison_baseline, comparison_dtype, numeric_types)
+        current_stats = _compute_stats(comparison_current, comparison_dtype, numeric_types)
 
         column_drifts.append(
             ColumnDrift(
@@ -183,35 +190,41 @@ def _get_detectors(method: str, threshold: float | None) -> dict[str, DriftDetec
     """Get appropriate detectors based on method."""
     if method == "auto":
         return {
-            "numeric": PSIDetector(threshold=threshold or 0.1),
-            "categorical": ChiSquareDetector(threshold=threshold or 0.05),
+            "numeric": PSIDetector(threshold=0.1 if threshold is None else threshold),
+            "categorical": ChiSquareDetector(threshold=0.05 if threshold is None else threshold),
         }
     elif method == "ks":
-        return {"default": KSTestDetector(threshold=threshold or 0.05)}
+        return {"default": KSTestDetector(threshold=0.05 if threshold is None else threshold)}
     elif method == "psi":
-        return {"default": PSIDetector(threshold=threshold or 0.1)}
+        return {"default": PSIDetector(threshold=0.1 if threshold is None else threshold)}
     elif method == "chi2":
-        return {"default": ChiSquareDetector(threshold=threshold or 0.05)}
+        return {"default": ChiSquareDetector(threshold=0.05 if threshold is None else threshold)}
     elif method == "js":
-        return {"default": JensenShannonDetector(threshold=threshold or 0.1)}
+        return {"default": JensenShannonDetector(threshold=0.1 if threshold is None else threshold)}
     elif method == "kl":
-        return {"default": KLDivergenceDetector(threshold=threshold or 0.1)}
+        return {"default": KLDivergenceDetector(threshold=0.1 if threshold is None else threshold)}
     elif method == "wasserstein":
-        return {"default": WassersteinDetector(threshold=threshold or 0.1)}
+        return {"default": WassersteinDetector(threshold=0.1 if threshold is None else threshold)}
     elif method == "cvm":
-        return {"default": CramervonMisesDetector(threshold=threshold or 0.05)}
+        return {
+            "default": CramervonMisesDetector(threshold=0.05 if threshold is None else threshold)
+        }
     elif method == "anderson":
-        return {"default": AndersonDarlingDetector(threshold=threshold or 0.05)}
+        return {
+            "default": AndersonDarlingDetector(threshold=0.05 if threshold is None else threshold)
+        }
     elif method == "hellinger":
-        return {"default": HellingerDetector(threshold=threshold or 0.1)}
+        return {"default": HellingerDetector(threshold=0.1 if threshold is None else threshold)}
     elif method == "bhattacharyya":
-        return {"default": BhattacharyyaDetector(threshold=threshold or 0.1)}
+        return {"default": BhattacharyyaDetector(threshold=0.1 if threshold is None else threshold)}
     elif method == "tv" or method == "total_variation":
-        return {"default": TotalVariationDetector(threshold=threshold or 0.1)}
+        return {
+            "default": TotalVariationDetector(threshold=0.1 if threshold is None else threshold)
+        }
     elif method == "energy":
-        return {"default": EnergyDetector(threshold=threshold or 0.1)}
+        return {"default": EnergyDetector(threshold=0.1 if threshold is None else threshold)}
     elif method == "mmd":
-        return {"default": MMDDetector(threshold=threshold or 0.1)}
+        return {"default": MMDDetector(threshold=0.1 if threshold is None else threshold)}
     else:
         raise ValueError(
             f"Unknown comparison method: '{method}'\n\n"

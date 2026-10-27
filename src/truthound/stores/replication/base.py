@@ -6,6 +6,7 @@ for cross-region replication.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
@@ -81,7 +82,7 @@ class ReplicaTarget(Generic[ConfigT]):
     """
 
     name: str
-    store: "ValidationStore[ConfigT]"
+    store: ValidationStore[ConfigT]
     region: str
     priority: int = 1
     is_read_replica: bool = False
@@ -160,9 +161,9 @@ class ReplicationConfig:
                 raise ValueError(
                     "min_sync_replicas cannot exceed number of targets"
                 )
-        if self.health_check_interval_seconds <= 0:
+        if not math.isfinite(self.health_check_interval_seconds) or self.health_check_interval_seconds <= 0:
             raise ValueError("health_check_interval_seconds must be positive")
-        if self.max_replication_lag_ms < 0:
+        if not math.isfinite(self.max_replication_lag_ms) or self.max_replication_lag_ms < 0:
             raise ValueError("max_replication_lag_ms must be non-negative")
 
 

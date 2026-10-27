@@ -31,18 +31,20 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable, Sequence  # noqa: TC003 - public runtime annotation resolution
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable, Sequence, TYPE_CHECKING, Union
+from typing import TYPE_CHECKING, Any, Union
 
 from truthound.profiler.base import (
     ColumnProfile,
     DataType,
-    ProfilerConfig,
+    ProfileExecutionIssue,
     Strictness,
     TableProfile,
 )
+from truthound.profiler.errors import IncompleteProfileError, ProfilerError
 from truthound.profiler.generators.base import (
     GeneratedRule,
     RuleCategory,
@@ -52,7 +54,6 @@ from truthound.profiler.generators.base import (
 )
 
 if TYPE_CHECKING:
-    from truthound.validators.base import Validator
     from truthound.profiler.integration.protocols import ExecutionContext, ExecutionResult
 
 logger = logging.getLogger(__name__)
@@ -84,7 +85,7 @@ class ValidationSuite:
     def filter_by_category(
         self,
         *categories: RuleCategory,
-    ) -> "ValidationSuite":
+    ) -> ValidationSuite:
         """Filter rules by category."""
         filtered = tuple(r for r in self.rules if r.category in categories)
         return ValidationSuite(
@@ -98,7 +99,7 @@ class ValidationSuite:
     def filter_by_confidence(
         self,
         min_confidence: RuleConfidence,
-    ) -> "ValidationSuite":
+    ) -> ValidationSuite:
         """Filter rules by minimum confidence level."""
         confidence_order = {
             RuleConfidence.LOW: 0,
@@ -119,7 +120,7 @@ class ValidationSuite:
             metadata=self.metadata,
         )
 
-    def filter_by_columns(self, *columns: str) -> "ValidationSuite":
+    def filter_by_columns(self, *columns: str) -> ValidationSuite:
         """Filter rules that apply to specific columns."""
         column_set = set(columns)
         filtered = tuple(
@@ -137,7 +138,7 @@ class ValidationSuite:
     def exclude_categories(
         self,
         *categories: RuleCategory,
-    ) -> "ValidationSuite":
+    ) -> ValidationSuite:
         """Exclude rules in specific categories."""
         excluded = set(categories)
         filtered = tuple(r for r in self.rules if r.category not in excluded)
@@ -220,8 +221,8 @@ class ValidationSuite:
         fail_fast: bool = False,
         max_workers: int | None = None,
         timeout_seconds: float | None = None,
-        context: "ExecutionContext | None" = None,
-    ) -> "ExecutionResult":
+        context: ExecutionContext | None = None,
+    ) -> ExecutionResult:
         """Execute the validation suite against data.
 
         This method provides a convenient way to run all validators
@@ -275,8 +276,8 @@ class ValidationSuite:
         *,
         parallel: bool = True,
         fail_fast: bool = False,
-        context: "ExecutionContext | None" = None,
-    ) -> "ExecutionResult":
+        context: ExecutionContext | None = None,
+    ) -> ExecutionResult:
         """Execute the validation suite asynchronously.
 
         Args:
@@ -386,6 +387,10 @@ class ValidationSuiteGenerator:
             # Use all registered generators
             self.generators = rule_generator_registry.create_all(**kwargs)
 
+    def set_execution_guard(self, guard: Callable[[], None]) -> None:
+        """Install a trusted guard before selected generator callbacks."""
+        self._execution_guard = guard
+
     def add_generator(self, generator: RuleGenerator) -> None:
         """Add a custom generator."""
         self.generators.append(generator)
@@ -415,6 +420,8 @@ class ValidationSuiteGenerator:
         Returns:
             Generated validation suite
         """
+        if not profile.complete:
+            raise IncompleteProfileError(profile)
         all_rules: list[GeneratedRule] = []
 
         # Convert category strings to enums
@@ -428,15 +435,16 @@ class ValidationSuiteGenerator:
 
         # Run each generator
         for generator in self.generators:
+            guard = getattr(self, "_execution_guard", None)
+            if guard is not None:
+                guard()
             # Skip if generator doesn't produce any included categories
-            if include_cats:
-                if not generator.categories & include_cats:
-                    continue
+            if include_cats and not generator.categories & include_cats:
+                continue
 
             # Skip if all generator categories are excluded
-            if exclude_cats:
-                if generator.categories <= exclude_cats:
-                    continue
+            if exclude_cats and generator.categories <= exclude_cats:
+                continue
 
             try:
                 rules = generator.generate(profile, strictness)
@@ -448,9 +456,13 @@ class ValidationSuiteGenerator:
                     rules = [r for r in rules if r.category not in exclude_cats]
 
                 all_rules.extend(rules)
-            except Exception:
-                # Skip failed generators
-                pass
+            except Exception as error:
+                # A selected generator failure cannot produce a successful partial suite.
+                raise ProfilerError(
+                    "Native rule generation failed",
+                    analyzer=generator.name,
+                    context={"error_type": type(error).__name__},
+                ) from None
 
         # Filter by confidence
         if min_confidence:
@@ -605,6 +617,12 @@ class ProfileAdapter:
         Returns:
             TableProfile instance.
         """
+        # Native serialized profiles retain distributions, patterns and diagnostics.
+        if any(key in data for key in ("profiled_at", "profile_duration_ms", "schema_version")):
+            from truthound.profiler.schema import ProfileSerializer
+
+            return ProfileSerializer().deserialize(data)
+
         # Extract column profiles
         column_profiles: list[ColumnProfile] = []
 
@@ -639,6 +657,7 @@ class ProfileAdapter:
                 unique_ratio=unique_ratio,
                 is_unique=col_dict.get('is_unique', unique_ratio >= 0.99),
                 is_constant=col_dict.get('is_constant', False),
+                execution_issues=ProfileExecutionIssue.from_profile_dict(col_dict),
             )
             column_profiles.append(col_profile)
 
@@ -651,6 +670,7 @@ class ProfileAdapter:
             duplicate_row_count=data.get('duplicate_row_count', 0),
             duplicate_row_ratio=data.get('duplicate_row_ratio', 0.0),
             source=data.get('source', data.get('name', '')),
+            execution_issues=ProfileExecutionIssue.from_profile_dict(data),
             profiled_at=datetime.now(),
         )
 
@@ -836,8 +856,13 @@ def load_suite(path: str | Path) -> ValidationSuite:
     """
     path = Path(path)
 
-    with open(path, "r", encoding="utf-8") as f:
+    with open(path, encoding="utf-8") as f:
         data = json.load(f)
+
+    if not isinstance(data, dict) or not isinstance(data.get("rules"), list):
+        raise ValueError("Invalid native generated-suite payload")
+    if any(not isinstance(rule, dict) for rule in data["rules"]):
+        raise ValueError("Invalid native generated-suite rules")
 
     rules = tuple(
         GeneratedRule(

@@ -10,12 +10,12 @@ This module defines the core abstractions for the plugin system:
 
 from __future__ import annotations
 
+import re
 from abc import ABC, abstractmethod
+from collections.abc import Callable  # noqa: TC003 - public annotation introspection
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Callable, TypeVar, Generic
-from pathlib import Path
-import re
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 if TYPE_CHECKING:
     from truthound.plugins.manager import PluginManager
@@ -125,7 +125,7 @@ class PluginConfig:
     settings: dict[str, Any] = field(default_factory=dict)
     auto_load: bool = True
 
-    def merge(self, other: "PluginConfig | dict[str, Any]") -> "PluginConfig":
+    def merge(self, other: PluginConfig | dict[str, Any]) -> PluginConfig:
         """Merge with another config, other takes precedence.
 
         Args:
@@ -182,6 +182,7 @@ class PluginInfo:
     dependencies: tuple[str, ...] = field(default_factory=tuple)
     python_dependencies: tuple[str, ...] = field(default_factory=tuple)
     tags: tuple[str, ...] = field(default_factory=tuple)
+    optional_dependencies: tuple[str, ...] = field(default_factory=tuple)
 
     def __post_init__(self) -> None:
         """Validate plugin info after initialization."""
@@ -198,7 +199,7 @@ class PluginInfo:
 
     def is_compatible(self, truthound_version: str) -> bool:
         """Check if plugin is compatible with given Truthound version."""
-        from packaging.version import Version, InvalidVersion
+        from packaging.version import InvalidVersion, Version
 
         try:
             current = Version(truthound_version)
@@ -215,8 +216,8 @@ class PluginInfo:
 
             return True
         except InvalidVersion:
-            # If versions can't be parsed, assume compatible
-            return True
+            # Unparseable versions cannot establish compatibility.
+            return False
 
 
 # =============================================================================
@@ -307,7 +308,7 @@ class Plugin(ABC, Generic[ConfigT]):
         """
         ...
 
-    def register(self, manager: "PluginManager") -> None:
+    def register(self, manager: PluginManager) -> None:
         """Register plugin components.
 
         Override this to register validators, reporters, etc.
@@ -318,7 +319,7 @@ class Plugin(ABC, Generic[ConfigT]):
         """
         pass
 
-    def unregister(self, manager: "PluginManager") -> None:
+    def unregister(self, manager: PluginManager) -> None:
         """Unregister plugin components.
 
         Override this to unregister validators, reporters, etc.
@@ -443,7 +444,7 @@ class ValidatorPlugin(Plugin[PluginConfig]):
         """
         ...
 
-    def register(self, manager: "PluginManager") -> None:
+    def register(self, manager: PluginManager) -> None:
         """Register validators with the validator registry."""
         from truthound.validators.registry import registry
 
@@ -495,7 +496,7 @@ class ReporterPlugin(Plugin[PluginConfig]):
         """
         ...
 
-    def register(self, manager: "PluginManager") -> None:
+    def register(self, manager: PluginManager) -> None:
         """Register reporters with the reporter factory."""
         from truthound.reporters.factory import register_reporter
 
@@ -593,14 +594,14 @@ class HookPlugin(Plugin[PluginConfig]):
         """
         ...
 
-    def register(self, manager: "PluginManager") -> None:
+    def register(self, manager: PluginManager) -> None:
         """Register hooks with the hook manager."""
         for hook_name, handler in self.get_hooks().items():
             manager.hooks.register(hook_name, handler, source=self.name)
 
-    def unregister(self, manager: "PluginManager") -> None:
+    def unregister(self, manager: PluginManager) -> None:
         """Unregister hooks."""
-        for hook_name in self.get_hooks().keys():
+        for hook_name in self.get_hooks():
             manager.hooks.unregister(hook_name, source=self.name)
 
     def setup(self) -> None:

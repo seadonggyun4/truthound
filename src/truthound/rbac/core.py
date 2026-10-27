@@ -14,31 +14,21 @@ Design Principles:
 
 from __future__ import annotations
 
-import hashlib
-import threading
-import time
 import uuid
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from enum import Enum, Flag, auto
+from datetime import UTC, datetime
+from enum import Enum
 from typing import (
     TYPE_CHECKING,
     Any,
-    Callable,
-    FrozenSet,
-    Iterator,
-    Mapping,
     Protocol,
-    Sequence,
-    TypeVar,
 )
 
 if TYPE_CHECKING:
-    pass
-
+    from collections.abc import Iterator
 
 # =============================================================================
 # Enums and Flags
@@ -174,31 +164,37 @@ class RBACError(Exception):
 
 class PermissionDeniedError(RBACError):
     """Raised when permission is denied."""
+
     pass
 
 
 class RoleNotFoundError(RBACError):
     """Raised when a role is not found."""
+
     pass
 
 
 class PermissionNotFoundError(RBACError):
     """Raised when a permission is not found."""
+
     pass
 
 
 class PolicyEvaluationError(RBACError):
     """Raised when policy evaluation fails."""
+
     pass
 
 
 class InvalidPermissionError(RBACError):
     """Raised when a permission specification is invalid."""
+
     pass
 
 
 class CircularRoleError(RBACError):
     """Raised when circular role inheritance is detected."""
+
     pass
 
 
@@ -251,34 +247,61 @@ class Permission:
             return f"{self.resource}:{self.action}:{self.scope}"
         return f"{self.resource}:{self.action}"
 
+    def to_dict(self) -> dict[str, str]:
+        """Serialize the complete permission, including its authorization effect."""
+        return {
+            "resource": self.resource,
+            "action": self.action,
+            "scope": self.scope,
+            "effect": self.effect.value,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Permission:
+        """Restore a complete permission; invalid effects fail closed."""
+        if (
+            not isinstance(data, dict)
+            or any(
+                not isinstance(data.get(key), str) or not data[key]
+                for key in ("resource", "action")
+            )
+            or not isinstance(data.get("scope", ""), str)
+        ):
+            raise InvalidPermissionError("Invalid structured permission")
+        return cls(
+            data["resource"],
+            data["action"],
+            scope=data.get("scope", ""),
+            effect=PermissionEffect(data.get("effect", "allow")),
+        )
+
     def __str__(self) -> str:
         return self.to_string()
 
     def __hash__(self) -> int:
         return hash((self.resource, self.action, self.scope, self.effect))
 
-    def matches(self, other: "Permission") -> bool:
+    def matches(self, other: Permission) -> bool:
         """Check if this permission matches another (supports wildcards)."""
         # Check resource match
-        if self.resource != "*" and other.resource != "*":
-            if self.resource != other.resource:
-                return False
+        if self.resource != "*" and other.resource != "*" and self.resource != other.resource:
+            return False
 
         # Check action match
-        if self.action != "*" and other.action != "*":
-            if self.action != other.action:
-                return False
+        if self.action != "*" and other.action != "*" and self.action != other.action:
+            return False
 
         # Check scope match (empty scope matches any)
-        if self.scope and other.scope:
-            if self.scope != "*" and other.scope != "*":
-                if self.scope != other.scope:
-                    return False
-
-        return True
+        return not (
+            self.scope
+            and other.scope
+            and self.scope != "*"
+            and other.scope != "*"
+            and self.scope != other.scope
+        )
 
     @classmethod
-    def parse(cls, permission_string: str) -> "Permission":
+    def parse(cls, permission_string: str) -> Permission:
         """Parse a permission string.
 
         Args:
@@ -302,7 +325,7 @@ class Permission:
         return cls(resource=resource, action=action, scope=scope)
 
     @classmethod
-    def all(cls) -> "Permission":
+    def all(cls) -> Permission:
         """Create a wildcard permission (all resources, all actions)."""
         return cls(resource="*", action="*")
 
@@ -327,7 +350,7 @@ class Condition:
     value: Any
     description: str = ""
 
-    def evaluate(self, context: "AccessContext") -> bool:
+    def evaluate(self, context: AccessContext) -> bool:
         """Evaluate the condition against a context."""
         # Get field value from context
         actual_value = self._resolve_field(self.field, context)
@@ -338,7 +361,7 @@ class Condition:
         # Apply operator
         return self._apply_operator(actual_value, expected_value)
 
-    def _resolve_field(self, field: str, context: "AccessContext") -> Any:
+    def _resolve_field(self, field: str, context: AccessContext) -> Any:
         """Resolve a field path to its value."""
         parts = field.split(".")
         if not parts:
@@ -368,7 +391,7 @@ class Condition:
 
         return obj
 
-    def _resolve_value(self, value: Any, context: "AccessContext") -> Any:
+    def _resolve_value(self, value: Any, context: AccessContext) -> Any:
         """Resolve a value, handling dynamic references."""
         if isinstance(value, str) and value.startswith("${") and value.endswith("}"):
             field = value[2:-1]
@@ -407,6 +430,7 @@ class Condition:
             return actual is None
         elif self.operator == ConditionOperator.MATCHES:
             import re
+
             return bool(re.match(str(expected), str(actual))) if actual else False
 
         return False
@@ -419,6 +443,15 @@ class Condition:
             "value": self.value,
             "description": self.description,
         }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Condition:
+        return cls(
+            field=data["field"],
+            operator=ConditionOperator(data["operator"]),
+            value=data["value"],
+            description=data.get("description", ""),
+        )
 
 
 @dataclass
@@ -454,8 +487,8 @@ class Role:
 
     # Metadata
     tenant_id: str | None = None
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     created_by: str = ""
     metadata: dict[str, Any] = field(default_factory=dict)
 
@@ -479,10 +512,12 @@ class Role:
         if isinstance(permission, str):
             permission = Permission.parse(permission)
 
-        for p in self.permissions:
-            if p.matches(permission):
-                return True
-        return False
+        if not self.enabled:
+            return False
+        matching = [p for p in self.permissions if p.matches(permission)]
+        return any(p.effect == PermissionEffect.ALLOW for p in matching) and not any(
+            p.effect == PermissionEffect.DENY for p in matching
+        )
 
     def add_parent_role(self, role_id: str) -> None:
         """Add a parent role for inheritance."""
@@ -495,7 +530,10 @@ class Role:
             "name": self.name,
             "description": self.description,
             "role_type": self.role_type.value,
-            "permissions": [p.to_string() for p in self.permissions],
+            "permissions": [
+                p.to_string() if p.effect == PermissionEffect.ALLOW else p.to_dict()
+                for p in sorted(self.permissions, key=lambda p: (p.to_string(), p.effect.value))
+            ],
             "parent_roles": list(self.parent_roles),
             "conditions": [c.to_dict() for c in self.conditions],
             "tenant_id": self.tenant_id,
@@ -507,18 +545,26 @@ class Role:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "Role":
+    def from_dict(cls, data: dict[str, Any]) -> Role:
         """Create from dictionary."""
         return cls(
             id=data["id"],
             name=data["name"],
             description=data.get("description", ""),
             role_type=RoleType(data.get("role_type", "custom")),
-            permissions={Permission.parse(p) for p in data.get("permissions", [])},
+            permissions={
+                Permission.parse(p) if isinstance(p, str) else Permission.from_dict(p)
+                for p in data.get("permissions", [])
+            },
             parent_roles=set(data.get("parent_roles", [])),
+            conditions=[Condition.from_dict(c) for c in data.get("conditions", [])],
             tenant_id=data.get("tenant_id"),
-            created_at=datetime.fromisoformat(data["created_at"]) if data.get("created_at") else datetime.now(timezone.utc),
-            updated_at=datetime.fromisoformat(data["updated_at"]) if data.get("updated_at") else datetime.now(timezone.utc),
+            created_at=datetime.fromisoformat(data["created_at"])
+            if data.get("created_at")
+            else datetime.now(UTC),
+            updated_at=datetime.fromisoformat(data["updated_at"])
+            if data.get("updated_at")
+            else datetime.now(UTC),
             created_by=data.get("created_by", ""),
             metadata=data.get("metadata", {}),
             enabled=data.get("enabled", True),
@@ -562,12 +608,12 @@ class Principal:
     enabled: bool = True
 
     # Metadata
-    created_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     last_active_at: datetime | None = None
     metadata: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
-    def anonymous(cls) -> "Principal":
+    def anonymous(cls) -> Principal:
         """Create an anonymous principal."""
         return cls(
             id="anonymous",
@@ -576,7 +622,7 @@ class Principal:
         )
 
     @classmethod
-    def system(cls) -> "Principal":
+    def system(cls) -> Principal:
         """Create a system principal."""
         return cls(
             id="system",
@@ -611,7 +657,12 @@ class Principal:
             "name": self.name,
             "email": self.email,
             "roles": list(self.roles),
-            "direct_permissions": [p.to_string() for p in self.direct_permissions],
+            "direct_permissions": [
+                p.to_string() if p.effect == PermissionEffect.ALLOW else p.to_dict()
+                for p in sorted(
+                    self.direct_permissions, key=lambda p: (p.to_string(), p.effect.value)
+                )
+            ],
             "attributes": self.attributes,
             "tenant_id": self.tenant_id,
             "enabled": self.enabled,
@@ -621,7 +672,7 @@ class Principal:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "Principal":
+    def from_dict(cls, data: dict[str, Any]) -> Principal:
         """Create from dictionary."""
         return cls(
             id=data["id"],
@@ -629,12 +680,19 @@ class Principal:
             name=data.get("name", ""),
             email=data.get("email", ""),
             roles=set(data.get("roles", [])),
-            direct_permissions={Permission.parse(p) for p in data.get("direct_permissions", [])},
+            direct_permissions={
+                Permission.parse(p) if isinstance(p, str) else Permission.from_dict(p)
+                for p in data.get("direct_permissions", [])
+            },
             attributes=data.get("attributes", {}),
             tenant_id=data.get("tenant_id"),
             enabled=data.get("enabled", True),
-            created_at=datetime.fromisoformat(data["created_at"]) if data.get("created_at") else datetime.now(timezone.utc),
-            last_active_at=datetime.fromisoformat(data["last_active_at"]) if data.get("last_active_at") else None,
+            created_at=datetime.fromisoformat(data["created_at"])
+            if data.get("created_at")
+            else datetime.now(UTC),
+            last_active_at=datetime.fromisoformat(data["last_active_at"])
+            if data.get("last_active_at")
+            else None,
             metadata=data.get("metadata", {}),
         )
 
@@ -677,13 +735,12 @@ class AccessContext:
             object.__setattr__(self, "action", self.action.value)
 
         # Extract resource type from resource string if not provided
-        if self.resource_type is None and ":" in self.resource:
-            parts = self.resource.split(":")
-            object.__setattr__(self, "resource_type", parts[0])
+        if self.resource_type is None:
+            object.__setattr__(self, "resource_type", self.resource.split(":", 1)[0])
 
         # Add default environment attributes
         if "timestamp" not in self.environment:
-            self.environment["timestamp"] = datetime.now(timezone.utc).isoformat()
+            self.environment["timestamp"] = datetime.now(UTC).isoformat()
 
     def get_required_permission(self) -> Permission:
         """Get the permission required for this access."""
@@ -719,13 +776,13 @@ class AccessDecision:
     evaluation_time_ms: float = 0.0
 
     # Audit info
-    evaluated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    evaluated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
 
     def __bool__(self) -> bool:
         return self.allowed
 
     @classmethod
-    def allow(cls, reason: str = "", permissions: list[Permission] | None = None) -> "AccessDecision":
+    def allow(cls, reason: str = "", permissions: list[Permission] | None = None) -> AccessDecision:
         """Create an allow decision."""
         return cls(
             allowed=True,
@@ -735,7 +792,7 @@ class AccessDecision:
         )
 
     @classmethod
-    def deny(cls, reason: str = "") -> "AccessDecision":
+    def deny(cls, reason: str = "") -> AccessDecision:
         """Create a deny decision."""
         return cls(
             allowed=False,
@@ -750,7 +807,9 @@ class AccessDecision:
 
 
 _current_principal: ContextVar[Principal | None] = ContextVar("current_principal", default=None)
-_current_context: ContextVar[AccessContext | None] = ContextVar("current_access_context", default=None)
+_current_context: ContextVar[AccessContext | None] = ContextVar(
+    "current_access_context", default=None
+)
 
 
 @dataclass
@@ -771,7 +830,7 @@ class SecurityContext:
     permissions: set[Permission] = field(default_factory=set)
     tenant_id: str | None = None
     session_id: str = ""
-    authenticated_at: datetime = field(default_factory=lambda: datetime.now(timezone.utc))
+    authenticated_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     metadata: dict[str, Any] = field(default_factory=dict)
 
     @classmethod
@@ -789,7 +848,7 @@ class SecurityContext:
 
     @classmethod
     @contextmanager
-    def set_principal(cls, principal: Principal) -> Iterator["SecurityContext"]:
+    def set_principal(cls, principal: Principal) -> Iterator[SecurityContext]:
         """Set the current principal for the context.
 
         Example:
@@ -850,22 +909,37 @@ class RoleStore(ABC):
 
     def get_all_permissions(self, role_id: str, visited: set[str] | None = None) -> set[Permission]:
         """Get all permissions for a role, including inherited ones."""
+        return self._get_permissions(role_id, visited, None)
+
+    def get_applicable_permissions(self, role_id: str, context: AccessContext) -> set[Permission]:
+        """Resolve enabled roles whose assignment conditions match this request."""
+        return self._get_permissions(role_id, None, context)
+
+    def _get_permissions(
+        self, role_id: str, visited: set[str] | None, context: AccessContext | None
+    ) -> set[Permission]:
         if visited is None:
             visited = set()
 
         if role_id in visited:
             raise CircularRoleError(f"Circular role inheritance detected: {role_id}")
 
-        visited.add(role_id)
+        # Track the current ancestry path. Shared ancestors in a diamond are
+        # valid; only a back edge on this path is a cycle.
+        visited = visited | {role_id}
         role = self.get(role_id)
-        if not role:
+        if not role or not role.enabled:
+            return set()
+        if context is not None and not all(
+            condition.evaluate(context) for condition in role.conditions
+        ):
             return set()
 
         permissions = set(role.permissions)
 
         # Add inherited permissions
         for parent_id in role.parent_roles:
-            permissions.update(self.get_all_permissions(parent_id, visited))
+            permissions.update(self._get_permissions(parent_id, visited, context))
 
         return permissions
 
@@ -954,6 +1028,7 @@ class PermissionChecker(Protocol):
 def generate_role_id(name: str) -> str:
     """Generate a role ID from name."""
     import re
+
     slug = name.lower()
     slug = re.sub(r"[^a-z0-9]+", "_", slug)
     slug = slug.strip("_")

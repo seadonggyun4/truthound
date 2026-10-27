@@ -9,8 +9,8 @@ from __future__ import annotations
 import asyncio
 from abc import ABC, abstractmethod
 from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Callable, Generic, TypeVar
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 from truthound.datasources._protocols import (
     ColumnType,
@@ -18,12 +18,12 @@ from truthound.datasources._protocols import (
 )
 from truthound.datasources.base import (
     DataSourceConfig,
-    DataSourceConnectionError,
     DataSourceError,
-    polars_to_column_type,
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     import polars as pl
 
     from truthound.execution.base import BaseExecutionEngine
@@ -183,22 +183,20 @@ class AsyncConnectionPool(Generic[TypeVar("ConnT")]):
             for _ in range(self._size):
                 try:
                     if asyncio.iscoroutinefunction(self._factory):
-                        conn = await asyncio.wait_for(
-                            self._factory(), timeout=self._timeout
-                        )
+                        conn = await asyncio.wait_for(self._factory(), timeout=self._timeout)
                     else:
                         conn = self._factory()
                     await self._connections.put(conn)
-                except asyncio.TimeoutError:
+                except TimeoutError as error:
                     raise AsyncConnectionPoolError(
                         f"Timeout creating connection after {self._timeout}s",
                         pool_size=self._size,
-                    )
+                    ) from error
                 except Exception as e:
                     raise AsyncConnectionPoolError(
                         f"Failed to create connection: {e}",
                         pool_size=self._size,
-                    )
+                    ) from e
 
             self._initialized = True
 
@@ -220,11 +218,9 @@ class AsyncConnectionPool(Generic[TypeVar("ConnT")]):
 
         # Acquire semaphore to limit concurrency
         try:
-            await asyncio.wait_for(
-                self._semaphore.acquire(), timeout=self._timeout
-            )
-        except asyncio.TimeoutError:
-            raise AsyncTimeoutError("acquire_connection", self._timeout)
+            await asyncio.wait_for(self._semaphore.acquire(), timeout=self._timeout)
+        except TimeoutError as error:
+            raise AsyncTimeoutError("acquire_connection", self._timeout) from error
 
         conn = None
         try:
@@ -291,7 +287,7 @@ class AsyncConnectionPool(Generic[TypeVar("ConnT")]):
                 except Exception:
                     pass  # Best effort cleanup
 
-    async def __aenter__(self) -> "AsyncConnectionPool":
+    async def __aenter__(self) -> AsyncConnectionPool:
         """Async context manager entry."""
         await self.initialize()
         return self
@@ -428,7 +424,7 @@ class AsyncBaseDataSource(ABC, Generic[AsyncConfigT]):
         pass
 
     @abstractmethod
-    async def to_polars_lazyframe_async(self) -> "pl.LazyFrame":
+    async def to_polars_lazyframe_async(self) -> pl.LazyFrame:
         """Asynchronously convert the data source to a Polars LazyFrame.
 
         Returns:
@@ -437,9 +433,7 @@ class AsyncBaseDataSource(ABC, Generic[AsyncConfigT]):
         pass
 
     @abstractmethod
-    async def sample_async(
-        self, n: int = 1000, seed: int | None = None
-    ) -> "AsyncBaseDataSource":
+    async def sample_async(self, n: int = 1000, seed: int | None = None) -> AsyncBaseDataSource:
         """Asynchronously create a new data source with sampled data.
 
         Args:
@@ -480,12 +474,20 @@ class AsyncBaseDataSource(ABC, Generic[AsyncConfigT]):
                 size=self._config.pool_size,
                 timeout=self._config.connection_timeout,
             )
-            await self._pool.initialize()
-
-            # Pre-fetch schema
-            self._cached_schema = await self.get_schema_async()
-
-            self._is_connected = True
+            try:
+                await self._pool.initialize()
+                self._cached_schema = await self.get_schema_async()
+                self._is_connected = True
+            except BaseException:
+                # A failed entry has no context-manager exit. Release partial
+                # connections here, including cancellation during schema I/O.
+                try:
+                    await self._pool.close()
+                finally:
+                    self._pool = None
+                    self._cached_schema = None
+                    self._is_connected = False
+                raise
 
     async def disconnect_async(self) -> None:
         """Close connection to the data source."""
@@ -531,7 +533,7 @@ class AsyncBaseDataSource(ABC, Generic[AsyncConfigT]):
     # Sync Fallback (for compatibility)
     # -------------------------------------------------------------------------
 
-    def get_execution_engine(self) -> "BaseExecutionEngine":
+    def get_execution_engine(self) -> BaseExecutionEngine:
         """Get an execution engine for this data source.
 
         Note: This is a sync method for compatibility. It creates
@@ -550,7 +552,7 @@ class AsyncBaseDataSource(ABC, Generic[AsyncConfigT]):
     # Async Context Manager
     # -------------------------------------------------------------------------
 
-    async def __aenter__(self) -> "AsyncBaseDataSource":
+    async def __aenter__(self) -> AsyncBaseDataSource:
         """Async context manager entry."""
         await self.connect_async()
         return self
@@ -593,7 +595,4 @@ class AsyncBaseDataSource(ABC, Generic[AsyncConfigT]):
         """Get string representation."""
         connected = "connected" if self._is_connected else "disconnected"
         row_info = f", rows={self.row_count}" if self.row_count else ""
-        return (
-            f"{self.__class__.__name__}(name='{self.name}', "
-            f"status={connected}{row_info})"
-        )
+        return f"{self.__class__.__name__}(name='{self.name}', status={connected}{row_info})"

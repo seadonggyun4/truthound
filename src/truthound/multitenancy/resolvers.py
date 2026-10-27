@@ -14,21 +14,19 @@ Resolution Strategies:
 from __future__ import annotations
 
 import base64
-import hashlib
-import hmac
 import json
 import re
-import time
-from abc import ABC
 from dataclasses import dataclass, field
-from typing import Any, Callable, Mapping
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Callable, Mapping
 
 from truthound.multitenancy.core import (
-    TenantResolver,
-    TenantError,
     TenantAccessDeniedError,
+    TenantError,
+    TenantResolver,
 )
-
 
 # =============================================================================
 # Header-Based Resolution
@@ -40,9 +38,7 @@ class HeaderResolverConfig:
     """Configuration for header-based tenant resolution."""
 
     header_name: str = "X-Tenant-ID"
-    header_alternatives: list[str] = field(
-        default_factory=lambda: ["X-Tenant", "Tenant-ID"]
-    )
+    header_alternatives: list[str] = field(default_factory=lambda: ["X-Tenant", "Tenant-ID"])
     required: bool = False
     validate_format: bool = True
     allowed_pattern: str = r"^[a-zA-Z0-9_-]+$"
@@ -86,15 +82,18 @@ class HeaderResolver(TenantResolver):
                     break
 
         if not tenant_id:
+            if self._config.required:
+                raise TenantAccessDeniedError("Required tenant header is missing")
             return None
+        if not isinstance(tenant_id, str):
+            raise TenantAccessDeniedError("Tenant header must contain a string identity")
 
-        # Validate format
-        if self._config.validate_format:
-            if not self._pattern.match(tenant_id):
-                raise TenantAccessDeniedError(
-                    f"Invalid tenant ID format: {tenant_id}",
-                    tenant_id=tenant_id,
-                )
+        # Validate the entire identity, including trailing line terminators.
+        if self._config.validate_format and not self._pattern.fullmatch(tenant_id):
+            raise TenantAccessDeniedError(
+                f"Invalid tenant ID format: {tenant_id}",
+                tenant_id=tenant_id,
+            )
 
         return tenant_id
 
@@ -110,9 +109,7 @@ class SubdomainResolverConfig:
 
     base_domain: str = "truthound.io"
     subdomain_position: int = 0  # 0 = first subdomain (acme.truthound.io)
-    exclude_subdomains: list[str] = field(
-        default_factory=lambda: ["www", "api", "app", "admin"]
-    )
+    exclude_subdomains: list[str] = field(default_factory=lambda: ["www", "api", "app", "admin"])
     validate_format: bool = True
     allowed_pattern: str = r"^[a-z0-9-]+$"
 
@@ -171,12 +168,11 @@ class SubdomainResolver(TenantResolver):
             return None
 
         # Validate format
-        if self._config.validate_format:
-            if not self._pattern.match(tenant_slug):
-                raise TenantAccessDeniedError(
-                    f"Invalid tenant subdomain: {tenant_slug}",
-                    tenant_id=tenant_slug,
-                )
+        if self._config.validate_format and not self._pattern.fullmatch(tenant_slug):
+            raise TenantAccessDeniedError(
+                f"Invalid tenant subdomain: {tenant_slug}",
+                tenant_id=tenant_slug,
+            )
 
         return tenant_slug
 
@@ -251,9 +247,7 @@ class APIKeyResolverConfig:
     """Configuration for API key-based tenant resolution."""
 
     header_name: str = "X-API-Key"
-    header_alternatives: list[str] = field(
-        default_factory=lambda: ["Authorization", "Api-Key"]
-    )
+    header_alternatives: list[str] = field(default_factory=lambda: ["Authorization", "Api-Key"])
     prefix: str = "Bearer "  # For Authorization header
     key_format: str = "prefixed"  # "prefixed" (tenant_xxx_key) or "lookup"
     tenant_separator: str = "_"

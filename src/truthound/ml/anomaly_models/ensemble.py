@@ -5,9 +5,11 @@ Combines multiple anomaly detection methods for more robust detection.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from copy import deepcopy
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
+from math import isfinite
 from typing import Any
 
 import polars as pl
@@ -18,7 +20,6 @@ from truthound.ml.base import (
     AnomalyResult,
     AnomalyScore,
     AnomalyType,
-    InsufficientDataError,
     ModelInfo,
     ModelNotTrainedError,
     ModelState,
@@ -87,8 +88,37 @@ class EnsembleAnomalyDetector(AnomalyDetector):
         **kwargs: Any,
     ):
         super().__init__(config, **kwargs)
-        self._detectors: list[AnomalyDetector] = detectors or []
-        self._detector_weights: list[float] = []
+        self._detectors: list[AnomalyDetector] = deepcopy(detectors) if detectors else []
+        self._detector_weights: list[float] = (
+            list(self.config.weights)
+            if self.config.weights is not None
+            else [1.0] * len(self._detectors)
+        )
+        self._validate_ensemble()
+
+    def _validate_ensemble(self) -> None:
+        EnsembleStrategy(self.config.strategy)
+        value = self.config.vote_threshold
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not isfinite(value)
+            or not 0 < value <= 1
+        ):
+            raise ValueError("vote_threshold must be finite in (0, 1]")
+        count = len(self._detectors) or 3
+        for weights in (self.config.weights, self._detector_weights or None):
+            if weights is None:
+                continue
+            if len(weights) != count or any(
+                isinstance(w, bool) or not isinstance(w, (int, float)) or not isfinite(w) or w < 0
+                for w in weights
+            ):
+                raise ValueError("Weights must match children and be finite and nonnegative")
+            if not isfinite(sum(weights)) or sum(weights) <= 0:
+                raise ValueError("Weights must have a finite positive sum")
+        if any(not isinstance(child, AnomalyDetector) for child in self._detectors):
+            raise ValueError("Ensemble children must be anomaly detectors")
 
     @property
     def config(self) -> EnsembleConfig:
@@ -134,10 +164,16 @@ class EnsembleAnomalyDetector(AnomalyDetector):
             raise ValueError("Incomplete trained ensemble")
         # Built-ins are a closed mapping. Custom children must be supplied by
         # the caller; a file never chooses an import or activates an extension.
-        builtins = {cls().info.name: cls for cls in (
-            ZScoreAnomalyDetector, IQRAnomalyDetector, MADAnomalyDetector,
-            IsolationForestDetector, EnsembleAnomalyDetector,
-        )}
+        builtins = {
+            cls().info.name: cls
+            for cls in (
+                ZScoreAnomalyDetector,
+                IQRAnomalyDetector,
+                MADAnomalyDetector,
+                IsolationForestDetector,
+                EnsembleAnomalyDetector,
+            )
+        }
         children = []
         for index, item in enumerate(saved):
             name = item["info"]["name"]
@@ -152,6 +188,9 @@ class EnsembleAnomalyDetector(AnomalyDetector):
             children.append(child)
         self._detectors = children
         self._detector_weights = list(data["weights"])
+        self._validate_ensemble()
+        total = sum(self._detector_weights)
+        self._detector_weights = [weight / total for weight in self._detector_weights]
 
     def add_detector(
         self,
@@ -164,8 +203,20 @@ class EnsembleAnomalyDetector(AnomalyDetector):
             detector: Detector to add
             weight: Weight for this detector
         """
-        self._detectors.append(detector)
-        self._detector_weights.append(weight)
+        if not isinstance(detector, AnomalyDetector):
+            raise ValueError("Ensemble child must be an anomaly detector")
+        if (
+            isinstance(weight, bool)
+            or not isinstance(weight, (int, float))
+            or not isfinite(weight)
+            or weight <= 0
+        ):
+            raise ValueError("Added detector weight must be finite and positive")
+        with self._lock:
+            self._detectors.append(deepcopy(detector))
+            self._detector_weights.append(weight)
+            self.config.weights = list(self._detector_weights)
+            self._state = ModelState.UNTRAINED
 
     def remove_detector(self, index: int) -> AnomalyDetector:
         """Remove a detector from the ensemble.
@@ -176,27 +227,43 @@ class EnsembleAnomalyDetector(AnomalyDetector):
         Returns:
             Removed detector
         """
-        detector = self._detectors.pop(index)
-        self._detector_weights.pop(index)
-        return detector
+        with self._lock:
+            if type(index) is not int or not 0 <= index < len(self._detectors):
+                raise IndexError("Detector index is out of range")
+            remaining = self._detector_weights[:index] + self._detector_weights[index + 1 :]
+            if remaining and sum(remaining) <= 0:
+                raise ValueError("Remaining detector weights must have positive sum")
+            detector = self._detectors.pop(index)
+            self._detector_weights = remaining
+            self.config.weights = list(remaining) if remaining else None
+            self._state = ModelState.UNTRAINED
+            return detector
 
     def fit(self, data: pl.LazyFrame) -> None:
+        """Train owned candidate children and publish only a complete ensemble."""
+        with self._lock:
+            candidate = deepcopy(self)
+            candidate._validate_ensemble()
+            candidate._fit_children(data)
+            candidate._error = None
+            self.__dict__.update(
+                {key: value for key, value in candidate.__dict__.items() if key != "_lock"}
+            )
+
+    def _fit_children(self, data: pl.LazyFrame) -> None:
         """Train all detectors in the ensemble.
 
         Args:
             data: Training data
         """
-        import time
-
-        start = time.perf_counter()
         self._state = ModelState.TRAINING
 
         if not self._detectors:
             # Create default ensemble
             from truthound.ml.anomaly_models.statistical import (
-                ZScoreAnomalyDetector,
                 IQRAnomalyDetector,
                 MADAnomalyDetector,
+                ZScoreAnomalyDetector,
             )
 
             self._detectors = [
@@ -213,7 +280,7 @@ class EnsembleAnomalyDetector(AnomalyDetector):
                 detector.fit(data)
 
             # Initialize weights if not provided
-            if self.config.weights:
+            if self.config.weights is not None:
                 self._detector_weights = list(self.config.weights)
             elif not self._detector_weights:
                 self._detector_weights = [1.0] * len(self._detectors)
@@ -221,9 +288,7 @@ class EnsembleAnomalyDetector(AnomalyDetector):
             # Normalize weights
             total_weight = sum(self._detector_weights)
             if total_weight > 0:
-                self._detector_weights = [
-                    w / total_weight for w in self._detector_weights
-                ]
+                self._detector_weights = [w / total_weight for w in self._detector_weights]
 
             self._training_samples = row_count
             self._trained_at = datetime.now()
@@ -252,6 +317,8 @@ class EnsembleAnomalyDetector(AnomalyDetector):
                 model_name=self.info.name,
             )
 
+        self._validate_ensemble()
+
         # Get scores from all detectors
         all_scores: list[pl.Series] = []
         for detector in self._detectors:
@@ -264,6 +331,11 @@ class EnsembleAnomalyDetector(AnomalyDetector):
 
         # Combine scores based on strategy
         n_rows = len(all_scores[0])
+        if any(
+            len(scores) != n_rows or scores.null_count() or not scores.is_finite().all()
+            for scores in all_scores
+        ):
+            raise ValueError("Child scores must be finite, non-null, and have matching lengths")
         combined = []
 
         for i in range(n_rows):
@@ -280,9 +352,7 @@ class EnsembleAnomalyDetector(AnomalyDetector):
             return sum(scores) / len(scores)
 
         elif strategy == EnsembleStrategy.WEIGHTED_AVERAGE:
-            weighted = sum(
-                s * w for s, w in zip(scores, self._detector_weights)
-            )
+            weighted = sum(s * w for s, w in zip(scores, self._detector_weights, strict=True))
             return weighted
 
         elif strategy == EnsembleStrategy.MAX:
@@ -328,7 +398,7 @@ class EnsembleAnomalyDetector(AnomalyDetector):
             if vote_ratio >= self.config.vote_threshold:
                 # Return weighted average of scores from agreeing detectors
                 agreeing_scores = [
-                    s for s, flag in zip(scores, detector_anomaly_flags) if flag
+                    s for s, flag in zip(scores, detector_anomaly_flags, strict=True) if flag
                 ]
                 return sum(agreeing_scores) / len(agreeing_scores) if agreeing_scores else 0.0
             return 0.0
@@ -353,6 +423,7 @@ class EnsembleAnomalyDetector(AnomalyDetector):
             Combined AnomalyResult
         """
         import time
+
         start = time.perf_counter()
 
         if not self.is_trained:
@@ -361,17 +432,21 @@ class EnsembleAnomalyDetector(AnomalyDetector):
                 model_name=self.info.name,
             )
 
+        self._validate_ensemble()
+
         # Collect per-detector scores and anomaly classifications
         per_detector_scores: list[list[float]] = []
         per_detector_flags: list[list[bool]] = []
         for detector in self._detectors:
             detector_scores = detector.score(data)
+            if detector_scores.null_count() or not detector_scores.is_finite().all():
+                raise ValueError("Child scores must be finite and non-null")
+            if per_detector_scores and len(detector_scores) != len(per_detector_scores[0]):
+                raise ValueError("Child score lengths must match")
             detector_threshold = detector._get_threshold()
             score_list = detector_scores.to_list()
             per_detector_scores.append(score_list)
-            per_detector_flags.append([
-                s >= detector_threshold for s in score_list
-            ])
+            per_detector_flags.append([s >= detector_threshold for s in score_list])
 
         # Combine scores considering the strategy
         n_rows = len(per_detector_scores[0]) if per_detector_scores else 0
@@ -400,9 +475,7 @@ class EnsembleAnomalyDetector(AnomalyDetector):
                 is_anomaly = score >= threshold
 
             # Count how many detectors flagged this as anomaly
-            detector_votes = sum(
-                1 for d_flags in per_detector_flags if d_flags[idx]
-            )
+            detector_votes = sum(1 for d_flags in per_detector_flags if d_flags[idx])
 
             # Determine anomaly type based on consensus
             if detector_votes == len(self._detectors):
@@ -445,8 +518,7 @@ class EnsembleAnomalyDetector(AnomalyDetector):
     def get_detector_weights(self) -> dict[str, float]:
         """Get detector weights."""
         return {
-            d.info.name: w
-            for d, w in zip(self._detectors, self._detector_weights)
+            d.info.name: w for d, w in zip(self._detectors, self._detector_weights, strict=True)
         }
 
     @property

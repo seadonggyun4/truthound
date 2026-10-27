@@ -295,3 +295,45 @@ truthound benchmark run --suite full \
 
 - [Benchmark Overview](index.md)
 - [Performance Guide](../../guides/performance.md)
+
+### Native execution and saved evidence
+
+`BenchmarkConfig` validates positive measurement counts, nonnegative warmups and
+finite time/memory/cooldown settings. Time and process RSS checks run around setup
+and iterations; a blocking iteration is not preempted. Teardown runs on execution
+failure. Failed or empty measurements cannot pass native performance thresholds
+or comparisons. Relative thresholds require a matching, successful baseline.
+
+Saved `SuiteResult` evidence includes every raw duration, custom metrics,
+environment timestamps, run timestamps, parameters and tags. Writes use atomic
+replacement. Loading reconstructs actual results and rejects duplicate JSON keys,
+nonfinite values, inconsistent iteration counts and files larger than 64 MiB.
+Historical summary-only files without raw durations cannot be reconstructed
+losslessly and must be rerun before comparison; they are not converted into empty
+successful baselines. Corrupt existing baseline/history files raise errors.
+History reload replaces the loaded collection after all files validate.
+
+`RegressionDetector.save_baseline` writes both the current baseline and a uniquely
+timestamped history file. Each replacement is atomic; the pair is not a single
+transaction, so an error can leave one file written. A saved baseline is evidence
+only, and does not establish a release-grade parity result.
+
+Native data generators capture and validate `GeneratorConfig`. A provided seed,
+including zero, controls default tabular values, custom columns and UUIDs.
+`row_count` remains the output row count when duplicate injection is enabled;
+null injection preserves column dtypes. `ColumnSpec.null_ratio=None` inherits the
+global ratio, while an explicit zero disables nulls for that column. Sparse
+patterns intentionally impose at least 80% nulls. Cardinality limits apply before
+null injection. Numeric patterns honor bounds; JSON and URL columns contain their
+specified formats. Unsupported type/pattern or parameter combinations fail
+instead of silently generating unrelated strings.
+
+`parallelize` controls custom tabular column workers (at most four); seeded
+parallel and sequential outputs match. `chunk_size` controls output chunk layout.
+Built-in fixed-schema generators use their native generation path; custom column
+specifications belong to the tabular generator. Frequency settings determine the
+actual time-series/financial timestamps and preserve requested row counts,
+including zero. Generation still materializes a frame; chunk layout and
+`generate_lazy()` do not promise bounded-memory streaming.
+
+Suite comparisons require matching, nonempty, unique benchmark names. Missing or duplicate measurements are errors rather than partial successful comparisons. Comparator decision bounds must be finite nonnegative numbers.

@@ -54,15 +54,9 @@ Example:
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
-from enum import Enum, auto
-from typing import TYPE_CHECKING, Any, Callable
-
-from truthound.execution.distributed.protocols import (
-    AggregationSpec,
-    ComputeBackend,
-)
-from truthound.types import Severity
+from dataclasses import dataclass, replace
+from enum import Enum
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     from truthound.execution.distributed.base import BaseDistributedEngine
@@ -105,6 +99,20 @@ class AdapterConfig:
     parallel_validators: bool = True
     max_parallel: int = 4
 
+    def __post_init__(self) -> None:
+        self.strategy = ExecutionStrategy(self.strategy)
+        for name in ("sample_size", "native_threshold", "max_parallel"):
+            value = getattr(self, name)
+            minimum = 0 if name == "native_threshold" else 1
+            if type(value) is not int or value < minimum:
+                raise ValueError(f"{name} must be an integer >= {minimum}")
+        if self.sample_seed is not None and (
+            type(self.sample_seed) is not int or self.sample_seed < 0
+        ):
+            raise ValueError("sample_seed must be a non-negative integer")
+        if type(self.parallel_validators) is not bool:
+            raise ValueError("parallel_validators must be a boolean")
+
 
 # =============================================================================
 # Validator Classification
@@ -124,7 +132,7 @@ class ValidatorCapability(str, Enum):
     CUSTOM = "custom"  # Custom logic
 
 
-def classify_validator(validator: "Validator") -> set[ValidatorCapability]:
+def classify_validator(validator: Validator) -> set[ValidatorCapability]:
     """Classify a validator's capabilities.
 
     Args:
@@ -174,8 +182,8 @@ def classify_validator(validator: "Validator") -> set[ValidatorCapability]:
 
 
 def can_run_natively(
-    validator: "Validator",
-    engine: "BaseDistributedEngine",
+    validator: Validator,
+    engine: BaseDistributedEngine,
 ) -> bool:
     """Check if a validator can run natively on the distributed engine.
 
@@ -186,226 +194,92 @@ def can_run_natively(
     Returns:
         True if validator can run natively.
     """
-    capabilities = classify_validator(validator)
+    from truthound.validators.completeness.null import NotNullValidator, NullValidator
 
-    # These capabilities can run natively on Spark
-    native_capabilities = {
-        ValidatorCapability.NULL_CHECK,
-        ValidatorCapability.DUPLICATE_CHECK,
-        ValidatorCapability.RANGE_CHECK,
-        ValidatorCapability.STATS_CHECK,
-    }
-
-    # Check if all capabilities are native
-    return capabilities.issubset(native_capabilities)
-
-
-# =============================================================================
-# Native Validator Runners
-# =============================================================================
+    # A name/category is descriptive, never permission to replace validate().
+    return type(validator) in {NullValidator, NotNullValidator} or callable(
+        getattr(validator, "validate_distributed", None)
+    )
 
 
 class NativeValidatorRunner:
-    """Runs validators using native distributed operations.
+    """Dispatch explicit native ports and reuse Core's null issue construction.
 
-    This class provides implementations for common validation checks
-    using the distributed engine's native operations, avoiding the
-    overhead of converting to Polars.
+    Null aggregates are native. Detailed result enrichment uses the Arrow bridge
+    only after a failing aggregate requires samples, counts or complete rows.
+    Other validators can implement validate_distributed(engine, columns=...).
     """
 
-    def __init__(self, engine: "BaseDistributedEngine") -> None:
-        """Initialize runner.
-
-        Args:
-            engine: Distributed execution engine.
-        """
+    def __init__(self, engine: BaseDistributedEngine) -> None:
         self._engine = engine
 
-    def run_null_check(
-        self,
-        validator: "Validator",
-        columns: list[str] | None = None,
-    ) -> list["ValidationIssue"]:
-        """Run null check using native operations.
-
-        Args:
-            validator: Null validator.
-            columns: Columns to check.
-
-        Returns:
-            List of validation issues.
-        """
+    def run(self, validator: Validator, columns: list[str] | None = None) -> list[ValidationIssue]:
         from truthound.validators.base import ValidationIssue
+        from truthound.validators.completeness.null import NotNullValidator, NullValidator
+        from truthound.validators.pushdown_support import PushdownResult
 
-        columns = columns or self._engine.get_columns()
-        issues = []
-
-        # Get all null counts in one distributed operation
-        null_counts = self._engine.count_nulls_all()
-        total_rows = self._engine.count_rows()
-
-        # Get threshold from validator if available
-        threshold = getattr(validator, "threshold", 0.0)
-        max_null_ratio = getattr(validator, "max_null_ratio", 1.0)
-
-        for column in columns:
-            null_count = null_counts.get(column, 0)
-            if null_count > 0:
-                null_ratio = null_count / total_rows if total_rows > 0 else 0
-
-                # Determine severity
-                if null_ratio > max_null_ratio:
-                    severity = Severity.HIGH
-                elif null_ratio > threshold:
-                    severity = Severity.MEDIUM
-                else:
-                    severity = Severity.LOW
-
-                if null_ratio > threshold:
-                    issues.append(
-                        ValidationIssue(
-                            column=column,
-                            issue_type="null_values",
-                            severity=severity,
-                            count=null_count,
-                            details=f"Found {null_count:,} null values ({null_ratio:.2%})",
-                        )
-                    )
-
+        if type(validator) not in {NullValidator, NotNullValidator}:
+            port = getattr(validator, "validate_distributed", None)
+            if not callable(port):
+                raise ValueError("Validator has no native distributed execution port")
+            issues = port(self._engine, columns=columns)
+            if not isinstance(issues, list) or any(
+                not isinstance(issue, ValidationIssue) for issue in issues
+            ):
+                raise TypeError("Native validator must return a list of ValidationIssue")
+            return issues
+        available = self._engine.get_columns()
+        if columns is not None:
+            if any(column not in available for column in columns):
+                raise ValueError("Unknown validation column")
+            available = columns
+        targets = validator._resolve_pushdown_columns(available)
+        total = self._engine.count_rows()
+        if not targets or total == 0:
+            return []
+        results = [
+            PushdownResult(
+                column=column,
+                check_type="null_count",
+                value=self._engine.count_nulls(column),
+                total_rows=total,
+            )
+            for column in targets
+        ]
+        issues = validator.process_pushdown_results(results)
+        fmt = validator.config.get_result_format_config()
+        if issues and (
+            fmt.includes_unexpected_samples()
+            or fmt.includes_unexpected_counts()
+            or fmt.includes_full_results()
+        ):
+            lf = self._engine.to_polars_lazyframe()
+            if columns is not None:
+                lf = lf.select(columns)
+            specs = validator.get_validation_exprs(lf, targets)
+            if fmt.includes_unexpected_samples():
+                validator._enrich_with_samples(lf, issues, specs, fmt)
+            if fmt.includes_unexpected_counts():
+                validator._enrich_with_value_counts(lf, issues, specs, fmt)
+            if fmt.includes_full_results():
+                validator._enrich_with_full_results(lf, issues, specs, fmt)
         return issues
+
+    def run_null_check(
+        self, validator: Validator, columns: list[str] | None = None
+    ) -> list[ValidationIssue]:
+        return self.run(validator, columns)
 
     def run_duplicate_check(
-        self,
-        validator: "Validator",
-        columns: list[str] | None = None,
-    ) -> list["ValidationIssue"]:
-        """Run duplicate check using native operations.
+        self, validator: Validator, columns: list[str] | None = None
+    ) -> list[ValidationIssue]:
+        return self.run(validator, columns)
 
-        Args:
-            validator: Duplicate validator.
-            columns: Columns to check for duplicates.
+    def run_range_check(self, validator: Validator, column: str) -> list[ValidationIssue]:
+        return self.run(validator, [column])
 
-        Returns:
-            List of validation issues.
-        """
-        from truthound.validators.base import ValidationIssue
-
-        columns = columns or getattr(validator, "columns", self._engine.get_columns())
-        issues = []
-
-        duplicate_count = self._engine.count_duplicates(list(columns))
-
-        if duplicate_count > 0:
-            issues.append(
-                ValidationIssue(
-                    column=",".join(columns),
-                    issue_type="duplicates",
-                    severity=Severity.MEDIUM,
-                    count=duplicate_count,
-                    details=f"Found {duplicate_count:,} duplicate rows",
-                )
-            )
-
-        return issues
-
-    def run_range_check(
-        self,
-        validator: "Validator",
-        column: str,
-    ) -> list["ValidationIssue"]:
-        """Run range check using native operations.
-
-        Args:
-            validator: Range validator.
-            column: Column to check.
-
-        Returns:
-            List of validation issues.
-        """
-        from truthound.validators.base import ValidationIssue
-
-        issues = []
-
-        # Get bounds from validator
-        min_value = getattr(validator, "min_value", None)
-        max_value = getattr(validator, "max_value", None)
-
-        if min_value is None and max_value is None:
-            return issues
-
-        # Count out of range
-        out_of_range = self._engine.count_outside_range(
-            column, min_value, max_value
-        )
-
-        if out_of_range > 0:
-            issues.append(
-                ValidationIssue(
-                    column=column,
-                    issue_type="out_of_range",
-                    severity=Severity.MEDIUM,
-                    count=out_of_range,
-                    details=f"Found {out_of_range:,} values outside range [{min_value}, {max_value}]",
-                )
-            )
-
-        return issues
-
-    def run_stats_check(
-        self,
-        validator: "Validator",
-        column: str,
-    ) -> list["ValidationIssue"]:
-        """Run statistical check using native operations.
-
-        Args:
-            validator: Statistics validator.
-            column: Column to check.
-
-        Returns:
-            List of validation issues.
-        """
-        from truthound.validators.base import ValidationIssue
-
-        issues = []
-
-        stats = self._engine.get_stats(column)
-
-        # Check for expected mean
-        expected_mean = getattr(validator, "expected_mean", None)
-        mean_tolerance = getattr(validator, "mean_tolerance", 0.1)
-
-        if expected_mean is not None:
-            actual_mean = stats.get("mean", 0)
-            if actual_mean is not None:
-                diff = abs(actual_mean - expected_mean)
-                if diff > mean_tolerance * abs(expected_mean):
-                    issues.append(
-                        ValidationIssue(
-                            column=column,
-                            issue_type="mean_deviation",
-                            severity=Severity.MEDIUM,
-                            count=1,
-                            details=f"Mean ({actual_mean:.2f}) deviates from expected ({expected_mean:.2f})",
-                        )
-                    )
-
-        # Check for high std
-        max_std = getattr(validator, "max_std", None)
-        if max_std is not None:
-            actual_std = stats.get("std", 0)
-            if actual_std is not None and actual_std > max_std:
-                issues.append(
-                    ValidationIssue(
-                        column=column,
-                        issue_type="high_variance",
-                        severity=Severity.LOW,
-                        count=1,
-                        details=f"Standard deviation ({actual_std:.2f}) exceeds threshold ({max_std:.2f})",
-                    )
-                )
-
-        return issues
+    def run_stats_check(self, validator: Validator, column: str) -> list[ValidationIssue]:
+        return self.run(validator, [column])
 
 
 # =============================================================================
@@ -435,7 +309,7 @@ class DistributedValidatorAdapter:
 
     def __init__(
         self,
-        engine: "BaseDistributedEngine",
+        engine: BaseDistributedEngine,
         config: AdapterConfig | None = None,
     ) -> None:
         """Initialize adapter.
@@ -445,24 +319,33 @@ class DistributedValidatorAdapter:
             config: Optional configuration.
         """
         self._engine = engine
-        self._config = config or AdapterConfig()
+        self._config = replace(config) if config is not None else AdapterConfig()
         self._native_runner = NativeValidatorRunner(engine)
+        self._execution_guard = None
+
+    def set_execution_guard(self, guard) -> None:
+        """Install the owner's authority check around each validator operation."""
+        self._execution_guard = guard
+
+    def _check_guard(self) -> None:
+        if self._execution_guard is not None:
+            self._execution_guard()
 
     @property
-    def engine(self) -> "BaseDistributedEngine":
+    def engine(self) -> BaseDistributedEngine:
         """Get the execution engine."""
         return self._engine
 
     @property
     def config(self) -> AdapterConfig:
         """Get adapter configuration."""
-        return self._config
+        return replace(self._config)
 
     def validate(
         self,
-        validator: "Validator",
+        validator: Validator,
         columns: list[str] | None = None,
-    ) -> list["ValidationIssue"]:
+    ) -> list[ValidationIssue]:
         """Run a validator on the distributed data.
 
         Args:
@@ -472,20 +355,22 @@ class DistributedValidatorAdapter:
         Returns:
             List of validation issues.
         """
+        self._check_guard()
         strategy = self._determine_strategy(validator)
-
         if strategy == ExecutionStrategy.NATIVE:
-            return self._run_native(validator, columns)
+            issues = self._run_native(validator, columns)
         elif strategy == ExecutionStrategy.SAMPLE_AND_LOCAL:
-            return self._run_sampled(validator, columns)
+            issues = self._run_sampled(validator, columns)
         else:
-            return self._run_full_conversion(validator, columns)
+            issues = self._run_full_conversion(validator, columns)
+        self._check_guard()
+        return issues
 
     def validate_all(
         self,
-        validators: list["Validator"],
+        validators: list[Validator],
         columns: list[str] | None = None,
-    ) -> list["ValidationIssue"]:
+    ) -> list[ValidationIssue]:
         """Run multiple validators on the distributed data.
 
         Args:
@@ -495,22 +380,20 @@ class DistributedValidatorAdapter:
         Returns:
             Combined list of validation issues.
         """
-        all_issues = []
+        if self._config.parallel_validators and len(validators) > 1:
+            from concurrent.futures import ThreadPoolExecutor
 
-        if self._config.parallel_validators:
-            # TODO: Implement parallel validator execution
-            # For now, run sequentially
-            for validator in validators:
-                issues = self.validate(validator, columns)
-                all_issues.extend(issues)
+            with ThreadPoolExecutor(max_workers=self._config.max_parallel) as executor:
+                # map keeps input order and the context drains every submitted
+                # operation before returning or propagating a validator failure.
+                results = list(
+                    executor.map(lambda validator: self.validate(validator, columns), validators)
+                )
         else:
-            for validator in validators:
-                issues = self.validate(validator, columns)
-                all_issues.extend(issues)
+            results = [self.validate(validator, columns) for validator in validators]
+        return [issue for issues in results for issue in issues]
 
-        return all_issues
-
-    def _determine_strategy(self, validator: "Validator") -> ExecutionStrategy:
+    def _determine_strategy(self, validator: Validator) -> ExecutionStrategy:
         """Determine the best execution strategy for a validator.
 
         Args:
@@ -538,9 +421,9 @@ class DistributedValidatorAdapter:
 
     def _run_native(
         self,
-        validator: "Validator",
+        validator: Validator,
         columns: list[str] | None = None,
-    ) -> list["ValidationIssue"]:
+    ) -> list[ValidationIssue]:
         """Run validator using native distributed operations.
 
         Args:
@@ -550,31 +433,13 @@ class DistributedValidatorAdapter:
         Returns:
             List of validation issues.
         """
-        capabilities = classify_validator(validator)
-
-        issues = []
-
-        if ValidatorCapability.NULL_CHECK in capabilities:
-            issues.extend(self._native_runner.run_null_check(validator, columns))
-
-        if ValidatorCapability.DUPLICATE_CHECK in capabilities:
-            issues.extend(self._native_runner.run_duplicate_check(validator, columns))
-
-        if ValidatorCapability.RANGE_CHECK in capabilities:
-            for column in (columns or self._engine.get_columns()):
-                issues.extend(self._native_runner.run_range_check(validator, column))
-
-        if ValidatorCapability.STATS_CHECK in capabilities:
-            for column in (columns or self._engine.get_columns()):
-                issues.extend(self._native_runner.run_stats_check(validator, column))
-
-        return issues
+        return self._native_runner.run(validator, columns)
 
     def _run_sampled(
         self,
-        validator: "Validator",
+        validator: Validator,
         columns: list[str] | None = None,
-    ) -> list["ValidationIssue"]:
+    ) -> list[ValidationIssue]:
         """Run validator on sampled data.
 
         Args:
@@ -584,36 +449,37 @@ class DistributedValidatorAdapter:
         Returns:
             List of validation issues.
         """
-        # Sample the distributed data
-        sampled_engine = self._engine.sample(
-            n=self._config.sample_size,
-            seed=self._config.sample_seed,
-        )
+        from contextlib import nullcontext
 
-        # Convert to Polars LazyFrame
-        lf = sampled_engine.to_polars_lazyframe()
+        from truthound.validators.base import ValidationSamplingInfo
 
-        # Run validator
-        issues = validator.validate(lf)
-
-        # Adjust counts based on sampling ratio
         total_rows = self._engine.count_rows()
-        sample_rows = sampled_engine.count_rows()
-        ratio = total_rows / sample_rows if sample_rows > 0 else 1
-
-        for issue in issues:
-            if hasattr(issue, "count") and issue.count:
-                # Estimate actual count
-                issue.count = int(issue.count * ratio)
-                issue.details = f"(Estimated from sample) {issue.details}"
-
-        return issues
+        sampled_engine = self._engine.sample(
+            n=self._config.sample_size, seed=self._config.sample_seed
+        )
+        # sample() may return the root when the request covers the entire input.
+        lifetime = nullcontext(sampled_engine) if sampled_engine is self._engine else sampled_engine
+        with lifetime:
+            lf = sampled_engine.to_polars_lazyframe()
+            if columns is not None:
+                lf = lf.select(columns)
+            issues = validator.validate(lf)
+            sample_rows = sampled_engine.count_rows()
+            if sample_rows < total_rows:
+                evidence = ValidationSamplingInfo(
+                    total_rows=total_rows, sample_rows=sample_rows, seed=self._config.sample_seed
+                )
+                for issue in issues:
+                    issue.sampling = evidence
+            # Counts and percentages describe observed rows. Extrapolating only
+            # count would contradict ValidationDetail and arbitrary custom logic.
+            return issues
 
     def _run_full_conversion(
         self,
-        validator: "Validator",
+        validator: Validator,
         columns: list[str] | None = None,
-    ) -> list["ValidationIssue"]:
+    ) -> list[ValidationIssue]:
         """Run validator with full data conversion to Polars.
 
         Args:
@@ -627,7 +493,7 @@ class DistributedValidatorAdapter:
         lf = self._engine.to_polars_lazyframe()
 
         # Select columns if specified
-        if columns:
+        if columns is not None:
             lf = lf.select(columns)
 
         # Run validator
@@ -640,11 +506,11 @@ class DistributedValidatorAdapter:
 
 
 def validate_distributed(
-    engine: "BaseDistributedEngine",
-    validators: list["Validator"],
+    engine: BaseDistributedEngine,
+    validators: list[Validator],
     columns: list[str] | None = None,
     config: AdapterConfig | None = None,
-) -> list["ValidationIssue"]:
+) -> list[ValidationIssue]:
     """Run validators on distributed data.
 
     Args:
@@ -661,7 +527,7 @@ def validate_distributed(
 
 
 def create_distributed_adapter(
-    engine: "BaseDistributedEngine",
+    engine: BaseDistributedEngine,
     strategy: ExecutionStrategy = ExecutionStrategy.AUTO,
     sample_size: int = 100_000,
 ) -> DistributedValidatorAdapter:

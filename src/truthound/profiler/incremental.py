@@ -15,10 +15,11 @@ from __future__ import annotations
 
 import hashlib
 import time
-from dataclasses import dataclass, field
+from collections.abc import Sequence  # noqa: TC003 - public runtime annotations
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timedelta
 from enum import Enum
-from typing import Any, Callable, Sequence
+from typing import Any
 
 import polars as pl
 
@@ -28,8 +29,7 @@ from truthound.profiler.base import (
     TableProfile,
 )
 from truthound.profiler.column_profiler import ColumnProfiler
-from truthound.profiler.progress import ProgressTracker
-
+from truthound.profiler.progress import ProgressTracker  # noqa: TC001 - public runtime annotations
 
 # =============================================================================
 # Change Detection
@@ -44,6 +44,7 @@ class ChangeReason(str, Enum):
     DATA_CHANGED = "data_changed"       # Content hash changed
     STALE = "stale"                     # Profile too old
     FORCED = "forced"                   # Force refresh requested
+    INCOMPLETE = "incomplete"           # Previous column analysis failed
     SAMPLE_CHANGED = "sample_changed"   # Sample values changed
 
 
@@ -74,7 +75,7 @@ class ColumnFingerprint:
         }
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "ColumnFingerprint":
+    def from_dict(cls, data: dict[str, Any]) -> ColumnFingerprint:
         """Create from dictionary."""
         return cls(
             column_name=data["column_name"],
@@ -115,6 +116,8 @@ class FingerprintCalculator:
             sample_size: Number of rows to sample for hash
             seed: Random seed for sampling
         """
+        if type(sample_size) is not int or sample_size < 1:
+            raise ValueError("Fingerprint sample_size must be positive")
         self.sample_size = sample_size
         self.seed = seed
 
@@ -206,7 +209,7 @@ class IncrementalConfig:
     detect_data_changes: bool = True
 
     @classmethod
-    def aggressive(cls) -> "IncrementalConfig":
+    def aggressive(cls) -> IncrementalConfig:
         """Configuration that minimizes re-profiling."""
         return cls(
             max_age=timedelta(days=7),
@@ -214,7 +217,7 @@ class IncrementalConfig:
         )
 
     @classmethod
-    def conservative(cls) -> "IncrementalConfig":
+    def conservative(cls) -> IncrementalConfig:
         """Configuration that ensures freshness."""
         return cls(
             max_age=timedelta(hours=1),
@@ -271,6 +274,19 @@ class IncrementalProfiler:
         self._last_skipped_columns: set[str] = set()
         self._last_change_reasons: dict[str, ChangeReason] = {}
 
+    def set_execution_guard(self, guard) -> None:
+        """Guard each native column/fingerprint/progress callback boundary."""
+        self._execution_guard = guard
+        self.column_profiler.set_execution_guard(guard)
+
+    def _guard_execution(self) -> None:
+        guard = getattr(self, "_execution_guard", None)
+        if guard is not None:
+            guard()
+
+    def _fingerprint_value(self, fingerprint: ColumnFingerprint) -> str:
+        return f"modulo-v1:{self.fingerprint_calculator.sample_size}:{fingerprint.sample_hash}"
+
     @property
     def last_profiled_columns(self) -> set[str]:
         """Get columns that were re-profiled in last run."""
@@ -322,11 +338,8 @@ class IncrementalProfiler:
 
         # Build previous column lookup
         prev_columns = {}
-        prev_fingerprints = {}
         if previous:
             prev_columns = {col.name: col for col in previous.columns}
-            # We don't have fingerprints stored in profile, so compute them
-            # In production, fingerprints should be stored with profiles
 
         # Initialize progress
         if progress_tracker:
@@ -337,6 +350,7 @@ class IncrementalProfiler:
         columns_to_reuse = []
 
         for col_name in columns:
+            self._guard_execution()
             if col_name in self.config.skip_columns:
                 self._last_skipped_columns.add(col_name)
                 continue
@@ -366,13 +380,18 @@ class IncrementalProfiler:
         # Profile changed columns
         new_profiles: dict[str, ColumnProfile] = {}
 
-        for i, col_name in enumerate(columns_to_profile):
+        for col_name in columns_to_profile:
+            self._guard_execution()
             if progress_tracker:
                 progress_tracker.column_start(col_name)
 
             profile = self.column_profiler.profile_column(
                 col_name, data, schema[col_name]
             )
+            if self.config.detect_data_changes:
+                self._guard_execution()
+                fingerprint = self.fingerprint_calculator.calculate(data, col_name)
+                profile = replace(profile, content_fingerprint=self._fingerprint_value(fingerprint))
             new_profiles[col_name] = profile
             self._last_profiled_columns.add(col_name)
 
@@ -382,6 +401,7 @@ class IncrementalProfiler:
         # Build final column list
         final_columns = []
         for col_name in columns:
+            self._guard_execution()
             if col_name in self.config.skip_columns:
                 continue
 
@@ -418,6 +438,8 @@ class IncrementalProfiler:
         prev_profile: ColumnProfile,
     ) -> ChangeDetectionResult:
         """Detect if a column has changed."""
+        if not prev_profile.complete:
+            return ChangeDetectionResult(column, True, ChangeReason.INCOMPLETE)
         # Check staleness
         if self.config.max_age is not None:
             age = datetime.now() - prev_profile.profiled_at
@@ -429,21 +451,21 @@ class IncrementalProfiler:
                 )
 
         # Check schema change
-        if self.config.detect_schema_changes:
-            if str(dtype) != prev_profile.physical_type:
-                return ChangeDetectionResult(
-                    column_name=column,
-                    needs_profiling=True,
-                    reason=ChangeReason.SCHEMA_CHANGED,
-                )
+        if self.config.detect_schema_changes and str(dtype) != prev_profile.physical_type:
+            return ChangeDetectionResult(
+                column_name=column,
+                needs_profiling=True,
+                reason=ChangeReason.SCHEMA_CHANGED,
+            )
 
         # Check data change via fingerprint
         if self.config.detect_data_changes:
             current_fp = self.fingerprint_calculator.calculate(lf, column)
 
-            # Simple check: row count and null count
+            # Compare counts and the persisted sampling algorithm/hash identity.
             if (current_fp.row_count != prev_profile.row_count or
-                current_fp.null_count != prev_profile.null_count):
+                current_fp.null_count != prev_profile.null_count or
+                self._fingerprint_value(current_fp) != prev_profile.content_fingerprint):
                 return ChangeDetectionResult(
                     column_name=column,
                     needs_profiling=True,

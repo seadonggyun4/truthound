@@ -6,10 +6,10 @@ Provides specialized collectors for different metric types:
 - Quality: accuracy, precision, recall, F1
 """
 
-from truthound.ml.monitoring.collectors.performance import PerformanceCollector
-from truthound.ml.monitoring.collectors.drift import DriftCollector
-from truthound.ml.monitoring.collectors.quality import QualityCollector
 from truthound.ml.monitoring.collectors.composite import CompositeCollector
+from truthound.ml.monitoring.collectors.drift import DriftCollector
+from truthound.ml.monitoring.collectors.performance import PerformanceCollector
+from truthound.ml.monitoring.collectors.quality import QualityCollector
 
 __all__ = [
     "PerformanceCollector",

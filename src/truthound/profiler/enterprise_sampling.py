@@ -46,25 +46,21 @@ import logging
 import math
 import os
 import random
-import time
 import threading
-from abc import ABC, abstractmethod
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import time
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import Any, Callable, Iterator, TypeVar, Generic
+from typing import Any
 
 import polars as pl
 
 from truthound.profiler.sampling import (
     SamplingConfig,
+    SamplingMethod,
     SamplingMetrics,
     SamplingResult,
     SamplingStrategy,
-    SamplingMethod,
-    DEFAULT_SAMPLING_CONFIG,
 )
-
 
 logger = logging.getLogger(__name__)
 
@@ -133,11 +129,10 @@ class MemoryBudgetConfig:
         return self.max_memory_mb - self.reserved_memory_mb
 
     @classmethod
-    def auto_detect(cls) -> "MemoryBudgetConfig":
+    def auto_detect(cls) -> MemoryBudgetConfig:
         """Auto-detect memory budget based on system resources."""
         try:
             import psutil
-            total_mb = psutil.virtual_memory().total // MB
             available_mb = psutil.virtual_memory().available // MB
 
             # Use 25% of available memory, max 4GB
@@ -152,7 +147,7 @@ class MemoryBudgetConfig:
             return cls()
 
     @classmethod
-    def for_scale(cls, scale: ScaleCategory) -> "MemoryBudgetConfig":
+    def for_scale(cls, scale: ScaleCategory) -> MemoryBudgetConfig:
         """Create config appropriate for data scale."""
         configs = {
             ScaleCategory.SMALL: cls(max_memory_mb=256),
@@ -203,7 +198,7 @@ class EnterpriseScaleConfig:
         if self.target_rows <= 0:
             raise ValueError(f"target_rows must be positive, got {self.target_rows}")
         if self.time_budget_seconds < 0:
-            raise ValueError(f"time_budget_seconds must be non-negative")
+            raise ValueError("time_budget_seconds must be non-negative")
 
     def get_block_size(self, total_rows: int) -> int:
         """Get optimal block size for given data size."""
@@ -234,7 +229,7 @@ class EnterpriseScaleConfig:
             return ScaleCategory.XXLARGE
 
     @classmethod
-    def for_quality(cls, quality: str) -> "EnterpriseScaleConfig":
+    def for_quality(cls, quality: str) -> EnterpriseScaleConfig:
         """Create config for specific quality level."""
         quality_map = {
             "sketch": (SamplingQuality.SKETCH, 10_000, 0.90, 0.15),
@@ -393,6 +388,13 @@ class TimeBudgetManager:
 # Block-Based Sampling Strategy
 # =============================================================================
 
+def _check_native_budget(frame, config, started):
+    if frame.estimated_size() > config.memory_budget.available_memory_mb * MB:
+        raise MemoryError("Sample exceeds the retained output memory budget")
+    if config.time_budget_seconds > 0 and time.perf_counter() - started > config.time_budget_seconds:
+        raise TimeoutError("Sampling time budget exceeded")
+
+
 class BlockSamplingStrategy(SamplingStrategy):
     """Block-based sampling for very large datasets.
 
@@ -422,99 +424,21 @@ class BlockSamplingStrategy(SamplingStrategy):
         total_rows: int | None = None,
     ) -> SamplingResult:
         """Block-based sampling."""
-        start_time = time.perf_counter()
-        time_budget = TimeBudgetManager(self.config.time_budget_seconds)
+        from dataclasses import fields
 
-        if total_rows is None:
-            total_rows = self.estimate_row_count(lf)
-
-        # Calculate target sample size
-        target_samples = min(
-            self.config.target_rows,
-            config.calculate_required_sample_size(total_rows),
+        from truthound.profiler.parallel_sampling import (
+            ParallelBlockSampler,
+            ParallelSamplingConfig,
         )
 
-        if target_samples >= total_rows:
-            # No sampling needed
-            return self._create_full_scan_result(lf, total_rows, config, start_time)
-
-        # Calculate block parameters
-        block_size = self.config.get_block_size(total_rows)
-        num_blocks = math.ceil(total_rows / block_size)
-        samples_per_block = math.ceil(target_samples / num_blocks)
-
-        logger.debug(
-            f"Block sampling: {total_rows:,} rows → {num_blocks} blocks × "
-            f"{samples_per_block:,} samples/block"
-        )
-
-        # Process blocks
-        sampled_frames: list[pl.LazyFrame] = []
-        blocks_processed = 0
-        blocks_skipped = 0
-
-        seed = self.config.seed or random.randint(0, 2**32 - 1)
-
-        for block_idx in range(num_blocks):
-            # Check time budget
-            if time_budget.is_expired:
-                logger.warning(f"Time budget expired after {blocks_processed} blocks")
-                break
-
-            # Check memory
-            if self.memory_monitor.should_backpressure():
-                logger.warning("Memory pressure detected, triggering GC")
-                self.memory_monitor.trigger_gc()
-
-            # Calculate block range
-            block_start = block_idx * block_size
-            block_end = min(block_start + block_size, total_rows)
-            actual_block_size = block_end - block_start
-
-            # Sample from this block
-            block_samples = min(samples_per_block, actual_block_size)
-            sample_rate = block_samples / actual_block_size
-
-            # Use hash-based deterministic sampling for reproducibility
-            block_seed = seed + block_idx
-            threshold = int(sample_rate * 10000)
-
-            block_lf = (
-                lf.slice(block_start, actual_block_size)
-                .with_row_index("__block_idx")
-                .filter(pl.col("__block_idx").hash(block_seed) % 10000 < threshold)
-                .drop("__block_idx")
-            )
-
-            sampled_frames.append(block_lf)
-            blocks_processed += 1
-
-        # Merge all block samples
-        if sampled_frames:
-            merged_lf = pl.concat(sampled_frames)
-        else:
-            merged_lf = lf.head(0)
-
-        elapsed_ms = (time.perf_counter() - start_time) * 1000
-
-        return SamplingResult(
-            data=merged_lf,
-            metrics=BlockSamplingMetrics(
-                original_size=total_rows,
-                sample_size=target_samples,
-                sampling_ratio=target_samples / total_rows,
-                confidence_level=self.config.confidence_level,
-                margin_of_error=self.config.margin_of_error,
-                strategy_used="block",
-                sampling_time_ms=elapsed_ms,
-                memory_saved_estimate_mb=(total_rows - target_samples) * BYTES_PER_ROW_ESTIMATE / MB,
-                blocks_processed=blocks_processed,
-                blocks_skipped=blocks_skipped,
-                time_per_block_ms=elapsed_ms / max(1, blocks_processed),
-                memory_peak_mb=self.memory_monitor.peak_mb,
-            ),
-            is_sampled=True,
-        )
+        values = {item.name: getattr(self.config, item.name) for item in fields(EnterpriseScaleConfig)}
+        native = ParallelBlockSampler(ParallelSamplingConfig(**values, max_workers=1, prefetch_blocks=0))
+        result = native.sample(lf, config, total_rows)
+        self.memory_monitor = native.memory_monitor
+        metrics = {item.name: getattr(result.metrics, item.name) for item in fields(BlockSamplingMetrics)}
+        metrics["strategy_used"] = "block" if result.is_sampled else "block(full_scan)"
+        result.metrics = BlockSamplingMetrics(**metrics)
+        return result
 
     def _create_full_scan_result(
         self,
@@ -563,6 +487,8 @@ class MultiStageSamplingStrategy(SamplingStrategy):
         num_stages: int = 3,
     ):
         self.config = config or EnterpriseScaleConfig()
+        if isinstance(num_stages, bool) or not isinstance(num_stages, int) or num_stages < 1:
+            raise ValueError("num_stages must be a positive integer")
         self.num_stages = num_stages
 
     def sample(
@@ -602,21 +528,17 @@ class MultiStageSamplingStrategy(SamplingStrategy):
 
         # Execute stages
         current_lf = lf
-        current_rows = total_rows
 
         for stage_idx, stage_target in enumerate(stage_sizes):
-            # Sample rate for this stage
-            sample_rate = stage_target / current_rows
-            seed = (self.config.seed or 42) + stage_idx
+            from truthound.profiler._sampling_native import ordered
+            seed = (self.config.seed if self.config.seed is not None else 42) + stage_idx
+            current_lf = ordered(current_lf, stage_target, seed)
 
-            # Apply sampling
-            threshold = max(1, int(sample_rate * 10000))
-            current_lf = (
-                current_lf.with_row_index("__stage_idx")
-                .filter(pl.col("__stage_idx").hash(seed) % 10000 < threshold)
-                .drop("__stage_idx")
-            )
-            current_rows = stage_target
+        snapshot = current_lf.collect()
+        if snapshot.height != target_samples:
+            raise RuntimeError("Sampling source changed during multi-stage collection")
+        _check_native_budget(snapshot, self.config, start_time)
+        current_lf = snapshot.lazy()
 
         elapsed_ms = (time.perf_counter() - start_time) * 1000
 
@@ -642,6 +564,11 @@ class MultiStageSamplingStrategy(SamplingStrategy):
         config: SamplingConfig,
         start_time: float,
     ) -> SamplingResult:
+        snapshot = lf.collect()
+        if snapshot.height != total_rows:
+            raise RuntimeError("Sampling source changed during full scan")
+        _check_native_budget(snapshot, self.config, start_time)
+        lf = snapshot.lazy()
         elapsed_ms = (time.perf_counter() - start_time) * 1000
         return SamplingResult(
             data=lf,
@@ -704,11 +631,17 @@ class ColumnAwareSamplingStrategy(SamplingStrategy):
 
         target_samples = min(
             adjusted_sample_size,
+            config.max_rows if config.max_rows > 0 else total_rows,
             self.config.target_rows,
             total_rows,
         )
 
         if target_samples >= total_rows:
+            snapshot = lf.collect()
+            if snapshot.height != total_rows:
+                raise RuntimeError("Sampling source changed during full scan")
+            _check_native_budget(snapshot, self.config, start_time)
+            lf = snapshot.lazy()
             elapsed_ms = (time.perf_counter() - start_time) * 1000
             return SamplingResult(
                 data=lf,
@@ -724,16 +657,13 @@ class ColumnAwareSamplingStrategy(SamplingStrategy):
                 is_sampled=False,
             )
 
-        # Apply sampling
-        sample_rate = target_samples / total_rows
-        seed = self.config.seed or random.randint(0, 2**32 - 1)
-        threshold = max(1, int(sample_rate * 10000))
-
-        sampled_lf = (
-            lf.with_row_index("__col_aware_idx")
-            .filter(pl.col("__col_aware_idx").hash(seed) % 10000 < threshold)
-            .drop("__col_aware_idx")
-        )
+        from truthound.profiler._sampling_native import ordered
+        seed = self.config.seed if self.config.seed is not None else random.SystemRandom().randint(0, 2**32 - 1)
+        snapshot = ordered(lf, target_samples, seed).collect()
+        if snapshot.height != target_samples:
+            raise RuntimeError("Sampling source changed during column-aware collection")
+        _check_native_budget(snapshot, self.config, start_time)
+        sampled_lf = snapshot.lazy()
 
         elapsed_ms = (time.perf_counter() - start_time) * 1000
 
@@ -799,6 +729,29 @@ class ColumnAwareSamplingStrategy(SamplingStrategy):
 # Progressive Sampling Strategy
 # =============================================================================
 
+@dataclass(frozen=True)
+class ProgressiveSamplingMetrics(SamplingMetrics):
+    stages_completed: int = 0
+    converged: bool = False
+    convergence_delta: float | None = None
+
+    def to_dict(self):
+        return {**super().to_dict(), "stages_completed": self.stages_completed,
+                "converged": self.converged, "convergence_delta": self.convergence_delta}
+
+
+def _sample_statistics(frame):
+    statistics = []
+    for column in frame:
+        statistics.append(column.null_count() / max(1, len(column)))
+        if column.dtype.is_numeric():
+            clean = column.cast(pl.Float64).filter(column.cast(pl.Float64).is_finite())
+            statistics.extend([clean.mean() or 0.0, clean.std(ddof=0) or 0.0])
+        else:
+            statistics.append(column.n_unique() / max(1, len(column)))
+    return statistics
+
+
 class ProgressiveSamplingStrategy(SamplingStrategy):
     """Progressive sampling with early stopping.
 
@@ -818,6 +771,10 @@ class ProgressiveSamplingStrategy(SamplingStrategy):
         max_stages: int = 5,
     ):
         self.config = config or EnterpriseScaleConfig()
+        if not math.isfinite(convergence_threshold) or convergence_threshold < 0:
+            raise ValueError("convergence_threshold must be finite and non-negative")
+        if isinstance(max_stages, bool) or not isinstance(max_stages, int) or max_stages < 1:
+            raise ValueError("max_stages must be a positive integer")
         self.convergence_threshold = convergence_threshold
         self.max_stages = max_stages
 
@@ -839,6 +796,11 @@ class ProgressiveSamplingStrategy(SamplingStrategy):
         )
 
         if target_samples >= total_rows:
+            snapshot = lf.collect()
+            if snapshot.height != total_rows:
+                raise RuntimeError("Sampling source changed during full scan")
+            _check_native_budget(snapshot, self.config, start_time)
+            lf = snapshot.lazy()
             elapsed_ms = (time.perf_counter() - start_time) * 1000
             return SamplingResult(
                 data=lf,
@@ -864,27 +826,41 @@ class ProgressiveSamplingStrategy(SamplingStrategy):
         # Final stage always hits target
         stage_sizes[-1] = target_samples
 
-        # Execute progressive sampling
-        seed = self.config.seed or random.randint(0, 2**32 - 1)
-        final_threshold = int((target_samples / total_rows) * 10000)
-
-        sampled_lf = (
-            lf.with_row_index("__prog_idx")
-            .filter(pl.col("__prog_idx").hash(seed) % 10000 < max(1, final_threshold))
-            .drop("__prog_idx")
-        )
+        from truthound.profiler._sampling_native import ordered
+        seed = self.config.seed if self.config.seed is not None else random.SystemRandom().randint(0, 2**32 - 1)
+        previous = None
+        converged = False
+        delta = None
+        stages_completed = 0
+        for stage_size in dict.fromkeys(stage_sizes):
+            snapshot = ordered(lf, stage_size, seed).collect()
+            if snapshot.height != stage_size:
+                raise RuntimeError("Sampling source changed during progressive collection")
+            _check_native_budget(snapshot, self.config, start_time)
+            statistics = _sample_statistics(snapshot)
+            stages_completed += 1
+            if previous is not None:
+                delta = max((abs(current - old) / max(1.0, abs(old))
+                             for current, old in zip(statistics, previous, strict=True)), default=0.0)
+                converged = self.config.enable_progressive and delta <= self.convergence_threshold
+            if converged:
+                break
+            previous = statistics
+        target_samples = snapshot.height
+        sampled_lf = snapshot.lazy()
 
         elapsed_ms = (time.perf_counter() - start_time) * 1000
 
         return SamplingResult(
             data=sampled_lf,
-            metrics=SamplingMetrics(
+            metrics=ProgressiveSamplingMetrics(
+                stages_completed=stages_completed, converged=converged, convergence_delta=delta,
                 original_size=total_rows,
                 sample_size=target_samples,
                 sampling_ratio=target_samples / total_rows,
                 confidence_level=self.config.confidence_level,
                 margin_of_error=self.config.margin_of_error,
-                strategy_used=f"progressive({self.max_stages})",
+                strategy_used=f"progressive({stages_completed})",
                 sampling_time_ms=elapsed_ms,
                 memory_saved_estimate_mb=(total_rows - target_samples) * BYTES_PER_ROW_ESTIMATE / MB,
             ),

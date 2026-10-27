@@ -7,19 +7,19 @@ implementation that works without any external dependencies.
 from __future__ import annotations
 
 import html
+import importlib
 import math
 import threading
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 from truthound.profiler.visualization.base import (
+    COLOR_PALETTES,
     ChartConfig,
     ChartData,
     ChartType,
     ColorScheme,
-    COLOR_PALETTES,
 )
-
 
 # =============================================================================
 # Abstract Base Classes and Protocols
@@ -55,7 +55,7 @@ class ChartRenderer(ABC):
         """Check if renderer supports the chart type."""
         pass
 
-    def get_colors(self, config: ChartConfig, count: int) -> List[str]:
+    def get_colors(self, config: ChartConfig, count: int) -> list[str]:
         """Get colors for the chart."""
         if config.custom_colors:
             return config.custom_colors[:count]
@@ -63,11 +63,11 @@ class ChartRenderer(ABC):
         # Cycle through palette if needed
         return [palette[i % len(palette)] for i in range(count)]
 
-    def get_js_dependencies(self) -> List[str]:
+    def get_js_dependencies(self) -> list[str]:
         """Get JavaScript dependencies for this renderer."""
         return []
 
-    def get_css_dependencies(self) -> List[str]:
+    def get_css_dependencies(self) -> list[str]:
         """Get CSS dependencies for this renderer."""
         return []
 
@@ -80,16 +80,16 @@ class ChartRenderer(ABC):
 class ChartRendererRegistry:
     """Registry for chart renderers."""
 
-    _instance: Optional["ChartRendererRegistry"] = None
+    _instance: ChartRendererRegistry | None = None
     _lock: threading.Lock = threading.Lock()
 
-    def __new__(cls) -> "ChartRendererRegistry":
+    def __new__(cls) -> ChartRendererRegistry:
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
                     cls._instance = super().__new__(cls)
-                    cls._instance._renderers: Dict[str, ChartRenderer] = {}
-                    cls._instance._default: Optional[str] = None
+                    cls._instance._renderers: dict[str, ChartRenderer] = {}
+                    cls._instance._default: str | None = None
         return cls._instance
 
     def register(self, name: str, renderer: ChartRenderer, default: bool = False) -> None:
@@ -98,27 +98,27 @@ class ChartRendererRegistry:
         if default or self._default is None:
             self._default = name
 
-    def get(self, name: Optional[str] = None) -> Optional[ChartRenderer]:
+    def get(self, name: str | None = None) -> ChartRenderer | None:
         """Get a chart renderer by name or default."""
         if name is None:
             name = self._default
         return self._renderers.get(name) if name else None
 
-    def list_renderers(self) -> List[str]:
+    def list_renderers(self) -> list[str]:
         """List all registered renderer names."""
         return list(self._renderers.keys())
 
-    def get_available_renderers(self) -> List[str]:
+    def get_available_renderers(self) -> list[str]:
         """Get renderers that have available dependencies."""
         available = []
-        for name, renderer in self._renderers.items():
+        for name in self._renderers:
             # SVG is always available
             if name == "svg":
                 available.append(name)
             # Check if dependencies can be imported
             elif name == "plotly":
                 try:
-                    import plotly
+                    importlib.import_module("plotly")
                     available.append(name)
                 except ImportError:
                     pass
@@ -167,6 +167,8 @@ class SVGChartRenderer(ChartRenderer):
 
     def render(self, data: ChartData, config: ChartConfig) -> str:
         """Render chart to SVG string."""
+        from truthound.profiler.visualization._validation import validate
+        validate(data, config)
         renderers = {
             ChartType.BAR: self._render_bar,
             ChartType.HORIZONTAL_BAR: self._render_horizontal_bar,
@@ -188,7 +190,7 @@ class SVGChartRenderer(ChartRenderer):
     def _svg_header(self, config: ChartConfig, extra_attrs: str = "") -> str:
         """Generate SVG header with proper attributes."""
         if config.responsive:
-            viewport = f'viewBox="0 0 {config.width} {config.height}" preserveAspectRatio="xMidYMid meet"'
+            viewport = f'width="{config.width}" height="{config.height}" viewBox="0 0 {config.width} {config.height}" preserveAspectRatio="xMidYMid meet"'
             style = 'style="max-width: 100%; height: auto;"'
         else:
             viewport = f'width="{config.width}" height="{config.height}"'
@@ -207,7 +209,11 @@ class SVGChartRenderer(ChartRenderer):
         chart_h = h - margin["top"] - margin["bottom"]
 
         colors = self.get_colors(config, len(data.values))
-        max_val = max(data.values) if data.values else 1
+        min_val = min(0, min(data.values))
+        max_val = max(0, max(data.values))
+        if min_val == max_val:
+            max_val = min_val + 1
+        span = max_val - min_val
         bar_width = chart_w / len(data.values) * 0.75
         bar_gap = chart_w / len(data.values) * 0.25
 
@@ -221,11 +227,11 @@ class SVGChartRenderer(ChartRenderer):
         # Grid lines
         for i in range(5):
             y = margin["top"] + (chart_h / 4) * i
-            val = max_val * (1 - i / 4)
+            val = max_val - span * i / 4
             svg.append(f'<line x1="{margin["left"]}" y1="{y}" x2="{w - margin["right"]}" y2="{y}" '
                        f'stroke="#e0e0e0" stroke-width="1" stroke-dasharray="4"/>')
             svg.append(f'<text x="{margin["left"] - 10}" y="{y + 4}" text-anchor="end" '
-                       f'font-size="10" fill="#666">{val:.0f}</text>')
+                       f'font-size="10" fill="#666">{val:g}</text>')
 
         # Axes
         svg.append(f'<line x1="{margin["left"]}" y1="{margin["top"]}" '
@@ -234,10 +240,11 @@ class SVGChartRenderer(ChartRenderer):
                    f'x2="{w - margin["right"]}" y2="{h - margin["bottom"]}" stroke="#999" stroke-width="1"/>')
 
         # Bars
-        for i, (label, value) in enumerate(zip(data.labels, data.values)):
+        for i, (label, value) in enumerate(zip(data.labels, data.values, strict=True)):
             x = margin["left"] + i * (bar_width + bar_gap) + bar_gap / 2
-            bar_h = (value / max_val) * chart_h if max_val > 0 else 0
-            y = h - margin["bottom"] - bar_h
+            zero_y = margin["top"] + max_val / span * chart_h
+            bar_h = abs(value) / span * chart_h
+            y = min(zero_y, zero_y - value / span * chart_h)
 
             # Bar with hover effect
             svg.append(f'''<g class="bar-group">
@@ -279,7 +286,11 @@ class SVGChartRenderer(ChartRenderer):
         chart_h = h - margin["top"] - margin["bottom"]
 
         colors = self.get_colors(config, len(data.values))
-        max_val = max(data.values) if data.values else 1
+        min_val = min(0, min(data.values))
+        max_val = max(0, max(data.values))
+        if min_val == max_val:
+            max_val = min_val + 1
+        span = max_val - min_val
         bar_height = chart_h / len(data.values) * 0.75
         bar_gap = chart_h / len(data.values) * 0.25
 
@@ -291,22 +302,24 @@ class SVGChartRenderer(ChartRenderer):
                        f'font-size="16" font-weight="bold" fill="currentColor">{html.escape(data.title)}</text>')
 
         # Bars
-        for i, (label, value) in enumerate(zip(data.labels, data.values)):
+        for i, (label, value) in enumerate(zip(data.labels, data.values, strict=True)):
             y = margin["top"] + i * (bar_height + bar_gap) + bar_gap / 2
-            bar_w = (value / max_val) * chart_w if max_val > 0 else 0
+            zero_x = margin["left"] - min_val / span * chart_w
+            bar_w = abs(value) / span * chart_w
+            x = min(zero_x, zero_x + value / span * chart_w)
 
             # Label
             svg.append(f'<text x="{margin["left"] - 10}" y="{y + bar_height/2 + 4}" '
                        f'text-anchor="end" font-size="11" fill="#666">{html.escape(str(label)[:25])}</text>')
 
             # Bar
-            svg.append(f'<rect x="{margin["left"]}" y="{y}" width="{bar_w}" height="{bar_height}" '
+            svg.append(f'<rect x="{x}" y="{y}" width="{bar_w}" height="{bar_height}" '
                        f'fill="{colors[i]}" rx="3">'
                        f'<title>{html.escape(str(label))}: {value:,.2f}</title></rect>')
 
             # Value
             if data.show_values:
-                svg.append(f'<text x="{margin["left"] + bar_w + 5}" y="{y + bar_height/2 + 4}" '
+                svg.append(f'<text x="{x + bar_w + 5}" y="{y + bar_height/2 + 4}" '
                            f'font-size="11" fill="#333">{value:,.1f}</text>')
 
         svg.append('</svg>')
@@ -340,7 +353,7 @@ class SVGChartRenderer(ChartRenderer):
 
         # Slices
         start_angle = -math.pi / 2
-        for i, (label, value) in enumerate(zip(data.labels, data.values)):
+        for i, (label, value) in enumerate(zip(data.labels, data.values, strict=True)):
             if value <= 0:
                 continue
 
@@ -445,7 +458,7 @@ class SVGChartRenderer(ChartRenderer):
                    f'fill="none" stroke="{colors[0]}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>')
 
         # Points
-        for i, (value, point) in enumerate(zip(data.values, points)):
+        for i, (value, point) in enumerate(zip(data.values, points, strict=True)):
             x, y = point.split(',')
             label = data.labels[i] if i < len(data.labels) else str(i)
             svg.append(f'<circle cx="{x}" cy="{y}" r="5" fill="{colors[0]}" stroke="white" stroke-width="2">'
@@ -657,7 +670,7 @@ class SVGChartRenderer(ChartRenderer):
                 html_parts.append('</tr>')
         else:
             # Use labels/values as simple two-column table
-            for label, value in zip(data.labels, data.values):
+            for label, value in zip(data.labels, data.values, strict=True):
                 html_parts.append(f'<tr><td>{html.escape(str(label))}</td>'
                                   f'<td>{value:,.2f}</td></tr>')
 
@@ -667,3 +680,13 @@ class SVGChartRenderer(ChartRenderer):
 
 # Register SVG renderer as default
 chart_renderer_registry.register("svg", SVGChartRenderer(), default=True)
+
+
+class _PrintSVGRenderer(SVGChartRenderer):
+    """Keep native chart coordinates while fitting static A4 content width."""
+
+    def _svg_header(self, config: ChartConfig, extra_attrs: str = "") -> str:
+        width = min(config.width, 520)
+        height = config.height * width / config.width
+        return (f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" '
+                f'viewBox="0 0 {config.width} {config.height}" preserveAspectRatio="xMidYMid meet" {extra_attrs}>')

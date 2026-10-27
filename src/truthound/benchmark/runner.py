@@ -16,16 +16,15 @@ from __future__ import annotations
 
 import json
 import threading
-import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from dataclasses import dataclass, field
+from copy import deepcopy
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
-from typing import Any, Callable, Iterator
+from typing import TYPE_CHECKING, Any
 
 from truthound.benchmark.base import (
-    Benchmark,
     BenchmarkCategory,
     BenchmarkConfig,
     BenchmarkResult,
@@ -34,6 +33,8 @@ from truthound.benchmark.base import (
     benchmark_registry,
 )
 
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterator
 
 # =============================================================================
 # Configuration
@@ -44,8 +45,8 @@ class ParallelMode(str, Enum):
     """Parallelization mode for benchmark execution."""
 
     SEQUENTIAL = "sequential"  # Run one at a time
-    PARALLEL = "parallel"      # Run in parallel
-    AUTO = "auto"              # Decide based on benchmark type
+    PARALLEL = "parallel"  # Run in parallel
+    AUTO = "auto"  # Decide based on benchmark type
 
 
 @dataclass
@@ -77,7 +78,7 @@ class RunnerConfig:
     on_benchmark_complete: Callable[[BenchmarkResult], None] | None = None
 
     @classmethod
-    def quick(cls) -> "RunnerConfig":
+    def quick(cls) -> RunnerConfig:
         """Quick configuration for fast feedback."""
         return cls(
             parallel_mode=ParallelMode.PARALLEL,
@@ -86,7 +87,7 @@ class RunnerConfig:
         )
 
     @classmethod
-    def ci(cls) -> "RunnerConfig":
+    def ci(cls) -> RunnerConfig:
         """Configuration for CI/CD environments."""
         return cls(
             parallel_mode=ParallelMode.SEQUENTIAL,
@@ -190,34 +191,23 @@ class SuiteResult:
 
     def to_json(self, indent: int = 2) -> str:
         """Convert to JSON string."""
-        return json.dumps(self.to_dict(), indent=indent, default=str)
+        return json.dumps(self.to_dict(), indent=indent, allow_nan=False)
 
     def save(self, path: Path) -> None:
         """Save results to a JSON file."""
-        path = Path(path)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(self.to_json())
+        from truthound.stores.concurrency.atomic import atomic_write
+
+        payload = self.to_json()
+        result = atomic_write(Path(path), payload)
+        if not result.success:
+            raise OSError("Benchmark evidence write failed")
 
     @classmethod
-    def load(cls, path: Path) -> "SuiteResult":
+    def load(cls, path: Path) -> SuiteResult:
         """Load results from a JSON file."""
-        data = json.loads(Path(path).read_text())
-        # Reconstruct objects from dict
-        env = EnvironmentInfo(
-            python_version=data["environment"]["python_version"],
-            platform_system=data["environment"]["platform"]["system"],
-            platform_release=data["environment"]["platform"]["release"],
-            platform_machine=data["environment"]["platform"]["machine"],
-            cpu_count=data["environment"]["cpu_count"],
-            polars_version=data["environment"]["polars_version"],
-            truthound_version=data["environment"]["truthound_version"],
-        )
-        return cls(
-            suite_name=data["suite_name"],
-            results=[],  # Results would need more reconstruction
-            environment=env,
-            config=data.get("config", {}),
-        )
+        from truthound.benchmark.persistence import load_suite
+
+        return load_suite(path)
 
 
 # =============================================================================
@@ -248,14 +238,14 @@ class BenchmarkSuite:
     ):
         self.name = name
         self.description = description
-        self.benchmark_config = benchmark_config or BenchmarkConfig.standard()
+        self.benchmark_config = replace(deepcopy(benchmark_config or BenchmarkConfig.standard()))
         self._benchmarks: list[tuple[str, dict[str, Any]]] = []
 
     def add(
         self,
         benchmark_name: str,
         **kwargs: Any,
-    ) -> "BenchmarkSuite":
+    ) -> BenchmarkSuite:
         """Add a benchmark to the suite.
 
         Args:
@@ -265,14 +255,14 @@ class BenchmarkSuite:
         Returns:
             Self for chaining
         """
-        self._benchmarks.append((benchmark_name, kwargs))
+        self._benchmarks.append((benchmark_name, deepcopy(kwargs)))
         return self
 
     def add_all_in_category(
         self,
         category: BenchmarkCategory,
         **kwargs: Any,
-    ) -> "BenchmarkSuite":
+    ) -> BenchmarkSuite:
         """Add all benchmarks in a category.
 
         Args:
@@ -286,7 +276,7 @@ class BenchmarkSuite:
             self._benchmarks.append((benchmark_cls.name, kwargs))
         return self
 
-    def add_all(self, **kwargs: Any) -> "BenchmarkSuite":
+    def add_all(self, **kwargs: Any) -> BenchmarkSuite:
         """Add all registered benchmarks.
 
         Args:
@@ -308,7 +298,7 @@ class BenchmarkSuite:
         return len(self._benchmarks)
 
     @classmethod
-    def profiling(cls, size: BenchmarkSize = BenchmarkSize.SMALL) -> "BenchmarkSuite":
+    def profiling(cls, size: BenchmarkSize = BenchmarkSize.SMALL) -> BenchmarkSuite:
         """Create a profiling-focused suite (~10 seconds)."""
         suite = cls(
             "profiling",
@@ -319,7 +309,7 @@ class BenchmarkSuite:
         return suite
 
     @classmethod
-    def validation(cls, size: BenchmarkSize = BenchmarkSize.SMALL) -> "BenchmarkSuite":
+    def validation(cls, size: BenchmarkSize = BenchmarkSize.SMALL) -> BenchmarkSuite:
         """Create a validation-focused suite (~10 seconds)."""
         suite = cls(
             "validation",
@@ -330,7 +320,7 @@ class BenchmarkSuite:
         return suite
 
     @classmethod
-    def full(cls, size: BenchmarkSize = BenchmarkSize.SMALL) -> "BenchmarkSuite":
+    def full(cls, size: BenchmarkSize = BenchmarkSize.SMALL) -> BenchmarkSuite:
         """Create a comprehensive suite with core benchmarks (~30 seconds).
 
         Note:
@@ -352,7 +342,7 @@ class BenchmarkSuite:
         return suite
 
     @classmethod
-    def quick(cls) -> "BenchmarkSuite":
+    def quick(cls) -> BenchmarkSuite:
         """Create a quick suite for fast feedback (~5 seconds)."""
         suite = cls(
             "quick",
@@ -365,7 +355,7 @@ class BenchmarkSuite:
         return suite
 
     @classmethod
-    def ci(cls) -> "BenchmarkSuite":
+    def ci(cls) -> BenchmarkSuite:
         """Create a CI-appropriate suite (~15 seconds)."""
         suite = cls(
             "ci",
@@ -410,8 +400,15 @@ class BenchmarkRunner:
         config: RunnerConfig | None = None,
         benchmark_config: BenchmarkConfig | None = None,
     ):
-        self.config = config or RunnerConfig()
-        self.benchmark_config = benchmark_config or BenchmarkConfig.standard()
+        selected = config or RunnerConfig()
+        self.config = replace(
+            selected,
+            categories=deepcopy(selected.categories),
+            include_patterns=deepcopy(selected.include_patterns),
+            exclude_patterns=deepcopy(selected.exclude_patterns),
+        )
+        self._benchmark_config_override = benchmark_config is not None
+        self.benchmark_config = replace(deepcopy(benchmark_config or BenchmarkConfig.standard()))
         self._lock = threading.Lock()
 
     def run(
@@ -462,9 +459,10 @@ class BenchmarkRunner:
         started_at = datetime.now()
         results: list[BenchmarkResult] = []
 
-        # Runner's config takes precedence over suite's config
-        # This allows CLI flags to override suite defaults
-        benchmark_config = self.benchmark_config
+        # Explicit runner/CLI settings override captured suite defaults.
+        benchmark_config = (
+            self.benchmark_config if self._benchmark_config_override else suite.benchmark_config
+        )
 
         if self.config.verbose:
             print(f"\nRunning suite: {suite.name}")
@@ -495,7 +493,9 @@ class BenchmarkRunner:
 
         if self.config.verbose:
             print("-" * 40)
-            print(f"Completed: {suite_result.successful_benchmarks}/{suite_result.total_benchmarks}")
+            print(
+                f"Completed: {suite_result.successful_benchmarks}/{suite_result.total_benchmarks}"
+            )
             print(f"Duration: {suite_result.total_duration_seconds:.2f}s")
 
         # Save suite results
@@ -528,14 +528,16 @@ class BenchmarkRunner:
                     continue
 
             # Check include patterns
-            if self.config.include_patterns:
-                if not any(p in name for p in self.config.include_patterns):
-                    continue
+            if (self.config.include_patterns) and (
+                not any(p in name for p in self.config.include_patterns)
+            ):
+                continue
 
             # Check exclude patterns
-            if self.config.exclude_patterns:
-                if any(p in name for p in self.config.exclude_patterns):
-                    continue
+            if (self.config.exclude_patterns) and (
+                any(p in name for p in self.config.exclude_patterns)
+            ):
+                continue
 
             suite.add(name, **kwargs)
 
@@ -619,10 +621,7 @@ class BenchmarkRunner:
             return benchmark.execute(config, **kwargs)
 
         with ThreadPoolExecutor(max_workers=self.config.max_workers) as executor:
-            futures = {
-                executor.submit(run_one, item): item[0]
-                for item in suite
-            }
+            futures = {executor.submit(run_one, item): item[0] for item in suite}
 
             for future in as_completed(futures):
                 name = futures[future]

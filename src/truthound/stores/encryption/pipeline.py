@@ -33,22 +33,15 @@ from __future__ import annotations
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from enum import Enum, auto
-from typing import Any, Callable
+from typing import Any
 
 from truthound.stores.encryption.base import (
     DecryptionError,
     EncryptionAlgorithm,
-    EncryptionConfig,
     EncryptionError,
-    EncryptionHeader,
-    EncryptionMetrics,
     KeyDerivation,
-    generate_nonce,
-    generate_salt,
 )
-
 
 # =============================================================================
 # Pipeline Stage Types
@@ -123,9 +116,7 @@ class PipelineMetrics:
     @property
     def compression_ratio(self) -> float:
         """Overall compression ratio (before encryption overhead)."""
-        compression_stages = [
-            s for s in self.stages if s.stage_type == StageType.COMPRESSION
-        ]
+        compression_stages = [s for s in self.stages if s.stage_type == StageType.COMPRESSION]
         if not compression_stages or compression_stages[0].input_size == 0:
             return 1.0
         return compression_stages[0].input_size / compression_stages[0].output_size
@@ -136,13 +127,9 @@ class PipelineMetrics:
         if self.total_input_size == 0:
             return 0.0
         # Find size after compression
-        compression_stages = [
-            s for s in self.stages if s.stage_type == StageType.COMPRESSION
-        ]
+        compression_stages = [s for s in self.stages if s.stage_type == StageType.COMPRESSION]
         compressed_size = (
-            compression_stages[-1].output_size
-            if compression_stages
-            else self.total_input_size
+            compression_stages[-1].output_size if compression_stages else self.total_input_size
         )
         return ((self.total_output_size - compressed_size) / compressed_size) * 100
 
@@ -175,7 +162,7 @@ class PipelineResult:
 
     data: bytes
     metrics: PipelineMetrics
-    header: "PipelineHeader"
+    header: PipelineHeader
 
     def to_bytes(self) -> bytes:
         """Serialize result with header."""
@@ -183,7 +170,7 @@ class PipelineResult:
         return header_bytes + self.data
 
     @classmethod
-    def from_bytes(cls, data: bytes) -> "PipelineResult":
+    def from_bytes(cls, data: bytes) -> PipelineResult:
         """Deserialize result from bytes."""
         header, offset = PipelineHeader.from_bytes(data)
         return cls(
@@ -229,10 +216,16 @@ class PipelineHeader:
         import json
         import zlib
 
-        header = (
-            self.MAGIC
-            + bytes([self.version, self.flags, len(self.stages), 0])
-        )
+        if (
+            type(self.version) is not int
+            or self.version != 1
+            or type(self.flags) is not int
+            or self.flags != 0
+            or len(self.stages) > 255
+        ):
+            raise EncryptionError("Unsupported pipeline header")
+
+        header = self.MAGIC + bytes([self.version, self.flags, len(self.stages), 0])
 
         for stage in self.stages:
             stage_type = stage["type"]
@@ -243,7 +236,7 @@ class PipelineHeader:
         return header + checksum
 
     @classmethod
-    def from_bytes(cls, data: bytes) -> tuple["PipelineHeader", int]:
+    def from_bytes(cls, data: bytes) -> tuple[PipelineHeader, int]:
         """Deserialize header from bytes.
 
         Returns:
@@ -252,24 +245,35 @@ class PipelineHeader:
         import json
         import zlib
 
-        if data[:4] != cls.MAGIC:
+        if not isinstance(data, bytes) or len(data) < 12 or data[:4] != cls.MAGIC:
             raise DecryptionError("Invalid pipeline header")
 
         version = data[4]
         flags = data[5]
         stage_count = data[6]
+        if version != 1 or flags != 0 or data[7] != 0:
+            raise DecryptionError("Unsupported pipeline header")
 
         offset = 8
         stages = []
 
         for _ in range(stage_count):
+            if offset + 3 > len(data) - 4:
+                raise DecryptionError("Truncated pipeline header")
             stage_type = data[offset]
             offset += 1
 
             config_len = int.from_bytes(data[offset : offset + 2], "big")
             offset += 2
-
-            config = json.loads(data[offset : offset + config_len].decode())
+            if offset + config_len > len(data) - 4:
+                raise DecryptionError("Truncated pipeline stage configuration")
+            try:
+                StageType(stage_type)
+                config = json.loads(data[offset : offset + config_len].decode())
+            except (ValueError, UnicodeError):
+                raise DecryptionError("Invalid pipeline stage configuration") from None
+            if not isinstance(config, dict):
+                raise DecryptionError("Invalid pipeline stage configuration")
             offset += config_len
 
             stages.append({"type": stage_type, "config": config})
@@ -379,7 +383,13 @@ class CompressionStage(PipelineStage):
     def reverse(self, data: bytes, config: dict[str, Any]) -> bytes:
         """Decompress data."""
         compressor = self._get_compressor()
-        return compressor.decompress(data)
+        result = compressor.decompress(data)
+        expected = config.get("original_size")
+        if expected is not None and (
+            type(expected) is not int or expected < 0 or len(result) != expected
+        ):
+            raise DecryptionError("Decompressed pipeline size does not match header")
+        return result
 
 
 class EncryptionStage(PipelineStage):
@@ -489,16 +499,19 @@ class ChecksumStage(PipelineStage):
 
     def reverse(self, data: bytes, config: dict[str, Any]) -> bytes:
         """Verify and remove checksum."""
+        if not data:
+            raise DecryptionError("Truncated checksum stage")
         checksum_len = data[0]
+        if checksum_len != len(self._hash(b"")) or len(data) < 1 + checksum_len:
+            raise DecryptionError("Invalid checksum stage length")
         stored_checksum = data[1 : 1 + checksum_len]
         actual_data = data[1 + checksum_len :]
 
         computed_checksum = self._hash(actual_data)
         if stored_checksum != computed_checksum:
-            raise DecryptionError(
-                f"Checksum verification failed: expected {stored_checksum.hex()}, "
-                f"got {computed_checksum.hex()}"
-            )
+            raise DecryptionError("Checksum verification failed")
+        if config.get("checksum") is not None and config["checksum"] != stored_checksum.hex():
+            raise DecryptionError("Checksum header does not match stage data")
 
         return actual_data
 
@@ -529,8 +542,28 @@ class EncryptionPipeline:
     def __init__(self) -> None:
         """Initialize empty pipeline."""
         self._stages: list[PipelineStage] = []
+        self._execution_guard = None
 
-    def add_stage(self, stage: PipelineStage) -> "EncryptionPipeline":
+    def set_execution_guard(self, guard):
+        if guard is not None and not callable(guard):
+            raise TypeError("Execution guard must be callable")
+        self._execution_guard = guard
+
+    def _guard_execution(self):
+        if self._execution_guard is not None:
+            self._execution_guard()
+
+    @staticmethod
+    def _check_output(data, maximum):
+        if not isinstance(data, bytes):
+            raise EncryptionError("Native pipeline stages must return bytes")
+        if maximum is not None:
+            if type(maximum) is not int or maximum <= 0:
+                raise ValueError("Pipeline output limit must be a positive integer")
+            if len(data) > maximum:
+                raise EncryptionError("Native pipeline output exceeds configured limit")
+
+    def add_stage(self, stage: PipelineStage) -> EncryptionPipeline:
         """Add a stage to the pipeline.
 
         Args:
@@ -546,7 +579,7 @@ class EncryptionPipeline:
         self,
         algorithm: str = "gzip",
         level: Any = None,
-    ) -> "EncryptionPipeline":
+    ) -> EncryptionPipeline:
         """Add compression stage.
 
         Args:
@@ -563,7 +596,7 @@ class EncryptionPipeline:
         algorithm: EncryptionAlgorithm | str = EncryptionAlgorithm.AES_256_GCM,
         key: bytes | None = None,
         aad: bytes | None = None,
-    ) -> "EncryptionPipeline":
+    ) -> EncryptionPipeline:
         """Add encryption stage.
 
         Args:
@@ -576,7 +609,7 @@ class EncryptionPipeline:
         """
         return self.add_stage(EncryptionStage(algorithm, key, aad))
 
-    def add_checksum(self, algorithm: str = "sha256") -> "EncryptionPipeline":
+    def add_checksum(self, algorithm: str = "sha256") -> EncryptionPipeline:
         """Add checksum verification stage.
 
         Args:
@@ -587,7 +620,7 @@ class EncryptionPipeline:
         """
         return self.add_stage(ChecksumStage(algorithm))
 
-    def set_key(self, key: bytes) -> "EncryptionPipeline":
+    def set_key(self, key: bytes) -> EncryptionPipeline:
         """Set encryption key for all encryption stages.
 
         Args:
@@ -597,11 +630,19 @@ class EncryptionPipeline:
             Self for chaining.
         """
         for stage in self._stages:
+            self._guard_execution()
             if isinstance(stage, EncryptionStage):
                 stage.set_key(key)
+                self._guard_execution()
         return self
 
-    def process(self, data: bytes) -> PipelineResult:
+    def get_encryption_algorithms(self) -> tuple[EncryptionAlgorithm, ...]:
+        """List configured cipher algorithms without key material."""
+        return tuple(
+            stage._algorithm for stage in self._stages if isinstance(stage, EncryptionStage)
+        )
+
+    def process(self, data: bytes, *, max_output_bytes: int | None = None) -> PipelineResult:
         """Process data through all stages.
 
         Args:
@@ -610,6 +651,8 @@ class EncryptionPipeline:
         Returns:
             Pipeline result with encrypted data and metadata.
         """
+        self._guard_execution()
+        self._check_output(data, max_output_bytes)
         metrics = PipelineMetrics(total_input_size=len(data))
         header_stages: list[dict[str, Any]] = []
 
@@ -617,10 +660,15 @@ class EncryptionPipeline:
         total_start = time.perf_counter()
 
         for stage in self._stages:
+            self._guard_execution()
             start_time = time.perf_counter()
             input_size = len(current_data)
 
             current_data, config = stage.process(current_data)
+            self._guard_execution()
+            self._check_output(current_data, max_output_bytes)
+            if not isinstance(config, dict):
+                raise EncryptionError("Native pipeline stage configuration must be an object")
 
             elapsed_ms = (time.perf_counter() - start_time) * 1000
             output_size = len(current_data)
@@ -634,10 +682,12 @@ class EncryptionPipeline:
             )
             metrics.stages.append(stage_metrics)
 
-            header_stages.append({
-                "type": stage.stage_type.value,
-                "config": config,
-            })
+            header_stages.append(
+                {
+                    "type": stage.stage_type.value,
+                    "config": config,
+                }
+            )
 
         metrics.total_output_size = len(current_data)
         metrics.total_time_ms = (time.perf_counter() - total_start) * 1000
@@ -650,7 +700,13 @@ class EncryptionPipeline:
             header=header,
         )
 
-    def reverse(self, data: bytes, header: PipelineHeader | None = None) -> bytes:
+    def reverse(
+        self,
+        data: bytes,
+        header: PipelineHeader | None = None,
+        *,
+        max_output_bytes: int | None = None,
+    ) -> bytes:
         """Reverse process data through all stages.
 
         Args:
@@ -660,10 +716,37 @@ class EncryptionPipeline:
         Returns:
             Original data.
         """
+        self._guard_execution()
+        self._check_output(data, max_output_bytes)
         # If header not provided, try to extract from data
         if header is None:
             header, offset = PipelineHeader.from_bytes(data)
             data = data[offset:]
+
+        if (
+            not isinstance(header, PipelineHeader)
+            or type(header.version) is not int
+            or header.version != 1
+            or type(header.flags) is not int
+            or header.flags != 0
+            or not isinstance(header.stages, list)
+            or len(header.stages) != len(self._stages)
+        ):
+            raise DecryptionError("Pipeline header does not match selected stages")
+        # Validate the entire fixed plan before executing any selected stage.
+        for stage, configured in zip(self._stages, header.stages, strict=True):
+            if (
+                not isinstance(configured, dict)
+                or type(configured.get("type")) is not int
+                or configured["type"] != stage.stage_type.value
+                or not isinstance(configured.get("config"), dict)
+            ):
+                raise DecryptionError("Pipeline stage does not match selected plan")
+            algorithm = getattr(stage, "_algorithm", None)
+            if isinstance(algorithm, Enum):
+                algorithm = algorithm.value
+            if algorithm is not None and configured["config"].get("algorithm") != algorithm:
+                raise DecryptionError("Pipeline algorithm does not match selected plan")
 
         current_data = data
 
@@ -671,12 +754,16 @@ class EncryptionPipeline:
         for stage, stage_config in zip(
             reversed(self._stages),
             reversed(header.stages),
+            strict=True,
         ):
+            self._guard_execution()
             current_data = stage.reverse(current_data, stage_config["config"])
+            self._guard_execution()
+            self._check_output(current_data, max_output_bytes)
 
         return current_data
 
-    def process_to_bytes(self, data: bytes) -> bytes:
+    def process_to_bytes(self, data: bytes, *, max_output_bytes: int | None = None) -> bytes:
         """Process data and return bytes with embedded header.
 
         Args:
@@ -685,10 +772,12 @@ class EncryptionPipeline:
         Returns:
             Processed data with header.
         """
-        result = self.process(data)
-        return result.to_bytes()
+        result = self.process(data, max_output_bytes=max_output_bytes)
+        serialized = result.to_bytes()
+        self._check_output(serialized, max_output_bytes)
+        return serialized
 
-    def reverse_from_bytes(self, data: bytes) -> bytes:
+    def reverse_from_bytes(self, data: bytes, *, max_output_bytes: int | None = None) -> bytes:
         """Reverse process data with embedded header.
 
         Args:
@@ -698,7 +787,7 @@ class EncryptionPipeline:
             Original data.
         """
         result = PipelineResult.from_bytes(data)
-        return self.reverse(result.data, result.header)
+        return self.reverse(result.data, result.header, max_output_bytes=max_output_bytes)
 
 
 # =============================================================================
@@ -723,11 +812,7 @@ def create_secure_pipeline(
     Returns:
         Configured pipeline.
     """
-    pipeline = (
-        EncryptionPipeline()
-        .add_compression(compression)
-        .add_encryption(encryption, key=key)
-    )
+    pipeline = EncryptionPipeline().add_compression(compression).add_encryption(encryption, key=key)
 
     if include_checksum:
         pipeline.add_checksum()
@@ -857,12 +942,13 @@ class StreamingPipeline:
         self._encryptor: Any = None
         self._buffer = b""
 
-    def __enter__(self) -> "StreamingPipeline":
+    def __enter__(self) -> StreamingPipeline:
         """Start the streaming pipeline."""
+        import io
+
         from truthound.stores.compression import get_compressor
         from truthound.stores.encryption.streaming import StreamingEncryptor
 
-        import io
         self._compressed_buffer = io.BytesIO()
 
         # Initialize compressor

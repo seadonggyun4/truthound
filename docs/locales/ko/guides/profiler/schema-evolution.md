@@ -634,3 +634,23 @@ watcher.add_handler(LoggingEventHandler(
 - 실무 운영 가이드에서 `truthound.profiler.evolution.ColumnRenameDetector`, ColumnRenameDetector을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
 - 실무 운영 가이드에서 `truthound.profiler.evolution.BreakingChangeAlertManager`, BreakingChangeAlertManager을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
 - 실무 운영 가이드에서 `truthound.profiler.evolution.ImpactAnalyzer`, ImpactAnalyzer을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+
+## Declared Schema Compatibility
+
+선언된 null 허용 여부는 `NullabilityCompatibilityChecker(old_nullable=..., new_nullable=...)`로 비교합니다. dtype에 nullability가 없으므로 값이나 표본에서 제약을 추정하지 않습니다. 공통 컬럼의 선언은 양쪽에 있어야 하고 실제 bool만 받습니다. nullable→non-nullable은 breaking입니다. `strict=True`는 보고된 문제를 모두 거부합니다. 규칙 예외·잘못된 verdict는 `CompatibilityAnalysisError`이며 완전 호환으로 바꾸지 않습니다. 실행 guard는 각 규칙 앞뒤에 적용합니다.
+
+```python
+import polars as pl
+from truthound.profiler.evolution import NullabilityCompatibilityChecker, SchemaCompatibilityAnalyzer
+
+analyzer = SchemaCompatibilityAnalyzer(
+    rules=[NullabilityCompatibilityChecker(
+        old_nullable={"x": True}, new_nullable={"x": False},
+    )],
+    strict=True,
+)
+report = analyzer.analyze({"x": pl.Int64}, {"x": pl.Int64})
+assert not report.is_compatible
+for issue in report.issues:
+    print(issue.change_type.value, issue.breaking)
+```

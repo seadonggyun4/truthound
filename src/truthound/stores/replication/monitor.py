@@ -7,19 +7,21 @@ including health checks and event emission.
 from __future__ import annotations
 
 import asyncio
+import inspect
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
-from typing import Any, Callable, Generic, TypeVar
+from typing import TYPE_CHECKING, Any, Generic, TypeVar
 
 from truthound.stores.replication.base import (
     ReplicaHealth,
     ReplicaTarget,
     ReplicationConfig,
-    ReplicationMetrics,
 )
-from truthound.stores.replication.syncer import ReplicationSyncer
 
+if TYPE_CHECKING:
+    from truthound.stores.replication.syncer import ReplicationSyncer
 
 ConfigT = TypeVar("ConfigT")
 
@@ -98,6 +100,7 @@ class ReplicationMonitor(Generic[ConfigT]):
             config: Replication configuration.
             syncer: Replication syncer for health checks.
         """
+        config.validate()
         self._config = config
         self._syncer = syncer
         self._handlers: list[EventHandler] = []
@@ -105,6 +108,9 @@ class ReplicationMonitor(Generic[ConfigT]):
         self._running = False
         self._health_check_task: asyncio.Task | None = None
         self._previous_health: dict[str, ReplicaHealth] = {}
+        self._errors: list[dict[str, Any]] = []
+        self._monitor_failures = 0
+        self._handler_failures = 0
 
     @property
     def events(self) -> list[ReplicationEvent]:
@@ -127,31 +133,56 @@ class ReplicationMonitor(Generic[ConfigT]):
         """Add event handler."""
         self._handlers.append(handler)
 
-    def _emit_event(self, event: ReplicationEvent) -> None:
+    def _record_error(self, phase: str, replica: str, handler_index: int | None = None) -> None:
+        self._errors.append(
+            {
+                "phase": phase,
+                "replica": replica,
+                "handler_index": handler_index,
+                "timestamp": datetime.now().isoformat(),
+            }
+        )
+        del self._errors[:-100]
+        if phase == "handler":
+            self._handler_failures += 1
+        else:
+            self._monitor_failures += 1
+
+    async def _emit_event(self, event: ReplicationEvent) -> None:
         """Emit event to all handlers."""
         # Buffer event
         self._event_buffer.append(event)
         if len(self._event_buffer) > 1000:
             self._event_buffer.pop(0)
 
-        # Call handlers
-        for handler in self._handlers:
+        failures = []
+        for index, handler in enumerate(tuple(self._handlers)):
             try:
-                handler(event)
-            except Exception:
-                pass
+                result = handler(event)
+                if inspect.isawaitable(result):
+                    await result
+            except Exception as error:
+                self._record_error("handler", event.replica_name, index)
+                failures.append(error)
+        if failures:
+            raise ExceptionGroup("Replication event handlers failed", failures)
 
     async def _check_replica_health(
         self,
         target: ReplicaTarget[ConfigT],
     ) -> None:
         """Check health of a single replica."""
-        health = await self._syncer.check_health(target)
+        try:
+            health = await self._syncer.check_health(target)
+        except Exception:
+            target.mark_unhealthy()
+            raise
         previous = self._previous_health.get(target.name, ReplicaHealth.UNKNOWN)
 
         if health != previous:
+            self._previous_health[target.name] = health
             if health == ReplicaHealth.HEALTHY:
-                self._emit_event(
+                await self._emit_event(
                     ReplicationEvent(
                         event_type=ReplicationEventType.REPLICA_HEALTHY,
                         replica_name=target.name,
@@ -159,7 +190,7 @@ class ReplicationMonitor(Generic[ConfigT]):
                     )
                 )
             elif health == ReplicaHealth.DEGRADED:
-                self._emit_event(
+                await self._emit_event(
                     ReplicationEvent(
                         event_type=ReplicationEventType.REPLICA_DEGRADED,
                         replica_name=target.name,
@@ -170,7 +201,7 @@ class ReplicationMonitor(Generic[ConfigT]):
                     )
                 )
             elif health == ReplicaHealth.UNHEALTHY:
-                self._emit_event(
+                await self._emit_event(
                     ReplicationEvent(
                         event_type=ReplicationEventType.REPLICA_UNHEALTHY,
                         replica_name=target.name,
@@ -182,7 +213,7 @@ class ReplicationMonitor(Generic[ConfigT]):
 
         # Check replication lag
         if target.replication_lag_ms > self._config.max_replication_lag_ms:
-            self._emit_event(
+            await self._emit_event(
                 ReplicationEvent(
                     event_type=ReplicationEventType.LAG_EXCEEDED,
                     replica_name=target.name,
@@ -195,27 +226,31 @@ class ReplicationMonitor(Generic[ConfigT]):
 
     async def _health_check_loop(self) -> None:
         """Background task for health checks."""
-        while self._running:
-            try:
-                # Check all replicas
-                for target in self._config.targets:
-                    await self._check_replica_health(target)
-
-                await asyncio.sleep(self._config.health_check_interval_seconds)
-
-            except asyncio.CancelledError:
-                break
-            except Exception:
-                pass
+        try:
+            while self._running:
+                for target in tuple(self._config.targets):
+                    if not self._running:
+                        break
+                    try:
+                        await self._check_replica_health(target)
+                    except asyncio.CancelledError:
+                        raise
+                    except Exception:
+                        self._record_error("health_check", target.name)
+                # Failed checks still honor the interval and do not starve peers.
+                if self._running:
+                    await asyncio.sleep(self._config.health_check_interval_seconds)
+        finally:
+            self._running = False
 
     async def start(self) -> None:
         """Start monitoring."""
         if self._running:
             return
-
-        self._running = True
+        self._config.validate()
 
         if self._config.enable_health_checks:
+            self._running = True
             self._health_check_task = asyncio.create_task(self._health_check_loop())
 
     async def stop(self) -> None:
@@ -228,9 +263,10 @@ class ReplicationMonitor(Generic[ConfigT]):
                 await self._health_check_task
             except asyncio.CancelledError:
                 pass
-            self._health_check_task = None
+            finally:
+                self._health_check_task = None
 
-    async def __aenter__(self) -> "ReplicationMonitor[ConfigT]":
+    async def __aenter__(self) -> ReplicationMonitor[ConfigT]:
         """Async context manager entry."""
         await self.start()
         return self
@@ -242,6 +278,10 @@ class ReplicationMonitor(Generic[ConfigT]):
     def get_health_summary(self) -> dict[str, Any]:
         """Get health summary of all replicas."""
         return {
+            "running": self._running,
+            "monitor_failures": self._monitor_failures,
+            "handler_failures": self._handler_failures,
+            "errors": [dict(error) for error in self._errors],
             "targets": [
                 {
                     "name": target.name,
@@ -250,16 +290,13 @@ class ReplicationMonitor(Generic[ConfigT]):
                     "state": target.state.value,
                     "lag_ms": target.replication_lag_ms,
                     "last_sync": (
-                        target.last_sync_time.isoformat()
-                        if target.last_sync_time
-                        else None
+                        target.last_sync_time.isoformat() if target.last_sync_time else None
                     ),
                 }
                 for target in self._config.targets
             ],
             "healthy_count": sum(
-                1 for t in self._config.targets
-                if t.health == ReplicaHealth.HEALTHY
+                1 for t in self._config.targets if t.health == ReplicaHealth.HEALTHY
             ),
             "total_count": len(self._config.targets),
         }

@@ -46,6 +46,7 @@ from truthound.profiler.base import (
     DistributionStats,
     ValueFrequency,
     ColumnProfile,
+    ProfileExecutionIssue,
     TableProfile,
     # Base classes
     Profiler,
@@ -1003,6 +1004,7 @@ __all__ = [
     "DistributionStats",
     "ValueFrequency",
     "ColumnProfile",
+    "ProfileExecutionIssue",
     "TableProfile",
     # Base classes
     "Profiler",

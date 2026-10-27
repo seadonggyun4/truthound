@@ -6,26 +6,28 @@ during validation and transformation operations.
 
 from __future__ import annotations
 
-from contextlib import contextmanager
-from dataclasses import dataclass, field
-from datetime import datetime
-from typing import Any, Generator
-import uuid
 import threading
+import uuid
+from collections.abc import Generator  # noqa: TC003 - public annotation introspection
+from contextlib import contextmanager
+from contextvars import ContextVar
+from copy import deepcopy
+from dataclasses import dataclass, field, replace
+from datetime import datetime
+from pathlib import Path
+from typing import Any
 
-import polars as pl
-
+from truthound.lineage._tracking import fingerprint, graph_edit, publish_tracker_graph, writer_lock
 from truthound.lineage.base import (
-    LineageConfig,
-    LineageGraph,
-    LineageNode,
-    LineageEdge,
-    LineageMetadata,
     ColumnLineage,
-    NodeType,
     EdgeType,
+    LineageConfig,
+    LineageEdge,
+    LineageGraph,
+    LineageMetadata,
+    LineageNode,
+    NodeType,
     OperationType,
-    NodeNotFoundError,
 )
 
 
@@ -44,6 +46,27 @@ class TrackingContext:
     metadata: dict[str, Any] = field(default_factory=dict)
     completed: bool = False
     error: Exception | None = None
+
+    def add_source(self, node_id: str) -> None:
+        if node_id not in self.sources:
+            self.sources.append(node_id)
+
+    def add_target(self, node_id: str) -> None:
+        if node_id not in self.targets:
+            self.targets.append(node_id)
+
+
+def _snapshot_context(context: TrackingContext) -> TrackingContext:
+    try:
+        metadata = deepcopy(context.metadata)
+    except Exception:
+        # Native opaque metadata remains caller-owned; never lose the original failure.
+        metadata = (
+            dict.copy(context.metadata) if isinstance(context.metadata, dict) else context.metadata
+        )
+    return replace(
+        context, sources=list(context.sources), targets=list(context.targets), metadata=metadata
+    )
 
 
 class LineageTracker:
@@ -76,7 +99,9 @@ class LineageTracker:
         ...     ctx.add_target("output_data")
     """
 
-    _current_tracker: "LineageTracker | None" = None
+    _current_tracker: ContextVar[LineageTracker | None] = ContextVar(
+        "truthound_lineage_tracker", default=None
+    )
     _lock = threading.Lock()
 
     def __init__(self, config: LineageConfig | None = None):
@@ -85,22 +110,40 @@ class LineageTracker:
         Args:
             config: Optional configuration
         """
-        self._config = config or LineageConfig()
-        self._graph = LineageGraph(config)
+        self._config = deepcopy(config) if config is not None else LineageConfig()
+        if type(self._config.max_history) is not int or self._config.max_history < 0:
+            raise ValueError("max_history must be a nonnegative integer")
+        for name in ("track_column_level", "track_row_level", "store_samples", "auto_track"):
+            if type(getattr(self._config, name)) is not bool:
+                raise ValueError(f"{name} must be a boolean")
+        self._mutation_lock = threading.RLock()
+        self._persistence_failed = False
+        path = self._config.persist_path
+        self._persistence_version = None
+        if path is not None:
+            with writer_lock(path):
+                self._persistence_version = fingerprint(path)
+                self._graph = (
+                    LineageGraph.load(path, self._config)
+                    if self._persistence_version is not None
+                    else LineageGraph(self._config)
+                )
+        else:
+            self._graph = LineageGraph(self._config)
         self._history: list[TrackingContext] = []
         self._active_contexts: dict[str, TrackingContext] = {}
         self._local = threading.local()
 
     @classmethod
-    def get_current(cls) -> "LineageTracker | None":
+    def get_current(cls) -> LineageTracker | None:
         """Get the current active tracker."""
-        return cls._current_tracker
+        return cls._current_tracker.get()
 
     @classmethod
-    def set_current(cls, tracker: "LineageTracker | None") -> None:
+    def set_current(cls, tracker: LineageTracker | None) -> None:
         """Set the current active tracker."""
         with cls._lock:
-            cls._current_tracker = tracker
+            cls._current_tracker.set(tracker)
 
     @property
     def graph(self) -> LineageGraph:
@@ -110,8 +153,10 @@ class LineageTracker:
     @property
     def history(self) -> list[TrackingContext]:
         """Get tracking history."""
-        return list(self._history)
+        with self._mutation_lock:
+            return [_snapshot_context(context) for context in self._history]
 
+    @graph_edit
     def track_source(
         self,
         name: str,
@@ -150,13 +195,16 @@ class LineageTracker:
                 description=metadata.get("description", f"Source: {name}"),
                 owner=metadata.get("owner", ""),
                 tags=tuple(metadata.get("tags", [])),
-                properties={k: v for k, v in metadata.items() if k not in ("description", "owner", "tags")},
+                properties={
+                    k: v for k, v in metadata.items() if k not in ("description", "owner", "tags")
+                },
             ),
         )
 
         self._graph.add_node(node)
         return name
 
+    @graph_edit
     def track_transformation(
         self,
         name: str,
@@ -165,6 +213,7 @@ class LineageTracker:
         location: str = "",
         schema: dict[str, str] | None = None,
         column_mapping: dict[str, list[tuple[str, str]]] | None = None,
+        row_mapping: dict[int, list[tuple[str, int]]] | None = None,
         **metadata: Any,
     ) -> str:
         """Track a data transformation.
@@ -176,21 +225,41 @@ class LineageTracker:
             location: Output location
             schema: Output schema
             column_mapping: Mapping of output columns to source columns
+            row_mapping: Explicit output row positions to source node/row positions
             **metadata: Additional metadata
 
         Returns:
             Node ID
         """
+        if "row_lineage" in metadata:
+            raise ValueError("Use row_mapping for row provenance")
+        rows = []
+        if row_mapping is not None and self._config.track_row_level:
+            if len(row_mapping) > 10000:
+                raise ValueError("Row provenance exceeds 10000 output rows")
+            for row, origins in sorted(row_mapping.items()):
+                if type(row) is not int or row < 0 or len(origins) > 10000:
+                    raise ValueError("Invalid row provenance position or source count")
+                references = []
+                for node, position in origins:
+                    if node not in sources or type(position) is not int or position < 0:
+                        raise ValueError(
+                            "Row provenance requires declared sources and nonnegative positions"
+                        )
+                    references.append({"node": node, "row": position})
+                rows.append({"row": row, "sources": references})
         # Create column lineage
         column_lineage = []
-        if column_mapping:
+        if column_mapping and self._config.track_column_level:
             for col, source_cols in column_mapping.items():
-                column_lineage.append(ColumnLineage(
-                    column=col,
-                    source_columns=tuple(source_cols),
-                    transformation=operation,
-                    dtype=schema.get(col, "") if schema else "",
-                ))
+                column_lineage.append(
+                    ColumnLineage(
+                        column=col,
+                        source_columns=tuple(source_cols),
+                        transformation=operation,
+                        dtype=schema.get(col, "") if schema else "",
+                    )
+                )
 
         node = LineageNode(
             id=name,
@@ -204,7 +273,16 @@ class LineageTracker:
                 tags=tuple(metadata.get("tags", [])),
                 properties={
                     "operation": operation,
-                    **{k: v for k, v in metadata.items() if k not in ("description", "owner", "tags")},
+                    **(
+                        {"row_lineage": rows}
+                        if self._config.track_row_level and row_mapping is not None
+                        else {}
+                    ),
+                    **{
+                        k: v
+                        for k, v in metadata.items()
+                        if k not in ("description", "owner", "tags")
+                    },
                 },
             ),
             column_lineage=tuple(column_lineage),
@@ -245,6 +323,7 @@ class LineageTracker:
 
         return name
 
+    @graph_edit
     def track_validation(
         self,
         name: str,
@@ -276,7 +355,11 @@ class LineageTracker:
                 properties={
                     "validators": validators or [],
                     "result_summary": result_summary or {},
-                    **{k: v for k, v in metadata.items() if k not in ("description", "owner", "tags")},
+                    **{
+                        k: v
+                        for k, v in metadata.items()
+                        if k not in ("description", "owner", "tags")
+                    },
                 },
             ),
         )
@@ -298,6 +381,7 @@ class LineageTracker:
 
         return name
 
+    @graph_edit
     def track_output(
         self,
         name: str,
@@ -331,7 +415,11 @@ class LineageTracker:
                 tags=tuple(metadata.get("tags", [])),
                 properties={
                     "output_type": output_type,
-                    **{k: v for k, v in metadata.items() if k not in ("description", "owner", "tags")},
+                    **{
+                        k: v
+                        for k, v in metadata.items()
+                        if k not in ("description", "owner", "tags")
+                    },
                 },
             ),
         )
@@ -350,6 +438,7 @@ class LineageTracker:
 
         return name
 
+    @graph_edit
     def add_dependency(
         self,
         source_id: str,
@@ -393,19 +482,55 @@ class LineageTracker:
 
         self._active_contexts[ctx.operation_id] = ctx
 
+        token = self._current_tracker.set(self)
         try:
             yield ctx
+            if self._config.auto_track and (ctx.sources or ctx.targets):
+                self._record_context(operation_name, ctx)
             ctx.completed = True
         except Exception as e:
             ctx.error = e
             raise
         finally:
+            self._current_tracker.reset(token)
             del self._active_contexts[ctx.operation_id]
-            self._history.append(ctx)
+            with self._mutation_lock:
+                self._history.append(_snapshot_context(ctx))
+                if self._config.max_history == 0:
+                    self._history.clear()
+                elif len(self._history) > self._config.max_history:
+                    self._history = self._history[-self._config.max_history :]
 
-            # Limit history size
-            if len(self._history) > self._config.max_history:
-                self._history = self._history[-self._config.max_history:]
+    @graph_edit
+    def _record_context(self, name: str, context: TrackingContext) -> None:
+        for node_id in [*context.sources, *context.targets]:
+            self._graph.get_node(node_id)
+        self._graph.add_node(
+            LineageNode(
+                id=context.operation_id,
+                name=name,
+                node_type=NodeType.TRANSFORMATION,
+                metadata=LineageMetadata(properties={"operation": context.operation_type.value}),
+            )
+        )
+        for source in context.sources:
+            self._graph.add_edge(
+                LineageEdge(
+                    source=source,
+                    target=context.operation_id,
+                    edge_type=EdgeType.USED_BY,
+                    operation=context.operation_type,
+                )
+            )
+        for target in context.targets:
+            self._graph.add_edge(
+                LineageEdge(
+                    source=context.operation_id,
+                    target=target,
+                    edge_type=EdgeType.DERIVED_FROM,
+                    operation=context.operation_type,
+                )
+            )
 
     def get_lineage(self, node_id: str, direction: str = "both") -> dict[str, Any]:
         """Get lineage information for a node.
@@ -443,48 +568,46 @@ class LineageTracker:
         if not self._graph.has_node(source_id) or not self._graph.has_node(target_id):
             return None
 
-        visited: set[str] = set()
-        path: list[str] = []
-
-        if self._find_path_dfs(source_id, target_id, visited, path):
-            return [self._graph.get_node(nid) for nid in path]
-        return None
-
-    def _find_path_dfs(
-        self,
-        current: str,
-        target: str,
-        visited: set[str],
-        path: list[str],
-    ) -> bool:
-        """DFS to find path between nodes."""
-        visited.add(current)
-        path.append(current)
-
-        if current == target:
-            return True
-
-        for child_id in self._graph._adjacency.get(current, []):
-            if child_id not in visited:
-                if self._find_path_dfs(child_id, target, visited, path):
-                    return True
-
-        path.pop()
-        return False
+        with self._graph._lock:
+            path = self._graph._path_ids(source_id, target_id)
+            return [self._graph.get_node(nid) for nid in path] if path is not None else None
 
     def export_to_json(self) -> str:
         """Export lineage graph to JSON string."""
         import json
-        return json.dumps(self._graph.to_dict(), indent=2)
+
+        return json.dumps(self._graph.to_dict(), indent=2, allow_nan=False)
 
     def save(self, path: str) -> None:
         """Save lineage graph to file."""
-        self._graph.save(path)
+        with self._mutation_lock:
+            if self._primary_path(path):
+                publish_tracker_graph(self, self._graph, path)
+            else:
+                self._graph.save(path)
+
+    def _primary_path(self, path) -> bool:
+        return (
+            self._config.persist_path is not None
+            and Path(path).resolve() == Path(self._config.persist_path).resolve()
+        )
 
     def load(self, path: str) -> None:
-        """Load lineage graph from file."""
-        self._graph = LineageGraph.load(path, self._config)
+        """Load a graph; reloading the primary file confirms its current version."""
+        with self._mutation_lock:
+            if not self._primary_path(path):
+                self._graph = LineageGraph.load(path, self._config)
+                return
+            with writer_lock(path):
+                before = fingerprint(path)
+                loaded = LineageGraph.load(path, self._config)
+                if fingerprint(path) != before:
+                    raise RuntimeError("Lineage snapshot changed while loading")
+                self._graph = loaded
+                self._persistence_version = before
+                self._persistence_failed = False
 
+    @graph_edit
     def clear(self) -> None:
         """Clear all lineage data."""
         self._graph.clear()

@@ -753,3 +753,23 @@ escalation:
         cancel() from any state → CANCELLED
         error from any state → FAILED
 ```
+
+## Durable local execution
+
+Set `SchedulerConfig(journal_path="/private/state/incidents.sqlite")` and
+`EscalationEngineConfig(store_type="sqlite", store_config={"database": "/private/state/incidents.sqlite"}, scheduler_config=...)`
+in application/operator code. Both must refer to the same file-backed SQLite database.
+The parent directory and notification handler are operator-owned. Durable mode commits
+incident state and notification intent before calling the handler, then commits its
+completion and following reservation together. Interrupted/failed delivery is unknown
+and blocks further escalation; it is never automatically resent. Pending scheduler
+reservations survive process restart. Native policy changes quarantine recovered jobs.
+
+`recovery_status(limit=100, offset=0)` returns bounded attempt identities/states.
+While stopped, `await recovery_resolve(identity, "completed" | "cancelled")` records
+an operator-confirmed outcome without sending. Completion reserves a following level
+under the unchanged policy; cancellation does not.
+`await recovery_forget(identities)` removes only explicitly selected completed/cancelled
+receipts. Unknown evidence cannot be deleted. `stop()` retains exclusive ownership
+for restart; `await close()` drains execution and releases ownership/resources.
+Exactly-once external delivery and automatic OS-service restart are not promised.

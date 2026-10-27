@@ -16,7 +16,7 @@ Install with: pip install truthound[database]
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
@@ -29,11 +29,12 @@ try:
         Integer,
         String,
         Text,
+        UniqueConstraint,
         create_engine,
         text,
     )
-    from sqlalchemy.orm import Session, declarative_base, sessionmaker
     from sqlalchemy.exc import SQLAlchemyError
+    from sqlalchemy.orm import Session, declarative_base, sessionmaker
 
     HAS_SQLALCHEMY = True
     Base = declarative_base()
@@ -84,7 +85,7 @@ if HAS_SQLALCHEMY:
         __tablename__ = "validation_results"
 
         id = Column(Integer, primary_key=True, autoincrement=True)
-        run_id = Column(String(255), unique=True, nullable=False, index=True)
+        run_id = Column(String(255), nullable=False, index=True)
         data_asset = Column(String(500), nullable=False, index=True)
         run_time = Column(DateTime, nullable=False, index=True)
         status = Column(String(50), nullable=False, index=True)
@@ -96,9 +97,40 @@ if HAS_SQLALCHEMY:
 
         # Create composite indexes
         __table_args__ = (
+            UniqueConstraint("namespace", "run_id", name="uq_validation_results_namespace_run"),
             Index("ix_namespace_data_asset", "namespace", "data_asset"),
             Index("ix_namespace_run_time", "namespace", "run_time"),
         )
+
+
+def _table_model(prefix):
+    """Map a fixed prefixed table without mutating the default shared model."""
+    import re
+
+    if not isinstance(prefix, str) or (
+        prefix and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,23}", prefix) is None
+    ):
+        raise ValueError(
+            "Database table prefix must be empty or a simple identifier of at most 24 characters"
+        )
+    if not prefix:
+        return ValidationResultModel, Base.metadata
+    from sqlalchemy import MetaData
+    from sqlalchemy.orm import registry
+
+    metadata = MetaData()
+    table = ValidationResultModel.__table__.to_metadata(
+        metadata, name=prefix + "validation_results"
+    )
+    for index in table.indexes:
+        if index.name:
+            index.name = prefix + index.name
+    for constraint in table.constraints:
+        if constraint.name:
+            constraint.name = prefix + constraint.name
+    mapped = type("PrefixedValidationResult", (), {})
+    registry(metadata=metadata).map_imperatively(mapped, table)
+    return mapped, metadata
 
 
 @dataclass
@@ -220,6 +252,7 @@ class DatabaseStore(ValidationStore["DatabaseConfig"]):
             Dependency check is handled by the factory. Direct instantiation
             requires sqlalchemy to be installed.
         """
+        _require_sqlalchemy()
         # Build pooling config from individual params if not provided
         if pooling is None:
             pooling = PoolingConfig(
@@ -239,6 +272,7 @@ class DatabaseStore(ValidationStore["DatabaseConfig"]):
             **{k: v for k, v in kwargs.items() if hasattr(DatabaseConfig, k)},
         )
         super().__init__(config)
+        self._model, self._metadata = _table_model(config.table_prefix)
 
         # Connection management
         self._engine: SQLEngineProtocol | None = None
@@ -246,12 +280,12 @@ class DatabaseStore(ValidationStore["DatabaseConfig"]):
         self._pool_manager: ConnectionPoolManager | None = None
 
     @classmethod
-    def _default_config(cls) -> "DatabaseConfig":
+    def _default_config(cls) -> DatabaseConfig:
         """Create default configuration."""
         return DatabaseConfig()
 
     @property
-    def pool_metrics(self) -> "PoolMetrics | None":
+    def pool_metrics(self) -> PoolMetrics | None:
         """Get connection pool metrics.
 
         Returns:
@@ -298,10 +332,19 @@ class DatabaseStore(ValidationStore["DatabaseConfig"]):
 
     def _do_initialize(self) -> None:
         """Initialize the database connection and tables."""
-        if self._config.use_pool_manager:
-            self._initialize_with_pool_manager()
-        else:
-            self._initialize_legacy()
+        try:
+            if self._config.use_pool_manager:
+                self._initialize_with_pool_manager()
+            else:
+                self._initialize_legacy()
+        except BaseException as original:
+            try:
+                self.close()
+            except BaseException as cleanup:
+                raise BaseExceptionGroup(
+                    "Database initialization and owned cleanup failed", [original, cleanup]
+                ) from None
+            raise
 
     def _initialize_with_pool_manager(self) -> None:
         """Initialize using enterprise ConnectionPoolManager."""
@@ -361,13 +404,15 @@ class DatabaseStore(ValidationStore["DatabaseConfig"]):
 
             # Create tables if needed
             if self._config.create_tables:
-                Base.metadata.create_all(self._engine)
+                self._metadata.create_all(self._engine)
 
         except ImportError:
             # Fall back to legacy initialization
             self._initialize_legacy()
-        except SQLAlchemyError as e:
-            raise StoreConnectionError("Database", str(e))
+        except SQLAlchemyError:
+            raise StoreConnectionError(
+                "Database", "Native database initialization failed"
+            ) from None
 
     def _initialize_legacy(self) -> None:
         """Legacy initialization without pool manager."""
@@ -396,12 +441,14 @@ class DatabaseStore(ValidationStore["DatabaseConfig"]):
 
             # Create tables if needed
             if self._config.create_tables:
-                Base.metadata.create_all(self._engine)
+                self._metadata.create_all(self._engine)
 
-        except SQLAlchemyError as e:
-            raise StoreConnectionError("Database", str(e))
+        except SQLAlchemyError:
+            raise StoreConnectionError(
+                "Database", "Native database initialization failed"
+            ) from None
 
-    def _get_session(self) -> "Session":
+    def _get_session(self) -> Session:
         """Get a new database session."""
         if self._pool_manager:
             return self._pool_manager.get_session()
@@ -425,8 +472,11 @@ class DatabaseStore(ValidationStore["DatabaseConfig"]):
             with self._get_session() as session:
                 # Check if exists and update, otherwise insert
                 existing = (
-                    session.query(ValidationResultModel)
-                    .filter(ValidationResultModel.run_id == item.run_id)
+                    session.query(self._model)
+                    .filter(
+                        self._model.run_id == item.run_id,
+                        self._model.namespace == self._config.namespace,
+                    )
                     .first()
                 )
 
@@ -441,7 +491,7 @@ class DatabaseStore(ValidationStore["DatabaseConfig"]):
                     existing.tags_json = tags_json
                     existing.data_json = data_json
                 else:
-                    model = ValidationResultModel(
+                    model = self._model(
                         run_id=item.run_id,
                         data_asset=item.data_asset,
                         run_time=item.run_time,
@@ -455,8 +505,8 @@ class DatabaseStore(ValidationStore["DatabaseConfig"]):
                 session.commit()
                 return item.run_id
 
-        except SQLAlchemyError as e:
-            raise StoreWriteError(f"Failed to save to database: {e}")
+        except SQLAlchemyError:
+            raise StoreWriteError("Failed to save to database") from None
 
     def get(self, item_id: str) -> ValidationResult:
         """Retrieve a validation result from the database.
@@ -476,10 +526,10 @@ class DatabaseStore(ValidationStore["DatabaseConfig"]):
         try:
             with self._get_session() as session:
                 model = (
-                    session.query(ValidationResultModel)
+                    session.query(self._model)
                     .filter(
-                        ValidationResultModel.run_id == item_id,
-                        ValidationResultModel.namespace == self._config.namespace,
+                        self._model.run_id == item_id,
+                        self._model.namespace == self._config.namespace,
                     )
                     .first()
                 )
@@ -492,8 +542,8 @@ class DatabaseStore(ValidationStore["DatabaseConfig"]):
 
         except StoreNotFoundError:
             raise
-        except (json.JSONDecodeError, SQLAlchemyError) as e:
-            raise StoreReadError(f"Failed to read from database: {e}")
+        except (ValueError, KeyError, TypeError, SQLAlchemyError):
+            raise StoreReadError("Failed to read from database") from None
 
     def exists(self, item_id: str) -> bool:
         """Check if a validation result exists.
@@ -509,17 +559,17 @@ class DatabaseStore(ValidationStore["DatabaseConfig"]):
         try:
             with self._get_session() as session:
                 count = (
-                    session.query(ValidationResultModel)
+                    session.query(self._model)
                     .filter(
-                        ValidationResultModel.run_id == item_id,
-                        ValidationResultModel.namespace == self._config.namespace,
+                        self._model.run_id == item_id,
+                        self._model.namespace == self._config.namespace,
                     )
                     .count()
                 )
                 return count > 0
 
         except SQLAlchemyError:
-            return False
+            raise StoreReadError("Failed to check database record existence") from None
 
     def delete(self, item_id: str) -> bool:
         """Delete a validation result from the database.
@@ -538,152 +588,105 @@ class DatabaseStore(ValidationStore["DatabaseConfig"]):
         try:
             with self._get_session() as session:
                 deleted = (
-                    session.query(ValidationResultModel)
+                    session.query(self._model)
                     .filter(
-                        ValidationResultModel.run_id == item_id,
-                        ValidationResultModel.namespace == self._config.namespace,
+                        self._model.run_id == item_id,
+                        self._model.namespace == self._config.namespace,
                     )
                     .delete()
                 )
                 session.commit()
                 return deleted > 0
 
-        except SQLAlchemyError as e:
-            raise StoreWriteError(f"Failed to delete from database: {e}")
+        except SQLAlchemyError:
+            raise StoreWriteError("Failed to delete from database") from None
+
+    def _model_query(self, session, query):
+        query = query or StoreQuery()
+        if query.order_by not in {"run_time", "data_asset", "status"}:
+            raise ValueError("Unsupported database store ordering")
+        if type(query.offset) is not int or query.offset < 0:
+            raise ValueError("Database store offset must be a non-negative integer")
+        if query.limit is not None and (type(query.limit) is not int or query.limit < 0):
+            raise ValueError("Database store limit must be a non-negative integer")
+        rows = session.query(self._model).filter(self._model.namespace == self._config.namespace)
+        if query.data_asset:
+            rows = rows.filter(self._model.data_asset == query.data_asset)
+        if query.status:
+            rows = rows.filter(self._model.status == query.status)
+        if query.start_time:
+            rows = rows.filter(self._model.run_time >= query.start_time)
+        if query.end_time:
+            rows = rows.filter(self._model.run_time <= query.end_time)
+        column = getattr(self._model, query.order_by)
+        return rows.order_by(
+            column.asc() if query.ascending else column.desc(), self._model.run_id.asc()
+        )
+
+    def _matching_models(self, session, query):
+        query = query or StoreQuery()
+        rows = self._model_query(session, query)
+        if query.limit == 0:
+            return
+        if not query.tags:
+            if query.offset:
+                rows = rows.offset(query.offset)
+            if query.limit is not None:
+                rows = rows.limit(query.limit)
+            yield from rows.yield_per(1000)
+            return
+        # Portable tag filtering must happen before pagination. Stream native
+        # rows instead of materializing the whole database for this fallback.
+        skipped = returned = 0
+        for row in rows.yield_per(1000):
+            try:
+                tags = json.loads(row.tags_json or "{}")
+                if not isinstance(tags, dict):
+                    raise ValueError("Invalid stored tags")
+            except (ValueError, TypeError):
+                raise StoreReadError("Database record tags are corrupt") from None
+            if not all(tags.get(key) == value for key, value in query.tags.items()):
+                continue
+            if skipped < query.offset:
+                skipped += 1
+                continue
+            yield row
+            returned += 1
+            if query.limit is not None and returned >= query.limit:
+                return
 
     def list_ids(self, query: StoreQuery | None = None) -> list[str]:
-        """List validation result IDs matching the query.
-
-        Args:
-            query: Optional query to filter results.
-
-        Returns:
-            List of matching run IDs.
-        """
+        """List namespace-local IDs, applying filters before pagination."""
         self.initialize()
-
         try:
             with self._get_session() as session:
-                q = session.query(ValidationResultModel.run_id).filter(
-                    ValidationResultModel.namespace == self._config.namespace
-                )
-
-                if query:
-                    if query.data_asset:
-                        q = q.filter(ValidationResultModel.data_asset == query.data_asset)
-                    if query.status:
-                        q = q.filter(ValidationResultModel.status == query.status)
-                    if query.start_time:
-                        q = q.filter(ValidationResultModel.run_time >= query.start_time)
-                    if query.end_time:
-                        q = q.filter(ValidationResultModel.run_time <= query.end_time)
-
-                    # Sorting
-                    order_column = getattr(
-                        ValidationResultModel,
-                        query.order_by if query.order_by != "run_time" else "run_time",
-                        ValidationResultModel.run_time,
-                    )
-                    if query.ascending:
-                        q = q.order_by(order_column.asc())
-                    else:
-                        q = q.order_by(order_column.desc())
-
-                    # Pagination
-                    if query.offset:
-                        q = q.offset(query.offset)
-                    if query.limit:
-                        q = q.limit(query.limit)
-                else:
-                    q = q.order_by(ValidationResultModel.run_time.desc())
-
-                return [row[0] for row in q.all()]
-
+                return [row.run_id for row in self._matching_models(session, query)]
         except SQLAlchemyError:
-            return []
+            raise StoreReadError("Failed to list database records") from None
 
     def query(self, query: StoreQuery) -> list[ValidationResult]:
-        """Query validation results from the database.
-
-        Args:
-            query: Query parameters for filtering.
-
-        Returns:
-            List of matching validation results.
-        """
+        """Read matching native results; corrupt records are explicit failures."""
         self.initialize()
-
         try:
             with self._get_session() as session:
-                q = session.query(ValidationResultModel).filter(
-                    ValidationResultModel.namespace == self._config.namespace
-                )
-
-                if query.data_asset:
-                    q = q.filter(ValidationResultModel.data_asset == query.data_asset)
-                if query.status:
-                    q = q.filter(ValidationResultModel.status == query.status)
-                if query.start_time:
-                    q = q.filter(ValidationResultModel.run_time >= query.start_time)
-                if query.end_time:
-                    q = q.filter(ValidationResultModel.run_time <= query.end_time)
-
-                # Sorting
-                if query.ascending:
-                    q = q.order_by(ValidationResultModel.run_time.asc())
-                else:
-                    q = q.order_by(ValidationResultModel.run_time.desc())
-
-                # Pagination
-                if query.offset:
-                    q = q.offset(query.offset)
-                if query.limit:
-                    q = q.limit(query.limit)
-
-                results: list[ValidationResult] = []
-                for model in q.all():
-                    try:
-                        data = json.loads(model.data_json)
-                        results.append(ValidationResult.from_dict(data))
-                    except (json.JSONDecodeError, KeyError):
-                        continue
-
-                return results
-
-        except SQLAlchemyError:
-            return []
+                return [
+                    ValidationResult.from_dict(json.loads(row.data_json))
+                    for row in self._matching_models(session, query)
+                ]
+        except (SQLAlchemyError, ValueError, KeyError, TypeError):
+            raise StoreReadError("Failed to query database records") from None
 
     def count(self, query: StoreQuery | None = None) -> int:
-        """Count validation results matching the query.
-
-        Args:
-            query: Optional query to filter.
-
-        Returns:
-            Number of matching results.
-        """
+        """Count matching records in this namespace, without page boundaries."""
         self.initialize()
-
+        query = replace(query, limit=None, offset=0) if query is not None else StoreQuery()
         try:
             with self._get_session() as session:
-                q = session.query(ValidationResultModel).filter(
-                    ValidationResultModel.namespace == self._config.namespace
-                )
-
-                if query:
-                    if query.data_asset:
-                        q = q.filter(ValidationResultModel.data_asset == query.data_asset)
-                    if query.status:
-                        q = q.filter(ValidationResultModel.status == query.status)
-                    if query.start_time:
-                        q = q.filter(ValidationResultModel.run_time >= query.start_time)
-                    if query.end_time:
-                        q = q.filter(ValidationResultModel.run_time <= query.end_time)
-
-                return q.count()
-
+                if query.tags:
+                    return sum(1 for _ in self._matching_models(session, query))
+                return self._model_query(session, query).count()
         except SQLAlchemyError:
-            return 0
+            raise StoreReadError("Failed to count database records") from None
 
     def close(self) -> None:
         """Close the database connection and release all resources."""
@@ -694,7 +697,8 @@ class DatabaseStore(ValidationStore["DatabaseConfig"]):
         elif self._engine:
             self._engine.dispose()
             self._engine = None
-            self._session_factory = None
+        self._session_factory = None
+        self._initialized = False
 
     def recycle_connections(self) -> int:
         """Manually recycle all pool connections.
@@ -711,7 +715,7 @@ class DatabaseStore(ValidationStore["DatabaseConfig"]):
 
     def execute_with_retry(
         self,
-        operation: "Callable[[Session], Any]",
+        operation: Callable[[Session], Any],
     ) -> Any:
         """Execute database operation with automatic retry.
 

@@ -6,22 +6,20 @@ reference and current data.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
-from math import log, sqrt
+from math import log
 from typing import Any
 
 import polars as pl
 
+from truthound.ml._training import atomic_fit
 from truthound.ml.base import (
     DriftConfig,
     DriftResult,
     MLDriftDetector,
-    ModelInfo,
-    ModelNotTrainedError,
     ModelState,
     ModelTrainingError,
-    ModelType,
     register_model,
 )
 
@@ -80,6 +78,7 @@ class DistributionDriftDetector(MLDriftDetector):
     def _get_description(self) -> str:
         return "Distribution-based drift detection"
 
+    @atomic_fit
     def fit(self, data: pl.LazyFrame) -> None:
         """Compute reference statistics.
 
@@ -88,7 +87,7 @@ class DistributionDriftDetector(MLDriftDetector):
         """
         import time
 
-        start = time.perf_counter()
+        time.perf_counter()
         self._state = ModelState.TRAINING
 
         try:
@@ -98,15 +97,19 @@ class DistributionDriftDetector(MLDriftDetector):
             # Get numeric columns
             schema = df.schema
             numeric_types = {
-                pl.Int8, pl.Int16, pl.Int32, pl.Int64,
-                pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64,
-                pl.Float32, pl.Float64,
+                pl.Int8,
+                pl.Int16,
+                pl.Int32,
+                pl.Int64,
+                pl.UInt8,
+                pl.UInt16,
+                pl.UInt32,
+                pl.UInt64,
+                pl.Float32,
+                pl.Float64,
             }
 
-            self._columns = [
-                c for c in schema.keys()
-                if type(schema[c]) in numeric_types
-            ]
+            self._columns = [c for c in schema if type(schema[c]) in numeric_types]
 
             # Compute reference statistics
             self._reference_stats = {}
@@ -126,9 +129,7 @@ class DistributionDriftDetector(MLDriftDetector):
                 model_name=self.info.name,
             ) from e
 
-    def _compute_distribution(
-        self, df: pl.DataFrame, column: str
-    ) -> dict[str, Any]:
+    def _compute_distribution(self, df: pl.DataFrame, column: str) -> dict[str, Any]:
         """Compute distribution statistics for a column."""
         data = df[column].drop_nulls().cast(pl.Float64).to_list()
 
@@ -188,6 +189,7 @@ class DistributionDriftDetector(MLDriftDetector):
             DriftResult with drift analysis
         """
         import time
+
         start = time.perf_counter()
 
         ref_df = reference.collect()
@@ -244,7 +246,7 @@ class DistributionDriftDetector(MLDriftDetector):
         else:
             drift_type = "global"
 
-        elapsed = (time.perf_counter() - start) * 1000
+        (time.perf_counter() - start) * 1000
 
         return DriftResult(
             is_drifted=is_drifted,
@@ -255,9 +257,7 @@ class DistributionDriftDetector(MLDriftDetector):
             details=f"Method: {method}, Drifted columns: {drifted_cols}",
         )
 
-    def _compute_psi(
-        self, ref: dict[str, Any], curr: dict[str, Any]
-    ) -> float:
+    def _compute_psi(self, ref: dict[str, Any], curr: dict[str, Any]) -> float:
         """Compute Population Stability Index."""
         ref_bins = ref["bins"]
         curr_bins = curr.get("bins")
@@ -280,15 +280,13 @@ class DistributionDriftDetector(MLDriftDetector):
 
         # Calculate PSI
         psi = 0.0
-        for ref_p, curr_p in zip(ref_bins, curr_bins):
+        for ref_p, curr_p in zip(ref_bins, curr_bins, strict=True):
             if ref_p > 0 and curr_p > 0:
                 psi += (curr_p - ref_p) * log(curr_p / ref_p)
 
         return abs(psi)
 
-    def _compute_ks(
-        self, ref: dict[str, Any], curr: dict[str, Any]
-    ) -> float:
+    def _compute_ks(self, ref: dict[str, Any], curr: dict[str, Any]) -> float:
         """Compute Kolmogorov-Smirnov statistic."""
         ref_values = sorted(ref["values"])
         curr_values = sorted(curr["values"])
@@ -307,9 +305,7 @@ class DistributionDriftDetector(MLDriftDetector):
 
         return max_diff
 
-    def _compute_js(
-        self, ref: dict[str, Any], curr: dict[str, Any]
-    ) -> float:
+    def _compute_js(self, ref: dict[str, Any], curr: dict[str, Any]) -> float:
         """Compute Jensen-Shannon divergence."""
         ref_bins = ref["bins"]
         curr_bins = curr.get("bins", ref_bins)
@@ -318,13 +314,12 @@ class DistributionDriftDetector(MLDriftDetector):
             return 0.0
 
         # Compute mixture distribution
-        m = [(p + q) / 2 for p, q in zip(ref_bins, curr_bins)]
+        m = [(p + q) / 2 for p, q in zip(ref_bins, curr_bins, strict=True)]
 
         # KL divergences
         def kl(p_dist: list[float], q_dist: list[float]) -> float:
             return sum(
-                p * log(p / q) for p, q in zip(p_dist, q_dist)
-                if p > 0 and q > 0
+                p * log(p / q) for p, q in zip(p_dist, q_dist, strict=True) if p > 0 and q > 0
             )
 
         js = 0.5 * kl(ref_bins, m) + 0.5 * kl(curr_bins, m)
@@ -332,9 +327,7 @@ class DistributionDriftDetector(MLDriftDetector):
         # Normalize to [0, 1]
         return min(1.0, js / 0.693)  # log(2) ≈ 0.693
 
-    def _compute_wasserstein(
-        self, ref: dict[str, Any], curr: dict[str, Any]
-    ) -> float:
+    def _compute_wasserstein(self, ref: dict[str, Any], curr: dict[str, Any]) -> float:
         """Compute 1-Wasserstein (Earth Mover's) distance."""
         ref_values = sorted(ref["values"])
         curr_values = sorted(curr["values"])

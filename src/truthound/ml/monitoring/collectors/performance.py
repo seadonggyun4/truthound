@@ -5,12 +5,11 @@ Collects latency and throughput metrics from predictions.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any
-import time
-from collections import deque
+import math
 import statistics
+from collections import deque
+from dataclasses import dataclass, field
+from datetime import UTC, datetime
 
 from truthound.ml.monitoring.protocols import (
     IMetricCollector,
@@ -32,6 +31,25 @@ class PerformanceConfig:
     window_size: int = 1000
     percentiles: list[float] = field(default_factory=lambda: [0.5, 0.95, 0.99])
     throughput_window_seconds: int = 60
+
+    def __post_init__(self):
+        if type(self.window_size) is not int or self.window_size <= 0:
+            raise ValueError("Performance window size must be a positive integer")
+        if (
+            isinstance(self.throughput_window_seconds, bool)
+            or not isinstance(self.throughput_window_seconds, (int, float))
+            or not math.isfinite(self.throughput_window_seconds)
+            or self.throughput_window_seconds <= 0
+        ):
+            raise ValueError("Throughput window must be finite and positive")
+        if any(
+            isinstance(value, bool)
+            or not isinstance(value, (int, float))
+            or not math.isfinite(value)
+            or not 0 <= value <= 1
+            for value in self.percentiles
+        ):
+            raise ValueError("Latency percentiles must be finite and between zero and one")
 
 
 class PerformanceCollector(IMetricCollector):
@@ -105,9 +123,9 @@ class PerformanceCollector(IMetricCollector):
         if latencies:
             sorted_latencies = sorted(latencies)
             for p in self._config.percentiles:
-                idx = int(len(sorted_latencies) * p)
+                idx = min(int(len(sorted_latencies) * p), len(sorted_latencies) - 1)
                 if idx < len(sorted_latencies):
-                    custom_metrics[f"latency_p{int(p*100)}"] = sorted_latencies[idx]
+                    custom_metrics[f"latency_p{int(p * 100)}"] = sorted_latencies[idx]
 
             # Also add min, max, std
             custom_metrics["latency_min"] = min(latencies)
@@ -125,7 +143,7 @@ class PerformanceCollector(IMetricCollector):
 
         return ModelMetrics(
             model_id=model_id,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             latency_ms=mean_latency,
             throughput_rps=throughput,
             custom_metrics=custom_metrics,
@@ -136,7 +154,7 @@ class PerformanceCollector(IMetricCollector):
         if len(timestamps) < 2:
             return 0.0
 
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         window_start = now.timestamp() - self._config.throughput_window_seconds
 
         # Count predictions in window

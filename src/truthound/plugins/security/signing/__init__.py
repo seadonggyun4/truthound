@@ -28,16 +28,16 @@ Example:
 from __future__ import annotations
 
 from truthound.plugins.security.signing.service import (
-    SigningServiceImpl,
     SignatureAlgorithm,
+    SigningServiceImpl,
 )
 from truthound.plugins.security.signing.trust_store import TrustStoreImpl
 from truthound.plugins.security.signing.verifier import (
-    VerificationHandlerBase,
+    ExpirationVerifier,
     IntegrityVerifier,
     SignatureVerifier,
     TrustVerifier,
-    ExpirationVerifier,
+    VerificationHandlerBase,
     create_verification_chain,
 )
 

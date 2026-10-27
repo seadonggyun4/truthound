@@ -8,35 +8,33 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from truthound.stores.results import (
-    ValidationResult,
-    ValidatorResult,
-    ResultStatistics,
-    ResultStatus,
-)
-from truthound.stores.base import StoreQuery
-
 # Import mocks
 from tests.mocks.cloud_mocks import (
-    MockS3Client,
-    MockS3ClientError,
     MockGCSClient,
     MockGCSNotFound,
-    create_mock_s3_client,
+    MockS3Client,
+    MockS3ClientError,
     create_mock_gcs_client,
+    create_mock_s3_client,
 )
 from tests.mocks.database_mocks import (
-    MockSQLEngine,
-    MockSessionFactory,
     MockDatabase,
+    MockSessionFactory,
+    MockSQLEngine,
     MockValidationResultModel,
     create_mock_database,
 )
-
+from truthound.stores.base import StoreQuery
+from truthound.stores.results import (
+    ResultStatistics,
+    ResultStatus,
+    ValidationResult,
+    ValidatorResult,
+)
 
 # =============================================================================
 # Fixtures
@@ -438,31 +436,34 @@ class TestStoreFactoryWithMocks:
 
     def test_factory_gcs_import_error(self) -> None:
         """Test that factory provides clear error when google-cloud-storage is missing."""
-        from truthound.stores.factory import get_store
         from truthound.stores.base import StoreError
+        from truthound.stores.factory import get_store
 
-        with pytest.raises(StoreError) as exc_info:
-            # This will fail because google-cloud-storage is not installed
-            get_store("gcs", bucket="test")
+        # Exercise the missing-dependency branch even when the SDK is installed.
+        with patch.dict("sys.modules", {"google.cloud.storage": None}):
+            with pytest.raises(StoreError) as exc_info:
+                get_store("gcs", bucket="test")
 
         assert "google-cloud-storage" in str(exc_info.value).lower()
 
     def test_factory_database_import_error(self) -> None:
         """Test that factory provides clear error when sqlalchemy is missing."""
-        from truthound.stores.factory import get_store
         from truthound.stores.base import StoreError
+        from truthound.stores.factory import get_store
 
         # Exercise a genuinely missing import even when the SDK is installed.
-        with patch.dict("sys.modules", {"sqlalchemy": None}):
-            with pytest.raises(StoreError) as exc_info:
-                get_store("database", connection_url="sqlite:///:memory:")
+        with (
+            patch.dict("sys.modules", {"sqlalchemy": None}),
+            pytest.raises(StoreError) as exc_info,
+        ):
+            get_store("database", connection_url="sqlite:///:memory:")
 
         assert "sqlalchemy" in str(exc_info.value).lower()
 
     def test_factory_unknown_backend_error(self) -> None:
         """Test that factory provides clear error for unknown backend."""
-        from truthound.stores.factory import get_store
         from truthound.stores.base import StoreError
+        from truthound.stores.factory import get_store
 
         with pytest.raises(StoreError) as exc_info:
             get_store("unknown_backend")

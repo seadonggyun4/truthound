@@ -5,11 +5,12 @@ Collects feature and prediction drift metrics.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any
+import copy
 import math
 from collections import defaultdict
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from typing import Any
 
 from truthound.ml.monitoring.protocols import (
     IMetricCollector,
@@ -36,6 +37,19 @@ class DriftConfig:
     drift_threshold: float = 0.1
     features_to_monitor: list[str] | None = None
 
+    def __post_init__(self):
+        for name in ("reference_window_size", "detection_window_size", "histogram_bins"):
+            value = getattr(self, name)
+            if type(value) is not int or value <= 0:
+                raise ValueError(f"{name} must be a positive integer")
+        if (
+            isinstance(self.drift_threshold, bool)
+            or not isinstance(self.drift_threshold, (int, float))
+            or not math.isfinite(self.drift_threshold)
+            or self.drift_threshold < 0
+        ):
+            raise ValueError("Drift threshold must be finite and non-negative")
+
 
 class DriftCollector(IMetricCollector):
     """Collects drift metrics for features and predictions.
@@ -59,6 +73,7 @@ class DriftCollector(IMetricCollector):
         # Current window
         self._current_features: dict[str, dict[str, list[float]]] = {}
         self._current_predictions: dict[str, list[Any]] = {}
+        self._windows: dict[str, list[PredictionRecord]] = {}
 
     @property
     def name(self) -> str:
@@ -78,7 +93,7 @@ class DriftCollector(IMetricCollector):
         features: dict[str, list[float]] = defaultdict(list)
         preds: list[Any] = []
 
-        for pred in predictions:
+        for pred in predictions[-self._config.reference_window_size :]:
             preds.append(pred.prediction)
             for name, value in pred.features.items():
                 if self._should_monitor_feature(name) and isinstance(value, (int, float)):
@@ -107,11 +122,14 @@ class DriftCollector(IMetricCollector):
         Returns:
             Drift metrics
         """
-        # Build current distributions
+        window = self._windows.setdefault(model_id, [])
+        window.extend(copy.deepcopy(predictions))
+        del window[: -self._config.detection_window_size]
+        # Build distributions from the bounded native detection window.
         features: dict[str, list[float]] = defaultdict(list)
         preds: list[Any] = []
 
-        for pred in predictions:
+        for pred in window:
             preds.append(pred.prediction)
             for name, value in pred.features.items():
                 if self._should_monitor_feature(name) and isinstance(value, (int, float)):
@@ -142,7 +160,7 @@ class DriftCollector(IMetricCollector):
 
         return ModelMetrics(
             model_id=model_id,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             prediction_drift=prediction_drift,
             feature_drift=feature_drift,
             custom_metrics=custom_metrics,
@@ -237,7 +255,7 @@ class DriftCollector(IMetricCollector):
         psi = 0.0
         epsilon = 0.0001  # Small value to avoid log(0)
 
-        for ref_prop, curr_prop in zip(ref_counts, curr_counts):
+        for ref_prop, curr_prop in zip(ref_counts, curr_counts, strict=True):
             ref_prop = max(ref_prop, epsilon)
             curr_prop = max(curr_prop, epsilon)
             psi += (curr_prop - ref_prop) * math.log(curr_prop / ref_prop)
@@ -285,6 +303,7 @@ class DriftCollector(IMetricCollector):
         self._reference_predictions.clear()
         self._current_features.clear()
         self._current_predictions.clear()
+        self._windows.clear()
 
     def get_feature_comparison(
         self,

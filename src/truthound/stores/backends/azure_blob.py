@@ -1,126 +1,139 @@
-"""Azure Blob Storage store backend.
-
-This module provides a store implementation that persists data to Azure Blob Storage.
-Requires the azure-storage-blob package.
-
-Install with: pip install truthound[azure]
-"""
+"""Azure Blob storage with conditional receipts and shared Core index state."""
 
 from __future__ import annotations
 
-import gzip
-import json
-from dataclasses import dataclass, field
-from datetime import datetime
-from typing import TYPE_CHECKING, Any
+from copy import deepcopy
+from dataclasses import dataclass, field, fields, replace
+from typing import Any
+from urllib.parse import quote
 
-# Lazy import to avoid ImportError when azure-storage-blob is not installed
+from truthound.stores.backends._object_store import ObjectValidationStore
+from truthound.stores.base import StoreConfig, StoreConnectionError, StoreReadError, StoreWriteError
+from truthound.stores.compression import get_compressor
+
 try:
-    from azure.storage.blob import BlobServiceClient, ContentSettings
-    from azure.core.exceptions import ResourceNotFoundError, AzureError
+    from azure.core import MatchConditions
+    from azure.core.exceptions import AzureError, ResourceNotFoundError
+    from azure.storage.blob import BlobServiceClient, ContentSettings, StandardBlobTier
 
     HAS_AZURE = True
 except ImportError:
+    MatchConditions = BlobServiceClient = ContentSettings = StandardBlobTier = None
+    AzureError = ResourceNotFoundError = Exception
     HAS_AZURE = False
-    BlobServiceClient = None  # type: ignore
-    ContentSettings = None  # type: ignore
-    ResourceNotFoundError = Exception  # type: ignore
-    AzureError = Exception  # type: ignore
 
-if TYPE_CHECKING:
-    from truthound.stores.backends._protocols import (
-        AzureBlobServiceClientProtocol,
-        AzureContainerClientProtocol,
-    )
-
-from truthound.stores.base import (
-    StoreConfig,
-    StoreConnectionError,
-    StoreNotFoundError,
-    StoreQuery,
-    StoreReadError,
-    StoreWriteError,
-    ValidationStore,
-)
-from truthound.stores.results import ValidationResult
+TIERS = {"Hot", "Cool", "Cold", "Archive"}
 
 
-def _require_azure() -> None:
-    """Check if azure-storage-blob is available."""
+def _require_azure():
     if not HAS_AZURE:
         raise ImportError(
-            "azure-storage-blob is required for AzureBlobStore. "
-            "Install with: pip install truthound[azure]"
+            "azure-storage-blob is required. Install with: pip install truthound[azure]"
         )
 
 
 @dataclass
 class AzureBlobConfig(StoreConfig):
-    """Configuration for Azure Blob store.
-
-    Attributes:
-        container: Azure Blob container name.
-        prefix: Blob name prefix for all stored objects.
-        connection_string: Azure Storage connection string.
-        account_url: Azure Storage account URL (alternative to connection_string).
-        account_name: Azure Storage account name.
-        account_key: Azure Storage account key.
-        sas_token: SAS token for authentication.
-        use_compression: Whether to compress stored objects.
-        content_type: Content type for stored blobs.
-        access_tier: Access tier for blobs (Hot, Cool, Archive).
-        metadata: Additional metadata to include with stored blobs.
-    """
-
     container: str = ""
     prefix: str = "truthound/"
-    connection_string: str | None = None
-    account_url: str | None = None
-    account_name: str | None = None
-    account_key: str | None = None
-    sas_token: str | None = None
+    connection_string: str | None = field(default=None, repr=False)
+    account_url: str | None = field(default=None, repr=False)
+    account_name: str | None = field(default=None, repr=False)
+    account_key: str | None = field(default=None, repr=False)
+    sas_token: str | None = field(default=None, repr=False)
     use_compression: bool = True
     content_type: str = "application/json"
     access_tier: str | None = None
-    metadata: dict[str, str] = field(default_factory=dict)
+    metadata: dict[str, str] = field(default_factory=dict, repr=False)
+    record_metadata: dict[str, Any] = field(default_factory=dict, repr=False)
+    max_object_bytes: int = 128 * 1024 * 1024
+    anonymous: bool = False
 
-    def get_full_prefix(self) -> str:
-        """Get the full blob name prefix including namespace."""
-        parts = [p for p in [self.prefix.rstrip("/"), self.namespace] if p]
-        return "/".join(parts) + "/"
+    def __post_init__(self):
+        self.validate()
+
+    def validate(self):
+        if not isinstance(self.container, str) or not self.container:
+            raise ValueError("Azure container must be a non-empty string")
+        for value in (self.prefix, self.namespace):
+            if (
+                not isinstance(value, str)
+                or "\\" in value
+                or value.startswith("/")
+                or any(part in {".", ".."} for part in value.split("/"))
+            ):
+                raise ValueError("Azure prefix and namespace must be relative object paths")
+        if type(self.use_compression) is not bool or type(self.anonymous) is not bool:
+            raise ValueError("Azure compression and anonymous flags must be boolean")
+        if self.serialization_format not in {"json", "yaml"}:
+            raise ValueError("Azure records require JSON or safe YAML")
+        if not isinstance(self.metadata, dict) or any(
+            not isinstance(key, str)
+            or not isinstance(value, str)
+            or not key.isascii()
+            or not value.isascii()
+            for key, value in self.metadata.items()
+        ):
+            raise ValueError("Azure blob metadata requires ASCII string keys and values")
+        if not isinstance(self.record_metadata, dict):
+            raise ValueError("Azure record_metadata must be a mapping")
+        if not isinstance(self.content_type, str) or not self.content_type:
+            raise ValueError("Azure content_type must be a non-empty string")
+        if self.access_tier is not None and self.access_tier not in TIERS:
+            raise ValueError("Unsupported Azure access tier")
+        if type(self.max_object_bytes) is not int or self.max_object_bytes < 1:
+            raise ValueError("max_object_bytes must be a positive integer")
+        for name in (
+            "connection_string",
+            "account_url",
+            "account_name",
+            "account_key",
+            "sas_token",
+        ):
+            value = getattr(self, name)
+            if value is not None and (not isinstance(value, str) or not value):
+                raise ValueError("Azure connection settings must be non-empty strings")
+        if (
+            sum(
+                value is not None
+                for value in (self.connection_string, self.account_url, self.account_name)
+            )
+            > 1
+        ):
+            raise ValueError("Select one Azure connection source")
+        if (
+            self.account_key is not None
+            and self.sas_token is not None
+            or self.connection_string is not None
+            and (self.account_key is not None or self.sas_token is not None)
+            or self.anonymous
+            and (
+                self.connection_string is not None
+                or self.account_key is not None
+                or self.sas_token is not None
+            )
+        ):
+            raise ValueError("Azure authentication settings conflict")
+        if self.compression is not None:
+            self.compression = get_compressor(self.compression).algorithm.value
+            self.use_compression = self.compression != "none"
+        elif self.use_compression:
+            self.compression = "gzip"
+
+    def get_full_prefix(self):
+        parts = [part.strip("/") for part in (self.prefix, self.namespace) if part.strip("/")]
+        return "/".join(parts) + ("/" if parts else "")
 
 
-class AzureBlobStore(ValidationStore["AzureBlobConfig"]):
-    """Azure Blob Storage validation store.
+class AzureBlobStore(ObjectValidationStore[AzureBlobConfig]):
+    """Native Azure object lifetime, ETag conditions and explicit index recovery."""
 
-    Stores validation results as JSON objects in an Azure Blob container.
-
-    Example:
-        >>> store = AzureBlobStore(
-        ...     container="my-validation-container",
-        ...     connection_string="DefaultEndpointsProtocol=https;...",
-        ...     prefix="validations/",
-        ... )
-        >>> result = ValidationResult.from_report(report, "customers.csv")
-        >>> run_id = store.save(result)
-
-    Authentication Methods:
-        1. Connection string (recommended for development):
-            AzureBlobStore(container="...", connection_string="...")
-
-        2. Account URL with SAS token:
-            AzureBlobStore(container="...", account_url="https://...", sas_token="...")
-
-        3. Account name and key:
-            AzureBlobStore(container="...", account_name="...", account_key="...")
-
-        4. Default Azure credentials (for managed identity):
-            AzureBlobStore(container="...", account_url="https://...")
-    """
+    _provider_errors = (AzureError,)
+    _legacy_key_field = "blob_name"
 
     def __init__(
         self,
-        container: str,
+        container: str = "",
         prefix: str = "truthound/",
         connection_string: str | None = None,
         account_url: str | None = None,
@@ -128,403 +141,281 @@ class AzureBlobStore(ValidationStore["AzureBlobConfig"]):
         account_key: str | None = None,
         sas_token: str | None = None,
         namespace: str = "default",
-        compression: bool = True,
+        compression: bool | str = True,
         access_tier: str | None = None,
+        *,
+        config: AzureBlobConfig | None = None,
         **kwargs: Any,
-    ) -> None:
-        """Initialize the Azure Blob store.
-
-        Args:
-            container: Azure Blob container name.
-            prefix: Blob name prefix for stored objects.
-            connection_string: Azure Storage connection string.
-            account_url: Azure Storage account URL.
-            account_name: Azure Storage account name.
-            account_key: Azure Storage account key.
-            sas_token: SAS token for authentication.
-            namespace: Namespace for organizing data.
-            compression: Whether to compress stored objects.
-            access_tier: Access tier for blobs (Hot, Cool, Archive).
-            **kwargs: Additional configuration options.
-
-        Note:
-            Dependency check is handled by the factory. Direct instantiation
-            requires azure-storage-blob to be installed.
-        """
-        config = AzureBlobConfig(
-            container=container,
-            prefix=prefix,
-            connection_string=connection_string,
-            account_url=account_url,
-            account_name=account_name,
-            account_key=account_key,
-            sas_token=sas_token,
-            namespace=namespace,
-            use_compression=compression,
-            access_tier=access_tier,
-            **{k: v for k, v in kwargs.items() if hasattr(AzureBlobConfig, k)},
-        )
-        super().__init__(config)
-        self._client: AzureBlobServiceClientProtocol | None = None
-        self._container_client: AzureContainerClientProtocol | None = None
-        self._index: dict[str, dict[str, Any]] = {}
+    ):
+        _require_azure()
+        if config is not None:
+            if not isinstance(config, AzureBlobConfig):
+                raise TypeError("config must be AzureBlobConfig")
+            if (
+                container
+                or prefix != "truthound/"
+                or any(
+                    value is not None
+                    for value in (
+                        connection_string,
+                        account_url,
+                        account_name,
+                        account_key,
+                        sas_token,
+                        access_tier,
+                    )
+                )
+                or namespace != "default"
+                or compression is not True
+                or kwargs
+            ):
+                raise ValueError("Select a config object or individual Azure settings")
+            selected = replace(deepcopy(config))
+        else:
+            if set(kwargs) - {item.name for item in fields(AzureBlobConfig)}:
+                raise TypeError("Unknown Azure store setting")
+            options = deepcopy(kwargs)
+            if type(compression) is bool:
+                options.setdefault("use_compression", compression)
+            elif isinstance(compression, str):
+                options["compression"] = compression
+            else:
+                raise ValueError("Invalid Azure compression setting")
+            selected = AzureBlobConfig(
+                container=container,
+                prefix=prefix,
+                connection_string=connection_string,
+                account_url=account_url,
+                account_name=account_name,
+                account_key=account_key,
+                sas_token=sas_token,
+                namespace=namespace,
+                access_tier=access_tier,
+                **options,
+            )
+        super().__init__(selected)
+        self._container_client = None
+        self._credential = None
+        self._cleanup_uncertain = False
 
     @classmethod
-    def _default_config(cls) -> "AzureBlobConfig":
-        """Create default configuration."""
-        return AzureBlobConfig()
+    def _default_config(cls):
+        raise ValueError("AzureBlobStore requires explicit container configuration")
 
-    def _do_initialize(self) -> None:
-        """Initialize the Azure Blob client and load index."""
+    @staticmethod
+    def _missing(error):
+        return isinstance(error, ResourceNotFoundError)
+
+    def _guard(self):
+        if self._cleanup_uncertain:
+            raise StoreConnectionError(
+                "Azure Blob", "Client cleanup is unconfirmed; retry close before new work"
+            )
+        super()._guard()
+
+    def _connect(self):
+        self._guard()
+        if self._container_client is not None:
+            return
+        if self._client is not None or self._credential is not None:
+            raise StoreConnectionError("Azure Blob", "Previous client cleanup is incomplete")
         try:
-            # Create client based on available credentials
             if self._config.connection_string:
                 self._client = BlobServiceClient.from_connection_string(
                     self._config.connection_string
                 )
-            elif self._config.account_url:
-                credential = None
-                if self._config.sas_token:
-                    credential = self._config.sas_token
-                elif self._config.account_key:
-                    credential = self._config.account_key
-                else:
-                    # Try DefaultAzureCredential for managed identity
+            else:
+                url = self._config.account_url or (
+                    f"https://{self._config.account_name}.blob.core.windows.net"
+                    if self._config.account_name
+                    else None
+                )
+                if url is None:
+                    raise StoreConnectionError(
+                        "Azure Blob", "An account URL, name or connection string is required"
+                    )
+                credential = self._config.sas_token or self._config.account_key
+                if credential is None and not self._config.anonymous:
                     try:
                         from azure.identity import DefaultAzureCredential
-
-                        credential = DefaultAzureCredential()
                     except ImportError:
-                        pass
+                        raise ImportError(
+                            "Default Azure credentials require azure-identity; anonymous access must be selected explicitly"
+                        ) from None
+                    self._credential = credential = DefaultAzureCredential()
+                self._client = BlobServiceClient(account_url=url, credential=credential)
+            container = self._client.get_container_client(self._config.container)
+            self._guard()
+            if not container.exists():
+                raise StoreConnectionError("Azure Blob", "Container not found")
+            self._guard()
+        except BaseException as original:
+            try:
+                self.close()
+            except BaseException as cleanup:
+                raise BaseExceptionGroup(
+                    "Azure connection and cleanup failed", [original, cleanup]
+                ) from None
+            if isinstance(original, AzureError):
+                raise StoreConnectionError("Azure Blob", "Connection failed") from None
+            raise
+        self._container_client = container
 
-                self._client = BlobServiceClient(
-                    account_url=self._config.account_url,
-                    credential=credential,
-                )
-            elif self._config.account_name:
-                account_url = f"https://{self._config.account_name}.blob.core.windows.net"
-                self._client = BlobServiceClient(
-                    account_url=account_url,
-                    credential=self._config.account_key,
-                )
-            else:
-                raise StoreConnectionError(
-                    "Azure Blob",
-                    "No connection credentials provided. Provide connection_string, "
-                    "account_url, or account_name.",
-                )
+    def _record_metadata_defaults(self):
+        return self._config.record_metadata
 
-            # Get container client
-            self._container_client = self._client.get_container_client(
-                self._config.container
-            )
+    def _get_blob_name(self, item_id):
+        return self._get_key(item_id)
 
-            # Check if container exists
-            if not self._container_client.exists():
-                raise StoreConnectionError(
-                    "Azure Blob",
-                    f"Container not found: {self._config.container}",
-                )
+    @staticmethod
+    def _etag(properties):
+        value = properties.get("etag")
+        if not isinstance(value, str) or not value:
+            raise RuntimeError("Azure has no confirmed ETag receipt")
+        return value
 
-            # Load index
-            self._load_index()
+    @staticmethod
+    def _condition(etag):
+        return {"etag": etag, "match_condition": MatchConditions.IfNotModified} if etag else {}
 
-        except AzureError as e:
-            raise StoreConnectionError("Azure Blob", str(e))
+    def _properties(self, key, *, etag=None):
+        self._guard()
+        result = self._container_client.get_blob_client(key).get_blob_properties(
+            **self._condition(etag)
+        )
+        self._guard()
+        return result
 
-    def _load_index(self) -> None:
-        """Load the index from Azure Blob."""
-        index_name = f"{self._config.get_full_prefix()}_index.json"
-        blob_client = self._container_client.get_blob_client(index_name)
+    def _head(self, key, *, etag=None):
+        return self._etag(self._properties(key, etag=etag))
 
-        try:
-            if blob_client.exists():
-                downloader = blob_client.download_blob()
-                content = downloader.readall()
-                self._index = json.loads(content.decode("utf-8"))
-            else:
-                self._index = {}
-        except ResourceNotFoundError:
-            self._index = {}
-        except AzureError as e:
-            raise StoreReadError(f"Failed to load index: {e}")
+    def _read_bytes(self, key, *, etag=None):
+        properties = self._properties(key, etag=etag)
+        observed = self._etag(properties)
+        size = properties.get("size")
+        if type(size) is not int or size < 0 or size > self._config.max_object_bytes:
+            raise ValueError("Azure object exceeds configured bound")
+        self._guard()
+        downloader = self._container_client.get_blob_client(key).download_blob(
+            decompress=False, **self._condition(observed)
+        )
+        content = downloader.readall()
+        self._guard()
+        if len(content) != size or len(content) > self._config.max_object_bytes:
+            raise ValueError("Azure object length differs from its receipt")
+        return content, observed
 
-    def _save_index(self) -> None:
-        """Save the index to Azure Blob."""
-        index_name = f"{self._config.get_full_prefix()}_index.json"
-        blob_client = self._container_client.get_blob_client(index_name)
-        content = json.dumps(self._index, indent=2, default=str)
-
-        try:
-            content_settings = ContentSettings(content_type="application/json")
-            blob_client.upload_blob(
-                content.encode("utf-8"),
-                overwrite=True,
-                content_settings=content_settings,
-            )
-        except AzureError as e:
-            raise StoreWriteError(f"Failed to save index: {e}")
-
-    def _get_blob_name(self, item_id: str) -> str:
-        """Get the Azure Blob name for an item."""
-        ext = ".json.gz" if self._config.use_compression else ".json"
-        return f"{self._config.get_full_prefix()}results/{item_id}{ext}"
-
-    def _serialize(self, data: dict[str, Any]) -> bytes:
-        """Serialize data to bytes."""
-        json_str = json.dumps(data, indent=2, default=str)
-        content = json_str.encode("utf-8")
-
-        if self._config.use_compression:
-            content = gzip.compress(content)
-
-        return content
-
-    def _deserialize(self, content: bytes) -> dict[str, Any]:
-        """Deserialize bytes to data."""
-        if self._config.use_compression:
-            content = gzip.decompress(content)
-
-        return json.loads(content.decode("utf-8"))
-
-    def save(self, item: ValidationResult) -> str:
-        """Save a validation result to Azure Blob.
-
-        Args:
-            item: The validation result to save.
-
-        Returns:
-            The run ID of the saved result.
-
-        Raises:
-            StoreWriteError: If saving fails.
-        """
-        self.initialize()
-
-        item_id = item.run_id
-        blob_name = self._get_blob_name(item_id)
-        content = self._serialize(item.to_dict())
-
-        try:
-            blob_client = self._container_client.get_blob_client(blob_name)
-
-            # Set content settings
-            content_encoding = "gzip" if self._config.use_compression else None
-            content_settings = ContentSettings(
-                content_type=self._config.content_type,
-                content_encoding=content_encoding,
-            )
-
-            # Prepare upload kwargs
-            upload_kwargs: dict[str, Any] = {
-                "overwrite": True,
-                "content_settings": content_settings,
-            }
-
-            # Add metadata
-            metadata = {
-                "data_asset": item.data_asset,
+    def _put(self, key, content, *, etag=None, is_index=False, item=None):
+        blob = self._container_client.get_blob_client(key)
+        content_type = (
+            "application/json"
+            if is_index
+            else "application/yaml"
+            if self._config.content_type == "application/json"
+            and self._config.serialization_format == "yaml"
+            else self._config.content_type
+        )
+        encoding = (
+            "gzip"
+            if not is_index and self._config.use_compression and self._config.compression == "gzip"
+            else None
+        )
+        options = {
+            "overwrite": etag is not None,
+            "content_settings": ContentSettings(
+                content_type=content_type, content_encoding=encoding
+            ),
+            **self._condition(etag),
+        }
+        if not is_index:
+            options["metadata"] = {
+                "data_asset": quote(item.data_asset, safe=""),
                 "run_time": item.run_time.isoformat(),
                 "status": item.status.value,
                 **self._config.metadata,
             }
-            upload_kwargs["metadata"] = metadata
+            if self._config.access_tier is not None:
+                options["standard_blob_tier"] = StandardBlobTier(self._config.access_tier)
+        self._guard()
+        response = blob.upload_blob(content, **options)
+        self._guard()
+        return self._etag(response)
 
-            blob_client.upload_blob(content, **upload_kwargs)
+    def _delete(self, key, etag):
+        observed = []
+        self._guard()
+        self._container_client.get_blob_client(key).delete_blob(
+            **self._condition(etag),
+            raw_response_hook=lambda response: observed.append(response.http_response.status_code),
+        )
+        self._guard()
+        if observed != [202]:
+            raise RuntimeError("Azure deletion has no confirmed HTTP receipt")
 
-            # Set access tier if specified
-            if self._config.access_tier:
-                try:
-                    blob_client.set_standard_blob_tier(self._config.access_tier)
-                except Exception:
-                    # Tier setting may fail for certain storage types
-                    pass
+    def _keys(self, prefix):
+        for blob in self._container_client.list_blobs(name_starts_with=prefix):
+            yield blob.name
 
-            # Update index
-            self._index[item_id] = {
-                "data_asset": item.data_asset,
-                "run_time": item.run_time.isoformat(),
-                "status": item.status.value,
-                "blob_name": blob_name,
-                "tags": item.tags,
-            }
-            self._save_index()
-
-            return item_id
-
-        except AzureError as e:
-            raise StoreWriteError(f"Failed to write to Azure Blob: {e}")
-
-    def get(self, item_id: str) -> ValidationResult:
-        """Retrieve a validation result from Azure Blob.
-
-        Args:
-            item_id: The run ID of the result to retrieve.
-
-        Returns:
-            The validation result.
-
-        Raises:
-            StoreNotFoundError: If the result doesn't exist.
-            StoreReadError: If reading fails.
-        """
-        self.initialize()
-
-        blob_name = self._get_blob_name(item_id)
-        blob_client = self._container_client.get_blob_client(blob_name)
-
-        try:
-            if not blob_client.exists():
-                raise StoreNotFoundError("ValidationResult", item_id)
-
-            downloader = blob_client.download_blob()
-            content = downloader.readall()
-            data = self._deserialize(content)
-            return ValidationResult.from_dict(data)
-
-        except ResourceNotFoundError:
-            raise StoreNotFoundError("ValidationResult", item_id)
-        except AzureError as e:
-            raise StoreReadError(f"Failed to read from Azure Blob: {e}")
-
-    def exists(self, item_id: str) -> bool:
-        """Check if a validation result exists.
-
-        Args:
-            item_id: The run ID to check.
-
-        Returns:
-            True if the result exists.
-        """
-        self.initialize()
-
-        if item_id in self._index:
-            return True
-
-        blob_name = self._get_blob_name(item_id)
-        blob_client = self._container_client.get_blob_client(blob_name)
-
-        try:
-            return blob_client.exists()
-        except AzureError:
-            return False
-
-    def delete(self, item_id: str) -> bool:
-        """Delete a validation result from Azure Blob.
-
-        Args:
-            item_id: The run ID of the result to delete.
-
-        Returns:
-            True if the result was deleted, False if it didn't exist.
-
-        Raises:
-            StoreWriteError: If deletion fails.
-        """
-        self.initialize()
-
-        if not self.exists(item_id):
-            return False
-
-        blob_name = self._get_blob_name(item_id)
-        blob_client = self._container_client.get_blob_client(blob_name)
-
-        try:
-            blob_client.delete_blob()
-
-            if item_id in self._index:
-                del self._index[item_id]
-                self._save_index()
-
-            return True
-
-        except ResourceNotFoundError:
-            return False
-        except AzureError as e:
-            raise StoreWriteError(f"Failed to delete from Azure Blob: {e}")
-
-    def list_ids(self, query: StoreQuery | None = None) -> list[str]:
-        """List validation result IDs matching the query.
-
-        Args:
-            query: Optional query to filter results.
-
-        Returns:
-            List of matching run IDs.
-        """
-        self.initialize()
-
-        if not query:
-            return list(self._index.keys())
-
-        # Filter by query
-        matching_ids: list[tuple[str, datetime]] = []
-
-        for item_id, meta in self._index.items():
-            if query.matches(meta):
-                run_time = datetime.fromisoformat(meta["run_time"])
-                matching_ids.append((item_id, run_time))
-
-        # Sort
-        reverse = not query.ascending
-        matching_ids.sort(key=lambda x: x[1], reverse=reverse)
-
-        # Apply offset and limit
-        ids = [item_id for item_id, _ in matching_ids]
-
-        if query.offset:
-            ids = ids[query.offset:]
-        if query.limit:
-            ids = ids[: query.limit]
-
-        return ids
-
-    def query(self, query: StoreQuery) -> list[ValidationResult]:
-        """Query validation results from Azure Blob.
-
-        Args:
-            query: Query parameters for filtering.
-
-        Returns:
-            List of matching validation results.
-        """
-        ids = self.list_ids(query)
-        results: list[ValidationResult] = []
-
-        for item_id in ids:
+    def get_access_tier(self, item_id):
+        with self._lock:
+            key = self._get_key(item_id)
+            self.initialize()
             try:
-                result = self.get(item_id)
-                results.append(result)
-            except (StoreNotFoundError, StoreReadError):
-                continue
+                props = self._properties(key)
+                tier = props.get("blob_tier")
+                tier = getattr(tier, "value", tier)
+                if tier not in TIERS:
+                    raise ValueError("Unsupported observed Azure access tier")
+                return {"tier": tier, "archive_status": props.get("archive_status")}
+            except self._errors as error:
+                raise StoreReadError("Azure access-tier query failed") from error
 
-        return results
+    def set_access_tier(self, item_id, tier):
+        if tier not in TIERS:
+            raise ValueError("Unsupported Azure access tier")
+        with self._lock:
+            key = self._get_key(item_id)
+            try:
+                self._mutable()
+                previous = self._index[item_id]["etag"]
+                observed = []
+                self._guard()
+                self._container_client.get_blob_client(key).set_standard_blob_tier(
+                    tier,
+                    **self._condition(previous),
+                    raw_response_hook=lambda response: observed.append(
+                        response.http_response.status_code
+                    ),
+                )
+                self._guard()
+                if len(observed) != 1 or observed[0] not in {200, 202}:
+                    raise RuntimeError("Azure tier change has no confirmed HTTP receipt")
+                if self._head(key) != previous:
+                    raise RuntimeError("Azure record changed during tier update")
+                return True
+            except self._errors as error:
+                self._needs_reconcile = True
+                raise StoreWriteError("Azure access-tier update is unconfirmed") from error
 
-    def close(self) -> None:
-        """Close the Azure Blob client."""
-        self._client = None
-        self._container_client = None
-
-    def set_access_tier(self, item_id: str, tier: str) -> bool:
-        """Set the access tier for a stored result.
-
-        Args:
-            item_id: The run ID of the result.
-            tier: The access tier (Hot, Cool, Archive).
-
-        Returns:
-            True if successful.
-
-        Raises:
-            StoreWriteError: If setting tier fails.
-        """
-        self.initialize()
-
-        blob_name = self._get_blob_name(item_id)
-        blob_client = self._container_client.get_blob_client(blob_name)
-
-        try:
-            blob_client.set_standard_blob_tier(tier)
-            return True
-        except AzureError as e:
-            raise StoreWriteError(f"Failed to set access tier: {e}")
+    def close(self):
+        with self._lock:
+            failures = []
+            if self._client is not None:
+                try:
+                    self._client.close()
+                except BaseException as error:
+                    failures.append(error)
+                else:
+                    self._client = None
+                    self._container_client = None
+            if self._credential is not None:
+                try:
+                    self._credential.close()
+                except BaseException as error:
+                    failures.append(error)
+                else:
+                    self._credential = None
+            self._cleanup_uncertain = bool(failures)
+            self._initialized = False
+            if failures:
+                raise BaseExceptionGroup("Azure client cleanup failed", failures)

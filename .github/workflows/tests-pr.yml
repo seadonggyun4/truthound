@@ -148,7 +148,16 @@ jobs:
         with:
           python-version: "3.11"
 
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
       - uses: astral-sh/setup-uv@v4
+
+      - name: Install native PDF provider prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y libpango-1.0-0 libpangoft2-1.0-0 poppler-utils fonts-noto-cjk
 
       - name: Sync locked dev environment
         run: uv sync --frozen --extra dev
@@ -189,6 +198,10 @@ jobs:
         with:
           python-version: "3.11"
 
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
       - uses: astral-sh/setup-uv@v4
 
       - name: Sync locked dev environment

@@ -57,8 +57,11 @@ class MockS3ResponseBody:
         self._data = data
         self._stream = io.BytesIO(data)
 
-    def read(self) -> bytes:
-        return self._data
+    def read(self, amt: int | None = None) -> bytes:
+        return self._stream.read(amt)
+
+    def close(self) -> None:
+        self._stream.close()
 
     def iter_chunks(self, chunk_size: int = 1024) -> Any:
         while True:
@@ -77,6 +80,21 @@ class MockS3Client:
     def __init__(self) -> None:
         self._buckets: dict[str, dict[str, MockS3Object]] = {}
         self._bucket_exists: set[str] = set()
+        self.closed = False
+
+    def close(self) -> None:
+        self.closed = True
+
+    @staticmethod
+    def _etag(body):
+        import hashlib
+
+        return '"' + hashlib.sha256(body).hexdigest() + '"'
+
+    def _condition(self, bucket, key, *, IfMatch=None, IfNoneMatch=None):
+        previous = self._buckets[bucket].get(key)
+        if (IfMatch is not None and (previous is None or self._etag(previous.body) != IfMatch)) or (IfNoneMatch == "*" and previous is not None):
+            raise MockS3ClientError("412", "Conditional request failed")
 
     def create_bucket(self, Bucket: str, **kwargs: Any) -> dict[str, Any]:
         """Create a bucket."""
@@ -108,6 +126,7 @@ class MockS3Client:
         if Bucket not in self._bucket_exists:
             raise MockS3ClientError("404", "NoSuchBucket")
 
+        self._condition(Bucket, Key, IfMatch=kwargs.get("IfMatch"), IfNoneMatch=kwargs.get("IfNoneMatch"))
         self._buckets.setdefault(Bucket, {})[Key] = MockS3Object(
             key=Key,
             body=Body,
@@ -115,9 +134,9 @@ class MockS3Client:
             content_encoding=ContentEncoding,
             storage_class=StorageClass,
         )
-        return {"ETag": f'"{hash(Body)}"'}
+        return {"ETag": self._etag(Body)}
 
-    def get_object(self, *, Bucket: str, Key: str) -> dict[str, Any]:
+    def get_object(self, *, Bucket: str, Key: str, IfMatch=None) -> dict[str, Any]:
         """Retrieve an object."""
         if Bucket not in self._bucket_exists:
             raise MockS3ClientError("404", "NoSuchBucket")
@@ -127,14 +146,17 @@ class MockS3Client:
             raise MockS3ClientError("NoSuchKey", f"Key not found: {Key}")
 
         obj = bucket[Key]
+        self._condition(Bucket, Key, IfMatch=IfMatch)
         return {
             "Body": MockS3ResponseBody(obj.body),
             "ContentType": obj.content_type,
             "ContentEncoding": obj.content_encoding,
             "StorageClass": obj.storage_class,
+            "ETag": self._etag(obj.body),
+            "ContentLength": len(obj.body),
         }
 
-    def head_object(self, *, Bucket: str, Key: str) -> dict[str, Any]:
+    def head_object(self, *, Bucket: str, Key: str, IfMatch=None) -> dict[str, Any]:
         """Check if object exists."""
         if Bucket not in self._bucket_exists:
             raise MockS3ClientError("404", "NoSuchBucket")
@@ -144,21 +166,35 @@ class MockS3Client:
             raise MockS3ClientError("404", "Not Found")
 
         obj = bucket[Key]
+        self._condition(Bucket, Key, IfMatch=IfMatch)
         return {
             "ContentLength": len(obj.body),
             "ContentType": obj.content_type,
+            "ETag": self._etag(obj.body),
         }
 
-    def delete_object(self, *, Bucket: str, Key: str) -> dict[str, Any]:
+    def delete_object(self, *, Bucket: str, Key: str, IfMatch=None) -> dict[str, Any]:
         """Delete an object."""
         if Bucket not in self._bucket_exists:
             raise MockS3ClientError("404", "NoSuchBucket")
 
         bucket = self._buckets.get(Bucket, {})
+        self._condition(Bucket, Key, IfMatch=IfMatch)
         if Key in bucket:
             del bucket[Key]
 
-        return {}
+        return {"ResponseMetadata": {"HTTPStatusCode": 204}}
+
+    def get_paginator(self, operation):
+        if operation != "list_objects_v2":
+            raise ValueError("Unsupported synthetic pagination operation")
+        client = self
+
+        class Paginator:
+            def paginate(self, **arguments):
+                yield client.list_objects_v2(**arguments)
+
+        return Paginator()
 
     def list_objects_v2(
         self,
@@ -198,7 +234,14 @@ def create_mock_s3_client(with_bucket: str | None = None) -> MockS3Client:
 # =============================================================================
 
 
-class MockGCSNotFound(Exception):
+try:
+    from google.api_core.exceptions import NotFound as _GCSNotFound
+    from google.api_core.exceptions import PreconditionFailed as _GCSPreconditionFailed
+except ImportError:
+    _GCSNotFound = _GCSPreconditionFailed = Exception
+
+
+class MockGCSNotFound(_GCSNotFound):
     """Mock for google.cloud.exceptions.NotFound."""
 
     pass
@@ -212,6 +255,7 @@ class MockGCSBlobData:
     data: bytes
     content_type: str = "application/octet-stream"
     content_encoding: str | None = None
+    generation: int = 0
 
 
 class MockGCSBlob:
@@ -222,21 +266,47 @@ class MockGCSBlob:
         self._bucket = bucket
         self.content_encoding: str | None = None
 
-    def download_as_bytes(self) -> bytes:
+    @property
+    def generation(self):
+        data = self._bucket._get_blob_data(self.name)
+        return data.generation if data else None
+
+    @property
+    def size(self):
+        data = self._bucket._get_blob_data(self.name)
+        return len(data.data) if data else None
+
+    def _condition(self, expected):
+        current = self.generation
+        if expected is not None and (expected == 0 and current is not None or expected != 0 and current != expected):
+            raise _GCSPreconditionFailed("Synthetic generation mismatch")
+
+    def reload(self, *, if_generation_match=None):
+        if not self.exists():
+            raise MockGCSNotFound("Synthetic object missing")
+        self._condition(if_generation_match)
+
+    def download_as_bytes(self, *, raw_download=False, if_generation_match=None) -> bytes:
         """Download blob contents."""
         data = self._bucket._get_blob_data(self.name)
         if data is None:
             raise MockGCSNotFound(f"Blob not found: {self.name}")
+        self._condition(if_generation_match)
+        if not raw_download and data.content_encoding == "gzip":
+            return gzip.decompress(data.data)
         return data.data
 
     def upload_from_string(
         self,
         data: str | bytes,
         content_type: str = "application/octet-stream",
+        if_generation_match=None,
     ) -> None:
         """Upload data to blob."""
         if isinstance(data, str):
             data = data.encode("utf-8")
+
+        self._condition(if_generation_match)
 
         self._bucket._set_blob_data(
             self.name,
@@ -252,10 +322,11 @@ class MockGCSBlob:
         """Check if blob exists."""
         return self._bucket._get_blob_data(self.name) is not None
 
-    def delete(self) -> None:
+    def delete(self, *, if_generation_match=None) -> None:
         """Delete the blob."""
         if not self.exists():
             raise MockGCSNotFound(f"Blob not found: {self.name}")
+        self._condition(if_generation_match)
         self._bucket._delete_blob(self.name)
 
 
@@ -266,6 +337,7 @@ class MockGCSBucket:
         self.name = name
         self._exists = exists
         self._blobs: dict[str, MockGCSBlobData] = {}
+        self._generation = 0
 
     def blob(self, blob_name: str) -> MockGCSBlob:
         """Get a blob reference."""
@@ -279,6 +351,8 @@ class MockGCSBucket:
         return self._blobs.get(name)
 
     def _set_blob_data(self, name: str, data: MockGCSBlobData) -> None:
+        self._generation += 1
+        data.generation = self._generation
         self._blobs[name] = data
 
     def _delete_blob(self, name: str) -> None:
@@ -296,6 +370,10 @@ class MockGCSClient:
     def __init__(self, project: str | None = None):
         self.project = project
         self._buckets: dict[str, MockGCSBucket] = {}
+        self.closed = False
+
+    def close(self):
+        self.closed = True
 
     def bucket(self, bucket_name: str) -> MockGCSBucket:
         """Get a bucket reference."""

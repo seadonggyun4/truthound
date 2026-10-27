@@ -9,38 +9,35 @@ This module tests:
 """
 
 import time
-import pytest
+
 import polars as pl
+import pytest
 
 from truthound.profiler.enterprise_sampling import (
-    # Scale classification
-    ScaleCategory,
-    SamplingQuality,
-    # Configuration
-    MemoryBudgetConfig,
-    EnterpriseScaleConfig,
-    # Extended metrics
+    # Constants
     BlockSamplingMetrics,
-    # Monitoring
-    MemoryMonitor,
-    TimeBudgetManager,
     # Strategies
     BlockSamplingStrategy,
-    MultiStageSamplingStrategy,
     ColumnAwareSamplingStrategy,
-    ProgressiveSamplingStrategy,
+    EnterpriseScaleConfig,
     # Main interface
     EnterpriseScaleSampler,
+    # Configuration
+    MemoryBudgetConfig,
+    # Monitoring
+    MemoryMonitor,
+    MultiStageSamplingStrategy,
+    ProgressiveSamplingStrategy,
+    SamplingQuality,
+    # Scale classification
+    ScaleCategory,
+    TimeBudgetManager,
+    classify_dataset_scale,
+    estimate_optimal_sample_size,
     # Convenience functions
     sample_large_dataset,
-    estimate_optimal_sample_size,
-    classify_dataset_scale,
-    # Constants
-    LARGE_SCALE_THRESHOLD,
-    XLARGE_SCALE_THRESHOLD,
 )
 from truthound.profiler.sampling import SamplingConfig
-
 
 # ============================================================================
 # Test Fixtures
@@ -533,3 +530,22 @@ class TestEdgeCases:
         assert result.is_sampled
         # Should still get some samples
         assert result.metrics.sample_size > 0
+
+
+@pytest.mark.parametrize('strategy_type', [BlockSamplingStrategy, MultiStageSamplingStrategy, ColumnAwareSamplingStrategy])
+def test_native_enterprise_exact_snapshot_and_reserved_column_preservation(strategy_type):
+    frame = pl.DataFrame({'x': range(101), '__block_idx': range(101), '__stage_idx': range(101), '__col_aware_idx': range(101)}).lazy()
+    strategy = strategy_type(EnterpriseScaleConfig(target_rows=17, block_size=20, seed=0))
+    result = strategy.sample(frame, SamplingConfig(max_rows=17))
+    data = result.data.collect()
+    assert data.height == result.metrics.sample_size == 17
+    assert data.equals(strategy.sample(frame, SamplingConfig(max_rows=17)).data.collect())
+    assert data.columns == frame.collect_schema().names()
+
+
+def test_progressive_executes_stages_and_stops_on_stable_statistics():
+    strategy = ProgressiveSamplingStrategy(EnterpriseScaleConfig(target_rows=8000, seed=0), max_stages=4)
+    result = strategy.sample(pl.DataFrame({'x': [5.0] * 20000}).lazy(), SamplingConfig(max_rows=8000, min_sample_size=8000))
+    assert result.metrics.stages_completed == 2
+    assert result.metrics.converged is True
+    assert result.data.collect().height == result.metrics.sample_size < 8000

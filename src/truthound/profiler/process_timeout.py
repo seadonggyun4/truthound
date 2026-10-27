@@ -45,31 +45,24 @@ Example:
 from __future__ import annotations
 
 import functools
-import hashlib
 import logging
+import math
 import multiprocessing as mp
 import os
 import pickle
-import queue
 import signal
 import sys
 import threading
 import time
-import traceback
 from abc import ABC, abstractmethod
-from concurrent.futures import (
-    ProcessPoolExecutor,
-)
-from contextlib import contextmanager
+from collections.abc import Callable, Generator  # noqa: TC003 - public runtime annotations
+from contextlib import contextmanager, suppress
 from dataclasses import dataclass, field
-from datetime import datetime, timedelta
+from datetime import datetime
 from enum import Enum
-from multiprocessing import Queue
 from typing import (
     Any,
-    Callable,
     Generic,
-    Generator,
     Protocol,
     TypeVar,
 )
@@ -164,9 +157,10 @@ class ExecutionResult(Generic[T]):
     timed_out: bool = False
     metrics: ExecutionMetrics = field(default_factory=ExecutionMetrics)
     partial_result: Any = None
+    outcome_unknown: bool = False
 
     @classmethod
-    def ok(cls, value: T, metrics: ExecutionMetrics | None = None) -> "ExecutionResult[T]":
+    def ok(cls, value: T, metrics: ExecutionMetrics | None = None) -> ExecutionResult[T]:
         """Create successful result."""
         m = metrics or ExecutionMetrics()
         m.complete()
@@ -177,23 +171,23 @@ class ExecutionResult(Generic[T]):
         cls,
         metrics: ExecutionMetrics | None = None,
         partial: Any = None,
-    ) -> "ExecutionResult[T]":
+    ) -> ExecutionResult[T]:
         """Create timeout result."""
         m = metrics or ExecutionMetrics()
         m.complete()
-        m.was_terminated = True
-        return cls(success=False, timed_out=True, metrics=m, partial_result=partial)
+        return cls(success=False, timed_out=True, metrics=m, partial_result=partial, outcome_unknown=True)
 
     @classmethod
     def failure(
         cls,
         error: Exception,
         metrics: ExecutionMetrics | None = None,
-    ) -> "ExecutionResult[T]":
+        *, outcome_unknown: bool = False,
+    ) -> ExecutionResult[T]:
         """Create failure result."""
         m = metrics or ExecutionMetrics()
         m.complete()
-        return cls(success=False, error=error, metrics=m)
+        return cls(success=False, error=error, metrics=m, outcome_unknown=outcome_unknown)
 
     def to_dict(self) -> dict[str, Any]:
         """Serialize to dictionary."""
@@ -203,7 +197,9 @@ class ExecutionResult(Generic[T]):
             "elapsed_seconds": self.metrics.elapsed_seconds,
             "backend_used": self.metrics.backend_used.value,
             "was_terminated": self.metrics.was_terminated,
-            "error": str(self.error) if self.error else None,
+            "error": "native_execution_failed" if self.error else None,
+            "error_type": getattr(self.error, "error_type", type(self.error).__name__) if self.error else None,
+            "outcome_unknown": self.outcome_unknown,
         }
 
 
@@ -521,11 +517,10 @@ class CircuitBreaker:
 
     def _check_state_transition(self) -> None:
         """Check and perform state transitions."""
-        if self._state == CircuitState.OPEN:
-            if self._last_failure_time is not None:
-                elapsed = time.time() - self._last_failure_time
-                if elapsed >= self.config.timeout_seconds:
-                    self._half_open()
+        if self._state == CircuitState.OPEN and self._last_failure_time is not None:
+            elapsed = time.time() - self._last_failure_time
+            if elapsed >= self.config.timeout_seconds:
+                self._half_open()
 
     def _open(self) -> None:
         """Transition to open state."""
@@ -669,8 +664,8 @@ class ThreadExecutionStrategy(ExecutionStrategy):
         thread.start()
 
         if not completed.wait(timeout=timeout_seconds):
-            metrics.was_terminated = True
-            # Threads cannot be force-terminated, so we detach the daemon worker.
+            # This daemon is still running; timeout does not prove quiescence.
+            metrics.was_terminated = False
             return ExecutionResult.timeout(metrics)
 
         if "value" in error:
@@ -690,35 +685,44 @@ class ThreadExecutionStrategy(ExecutionStrategy):
 # =============================================================================
 
 
-def _process_worker(
-    func_pickle: bytes,
-    result_queue: Queue,
-    ready_event: mp.Event,
-) -> None:
-    """Worker function for process execution.
+class ProcessExecutionError(RuntimeError):
+    """Safe error identity from an owned native child; no body or traceback."""
 
-    This runs in a separate process and can be terminated.
+    def __init__(self, error_type: str):
+        self.error_type = error_type
+        super().__init__(f"Native process execution failed ({error_type})")
 
-    Args:
-        func_pickle: Pickled function to execute
-        result_queue: Queue to put result
-        ready_event: Event to signal ready
-    """
+
+def _process_worker(func_pickle, result_channel, lease, inherited_writer):
+    from truthound._process_supervision import watch_process_lease
+
+    inherited_writer.close()
+    if os.name != "nt":
+        os.setsid()
+    # The child must never print trusted extension output into a parent's protocol.
+    with open(os.devnull, "w") as sink:
+        os.dup2(sink.fileno(), 1)
+        os.dup2(sink.fileno(), 2)
+    watch_process_lease(lease, own_process_group=True)
     try:
-        # Signal ready
-        ready_event.set()
-
-        # Deserialize and execute
-        func = pickle.loads(func_pickle)
-        result = func()
-
-        # Put success result
-        result_queue.put(("success", result, None))
-
-    except Exception as e:
-        # Put error result
-        tb = traceback.format_exc()
-        result_queue.put(("error", None, (type(e).__name__, str(e), tb)))
+        result_channel.send(("ready", os.name != "nt", None))
+        try:
+            value = pickle.loads(func_pickle)()
+        except BaseException as error:
+            result_channel.send(("error", None, type(error).__name__))
+        else:
+            try:
+                result_channel.send(("success", value, None))
+            except Exception:
+                # Connection.send serializes synchronously, so failure is observable.
+                result_channel.send(("error", None, "ResultSerializationError"))
+    except (OSError, EOFError):
+        pass
+    finally:
+        result_channel.close()
+    # Keep the group owner alive until the parent has reaped all owned descendants.
+    # The private lease watchdog also handles abrupt parent loss.
+    threading.Event().wait()
 
 
 class ProcessExecutionStrategy(ExecutionStrategy):
@@ -751,98 +755,129 @@ class ProcessExecutionStrategy(ExecutionStrategy):
         elif sys.platform == "win32":
             return "spawn"
         else:
-            return "fork"  # Faster on Linux
+            return "spawn"  # Avoid forking an initialized native/threaded runtime.
 
-    def execute(
-        self,
-        func: Callable[[], T],
-        timeout_seconds: float,
-        **kwargs: Any,
-    ) -> ExecutionResult[T]:
-        """Execute in separate process with timeout."""
+    def execute(self, func: Callable[[], T], timeout_seconds: float, **kwargs: Any) -> ExecutionResult[T]:
+        """Own one child and its inherited process group under a total deadline."""
         metrics = ExecutionMetrics(backend_used=self.name)
-
-        # Serialize function
+        if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
+            return ExecutionResult.failure(ValueError("Native timeout must be positive and finite"), metrics)
+        deadline = time.monotonic() + timeout_seconds
         try:
             func_pickle = pickle.dumps(func)
-        except Exception as e:
-            return ExecutionResult.failure(
-                ValueError(f"Cannot serialize function: {e}"),
-                metrics,
-            )
-
-        # Create communication primitives
+        except Exception as error:
+            return ExecutionResult.failure(ValueError(f"Native callable could not be serialized ({type(error).__name__})"), metrics)
         ctx = mp.get_context(self.start_method)
-        result_queue: Queue = ctx.Queue()
-        ready_event = ctx.Event()
-
-        # Start process
-        process = ctx.Process(
-            target=_process_worker,
-            args=(func_pickle, result_queue, ready_event),
-        )
-        process.start()
-
+        receiver, sender = ctx.Pipe(duplex=False)
+        lease, lease_writer = ctx.Pipe(duplex=False)
+        process = ctx.Process(target=_process_worker, args=(func_pickle, sender, lease, lease_writer))
+        process._truthound_owns_group = False
+        started, stopped = False, False
         try:
-            # Wait for process to be ready
-            if not ready_event.wait(timeout=5.0):
-                self._terminate_process(process, metrics)
-                return ExecutionResult.timeout(metrics)
-
-            # Wait for result with timeout
-            try:
-                status, value, error_info = result_queue.get(timeout=timeout_seconds)
-
+            process.start()
+            started = True
+            sender.close()
+            lease.close()
+            while True:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0 or not receiver.poll(remaining):
+                    self._terminate_process(process, metrics)
+                    stopped = True
+                    return ExecutionResult.timeout(metrics)
+                try:
+                    status, value, error_type = receiver.recv()
+                except (EOFError, OSError, ValueError):
+                    return ExecutionResult.failure(ProcessExecutionError("ChildProcessError"), metrics, outcome_unknown=True)
+                if status == "ready":
+                    process._truthound_owns_group = value is True
+                    continue
                 if status == "success":
                     return ExecutionResult.ok(value, metrics)
-                else:
-                    error_type, error_msg, tb = error_info
-                    error = RuntimeError(f"{error_type}: {error_msg}")
-                    return ExecutionResult.failure(error, metrics)
-
-            except queue.Empty:
-                # Timeout
-                self._terminate_process(process, metrics)
-                return ExecutionResult.timeout(metrics)
-
+                if status == "error":
+                    return ExecutionResult.failure(ProcessExecutionError(error_type), metrics)
+                return ExecutionResult.failure(ProcessExecutionError("InvalidChildReply"), metrics, outcome_unknown=True)
+        except Exception as error:
+            return ExecutionResult.failure(ProcessExecutionError(type(error).__name__), metrics, outcome_unknown=started)
         finally:
-            # Ensure process is cleaned up
-            if process.is_alive():
-                self._terminate_process(process, metrics)
-            process.join(timeout=1.0)
+            if started and not stopped:
+                # Normal result delivery also ends the child execution scope.
+                self._terminate_process(process, ExecutionMetrics())
+            lease_writer.close()
+            for connection in (receiver, sender, lease):
+                connection.close()
+            if started:
+                process.join(timeout=1)
+                if not process.is_alive():
+                    process.close()
 
-    def _terminate_process(
-        self,
-        process: mp.Process,
-        metrics: ExecutionMetrics,
-    ) -> None:
-        """Terminate a process gracefully then forcefully."""
-        metrics.was_terminated = True
-
-        if not process.is_alive():
-            return
-
-        # Try graceful termination
-        process.terminate()
-        metrics.termination_method = TerminationMethod.GRACEFUL
-
-        # Wait for graceful exit
-        process.join(timeout=self.graceful_timeout)
-
-        # Force kill if still alive
-        if process.is_alive():
+    def _terminate_process(self, process: mp.Process, metrics: ExecutionMetrics) -> None:
+        """Signal only this created process/group and captured owned descendants."""
+        descendants = []
+        psutil_module = None
+        try:
+            import psutil
+            psutil_module = psutil
+            descendants = psutil.Process(process.pid).children(recursive=True)
+        except (ImportError, OSError):
+            pass
+        except Exception as error:
+            if psutil_module is None or not isinstance(error, psutil_module.Error):
+                raise
+        group = getattr(process, "_truthound_owns_group", False)
+        if os.name != "nt" and not group and process.is_alive():
+            with suppress(ProcessLookupError):
+                group = os.getpgid(process.pid) == process.pid
+        if os.name == "nt":
+            import subprocess
+            with suppress(OSError, subprocess.TimeoutExpired):
+                subprocess.run(["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                               check=False, timeout=max(0.1, self.graceful_timeout) + 1)
+            metrics.termination_method = TerminationMethod.IMMEDIATE
+        elif group:
             try:
-                os.kill(process.pid, signal.SIGKILL)
-                metrics.termination_method = TerminationMethod.IMMEDIATE
-            except (ProcessLookupError, OSError):
+                os.killpg(process.pid, signal.SIGTERM if descendants else signal.SIGKILL)
+                metrics.termination_method = TerminationMethod.GRACEFUL if descendants else TerminationMethod.IMMEDIATE
+            except OSError:
+                # A dead group can return EPERM on macOS. Preserve the original
+                # child verdict, then verify all captured owned process states.
                 pass
+        elif process.is_alive():
+            process.terminate()
+            metrics.termination_method = TerminationMethod.GRACEFUL
+        for child in descendants:
+            with suppress(psutil_module.Error, OSError):
+                child.terminate()
+        process.join(timeout=max(0, self.graceful_timeout))
+        for child in descendants:
+            try:
+                if child.is_running() and child.status() != psutil_module.STATUS_ZOMBIE:
+                    child.kill()
+            except (psutil_module.Error, OSError):
+                pass
+        if group and os.name != "nt":
+            with suppress(OSError):
+                os.killpg(process.pid, signal.SIGKILL)
+        if process.is_alive():
+            process.kill()
+            metrics.termination_method = TerminationMethod.IMMEDIATE
+        process.join(timeout=1)
+        if descendants:
+            psutil_module.wait_procs(descendants, timeout=1)
+        def alive(child):
+            try:
+                return child.is_running() and child.status() != psutil_module.STATUS_ZOMBIE
+            except psutil_module.NoSuchProcess:
+                return False
+            except (psutil_module.Error, OSError):
+                return True
 
-            process.join(timeout=1.0)
+        metrics.was_terminated = not process.is_alive() and not any(alive(child) for child in descendants)
 
     def is_available(self) -> bool:
         """Check if multiprocessing is available."""
         try:
-            ctx = mp.get_context(self.start_method)
+            mp.get_context(self.start_method)
             return True
         except Exception:
             return False
@@ -893,9 +928,7 @@ class AdaptiveExecutionStrategy(ExecutionStrategy):
         )
 
         # Select strategy
-        if estimate.recommendation == ExecutionBackend.PROCESS:
-            strategy = self._process_strategy
-        elif estimate.estimated_time_seconds > self.thread_threshold:
+        if estimate.recommendation == ExecutionBackend.PROCESS or estimate.estimated_time_seconds > self.thread_threshold:
             strategy = self._process_strategy
         else:
             strategy = self._thread_strategy
@@ -1040,7 +1073,7 @@ class ResourceMonitor:
         """Check if psutil is available."""
         try:
             import psutil
-            return True
+            return callable(psutil.Process)
         except ImportError:
             return False
 
@@ -1129,7 +1162,7 @@ class ProcessTimeoutConfig:
     retry_backoff_factor: float = 2.0
 
     @classmethod
-    def strict(cls) -> "ProcessTimeoutConfig":
+    def strict(cls) -> ProcessTimeoutConfig:
         """Create strict configuration."""
         return cls(
             default_timeout_seconds=30.0,
@@ -1139,7 +1172,7 @@ class ProcessTimeoutConfig:
         )
 
     @classmethod
-    def lenient(cls) -> "ProcessTimeoutConfig":
+    def lenient(cls) -> ProcessTimeoutConfig:
         """Create lenient configuration."""
         return cls(
             default_timeout_seconds=300.0,
@@ -1148,7 +1181,7 @@ class ProcessTimeoutConfig:
         )
 
     @classmethod
-    def fast(cls) -> "ProcessTimeoutConfig":
+    def fast(cls) -> ProcessTimeoutConfig:
         """Create fast configuration (thread-based)."""
         return cls(
             default_timeout_seconds=10.0,
@@ -1157,7 +1190,7 @@ class ProcessTimeoutConfig:
         )
 
     @classmethod
-    def safe(cls) -> "ProcessTimeoutConfig":
+    def safe(cls) -> ProcessTimeoutConfig:
         """Create safe configuration (process-based)."""
         return cls(
             default_timeout_seconds=60.0,
@@ -1238,7 +1271,7 @@ class ProcessTimeoutExecutor:
         Returns:
             Execution result
         """
-        timeout = timeout_seconds or self.config.default_timeout_seconds
+        timeout = timeout_seconds if timeout_seconds is not None else self.config.default_timeout_seconds
         backend = backend or self.config.default_backend
 
         # Check circuit breaker
@@ -1361,7 +1394,7 @@ class ProcessTimeoutExecutor:
             result = strategy.execute(func, current_timeout)
             result.metrics.retries = retries
 
-            if result.success or not result.timed_out:
+            if result.success or not result.timed_out or not result.metrics.was_terminated:
                 return result
 
             # Retry logic

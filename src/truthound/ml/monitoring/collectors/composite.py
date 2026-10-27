@@ -5,8 +5,7 @@ Combines multiple collectors into a single interface.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from typing import Any
+from datetime import UTC, datetime
 
 from truthound.ml.monitoring.protocols import (
     IMetricCollector,
@@ -35,7 +34,17 @@ class CompositeCollector(IMetricCollector):
         Args:
             collectors: List of collectors to combine
         """
-        self._collectors = collectors
+        self._collectors = list(collectors)
+        self._execution_guard = None
+
+    def set_execution_guard(self, guard):
+        if guard is not None and not callable(guard):
+            raise TypeError("Execution guard must be callable")
+        self._execution_guard = guard
+
+    def _guard_execution(self):
+        if self._execution_guard is not None:
+            self._execution_guard()
 
     @property
     def name(self) -> str:
@@ -86,15 +95,23 @@ class CompositeCollector(IMetricCollector):
         if not self._collectors:
             return ModelMetrics(
                 model_id=model_id,
-                timestamp=datetime.now(timezone.utc),
+                timestamp=datetime.now(UTC),
             )
 
         # Collect from first collector
+        self._guard_execution()
         result = self._collectors[0].collect(model_id, predictions)
+        self._guard_execution()
+        if not isinstance(result, ModelMetrics) or result.model_id != model_id:
+            raise TypeError("Native collector returned invalid model metrics")
 
         # Merge remaining collectors
         for collector in self._collectors[1:]:
+            self._guard_execution()
             metrics = collector.collect(model_id, predictions)
+            self._guard_execution()
+            if not isinstance(metrics, ModelMetrics) or metrics.model_id != model_id:
+                raise TypeError("Native collector returned invalid model metrics")
             result = result.merge(metrics)
 
         return result
@@ -102,4 +119,6 @@ class CompositeCollector(IMetricCollector):
     def reset(self) -> None:
         """Reset all collectors."""
         for collector in self._collectors:
+            self._guard_execution()
             collector.reset()
+            self._guard_execution()

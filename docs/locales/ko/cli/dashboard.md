@@ -14,13 +14,15 @@ truthound dashboard --profile profile.json --host localhost --port 8080
 | `--host` | `localhost` | 요청할 연결 주소 |
 | `--port` | `8080` | 요청할 포트 |
 | `--title`, `-t` | `Truthound Dashboard` | 페이지 제목 |
-| `--debug` | `false` | launcher 설정에 저장 |
+| `--debug` | `false` | 개발 launcher에서 서버 debug 로깅 선택 |
 
 이 명령은 `truthound.datadocs.launch_dashboard`를 호출합니다. 선택 의존성이 없으면
-오류가 발생합니다. 현재 launcher는 `debug`를 저장하지만 실제 서버 호출에 전달하지
-않으므로 유효한 서버 디버그 전환이라고 설명해서는 안 됩니다.
+오류가 발생합니다. 개발 소스의 launcher는 Node/npm으로 비공개 임시 Reflex 프로젝트를
+빌드하고 frontend와 backend를 선택한 포트에서 실행합니다. `debug`는 Uvicorn 서버
+로깅을 선택합니다. 게시된 3.2.0에는 이 수정이 없으므로 checkout에서
+`pip install '.[dashboard]'`로 설치합니다.
 
 정적 출력에는 별도의 `truthound docs generate`를 사용하세요. 프로그램에서 호출하려면
 [Python 가이드](../guides/datadocs/dashboard.md)를 참고하세요. 로컬 주소를 유지하고
-비민감 입력으로 실행 환경을 먼저 확인해야 합니다. 명령 signature는 소스로 확인했지만
-이번 문서 변경으로 GUI 실행·최신 의존성 호환성이 검증된 것은 아닙니다.
+비민감 입력으로 실행 환경을 먼저 확인해야 합니다. 로컬 Reflex 0.8.25 컴파일과
+네이티브 HTTP 수명주기를 테스트했으며 원격 배포는 미검증입니다.

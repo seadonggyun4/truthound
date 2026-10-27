@@ -7,10 +7,11 @@ permission checking, and policy evaluation.
 
 from __future__ import annotations
 
+import contextlib
 import threading
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Callable, Iterator
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
 
 from truthound.rbac.core import (
     AccessContext,
@@ -18,6 +19,7 @@ from truthound.rbac.core import (
     Permission,
     PermissionAction,
     PermissionDeniedError,
+    PermissionEffect,
     Principal,
     PrincipalStore,
     PrincipalType,
@@ -38,10 +40,10 @@ from truthound.rbac.policy import (
 from truthound.rbac.storage import (
     MemoryPrincipalStore,
     MemoryRoleStore,
-    create_principal_store,
-    create_role_store,
 )
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 # =============================================================================
 # Configuration
@@ -72,7 +74,9 @@ class RBACManagerConfig:
     on_principal_create: list[Callable[[Principal], None]] = field(default_factory=list)
     on_principal_update: list[Callable[[Principal, Principal], None]] = field(default_factory=list)
     on_principal_delete: list[Callable[[str], None]] = field(default_factory=list)
-    on_access_decision: list[Callable[[AccessContext, AccessDecision], None]] = field(default_factory=list)
+    on_access_decision: list[Callable[[AccessContext, AccessDecision], None]] = field(
+        default_factory=list
+    )
 
     # Audit
     audit_access_decisions: bool = True
@@ -214,7 +218,7 @@ class RBACManager:
 
             # Parse permissions
             parsed_permissions = set()
-            for perm in (permissions or set()):
+            for perm in permissions or set():
                 if isinstance(perm, str):
                     parsed_permissions.add(Permission.parse(perm))
                 else:
@@ -233,13 +237,12 @@ class RBACManager:
             )
 
             self._role_store.save(role)
+            self._engine.invalidate_cache()
 
             # Call hooks
             for hook in self._config.on_role_create:
-                try:
+                with contextlib.suppress(Exception):
                     hook(role)
-                except Exception:
-                    pass
 
             return role
 
@@ -323,15 +326,14 @@ class RBACManager:
                 if hasattr(role, key):
                     setattr(role, key, value)
 
-            role.updated_at = datetime.now(timezone.utc)
+            role.updated_at = datetime.now(UTC)
             self._role_store.save(role)
+            self._engine.invalidate_cache()
 
             # Call hooks
             for hook in self._config.on_role_update:
-                try:
+                with contextlib.suppress(Exception):
                     hook(old_role, role)
-                except Exception:
-                    pass
 
             return role
 
@@ -348,11 +350,10 @@ class RBACManager:
             deleted = self._role_store.delete(role_id)
 
             if deleted:
+                self._engine.invalidate_cache()
                 for hook in self._config.on_role_delete:
-                    try:
+                    with contextlib.suppress(Exception):
                         hook(role_id)
-                    except Exception:
-                        pass
 
             return deleted
 
@@ -377,8 +378,9 @@ class RBACManager:
                 permission = Permission.parse(permission)
 
             role.add_permission(permission)
-            role.updated_at = datetime.now(timezone.utc)
+            role.updated_at = datetime.now(UTC)
             self._role_store.save(role)
+            self._engine.invalidate_cache()
 
             return role
 
@@ -403,8 +405,9 @@ class RBACManager:
                 permission = Permission.parse(permission)
 
             role.remove_permission(permission)
-            role.updated_at = datetime.now(timezone.utc)
+            role.updated_at = datetime.now(UTC)
             self._role_store.save(role)
+            self._engine.invalidate_cache()
 
             return role
 
@@ -472,7 +475,7 @@ class RBACManager:
 
             # Parse direct permissions
             parsed_permissions = set()
-            for perm in (permissions or set()):
+            for perm in permissions or set():
                 if isinstance(perm, str):
                     parsed_permissions.add(Permission.parse(perm))
                 else:
@@ -496,13 +499,12 @@ class RBACManager:
             )
 
             self._principal_store.save(principal)
+            self._engine.invalidate_cache()
 
             # Call hooks
             for hook in self._config.on_principal_create:
-                try:
+                with contextlib.suppress(Exception):
                     hook(principal)
-                except Exception:
-                    pass
 
             return principal
 
@@ -590,12 +592,11 @@ class RBACManager:
                     setattr(principal, key, value)
 
             self._principal_store.save(principal)
+            self._engine.invalidate_cache()
 
             for hook in self._config.on_principal_update:
-                try:
+                with contextlib.suppress(Exception):
                     hook(old_principal, principal)
-                except Exception:
-                    pass
 
             return principal
 
@@ -612,11 +613,10 @@ class RBACManager:
             deleted = self._principal_store.delete(principal_id)
 
             if deleted:
+                self._engine.invalidate_cache()
                 for hook in self._config.on_principal_delete:
-                    try:
+                    with contextlib.suppress(Exception):
                         hook(principal_id)
-                    except Exception:
-                        pass
 
             return deleted
 
@@ -634,6 +634,7 @@ class RBACManager:
             principal = self.require_principal(principal_id)
             principal.add_role(role_id)
             self._principal_store.save(principal)
+            self._engine.invalidate_cache()
             return principal
 
     def revoke_role(self, principal_id: str, role_id: str) -> Principal:
@@ -650,6 +651,7 @@ class RBACManager:
             principal = self.require_principal(principal_id)
             principal.remove_role(role_id)
             self._principal_store.save(principal)
+            self._engine.invalidate_cache()
             return principal
 
     def get_principal_permissions(self, principal_id: str) -> set[Permission]:
@@ -699,31 +701,33 @@ class RBACManager:
             >>> if decision.allowed:
             ...     print("Access granted")
         """
-        if isinstance(principal, str):
-            principal = self.require_principal(principal)
+        # Keep decision caching serialized with role/principal mutations. An
+        # evaluation begun before revocation must not reinsert a stale allow
+        # after the mutation has invalidated the cache.
+        with self._lock:
+            if isinstance(principal, str):
+                principal = self.require_principal(principal)
 
-        decision = self._engine.check(
-            principal=principal,
-            resource=resource,
-            action=action,
-            resource_attributes=resource_attributes,
-        )
-
-        # Call hooks
-        if self._config.audit_access_decisions:
-            context = AccessContext(
+            decision = self._engine.check(
                 principal=principal,
                 resource=resource,
                 action=action,
-                resource_attributes=resource_attributes or {},
+                resource_attributes=resource_attributes,
             )
-            for hook in self._config.on_access_decision:
-                try:
-                    hook(context, decision)
-                except Exception:
-                    pass
 
-        return decision
+            # Call hooks
+            if self._config.audit_access_decisions:
+                context = AccessContext(
+                    principal=principal,
+                    resource=resource,
+                    action=action,
+                    resource_attributes=resource_attributes or {},
+                )
+                for hook in self._config.on_access_decision:
+                    with contextlib.suppress(Exception):
+                        hook(context, decision)
+
+            return decision
 
     def require(
         self,
@@ -746,10 +750,7 @@ class RBACManager:
         decision = self.check(principal, resource, action, resource_attributes)
 
         if not decision.allowed:
-            if isinstance(principal, str):
-                principal_id = principal
-            else:
-                principal_id = principal.id
+            principal_id = principal if isinstance(principal, str) else principal.id
 
             raise PermissionDeniedError(
                 decision.reason,
@@ -772,25 +773,20 @@ class RBACManager:
         Returns:
             True if principal has the permission.
         """
-        if isinstance(principal, str):
-            principal = self.require_principal(principal)
-
-        if isinstance(permission, str):
-            permission = Permission.parse(permission)
-
-        # Check direct permissions
-        for perm in principal.direct_permissions:
-            if perm.matches(permission):
-                return True
-
-        # Check role permissions
-        for role_id in principal.roles:
-            role_perms = self.get_all_role_permissions(role_id)
-            for perm in role_perms:
-                if perm.matches(permission):
-                    return True
-
-        return False
+        with self._lock:
+            if isinstance(principal, str):
+                principal = self.require_principal(principal)
+            if not principal.enabled:
+                return False
+            if isinstance(permission, str):
+                permission = Permission.parse(permission)
+            permissions = set(principal.direct_permissions)
+            for role_id in principal.roles:
+                permissions.update(self.get_all_role_permissions(role_id))
+            matching = [perm for perm in permissions if perm.matches(permission)]
+            return any(p.effect == PermissionEffect.ALLOW for p in matching) and not any(
+                p.effect == PermissionEffect.DENY for p in matching
+            )
 
     def has_role(
         self,
@@ -921,6 +917,7 @@ class RBACManager:
         for role in default_roles:
             if not self._role_store.exists(role.id):
                 self._role_store.save(role)
+                self._engine.invalidate_cache()
 
 
 # =============================================================================

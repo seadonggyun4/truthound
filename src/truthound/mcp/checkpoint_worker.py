@@ -6,6 +6,7 @@ import hashlib
 import json
 import os
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 from truthound.mcp.approval import private_read
@@ -16,17 +17,26 @@ from truthound.mcp.policy import MCPError
 from truthound.mcp.resources import BoundedWriter
 
 
-def binding_guard(request):
-    def guard():
-        raw = private_read(Path(request["control"]) / "bindings.json", 1024**2)
-        if hashlib.sha256(raw).hexdigest() != request["digest"]:
+@dataclass(frozen=True)
+class BindingGuard:
+    """A private serializable authority check for approved native child execution."""
+
+    control: str
+    digest: str
+    plugins: dict
+
+    def __call__(self):
+        raw = private_read(Path(self.control) / "bindings.json", 1024**2)
+        if hashlib.sha256(raw).hexdigest() != self.digest:
             raise MCPError("access_denied")
-        for spec in request["plugins"].values():
+        for spec in self.plugins.values():
             package, digest, _ = fingerprint(spec["distribution"])
             if package.version != spec["version"] or digest != spec["sha256"]:
                 raise MCPError("plugin_identity_mismatch")
 
-    return guard
+
+def binding_guard(request):
+    return BindingGuard(request["control"], request["digest"], request["plugins"])
 
 
 async def execute_async(request):

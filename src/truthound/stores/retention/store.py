@@ -95,7 +95,7 @@ class RetentionStore(ValidationStore[ConfigT], Generic[ConfigT]):
         )
         self._last_cleanup: datetime | None = None
         self._cleanup_history: list[RetentionResult] = []
-        self._initialized = False
+        super().__init__(base_store.config)
 
     @classmethod
     def _default_config(cls) -> ConfigT:

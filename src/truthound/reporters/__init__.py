@@ -43,7 +43,7 @@ from truthound.reporters.base import (
     ReporterContext,
     ReporterError,
 )
-from truthound.reporters.factory import get_reporter, register_reporter
+from truthound.reporters.factory import get_reporter, register_reporter, unregister_reporter
 from truthound.reporters.presentation import RunPresentation
 
 
@@ -70,6 +70,7 @@ __all__ = [
     "RunPresentation",
     # Factory functions
     "get_reporter",
+    "unregister_reporter",
     "register_reporter",
     # Quality reporters (lazy loaded)
     "get_quality_reporter",

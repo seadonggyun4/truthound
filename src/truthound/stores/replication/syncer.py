@@ -10,12 +10,11 @@ import asyncio
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import TYPE_CHECKING, Any, Generic, TypeVar
+from typing import TYPE_CHECKING, Generic, TypeVar
 
 from truthound.stores.replication.base import (
     ConflictResolution,
     ReplicaHealth,
-    ReplicaState,
     ReplicaTarget,
     ReplicationMetrics,
 )
@@ -72,7 +71,7 @@ class ReplicationSyncer(Generic[T, ConfigT]):
 
     def __init__(
         self,
-        primary: "ValidationStore[ConfigT]",
+        primary: ValidationStore[ConfigT],
         metrics: ReplicationMetrics | None = None,
         conflict_resolution: ConflictResolution = ConflictResolution.LAST_WRITE_WINS,
     ) -> None:
@@ -87,6 +86,12 @@ class ReplicationSyncer(Generic[T, ConfigT]):
         self._metrics = metrics or ReplicationMetrics()
         self._conflict_resolution = conflict_resolution
         self._lock = asyncio.Lock()
+        self.io_guard = None
+
+    def _io(self, function, *args, **kwargs):
+        if self.io_guard is not None:
+            self.io_guard()
+        return function(*args, **kwargs)
 
     @property
     def metrics(self) -> ReplicationMetrics:
@@ -128,7 +133,7 @@ class ReplicationSyncer(Generic[T, ConfigT]):
 
             return True
 
-        except Exception as e:
+        except Exception:
             target.mark_unhealthy()
             self._metrics.record_replication_failure(target.name)
             return False
@@ -158,7 +163,7 @@ class ReplicationSyncer(Generic[T, ConfigT]):
                 if success:
                     return True
 
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 target.mark_degraded(target.sync_timeout_seconds * 1000)
 
             except Exception:
@@ -195,12 +200,12 @@ class ReplicationSyncer(Generic[T, ConfigT]):
                     result.items_synced += 1
                 else:
                     result.items_failed += 1
-            except Exception as e:
+            except Exception:
                 result.items_failed += 1
 
         result.duration_ms = (time.monotonic() - start_time) * 1000
         result.success = result.items_failed == 0
-        result.complete()
+        result.complete(success=result.success, error=result.error)
 
         return result
 
@@ -225,7 +230,7 @@ class ReplicationSyncer(Generic[T, ConfigT]):
 
         try:
             # Get all item IDs from primary
-            item_ids = self._primary.list_ids()
+            item_ids = self._io(self._primary.list_ids)
 
             # Sync in batches
             for i in range(0, len(item_ids), batch_size):
@@ -234,18 +239,21 @@ class ReplicationSyncer(Generic[T, ConfigT]):
 
                 for item_id in batch_ids:
                     try:
-                        item = self._primary.get(item_id)
+                        item = self._io(self._primary.get, item_id)
                         if item is not None:
                             batch_items[item_id] = item
                     except Exception:
-                        pass
+                        result.items_failed += 1
 
                 batch_result = await self.sync_batch(batch_items, target)
                 result.items_synced += batch_result.items_synced
                 result.items_failed += batch_result.items_failed
 
-            target.mark_healthy()
             result.success = result.items_failed == 0
+            if result.success:
+                target.mark_healthy()
+            else:
+                target.mark_unhealthy()
 
         except Exception as e:
             target.mark_unhealthy()
@@ -253,7 +261,7 @@ class ReplicationSyncer(Generic[T, ConfigT]):
             result.error = str(e)
 
         result.duration_ms = (time.monotonic() - start_time) * 1000
-        result.complete()
+        result.complete(success=result.success, error=result.error)
 
         return result
 
@@ -274,7 +282,7 @@ class ReplicationSyncer(Generic[T, ConfigT]):
             True if conflict exists.
         """
         try:
-            existing = target.store.get(item_id)
+            existing = self._io(target.store.get, item_id)
             if existing is None:
                 return False
 
@@ -310,14 +318,12 @@ class ReplicationSyncer(Generic[T, ConfigT]):
 
         elif self._conflict_resolution == ConflictResolution.LAST_WRITE_WINS:
             try:
-                existing = target.store.get(item_id)
+                existing = self._io(target.store.get, item_id)
                 if existing is None:
                     return True
 
                 if hasattr(item, "run_time") and hasattr(existing, "run_time"):
-                    if item.run_time >= existing.run_time:
-                        return True
-                    return False
+                    return item.run_time >= existing.run_time
 
                 return True  # Default to proceeding
 
@@ -326,7 +332,7 @@ class ReplicationSyncer(Generic[T, ConfigT]):
 
         elif self._conflict_resolution == ConflictResolution.FIRST_WRITE_WINS:
             try:
-                existing = target.store.get(item_id)
+                existing = self._io(target.store.get, item_id)
                 return existing is None  # Only proceed if doesn't exist
             except Exception:
                 return True
@@ -349,7 +355,7 @@ class ReplicationSyncer(Generic[T, ConfigT]):
         """
         # Run in executor since stores may be synchronous
         loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, target.store.save, item)
+        await loop.run_in_executor(None, self._io, target.store.save, item)
 
     async def check_health(
         self,
@@ -369,7 +375,7 @@ class ReplicationSyncer(Generic[T, ConfigT]):
             # Try to list a few IDs as health check
             loop = asyncio.get_event_loop()
             await asyncio.wait_for(
-                loop.run_in_executor(None, lambda: target.store.list_ids()[:1]),
+                loop.run_in_executor(None, lambda: self._io(target.store.list_ids)[:1]),
                 timeout=5.0,
             )
 
@@ -382,7 +388,7 @@ class ReplicationSyncer(Generic[T, ConfigT]):
                 target.mark_healthy()
                 return ReplicaHealth.HEALTHY
 
-        except asyncio.TimeoutError:
+        except TimeoutError:
             target.mark_unhealthy()
             return ReplicaHealth.UNHEALTHY
 

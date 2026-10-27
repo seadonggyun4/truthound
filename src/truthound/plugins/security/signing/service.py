@@ -6,18 +6,17 @@ using various cryptographic algorithms.
 
 from __future__ import annotations
 
-import base64
 import hashlib
 import hmac
 import json
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from enum import Enum, auto
-from pathlib import Path
+from pathlib import Path  # noqa: TC003 - public annotation introspection
 from typing import Any
 
-from truthound.plugins.security.protocols import SignatureInfo, VerificationResult, TrustLevel
-from truthound.plugins.security.exceptions import SignatureError, InvalidSignatureError
+from truthound.plugins.security.exceptions import SignatureError
+from truthound.plugins.security.protocols import SignatureInfo, TrustLevel, VerificationResult
 
 logger = logging.getLogger(__name__)
 
@@ -25,12 +24,12 @@ logger = logging.getLogger(__name__)
 class SignatureAlgorithm(Enum):
     """Supported signature algorithms."""
 
-    SHA256 = auto()       # Simple SHA256 hash (not recommended for production)
-    SHA512 = auto()       # SHA512 hash
+    SHA256 = auto()  # Simple SHA256 hash (not recommended for production)
+    SHA512 = auto()  # SHA512 hash
     HMAC_SHA256 = auto()  # HMAC with SHA256
     HMAC_SHA512 = auto()  # HMAC with SHA512
-    RSA_SHA256 = auto()   # RSA with SHA256 (requires cryptography)
-    ED25519 = auto()      # Ed25519 (requires cryptography)
+    RSA_SHA256 = auto()  # RSA with SHA256 (requires cryptography)
+    ED25519 = auto()  # Ed25519 (requires cryptography)
 
 
 class SigningServiceImpl:
@@ -52,6 +51,9 @@ class SigningServiceImpl:
         algorithm: SignatureAlgorithm = SignatureAlgorithm.SHA256,
         signer_id: str = "truthound",
         validity_days: int = 365,
+        *,
+        verification_keys: dict[str, bytes] | None = None,
+        verification_secrets: dict[str, bytes] | None = None,
     ) -> None:
         """Initialize signing service.
 
@@ -63,6 +65,8 @@ class SigningServiceImpl:
         self.algorithm = algorithm
         self.signer_id = signer_id
         self.validity_days = validity_days
+        self._verification_keys = dict(verification_keys or {})
+        self._verification_secrets = dict(verification_secrets or {})
 
     def sign(
         self,
@@ -85,11 +89,13 @@ class SigningServiceImpl:
         Raises:
             SignatureError: If signing fails
         """
+        if metadata and "plugin_hash" in metadata:
+            raise ValueError("plugin_hash is reserved signing metadata")
         # Get plugin hash
         content_hash = self.get_plugin_hash(plugin_path)
 
         # Build data to sign
-        timestamp = datetime.now(timezone.utc)
+        timestamp = datetime.now(UTC)
         expires_at = timestamp + timedelta(days=self.validity_days)
 
         sign_data = {
@@ -146,6 +152,39 @@ class SigningServiceImpl:
         if current_hash != stored_hash:
             errors.append("Plugin content has been modified")
             return VerificationResult.failure(*errors)
+
+        try:
+            algorithm = SignatureAlgorithm[signature.algorithm]
+        except (KeyError, TypeError):
+            return VerificationResult.failure("Unsupported signature algorithm")
+        data = json.dumps(
+            {
+                "plugin_hash": stored_hash,
+                "signer_id": signature.signer_id,
+                "algorithm": signature.algorithm,
+                "timestamp": signature.timestamp.isoformat(),
+                "expires_at": signature.expires_at.isoformat() if signature.expires_at else None,
+            },
+            sort_keys=True,
+        ).encode()
+        verifier = SigningServiceImpl(algorithm=algorithm)
+        try:
+            valid = verifier.verify_signature(
+                data,
+                signature.signature,
+                public_key=self._verification_keys.get(signature.signer_id),
+                secret=self._verification_secrets.get(signature.signer_id),
+            )
+        except (ValueError, TypeError):
+            valid = False
+        if not valid:
+            return VerificationResult.failure(
+                "Signature authentication failed or verification key is missing"
+            )
+        if algorithm in (SignatureAlgorithm.SHA256, SignatureAlgorithm.SHA512):
+            warnings.append(
+                "Unkeyed digest verifies integrity only; it does not authenticate the signer"
+            )
 
         # Verify signature age warning
         if signature.age_days > 180:
@@ -235,11 +274,10 @@ class SigningServiceImpl:
                 hashes.SHA256(),
             )
             return signature
-        except ImportError:
+        except ImportError as error:
             raise SignatureError(
-                "RSA signing requires cryptography package. "
-                "Install with: pip install cryptography"
-            )
+                "RSA signing requires cryptography package. Install with: pip install cryptography"
+            ) from error
 
     def _sign_ed25519(self, data: bytes, private_key: bytes) -> bytes:
         """Sign data using Ed25519."""
@@ -251,11 +289,11 @@ class SigningServiceImpl:
             if not isinstance(key, Ed25519PrivateKey):
                 raise SignatureError("Key is not an Ed25519 private key")
             return key.sign(data)
-        except ImportError:
+        except ImportError as error:
             raise SignatureError(
                 "Ed25519 signing requires cryptography package. "
                 "Install with: pip install cryptography"
-            )
+            ) from error
 
     def verify_signature(
         self,
@@ -301,9 +339,9 @@ class SigningServiceImpl:
     def _verify_rsa(self, data: bytes, signature: bytes, public_key: bytes) -> bool:
         """Verify RSA signature."""
         try:
+            from cryptography.exceptions import InvalidSignature
             from cryptography.hazmat.primitives import hashes, serialization
             from cryptography.hazmat.primitives.asymmetric import padding
-            from cryptography.exceptions import InvalidSignature
 
             key = serialization.load_pem_public_key(public_key)
             try:
@@ -317,8 +355,8 @@ class SigningServiceImpl:
     def _verify_ed25519(self, data: bytes, signature: bytes, public_key: bytes) -> bool:
         """Verify Ed25519 signature."""
         try:
-            from cryptography.hazmat.primitives import serialization
             from cryptography.exceptions import InvalidSignature
+            from cryptography.hazmat.primitives import serialization
 
             key = serialization.load_pem_public_key(public_key)
             try:

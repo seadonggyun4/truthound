@@ -10,27 +10,24 @@ from __future__ import annotations
 
 import gc
 import hashlib
+import math
 import platform
 import statistics
 import threading
 import time
 import traceback
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from copy import deepcopy
+from dataclasses import dataclass, field, replace
 from datetime import datetime
 from enum import Enum
-from functools import wraps
 from typing import (
     Any,
-    Callable,
-    Generic,
     Protocol,
-    TypeVar,
     runtime_checkable,
 )
 
 import polars as pl
-
 
 # =============================================================================
 # Types and Enums
@@ -53,12 +50,12 @@ class BenchmarkCategory(str, Enum):
 class BenchmarkSize(str, Enum):
     """Standard benchmark sizes for consistent comparison."""
 
-    TINY = "tiny"           # 1K rows
-    SMALL = "small"         # 10K rows
-    MEDIUM = "medium"       # 100K rows
-    LARGE = "large"         # 1M rows
-    XLARGE = "xlarge"       # 10M rows
-    STRESS = "stress"       # 100M rows
+    TINY = "tiny"  # 1K rows
+    SMALL = "small"  # 10K rows
+    MEDIUM = "medium"  # 100K rows
+    LARGE = "large"  # 1M rows
+    XLARGE = "xlarge"  # 10M rows
+    STRESS = "stress"  # 100M rows
 
     @property
     def row_count(self) -> int:
@@ -226,6 +223,7 @@ class BenchmarkMetrics:
                 "p95_seconds": self.p95_duration,
                 "p99_seconds": self.p99_duration,
                 "iterations": len(self.durations),
+                "durations_seconds": list(self.durations),
             },
             "memory": {
                 "peak_bytes": self.peak_memory_bytes,
@@ -256,7 +254,7 @@ class EnvironmentInfo:
     timestamp: datetime = field(default_factory=datetime.now)
 
     @classmethod
-    def capture(cls) -> "EnvironmentInfo":
+    def capture(cls) -> EnvironmentInfo:
         """Capture current environment information."""
         import truthound
 
@@ -375,8 +373,32 @@ class BenchmarkConfig:
     # Tags for result filtering
     tags: dict[str, str] = field(default_factory=dict)
 
+    def __post_init__(self):
+        if type(self.measure_iterations) is not int or self.measure_iterations < 1:
+            raise ValueError("measure_iterations must be a positive integer")
+        if type(self.warmup_iterations) is not int or self.warmup_iterations < 0:
+            raise ValueError("warmup_iterations must be a nonnegative integer")
+        for name in ("timeout_seconds", "max_memory_mb", "cooldown_seconds"):
+            value = getattr(self, name)
+            if (
+                type(value) not in (int, float)
+                or not math.isfinite(value)
+                or value < 0
+                or (name == "timeout_seconds" and value == 0)
+            ):
+                raise ValueError("Benchmark resource settings must be finite and valid")
+        for name in ("gc_between_iterations", "verbose", "capture_traceback"):
+            if type(getattr(self, name)) is not bool:
+                raise ValueError("Benchmark flags must be boolean")
+        self.default_size = BenchmarkSize(self.default_size)
+        if not isinstance(self.tags, dict) or any(
+            not isinstance(key, str) or not isinstance(value, str)
+            for key, value in self.tags.items()
+        ):
+            raise ValueError("Benchmark tags must map strings to strings")
+
     @classmethod
-    def quick(cls) -> "BenchmarkConfig":
+    def quick(cls) -> BenchmarkConfig:
         """Quick benchmark configuration for fast feedback (~5 seconds)."""
         return cls(
             warmup_iterations=1,
@@ -387,7 +409,7 @@ class BenchmarkConfig:
         )
 
     @classmethod
-    def standard(cls) -> "BenchmarkConfig":
+    def standard(cls) -> BenchmarkConfig:
         """Standard benchmark configuration (~15 seconds)."""
         return cls(
             warmup_iterations=1,
@@ -398,7 +420,7 @@ class BenchmarkConfig:
         )
 
     @classmethod
-    def thorough(cls) -> "BenchmarkConfig":
+    def thorough(cls) -> BenchmarkConfig:
         """Thorough benchmark configuration for CI/CD (~60 seconds)."""
         return cls(
             warmup_iterations=2,
@@ -409,7 +431,7 @@ class BenchmarkConfig:
         )
 
     @classmethod
-    def stress(cls) -> "BenchmarkConfig":
+    def stress(cls) -> BenchmarkConfig:
         """Stress test configuration (several minutes)."""
         return cls(
             warmup_iterations=1,
@@ -514,7 +536,7 @@ class Benchmark(ABC):
 
         Override this method to release any resources.
         """
-        pass
+        return None
 
     def get_metrics(self) -> BenchmarkMetrics:
         """Get the collected metrics."""
@@ -547,34 +569,55 @@ class Benchmark(ABC):
         Returns:
             BenchmarkResult with all metrics and metadata
         """
-        config = config or BenchmarkConfig.standard()
+        config = replace(deepcopy(config)) if config is not None else BenchmarkConfig.standard()
+        self._metrics = BenchmarkMetrics()
         environment = EnvironmentInfo.capture()
         started_at = datetime.now()
+        deadline = time.monotonic() + config.timeout_seconds
+
+        def check_limits():
+            if time.monotonic() >= deadline:
+                raise TimeoutError("Benchmark time budget exceeded")
+            if config.max_memory_mb:
+                import psutil
+
+                if psutil.Process().memory_info().rss > config.max_memory_mb * 1024 * 1024:
+                    raise MemoryError("Benchmark memory budget exceeded")
+
+        def cooldown():
+            time.sleep(min(config.cooldown_seconds, max(0, deadline - time.monotonic())))
+            check_limits()
 
         try:
+            check_limits()
             # Setup phase
             self.setup(config, **kwargs)
+            check_limits()
 
             # Track memory if psutil available
             memory_before = self._get_memory_usage()
 
             # Warmup iterations
             for _ in range(config.warmup_iterations):
+                check_limits()
                 self.run_iteration()
+                check_limits()
                 if config.gc_between_iterations:
                     gc.collect()
-                time.sleep(config.cooldown_seconds)
+                cooldown()
 
             # Measurement iterations
             self._metrics = BenchmarkMetrics()
             peak_memory = memory_before
 
             for _ in range(config.measure_iterations):
+                check_limits()
                 start_time = time.perf_counter()
                 result = self.run_iteration()
                 duration = time.perf_counter() - start_time
 
                 self._metrics.add_duration(duration)
+                check_limits()
 
                 # Validate result
                 if not self.validate_result(result):
@@ -586,7 +629,7 @@ class Benchmark(ABC):
 
                 if config.gc_between_iterations:
                     gc.collect()
-                time.sleep(config.cooldown_seconds)
+                cooldown()
 
             # Record memory metrics
             memory_after = self._get_memory_usage()
@@ -627,6 +670,7 @@ class Benchmark(ABC):
         """Get current memory usage in bytes."""
         try:
             import psutil
+
             return psutil.Process().memory_info().rss
         except ImportError:
             return 0
@@ -703,9 +747,7 @@ class BenchmarkRegistry:
         with self._lock:
             if name not in self._benchmarks:
                 available = list(self._benchmarks.keys())
-                raise KeyError(
-                    f"Benchmark '{name}' not found. Available: {available}"
-                )
+                raise KeyError(f"Benchmark '{name}' not found. Available: {available}")
             return self._benchmarks[name]
 
     def get_by_category(
@@ -721,10 +763,7 @@ class BenchmarkRegistry:
             List of benchmark classes
         """
         with self._lock:
-            return [
-                cls for cls in self._benchmarks.values()
-                if cls.category == category
-            ]
+            return [cls for cls in self._benchmarks.values() if cls.category == category]
 
     def list_names(self) -> list[str]:
         """List all registered benchmark names."""

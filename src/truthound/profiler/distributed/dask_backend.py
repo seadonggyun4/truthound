@@ -27,12 +27,11 @@ Example:
 
 from __future__ import annotations
 
-import json
+import importlib
 import logging
 import os
-import time
-from dataclasses import dataclass, field
-from typing import Any, Callable, Iterator
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
@@ -43,7 +42,11 @@ from truthound.profiler.distributed.base import (
     PartitionInfo,
     PartitionStrategy,
     WorkerResult,
+    backend_registry,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 
 logger = logging.getLogger(__name__)
@@ -104,8 +107,7 @@ class DaskBackend(DistributedBackend):
 
     def is_available(self) -> bool:
         try:
-            import dask
-            import dask.dataframe as dd
+            importlib.import_module("dask.dataframe")
             return True
         except ImportError:
             return False
@@ -126,7 +128,6 @@ class DaskBackend(DistributedBackend):
             self._init_distributed()
         else:
             # Use simple scheduler (threads, processes, synchronous)
-            dask.config.set(scheduler=scheduler)
             logger.info(f"DaskBackend ({scheduler} scheduler) initialized")
 
         self._initialized = True
@@ -180,23 +181,20 @@ class DaskBackend(DistributedBackend):
         logger.info(f"DaskBackend (distributed) initialized. Dashboard: {dashboard_link}")
 
     def shutdown(self) -> None:
-        if self._client:
-            try:
-                self._client.close()
-            except Exception as e:
-                logger.warning(f"Error closing Dask client: {e}")
-
-        if self._cluster:
-            try:
-                self._cluster.close()
-            except Exception as e:
-                logger.warning(f"Error closing Dask cluster: {e}")
-
-        self._client = None
-        self._cluster = None
+        failures = []
+        for name in ("_client", "_cluster"):
+            resource = getattr(self, name)
+            if resource is not None:
+                try:
+                    resource.close()
+                except Exception as error:
+                    failures.append(error)
+                else:
+                    setattr(self, name, None)
         self._current_ddf = None
         self._initialized = False
-        logger.info("DaskBackend shutdown complete")
+        if failures:
+            raise ExceptionGroup("Native Dask profiler cleanup failed", failures)
 
     @property
     def dashboard_link(self) -> str | None:
@@ -210,17 +208,19 @@ class DaskBackend(DistributedBackend):
         data: pl.DataFrame | pl.LazyFrame | str,
         num_partitions: int | None = None,
         strategy: PartitionStrategy = PartitionStrategy.ROW_BASED,
+        sample_size: int | None = None,
     ) -> list[PartitionInfo]:
         import dask.dataframe as dd
-        import pandas as pd
 
         # Determine number of partitions
+        if num_partitions is None and self.config.parallelism:
+            num_partitions = self.config.parallelism
         if num_partitions is None:
             if self._client:
                 # Use number of workers
                 num_partitions = len(self._client.scheduler_info()["workers"])
             else:
-                num_partitions = os.cpu_count() or 4
+                num_partitions = self.config.parallelism or os.cpu_count() or 4
 
         # Load data as Dask DataFrame
         if isinstance(data, str):
@@ -239,22 +239,28 @@ class DaskBackend(DistributedBackend):
         else:
             raise TypeError(f"Unsupported data type: {type(data)}")
 
-        # Repartition if needed
-        if ddf.npartitions != num_partitions:
-            ddf = ddf.repartition(npartitions=num_partitions)
-
+        if sample_size is not None:
+            snapshot = ddf.head(sample_size, npartitions=-1, compute=False).compute(scheduler=self._client or self.dask_config.scheduler)
+            num_partitions = min(num_partitions, max(1, len(snapshot)))
+            ddf = dd.from_pandas(snapshot, npartitions=num_partitions)
+        observed_rows = int(ddf.shape[0].compute(scheduler=self._client or self.dask_config.scheduler))
+        num_partitions = min(num_partitions, max(1, observed_rows))
+        from truthound.profiler.distributed._partitions import column_groups, expand
+        if not isinstance(strategy, PartitionStrategy):
+            raise ValueError("Unknown partition strategy")
+        requested = num_partitions
+        groups = column_groups(list(ddf.columns), requested, strategy)
+        physical = 1 if strategy is PartitionStrategy.COLUMN_BASED else max(1, (requested + len(groups) - 1) // len(groups))
+        if strategy is PartitionStrategy.HASH and len(ddf.columns):
+            ddf = ddf.shuffle(on=list(ddf.columns), npartitions=physical)
+        elif ddf.npartitions != physical:
+            ddf = ddf.repartition(npartitions=physical)
+        def write(directory):
+            graph = ddf.to_parquet(str(directory), write_index=False, compute=False)
+            graph.compute(scheduler=self._client or self.dask_config.scheduler)
+        self._publish_checkpoint(write)
         self._current_ddf = ddf
-        num_parts = ddf.npartitions
-        columns = list(ddf.columns)
-
-        return [
-            PartitionInfo(
-                partition_id=i,
-                total_partitions=num_parts,
-                columns=columns,
-            )
-            for i in range(num_parts)
-        ]
+        return expand(ddf.npartitions, list(ddf.columns), requested, strategy)
 
     def map_partitions(
         self,
@@ -265,134 +271,58 @@ class DaskBackend(DistributedBackend):
         if not hasattr(self, "_current_ddf") or self._current_ddf is None:
             raise RuntimeError("No data distributed")
 
-        import pandas as pd
+        import dask
 
-        ddf = self._current_ddf
-        columns = list(ddf.columns)
+        from truthound.profiler.distributed.base import execute_partition
+        policy = self.config
+        delayed = self._current_ddf.to_delayed()
+        def apply(partition, frame):
+            return execute_partition(func, partition, pl.from_pandas(frame).select(partition.columns), policy)
+        tasks = [dask.delayed(apply)(partition, delayed[partition.metadata["source_partition"]])
+                 for partition in partitions]
+        return list(dask.compute(*tasks, scheduler=self._client or self.dask_config.scheduler))
 
-        def profile_partition(pdf: pd.DataFrame) -> pd.DataFrame:
-            """Profile a single partition."""
-            import time
-            start = time.time()
-
-            stats = {}
-            for col in pdf.columns:
-                col_data = pdf[col]
-                col_stats = {
-                    "row_count": len(col_data),
-                    "null_count": int(col_data.isna().sum()),
-                    "distinct_count": int(col_data.nunique()),
-                    "dtype": str(col_data.dtype),
-                }
-
-                if pd.api.types.is_numeric_dtype(col_data):
-                    non_null = col_data.dropna()
-                    if len(non_null) > 0:
-                        col_stats.update({
-                            "min_value": float(non_null.min()),
-                            "max_value": float(non_null.max()),
-                            "sum_value": float(non_null.sum()),
-                            "mean": float(non_null.mean()),
-                            "std": float(non_null.std()) if len(non_null) > 1 else 0.0,
-                            "sum_squared": float((non_null ** 2).sum()),
-                        })
-
-                elif pd.api.types.is_string_dtype(col_data):
-                    non_null = col_data.dropna()
-                    if len(non_null) > 0:
-                        lengths = non_null.str.len()
-                        col_stats.update({
-                            "min_length": int(lengths.min()),
-                            "max_length": int(lengths.max()),
-                            "avg_length": float(lengths.mean()),
-                        })
-
-                stats[col] = col_stats
-
-            elapsed_ms = (time.time() - start) * 1000
-
-            # Return as single-row DataFrame with JSON stats
-            return pd.DataFrame([{
-                "stats": json.dumps(stats),
-                "row_count": len(pdf),
-                "processing_time_ms": elapsed_ms,
-            }])
-
-        # Apply to all partitions
-        result_ddf = ddf.map_partitions(
-            profile_partition,
-            meta={"stats": str, "row_count": int, "processing_time_ms": float},
-        )
-
-        # Compute results
-        results_pdf = result_ddf.compute()
-
-        return [
-            WorkerResult(
-                partition_id=i,
-                column_stats=json.loads(row["stats"]),
-                row_count=row["row_count"],
-                processing_time_ms=row["processing_time_ms"],
-            )
-            for i, (_, row) in enumerate(results_pdf.iterrows())
-        ]
+    def sample_column(self, name, limit):
+        sample = self._current_ddf[[name]].dropna().head(limit, npartitions=-1, compute=False)
+        return pl.from_pandas(sample.compute(scheduler=self._client or self.dask_config.scheduler))
 
     def aggregate_results(
         self,
         results: list[WorkerResult],
     ) -> dict[str, dict[str, Any]]:
         """Aggregate results from all partitions."""
-        aggregated: dict[str, dict[str, Any]] = {}
+        import dask
+        import pandas as pd
 
-        for result in results:
-            for col_name, stats in result.column_stats.items():
-                if col_name not in aggregated:
-                    aggregated[col_name] = {
-                        "row_count": 0,
-                        "null_count": 0,
-                        "min_value": None,
-                        "max_value": None,
-                        "sum_value": 0,
-                        "sum_squared": 0,
-                        "dtype": stats.get("dtype", "unknown"),
-                    }
-
-                agg = aggregated[col_name]
-                agg["row_count"] += stats.get("row_count", 0)
-                agg["null_count"] += stats.get("null_count", 0)
-
-                # Min/Max
-                if stats.get("min_value") is not None:
-                    if agg["min_value"] is None or stats["min_value"] < agg["min_value"]:
-                        agg["min_value"] = stats["min_value"]
-                if stats.get("max_value") is not None:
-                    if agg["max_value"] is None or stats["max_value"] > agg["max_value"]:
-                        agg["max_value"] = stats["max_value"]
-
-                # For computing variance
-                agg["sum_value"] += stats.get("sum_value", 0)
-                agg["sum_squared"] += stats.get("sum_squared", 0)
-
-                # Distinct count - use first partition's value as approximation
-                if "distinct_count" not in agg and "distinct_count" in stats:
-                    agg["distinct_count"] = stats["distinct_count"]
-
-                # Length stats
-                if "min_length" in stats and "min_length" not in agg:
-                    agg["min_length"] = stats["min_length"]
-                    agg["max_length"] = stats["max_length"]
-                    agg["avg_length"] = stats["avg_length"]
-
-        # Finalize aggregations
-        for col_name, agg in aggregated.items():
-            n = agg["row_count"]
-            if n > 0 and agg.get("sum_value"):
-                mean = agg["sum_value"] / n
-                agg["mean"] = mean
-                variance = (agg["sum_squared"] / n) - (mean ** 2)
-                agg["std"] = variance ** 0.5 if variance > 0 else 0
-
-        return aggregated
+        if any(result.errors for result in results):
+            raise RuntimeError("Native profiling partition failed")
+        if self._current_ddf is None:
+            raise RuntimeError("No active native profiling input")
+        tasks = {}
+        for name, dtype in self._current_ddf.dtypes.items():
+            column = self._current_ddf[name]
+            values = {"row_count": column.size, "null_count": column.isna().sum(),
+                      "distinct_count": column.nunique(dropna=False)}
+            if pd.api.types.is_numeric_dtype(dtype):
+                values.update(mean=column.mean(), std=column.std(),
+                              min_value=column.min(), max_value=column.max())
+            elif pd.api.types.is_string_dtype(dtype):
+                lengths = column.str.len()
+                values.update(min_length=lengths.min(), max_length=lengths.max(), avg_length=lengths.mean())
+            tasks[name] = values
+        computed = dask.compute(tasks, scheduler=self._client or self.dask_config.scheduler)[0]
+        for name, values in computed.items():
+            values["dtype"] = str(self._current_ddf.dtypes[name])
+            for key, value in list(values.items()):
+                if key == "dtype":
+                    continue
+                if pd.isna(value):
+                    values[key] = None
+                elif key in {"row_count", "null_count", "distinct_count", "min_length", "max_length"}:
+                    values[key] = int(value)
+                else:
+                    values[key] = float(value)
+        return computed
 
     def profile_dataframe(
         self,
@@ -409,7 +339,8 @@ class DaskBackend(DistributedBackend):
             Column statistics dictionary
         """
         partitions = self.distribute_data(data, num_partitions)
-        results = self.map_partitions(lambda p, d: WorkerResult(p.partition_id, {}, 0, 0), partitions, data)
+        from truthound.profiler.distributed.profiler import DistributedProfiler
+        results = self.map_partitions(DistributedProfiler._profile_partition, partitions, data)
         return self.aggregate_results(results)
 
     def get_cluster_info(self) -> dict[str, Any]:
@@ -494,5 +425,5 @@ class DaskBackend(DistributedBackend):
 
 
 # Register backend
-from truthound.profiler.distributed.base import backend_registry
+
 backend_registry.register("dask", DaskBackend)

@@ -323,7 +323,8 @@ class TestGenerateSuiteWithProfileReport:
         report = MockProfileReport(
             source="test.csv",
             row_count=100,
-            columns=[],
+            column_count=1,
+            columns=[{"name": "value", "dtype": "Int64", "null_pct": "0%", "unique_pct": "100%"}],
         )
 
         suite_loose = generate_suite(report, strictness="loose")
@@ -337,7 +338,8 @@ class TestGenerateSuiteWithProfileReport:
         report = MockProfileReport(
             source="data.csv",
             row_count=100,
-            columns=[],
+            column_count=1,
+            columns=[{"name": "value", "dtype": "Int64", "null_pct": "0%", "unique_pct": "100%"}],
         )
 
         suite = generate_suite(report, name="my_custom_suite")

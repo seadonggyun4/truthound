@@ -13,9 +13,9 @@ Example:
     >>> result = detector.detect(reference_data, current_data)
 """
 
+from truthound.ml.drift_detection.concept import ConceptDriftDetector
 from truthound.ml.drift_detection.distribution import DistributionDriftDetector
 from truthound.ml.drift_detection.feature import FeatureDriftDetector
-from truthound.ml.drift_detection.concept import ConceptDriftDetector
 from truthound.ml.drift_detection.multivariate import MultivariateDriftDetector
 
 __all__ = [

@@ -7,18 +7,20 @@ from __future__ import annotations
 
 import html
 import json
-import os
+import threading
+from dataclasses import replace
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any
 
 from truthound.profiler.visualization.base import (
+    THEME_CONFIGS,
     ProfileData,
     ReportConfig,
     ReportTheme,
+    SectionContent,
     SectionType,
     ThemeConfig,
-    THEME_CONFIGS,
 )
 from truthound.profiler.visualization.renderers import (
     ChartRenderer,
@@ -66,6 +68,7 @@ class HTMLReportGenerator:
             chart_renderer: Chart renderer to use
         """
         self.config = config or ReportConfig()
+        self._explicit_renderer = chart_renderer is not None
 
         # Get chart renderer
         if chart_renderer:
@@ -79,6 +82,8 @@ class HTMLReportGenerator:
 
             self._chart_renderer = chart_renderer_registry.get(renderer_name)
             if not self._chart_renderer:
+                if renderer_name != "svg":
+                    raise ValueError("Unknown chart renderer")
                 from truthound.profiler.visualization.renderers import SVGChartRenderer
                 self._chart_renderer = SVGChartRenderer()
 
@@ -94,11 +99,9 @@ class HTMLReportGenerator:
         Returns:
             Complete HTML document string
         """
-        # Use provided config or fall back to generator's config
         if config is not None:
-            old_config = self.config
-            self.config = config
-            self._theme = THEME_CONFIGS.get(config.theme, THEME_CONFIGS[ReportTheme.LIGHT])
+            renderer = self._chart_renderer if self._explicit_renderer else None
+            return type(self)(config, chart_renderer=renderer).generate(data)
         parts = []
 
         # HTML document start
@@ -153,7 +156,9 @@ class HTMLReportGenerator:
         html_content = self.generate(data, config)
         output_path = Path(path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        output_path.write_text(html_content, encoding="utf-8")
+        from truthound.stores._filesystem_io import publish
+
+        publish(output_path, html_content.encode("utf-8"))
         return output_path
 
     def _render_head(self, data: ProfileData) -> str:
@@ -165,10 +170,17 @@ class HTMLReportGenerator:
         if self._chart_renderer.requires_js:
             js_deps.extend(self._chart_renderer.get_js_dependencies())
 
-        js_tags = '\n'.join(f'<script src="{url}"></script>' for url in js_deps)
+        if self._chart_renderer.requires_js and self.config.embed_resources:
+            inline = getattr(self._chart_renderer, "get_inline_js", None)
+            if inline is None:
+                raise ValueError("Selected renderer has no embedded JavaScript resource")
+            script = inline().replace("</script", "<\\/script")
+            js_tags = f"<script>{script}</script>"
+        else:
+            js_tags = '\n'.join(f'<script src="{html.escape(url, quote=True)}"></script>' for url in js_deps)
 
         return f'''<!DOCTYPE html>
-<html lang="{self.config.language}">
+<html lang="{html.escape(self.config.language, quote=True)}">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -193,7 +205,7 @@ class HTMLReportGenerator:
 
         logo = ""
         if self.config.logo_base64:
-            logo = f'<img src="data:image/png;base64,{self.config.logo_base64}" class="logo" alt="Logo">'
+            logo = f'<img src="data:image/png;base64,{html.escape(self.config.logo_base64, quote=True)}" class="logo" alt="Logo">'
         elif self.config.logo_path:
             logo = f'<img src="{html.escape(self.config.logo_path)}" class="logo" alt="Logo">'
 
@@ -213,7 +225,7 @@ class HTMLReportGenerator:
         toc_items = []
 
         for section_type in self.config.sections:
-            section_id = section_type.value
+            section_id = section_type.value.replace("_", "-")
             section_name = section_type.value.replace("_", " ").title()
             toc_items.append(f'<a href="#{section_id}" class="toc-item">{section_name}</a>')
 
@@ -236,7 +248,7 @@ class HTMLReportGenerator:
                 <span class="stat-label">Columns</span>
             </div>
             <div class="summary-stat">
-                <span class="stat-value">{data.table_name}</span>
+                <span class="stat-value">{html.escape(data.table_name)}</span>
                 <span class="stat-label">Table</span>
             </div>
         </div>
@@ -677,7 +689,12 @@ class HTMLReportGenerator:
         @media print {
             .toc { display: none; }
             .card { break-inside: avoid; }
-            .section { break-before: page; }
+            .section { break-before: auto; }
+            h2, h3 { break-after: avoid; }
+            .metrics-grid { display: table; table-layout: fixed; width: 100%; }
+            .metric-card { display: table-cell; vertical-align: top; padding: 8px; }
+            .metric-value { font-size: 18px; overflow-wrap: anywhere; }
+            .chart-container { display: block; text-align: center; break-inside: avoid; }
         }
         '''
 
@@ -708,6 +725,12 @@ class ReportExporter:
             HTML string
         """
         return self._generator.generate(profile, config or self._config)
+
+    def render_pdf(self, profile: ProfileData, config: ReportConfig | None = None) -> bytes:
+        selected = replace(config or self._config or ReportConfig(), renderer="svg", embed_resources=True)
+        from truthound.profiler.visualization.renderers import _PrintSVGRenderer
+        document = HTMLReportGenerator(selected, chart_renderer=_PrintSVGRenderer()).generate(profile)
+        return self.to_pdf_bytes(document)
 
     def to_json(self, profile: ProfileData) -> str:
         """Export profile to JSON string.
@@ -741,13 +764,15 @@ class ReportExporter:
 
         if format == "html":
             content = self.to_html(profile, config)
-            path.write_text(content, encoding="utf-8")
+            from truthound.stores._filesystem_io import publish
+            publish(path, content.encode("utf-8"))
         elif format == "json":
             content = self.to_json(profile)
-            path.write_text(content, encoding="utf-8")
+            from truthound.stores._filesystem_io import publish
+            publish(path, content.encode("utf-8"))
         elif format == "pdf":
-            html_content = self.to_html(profile, config)
-            self.to_pdf(html_content, path)
+            from truthound.stores._filesystem_io import publish
+            publish(path, self.render_pdf(profile, config))
         else:
             raise ValueError(f"Unknown format: {format}")
 
@@ -761,7 +786,9 @@ class ReportExporter:
         """
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(html_content, encoding="utf-8")
+        from truthound.stores._filesystem_io import publish
+
+        publish(path, html_content.encode("utf-8"))
 
     @staticmethod
     def to_pdf(html_content: str, path: str | Path) -> None:
@@ -771,18 +798,27 @@ class ReportExporter:
             html_content: HTML string
             path: Output file path
         """
+        from truthound.stores._filesystem_io import publish
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        publish(path, ReportExporter.to_pdf_bytes(html_content))
+
+    @staticmethod
+    def to_pdf_bytes(html_content: str) -> bytes:
+        """Render with the installed native PDF provider before publishing bytes."""
         try:
             from weasyprint import HTML
-            HTML(string=html_content).write_pdf(str(path))
         except ImportError:
             try:
                 import pdfkit
-                pdfkit.from_string(html_content, str(path))
             except ImportError:
-                raise ImportError(
-                    "PDF export requires weasyprint or pdfkit. "
-                    "Install with: pip install weasyprint or pip install pdfkit"
-                )
+                raise ImportError("PDF export requires truthound[pdf] and native WeasyPrint libraries") from None
+            content = pdfkit.from_string(html_content, False)
+        else:
+            content = HTML(string=html_content).write_pdf()
+        if not isinstance(content, bytes) or not content.startswith(b"%PDF-"):
+            raise ValueError("Native PDF provider returned an invalid document")
+        return content
 
 
 # =============================================================================
@@ -791,7 +827,7 @@ class ReportExporter:
 
 
 def generate_report(
-    data: ProfileData | Dict[str, Any],
+    data: ProfileData | dict[str, Any],
     title: str = "",
     theme: str | ReportTheme = "light",
     renderer: str = "auto",
@@ -814,19 +850,7 @@ def generate_report(
         HTML string if output_path is None, Path to saved file otherwise
     """
     if isinstance(data, dict):
-        # Extract table_name from dict, checking both 'table_name' and 'name' keys
-        table_name = data.get("table_name", data.get("name", "data"))
-        data = ProfileData(
-            table_name=table_name,
-            row_count=data.get("row_count", 0),
-            column_count=data.get("column_count", len(data.get("columns", []))),
-            columns=data.get("columns", []),
-            quality_scores=data.get("quality_scores"),
-            patterns_found=data.get("patterns_found"),
-            alerts=data.get("alerts"),
-            recommendations=data.get("recommendations"),
-            timestamp=data.get("timestamp"),
-        )
+        data = ProfileDataConverter.from_dict(data)
 
     # Use provided config or build one from parameters
     if config is None:
@@ -852,10 +876,10 @@ def generate_report(
 
 
 def compare_profiles(
-    profiles: ProfileData | List[ProfileData],
+    profiles: ProfileData | list[ProfileData],
     profile_b: ProfileData | None = None,
     title: str = "Profile Comparison",
-    labels: List[str] | None = None,
+    labels: list[str] | None = None,
     **kwargs: Any,
 ) -> str:
     """Generate a comparison report between profiles.
@@ -949,7 +973,6 @@ def compare_profiles(
 # =============================================================================
 
 
-import threading
 
 
 class ThemeRegistry:
@@ -958,11 +981,11 @@ class ThemeRegistry:
     Allows custom themes to be registered and retrieved.
     """
 
-    _instance: Optional["ThemeRegistry"] = None
+    _instance: ThemeRegistry | None = None
     _lock: threading.Lock = threading.Lock()
     _initialized: bool = False
 
-    def __new__(cls) -> "ThemeRegistry":
+    def __new__(cls) -> ThemeRegistry:
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
@@ -972,7 +995,7 @@ class ThemeRegistry:
     def __init__(self) -> None:
         # Only initialize themes once
         if not ThemeRegistry._initialized:
-            self._themes: Dict[str, ThemeConfig] = {}
+            self._themes: dict[str, ThemeConfig] = {}
             # Populate with built-in themes
             for theme_enum, theme_config in THEME_CONFIGS.items():
                 self._themes[theme_enum.value] = theme_config
@@ -982,13 +1005,13 @@ class ThemeRegistry:
         """Register a custom theme."""
         self._themes[name] = theme
 
-    def get(self, name: str | ReportTheme) -> Optional[ThemeConfig]:
+    def get(self, name: str | ReportTheme) -> ThemeConfig | None:
         """Get a theme by name."""
         if isinstance(name, ReportTheme):
             name = name.value
         return self._themes.get(name)
 
-    def list_themes(self) -> List[str]:
+    def list_themes(self) -> list[str]:
         """List all available themes."""
         return list(self._themes.keys())
 
@@ -1018,7 +1041,7 @@ class ProfileDataConverter:
         self._profile = profile
 
     @staticmethod
-    def from_dict(data: Dict[str, Any]) -> ProfileData:
+    def from_dict(data: dict[str, Any]) -> ProfileData:
         """Convert dictionary to ProfileData.
 
         Args:
@@ -1027,8 +1050,11 @@ class ProfileDataConverter:
         Returns:
             ProfileData instance
         """
+        timestamp = data.get("timestamp", data.get("profiled_at"))
+        if isinstance(timestamp, str):
+            timestamp = datetime.fromisoformat(timestamp)
         return ProfileData(
-            table_name=data.get("name", data.get("table_name", "data")),
+            table_name=data.get("table_name", data.get("name", "data")),
             row_count=data.get("row_count", 0),
             column_count=data.get("column_count", len(data.get("columns", []))),
             columns=data.get("columns", []),
@@ -1036,12 +1062,12 @@ class ProfileDataConverter:
             patterns_found=data.get("patterns_found"),
             alerts=data.get("alerts"),
             recommendations=data.get("recommendations"),
-            timestamp=data.get("timestamp"),
+            timestamp=timestamp,
             metadata=data.get("metadata", {}),
         )
 
     @staticmethod
-    def to_dict(data: ProfileData) -> Dict[str, Any]:
+    def to_dict(data: ProfileData) -> dict[str, Any]:
         """Convert ProfileData to dictionary.
 
         Args:
@@ -1081,8 +1107,6 @@ class ProfileDataConverter:
         if self._profile is None:
             raise ValueError("No profile data set")
 
-        from truthound.profiler.visualization.base import SectionContent
-
         return SectionContent(
             section_type=SectionType.OVERVIEW,
             title="Overview",
@@ -1101,8 +1125,6 @@ class ProfileDataConverter:
         """
         if self._profile is None:
             raise ValueError("No profile data set")
-
-        from truthound.profiler.visualization.base import SectionContent
 
         text_blocks = []
         if self._profile.quality_scores:
@@ -1137,7 +1159,7 @@ class ReportTemplate:
         base_css: str = "",
         header_template: str = "",
         footer_template: str = "",
-        section_templates: Optional[Dict[str, str]] = None,
+        section_templates: dict[str, str] | None = None,
     ):
         """Initialize report template.
 
@@ -1238,7 +1260,7 @@ class ReportTemplate:
                 generator.config.custom_css = css
 
     @classmethod
-    def load_from_file(cls, path: str | Path) -> "ReportTemplate":
+    def load_from_file(cls, path: str | Path) -> ReportTemplate:
         """Load template from a file.
 
         Args:

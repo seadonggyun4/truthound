@@ -7,19 +7,17 @@ This is a pure Python implementation that doesn't require scikit-learn.
 from __future__ import annotations
 
 import random
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from math import log
 from typing import Any
 
 import polars as pl
 
+from truthound.ml._training import atomic_fit
 from truthound.ml.base import (
     AnomalyConfig,
     AnomalyDetector,
-    AnomalyResult,
-    AnomalyScore,
-    AnomalyType,
     InsufficientDataError,
     ModelInfo,
     ModelNotTrainedError,
@@ -64,8 +62,8 @@ class IsolationTreeNode:
         self,
         split_feature: int | None = None,
         split_value: float | None = None,
-        left: "IsolationTreeNode | None" = None,
-        right: "IsolationTreeNode | None" = None,
+        left: IsolationTreeNode | None = None,
+        right: IsolationTreeNode | None = None,
         size: int = 0,
     ):
         self.split_feature = split_feature
@@ -253,6 +251,7 @@ class IsolationForestDetector(AnomalyDetector):
             tags=("ensemble", "tree-based", "unsupervised"),
         )
 
+    @atomic_fit
     def fit(self, data: pl.LazyFrame) -> None:
         """Train the Isolation Forest.
 
@@ -261,7 +260,7 @@ class IsolationForestDetector(AnomalyDetector):
         """
         import time
 
-        start = time.perf_counter()
+        time.perf_counter()
         self._state = ModelState.TRAINING
 
         try:
@@ -271,21 +270,26 @@ class IsolationForestDetector(AnomalyDetector):
             # Get numeric columns
             schema = df.schema
             numeric_types = {
-                pl.Int8, pl.Int16, pl.Int32, pl.Int64,
-                pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64,
-                pl.Float32, pl.Float64,
+                pl.Int8,
+                pl.Int16,
+                pl.Int32,
+                pl.Int64,
+                pl.UInt8,
+                pl.UInt16,
+                pl.UInt32,
+                pl.UInt64,
+                pl.Float32,
+                pl.Float64,
             }
 
             if self.config.columns:
                 self._columns = [
-                    c for c in self.config.columns
+                    c
+                    for c in self.config.columns
                     if c in schema and type(schema[c]) in numeric_types
                 ]
             else:
-                self._columns = [
-                    c for c in schema.keys()
-                    if type(schema[c]) in numeric_types
-                ]
+                self._columns = [c for c in schema if type(schema[c]) in numeric_types]
 
             if not self._columns:
                 raise InsufficientDataError(
@@ -321,10 +325,7 @@ class IsolationForestDetector(AnomalyDetector):
 
                 # Sample data for this tree
                 if self.config.bootstrap:
-                    sample_indices = [
-                        rng.randint(0, n_samples - 1)
-                        for _ in range(max_samples)
-                    ]
+                    sample_indices = [rng.randint(0, n_samples - 1) for _ in range(max_samples)]
                 else:
                     sample_indices = rng.sample(range(n_samples), max_samples)
 
@@ -383,16 +384,11 @@ class IsolationForestDetector(AnomalyDetector):
         scores = []
         for sample in test_data:
             # Average path length across all trees
-            avg_path = sum(
-                tree.path_length(sample) for tree in self._trees
-            ) / len(self._trees)
+            avg_path = sum(tree.path_length(sample) for tree in self._trees) / len(self._trees)
 
             # Anomaly score: 2^(-avg_path / c(n))
             # Where c(n) is average path length for n samples
-            if self._avg_path_length == 0:
-                score = 0.5
-            else:
-                score = 2 ** (-avg_path / self._avg_path_length)
+            score = 0.5 if self._avg_path_length == 0 else 2 ** (-avg_path / self._avg_path_length)
 
             scores.append(score)
 
@@ -429,13 +425,22 @@ class IsolationForestDetector(AnomalyDetector):
         base["columns"] = self._columns
         base["avg_path_length"] = self._avg_path_length
         base["n_trees"] = len(self._trees)
+
         def node(value):
             if value is None:
                 return None
-            return {"split_feature": value.split_feature, "split_value": value.split_value,
-                    "size": value.size, "left": node(value.left), "right": node(value.right)}
-        base["trees"] = [{"max_depth": tree.max_depth, "n_features": tree.n_features,
-                          "root": node(tree.root)} for tree in self._trees]
+            return {
+                "split_feature": value.split_feature,
+                "split_value": value.split_value,
+                "size": value.size,
+                "left": node(value.left),
+                "right": node(value.right),
+            }
+
+        base["trees"] = [
+            {"max_depth": tree.max_depth, "n_features": tree.n_features, "root": node(tree.root)}
+            for tree in self._trees
+        ]
         return base
 
     def _deserialize(self, data: dict[str, Any]) -> None:
@@ -444,17 +449,27 @@ class IsolationForestDetector(AnomalyDetector):
         self._avg_path_length = data.get("avg_path_length", 0.0)
         if not data.get("trees") or len(data["trees"]) != data["n_trees"]:
             raise ValueError("Saved isolation forest is missing its trained trees")
+
         def node(value):
             if value is None:
                 return None
             index = value["split_feature"]
-            if index is not None and (type(index) is not int or not 0 <= index < len(self._columns)):
+            if index is not None and (
+                type(index) is not int or not 0 <= index < len(self._columns)
+            ):
                 raise ValueError("Invalid isolation tree feature")
             if type(value["size"]) is not int or value["size"] < 0:
                 raise ValueError("Invalid isolation tree size")
             if index is not None and (value["left"] is None or value["right"] is None):
                 raise ValueError("Incomplete isolation tree branch")
-            return IsolationTreeNode(index, value["split_value"], node(value["left"]), node(value["right"]), value["size"])
+            return IsolationTreeNode(
+                index,
+                value["split_value"],
+                node(value["left"]),
+                node(value["right"]),
+                value["size"],
+            )
+
         trees = []
         for saved in data["trees"]:
             tree = IsolationTree(saved["max_depth"], random.Random(self.config.random_seed))

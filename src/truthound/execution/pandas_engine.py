@@ -10,12 +10,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 from truthound.datasources._polars_compat import pandas_to_polars_frame
+from truthound.execution._protocols import AggregationType
 from truthound.execution.base import (
     BaseExecutionEngine,
     ExecutionConfig,
     ExecutionSizeError,
 )
-from truthound.execution._protocols import AggregationType
 
 if TYPE_CHECKING:
     import numpy as np
@@ -27,11 +27,10 @@ def _check_pandas_available() -> None:
     """Check if pandas is available."""
     try:
         import pandas  # noqa: F401
-    except ImportError:
+    except ImportError as error:
         raise ImportError(
-            "pandas is required for PandasExecutionEngine. "
-            "Install with: pip install pandas"
-        )
+            "pandas is required for PandasExecutionEngine. Install with: pip install pandas"
+        ) from error
 
 
 class PandasExecutionEngine(BaseExecutionEngine[ExecutionConfig]):
@@ -51,7 +50,7 @@ class PandasExecutionEngine(BaseExecutionEngine[ExecutionConfig]):
 
     def __init__(
         self,
-        data: "pd.DataFrame",
+        data: pd.DataFrame,
         config: ExecutionConfig | None = None,
     ) -> None:
         """Initialize Pandas execution engine.
@@ -64,10 +63,10 @@ class PandasExecutionEngine(BaseExecutionEngine[ExecutionConfig]):
         super().__init__(config)
 
         self._df = data
-        self._cached_polars_lf: "pl.LazyFrame | None" = None
+        self._cached_polars_lf: pl.LazyFrame | None = None
 
     @property
-    def dataframe(self) -> "pd.DataFrame":
+    def dataframe(self) -> pd.DataFrame:
         """Get the underlying DataFrame."""
         return self._df
 
@@ -130,8 +129,11 @@ class PandasExecutionEngine(BaseExecutionEngine[ExecutionConfig]):
         limit: int | None = None,
     ) -> dict[Any, int]:
         """Get value frequency counts for a column."""
+        self._validate_window(limit)
+        if limit == 0:
+            return {}
         counts = self._df[column].value_counts(dropna=False)
-        if limit:
+        if limit is not None:
             counts = counts.head(limit)
         return counts.to_dict()
 
@@ -187,8 +189,9 @@ class PandasExecutionEngine(BaseExecutionEngine[ExecutionConfig]):
         limit: int | None = None,
     ) -> list[Any]:
         """Get distinct values from a column."""
+        self._validate_window(limit)
         unique = self._df[column].unique().tolist()
-        if limit:
+        if limit is not None:
             return unique[:limit]
         return unique
 
@@ -199,15 +202,17 @@ class PandasExecutionEngine(BaseExecutionEngine[ExecutionConfig]):
         offset: int = 0,
     ) -> list[Any]:
         """Get values from a column."""
+        self._validate_window(limit, offset)
         series = self._df[column]
         if offset > 0:
             series = series.iloc[offset:]
-        if limit:
+        if limit is not None:
             series = series.head(limit)
         return series.tolist()
 
     def get_sample_values(self, column: str, n: int = 5) -> list[Any]:
         """Get sample non-null values from a column."""
+        self._validate_window(n)
         non_null = self._df[column].dropna()
         return non_null.head(n).tolist()
 
@@ -217,20 +222,11 @@ class PandasExecutionEngine(BaseExecutionEngine[ExecutionConfig]):
 
     def count_matching_regex(self, column: str, pattern: str) -> int:
         """Count values matching a regex pattern."""
-        return int(
-            self._df[column]
-            .astype(str)
-            .str.contains(pattern, regex=True, na=False)
-            .sum()
-        )
+        return int(self._df[column].astype(str).str.contains(pattern, regex=True, na=False).sum())
 
     def count_not_matching_regex(self, column: str, pattern: str) -> int:
         """Count values not matching a regex pattern."""
-        return int(
-            ~self._df[column]
-            .astype(str)
-            .str.contains(pattern, regex=True, na=True)
-        ).sum()
+        return int(~self._df[column].astype(str).str.contains(pattern, regex=True, na=True)).sum()
 
     # -------------------------------------------------------------------------
     # Range Operations
@@ -248,16 +244,10 @@ class PandasExecutionEngine(BaseExecutionEngine[ExecutionConfig]):
         mask = series.notna()
 
         if min_value is not None:
-            if inclusive:
-                mask = mask & (series >= min_value)
-            else:
-                mask = mask & (series > min_value)
+            mask = mask & (series >= min_value) if inclusive else mask & (series > min_value)
 
         if max_value is not None:
-            if inclusive:
-                mask = mask & (series <= max_value)
-            else:
-                mask = mask & (series < max_value)
+            mask = mask & (series <= max_value) if inclusive else mask & (series < max_value)
 
         return int(mask.sum())
 
@@ -290,6 +280,7 @@ class PandasExecutionEngine(BaseExecutionEngine[ExecutionConfig]):
 
     def count_duplicates(self, columns: list[str]) -> int:
         """Count duplicate rows based on specified columns."""
+        self._duplicate_count_alias(columns)
         return int(self._df.duplicated(subset=columns).sum())
 
     def get_duplicate_values(
@@ -298,49 +289,55 @@ class PandasExecutionEngine(BaseExecutionEngine[ExecutionConfig]):
         limit: int = 10,
     ) -> list[dict[str, Any]]:
         """Get sample duplicate values."""
+        self._validate_window(limit)
+        count_alias = self._duplicate_count_alias(columns)
+        if limit == 0:
+            return []
         duplicated = self._df[self._df.duplicated(subset=columns, keep=False)]
-        grouped = duplicated.groupby(columns).size().reset_index(name="_count")
-        grouped = grouped.sort_values("_count", ascending=False).head(limit)
-        return grouped.drop("_count", axis=1).to_dict("records")
+        grouped = (
+            duplicated.groupby(columns, dropna=False, observed=True)
+            .size()
+            .reset_index(name=count_alias)
+        )
+        grouped = grouped.sort_values(count_alias, ascending=False).head(limit)
+        values = grouped.drop(count_alias, axis=1).astype(object)
+        return values.where(values.notna(), None).to_dict("records")
 
     # -------------------------------------------------------------------------
     # Filter Operations
     # -------------------------------------------------------------------------
 
-    def filter_by_condition(self, condition: str) -> "PandasExecutionEngine":
+    def filter_by_condition(self, condition: str) -> PandasExecutionEngine:
         """Create a new engine with filtered data using query syntax."""
-        try:
-            filtered = self._df.query(condition)
-            return PandasExecutionEngine(filtered, self._config)
-        except Exception as e:
-            raise NotImplementedError(
-                f"Condition '{condition}' cannot be parsed by pandas.query(): {e}"
-            )
+        filtered = self._df.query(condition)
+        return PandasExecutionEngine(filtered, self._config)
 
     def count_matching(self, condition: str) -> int:
-        """Count rows matching a condition."""
-        try:
-            return len(self._df.query(condition))
-        except Exception:
-            raise NotImplementedError(
-                f"Condition '{condition}' cannot be parsed by pandas.query()"
-            )
+        """Count matching rows, preserving native parse and execution failures."""
+        return len(self._df.query(condition))
 
     # -------------------------------------------------------------------------
     # Conversion Methods
     # -------------------------------------------------------------------------
 
-    def to_polars_lazyframe(self) -> "pl.LazyFrame":
+    def to_polars_lazyframe(self) -> pl.LazyFrame:
         """Convert to Polars LazyFrame."""
+        if not self._config.cache_results:
+            return pandas_to_polars_frame(self._df).lazy()
         if self._cached_polars_lf is None:
             self._cached_polars_lf = pandas_to_polars_frame(self._df).lazy()
         return self._cached_polars_lf
 
-    def to_pandas_dataframe(self) -> "pd.DataFrame":
+    def clear_cache(self) -> None:
+        """Invalidate results and the materialized Pandas conversion."""
+        super().clear_cache()
+        self._cached_polars_lf = None
+
+    def to_pandas_dataframe(self) -> pd.DataFrame:
         """Return the underlying DataFrame."""
         return self._df
 
-    def to_numpy(self, columns: list[str] | None = None) -> "np.ndarray":
+    def to_numpy(self, columns: list[str] | None = None) -> np.ndarray:
         """Convert to numpy array."""
         import numpy as np
 
@@ -370,7 +367,7 @@ class PandasExecutionEngine(BaseExecutionEngine[ExecutionConfig]):
         self,
         n: int = 1000,
         seed: int | None = None,
-    ) -> "PandasExecutionEngine":
+    ) -> PandasExecutionEngine:
         """Create a new engine with sampled data."""
         row_count = self.count_rows()
 
@@ -384,13 +381,14 @@ class PandasExecutionEngine(BaseExecutionEngine[ExecutionConfig]):
     # Additional Pandas Operations
     # -------------------------------------------------------------------------
 
-    def describe(self) -> "pd.DataFrame":
+    def describe(self) -> pd.DataFrame:
         """Get pandas describe() output."""
         return self._df.describe()
 
     def info(self) -> dict[str, Any]:
         """Get DataFrame info."""
         import io
+
         buffer = io.StringIO()
         self._df.info(buf=buffer)
         return {

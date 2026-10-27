@@ -2,11 +2,11 @@
 
 import json
 from contextlib import suppress
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import Field, JsonValue
 
-from truthound.mcp.contracts import FileInput, Name, WireModel
+from truthound.mcp.contracts import FileInput, Name, Names, WireModel
 from truthound.mcp.model_process import OwnedModelProcess
 from truthound.mcp.operations import envelope
 from truthound.mcp.policy import MCPError
@@ -76,6 +76,21 @@ class SourceInput(WireModel):
     source_id: Handle
 
 
+class SourceRead(SourceInput):
+    sample_size: Annotated[int, Field(ge=1, le=10_000_000)] | None = None
+
+
+class SourceMask(SourceInput):
+    columns: Names | None = None
+    strategy: Literal["redact", "hash", "fake"] = "redact"
+    strict: bool = False
+
+
+class SourceLearn(SourceInput):
+    infer_constraints: bool = True
+    categorical_threshold: Annotated[int, Field(ge=0, le=10000)] = 20
+
+
 class SourceSample(SourceInput):
     n: Annotated[int, Field(ge=1, le=10_000_000)] = 1000
     seed: int | None = None
@@ -114,32 +129,55 @@ class SourceProcess(OwnedModelProcess):
             raise MCPError("worker_error")
         return result
 
-    def close(self):
+    def _request_shutdown(self):
         # EOF lets the worker run the native context-manager cleanup first.
         # Bound cleanup; only this owned child is killed if it does not exit.
-        if hasattr(self, "process") and not self.closed:
+        if self.process.poll() is None:
             with suppress(OSError, ValueError):
                 self.process.stdin.close()
             with suppress(Exception):
                 self.process.wait(timeout=1)
-        super().close()
+
+    def release_native(self, identity):
+        """Bounded child cleanup while preserving its owning native worker."""
+        import threading
+
+        timer = threading.Timer(1, self.close)
+        timer.daemon = True
+        timer.start()
+        try:
+            self._exchange({"operation": "sources_close_child", "source_key": identity})
+        except Exception:
+            self.close()
+        finally:
+            timer.cancel()
 
 
 class SourceSession:
     def __init__(self, session):
         self.session = session
         self.workers = {}
+        self.child_keys = set()
 
     def release(self, identity):
-        worker = self.workers.get(identity)
+        worker = self.workers.pop(identity, None)
         if worker is not None:
-            worker.close()
-            self.workers.pop(identity, None)
+            if identity in self.child_keys:
+                self.child_keys.remove(identity)
+                if not worker.closed:
+                    worker.release_native(identity)
+            else:
+                worker.close()
+                for key, value in list(self.workers.items()):
+                    if value is worker:
+                        self.workers.pop(key, None)
+                        self.child_keys.discard(key)
 
     def close(self):
-        for worker in self.workers.values():
+        for worker in set(self.workers.values()):
             worker.close()
         self.workers.clear()
+        self.child_keys.clear()
 
     def reap(self):
         for identity, worker in list(self.workers.items()):
@@ -306,6 +344,7 @@ class SourceSession:
         resources, policy = session.resources, session.policy
         worker = None
         pending = None
+        created_child = None
         try:
             if operation == "sources_open_polars":
                 config = arguments.config.model_dump()
@@ -336,6 +375,48 @@ class SourceSession:
             worker = self.workers.get(entry.id)
             if worker is None or worker.closed:
                 raise MCPError("invalid_handle")
+            if operation == "sources_sample_source":
+                identity, path = resources.reserve("source")
+                pending = identity
+                path.write_text(json.dumps({"sample": arguments.model_dump()}), encoding="utf-8")
+                await worker.call(
+                    {
+                        "operation": operation,
+                        "source_key": entry.metadata.get("source_key", "root"),
+                        "sample_key": identity,
+                        "arguments": arguments.model_dump(),
+                    },
+                    policy.timeout_seconds,
+                )
+                created_child = identity
+                resources.get(entry.id, "source")
+                metadata = {
+                    key: entry.metadata[key]
+                    for key in (
+                        "source_binding",
+                        "source_policy",
+                        "binding_digest",
+                        "binding_control_root",
+                    )
+                    if key in entry.metadata
+                }
+                metadata.update(
+                    asset_id=identity,
+                    input_kind="source",
+                    source_key=identity,
+                    native_live_sample=True,
+                )
+                child = resources.commit(
+                    identity,
+                    kind="source",
+                    parents=(entry.id,),
+                    media_type="application/vnd.truthound.source+json",
+                    metadata=metadata,
+                )
+                self.workers[identity] = worker
+                self.child_keys.add(identity)
+                created_child = None
+                return envelope(operation, data=session._info(child))
             if operation == "sources_validate":
                 return await session._validate(
                     effective_validation(arguments, entry.metadata["asset_id"]),
@@ -345,13 +426,20 @@ class SourceSession:
                     source_worker=worker,
                     source_input_kind=entry.metadata.get("input_kind", "asset"),
                 )
-            identity, output = resources.reserve(
-                "asset" if operation == "sources_sample" else "artifact"
+            from truthound.mcp.source_facades import OUTPUTS
+
+            kind, media_type = OUTPUTS.get(
+                operation,
+                ("asset", "application/vnd.apache.arrow.file")
+                if operation == "sources_sample"
+                else ("artifact", "application/vnd.truthound.source-info+json"),
             )
+            identity, output = resources.reserve(kind)
             pending = identity
             await worker.call(
                 {
                     "operation": operation,
+                    "source_key": entry.metadata.get("source_key", "root"),
                     "arguments": arguments.model_dump(),
                     "output_path": str(output),
                     "output_budget": resources.available_bytes,
@@ -361,14 +449,14 @@ class SourceSession:
             resources.get(entry.id, "source")
             result = resources.commit(
                 identity,
-                kind="asset" if operation == "sources_sample" else "artifact",
+                kind=kind,
                 parents=(entry.id,),
-                media_type="application/vnd.apache.arrow.file"
-                if operation == "sources_sample"
-                else "application/vnd.truthound.source-info+json",
+                media_type=media_type,
             )
             return envelope(operation, data=session._info(result))
         except BaseException:
+            if created_child is not None and worker is not None and not worker.closed:
+                worker.release_native(created_child)
             if worker is not None and (operation == "sources_open_polars" or worker.closed):
                 worker.close()
             raise

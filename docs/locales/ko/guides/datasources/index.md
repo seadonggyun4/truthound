@@ -653,6 +653,10 @@ engine.aggregate({
 })
 ```
 
+Polars·Pandas·SQL 중복 연산은 NULL을 포함한 그룹에서 첫 행을 제외한 중복 행 수를 계산합니다. 중복 표본은 `_count`, `cnt`라는 실제 열을 보존하고 내부 집계 별칭으로 덮어쓰지 않습니다. 그룹 열은 비어 있지 않고 중복 없이 존재해야 합니다. 표본 `limit=0`은 빈 그룹 결과이며 음수는 거부합니다. Pandas 그룹 표본의 결측 스칼라 키는 `None`으로 정규화합니다. SQL 중복 수는 방언별 다중 열 `COUNT(DISTINCT ...)` 대신 그룹 하위 쿼리를 사용하고 표본 한도는 소스의 페이지 방언을 따릅니다.
+
+SQL `aggregate`는 일반 SQL 구현이 없는 median·표준편차·분산·first·last를 공유하는 제한된 Polars 경로로 계산합니다. `max_rows_for_polars`를 넘으면 `ExecutionSizeError`이며 미지원 pushdown을 계산된 null로 반환하지 않습니다. 지원 집계는 SQL에서 수행하고 특수 열 이름의 출력 별칭을 인용합니다. 빈 집계 요청은 `{}`입니다. SQL과 fallback 혼합 요청은 소스를 따로 읽을 수 있으며 DB 스냅샷 트랜잭션을 만들지 않습니다.
+
 ### SQLExecutionEngine
 
 실무 운영 가이드에서 SQL을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
@@ -1178,3 +1182,27 @@ source = OptimizedPandasDataSource(pandas_df, config=config)
 - 실무 운영 가이드에서 Data, Sources, Architecture, Design을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
 - 실무 운영 가이드에서 Architecture, Overview, Overall을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
 - 실무 운영 가이드에서 Docs, Overview, Main을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+
+
+## 실행 엔진 view 수명주기
+
+`SQLExecutionEngine.filter_by_condition(condition)`은 지연 SQL subquery 엔진을 반환합니다. 신뢰된 SQL 조건은 원래 provider에서 실행하며 중첩 필터·표본도 view를 보존하고 부모 연결을 빌립니다. 모든 view가 끝날 때까지 부모 datasource를 유지해야 합니다. 기본 엔진의 임시 필터 count와 안전 NumPy 표본은 오류 때도 파생 context를 종료하며 부모는 닫지 않습니다. opt-in [Core MCP 프로필](../mcp.md)은 운영자 조건·쿼리·표현식 별칭을 선택하고 실제 파생 엔진을 유지합니다.
+
+
+`execution-dask` extra는 네이티브 Dask 실행 runtime을 설치합니다. 분산 FIRST/LAST 집계는 개수로 대체하지 않고 backend 연산으로 값을 선택하며 null·빈 결과를 보존합니다. 순서 없는 분산 자료의 전역 순서를 보장하지 않으며 네이티브 backend 순서가 적용됩니다.
+
+SQL 실행 엔진 `get_stats`는 Core Polars 구현으로 표본 표준편차·중앙값·선형
+분위수를 포함한 전체 수치 통계를 계산합니다. 구체화 전에
+`max_rows_for_polars`를 적용하며 초과하면 가상의 `None` 통계를 반환하지 않고
+`ExecutionSizeError`를 발생시킵니다. 제한된 소스를 클라이언트로 전송할 수
+있으며 개별 지원 집계는 계속 SQL pushdown을 사용합니다.
+
+범위·집합 피연산자는 SQLite·DuckDB·PostgreSQL·MySQL에서 드라이버 매개변수를
+사용하며 필터·샘플 래퍼에도 적용됩니다. PostgreSQL·MySQL 정규식 패턴도
+바인딩합니다. 나머지 제공자는 이 피연산자를 제한된 네이티브 Polars로 처리하며,
+제공자별 정규식 문법은 네이티브 정규식 pushdown에서만 유지됩니다. 따옴표가
+포함된 값도 SQL 조각이 아닌 데이터입니다. 원시 SQL 조건 API는 기존의 명시적
+SQL 계약을 유지합니다. SQLite·DuckDB 로컬 네이티브 회귀 검증이 있으며,
+PostgreSQL·MySQL·클라우드의 새 실제 서버 검증을 주장하지 않습니다.
+
+실행 엔진은 양쪽 경계가 없는 범위를 NULL 행을 포함한 전체 행으로 처리하며, 범위 밖 행 수는 0입니다. 공유 fallback도 같은 계약을 따릅니다.

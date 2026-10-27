@@ -9,21 +9,30 @@ from __future__ import annotations
 import json
 import threading
 import time
-from dataclasses import dataclass, field
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from truthound.rbac.core import (
+    Condition,
     Permission,
     Principal,
     PrincipalStore,
     PrincipalType,
+    RBACError,
     Role,
     RoleStore,
     RoleType,
-    CircularRoleError,
 )
+
+
+def _write_json(path, data, pretty_print):
+    from truthound.stores.concurrency.atomic import atomic_write
+
+    encoded = json.dumps(data, indent=2 if pretty_print else None, default=str, allow_nan=False)
+    if not atomic_write(path, encoded).success:
+        raise RBACError("Failed to persist RBAC storage")
 
 
 # =============================================================================
@@ -74,7 +83,7 @@ class MemoryRoleStore(RoleStore):
     def save(self, role: Role) -> None:
         """Save a role (create or update)."""
         with self._lock:
-            role.updated_at = datetime.now(timezone.utc)
+            role.updated_at = datetime.now(UTC)
             self._roles[role.id] = role
 
     def delete(self, role_id: str) -> bool:
@@ -223,20 +232,30 @@ class FileRoleStore(RoleStore):
             try:
                 with open(self._file_path) as f:
                     data = json.load(f)
+                    if not isinstance(data, dict):
+                        raise ValueError("RBAC records must be an object")
                     self._cache = {
-                        role_id: Role.from_dict(role_data)
-                        for role_id, role_data in data.items()
+                        role_id: Role.from_dict(role_data) for role_id, role_data in data.items()
                     }
-            except (json.JSONDecodeError, OSError):
-                self._cache = {}
+                    if any(
+                        not isinstance(key, str) or role.id != key
+                        for key, role in self._cache.items()
+                    ):
+                        raise ValueError("RBAC role identity mismatch")
+            except (ValueError, TypeError, KeyError, OSError, RBACError) as error:
+                raise RBACError("Unable to load RBAC role storage") from error
 
         self._cache_loaded = True
 
     def _save_cache(self) -> None:
         """Save cache to file."""
-        data = {role_id: role.to_dict() for role_id, role in self._cache.items()}
-        with open(self._file_path, "w") as f:
-            json.dump(data, f, indent=2 if self._config.pretty_print else None, default=str)
+        try:
+            data = {role_id: role.to_dict() for role_id, role in self._cache.items()}
+            _write_json(self._file_path, data, self._config.pretty_print)
+        except BaseException:
+            self._cache = {}
+            self._cache_loaded = False
+            raise
 
     def get(self, role_id: str) -> Role | None:
         """Get a role by ID."""
@@ -268,7 +287,7 @@ class FileRoleStore(RoleStore):
         """Save a role (create or update)."""
         with self._lock:
             self._load_cache()
-            role.updated_at = datetime.now(timezone.utc)
+            role.updated_at = datetime.now(UTC)
             self._cache[role.id] = role
             self._save_cache()
 
@@ -316,29 +335,38 @@ class FilePrincipalStore(PrincipalStore):
             try:
                 with open(self._file_path) as f:
                     data = json.load(f)
+                    if not isinstance(data, dict):
+                        raise ValueError("RBAC records must be an object")
                     self._cache = {
                         principal_id: Principal.from_dict(principal_data)
                         for principal_id, principal_data in data.items()
                     }
+                    if any(
+                        not isinstance(key, str) or principal.id != key
+                        for key, principal in self._cache.items()
+                    ):
+                        raise ValueError("RBAC principal identity mismatch")
                     # Rebuild email index
                     self._email_index = {
-                        p.email.lower(): p.id
-                        for p in self._cache.values()
-                        if p.email
+                        p.email.lower(): p.id for p in self._cache.values() if p.email
                     }
-            except (json.JSONDecodeError, OSError):
-                self._cache = {}
+            except (ValueError, TypeError, KeyError, OSError, RBACError) as error:
+                raise RBACError("Unable to load RBAC principal storage") from error
 
         self._cache_loaded = True
 
     def _save_cache(self) -> None:
         """Save cache to file."""
-        data = {
-            principal_id: principal.to_dict()
-            for principal_id, principal in self._cache.items()
-        }
-        with open(self._file_path, "w") as f:
-            json.dump(data, f, indent=2 if self._config.pretty_print else None, default=str)
+        try:
+            data = {
+                principal_id: principal.to_dict() for principal_id, principal in self._cache.items()
+            }
+            _write_json(self._file_path, data, self._config.pretty_print)
+        except BaseException:
+            self._cache = {}
+            self._email_index = {}
+            self._cache_loaded = False
+            raise
 
     def get(self, principal_id: str) -> Principal | None:
         """Get a principal by ID."""
@@ -472,8 +500,12 @@ class SQLiteRoleStore(RoleStore):
             name=row["name"],
             description=row["description"] or "",
             role_type=RoleType(row["role_type"]),
-            permissions={Permission.parse(p) for p in permissions},
+            permissions={
+                Permission.parse(p) if isinstance(p, str) else Permission.from_dict(p)
+                for p in permissions
+            },
             parent_roles=set(parent_roles),
+            conditions=[Condition.from_dict(c) for c in json.loads(row["conditions_json"] or "[]")],
             tenant_id=row["tenant_id"],
             created_at=datetime.fromisoformat(row["created_at"]),
             updated_at=datetime.fromisoformat(row["updated_at"]),
@@ -522,7 +554,7 @@ class SQLiteRoleStore(RoleStore):
     def save(self, role: Role) -> None:
         """Save a role (create or update)."""
         with self._lock:
-            role.updated_at = datetime.now(timezone.utc)
+            role.updated_at = datetime.now(UTC)
             cursor = self._conn.cursor()
             cursor.execute(
                 """
@@ -538,7 +570,7 @@ class SQLiteRoleStore(RoleStore):
                     role.name,
                     role.description,
                     role.role_type.value,
-                    json.dumps([p.to_string() for p in role.permissions]),
+                    json.dumps(role.to_dict()["permissions"]),
                     json.dumps(list(role.parent_roles)),
                     json.dumps([c.to_dict() for c in role.conditions]),
                     role.tenant_id,
@@ -612,14 +644,18 @@ class SQLitePrincipalStore(PrincipalStore):
                 )
             """)
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_principals_email ON principals(email)")
-            cursor.execute("CREATE INDEX IF NOT EXISTS idx_principals_tenant ON principals(tenant_id)")
+            cursor.execute(
+                "CREATE INDEX IF NOT EXISTS idx_principals_tenant ON principals(tenant_id)"
+            )
             cursor.execute("CREATE INDEX IF NOT EXISTS idx_principals_type ON principals(type)")
             self._conn.commit()
 
     def _row_to_principal(self, row: Any) -> Principal:
         """Convert a database row to a Principal object."""
         roles = json.loads(row["roles_json"]) if row["roles_json"] else []
-        direct_permissions = json.loads(row["direct_permissions_json"]) if row["direct_permissions_json"] else []
+        direct_permissions = (
+            json.loads(row["direct_permissions_json"]) if row["direct_permissions_json"] else []
+        )
         attributes = json.loads(row["attributes_json"]) if row["attributes_json"] else {}
         metadata = json.loads(row["metadata_json"]) if row["metadata_json"] else {}
 
@@ -629,12 +665,17 @@ class SQLitePrincipalStore(PrincipalStore):
             name=row["name"] or "",
             email=row["email"] or "",
             roles=set(roles),
-            direct_permissions={Permission.parse(p) for p in direct_permissions},
+            direct_permissions={
+                Permission.parse(p) if isinstance(p, str) else Permission.from_dict(p)
+                for p in direct_permissions
+            },
             attributes=attributes,
             tenant_id=row["tenant_id"],
             enabled=bool(row["enabled"]),
             created_at=datetime.fromisoformat(row["created_at"]),
-            last_active_at=datetime.fromisoformat(row["last_active_at"]) if row["last_active_at"] else None,
+            last_active_at=datetime.fromisoformat(row["last_active_at"])
+            if row["last_active_at"]
+            else None,
             metadata=metadata,
         )
 
@@ -709,7 +750,7 @@ class SQLitePrincipalStore(PrincipalStore):
                     principal.name,
                     principal.email,
                     json.dumps(list(principal.roles)),
-                    json.dumps([p.to_string() for p in principal.direct_permissions]),
+                    json.dumps(principal.to_dict()["direct_permissions"]),
                     json.dumps(principal.attributes),
                     principal.tenant_id,
                     1 if principal.enabled else 0,

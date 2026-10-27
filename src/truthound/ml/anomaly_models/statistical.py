@@ -12,25 +12,20 @@ computationally efficient.
 from __future__ import annotations
 
 from abc import abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
-from math import sqrt
 from typing import Any
 
 import polars as pl
 
+from truthound.ml._training import atomic_fit
 from truthound.ml.base import (
     AnomalyConfig,
     AnomalyDetector,
-    AnomalyResult,
-    AnomalyScore,
-    AnomalyType,
     InsufficientDataError,
-    ModelInfo,
     ModelNotTrainedError,
     ModelState,
     ModelTrainingError,
-    ModelType,
     register_model,
 )
 
@@ -72,6 +67,7 @@ class StatisticalAnomalyDetector(AnomalyDetector):
     def _default_config(self) -> StatisticalConfig:
         return StatisticalConfig()
 
+    @atomic_fit
     def fit(self, data: pl.LazyFrame) -> None:
         """Compute statistics from training data.
 
@@ -80,7 +76,7 @@ class StatisticalAnomalyDetector(AnomalyDetector):
         """
         import time
 
-        start = time.perf_counter()
+        time.perf_counter()
         self._state = ModelState.TRAINING
 
         try:
@@ -90,21 +86,26 @@ class StatisticalAnomalyDetector(AnomalyDetector):
             # Get numeric columns
             schema = sampled.collect_schema()
             numeric_types = {
-                pl.Int8, pl.Int16, pl.Int32, pl.Int64,
-                pl.UInt8, pl.UInt16, pl.UInt32, pl.UInt64,
-                pl.Float32, pl.Float64,
+                pl.Int8,
+                pl.Int16,
+                pl.Int32,
+                pl.Int64,
+                pl.UInt8,
+                pl.UInt16,
+                pl.UInt32,
+                pl.UInt64,
+                pl.Float32,
+                pl.Float64,
             }
 
             if self.config.columns:
                 self._columns = [
-                    c for c in self.config.columns
+                    c
+                    for c in self.config.columns
                     if c in schema and type(schema[c]) in numeric_types
                 ]
             else:
-                self._columns = [
-                    c for c in schema.names()
-                    if type(schema[c]) in numeric_types
-                ]
+                self._columns = [c for c in schema.names() if type(schema[c]) in numeric_types]
 
             if not self._columns:
                 raise InsufficientDataError(
@@ -132,9 +133,7 @@ class StatisticalAnomalyDetector(AnomalyDetector):
             ) from e
 
     @abstractmethod
-    def _compute_column_stats(
-        self, data: pl.LazyFrame, column: str
-    ) -> dict[str, float]:
+    def _compute_column_stats(self, data: pl.LazyFrame, column: str) -> dict[str, float]:
         """Compute statistics for a column.
 
         Args:
@@ -147,9 +146,7 @@ class StatisticalAnomalyDetector(AnomalyDetector):
         ...
 
     @abstractmethod
-    def _compute_score(
-        self, value: float, stats: dict[str, float]
-    ) -> float:
+    def _compute_score(self, value: float, stats: dict[str, float]) -> float:
         """Compute anomaly score for a value.
 
         Args:
@@ -239,23 +236,21 @@ class ZScoreAnomalyDetector(StatisticalAnomalyDetector):
     def _get_description(self) -> str:
         return "Z-Score based anomaly detection using standard deviations from mean"
 
-    def _compute_column_stats(
-        self, data: pl.LazyFrame, column: str
-    ) -> dict[str, float]:
+    def _compute_column_stats(self, data: pl.LazyFrame, column: str) -> dict[str, float]:
         """Compute mean and standard deviation."""
-        stats = data.select([
-            pl.col(column).mean().alias("mean"),
-            pl.col(column).std().alias("std"),
-        ]).collect()
+        stats = data.select(
+            [
+                pl.col(column).mean().alias("mean"),
+                pl.col(column).std().alias("std"),
+            ]
+        ).collect()
 
         return {
             "mean": stats["mean"][0] or 0.0,
             "std": stats["std"][0] or 1.0,  # Avoid division by zero
         }
 
-    def _compute_score(
-        self, value: float, stats: dict[str, float]
-    ) -> float:
+    def _compute_score(self, value: float, stats: dict[str, float]) -> float:
         """Compute absolute z-score."""
         mean = stats["mean"]
         std = stats["std"]
@@ -286,15 +281,15 @@ class IQRAnomalyDetector(StatisticalAnomalyDetector):
     def _get_description(self) -> str:
         return "IQR-based anomaly detection using interquartile range"
 
-    def _compute_column_stats(
-        self, data: pl.LazyFrame, column: str
-    ) -> dict[str, float]:
+    def _compute_column_stats(self, data: pl.LazyFrame, column: str) -> dict[str, float]:
         """Compute quartiles."""
-        stats = data.select([
-            pl.col(column).quantile(0.25).alias("q1"),
-            pl.col(column).quantile(0.50).alias("median"),
-            pl.col(column).quantile(0.75).alias("q3"),
-        ]).collect()
+        stats = data.select(
+            [
+                pl.col(column).quantile(0.25).alias("q1"),
+                pl.col(column).quantile(0.50).alias("median"),
+                pl.col(column).quantile(0.75).alias("q3"),
+            ]
+        ).collect()
 
         q1 = stats["q1"][0] or 0.0
         q3 = stats["q3"][0] or 0.0
@@ -313,9 +308,7 @@ class IQRAnomalyDetector(StatisticalAnomalyDetector):
             "upper_bound": upper_bound,
         }
 
-    def _compute_score(
-        self, value: float, stats: dict[str, float]
-    ) -> float:
+    def _compute_score(self, value: float, stats: dict[str, float]) -> float:
         """Compute score based on distance from IQR bounds."""
         lower = stats["lower_bound"]
         upper = stats["upper_bound"]
@@ -352,20 +345,14 @@ class MADAnomalyDetector(StatisticalAnomalyDetector):
     def _get_description(self) -> str:
         return "MAD-based anomaly detection using median absolute deviation"
 
-    def _compute_column_stats(
-        self, data: pl.LazyFrame, column: str
-    ) -> dict[str, float]:
+    def _compute_column_stats(self, data: pl.LazyFrame, column: str) -> dict[str, float]:
         """Compute median and MAD."""
         # First compute median
-        median_result = data.select(
-            pl.col(column).median().alias("median")
-        ).collect()
+        median_result = data.select(pl.col(column).median().alias("median")).collect()
         median = median_result["median"][0] or 0.0
 
         # Then compute MAD
-        mad_result = data.select(
-            (pl.col(column) - median).abs().median().alias("mad")
-        ).collect()
+        mad_result = data.select((pl.col(column) - median).abs().median().alias("mad")).collect()
         mad = mad_result["mad"][0] or 0.0
 
         return {
@@ -373,9 +360,7 @@ class MADAnomalyDetector(StatisticalAnomalyDetector):
             "mad": mad,
         }
 
-    def _compute_score(
-        self, value: float, stats: dict[str, float]
-    ) -> float:
+    def _compute_score(self, value: float, stats: dict[str, float]) -> float:
         """Compute modified z-score using MAD."""
         median = stats["median"]
         mad = stats["mad"]

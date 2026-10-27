@@ -8,16 +8,20 @@ and quota management.
 from __future__ import annotations
 
 import threading
+from contextlib import suppress
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
-from typing import Any, Callable, Iterator
+from datetime import UTC, datetime
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
 
 from truthound.multitenancy.core import (
     IsolationLevel,
-    IsolationStrategy,
     QuotaTracker,
     ResourceType,
     Tenant,
+    TenantAccessDeniedError,
     TenantContext,
     TenantError,
     TenantNotFoundError,
@@ -30,15 +34,14 @@ from truthound.multitenancy.core import (
     generate_slug,
     generate_tenant_id,
 )
-from truthound.multitenancy.isolation import IsolationManager, create_isolation_strategy
+from truthound.multitenancy.isolation import IsolationManager
 from truthound.multitenancy.quota import (
     MemoryQuotaTracker,
     QuotaEnforcer,
     UsageSummary,
 )
-from truthound.multitenancy.resolvers import CompositeResolver, HeaderResolver
+from truthound.multitenancy.resolvers import HeaderResolver
 from truthound.multitenancy.storage import MemoryTenantStore
-
 
 # =============================================================================
 # Configuration
@@ -220,10 +223,8 @@ class TenantManager:
 
             # Call hooks
             for hook in self._config.on_create:
-                try:
+                with suppress(Exception):
                     hook(tenant)
-                except Exception:
-                    pass  # Don't fail on hook errors
 
             return tenant
 
@@ -316,15 +317,13 @@ class TenantManager:
                 if hasattr(tenant, key):
                     setattr(tenant, key, value)
 
-            tenant.updated_at = datetime.now(timezone.utc)
+            tenant.updated_at = datetime.now(UTC)
             self._store.save(tenant)
 
             # Call hooks
             for hook in self._config.on_update:
-                try:
+                with suppress(Exception):
                     hook(old_tenant, tenant)
-                except Exception:
-                    pass
 
             return tenant
 
@@ -347,10 +346,8 @@ class TenantManager:
             if deleted:
                 # Call hooks
                 for hook in self._config.on_delete:
-                    try:
+                    with suppress(Exception):
                         hook(tenant_id)
-                    except Exception:
-                        pass
 
             return deleted
 
@@ -371,16 +368,14 @@ class TenantManager:
         with self._lock:
             tenant = self.require(tenant_id)
             tenant.status = TenantStatus.SUSPENDED
-            tenant.suspended_at = datetime.now(timezone.utc)
+            tenant.suspended_at = datetime.now(UTC)
             if reason:
                 tenant.metadata.custom_metadata["suspension_reason"] = reason
             self._store.save(tenant)
 
             for hook in self._config.on_suspend:
-                try:
+                with suppress(Exception):
                     hook(tenant)
-                except Exception:
-                    pass
 
             return tenant
 
@@ -402,10 +397,8 @@ class TenantManager:
             self._store.save(tenant)
 
             for hook in self._config.on_activate:
-                try:
+                with suppress(Exception):
                     hook(tenant)
-                except Exception:
-                    pass
 
             return tenant
 
@@ -498,17 +491,27 @@ class TenantManager:
         self,
         context: dict[str, Any],
         default_name: str = "New Tenant",
+        *,
+        expected_tenant_id: str | None = None,
     ) -> Tenant:
         """Resolve tenant or create if not exists.
 
         Args:
             context: Request context
             default_name: Name for newly created tenant
+            expected_tenant_id: If supplied, require exactly this resolved ID
+                before looking up or creating any tenant.
 
         Returns:
             Tenant object.
         """
+        if expected_tenant_id is not None and (
+            not isinstance(expected_tenant_id, str) or not expected_tenant_id
+        ):
+            raise ValueError("Expected tenant identity must be a non-empty string")
         tenant_id = self._resolver.resolve(context)
+        if expected_tenant_id is not None and tenant_id != expected_tenant_id:
+            raise TenantAccessDeniedError("Resolved tenant differs from the selected identity")
         if not tenant_id:
             return self.create(name=default_name)
 

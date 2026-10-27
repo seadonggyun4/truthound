@@ -5,17 +5,21 @@ Produces JSON output compatible with D3.js force-directed graphs.
 
 from __future__ import annotations
 
-from typing import Any, TYPE_CHECKING
 import json
+from typing import TYPE_CHECKING, Any
 
+from truthound.lineage.visualization._encoding import javascript_json
+from truthound.lineage.visualization._layout import apply_d3_layout
 from truthound.lineage.visualization.protocols import (
     IGraphRenderer,
-    RenderFormat,
     RenderConfig,
+    RenderFormat,
+    capture_render_config,
+    resolve_render_depth,
 )
 
 if TYPE_CHECKING:
-    from truthound.lineage.base import LineageGraph, LineageNode, LineageEdge
+    from truthound.lineage.base import LineageEdge, LineageGraph, LineageNode
 
 
 class D3Renderer(IGraphRenderer):
@@ -48,7 +52,7 @@ class D3Renderer(IGraphRenderer):
 
     def render(
         self,
-        graph: "LineageGraph",
+        graph: LineageGraph,
         config: RenderConfig | None = None,
     ) -> str:
         """Render graph to D3.js JSON.
@@ -60,7 +64,7 @@ class D3Renderer(IGraphRenderer):
         Returns:
             JSON string for D3.js
         """
-        config = config or RenderConfig(theme=self._theme)
+        config = capture_render_config(config, theme=self._theme)
         if config.theme == "light" and self._theme == "dark":
             config.theme = self._theme
         data = self._build_d3_data(graph, config)
@@ -68,10 +72,10 @@ class D3Renderer(IGraphRenderer):
 
     def render_subgraph(
         self,
-        graph: "LineageGraph",
+        graph: LineageGraph,
         root_node_id: str,
         direction: str = "downstream",
-        max_depth: int = -1,
+        max_depth: int | None = None,
         config: RenderConfig | None = None,
     ) -> str:
         """Render subgraph from root node.
@@ -80,13 +84,14 @@ class D3Renderer(IGraphRenderer):
             graph: Full lineage graph
             root_node_id: Root node ID
             direction: "upstream", "downstream", or "both"
-            max_depth: Maximum depth
+            max_depth: Maximum depth; None inherits RenderConfig.max_depth
             config: Render configuration
 
         Returns:
             JSON string for D3.js
         """
-        config = config or RenderConfig()
+        config = capture_render_config(config, theme=self._theme)
+        max_depth = resolve_render_depth(max_depth, config)
 
         # Collect subgraph nodes
         subgraph_node_ids: set[str] = {root_node_id}
@@ -104,7 +109,8 @@ class D3Renderer(IGraphRenderer):
 
         # Filter edges to only those within subgraph
         subgraph_edges = [
-            edge for edge in graph.edges
+            edge
+            for edge in graph.edges
             if edge.source in subgraph_node_ids and edge.target in subgraph_node_ids
         ]
 
@@ -116,8 +122,8 @@ class D3Renderer(IGraphRenderer):
 
     def _build_d3_data_from_lists(
         self,
-        node_list: list["LineageNode"],
-        edge_list: list["LineageEdge"],
+        node_list: list[LineageNode],
+        edge_list: list[LineageEdge],
         config: RenderConfig,
     ) -> dict[str, Any]:
         """Build D3.js data structure from node and edge lists.
@@ -154,7 +160,9 @@ class D3Renderer(IGraphRenderer):
                 node_data["metadata"] = {
                     "description": node.metadata.description if hasattr(node, "metadata") else None,
                     "owner": node.metadata.owner if hasattr(node, "metadata") else None,
-                    "tags": list(node.metadata.tags) if hasattr(node, "metadata") and node.metadata.tags else [],
+                    "tags": list(node.metadata.tags)
+                    if hasattr(node, "metadata") and node.metadata.tags
+                    else [],
                 }
                 if hasattr(node, "schema") and node.schema:
                     node_data["schema"] = node.schema
@@ -168,8 +176,8 @@ class D3Renderer(IGraphRenderer):
             if config.filter_edge_types and edge.edge_type.value not in config.filter_edge_types:
                 continue
 
-            source_id = getattr(edge, 'source_id', None) or getattr(edge, 'source', None)
-            target_id = getattr(edge, 'target_id', None) or getattr(edge, 'target', None)
+            source_id = getattr(edge, "source_id", None) or getattr(edge, "source", None)
+            target_id = getattr(edge, "target_id", None) or getattr(edge, "target", None)
 
             if source_id not in node_index or target_id not in node_index:
                 continue
@@ -182,23 +190,24 @@ class D3Renderer(IGraphRenderer):
             }
 
             if config.include_metadata and hasattr(edge, "metadata"):
-                link_data["metadata"] = edge.metadata.to_dict() if hasattr(edge.metadata, "to_dict") else {}
+                link_data["metadata"] = (
+                    edge.metadata.to_dict() if hasattr(edge.metadata, "to_dict") else {}
+                )
 
             links.append(link_data)
 
-        return {
-            "nodes": nodes,
-            "links": links,
-            "config": {
-                "layout": config.layout,
-                "width": config.width,
-                "height": config.height,
+        return apply_d3_layout(
+            {
+                "nodes": nodes,
+                "links": links,
+                "config": {"layout": config.layout, "width": config.width, "height": config.height},
             },
-        }
+            config,
+        )
 
     def _build_d3_data(
         self,
-        graph: "LineageGraph",
+        graph: LineageGraph,
         config: RenderConfig,
     ) -> dict[str, Any]:
         """Build D3.js data structure."""
@@ -214,7 +223,7 @@ class D3Renderer(IGraphRenderer):
             node_items = [(node.id, node) for node in graph.nodes]
 
         # Build nodes
-        for i, (node_id, node) in enumerate(node_items):
+        for node_id, node in node_items:
             # Apply filters
             if config.filter_node_types and node.node_type.value not in config.filter_node_types:
                 continue
@@ -234,7 +243,9 @@ class D3Renderer(IGraphRenderer):
                 node_data["metadata"] = {
                     "description": node.metadata.description if hasattr(node, "metadata") else None,
                     "owner": node.metadata.owner if hasattr(node, "metadata") else None,
-                    "tags": list(node.metadata.tags) if hasattr(node, "metadata") and node.metadata.tags else [],
+                    "tags": list(node.metadata.tags)
+                    if hasattr(node, "metadata") and node.metadata.tags
+                    else [],
                 }
                 if hasattr(node, "schema") and node.schema:
                     node_data["schema"] = node.schema
@@ -250,8 +261,8 @@ class D3Renderer(IGraphRenderer):
                 continue
 
             # Handle both source/source_id attribute names
-            source_id = getattr(edge, 'source_id', None) or getattr(edge, 'source', None)
-            target_id = getattr(edge, 'target_id', None) or getattr(edge, 'target', None)
+            source_id = getattr(edge, "source_id", None) or getattr(edge, "source", None)
+            target_id = getattr(edge, "target_id", None) or getattr(edge, "target", None)
 
             # Only include if both nodes are in the graph
             if source_id not in node_index or target_id not in node_index:
@@ -265,23 +276,24 @@ class D3Renderer(IGraphRenderer):
             }
 
             if config.include_metadata and hasattr(edge, "metadata"):
-                link_data["metadata"] = edge.metadata.to_dict() if hasattr(edge.metadata, "to_dict") else {}
+                link_data["metadata"] = (
+                    edge.metadata.to_dict() if hasattr(edge.metadata, "to_dict") else {}
+                )
 
             links.append(link_data)
 
-        return {
-            "nodes": nodes,
-            "links": links,
-            "config": {
-                "layout": config.layout,
-                "width": config.width,
-                "height": config.height,
+        return apply_d3_layout(
+            {
+                "nodes": nodes,
+                "links": links,
+                "config": {"layout": config.layout, "width": config.width, "height": config.height},
             },
-        }
+            config,
+        )
 
     def render_html(
         self,
-        graph: "LineageGraph",
+        graph: LineageGraph,
         config: RenderConfig | None = None,
     ) -> str:
         """Render complete HTML page with D3.js visualization.
@@ -293,10 +305,12 @@ class D3Renderer(IGraphRenderer):
         Returns:
             Complete HTML page
         """
-        config = config or RenderConfig(theme=self._theme)
+        config = capture_render_config(config, theme=self._theme)
         if config.theme == "light" and self._theme == "dark":
             config.theme = self._theme
-        data_json = self.render(graph, config)
+        if config.layout not in {"force", "grid", "circular", "hierarchical"}:
+            raise ValueError("Unsupported D3 HTML layout")
+        data_json = javascript_json(self.render(graph, config))
 
         # Theme-specific styles
         is_dark = config.theme == "dark"
@@ -338,10 +352,11 @@ class D3Renderer(IGraphRenderer):
     <script>
         const data = {data_json};
 
-        const width = window.innerWidth;
-        const height = window.innerHeight;
+        const width = data.config.width;
+        const height = data.config.height;
 
         const svg = d3.select("svg")
+            .attr("viewBox", [0, 0, width, height])
             .attr("width", width)
             .attr("height", height);
 
@@ -410,8 +425,10 @@ class D3Renderer(IGraphRenderer):
         const tooltip = d3.select("#tooltip");
 
         node.on("mouseover", (event, d) => {{
-            tooltip.style("display", "block")
-                .html(`<strong>${{d.name}}</strong><br/>Type: ${{d.type}}`);
+            tooltip.style("display", "block").text("");
+            tooltip.append("strong").text(d.name);
+            tooltip.append("br");
+            tooltip.append("span").text(`Type: ${{d.type}}`);
         }})
         .on("mousemove", (event) => {{
             tooltip.style("left", (event.pageX + 10) + "px")
@@ -444,8 +461,10 @@ class D3Renderer(IGraphRenderer):
 
         function dragended(event, d) {{
             if (!event.active) simulation.alphaTarget(0);
-            d.fx = null;
-            d.fy = null;
+            if (data.config.layout === "force") {{
+                d.fx = null;
+                d.fy = null;
+            }}
         }}
     </script>
 </body>

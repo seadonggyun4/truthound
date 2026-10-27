@@ -27,13 +27,15 @@ Example:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from enum import Enum
-from typing import Any, Callable, TypeVar, Generic
-from functools import wraps
-import logging
 import asyncio
+import inspect
+import logging
 from collections import defaultdict
+from collections.abc import Callable  # noqa: TC003 - retain runtime annotation introspection
+from dataclasses import dataclass
+from enum import Enum
+from functools import wraps
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -96,7 +98,7 @@ class Hook:
 
     def __post_init__(self) -> None:
         """Detect if handler is async."""
-        self.async_handler = asyncio.iscoroutinefunction(self.handler)
+        self.async_handler = asyncio.iscoroutinefunction(inspect.unwrap(self.handler))
 
     def __call__(self, *args: Any, **kwargs: Any) -> Any:
         """Execute the hook handler."""
@@ -108,6 +110,20 @@ class Hook:
 # =============================================================================
 # Hook Manager
 # =============================================================================
+
+
+@dataclass(frozen=True)
+class HookExecutionResult:
+    """One attempted native hook, distinguishing a None return from failure.
+
+    Exception bodies are deliberately excluded from this portable result.
+    """
+
+    hook_type: str
+    source: str
+    success: bool
+    result: Any = None
+    error_type: str | None = None
 
 
 class HookManager:
@@ -131,6 +147,13 @@ class HookManager:
         """Initialize the hook manager."""
         self._hooks: dict[str, list[Hook]] = defaultdict(list)
         self._hook_results: dict[str, list[Any]] = {}
+        self._execution_guard = None
+
+    def set_execution_guard(self, guard) -> None:
+        """Install trusted local authorization checked before each handler."""
+        if guard is not None and not callable(guard):
+            raise TypeError("A hook execution guard must be callable")
+        self._execution_guard = guard
 
     def register(
         self,
@@ -260,25 +283,7 @@ class HookManager:
             ...     validators=["null", "range"]
             ... )
         """
-        hook_key = hook_type.value if isinstance(hook_type, HookType) else hook_type
-
-        results: list[Any] = []
-        for hook in self._hooks.get(hook_key, []):
-            if not hook.enabled:
-                continue
-
-            try:
-                result = hook.handler(*args, **kwargs)
-                results.append(result)
-            except Exception as e:
-                logger.error(
-                    f"Error in hook handler {hook.handler.__name__} "
-                    f"from {hook.source}: {e}"
-                )
-                # Store error but continue with other handlers
-                results.append(None)
-
-        return results
+        return [row.result for row in self.trigger_detailed(hook_type, *args, **kwargs)]
 
     async def trigger_async(
         self,
@@ -299,27 +304,58 @@ class HookManager:
         Returns:
             List of results from all handlers.
         """
-        hook_key = hook_type.value if isinstance(hook_type, HookType) else hook_type
+        return [row.result for row in await self.trigger_detailed_async(hook_type, *args, **kwargs)]
 
-        results: list[Any] = []
+    @staticmethod
+    def _hook_failure(hook: Hook, hook_key: str, error: Exception) -> HookExecutionResult:
+        logger.error("Hook execution failed (%s)", type(error).__name__)
+        return HookExecutionResult(hook_key, hook.source, False, error_type=type(error).__name__)
+
+    def trigger_detailed(self, hook_type: HookType | str, *args: Any, **kwargs: Any) -> list[HookExecutionResult]:
+        """Run enabled hooks in priority order with explicit per-hook outcomes.
+
+        Async/awaitable handlers require the async API. An unawaited coroutine
+        is closed and reported as a failure rather than returned as success.
+        """
+        hook_key = hook_type.value if isinstance(hook_type, HookType) else hook_type
+        outcomes = []
         for hook in self._hooks.get(hook_key, []):
             if not hook.enabled:
                 continue
-
+            if self._execution_guard is not None:
+                self._execution_guard()
             try:
-                if hook.async_handler:
-                    result = await hook.handler(*args, **kwargs)
-                else:
-                    result = hook.handler(*args, **kwargs)
-                results.append(result)
-            except Exception as e:
-                logger.error(
-                    f"Error in async hook handler {hook.handler.__name__} "
-                    f"from {hook.source}: {e}"
-                )
-                results.append(None)
+                result = hook.handler(*args, **kwargs)
+                if inspect.isawaitable(result):
+                    if inspect.iscoroutine(result):
+                        result.close()
+                    raise TypeError("Use trigger_detailed_async for awaitable hooks")
+                outcomes.append(HookExecutionResult(hook_key, hook.source, True, result))
+            except Exception as error:
+                outcomes.append(self._hook_failure(hook, hook_key, error))
+        return outcomes
 
-        return results
+    async def trigger_detailed_async(self, hook_type: HookType | str, *args: Any, **kwargs: Any) -> list[HookExecutionResult]:
+        """Await actual handler results, including decorated async callables.
+
+        Ordinary handler errors become failed outcomes. Cancellation propagates
+        to the owner; it is not a successful None result or an automatic retry.
+        """
+        hook_key = hook_type.value if isinstance(hook_type, HookType) else hook_type
+        outcomes = []
+        for hook in self._hooks.get(hook_key, []):
+            if not hook.enabled:
+                continue
+            if self._execution_guard is not None:
+                self._execution_guard()
+            try:
+                result = hook.handler(*args, **kwargs)
+                if inspect.isawaitable(result):
+                    result = await result
+                outcomes.append(HookExecutionResult(hook_key, hook.source, True, result))
+            except Exception as error:
+                outcomes.append(self._hook_failure(hook, hook_key, error))
+        return outcomes
 
     def get_hooks(self, hook_type: HookType | str | None = None) -> list[Hook]:
         """Get registered hooks.

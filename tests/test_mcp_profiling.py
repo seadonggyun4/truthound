@@ -34,6 +34,43 @@ def normalize(value):
     return value
 
 
+@pytest.mark.parametrize("old_nullable,new_nullable,compatible", [(True, False, False), (False, True, True)])
+def test_declared_nullability_is_checked_by_core_without_sample_inference(tmp_path, old_nullable, new_nullable, compatible):
+    service = MCPService(MCPPolicy((tmp_path,), profile="core", allow_sensitive_results=True))
+    try:
+        handles = [call(service, "assets_inline", columns=[
+            {"name": "x", "dtype": {"kind": "Int64"}, "values": [1]},
+        ])["resource_id"] for _ in range(2)]
+        artifact = call(service, "profilers_schema_compatibility", baseline_id=handles[0], current_id=handles[1],
+                        baseline_nullability={"x": old_nullable}, current_nullability={"x": new_nullable})
+        page = call(service, "artifacts_read", resource_id=artifact["resource_id"])
+        result = decode(json.loads(base64.b64decode(page["base64"])))
+        assert result["is_compatible"] is compatible
+        if not compatible:
+            assert result["issues"][0]["change_type"] == "nullable_changed"
+            assert result["issues"][0]["breaking"] is True
+        else:
+            assert result["issues"] == []
+    finally:
+        service.close()
+
+
+@pytest.mark.parametrize("settings", [
+    {"baseline_nullability": {"x": True}},
+    {"baseline_nullability": {"x": "False"}, "current_nullability": {"x": False}},
+    {"baseline_nullability": {"x": True}, "current_nullability": {"x": False}, "rules": ["types"]},
+])
+def test_nullability_metadata_must_be_paired_typed_and_selected(tmp_path, settings):
+    service = MCPService(MCPPolicy((tmp_path,), profile="core", allow_sensitive_results=True))
+    try:
+        result = asyncio.run(service.call_operation_async("profilers_schema_compatibility", {
+            "baseline_id": "asset_" + "a" * 32, "current_id": "asset_" + "b" * 32, **settings,
+        }))
+        assert result["issues"] == [{"code": "invalid_arguments"}], result
+    finally:
+        service.close()
+
+
 @pytest.mark.parametrize(
     "rules",
     [
@@ -338,6 +375,8 @@ def assert_generated_rules(tmp_path, generator, strictness, column=None, represe
             "email": ["person@example.test"] * 30,
         }
     )
+    if column is not None and column not in frame.columns:
+        frame = frame.rename({"amount": column})
     config = core.ProfilerConfig(include_distributions=True, include_patterns=True)
     profile = core.DataProfiler(
         config=config,
@@ -590,3 +629,7 @@ def test_profiler_rejects_unknown_options_and_untrusted_composition(tmp_path, ar
         assert result["issues"] == [{"code": code}]
     finally:
         adapter.close()
+
+
+def test_column_rules_preserve_literal_unicode_and_punctuation_column_names(tmp_path):
+    assert_generated_rules(tmp_path, "SchemaRuleGenerator", "medium", column="주문 금액(원)")

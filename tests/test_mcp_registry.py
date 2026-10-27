@@ -5,11 +5,13 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import tomllib
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
+VERSION = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
 SPEC = importlib.util.spec_from_file_location("mcp_registry", ROOT / "verification/mcp_registry.py")
 assert SPEC and SPEC.loader
 registry = importlib.util.module_from_spec(SPEC)
@@ -47,18 +49,18 @@ def test_registry_rejects_install_identity_or_consent_regressions(mutation):
     if mutation == "missing-readme":
         readmes = ["No ownership marker"]
     with pytest.raises(ValueError):
-        registry.validate_metadata(document, "3.2.0", readmes)
+        registry.validate_metadata(document, VERSION, readmes)
 
 
 def test_registry_schema_and_explicit_local_command_match_release(tmp_path):
     document = json.loads((ROOT / "server.json").read_text(encoding="utf-8"))
     readmes = [(ROOT / p).read_text(encoding="utf-8") for p in ("README.md", "README.en.md")]
-    registry.validate_metadata(copy.deepcopy(document), "3.2.0", readmes)
+    registry.validate_metadata(copy.deepcopy(document), VERSION, readmes)
     assert registry.runtime_argv(document, tmp_path) == [
         "uvx",
         "--with",
-        "truthound[mcp]==3.2.0",
-        "truthound@3.2.0",
+        f"truthound[mcp]=={VERSION}",
+        f"truthound@{VERSION}",
         "mcp",
         "serve",
         "--allow-dir",

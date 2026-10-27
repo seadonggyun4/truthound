@@ -10,7 +10,6 @@ mechanisms to be selected at runtime.
 from __future__ import annotations
 
 import logging
-from typing import Type
 
 from truthound.plugins.security.protocols import IsolationLevel, SandboxEngine
 
@@ -29,16 +28,18 @@ class SandboxFactory:
     """
 
     # Registry of engine classes by isolation level
-    _engines: dict[IsolationLevel, Type[SandboxEngine]] = {}
+    _engines: dict[IsolationLevel, type[SandboxEngine]] = {}
 
     # Lazy-loaded engine instances (singletons per level)
     _instances: dict[IsolationLevel, SandboxEngine] = {}
+    _retired: list[SandboxEngine] = []
+    _defaults_loaded = False
 
     @classmethod
     def register(
         cls,
         level: IsolationLevel,
-        engine_class: Type[SandboxEngine],
+        engine_class: type[SandboxEngine],
     ) -> None:
         """Register a sandbox engine for an isolation level.
 
@@ -51,7 +52,9 @@ class SandboxFactory:
         """
         cls._engines[level] = engine_class
         # Clear cached instance if exists
-        cls._instances.pop(level, None)
+        previous = cls._instances.pop(level, None)
+        if previous is not None:
+            cls._retired.append(previous)
         logger.debug(f"Registered sandbox engine {engine_class.__name__} for {level.name}")
 
     @classmethod
@@ -64,7 +67,9 @@ class SandboxFactory:
         Returns:
             True if engine was registered, False otherwise
         """
-        cls._instances.pop(level, None)
+        previous = cls._instances.pop(level, None)
+        if previous is not None:
+            cls._retired.append(previous)
         return cls._engines.pop(level, None) is not None
 
     @classmethod
@@ -97,7 +102,7 @@ class SandboxFactory:
             engine_class = cls._engines.get(level)
 
         if engine_class is None:
-            available = [l.name for l in cls._engines.keys()]
+            available = [level.name for level in cls._engines]
             raise ValueError(
                 f"No sandbox engine registered for isolation level {level.name}. "
                 f"Available: {available}"
@@ -116,20 +121,23 @@ class SandboxFactory:
     @classmethod
     def _load_default_engines(cls) -> None:
         """Lazily load default sandbox engines."""
-        if cls._engines:
-            return  # Already loaded
+        if cls._defaults_loaded:
+            return
 
         # Import engines here to avoid circular imports
+        from truthound.plugins.security.sandbox.engines.container import ContainerSandboxEngine
         from truthound.plugins.security.sandbox.engines.noop import NoopSandboxEngine
         from truthound.plugins.security.sandbox.engines.process import ProcessSandboxEngine
-        from truthound.plugins.security.sandbox.engines.container import ContainerSandboxEngine
 
-        cls._engines = {
+        defaults = {
             IsolationLevel.NONE: NoopSandboxEngine,
             IsolationLevel.PROCESS: ProcessSandboxEngine,
             IsolationLevel.CONTAINER: ContainerSandboxEngine,
             # WASM not implemented yet
         }
+        for level, engine in defaults.items():
+            cls._engines.setdefault(level, engine)
+        cls._defaults_loaded = True
 
     @classmethod
     def is_available(cls, level: IsolationLevel) -> bool:
@@ -197,15 +205,29 @@ class SandboxFactory:
     @classmethod
     async def cleanup_all(cls) -> None:
         """Clean up all cached engine instances."""
+        failures = []
         for level, engine in list(cls._instances.items()):
             try:
                 await engine.cleanup()
-            except Exception as e:
-                logger.error(f"Error cleaning up {level.name} engine: {e}")
-        cls._instances.clear()
+            except Exception as error:
+                failures.append(error)
+            else:
+                if cls._instances.get(level) is engine:
+                    cls._instances.pop(level)
+        for engine in list(cls._retired):
+            try:
+                await engine.cleanup()
+            except Exception as error:
+                failures.append(error)
+            else:
+                cls._retired.remove(engine)
+        if failures:
+            raise ExceptionGroup("Sandbox owner cleanup failed", failures)
 
     @classmethod
     def reset(cls) -> None:
         """Reset factory to initial state (mainly for testing)."""
+        cls._retired.extend(cls._instances.values())
         cls._engines.clear()
         cls._instances.clear()
+        cls._defaults_loaded = False

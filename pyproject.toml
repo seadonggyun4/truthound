@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "truthound"
-version = "3.2.0"
+version = "3.3.0"
 description = "Zero-Configuration Data Quality Framework Powered by Polars"
 readme = "README.md"
 license = "Apache-2.0"
@@ -40,8 +40,24 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Graphviz images also require the system dot executable on PATH.
+lineage-visualization = ["graphviz>=0.21,<1.0.0"]
+profiler-visualization = ["plotly>=5.24.0,<7.0.0"]
 # Local MCP transport; Core remains usable without the SDK.
-mcp = ["mcp>=1.30.0,<2.0.0", "anyio>=4.6,<5.0", "polars>=1.0.0,<2.0.0", "pydantic>=2.11.0,<3.0.0", "psutil>=5.9.0,<8.0.0"]
+mcp = ["mcp>=1.30.0,<2.0.0", "anyio>=4.6,<5.0", "polars>=1.0.0,<2.0.0", "pydantic>=2.11.0,<3.0.0", "psutil>=5.9.0,<8.0.0", "filelock>=3.16.0,<4.0.0"]
+# Native process-locking providers; no-op locking cannot fence durable store recovery.
+stores-concurrency = ["filelock>=3.16.0,<4.0.0", "portalocker>=3.0.0,<4.0.0"]
+stores-streaming = [
+    "filelock>=3.16.0,<4.0.0",
+    "zstandard>=0.22.0,<1.0.0",
+    "lz4>=4.3.0,<5.0.0",
+    "python-snappy>=0.7.0,<1.0.0",
+]
+# Native local/distributed execution; client/cluster configuration remains caller-owned.
+execution-dask = ["dask[dataframe,distributed]>=2024.1.0,<2027.0.0", "psutil>=5.9.0,<8.0.0"]
+execution-ray = ["ray[data]>=2.48.0,<3.0.0", "psutil>=5.9.0,<8.0.0"]
+execution-spark = ["pyspark[sql]>=4.0.0,<5.0.0", "psutil>=5.9.0,<8.0.0"]
+
 # Optional AI artifact and provider contract surface
 ai = [
     "pydantic>=2.0.0,<3.0.0",
@@ -56,25 +72,27 @@ reports = [
 # Statistical drift detection
 drift = [
     "scipy>=1.10.0",
+    "river>=0.26.1,<0.27.0",
 ]
 
 # Anomaly detection with ML
 anomaly = [
     "scipy>=1.10.0",
-    "scikit-learn>=1.3.0",
+    "scikit-learn>=1.7.0",
 ]
 
 # Cloud storage backends
 geospatial = ["shapely>=2.0.0,<3.0.0"]
 
 s3 = [
-    "boto3>=1.26.0",
+    "boto3>=1.42.26,<2.0.0",
 ]
 gcs = [
     "google-cloud-storage>=2.0.0",
 ]
 azure = [
     "azure-storage-blob>=12.0.0",
+    "azure-identity>=1.15.0,<2.0.0",
 ]
 
 # Database storage backend
@@ -127,9 +145,10 @@ sql-connectors = [
 
 # All storage backends
 stores = [
-    "boto3>=1.26.0",
+    "boto3>=1.42.26,<2.0.0",
     "google-cloud-storage>=2.0.0",
     "azure-storage-blob>=12.0.0",
+    "azure-identity>=1.15.0,<2.0.0",
     "sqlalchemy>=2.0.0",
 ]
 
@@ -166,9 +185,17 @@ async-datasources = [
     "aiokafka>=0.9.0",
 ]
 
+# Native APScheduler 3.x adapter (the 4.x API is incompatible).
+checkpoint-scheduler = ["apscheduler>=3.10.0,<4.0.0"]
+
+# Native Streamlit process lifecycle; separate from the Reflex dashboard extra.
+dashboard-streamlit = ["streamlit>=1.40.0,<2.0.0"]
+
 # Interactive dashboard (Phase 8)
 dashboard = [
-    "reflex>=0.4.0",
+    "reflex>=0.8.25,<0.9.0",
+    "sqlalchemy[asyncio]>=2.0.0,<3.0.0",
+    "uvicorn[standard]>=0.35.0,<1.0.0",
 ]
 
 # PDF export support
@@ -192,6 +219,16 @@ perf = [
 
 # Full installation with all optional dependencies
 all = [
+    "graphviz>=0.21,<1.0.0",
+    "plotly>=5.24.0,<7.0.0",
+    "filelock>=3.16.0,<4.0.0",
+    "portalocker>=3.0.0,<4.0.0",
+    "dask[dataframe,distributed]>=2024.1.0,<2027.0.0",
+    "ray[data]>=2.48.0,<3.0.0",
+    "pyspark[sql]>=4.0.0,<5.0.0",
+    "zstandard>=0.22.0,<1.0.0",
+    "lz4>=4.3.0,<5.0.0",
+    "python-snappy>=0.7.0,<1.0.0",
     "shapely>=2.0.0,<3.0.0",
     "pydantic>=2.0.0,<3.0.0",
     "openai>=1.35.0,<2.0.0",
@@ -199,10 +236,12 @@ all = [
     "pyarrow>=14.0.0",
     "pandas>=2.0.0,<3.0.0",
     "scipy>=1.10.0",
-    "scikit-learn>=1.3.0",
-    "boto3>=1.26.0",
+    "river>=0.26.1,<0.27.0",
+    "scikit-learn>=1.7.0",
+    "boto3>=1.42.26,<2.0.0",
     "google-cloud-storage>=2.0.0",
     "azure-storage-blob>=12.0.0",
+    "azure-identity>=1.15.0,<2.0.0",
     "sqlalchemy>=2.0.0",
     "duckdb>=1.0.0,<2.0.0",
     "psycopg2-binary>=2.9.9",
@@ -214,7 +253,11 @@ all = [
     "databricks-sql-connector>=3.4.0",
     "oracledb>=2.4.0",
     "pymssql>=2.3.1",
-    "reflex>=0.4.0",
+    "reflex>=0.8.25,<0.9.0",
+    "sqlalchemy[asyncio]>=2.0.0,<3.0.0",
+    "uvicorn[standard]>=0.35.0,<1.0.0",
+    "streamlit>=1.40.0,<2.0.0",
+    "apscheduler>=3.10.0,<4.0.0",
     "weasyprint>=60.0",
     "motor>=3.0.0",
     "elasticsearch[async]>=8.0.0",
@@ -227,6 +270,30 @@ all = [
 
 # Development dependencies
 dev = [
+    "graphviz>=0.21,<1.0.0",
+    "weasyprint>=60.0",
+    "plotly>=5.24.0,<7.0.0",
+    # Offline S3 service-model contracts execute actual botocore validation.
+    "boto3>=1.42.26,<2.0.0",
+    "google-cloud-storage>=3.7.0,<4.0.0",
+    "azure-storage-blob>=12.28.0,<13.0.0",
+    "azure-identity>=1.15.0,<2.0.0",
+    "zstandard>=0.22.0,<1.0.0",
+    "python-snappy>=0.7.0,<1.0.0",
+    # Native cross-platform store locking must execute actual providers.
+    "filelock>=3.16.0,<4.0.0",
+    "portalocker>=3.0.0,<4.0.0",
+    # Native engine contracts execute actual local SDK partitions and a Java 17+ JVM.
+    "ray[data]>=2.48.0,<3.0.0",
+    "pyspark[sql]>=4.0.0,<5.0.0",
+    "dask[dataframe,distributed]>=2024.1.0,<2027.0.0",
+    # Durable restart tests must exercise the actual supported backend.
+    "apscheduler>=3.10.0,<4.0.0",
+    # Dashboard lifecycle contracts run a real loopback Streamlit process.
+    "streamlit>=1.40.0,<2.0.0",
+    "reflex>=0.8.25,<0.9.0",
+    "sqlalchemy[asyncio]>=2.0.0,<3.0.0",
+    "uvicorn[standard]>=0.35.0,<1.0.0",
     "duckdb>=1.4.0,<2.0.0",
     "shapely>=2.0.0,<3.0.0",
     # Full encryption roundtrip contracts exercise the default LZ4 pipeline.
@@ -249,7 +316,8 @@ dev = [
     "pyarrow>=14.0.0",
     "pandas>=2.0.0,<3.0.0",
     "scipy>=1.10.0",
-    "scikit-learn>=1.3.0",
+    "river>=0.26.1,<0.27.0",
+    "scikit-learn>=1.7.0",
 ]
 docs = [
     "mkdocs>=1.6.0",
@@ -262,7 +330,7 @@ docs = [
 # CI-only prerequisites; these are not published user-facing package extras.
 [dependency-groups]
 nightly-local = [
-    "boto3>=1.34.0,<2.0.0",
+    "boto3>=1.42.26,<2.0.0",
     "azure-storage-blob>=12.19.0,<13.0.0",
     "redis>=5.0.0,<7.0.0",
     "elasticsearch>=8.0.0,<9.0.0",
@@ -290,6 +358,7 @@ nightly-local = [
 [tool.truthound.internal_runtime.dashboard_runtime]
 included_extras = ["ai", "drift", "anomaly", "reports"]
 excluded_extras = [
+    "profiler-visualization",
     "dashboard",
     "pdf",
     "benchmarks",

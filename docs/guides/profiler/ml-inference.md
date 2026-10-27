@@ -1,355 +1,174 @@
 # ML-based Type Inference
 
-This document describes the ML-based semantic type inference system.
+`truthound.profiler.ml_inference` combines column names, sampled values, statistics
+and table context to suggest a native `DataType`. This local inference subsystem
+does not call an external AI service. Model confidence is a score, not a calibrated
+probability guarantee.
 
-## Overview
-
-The ML type inference system implemented in `src/truthound/profiler/ml_inference.py` combines column names, value patterns, and statistical characteristics to infer semantic types.
-
-## Feature
-
-A dataclass for feature definitions.
+## Inference and Configuration
 
 ```python
-@dataclass
-class Feature:
-    """Single feature"""
-
-    name: str
-    value: float
-    feature_type: FeatureType  # NAME, VALUE, STATISTICAL, CONTEXTUAL
-    importance: float = 1.0
-    metadata: dict[str, Any] = field(default_factory=dict)
-```
-
-## FeatureVector
-
-A feature vector collection.
-
-```python
-@dataclass
-class FeatureVector:
-    """Feature vector"""
-
-    column_name: str
-    features: list[Feature]
-    raw_values: dict[str, Any] = field(default_factory=dict)
-
-    def to_dict(self) -> dict[str, float]:
-        """Convert to dictionary"""
-        return {f.name: f.value for f in self.features}
-
-    def to_array(self) -> list[float]:
-        """Convert to array"""
-        return [f.value for f in self.features]
-
-    def get_feature(self, name: str) -> Feature | None:
-        """Retrieve feature by name"""
-        for f in self.features:
-            if f.name == name:
-                return f
-        return None
-```
-
-## InferenceResult
-
-```python
-@dataclass
-class InferenceResult:
-    """Type inference result"""
-
-    column_name: str                  # Column name
-    inferred_type: DataType           # Inferred type
-    confidence: float                 # Confidence (0.0-1.0)
-    alternatives: list[tuple[DataType, float]] = field(default_factory=list)  # Alternative types
-    reasoning: list[str] = field(default_factory=list)  # Inference reasoning
-    features_used: list[str] = field(default_factory=list)  # Features used
-    model_version: str = "1.0"        # Model version
-    inference_time_ms: float = 0.0
-```
-
-## ContextFeatureExtractor
-
-Extracts various types of features. Combines all extractors to generate a comprehensive feature vector.
-
-```python
-from truthound.profiler.ml_inference import ContextFeatureExtractor
 import polars as pl
+from truthound.profiler.ml_inference import MLTypeInferrer, InferrerConfig
 
-extractor = ContextFeatureExtractor()
-
-# Extract features from column (Series)
-column = pl.Series("email", ["user@example.com", "test@domain.org"])
-context = {"table_name": "users"}
-features = extractor.extract(column, context)
-
-for feature in features.features:
-    print(f"{feature.name}: {feature.value:.4f} (type: {feature.feature_type})")
-```
-
-### Extracted Feature Types
-
-| Category | Feature | Description |
-|----------|---------|-------------|
-| **NAME** | `name_has_email` | Column name contains 'email' |
-| **NAME** | `name_has_phone` | Column name contains 'phone' |
-| **NAME** | `name_has_date` | Column name contains 'date' |
-| **NAME** | `name_has_id` | Column name contains 'id' |
-| **NAME** | `name_has_name` | Column name contains 'name' |
-| **NAME** | `name_has_address` | Column name contains 'address' |
-| **NAME** | `name_has_url` | Column name contains 'url' |
-| **VALUE** | `value_has_at_symbol` | Ratio containing '@' symbol |
-| **VALUE** | `value_has_dot` | Ratio containing '.' |
-| **VALUE** | `value_digit_ratio` | Numeric character ratio |
-| **VALUE** | `value_alpha_ratio` | Alphabetic ratio |
-| **VALUE** | `value_has_dash` | Ratio containing '-' |
-| **VALUE** | `value_has_slash` | Ratio containing '/' |
-| **STATISTICAL** | `stat_avg_length` | Average length |
-| **STATISTICAL** | `stat_std_length` | Length standard deviation |
-| **STATISTICAL** | `stat_unique_ratio` | Unique value ratio |
-| **STATISTICAL** | `stat_null_ratio` | Null ratio |
-| **STATISTICAL** | `stat_min_length` | Minimum length |
-| **STATISTICAL** | `stat_max_length` | Maximum length |
-
-## MLTypeInferrer
-
-The ML-based type inferrer. Supports multiple models (RuleBasedModel, NaiveBayesModel, EnsembleModel).
-
-```python
-from truthound.profiler.ml_inference import MLTypeInferrer
-import polars as pl
-
-inferrer = MLTypeInferrer()  # Default: ensemble model
-
-# Single column type inference
-column = pl.Series("email", ["user@example.com", "test@domain.org"])
-context = {"table_name": "users"}
-result = inferrer.infer(column, context)
-
-print(f"Column: {result.column_name}")
-print(f"Type: {result.inferred_type}")
-print(f"Confidence: {result.confidence:.2%}")
-
-# Alternative types
-for dtype, prob in result.alternatives[:3]:
-    print(f"  {dtype}: {prob:.2%}")
-
-# Inference reasoning
-for reason in result.reasoning:
-    print(f"  - {reason}")
-```
-
-### Model Types
-
-Three built-in models are supported, and custom models can be added by implementing the InferenceModel protocol.
-
-```python
-class MLTypeInferrer:
-    """ML type inferrer"""
-
-    def __init__(
-        self,
-        model: str = "ensemble",  # "rule", "naive_bayes", "ensemble"
-        config: InferrerConfig | None = None,
-    ):
-        self._config = config or InferrerConfig()
-        self._model = model_registry.get(model)
-        self._extractor = ContextFeatureExtractor()
-        self._cache: dict[str, InferenceResult] = {}
-
-    def infer(
-        self,
-        column: pl.Series,
-        context: dict[str, Any] | None = None,
-    ) -> InferenceResult:
-        context = context or {}
-        features = self._extractor.extract(column, context)
-
-        # Caching support
-        if self._config.use_caching:
-            cache_key = self._get_cache_key(column, context)
-            if cache_key in self._cache:
-                return self._cache[cache_key]
-
-        # Model prediction
-        result = self._model.predict(features)
-        return result
-```
-
-## Full Table Type Inference
-
-```python
-from truthound.profiler.ml_inference import infer_table_types_ml
-import polars as pl
-
-# Infer types for all columns from DataFrame
-df = pl.DataFrame({
-    "email": ["user@example.com", "test@domain.org"],
-    "phone": ["010-1234-5678", "02-123-4567"],
-    "age": [25, 30],
-})
-
-results = infer_table_types_ml(df, table_name="users", model="ensemble")
-
-for column, result in results.items():
-    print(f"{column}: {result.inferred_type} ({result.confidence:.0%})")
-```
-
-## Feature Extractor Types
-
-All extractors implement the `FeatureExtractor` protocol and provide the `extract(column: pl.Series, context: dict) -> list[Feature]` method.
-
-### NameFeatureExtractor
-
-Extracts features from column names.
-
-```python
-from truthound.profiler.ml_inference import NameFeatureExtractor
-import polars as pl
-
-extractor = NameFeatureExtractor()
-column = pl.Series("customer_email_address", ["user@example.com"])
-features = extractor.extract(column, {})
-
-# Extracted features:
-# - name_has_email: 1.0
-# - name_has_customer: 1.0
-# - name_has_address: 1.0
-```
-
-### ValueFeatureExtractor
-
-Extracts features from column values.
-
-```python
-from truthound.profiler.ml_inference import ValueFeatureExtractor
-import polars as pl
-
-extractor = ValueFeatureExtractor()
-column = pl.Series("email", ["user@example.com", "test@domain.org"])
-features = extractor.extract(column, {})
-
-# Extracted features:
-# - value_has_at_symbol: 1.0 (100% contain @)
-# - value_avg_length: 18.5
-# - value_digit_ratio: 0.0
-```
-
-### StatisticalFeatureExtractor
-
-Extracts statistical features.
-
-```python
-from truthound.profiler.ml_inference import StatisticalFeatureExtractor
-import polars as pl
-
-extractor = StatisticalFeatureExtractor()
-column = pl.Series("email", ["user@example.com", "test@domain.org", None])
-features = extractor.extract(column, {})
-
-# Extracted features:
-# - stat_unique_ratio: 0.67
-# - stat_null_ratio: 0.33
-# - stat_count: 3
-```
-
-## Custom Model Registration
-
-```python
-from truthound.profiler.ml_inference import model_registry, InferenceModel, FeatureVector, InferenceResult
-
-# Implement InferenceModel protocol
-class MyCustomModel:
-    """Custom inference model"""
-
-    @property
-    def name(self) -> str:
-        return "my_model"
-
-    @property
-    def version(self) -> str:
-        return "1.0.0"
-
-    def predict(self, features: FeatureVector) -> InferenceResult:
-        # Custom inference logic
-        ...
-
-# Register in model registry
-model_registry.register(MyCustomModel())
-
-# Use registered model
-inferrer = MLTypeInferrer(model="my_model")
-```
-
-## Inference Configuration
-
-```python
-from truthound.profiler.ml_inference import InferrerConfig, MLTypeInferrer
-
-config = InferrerConfig(
-    model="ensemble",              # Model type ("rule", "naive_bayes", "ensemble")
-    confidence_threshold=0.5,      # Minimum confidence
-    use_caching=True,              # Enable caching
-    cache_size=1000,               # Cache size
-    enable_learning=True,          # Enable learning mode
-    model_path=None,               # Custom model path (optional)
+inferrer = MLTypeInferrer(config=InferrerConfig(
+    model="ensemble", confidence_threshold=0.5,
+    use_caching=True, cache_size=1000, enable_learning=True,
+    feedback_batch_size=100,
+))
+result = inferrer.infer(
+    pl.Series("email", ["a@example.test", "b@example.test"]),
+    {"table_name": "contacts"},
 )
-
-inferrer = MLTypeInferrer(config=config)
+print(result.inferred_type.value, result.confidence)
 ```
 
-## CLI Usage
+An explicit `model=` object/name overrides `config.model`; otherwise the config
+selects the model. `infer(column, context=None)` copies context before adding column
+information. `infer_table(frame, table_name="")` supplies neighboring-column
+context and returns a dictionary keyed by column. Scores below
+`confidence_threshold` produce `DataType.UNKNOWN`, retaining the best candidates
+in `alternatives`. Invalid or nonfinite prediction scores fail.
 
-```bash
-# Enable ML-based type inference
-th profile data.csv --ml-inference
+`InferenceResult` contains `column_name`, `inferred_type`, `confidence`,
+`alternatives`, `reasoning`, `features_used`, `model_version` and
+`inference_time_ms`. `to_dict()` converts enum values and alternative predictions.
+Convenience functions are `infer_column_type_ml(column, context=None,
+model="ensemble")` and `infer_table_types_ml(frame, table_name="", model="ensemble")`.
 
-# Specify model type
-th profile data.csv --ml-inference --model ensemble
+## Feature Extraction
 
-# Set confidence threshold
-th profile data.csv --ml-inference --confidence-threshold 0.8
-```
+`Feature` contains name, numeric value, `FeatureType`, importance and metadata.
+Feature types are `NAME_BASED`, `VALUE_BASED`, `STATISTICAL`, `CONTEXTUAL` and
+`PATTERN_BASED`. An extractor's `extract(series, context)` returns a list of
+features; `FeatureExtractorRegistry.extract_all()` returns a `FeatureVector`
+with `to_array()`, `to_dict()` and `get_feature(name)`.
 
-## RuleBasedModel (Rule-Based Inference)
+The default registry includes `NameFeatureExtractor`, `ValueFeatureExtractor`,
+`StatisticalFeatureExtractor` and `ContextFeatureExtractor`. Native feature errors
+and invalid/nonfinite features fail the operation instead of returning a partial
+success. Custom extractors and models are trusted application code.
 
-The default rule-based model. Infers types based on feature values.
+## Models and Cache
+
+`create_inference_model("rule_based" | "naive_bayes" | "ensemble")` returns a
+native model. `RuleBasedModel` uses weighted feature rules and does not learn from
+feedback. `NaiveBayesModel` learns Gaussian feature likelihoods and class priors;
+before training it falls back to rule-based prediction. `EnsembleModel` combines
+weighted predictions. Weights must be finite, nonnegative and have a positive sum.
+Ensemble training prepares child copies before replacing the model list.
+
+The bounded process-local cache includes complete column content, context, model
+state and confidence threshold. It returns copies. Custom models/extractors and
+unsupported object values bypass implicit caching. `cache_size=0` or
+`use_caching=False` disables it; `clear_cache()` removes entries. It has no disk
+cache or TTL. Inference and feedback on one inferrer serialize through its lock.
+
+## Feedback and Persistence
 
 ```python
-class RuleBasedModel:
-    """Rule-based type inference model"""
-
-    @property
-    def name(self) -> str:
-        return "rule"
-
-    def predict(self, features: FeatureVector) -> InferenceResult:
-        """Infer type using feature-based rules"""
-        scores: dict[DataType, float] = {}
-
-        # Check email pattern
-        at_feature = features.get_feature("value_has_at_symbol")
-        dot_feature = features.get_feature("value_has_dot")
-        if at_feature and at_feature.value > 0.8:
-            if dot_feature and dot_feature.value > 0.9:
-                scores[DataType.EMAIL] = 0.85
-
-        # Check phone number pattern
-        digit_feature = features.get_feature("value_digit_ratio")
-        if digit_feature and digit_feature.value > 0.7:
-            scores[DataType.PHONE] = 0.75
-
-        # Return highest scoring type
-        best_type = max(scores, key=scores.get, default=DataType.STRING)
-        return InferenceResult(
-            column_name=features.column_name,
-            inferred_type=best_type,
-            confidence=scores.get(best_type, 0.5),
-            # ...
-        )
+from truthound.profiler.base import DataType
+inferrer.provide_feedback(pl.Series("count", [1, 2]), DataType.INTEGER)
 ```
+
+When learning is enabled, feedback accumulates until `feedback_batch_size`
+(default 100, range 1–10000), then trains the model and clears inference cache.
+Disabled learning leaves the model unchanged. `model_path` selects a local JSON
+snapshot: construction loads it when present, and completed feedback batches save
+it. Unflushed feedback is process-local and is lost on restart.
+
+Built-in models implement `save(path)` and `load(path)` with bounded JSON and no
+pickle/import execution. Rule parameters, Naive Bayes state and nested ensemble
+children are preserved. Loading validates the entire snapshot before changing the
+model; legacy Naive Bayes JSON is accepted. Snapshots are limited to 16 MiB, nesting
+to 8 levels and each ensemble to 32 children. Save uses a private sibling file,
+atomic replacement and file/directory flush. Parent directories must exist.
+Custom models must explicitly implement their own persistence.
+
+Cooperating inferrers lock their selected model path and check the observed file
+digest before learning. A stale owner refuses to overwrite a newer snapshot.
+Training/save failures retain the pending feedback and fence further inference or
+learning on that owner. Reopen and inspect the observed persisted model; a failure
+after publication can leave new state on disk. This does not provide exactly-once
+feedback receipts or coordination with arbitrary non-cooperating writers.
+
+## Approved MCP Inference
+
+A private `ProfilerRuntime.inferrers` map binds native `MLTypeInferrer` objects;
+`inference_contexts` binds copied private contexts. `inspect` exposes aliases.
+`inference_infer(inferrer_id, asset_id, column, inference_context_id?)` and
+`inference_table(inferrer_id, asset_id)` use pinned Arrow input. Results contain
+column/type/confidence/alternatives, omitting private context, feature diagnostics,
+model paths and model versions.
+
+`inference_feedback(inferrer_id, asset_id, column, true_type,
+inference_context_id?)` delegates to native learning and reports whether learning
+is enabled and the pending feedback count. It may persist a completed batch to the
+factory-selected path. `inference_cache_clear(inferrer_id)` clears the selected
+cache. These calls require exact approval and sensitive-result consent. Wire
+requests cannot choose paths, import models or send callback code. Installed-worker
+verification covers native local model learning and fresh-owner restore.
 
 ## Next Steps
 
-- [Threshold Tuning](threshold-tuning.md) - Optimize inference thresholds
-- [Pattern Matching](patterns.md) - Pattern-based type detection
+- [Sampling](sampling.md)
+- [Quality Scoring](quality-scoring.md)
+- [Visualization](visualization.md)
+
+## Native sklearn classifier models
+
+The separate `truthound.profiler.ml` API accepts `TrainingData(features, labels,
+feature_names, weights=...)` and `train_type_classifier(data, model_type, config)`.
+It provides `random_forest`, `gradient_boosting`, `naive_bayes`,
+`logistic_regression`, `svm`, `neural_network` and a soft-voting `ensemble`
+(forest, logistic regression and Gaussian Naive Bayes). The `ml` extra requires
+scikit-learn 1.7 or newer for weighted neural-network fitting. `rule_based`
+predicts without sklearn; its `train` evaluates supplied examples rather than
+learning rules or inventing accuracy. Unknown model names and untrained ML
+predictions fail instead of selecting another model.
+
+Features must be finite, with unique names and aligned labels, optional sample IDs
+and finite nonnegative weights with positive total. At least two classes and at
+least `cross_validation_folds` examples per class are required. Native stratified
+holdout constraints also apply. Feature selection uses native `SelectKBest` up to
+`max_features`, fitted independently inside each evaluation fold. Metrics come
+from the holdout; cross-validation scores are measured separately; the published
+candidate then fits all rows. Evaluation uses effective sample weights. A failed
+fit or cross-validation leaves the previous estimator, labels and metrics intact.
+
+Tree settings apply to forest/boosting; `n_jobs` applies to forest and ensemble;
+`early_stopping` applies to boosting and neural networks. Class balancing uses
+native class weights or weighted fitting. Other models do not acquire tree or
+thread settings they cannot implement. Configuration is copied at construction;
+selecting an explicit classifier class chooses its backend. Native sklearn
+warnings remain visible, including degenerate-feature and convergence warnings.
+
+Rule models save validated JSON, including feature names and measured metrics.
+Sklearn models save native **trusted Python pickle** with backend identity,
+configuration, metrics and feature schema. Load only operator-owned trusted files;
+this format can execute Python during deserialization and is not a portable
+cross-version model format. Legacy files without the current format marker fail.
+Writes use atomic replacement, and invalid loads leave the live model intact.
+These sklearn artifacts are distinct from the bounded JSON snapshots of
+`MLTypeInferrer` above.
+
+`PretrainedModelManager.load_default()` binds extracted feature names to native
+rules without mutating the shared rule object. Its zero accuracy means unevaluated.
+`train_and_cache(name, n_samples_per_type=500, cache=True)` trains from seeded
+synthetic values, with at least 250 values per type. This is synthetic evaluation,
+not a claim about real datasets. The generator owns its RNG, including UUIDs.
+Names are bounded plain identifiers. `cache=False` neither reads nor writes a cache;
+otherwise the operator-owned trusted pickle cache lives in `DEFAULT_CACHE_DIR`.
+Corrupt or differently configured caches fail visibly; use a new name to train a
+new configuration. Publication is atomic.
+
+An approved profiler factory can put `NativeClassifierBinding(model,
+confidence_threshold=0.0, sample_size=1000)` from
+`truthound.mcp.profiler_classifier` in `ProfilerRuntime.inferrers`. Existing
+`inference_infer` and `inference_table` then return native predictions with named
+features. The binding owns a model copy and has no implicit cache; clearing it is
+a no-op. Sklearn prediction requires the trained feature schema. Training and
+trusted model-file loading are factory-owned; this binding rejects
+`inference_feedback` with `unsupported_operation`. Wire requests cannot supply
+pickle files, training callbacks or file paths. Installed MCP verification covers
+the native rule binding; native sklearn lifecycle tests cover all seven models.
