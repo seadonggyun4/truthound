@@ -19,6 +19,17 @@ from pathlib import Path
 
 
 @contextlib.contextmanager
+def runtime_directory(prefix):
+    if os.name == "nt":
+        # Ray's driver can retain native log handles after ray.shutdown().
+        # The enclosing owner removes this workspace after the driver exits.
+        yield tempfile.mkdtemp(prefix=prefix, dir=Path.cwd())
+    else:
+        with tempfile.TemporaryDirectory(prefix=prefix, dir="/tmp") as directory:
+            yield directory
+
+
+@contextlib.contextmanager
 def engine(backend, scratch):
     if backend == "ray":
         print("native-probe:ray-import", flush=True)
@@ -664,9 +675,7 @@ def main():
         # Ray's Unix socket paths must fit the platform limit, including its
         # generated session suffix. macOS's default temp directory is too long.
         with (
-            tempfile.TemporaryDirectory(
-                prefix="th-native-", dir="/tmp" if os.name == "posix" else tempfile.gettempdir()
-            ) as directory,
+            runtime_directory("th-native-") as directory,
             engine(arguments.backend, Path(directory)) as native,
         ):
             wire.write(
@@ -695,7 +704,25 @@ def main():
             {"file": Path(frame.filename).name, "function": frame.name, "line": frame.lineno}
             for frame in traceback.extract_tb(error.__traceback__)
         ]
+        message = str(error)[:32768]
+        causes = {
+            "windows_hadoop_native_missing": any(token in message for token in ("winutils.exe", "HADOOP_HOME", "NativeIO$Windows")),
+            "native_jni_missing": "UnsatisfiedLinkError" in message,
+            "gcs_start_failed": "Failed to start GCS" in message,
+            "home_unresolved": "Could not determine home directory" in message,
+        }
+        chain = []
+        current = error.__cause__ or error.__context__
+        seen = {id(error)}
+        while current is not None and id(current) not in seen and len(chain) < 4:
+            seen.add(id(current))
+            chain.append({"error_type": type(current).__name__, "frames": [
+                {"file": Path(frame.filename).name, "function": frame.name, "line": frame.lineno}
+                for frame in traceback.extract_tb(current.__traceback__)
+            ]})
+            current = current.__cause__ or current.__context__
         wire.write(json.dumps({"ok": False, "error_type": type(error).__name__, "frames": frames,
+                               "known_causes": causes, "exception_chain": chain,
                                "errno": getattr(error, "errno", None),
                                "winerror": getattr(error, "winerror", None)}) + "\n")
         return 1

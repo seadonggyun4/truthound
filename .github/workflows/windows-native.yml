@@ -1,6 +1,12 @@
 name: Windows native regressions
 on:
   workflow_dispatch:
+    inputs:
+      scope:
+        description: Diagnostic component; full release verification remains separate
+        type: choice
+        options: [all, engines, operators]
+        default: all
 permissions:
   contents: read
 jobs:
@@ -11,7 +17,7 @@ jobs:
       fail-fast: false
       matrix:
         python: ['3.11', '3.12', '3.13']
-        scope: [engines, operators]
+        scope: ${{ fromJSON(inputs.scope == 'engines' && '["engines"]' || inputs.scope == 'operators' && '["operators"]' || '["engines","operators"]') }}
     env:
       NATIVE_SCOPE: ${{ matrix.scope }}
       POLARS_MAX_THREADS: '1'

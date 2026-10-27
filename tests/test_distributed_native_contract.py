@@ -9,6 +9,27 @@ from truthound.mcp.tables import decode
 pytestmark = pytest.mark.contract
 
 
+def test_windows_native_scratch_is_removed_only_after_its_owner_closes(tmp_path, monkeypatch):
+    import tempfile
+    from pathlib import Path
+    from types import SimpleNamespace
+
+    from tests.verification_support import _load
+
+    probe = _load("native_distributed_probe")
+    with tempfile.TemporaryDirectory(dir=tmp_path) as owner:
+        with monkeypatch.context() as patch:
+            patch.chdir(owner)
+            patch.setattr(probe, "os", SimpleNamespace(name="nt"))
+            with probe.runtime_directory("native-sdk-") as directory:
+                scratch = Path(directory)
+                assert scratch.is_relative_to(Path(owner))
+                (scratch / "native.log").write_text("owned synthetic log")
+            assert scratch.is_dir()
+        assert scratch.is_dir()
+    assert not Path(owner).exists() and not scratch.exists()
+
+
 @pytest.mark.parametrize("backend", ["ray", "spark"])
 def test_null_statistics_and_sampling_use_observed_rows(tmp_path, backend):
     runtime = OwnedProbe(backend, tmp_path / (backend + ".log"))

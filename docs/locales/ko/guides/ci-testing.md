@@ -150,11 +150,14 @@ Ray 런타임 패키지에도 빌드에 필요한 공개 JSON 리소스를 명�
 native checkpoint와 atomic store는 Windows에서도 쓰기 가능한 descriptor로 staging
 파일을 동기화합니다. 수동 실행 Windows native 회귀 workflow는 Python
 3.11–3.13에서 실제 엔진과 설치형 operator 수명주기를 검사해 플랫폼 실패를
-진단하며 전체 릴리스 검증을 대체하지 않습니다. 실패 진단에는 예외 타입과
-구조적 stack frame만 포함하며 native 원문과 전체 파일 경로를 제외합니다.
+진단하며 전체 릴리스 검증을 대체하지 않습니다. 실패 진단에는 예외 타입,
+구조적 stack frame과 고정된 원인 flag만 포함하며 native 원문과 전체 파일 경로를 제외합니다.
 수집 단계에는 native PDF import 라이브러리를 설치합니다. 실행 레인은 실제
 PDF 렌더링 검사용 Poppler·CJK font를 계속 설치합니다. APT 다운로드에는
 제한된 timeout·retry를 적용하며 다운로드 실패는 그대로 job 실패입니다.
+Windows native SDK scratch는 driver가 종료할 때까지 비공개 작업 디렉터리
+아래에 유지합니다. 부모가 소유한 자식 프로세스를 회수한 뒤 작업 디렉터리를
+삭제하므로 native 로그 handle과 디렉터리 삭제가 경합하지 않습니다.
 faulthandler의 soft timeout은 stack만 출력하며,
 별도의 pytest-timeout thread deadline이 프로세스를 강제 종료합니다.
 강제 종료로 최종 JSON/JUnit이 없을 수 있으므로 부분 증거는 보존하되 gate는 실패합니다.

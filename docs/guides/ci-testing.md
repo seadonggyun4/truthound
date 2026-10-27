@@ -127,11 +127,14 @@ Native checkpoint publication and atomic stores flush their staged files using w
 descriptors, including on Windows. The manually dispatched Windows native
 regression workflow runs the real engines and installed operator lifecycles on
 Python 3.11–3.13 to diagnose platform failures; it does not replace full release
-verification. Failure diagnostics contain exception types and structural stack
-frames, without native messages or full filesystem paths.
+verification. Failure diagnostics contain exception types, structural stack
+frames and closed cause flags, without native messages or full filesystem paths.
 Collection installs the native PDF import libraries. Execution lanes retain
 Poppler and CJK fonts for actual PDF rendering checks. APT acquisition uses
 bounded timeouts and retries; download failures still fail the job.
+On Windows, native SDK scratch directories stay under the private driver
+workspace until that driver exits. Its parent then removes the workspace after
+reaping owned descendants, so native log handles cannot race directory deletion.
 Pytest faulthandler emits stacks at the soft threshold without killing the test.
 The separate pytest-timeout thread deadline terminates a stuck pytest process;
 such termination can prevent final JSON/JUnit cleanup. Partial evidence remains,
