@@ -25,6 +25,13 @@ def test_sdk_nul_arguments_preserve_unicode_spaces_quotes_and_environment(tmp_pa
     assert environment == {"original": "retained", "PYTHONPATH": "/synthetic path"}
 
 
+def test_windows_sdk_java_name_resolves_to_the_same_explicit_executable(tmp_path):
+    java = str(tmp_path / "java.exe")
+    raw = wire([str(tmp_path / "java"), "org.apache.spark.deploy.SparkSubmit", "pyspark-shell"])
+    args, _ = startup._decode_command(raw, {}, java)
+    assert args[0] == java
+
+
 @pytest.mark.parametrize("bad", ["framing", "encoding", "program", "class", "resource", "oversized"])
 def test_invalid_sdk_output_never_becomes_an_executable_command(tmp_path, bad):
     java = str(tmp_path / "java")

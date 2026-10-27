@@ -57,9 +57,13 @@ def _decode_command(raw, environment, java):
         while args and re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*=.*", args[0], re.DOTALL):
             key, value = args.pop(0).split("=", 1)
             child_environment[key] = value
-    if (not args or Path(args[0]).resolve() != Path(java).resolve()
+    program = Path(args[0]) if args else None
+    if program is not None and program.name.lower() == "java" and Path(java).name.lower() == "java.exe":
+        program = program.with_name(program.name + ".exe")
+    if (program is None or program.resolve() != Path(java).resolve()
             or "org.apache.spark.deploy.SparkSubmit" not in args or "pyspark-shell" not in args):
         raise RuntimeError("Unexpected Spark SDK launcher command")
+    args[0] = java  # Windows SDK emits bin/java; use that exact validated java.exe.
     return args, child_environment
 
 
