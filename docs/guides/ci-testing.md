@@ -231,3 +231,13 @@ Native PDF and lineage lanes retain CJK fonts. Font downloads verify the APT
 index SHA-256, enforce transfer speed/time limits and retry official Ubuntu
 mirrors; test selection and job deadlines remain unchanged. Prepared Reflex
 owner-loss tests establish fresh and stopped states independently in each shard.
+
+Redis Streams deduplication executes in the integration lane against its
+explicitly configured disposable Redis service. It has no unconditional skip,
+uses unique stream/hash keys and clears only those owned keys. Missing service
+configuration or an unavailable Redis instance fails the selected test.
+
+The three-row native SDK fixtures use two Ray CPU slots and Spark's C1 JVM
+compiler tier to bound cold-start overhead on CI runners. They retain actual
+partitions, actors, checkpoint I/O and the same 30-second protocol deadline;
+production engine defaults and benchmark JVM settings are unchanged.

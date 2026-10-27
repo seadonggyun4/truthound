@@ -274,32 +274,18 @@ class TestInMemoryDeduplicationStore:
 
 
 class TestRedisStreamsDeduplicationStore:
-    """Tests for RedisStreamsDeduplicationStore.
+    """Run against the integration lane's explicitly selected disposable Redis."""
 
-    These tests are skipped if Redis is not available.
-    """
+    @pytest.mark.integration
+    def test_redis_store_basic(self) -> None:
+        """Exercise the actual store instead of an unconditional skip."""
+        import os
+        from uuid import uuid4
 
-    @pytest.fixture
-    def redis_available(self) -> bool:
-        """Check if Redis is available."""
-        try:
-            import redis
-
-            r = redis.Redis(host="localhost", port=6379)
-            r.ping()
-            return True
-        except Exception:
-            return False
-
-    @pytest.mark.skipif(
-        True,  # Skip by default, enable when Redis is available
-        reason="Redis not available for testing",
-    )
-    def test_redis_store_basic(self, redis_available: bool) -> None:
-        """Test basic Redis store operations."""
-        if not redis_available:
-            pytest.skip("Redis not available")
-
+        host = os.environ["TRUTHOUND_TEST_REDIS_HOST"]
+        port = int(os.environ["TRUTHOUND_TEST_REDIS_PORT"])
+        assert host in {"127.0.0.1", "localhost"} and 0 < port < 65536
+        prefix = "truthound-owned-dedup-" + uuid4().hex
         import asyncio
 
         from truthound.checkpoint.deduplication.stores import (
@@ -308,9 +294,9 @@ class TestRedisStreamsDeduplicationStore:
 
         async def run_test() -> None:
             store = RedisStreamsDeduplicationStore(
-                redis_url="redis://localhost:6379",
-                stream_key="test:dedup:stream",
-                hash_key="test:dedup:records",
+                redis_url=f"redis://{host}:{port}",
+                stream_key=prefix + ":stream",
+                hash_key=prefix + ":records",
             )
             await store.initialize()
 

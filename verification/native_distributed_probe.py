@@ -91,7 +91,7 @@ def engine(backend, scratch, progress=None):
             phase("ray-start")
             ray.init(
                 address="local",
-                num_cpus=4,
+                num_cpus=2,
                 num_gpus=0,
                 include_dashboard=False,
                 object_store_memory=80 * 1024**2,
@@ -106,7 +106,7 @@ def engine(backend, scratch, progress=None):
             )
             phase("ray-dataset")
             with RayExecutionEngine(
-                dataset, RayEngineConfig(ray_address="local", num_cpus=4, num_gpus=0)
+                dataset, RayEngineConfig(ray_address="local", num_cpus=2, num_gpus=0)
             ) as native:
                 phase("ray-ready")
                 yield native
@@ -137,6 +137,7 @@ def engine(backend, scratch, progress=None):
                 .config("spark.driver.bindAddress", "127.0.0.1")
                 .config("spark.driver.host", "127.0.0.1")
                 .config("spark.ui.enabled", "false")
+                .config("spark.driver.extraJavaOptions", "-XX:TieredStopAtLevel=1")
                 .config("spark.sql.shuffle.partitions", "1")
                 .config("spark.local.dir", str(scratch / "local"))
                 .config("spark.sql.warehouse.dir", (scratch / "warehouse").as_uri())
