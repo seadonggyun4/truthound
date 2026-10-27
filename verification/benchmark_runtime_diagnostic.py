@@ -82,7 +82,7 @@ def main():
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument(
         "--workload", default="sqlite-unique",
-        choices=("sqlite-unique", "local-mixed-core-suite", "local-schema"),
+        choices=("sqlite-unique", "local-mixed-core-suite", "local-schema", "local-null", "local-range"),
     )
     args = parser.parse_args()
     report = diagnose(args.workload)

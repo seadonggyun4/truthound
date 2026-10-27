@@ -41,6 +41,8 @@ jobs:
         run: |
           python verification/benchmark_runtime_diagnostic.py --workload local-mixed-core-suite --output benchmark-artifacts/local-mixed-runtime-diagnostic.json
           python verification/benchmark_runtime_diagnostic.py --workload local-schema --output benchmark-artifacts/local-schema-runtime-diagnostic.json
+          python verification/benchmark_runtime_diagnostic.py --workload local-null --output benchmark-artifacts/local-null-runtime-diagnostic.json
+          python verification/benchmark_runtime_diagnostic.py --workload local-range --output benchmark-artifacts/local-range-runtime-diagnostic.json
 
       - name: Upload nightly benchmark artifacts
         if: always()
