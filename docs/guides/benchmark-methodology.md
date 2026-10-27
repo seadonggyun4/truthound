@@ -65,8 +65,12 @@ Before either framework's child process imports libraries, the runner applies th
 
 Truthound uses a hybrid runner policy:
 
-- GitHub-hosted nightly runners provide trend visibility and early warning
-- fixed self-hosted runners provide the authoritative release-grade benchmark verification
+- Manual nightly and release performance gates use the fixed self-hosted runner.
+- They share an exclusive benchmark lock and use freshly claimed interpreters,
+  so the two suites cannot contend for the measurement CPU or modify system Python.
+- Workloads, seven warm iterations, wall-clock timing and strict speedup/RSS
+  thresholds remain unchanged. Historical hosted observations remain historical
+  evidence and are not replaced with successful fixed-runner results.
 
 Nightly artifacts are informative. Fixed-runner release artifacts are authoritative.
 

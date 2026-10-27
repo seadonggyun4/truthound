@@ -30,6 +30,10 @@ Elasticsearch 로그 fixture는 기존 100행을 유지하고 datetime 연산으
 fault/e2e는 유지하고 lint 3개 대상은 한 job에서 모두 검사합니다. 문서는
 full/public strict 빌드·한국어·공개 제외 검사를 유지합니다.
 
+엄격한 수동 nightly·릴리스 성능 suite는 같은 고정 benchmark 러너에서 배타적
+잠금·새 소유 가상환경·명시한 하드웨어 메타데이터를 사용합니다. 입력·측정·판정
+기준은 유지하며 실패한 hosted 측정은 별도 증거로 보존합니다.
+
 PR과 full Nightly는 독립 실행이 검토된 `test_mcp_algorithm_parity.py` 사례에
 같은 분할 규칙을 적용합니다. 수집한 정확한 node ID를 기존 contract 4개 분할에
 분산하며, 다른 PR 파일은 공유 fixture 수명주기를 한 분할 안에서 유지합니다.

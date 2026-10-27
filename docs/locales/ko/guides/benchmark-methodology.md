@@ -61,8 +61,11 @@ Observation metadata는 `warm_durations_seconds`, `warm_process_cpu_seconds`, `i
 
 Truthound는 두 종류의 runner를 사용합니다.
 
-- GitHub-hosted nightly runner: 추세와 조기 이상 징후 확인
-- 고정 self-hosted runner: 공식 릴리스 등급 벤치마크 검증
+- 수동 nightly·릴리스 성능 gate는 고정 self-hosted runner를 사용합니다.
+- 같은 배타적 benchmark 잠금과 새로 소유권을 확인한 인터프리터를 사용하여
+  두 suite의 측정 CPU 경합과 시스템 Python 변경을 방지합니다.
+- 워크로드·warm 7회·wall-clock 측정·엄격한 속도/RSS 기준은 유지합니다.
+  기존 hosted 측정은 역사적 증거로 보존하며 고정 러너 성공으로 대체하지 않습니다.
 
 Nightly artifact는 참고용이며, 고정 runner의 release artifact가 공식 판정 근거입니다. 공식 판정에는 CPU 모델, 논리 코어 수, RAM, OS, Python minor 버전, 저장장치 종류를 기록해야 합니다.
 

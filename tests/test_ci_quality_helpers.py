@@ -654,3 +654,31 @@ def test_pr_manifests_split_only_reviewed_independent_algorithm_cases(tmp_path: 
     # Files with shared fixtures remain whole and appear exactly once.
     ordinary = [node for entries in manifests for node in entries if not node.startswith(parity_file)]
     assert sorted(ordinary) == sorted(node.split("::")[0] for node in ordinary_nodes)
+
+
+@pytest.mark.contract
+def test_strict_nightly_measurements_share_exclusive_fixed_runner_and_owned_runtime():
+    root = Path(__file__).resolve().parents[1]
+    nightly = yaml.safe_load((root / ".github/workflows/benchmarks-nightly.yml").read_text())["jobs"]["nightly-parity"]
+    release = yaml.safe_load((root / ".github/workflows/benchmarks-release.yml").read_text())["jobs"]["release-parity"]
+    assert nightly["runs-on"] == release["runs-on"] == ["self-hosted", "benchmark-fixed"]
+    assert nightly["concurrency"] == release["concurrency"] == {
+        "group": "truthound-release-ga", "cancel-in-progress": False,
+    }
+    assert nightly["environment"] == release["environment"]
+    runs = [step.get("run", "") for step in nightly["steps"]]
+    assert not any("--system" in command for command in runs)
+    assert any("benchmark_runtime.py claim" in command for command in runs)
+    cleanup = [step for step in nightly["steps"] if "benchmark_runtime.py cleanup" in step.get("run", "")]
+    assert len(cleanup) == 1 and cleanup[0]["if"] == "always()"
+    commands = [command for command in runs if "benchmark parity --suite" in command]
+    assert len(commands) == 3
+    for suite, framework, backend, strict in [
+        ("nightly-core", "both", "local", True),
+        ("nightly-sql", "both", "sqlite", True),
+        ("nightly-sql", "truthound", "duckdb-shadow", False),
+    ]:
+        command = next(c for c in commands if f"--suite {suite}" in c and f"--backend {backend}" in c)
+        assert '"$RELEASE_VENV/bin/python" -m truthound.cli' in command
+        assert f"--frameworks {framework}" in command
+        assert ("--strict" in command) is strict

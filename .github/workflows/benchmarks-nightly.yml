@@ -6,43 +6,73 @@ on:
 
 jobs:
   nightly-parity:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, benchmark-fixed]
+    environment: truthound-release-ga
+    concurrency:
+      group: truthound-release-ga
+      cancel-in-progress: false
     env:
-      TRUTHOUND_BENCHMARK_RUNNER_CLASS: github-hosted-nightly
-      TRUTHOUND_BENCHMARK_RUNNER_LABELS: github-hosted,nightly
-      TRUTHOUND_BENCHMARK_STORAGE_CLASS: github-hosted-ephemeral
+      TRUTHOUND_BENCHMARK_RUNNER_CLASS: self-hosted-fixed
+      TRUTHOUND_BENCHMARK_RUNNER_LABELS: self-hosted,benchmark-fixed
+      TRUTHOUND_BENCHMARK_STORAGE_CLASS: ${{ vars.TRUTHOUND_BENCHMARK_STORAGE_CLASS }}
+      TRUTHOUND_BENCHMARK_CPU_MODEL: ${{ vars.TRUTHOUND_BENCHMARK_CPU_MODEL }}
+      TRUTHOUND_BENCHMARK_RAM_BYTES: ${{ vars.TRUTHOUND_BENCHMARK_RAM_BYTES }}
+      TRUTHOUND_BENCHMARK_CPU_PHYSICAL_CORES: ${{ vars.TRUTHOUND_BENCHMARK_CPU_PHYSICAL_CORES }}
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
         with:
-          python-version: "3.11"
+          ref: ${{ github.sha }}
+          persist-credentials: false
+
+      - name: Initialize owned benchmark runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          runtime_dir="${RUNNER_TEMP}/truthound-release-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          printf 'RELEASE_VENV=%s/venv\n' "$runtime_dir" >> "$GITHUB_ENV"
 
       - uses: astral-sh/setup-uv@v4
 
+      - name: Create and claim an isolated benchmark interpreter
+        shell: bash
+        run: |
+          set -euo pipefail
+          uv python install 3.11
+          test ! -e "$RELEASE_VENV"
+          uv venv --python 3.11 "$RELEASE_VENV"
+          "$RELEASE_VENV/bin/python" -I verification/ci/benchmark_runtime.py claim
+
+      - name: Require the fixed runner metadata
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in TRUTHOUND_BENCHMARK_STORAGE_CLASS TRUTHOUND_BENCHMARK_CPU_MODEL TRUTHOUND_BENCHMARK_RAM_BYTES TRUTHOUND_BENCHMARK_CPU_PHYSICAL_CORES; do
+            test -n "${!name:-}"
+          done
+
       - name: Install project with benchmark extras
-        run: uv pip install --system ".[benchmarks]"
+        run: uv pip install --python "$RELEASE_VENV/bin/python" ".[benchmarks]"
 
       - name: Run local GX parity suite
-        run: python -m truthound.cli benchmark parity --suite nightly-core --frameworks both --backend local --strict --output benchmark-artifacts/nightly-core.json
+        run: '"$RELEASE_VENV/bin/python" -m truthound.cli benchmark parity --suite nightly-core --frameworks both --backend local --strict --output benchmark-artifacts/nightly-core.json'
 
       - name: Run SQLite GX parity suite
-        run: python -m truthound.cli benchmark parity --suite nightly-sql --frameworks both --backend sqlite --strict --output benchmark-artifacts/nightly-sql.json
+        run: '"$RELEASE_VENV/bin/python" -m truthound.cli benchmark parity --suite nightly-sql --frameworks both --backend sqlite --strict --output benchmark-artifacts/nightly-sql.json'
 
       - name: Run DuckDB shadow suite
-        run: python -m truthound.cli benchmark parity --suite nightly-sql --frameworks truthound --backend duckdb-shadow --output benchmark-artifacts/nightly-duckdb-shadow.json
+        run: '"$RELEASE_VENV/bin/python" -m truthound.cli benchmark parity --suite nightly-sql --frameworks truthound --backend duckdb-shadow --output benchmark-artifacts/nightly-duckdb-shadow.json'
 
       - name: Record separate SQLite runtime profile without replacing gate measurements
         if: always()
-        run: python verification/benchmark_runtime_diagnostic.py --output benchmark-artifacts/sqlite-runtime-diagnostic.json
+        run: '"$RELEASE_VENV/bin/python" verification/benchmark_runtime_diagnostic.py --output benchmark-artifacts/sqlite-runtime-diagnostic.json'
 
       - name: Record separate local schema profiles without replacing gate measurements
         if: always()
         run: |
-          python verification/benchmark_runtime_diagnostic.py --workload local-mixed-core-suite --output benchmark-artifacts/local-mixed-runtime-diagnostic.json
-          python verification/benchmark_runtime_diagnostic.py --workload local-schema --output benchmark-artifacts/local-schema-runtime-diagnostic.json
-          python verification/benchmark_runtime_diagnostic.py --workload local-null --output benchmark-artifacts/local-null-runtime-diagnostic.json
-          python verification/benchmark_runtime_diagnostic.py --workload local-range --output benchmark-artifacts/local-range-runtime-diagnostic.json
+          "$RELEASE_VENV/bin/python" verification/benchmark_runtime_diagnostic.py --workload local-mixed-core-suite --output benchmark-artifacts/local-mixed-runtime-diagnostic.json
+          "$RELEASE_VENV/bin/python" verification/benchmark_runtime_diagnostic.py --workload local-schema --output benchmark-artifacts/local-schema-runtime-diagnostic.json
+          "$RELEASE_VENV/bin/python" verification/benchmark_runtime_diagnostic.py --workload local-null --output benchmark-artifacts/local-null-runtime-diagnostic.json
+          "$RELEASE_VENV/bin/python" verification/benchmark_runtime_diagnostic.py --workload local-range --output benchmark-artifacts/local-range-runtime-diagnostic.json
 
       - name: Upload nightly benchmark artifacts
         if: always()
@@ -50,3 +80,11 @@ jobs:
         with:
           name: truthound-benchmark-nightly-artifacts
           path: benchmark-artifacts
+
+      - name: Remove only this run's claimed temporary runtime
+        if: always()
+        shell: bash
+        run: |
+          if [[ -n "${RELEASE_VENV:-}" && -x "$RELEASE_VENV/bin/python" ]]; then
+            "$RELEASE_VENV/bin/python" -I verification/ci/benchmark_runtime.py cleanup
+          fi

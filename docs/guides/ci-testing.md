@@ -7,6 +7,11 @@ Contract tests retain four shards and fault/e2e; the three lint targets share on
 job without removing checks. Documentation retains full/public strict builds,
 Korean checks and public-surface exclusions.
 
+Strict manual-nightly and release performance suites run on the same fixed
+benchmark runner under an exclusive lock, with newly claimed virtual environments
+and declared hardware metadata. All workload, timing and acceptance criteria
+remain unchanged; failed hosted measurements are preserved separately.
+
 PR and full Nightly share the reviewed exception for independently executable
 `test_mcp_algorithm_parity.py` cases: exact collected node IDs are distributed
 across the same four contract shards. Other PR files retain their shared fixture
