@@ -2567,7 +2567,11 @@ Pandas 엔진은 전달한 변경 가능한 프레임을 참조합니다. 프레
 `cache_results=False`이면 호출마다 현재 프레임을 변환합니다.
 
 `clear_cache`는 Ray·Spark 행 수 캐시도 무효화하며 `cache_results=False`는
-Core 결과 캐시를 우회합니다. 네이티브 dataset persist는 이 캐시와 별개입니다.
+Core 결과 캐시를 우회합니다. Ray는 연산별 명시적 매개변수가 없는 전역
+COUNT/SUM/MEAN/MIN/MAX/STD/VAR/NULL_COUNT 집계에서 정확한 열 통계 캐시와 기본 결과를 재사용하며 MIN/MAX 쌍도 공유합니다.
+`clear_cache()`는 두 캐시를 모두 무효화합니다. `ddof=0` 같은 명시적 매개변수,
+그룹/필터 계획·FIRST/LAST·고유 값 수와 제한된 median 변환은 고유 실행을 유지합니다. `COUNT(*)`는
+행 수를 유지하며 캐시된 null 결과도 null입니다. 네이티브 dataset persist는 이 캐시와 별개입니다.
 `AggregationPlan.to_spec()`는 집계 매개변수·그룹 열·고정 SQL 필터를 독립적으로
 복사합니다. 그룹/필터 spec도 계획과 같은 Core 상태 집계를 사용합니다. Dask
 계획·spec은 선택 엔진의 scheduler를 유지하며, 독립 `DistributedAggregator`도

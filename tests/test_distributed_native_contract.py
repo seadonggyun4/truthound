@@ -54,6 +54,7 @@ def test_native_startup_diagnostic_keeps_only_closed_markers(tmp_path):
     probe.directory = SimpleNamespace(name=str(root))
     probe.log_path = driver
     probe.process = SimpleNamespace(poll=lambda: None)
+    probe.current_command = secret
     note = probe._diagnostic_note()
     assert secret not in note and str(tmp_path) not in note
     value = json.loads(note.split(": ", 1)[1])
@@ -142,6 +143,10 @@ def test_null_statistics_and_sampling_use_observed_rows(tmp_path, backend, recor
         assert basic["stats"]["std"] == pytest.approx(2**0.5)
         assert decode(runtime.call("polars")) == {"rows": 3, "columns": ["x", "g"]}
         aggregates = decode(runtime.call("aggregations"))
+        record_property("native_aggregations", json.dumps(runtime.last_command_metrics, sort_keys=True))
+        assert aggregates["sum"] == 4 and aggregates["mean"] == 2
+        assert aggregates["std"] == pytest.approx(2**0.5)
+        assert aggregates["var"] == pytest.approx(2)
         assert aggregates["median"] == 2
         assert aggregates["min"] == 1 and aggregates["max"] == 3
         assert aggregates["count"] == 2 and aggregates["null_count"] == 1
@@ -570,3 +575,17 @@ def test_owned_windows_spark_tree_kill_is_synchronous_and_cleanup_failure_stays_
     assert argv[0].endswith("System32\\taskkill.exe")
     assert options["timeout"] == 2 and options.get("shell", False) is False
     assert waits == ([1] if returncode else [1, 1])
+
+
+def test_ray_default_aggregations_reuse_stats_but_preserve_invalidation_and_custom_ddof(tmp_path):
+    runtime = OwnedProbe("ray", tmp_path / "ray-aggregation-cache.log")
+    try:
+        assert runtime.receive()["ready"] is True
+        result = decode(runtime.call("aggregation_cache_contract"))
+        assert result["means"] == [2.0, 2.0] and result["sums"] == [4.0, 4.0]
+        assert result["cached_calls"] == {"mean": 0, "sum": 1, "std": 0}
+        assert result["population"] == {"population": 1.0} and result["custom_std_calls"] == 1
+        assert result["invalidated"] == 2.0 and result["invalidated_calls"] == 1
+        assert result["disabled"] == [2.0, 2.0] and result["disabled_calls"] == 2
+    finally:
+        runtime.close()

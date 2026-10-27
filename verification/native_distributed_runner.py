@@ -18,6 +18,22 @@ from pathlib import Path
 
 import psutil
 
+COMMAND_LABELS = frozenset(
+    {
+        "basics",
+        "sample",
+        "polars",
+        "aggregations",
+        "values",
+        "aggregation_plan",
+        "aggregation_spec",
+        "cache_configuration",
+        "aggregation_cache_contract",
+        "ray_configuration",
+        "spark_gateway_owner",
+    }
+)
+
 
 def environment(home=None):
     result = {
@@ -257,6 +273,9 @@ class OwnedProbe:
             startup = {"unavailable": True}
         return {
             "phases": phases,
+            "active_command": self.current_command
+            if getattr(self, "current_command", None) in COMMAND_LABELS
+            else None,
             "phase_elapsed_seconds": elapsed,
             "sdk_wait_frames": sdk_frames,
             "returncode": self.process.poll(),
@@ -293,7 +312,17 @@ class OwnedProbe:
     def call(self, command):
         self.process.stdin.write(json.dumps({"command": command}).encode() + b"\n")
         self.process.stdin.flush()
-        return self.receive()["value"]
+        self.current_command = (
+            command if type(command) is str and command in COMMAND_LABELS else "other"
+        )
+        started = time.monotonic()
+        try:
+            return self.receive()["value"]
+        finally:
+            self.last_command_metrics = {
+                "command": self.current_command,
+                "elapsed_seconds": time.monotonic() - started,
+            }
 
     def close(self):
         if self.closed:

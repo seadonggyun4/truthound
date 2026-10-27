@@ -2863,7 +2863,12 @@ Pandas engines borrow the supplied mutable frame. After changing it, call
 computed results. `cache_results=False` converts the current frame on every call.
 
 `clear_cache` also invalidates native Ray/Spark row-count memoization, and
-`cache_results=False` bypasses Core result caching. Native dataset persistence is
+`cache_results=False` bypasses Core result caching. Ray global COUNT/SUM/MEAN/MIN/MAX/STD/VAR/NULL_COUNT reductions
+without explicit per-operation parameters reuse exact cached column statistics
+and memoize results, including a shared MIN/MAX pair. `clear_cache()`
+invalidates both. Explicit parameters such as `ddof=0`, grouped/filtered plans, FIRST/LAST,
+distinct counts and the bounded median conversion retain their own execution; `COUNT(*)` remains a
+row count and cached null results stay null. Native dataset persistence is
 separate from this cache. `AggregationPlan.to_spec()` captures independent
 aggregation parameters, group columns and the fixed SQL filter; grouped/filtered
 specs use the same Core state aggregation as plans. Dask plans/specs retain the

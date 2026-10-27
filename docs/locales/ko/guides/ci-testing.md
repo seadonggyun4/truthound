@@ -273,3 +273,5 @@ Ray 준비 표식은 설치된 SDK의 Raylet 시작 문구와 노드 등록 완�
 소유한 Spark fixture는 실행한 gateway의 stdin을 명시적으로 닫고 해당 launcher 프로세스의 종료를 기다린 뒤 정리를 마칩니다. 해당 launcher에서 포착한 PySpark Windows 종료 콜백만 해제하여 비동기 `taskkill`이 Python 소유자 밖으로 남지 않도록 합니다. 빌린 gateway나 다른 종료 콜백은 바꾸지 않으며 RPC·프로세스 회수 실패는 실패로 유지합니다.
 
 소유한 Windows JVM이 stdin EOF를 감지하지 못하면 fixture는 여전히 소유한 launcher에 SDK의 프로세스 트리 종료 작업을 동기 실행하고 종료를 확인합니다. 종료 명령은 기존 소유자 수명 안에서 제한 시간과 join을 적용하며, launcher가 살아 있는데 종료 명령이 실패하면 정리 실패로 처리합니다.
+
+동일한 20초 비공개 SDK snapshot은 네이티브 명령 대기도 관찰합니다. 고정된 명령 표식과 응답 경과 시간으로 초기화·집계 지연을 구분하며 기존 30초 프로토콜 제한을 유지합니다.

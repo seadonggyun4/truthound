@@ -584,6 +584,44 @@ def execute(native, command):
         }
     if command == "invalid_regex":
         return native.count_matching_regex("g", "[")
+    if command == "aggregation_cache_contract":
+        from dataclasses import replace
+
+        from truthound.execution.distributed.protocols import AggregationSpec
+
+        native.get_stats("x")
+        data = native.dataset
+        original = {name: getattr(data, name) for name in ("mean", "sum", "std")}
+        calls = {name: 0 for name in original}
+
+        def observed(name):
+            def invoke(*args, **kwargs):
+                calls[name] += 1
+                return original[name](*args, **kwargs)
+            return invoke
+
+        try:
+            for name in original:
+                setattr(data, name, observed(name))
+            means = [native.aggregate_column("x", AggregationType.MEAN) for _ in range(2)]
+            sums = [native.aggregate_column("x", AggregationType.SUM) for _ in range(2)]
+            cached_calls = dict(calls)
+            population = native._aggregate_distributed(AggregationSpec().add("x", "std", alias="population", ddof=0))
+            custom_calls = calls["std"]
+            before = calls["mean"]
+            native.clear_cache()
+            invalidated = native.aggregate_column("x", AggregationType.MEAN)
+            invalidated_calls = calls["mean"] - before
+            before = calls["mean"]
+            with type(native)(data, replace(native.config, cache_results=False)) as uncached:
+                disabled = [uncached.aggregate_column("x", AggregationType.MEAN) for _ in range(2)]
+            return {"means": means, "sums": sums, "cached_calls": cached_calls,
+                    "population": population, "custom_std_calls": custom_calls,
+                    "invalidated": invalidated, "invalidated_calls": invalidated_calls,
+                    "disabled": disabled, "disabled_calls": calls["mean"] - before}
+        finally:
+            for name, method in original.items():
+                setattr(data, name, method)
     if command == "cache_configuration":
         from dataclasses import replace
 
@@ -892,7 +930,11 @@ def main():
                 if request == {"close": True}:
                     break
                 try:
-                    value = execute(native, request["command"])
+                    faulthandler.dump_traceback_later(20, file=sys.stderr)
+                    try:
+                        value = execute(native, request["command"])
+                    finally:
+                        faulthandler.cancel_dump_traceback_later()
                 except Exception as error:
                     # Capture lazy JVM-backed diagnostics before SDK teardown.
                     primary_error = error

@@ -474,3 +474,30 @@ class TestRayEngineRegistry:
         backend = registry._detect_backend(dataset)
 
         assert backend == ComputeBackend.RAY
+
+
+@pytest.mark.contract
+def test_cached_nullable_stats_preserve_none_wildcard_count_and_result_isolation(mock_ray_available, mock_ray_dataset):
+    from truthound.execution._protocols import AggregationType
+    from truthound.execution.distributed.protocols import AggregationSpec
+    from truthound.execution.distributed.ray_engine import RayExecutionEngine
+
+    mock_ray_dataset.count.return_value = 3
+    mock_ray_dataset.schema.return_value.names = ["value", "*"]
+    with RayExecutionEngine(mock_ray_dataset) as engine:
+        stats = {"count": 0, "null_count": 3, "mean": None, "std": None, "min": None, "max": None}
+        engine._set_cached(engine._cache_key("get_stats", "value"), stats)
+        engine._set_cached(engine._cache_key("get_stats", "*"), stats)
+        mock_ray_dataset.mean.side_effect = AssertionError("unexpected duplicate native mean")
+        mock_ray_dataset.std.side_effect = AssertionError("unexpected duplicate native std")
+        mock_ray_dataset.min.side_effect = AssertionError("unexpected duplicate native min")
+        mock_ray_dataset.max.side_effect = AssertionError("unexpected duplicate native max")
+        for operation in (AggregationType.MEAN, AggregationType.STD, AggregationType.VAR, AggregationType.MIN, AggregationType.MAX):
+            assert engine.aggregate_column("value", operation) is None
+        assert engine.aggregate_column("value", AggregationType.COUNT) == 0
+        assert engine.aggregate_column("value", AggregationType.NULL_COUNT) == 3
+        assert engine.aggregate_column("*", AggregationType.COUNT) == 3
+        spec = AggregationSpec().add("value", "minmax", alias="range")
+        observed = engine._aggregate_distributed(spec)
+        observed["range"]["min"] = 999
+        assert engine._aggregate_distributed(spec) == {"range": {"min": None, "max": None}}

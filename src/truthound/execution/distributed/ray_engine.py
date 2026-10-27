@@ -561,6 +561,21 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
                 operation = agg.operation
                 alias = agg.alias
                 params = agg.params
+                cache_key = None
+                if (
+                    spec.scope == AggregationScope.GLOBAL
+                    and type(params) is dict
+                    and not params
+                    and operation in {"count", "sum", "mean", "min", "max", "minmax", "std", "var", "null_count"}
+                ):
+                    cache_key = self._cache_key("ray_native_aggregate", operation, column)
+                    cached = self._get_cached(cache_key)
+                    if cached is None:
+                        cached = self._cached_aggregation_stat(column, operation)
+                    if cached is not None:
+                        results[alias] = cached["value"]
+                        self._set_cached(cache_key, cached)
+                        continue
 
                 if operation == "count":
                     value = self._ds.count() if column == "*" else self._count_non_null(column)
@@ -641,6 +656,9 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
                     result = self._aggregate_with_aggregator(agg)
                     results[alias] = result
 
+                if cache_key is not None:
+                    self._set_cached(cache_key, {"value": results[alias]})
+
             return results
 
         except Exception as e:
@@ -648,6 +666,24 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
             raise
         finally:
             self._end_metrics(metrics)
+
+    def _cached_aggregation_stat(self, column: str, operation: str) -> dict[str, Any] | None:
+        """Reuse exact default statistics without changing custom/grouped reductions."""
+        stats = self._get_cached(self._cache_key("get_stats", column))
+        if stats is None:
+            return None
+        fields = {"count": "count", "mean": "mean", "min": "min", "max": "max", "std": "std"}
+        if operation in fields and not (operation == "count" and column == "*"):
+            field = fields[operation]
+            if field in stats:
+                return {"value": stats[field]}
+        if operation == "minmax" and {"min", "max"} <= stats.keys():
+            return {"value": {"min": stats["min"], "max": stats["max"]}}
+        if operation == "var" and "std" in stats:
+            return {"value": None if stats["std"] is None else stats["std"] ** 2}
+        if operation == "null_count" and {"count", "null_count"} <= stats.keys():
+            return {"value": {"null_count": stats["null_count"], "total_count": stats["count"] + stats["null_count"]}}
+        return None
 
     def _iter_dictionary_batches(self, dataset=None):
         source = self._ds if dataset is None else dataset

@@ -292,3 +292,5 @@ Ray readiness markers match the installed SDK's Raylet-started banner and comple
 Owned Spark fixtures explicitly close the launched gateway's stdin and wait for that exact launcher process before returning from teardown. Only that launcher's captured PySpark Windows exit callback is unregistered, preventing its asynchronous `taskkill` from escaping the Python owner. Borrowed gateways and unrelated exit callbacks are untouched; RPC or reaping failures remain failures.
 
 If the owned Windows JVM does not observe stdin EOF, the fixture synchronously runs the SDK's tree-stop operation against its still-owned launcher and verifies process exit. The stop command is joined and bounded inside the existing owner lifetime; a nonzero stop result while the launcher remains alive is a cleanup failure.
+
+The same 20-second private SDK snapshot also observes native command waits. Closed command labels and elapsed reply times distinguish initialization from aggregation latency without changing the 30-second protocol deadline.
