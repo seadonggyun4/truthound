@@ -342,11 +342,19 @@ class TestKMSSecurity:
         # - Mock: May return garbage or raise exception
         try:
             result = kms_backend.decrypt(key2, ciphertext)
-            # If no exception, result should not equal plaintext
-            assert result != plaintext
-        except Exception:
-            # Expected behavior
-            pass
+        except ValueError:
+            return  # The local mock rejects a mismatched key.
+        except Exception as error:
+            from botocore.exceptions import ClientError
+
+            assert isinstance(error, ClientError)
+            assert error.response["Error"]["Code"] in {
+                "IncorrectKeyException", "InvalidCiphertextException",
+            }
+            return
+        # Keep the verdict outside the exception handler: an assertion is not
+        # a provider denial, and connectivity/authentication errors cannot pass.
+        assert result != plaintext
 
     def test_empty_plaintext(self, kms_backend: "KMSBackend") -> None:
         """Test encrypting empty data."""

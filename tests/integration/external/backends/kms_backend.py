@@ -78,6 +78,8 @@ class KMSConfig(DockerContainerConfig):
         vault_transit_path: Vault transit mount path
     """
 
+    # Match the credential-free LocalStack compatibility fixture used by Core.
+    tag: str = "3"
     kms_provider: KMSProvider = KMSProvider.LOCALSTACK
     region: str = "us-east-1"
     key_id: str | None = None
@@ -95,7 +97,7 @@ class KMSConfig(DockerContainerConfig):
 
         if self.kms_provider == KMSProvider.LOCALSTACK:
             self.image = self.image or "localstack/localstack"
-            self.tag = self.tag or "latest"
+            self.tag = self.tag or "3"
             self.ports = self.ports or {"4566/tcp": None}
             self.environment.setdefault("SERVICES", "kms")
             self.environment.setdefault("DEBUG", "1")
@@ -364,7 +366,7 @@ class KMSBackend(ExternalServiceBackend[KMSConfig, KMSClientProtocol]):
     service_name: ClassVar[str] = "kms"
     service_category: ClassVar[ServiceCategory] = ServiceCategory.SECRETS
     default_port: ClassVar[int] = 4566  # LocalStack default
-    default_image: ClassVar[str] = "localstack/localstack:latest"
+    default_image: ClassVar[str] = "localstack/localstack:3"
 
     def __init__(
         self,

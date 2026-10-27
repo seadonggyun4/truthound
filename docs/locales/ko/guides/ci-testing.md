@@ -248,3 +248,7 @@ Kafka fixture 소비자는 earliest 오프셋을 명시하고 독립 시나리�
 네이티브 검증은 venv를 유지하면서 실제 Windows 인터프리터를 소유하고 응답의 소유 PID를 대조합니다. 프로토콜과 SDK 로그는 별도 UTF-8 스트림을 사용합니다. 시간 초과 진단은 검토한 시작 표식과 숫자 종료 상태만 내보내며 AI fixture 실패는 비공개 소유자 오류 분류를 보존하고 유료 provider를 호출하지 않습니다.
 
 Windows 네이티브 로그 descriptor는 바이너리 모드와 UTF-8/LF 텍스트 스트림을 사용하여 CRT 줄바꿈 이중 변환을 막습니다. 회귀는 정확한 로그 바이트와 오염되지 않은 별도 프로토콜 응답을 요구합니다.
+
+자격증명 없는 LocalStack KMS fixture는 스트리밍 테스트와 같은 major-3 호환 이미지를 고정합니다. 2026년 latest 이미지는 계정 인증이 필요합니다. 브로커·KMS 집중 CI는 JUnit의 실제 Docker/LocalStack 제공자 증거와 loopback 클라이언트 연결을 요구하며 mock 대체를 네이티브 테스트 성공으로 취급하지 않습니다.
+
+KMS 잘못된 키 검사는 네이티브 키·암호문 거부를 요구하며 자체 assertion이나 연결·인증 오류를 성공으로 삼킬 수 없습니다. 자격증명 없는 호환 fixture에서 `latest`를 사용하지 않는 이유는 [LocalStack 이미지 변경 안내](https://blog.localstack.cloud/localstack-single-image-next-steps/)에 설명되어 있습니다.

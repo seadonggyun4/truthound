@@ -267,3 +267,7 @@ Performance failures retain wall-clock and process-CPU samples for every iterati
 Native verification owns the actual Windows interpreter while preserving its venv, and checks the reported owner PID. Protocol and SDK logs use separate UTF-8 streams. Timeout diagnostics disclose only reviewed startup markers and numeric exit state; AI fixture failures retain closed owner categories and never call a paid provider.
 
 Windows native log descriptors use binary mode and UTF-8/LF text streams to avoid double CRT newline translation. The regression requires exact log bytes and a separate, uncontaminated protocol reply.
+
+The credential-free LocalStack KMS fixture uses the same pinned major-3 compatibility image as streaming tests. The floating latest image requires account authentication in 2026. Focused broker/KMS CI requires actual Docker/LocalStack provenance in JUnit and loopback-only client connections; mock substitution is not a successful native test.
+
+Wrong-key KMS checks require the native incorrect-key/ciphertext denial, and cannot swallow their own assertion or accept connectivity/authentication failures. The [LocalStack image change](https://blog.localstack.cloud/localstack-single-image-next-steps/) explains why credential-free compatibility fixtures do not use `latest`.
