@@ -253,3 +253,5 @@ once before parallel service starts. Redis endpoint URLs use the selected mapped
 SDK port, including IPv6 formatting. Async broker fixtures declare their event-loop
 scope explicitly; strict pytest warning/error policy remains enabled. Native probe
 EOF diagnostics retain only closed phase names and the process exit code.
+
+Disposable broker async fixtures and their consuming tests use the same class event loop, so retained SDK clients never cross loops. Verbose case names preserve the last active test when a hard timeout terminates the process.

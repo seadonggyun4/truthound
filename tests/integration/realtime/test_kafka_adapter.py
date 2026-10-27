@@ -60,7 +60,7 @@ class TestKafkaAdapterIntegration:
             enable_auto_commit=False,
         )
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="class")
     async def test_connect_and_disconnect(self, kafka_config):
         """Test connecting and disconnecting from Kafka."""
         from truthound.realtime.adapters.kafka import KafkaAdapter
@@ -75,7 +75,7 @@ class TestKafkaAdapterIntegration:
         await adapter.disconnect()
         assert not adapter.is_connected
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="class")
     async def test_produce_and_consume(self, kafka_config):
         """Test producing and consuming messages."""
         from truthound.realtime.adapters.kafka import KafkaAdapter
@@ -114,7 +114,7 @@ class TestKafkaAdapterIntegration:
 
             assert len(consumed) == 10
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="class")
     async def test_batch_produce(self, kafka_config):
         """Test batch message production."""
         from truthound.realtime.adapters.kafka import KafkaAdapter
@@ -143,7 +143,7 @@ class TestKafkaAdapterIntegration:
             metrics = adapter.metrics
             assert metrics.messages_produced >= 100
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="class")
     async def test_partition_info(self, kafka_config, kafka_container):
         """Test getting partition information."""
         from truthound.realtime.adapters.kafka import KafkaAdapter
@@ -155,7 +155,7 @@ class TestKafkaAdapterIntegration:
             assert "test-topic" in partitions
             assert len(partitions["test-topic"]) == 3  # We created 3 partitions
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="class")
     async def test_consumer_lag(self, kafka_config):
         """Test consumer lag calculation."""
         from truthound.realtime.adapters.kafka import KafkaAdapter
@@ -168,7 +168,7 @@ class TestKafkaAdapterIntegration:
             # Lag should be a dict of partition -> lag value
             assert all(isinstance(v, int) for v in lag["test-topic"].values())
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="class")
     async def test_reconnection(self, kafka_config):
         """Test adapter reconnection."""
         from truthound.realtime.adapters.kafka import KafkaAdapter
@@ -184,7 +184,7 @@ class TestKafkaAdapterIntegration:
 
         await adapter.disconnect()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="class")
     async def test_error_handling(self, kafka_config):
         """Test error handling for invalid operations."""
         from truthound.realtime.adapters.kafka import KafkaAdapter
@@ -227,7 +227,7 @@ class TestKafkaStreamingPipeline:
             await env.create_kafka_topic("pipeline-topic", num_partitions=3)
             yield env
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="class")
     async def test_validation_pipeline(self, kafka_env):
         """Test complete validation pipeline with Kafka."""
         from truthound.realtime.adapters.kafka import KafkaAdapter, KafkaAdapterConfig
@@ -283,7 +283,7 @@ class TestKafkaStreamingPipeline:
             assert consumed == 50
             assert valid_count == 50  # All default messages should be valid
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="class")
     async def test_window_processing(self, kafka_env):
         """Test window-based processing with Kafka."""
         from truthound.realtime.adapters.kafka import KafkaAdapter, KafkaAdapterConfig
@@ -347,7 +347,7 @@ class TestKafkaStreamingPipeline:
 class TestMultiContainerEnvironment:
     """Tests for multi-container test environment."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="class")
     async def test_kafka_and_redis(self):
         """Test environment with Kafka and Redis."""
         from truthound.realtime.testing.containers import StreamTestEnvironment
@@ -362,7 +362,7 @@ class TestMultiContainerEnvironment:
             # Create topic
             await env.create_kafka_topic("multi-test", num_partitions=1)
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="class")
     async def test_container_lifecycle(self):
         """Test container start/stop lifecycle."""
         from truthound.realtime.testing.containers import (

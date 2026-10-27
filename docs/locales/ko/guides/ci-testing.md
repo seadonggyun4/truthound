@@ -234,3 +234,5 @@ aiobotocore·Testcontainers도 설치합니다. `Disposable broker integration` 
 비동기 브로커 fixture는 이벤트 루프 범위를 명시하며 pytest의 엄격한 경고·오류
 판정은 유지합니다. 네이티브 프로브 EOF 진단에는 고정된 단계 이름과 종료 코드만
 남깁니다.
+
+임시 브로커 비동기 fixture와 이를 사용하는 테스트는 같은 클래스 이벤트 루프를 사용하여 SDK 클라이언트가 루프를 넘지 않게 합니다. 상세 테스트 이름을 출력하여 강제 시간 초과 때 마지막 실행 항목을 보존합니다.

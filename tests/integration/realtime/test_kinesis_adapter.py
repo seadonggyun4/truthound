@@ -60,7 +60,7 @@ class TestKinesisAdapterIntegration:
             aws_secret_access_key="test",
         )
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="class")
     async def test_connect_and_disconnect(self, kinesis_config):
         """Test connecting and disconnecting from Kinesis."""
         from truthound.realtime.adapters.kinesis import KinesisAdapter
@@ -75,7 +75,7 @@ class TestKinesisAdapterIntegration:
         await adapter.disconnect()
         assert not adapter.is_connected
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="class")
     async def test_produce_and_consume(self, kinesis_config):
         """Test producing and consuming messages."""
         from truthound.realtime.adapters.kinesis import KinesisAdapter
@@ -116,7 +116,7 @@ class TestKinesisAdapterIntegration:
 
             assert len(consumed) >= 1  # At least some messages consumed
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="class")
     async def test_batch_produce(self, kinesis_config):
         """Test batch message production."""
         from truthound.realtime.adapters.kinesis import KinesisAdapter
@@ -145,7 +145,7 @@ class TestKinesisAdapterIntegration:
             metrics = adapter.metrics
             assert metrics.messages_produced >= 50
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="class")
     async def test_shard_info(self, kinesis_config):
         """Test getting shard information."""
         from truthound.realtime.adapters.kinesis import KinesisAdapter
@@ -156,7 +156,7 @@ class TestKinesisAdapterIntegration:
             shards = await adapter.get_shard_info()
             assert len(shards) == 2  # We created 2 shards
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="class")
     async def test_stream_description(self, kinesis_config):
         """Test getting stream description."""
         from truthound.realtime.adapters.kinesis import KinesisAdapter
@@ -168,7 +168,7 @@ class TestKinesisAdapterIntegration:
             assert description["StreamName"] == "test-stream"
             assert description["StreamStatus"] in ["ACTIVE", "CREATING"]
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="class")
     async def test_reconnection(self, kinesis_config):
         """Test adapter reconnection."""
         from truthound.realtime.adapters.kinesis import KinesisAdapter
@@ -184,7 +184,7 @@ class TestKinesisAdapterIntegration:
 
         await adapter.disconnect()
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="class")
     async def test_error_handling(self, kinesis_config):
         """Test error handling for invalid operations."""
         from truthound.realtime.adapters.kinesis import KinesisAdapter
@@ -227,7 +227,7 @@ class TestKinesisStreamingPipeline:
             await env.create_kinesis_stream("pipeline-stream", shard_count=2)
             yield env
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="class")
     async def test_validation_pipeline(self, kinesis_env):
         """Test complete validation pipeline with Kinesis."""
         from truthound.realtime.adapters.kinesis import KinesisAdapter, KinesisAdapterConfig
@@ -289,7 +289,7 @@ class TestKinesisStreamingPipeline:
 class TestLocalStackContainer:
     """Tests for LocalStack container management."""
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="class")
     async def test_container_lifecycle(self):
         """Test LocalStack container start/stop."""
         from truthound.realtime.testing.containers import LocalStackTestContainer
@@ -308,7 +308,7 @@ class TestLocalStackContainer:
         await container.stop()
         assert not container.is_running
 
-    @pytest.mark.asyncio
+    @pytest.mark.asyncio(loop_scope="class")
     async def test_create_multiple_streams(self):
         """Test creating multiple Kinesis streams."""
         from truthound.realtime.testing.containers import LocalStackTestContainer

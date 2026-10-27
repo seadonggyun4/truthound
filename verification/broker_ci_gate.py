@@ -53,7 +53,7 @@ def main():
         )
         sys.addaudithook(local_connections)
         result = pytest.main([
-            '-q', *TARGETS, '--run-integration', '-p', 'no:cacheprovider',
+            '-vv', *TARGETS, '--run-integration', '-p', 'no:cacheprovider',
             '--timeout=180', '--timeout-method=thread', '-o', 'faulthandler_timeout=90',
             '--junitxml=' + str(output),
         ])
