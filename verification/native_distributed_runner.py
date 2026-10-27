@@ -217,6 +217,9 @@ class OwnedProbe:
             "permission_denied": (b"Permission denied", b"Access is denied", b"WinError 10013"),
             "address_in_use": (b"Address already in use", b"Only one usage of each socket address"),
             "sigterm_received": (b"receives a SIGTERM", b"draining node on SIGTERM"),
+            "local_raylet_dead": (b"Raylet IPC connection failed and the local Raylet is dead",),
+            "ipc_connection_failed": (b"Failed to connect to socket at address:",),
+            "resource_exhausted": (b"Resource exhausted", b"insufficient buffer space", b"Insufficient system resources"),
         }
         failures = {key: False for key in failure_tokens}
         locations = set()
@@ -226,10 +229,12 @@ class OwnedProbe:
                 failures[key] |= any(token in raw for token in tokens)
             # Only reviewed SDK source basenames and bounded line numbers.
             for line in raw.splitlines():
-                if b"Check failed:" not in line and not re.search(rb"\b[EF] [0-9]+ [0-9]+\]", line):
+                if (b"Check failed:" not in line
+                        and b"Raylet IPC connection failed and the local Raylet is dead" not in line
+                        and not re.search(rb"\b[EF] [0-9]+ [0-9]+\]", line)):
                     continue
                 for match in re.finditer(
-                    rb"\b(core_worker|core_worker_process|raylet_client|node_manager|agent_manager|gcs_client|gcs_rpc_client|grpc_server)\.cc:([0-9]{1,7})\b",
+                    rb"\b(core_worker|core_worker_process|raylet_client|raylet_ipc_client|client_connection|global_state_accessor|node_manager|agent_manager|gcs_client|gcs_rpc_client|grpc_server)\.cc:([0-9]{1,7})\b",
                     line,
                 ):
                     locations.add((match[1].decode("ascii") + ".cc", int(match[2])))

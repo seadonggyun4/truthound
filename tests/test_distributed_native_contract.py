@@ -160,6 +160,7 @@ def test_ray_fatal_evidence_keeps_closed_cause_markers_and_reviewed_source_locat
         "[synthetic F 12 34] core_worker.cc:123: Failed to register worker " + secret
         + "\n[synthetic E 12 34] private_component.cc:456: " + secret
         + "\n[synthetic I 12 34] raylet_client.cc:999: " + secret
+        + "\n[synthetic W 12 34] raylet_ipc_client.cc:72: Exiting because the Raylet IPC connection failed and the local Raylet is dead. " + secret
     )
     probe = object.__new__(OwnedProbe)
     probe.directory = SimpleNamespace(name=str(tmp_path))
@@ -169,9 +170,11 @@ def test_ray_fatal_evidence_keeps_closed_cause_markers_and_reviewed_source_locat
     assert report["ray_failure_markers"]["worker_registration_failed"]
     assert report["ray_failure_markers"]["agent_failed"]
     assert report["ray_failure_markers"]["permission_denied"]
+    assert report["ray_failure_markers"]["local_raylet_dead"]
     assert not report["ray_failure_markers"]["address_in_use"]
     assert report["native_source_locations"] == [
-        {"file": "agent_manager.cc", "line": 77}, {"file": "core_worker.cc", "line": 123}
+        {"file": "agent_manager.cc", "line": 77}, {"file": "core_worker.cc", "line": 123},
+        {"file": "raylet_ipc_client.cc", "line": 72},
     ]
 
 
