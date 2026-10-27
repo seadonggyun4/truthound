@@ -265,3 +265,5 @@ Spark 시간 초과 진단은 SDK gateway 실행과 Spark 세션 생성을 구�
 수동 Windows 진단은 uv의 지연 bytecode 생성과 `bytecode=compiled` 설치를 비교할 수 있습니다. 두 방식은 같은 5회 반복 테스트와 제한 시간을 사용하며 벤치마크 준비나 합격 기준을 바꾸지 않습니다.
 
 네이티브 20초 traceback snapshot은 SDK가 Python GIL을 보유한 호출에서도 소유한 비공개 로그에만 남습니다. 외부 증거는 설치된 Ray/PySpark/Py4J SDK frame 최대 16개의 패키지·파일 basename·함수·행 번호만 포함하며 메시지·전체 경로·다른 코드 frame은 제외합니다.
+
+수동 `ray-startup` 진단은 지원 Windows Python 버전마다 실제 Ray 캐시 계약을 새로운 driver 프로세스 20개에서 분리 실행하며 기존 응답·job 제한을 유지합니다. 모든 반복이 필수이며 전체 릴리스 게이트를 대체하지 않습니다.

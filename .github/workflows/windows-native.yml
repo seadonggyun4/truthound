@@ -5,7 +5,7 @@ on:
       scope:
         description: Diagnostic component; full release verification remains separate
         type: choice
-        options: [all, engines, operators, checkpoints, ai, spark-startup, spark-after-ray]
+        options: [all, engines, operators, checkpoints, ai, spark-startup, spark-after-ray, ray-startup]
         default: all
       bytecode:
         description: Compare normal lazy uv installation with precompiled installed bytecode
@@ -25,7 +25,7 @@ jobs:
       fail-fast: false
       matrix:
         python: ['3.11', '3.12', '3.13']
-        scope: ${{ fromJSON(inputs.scope == 'spark-after-ray' && '["spark-after-ray"]' || inputs.scope == 'spark-startup' && '["spark-startup"]' || inputs.scope == 'engines' && '["engines"]' || inputs.scope == 'operators' && '["operators"]' || inputs.scope == 'checkpoints' && '["checkpoints"]' || inputs.scope == 'ai' && '["ai"]' || '["engines","operators"]') }}
+        scope: ${{ fromJSON(inputs.scope == 'ray-startup' && '["ray-startup"]' || inputs.scope == 'spark-after-ray' && '["spark-after-ray"]' || inputs.scope == 'spark-startup' && '["spark-startup"]' || inputs.scope == 'engines' && '["engines"]' || inputs.scope == 'operators' && '["operators"]' || inputs.scope == 'checkpoints' && '["checkpoints"]' || inputs.scope == 'ai' && '["ai"]' || '["engines","operators"]') }}
     env:
       NATIVE_SCOPE: ${{ matrix.scope }}
       UV_COMPILE_BYTECODE: ${{ inputs.bytecode == 'compiled' && '1' || '0' }}
@@ -56,13 +56,18 @@ jobs:
       - run: uv sync --python ${{ matrix.python }} --frozen --extra dev --extra mcp
       - name: Run actual native engine and installed operator regressions
         run: |
-          if ($env:NATIVE_SCOPE -in @('spark-startup', 'spark-after-ray')) {
+          if ($env:NATIVE_SCOPE -in @('spark-startup', 'spark-after-ray', 'ray-startup')) {
             $targets = @('tests/test_distributed_native_contract.py::test_native_row_cache_honors_disabled_cache_and_explicit_invalidation[spark]')
             if ($env:NATIVE_SCOPE -eq 'spark-after-ray') {
               $targets = @('tests/test_distributed_native_contract.py::test_null_statistics_and_sampling_use_observed_rows[ray]', 'tests/test_distributed_native_contract.py::test_ray_native_task_limit_actor_execution_and_block_target_are_applied', 'tests/test_distributed_native_contract.py::test_native_row_cache_honors_disabled_cache_and_explicit_invalidation[ray]') + $targets
             }
+            $iterations = 5
+            if ($env:NATIVE_SCOPE -eq 'ray-startup') {
+              $targets = @('tests/test_distributed_native_contract.py::test_native_row_cache_honors_disabled_cache_and_explicit_invalidation[ray]')
+              $iterations = 20
+            }
             # Fixed repeated cold starts: every run must pass; this is not a retry.
-            for ($iteration = 1; $iteration -le 5; $iteration++) {
+            for ($iteration = 1; $iteration -le $iterations; $iteration++) {
               uv run --python ${{ matrix.python }} --frozen --extra dev --extra mcp python -m pytest -q @targets -p no:cacheprovider --junitxml "test-artifacts/windows-native-$iteration.xml"
               if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
             }
