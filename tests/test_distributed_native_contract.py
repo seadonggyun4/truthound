@@ -557,6 +557,29 @@ def test_spark_start_failure_never_formats_gateway_backed_exception(monkeypatch,
     assert "synthetic private SDK detail" not in capsys.readouterr().out
 
 
+def test_owned_sdk_process_samples_omit_names_ids_arguments_and_reused_pids():
+    from contextlib import nullcontext
+    from types import SimpleNamespace
+
+    from verification.native_distributed_runner import owned_process_snapshot
+
+    def forbidden():
+        pytest.fail("Process arguments must never be read")
+
+    process = SimpleNamespace(
+        oneshot=nullcontext, create_time=lambda: 1,
+        name=lambda: "synthetic-private-process-name",
+        cmdline=forbidden, pid=123456,
+        cpu_times=lambda: SimpleNamespace(user=2, system=3),
+        memory_info=lambda: SimpleNamespace(rss=4096), num_threads=lambda: 2,
+    )
+    assert owned_process_snapshot(process, 2, 20) is None
+    report = owned_process_snapshot(process, 1, 20)
+    assert report["role"] == "other" and report["last_cpu_seconds"] == 5
+    assert report["last_rss_bytes"] == 4096 and report["last_threads"] == 2
+    assert "synthetic-private" not in json.dumps(report) and "123456" not in json.dumps(report)
+
+
 @pytest.mark.parametrize("failure", [False, True])
 def test_installed_startup_watchdog_cancelled_on_success_and_failure(monkeypatch, failure):
     from tests.verification_support import _load

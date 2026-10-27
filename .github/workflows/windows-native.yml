@@ -65,6 +65,9 @@ jobs:
               $targets = @('tests/test_mcp_distributed_engines.py::test_approved_native_distributed_engines_children_and_reopen[spark]')
             }
             $iterations = 5
+            if ($env:NATIVE_SCOPE -eq 'spark-startup') {
+              $iterations = 20
+            }
             if ($env:NATIVE_SCOPE -eq 'ray-startup') {
               $targets = @('tests/test_distributed_native_contract.py::test_native_row_cache_honors_disabled_cache_and_explicit_invalidation[ray]')
               $iterations = 20

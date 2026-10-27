@@ -13,7 +13,7 @@ import tempfile
 import threading
 import time
 from concurrent.futures import ThreadPoolExecutor
-from contextlib import suppress
+from contextlib import nullcontext, suppress
 from pathlib import Path
 
 import psutil
@@ -83,6 +83,30 @@ def environment(home=None):
     return result
 
 
+def owned_process_snapshot(child, created, elapsed):
+    """Only numeric lifecycle metrics and reviewed roles; no IDs or arguments."""
+    roles = {
+        "java": "jvm", "java.exe": "jvm",
+        "powershell.exe": "sdk-guid-shell", "pwsh.exe": "sdk-guid-shell",
+        "cmd.exe": "command", "python": "python", "python.exe": "python",
+        "python3": "python", "python3.exe": "python",
+    }
+    with child.oneshot():
+        if child.create_time() != created:
+            return None
+        cpu = child.cpu_times()
+        name = child.name().lower()
+        role = "python" if re.fullmatch(r"python(?:3(?:\.[0-9]{1,2})?)?(?:\.exe)?", name) else roles.get(name, "other")
+        return {
+            "role": role,
+            "sample_elapsed_seconds": elapsed,
+            "sample_age_seconds": max(0, time.time() - created),
+            "last_cpu_seconds": cpu.user + cpu.system,
+            "last_rss_bytes": child.memory_info().rss,
+            "last_threads": child.num_threads(),
+        }
+
+
 class OwnedProbe:
     def __init__(self, backend, log_path, *, guard_node_lookup=False):
         self.log_path = Path(log_path)
@@ -93,6 +117,10 @@ class OwnedProbe:
         self.capture_count = 0
         self.capture_wall = 0.0
         self.capture_cpu = 0.0
+        self.backend = backend
+        self.sdk_metrics = {}
+        self.metrics_sampled_at = 0.0
+        self.capture_epoch = time.monotonic()
         self.stop_monitor = threading.Event()
         self.closed = False
         native_environment = environment(self.directory.name)
@@ -140,11 +168,21 @@ class OwnedProbe:
         try:
             root = psutil.Process(self.process.pid)
             if root.create_time() == self.created:
+                sample = self.backend == "spark" and started - self.metrics_sampled_at >= 1
+                if sample:
+                    self.metrics_sampled_at = started
                 for child in root.children(recursive=True):
                     try:
                         created = child.create_time()
                         with self.ownership_lock:
                             self.owned[child.pid] = created
+                        identity = (child.pid, created)
+                        observe = self.backend == "spark" and (sample or identity not in self.sdk_metrics)
+                        if observe and (identity in self.sdk_metrics or len(self.sdk_metrics) < 64):
+                            snapshot = owned_process_snapshot(child, created, started - self.capture_epoch)
+                            if snapshot is not None:
+                                with self.ownership_lock:
+                                    self.sdk_metrics[identity] = snapshot
                     except (psutil.Error, OSError):
                         continue
         except (psutil.Error, OSError):
@@ -274,6 +312,8 @@ class OwnedProbe:
             startup = self._native_startup_state()
         except OSError:
             startup = {"unavailable": True}
+        with getattr(self, "ownership_lock", nullcontext()):
+            samples = list(getattr(self, "sdk_metrics", {}).values())
         return {
             "phases": phases,
             "active_command": self.current_command
@@ -282,6 +322,7 @@ class OwnedProbe:
             "protocol_reply": getattr(self, "protocol_reply", None),
             "phase_elapsed_seconds": elapsed,
             "sdk_wait_frames": sdk_frames,
+            "owned_sdk_process_samples": samples,
             "returncode": self.process.poll(),
             "native_startup": startup,
             "capture_count": getattr(self, "capture_count", 0),

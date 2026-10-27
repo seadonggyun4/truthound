@@ -330,3 +330,7 @@ Windows Ray 2.58 owned local startup queries its existing SDK node client for th
 JUnit retains phase evidence for both successful and failed installed starts. Installed native factory startup also records a bounded SDK stack snapshot at 20 seconds and monotonic phase timings. Snapshots include only SDK package/file/function/line structure, excluding absolute paths, frame locals and arguments. The watchdog is cancelled on entry or failure; the original operation deadline still applies. The separate Windows installed-Spark diagnostic requires all five complete open/use/shutdown/reopen runs per Python version to pass.
 
 Spark startup failure diagnostics never format JVM-backed exception messages: formatting can issue another RPC to an unresponsive gateway. Structural failure evidence is captured before owned cleanup, and the original exception remains a failure.
+
+Spark probe diagnostics sample at most 64 owned child processes once per second. They retain only reviewed process roles and last-observed age/CPU/RSS/thread counts, including exited launcher stages; IDs, executable paths and arguments are excluded. These are diagnostic samples, not final process totals or benchmark measurements.
+
+The standalone Windows Spark cold-start diagnostic now requires all 20 starts per Python version to pass, retaining the same 30-second reply and 15-minute job deadlines. This fixed series preserves every result; it does not retry a failed start.
