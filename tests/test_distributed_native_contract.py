@@ -69,7 +69,9 @@ def test_native_probe_utf8_log_does_not_corrupt_its_separate_protocol(tmp_path):
 @pytest.mark.parametrize("empty", [True, False])
 def test_bounded_protocol_failure_records_structure_without_reply_content(tmp_path, empty):
     from concurrent.futures import ThreadPoolExecutor
-    from io import BytesIO
+    import os
+
+    from truthound.mcp.native_stdio import CancellablePipeReader
     from types import SimpleNamespace
 
     secret = b"synthetic-private-truncated-native-reply"
@@ -77,9 +79,13 @@ def test_bounded_protocol_failure_records_structure_without_reply_content(tmp_pa
     probe = object.__new__(OwnedProbe)
     probe.directory = SimpleNamespace(name=str(tmp_path))
     probe.log_path = tmp_path / "driver.log"
-    probe.process = SimpleNamespace(stdout=BytesIO(reply), poll=lambda: None)
+    read_fd, write_fd = os.pipe()
+    os.write(write_fd, reply)
+    os.close(write_fd)
+    probe.process = SimpleNamespace(stdout=os.fdopen(read_fd, "rb"), poll=lambda: None)
+    probe.reader = CancellablePipeReader(probe.process.stdout)
     probe.capture = lambda: None
-    with ThreadPoolExecutor(max_workers=1) as probe.pool:
+    with probe.process.stdout, ThreadPoolExecutor(max_workers=1) as probe.pool:
         with pytest.raises(RuntimeError, match="bounded protocol reply") as error:
             probe.receive()
     note = "\n".join(error.value.__notes__)

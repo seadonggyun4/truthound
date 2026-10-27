@@ -18,6 +18,8 @@ from pathlib import Path
 
 import psutil
 
+from truthound.mcp.native_stdio import CancellablePipeReader
+
 COMMAND_LABELS = frozenset(
     {
         "basics",
@@ -152,6 +154,7 @@ class OwnedProbe:
                 env=native_environment,
             )
             self.created = psutil.Process(self.process.pid).create_time()
+            self.reader = CancellablePipeReader(self.process.stdout)
         except BaseException:
             if hasattr(self, "process"):
                 if self.process.poll() is None:
@@ -414,7 +417,7 @@ class OwnedProbe:
     def receive(self):
         started = time.monotonic()
         try:
-            line = self.pool.submit(self.process.stdout.readline, 1024 * 1024 + 1).result(
+            line = self.pool.submit(self.reader.readline, 1024 * 1024 + 1).result(
                 timeout=30
             )
         except TimeoutError as error:
@@ -460,6 +463,7 @@ class OwnedProbe:
         if self.closed:
             return
         self.closed = True
+        self.reader.stop()
         forced_driver_exit = False
         self.capture()
         try:

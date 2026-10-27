@@ -83,7 +83,7 @@ jobs:
             }
             exit 0
           } elseif ($env:NATIVE_SCOPE -eq 'engines') {
-            $targets = @('tests/test_dask_native_contract.py', 'tests/test_distributed_native_contract.py', 'tests/test_mcp_distributed_engines.py', 'tests/stores/concurrency/test_atomic.py', 'tests/test_mcp_execution_stores.py::test_native_descriptor_output_cannot_corrupt_resident_protocol', 'tests/test_mcp_owned_descendants.py::test_native_worker_wire_excludes_native_child_and_atexit_output')
+            $targets = @('tests/test_dask_native_contract.py', 'tests/test_distributed_native_contract.py', 'tests/test_mcp_distributed_engines.py', 'tests/stores/concurrency/test_atomic.py', 'tests/test_mcp_execution_stores.py::test_native_descriptor_output_cannot_corrupt_resident_protocol', 'tests/test_mcp_owned_descendants.py::test_native_worker_wire_excludes_native_child_and_atexit_output', 'tests/test_mcp_owned_descendants.py::test_worker_timeout_finishes_while_another_writer_keeps_pipe_open', 'tests/test_mcp_owned_descendants.py::test_pipe_reader_preserves_frames_and_enforces_partial_frame_limit')
           } elseif ($env:NATIVE_SCOPE -eq 'checkpoints') {
             $targets = @('tests/test_distributed_native_contract.py::test_native_ray_local_checkpoint_destination_resolves_as_one_directory', 'tests/test_distributed_native_contract.py::test_native_checkpoint_enabled_creates_real_snapshot', 'tests/test_distributed_native_contract.py::test_native_ray_empty_checkpoint_preserves_schema', 'tests/test_mcp_distributed_engines.py::test_approved_native_distributed_engines_children_and_reopen[ray]')
           } elseif ($env:NATIVE_SCOPE -eq 'ai') {

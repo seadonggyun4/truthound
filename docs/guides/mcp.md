@@ -3266,3 +3266,5 @@ Owned local Windows Spark 4.2 startup uses the installed SDK launcher JAR to gen
 Native worker processes keep their JSON protocol on a separate, non-inheritable stream. OS stdout/stderr descriptors and Windows CRT/Win32 standard handles point to the private sink before an operator factory imports an SDK. Native extension, subprocess and SDK shutdown output cannot write into the protocol; deadlines and process ownership remain unchanged.
 
 The protocol descriptor inheritance flag is explicitly cleared, including Windows standard-stream duplicates.
+
+Owned resident reply readers poll pipe availability and stop on cancellation without waiting for another writer to close. The existing reply-size and timeout limits still apply.

@@ -10,6 +10,7 @@ from contextlib import suppress
 
 import psutil
 
+from truthound.mcp.native_stdio import CancellablePipeReader
 from truthound.mcp.policy import MCPError
 
 
@@ -59,6 +60,7 @@ class OwnedModelProcess:
                 env=environment,
             )
             self._process_created = psutil.Process(self.process.pid).create_time()
+            self._reader = CancellablePipeReader(self.process.stdout)
         except BaseException:
             if hasattr(self, "process"):
                 if self.process.poll() is None:
@@ -108,6 +110,7 @@ class OwnedModelProcess:
             if self._closed:
                 return
             self._closed = True
+            self._reader.stop()
             if self._timer:
                 self._timer.cancel()
             try:
@@ -145,7 +148,7 @@ class OwnedModelProcess:
             raise MCPError("invalid_handle")
         self.process.stdin.write(json.dumps(request, allow_nan=False).encode() + b"\n")
         self.process.stdin.flush()
-        response = self.process.stdout.readline(self.max_reply_bytes + 1)
+        response = self._reader.readline(self.max_reply_bytes + 1)
         if len(response) > self.max_reply_bytes or not response.endswith(b"\n"):
             raise MCPError("worker_error")
         result = json.loads(response)

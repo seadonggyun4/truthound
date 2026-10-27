@@ -1,8 +1,10 @@
 """A dead driver must not erase ownership of its still-running descendants."""
 
 import asyncio
+import os
 import subprocess
 import sys
+import threading
 import time
 from contextlib import suppress
 
@@ -12,6 +14,60 @@ import pytest
 from truthound.mcp.model_process import OwnedModelProcess
 
 pytestmark = pytest.mark.fault
+
+
+def test_pipe_reader_preserves_frames_and_enforces_partial_frame_limit():
+    from truthound.mcp.native_stdio import CancellablePipeReader
+
+    read_fd, write_fd = os.pipe()
+    with os.fdopen(read_fd, "rb") as stream:
+        reader = CancellablePipeReader(stream)
+        try:
+            os.write(write_fd, b'first\nsecond\n' + b'x' * 17)
+            assert reader.readline(10) == b'first\n'
+            assert reader.readline(10) == b'second\n'
+            assert reader.readline(16) == b'x' * 16
+            os.close(write_fd)
+            write_fd = None
+            assert reader.readline(16) == b'x'
+            assert reader.readline(16) == b''
+        finally:
+            if write_fd is not None:
+                os.close(write_fd)
+
+
+def test_worker_timeout_finishes_while_another_writer_keeps_pipe_open(monkeypatch):
+    original = subprocess.Popen
+    read_fd, write_fd = os.pipe()
+
+    def start_owned(command, **kwargs):
+        kwargs["stdout"] = write_fd
+        process = original([command[0], "-I", "-c", "import time; time.sleep(600)"], **kwargs)
+        process.stdout = os.fdopen(read_fd, "rb")
+        return process
+
+    monkeypatch.setattr("truthound.mcp.model_process.subprocess.Popen", start_owned)
+    worker = OwnedModelProcess(30)
+    done = threading.Event()
+    errors = []
+
+    def call():
+        try:
+            asyncio.run(worker.call({}, timeout=0.1))
+        except TimeoutError:
+            errors.append("timeout")
+        finally:
+            done.set()
+
+    thread = threading.Thread(target=call, daemon=True)
+    thread.start()
+    try:
+        assert done.wait(2), "A retained writer must not make timeout cleanup unbounded"
+        assert errors == ["timeout"] and worker.process.poll() is not None
+    finally:
+        os.close(write_fd)
+        thread.join(timeout=5)
+        worker.close()
 
 
 def test_native_worker_wire_excludes_native_child_and_atexit_output():
