@@ -37,6 +37,30 @@ def test_native_probe_utf8_log_does_not_corrupt_its_separate_protocol(tmp_path):
     assert log.read_bytes() == "native progress ✔\nnative error λ\n".encode("utf-8")
 
 
+@pytest.mark.parametrize("empty", [True, False])
+def test_bounded_protocol_failure_records_structure_without_reply_content(tmp_path, empty):
+    from concurrent.futures import ThreadPoolExecutor
+    from io import BytesIO
+    from types import SimpleNamespace
+
+    secret = b"synthetic-private-truncated-native-reply"
+    reply = b"" if empty else secret
+    probe = object.__new__(OwnedProbe)
+    probe.directory = SimpleNamespace(name=str(tmp_path))
+    probe.log_path = tmp_path / "driver.log"
+    probe.process = SimpleNamespace(stdout=BytesIO(reply), poll=lambda: None)
+    probe.capture = lambda: None
+    with ThreadPoolExecutor(max_workers=1) as probe.pool:
+        with pytest.raises(RuntimeError, match="bounded protocol reply") as error:
+            probe.receive()
+    note = "\n".join(error.value.__notes__)
+    assert secret.decode() not in note and str(tmp_path) not in note
+    observed = json.loads(note.split(": ", 1)[1])["protocol_reply"]
+    assert observed["bytes"] == len(reply)
+    assert observed["empty"] is empty and observed["newline"] is False
+    assert 0 <= observed["elapsed_seconds"] < 30
+
+
 def test_native_startup_diagnostic_keeps_only_closed_markers(tmp_path):
     import json
     from types import SimpleNamespace

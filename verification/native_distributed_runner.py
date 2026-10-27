@@ -276,6 +276,7 @@ class OwnedProbe:
             "active_command": self.current_command
             if getattr(self, "current_command", None) in COMMAND_LABELS
             else None,
+            "protocol_reply": getattr(self, "protocol_reply", None),
             "phase_elapsed_seconds": elapsed,
             "sdk_wait_frames": sdk_frames,
             "returncode": self.process.poll(),
@@ -289,6 +290,7 @@ class OwnedProbe:
         return "Native probe state: " + json.dumps(self._diagnostic_report())
 
     def receive(self):
+        started = time.monotonic()
         try:
             line = self.pool.submit(self.process.stdout.readline, 1024 * 1024 + 1).result(
                 timeout=30
@@ -297,6 +299,12 @@ class OwnedProbe:
             # Only closed synthetic stage labels may leave the owned SDK log.
             error.add_note(self._diagnostic_note())
             raise
+        self.protocol_reply = {
+            "bytes": len(line),
+            "empty": not line,
+            "newline": line.endswith(b"\n"),
+            "elapsed_seconds": time.monotonic() - started,
+        }
         self.capture()
         if not line.endswith(b"\n") or len(line) > 1024 * 1024:
             error = RuntimeError("Native runtime did not return a bounded protocol reply")

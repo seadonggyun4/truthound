@@ -13,6 +13,10 @@ across the same four contract shards. Other PR files retain their shared fixture
 lifecycle within one shard. Every algorithm case still runs once; the 35-minute
 contract deadline, assertions and test inputs are unchanged.
 
+Malformed native SDK replies retain only byte count, empty/newline flags and
+elapsed wait time in diagnostics. Reply contents stay private; EOF, truncation,
+oversized replies and the existing 30-second deadline remain failures.
+
 Native benchmark workers establish the declared workload workspace boundary
 before zero-config discovery. Run JSON, metric history and HTML docs stay inside
 that workspace even beneath an existing project. Context initialization and
