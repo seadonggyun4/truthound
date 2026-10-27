@@ -1,5 +1,7 @@
 """Approved installed factories own actual local Ray and Spark lifetimes."""
 
+import json
+
 import pytest
 
 from tests import test_mcp_plugin_bindings as plugins
@@ -11,8 +13,20 @@ runtime = plugins.runtime
 pytestmark = pytest.mark.contract
 
 
+@pytest.fixture
+def startup_evidence(runtime, record_property):
+    """Retain successful startup timing as well as failed startup diagnostics."""
+    yield
+    marker = runtime[2]
+    if marker.exists():
+        prefix = "native-fixture-diagnostic:"
+        records = [json.loads(line[len(prefix):]) for line in marker.read_text().splitlines()
+                   if line.startswith(prefix)]
+        record_property("native_startup_diagnostics", json.dumps(records, sort_keys=True))
+
+
 @pytest.mark.parametrize("backend", ["ray", "spark"])
-def test_approved_native_distributed_engines_children_and_reopen(runtime, monkeypatch, backend):
+def test_approved_native_distributed_engines_children_and_reopen(runtime, monkeypatch, backend, startup_evidence):
     adapter, _, marker, _, _ = runtime
     if backend == "spark":
         java = environment().get("JAVA_HOME")
