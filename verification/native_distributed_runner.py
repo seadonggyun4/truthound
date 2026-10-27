@@ -140,8 +140,8 @@ class OwnedProbe:
         markers = {
             "gcs_started": (b"GcsServer server started",),
             "gcs_connection_failed": (b"Failed to connect to GCS",),
-            "raylet_started": (b"Raylet started",),
-            "node_registered": (b"Registering node",),
+            "raylet_started": (b"started. Raylet consists of node_manager and object_manager",),
+            "node_registered": (b"Finished registering node.",),
             "port_bind_failed": (
                 b"Address already in use",
                 b"Only one usage of each socket address",
@@ -203,6 +203,7 @@ class OwnedProbe:
                 "started",
                 "gateway-start",
                 "gateway-started",
+                "gateway-reaped",
                 "dataset",
                 "frame",
                 "ready",

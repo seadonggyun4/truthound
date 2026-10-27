@@ -45,7 +45,8 @@ def test_native_startup_diagnostic_keeps_only_closed_markers(tmp_path):
     logs = root / "th-native-test" / "session_test" / "logs"
     logs.mkdir(parents=True)
     secret = "synthetic-private-native-log-value"
-    (logs / "gcs_server.out").write_text("GcsServer server started " + secret)
+    (logs / "gcs_server.out").write_text("GcsServer server started " + secret + "\nFinished registering node. " + secret)
+    (logs / "raylet.out").write_text("Raylet of id, " + secret + " started. Raylet consists of node_manager and object_manager.")
     (logs / "unreviewed.log").write_text("No module named " + secret)
     driver = tmp_path / "driver.log"
     driver.write_text("native-probe-time:ray-start:1.25\nnative-probe-time:ray-start:nan\nnative-probe-time:private-stage:2.0\nnative-probe:ray-start\nnative-probe:spark-gateway-start\nRunning Spark version " + secret + "\nnative-probe:" + secret + "\n")
@@ -59,7 +60,9 @@ def test_native_startup_diagnostic_keeps_only_closed_markers(tmp_path):
     assert value["phases"] == ["ray-start", "spark-gateway-start"]
     assert value["phase_elapsed_seconds"] == {"ray-start": 1.25}
     assert value["native_startup"]["spark_markers"]["spark_context_started"] is True
-    assert value["native_startup"]["log_files"] == 1
+    assert value["native_startup"]["log_files"] == 2
+    assert value["native_startup"]["markers"]["raylet_started"] is True
+    assert value["native_startup"]["markers"]["node_registered"] is True
     assert value["native_startup"]["markers"]["gcs_started"] is True
     assert value["native_startup"]["markers"]["module_missing"] is False
 
@@ -379,6 +382,7 @@ def test_native_arrow_bridge_applies_selected_policy_without_session_mutation(tm
 def test_spark_gateway_observer_restores_launcher_and_preserves_failure(monkeypatch, fail):
     import sys
     from types import SimpleNamespace
+
     from tests.verification_support import _load
 
     calls, phases = [], []
@@ -409,6 +413,7 @@ def test_spark_gateway_observer_restores_launcher_and_preserves_failure(monkeypa
 
 def test_startup_watchdog_classifies_only_reviewed_sdk_frames():
     from types import SimpleNamespace
+
     from tests.verification_support import _load
 
     def frame(module, function, parent=None):
@@ -443,3 +448,125 @@ def test_native_wait_stack_exports_sdk_structure_without_paths_or_payload(tmp_pa
     assert report["sdk_wait_frames"] == [{"package": "ray", "file": "node.py", "line": 1, "function": "<module>"}]
     encoded = json.dumps(report)
     assert secret not in encoded and str(tmp_path) not in encoded and "private_function" not in encoded
+
+
+def test_owned_spark_gateway_cancels_only_its_callback_and_reaps_after_rpc_failure(monkeypatch):
+    from types import SimpleNamespace
+
+    from tests.verification_support import _load
+
+    probe = _load("native_distributed_probe")
+    events = []
+    callback = object()
+    failure = RuntimeError("synthetic-private-gateway-close")
+
+    def shutdown():
+        events.append("shutdown")
+        raise failure
+
+    stdin = SimpleNamespace(closed=False, close=lambda: events.append("stdin-closed"))
+    process = SimpleNamespace(stdin=stdin, wait=lambda timeout: events.append(("wait", timeout)))
+    owner = {"gateway": SimpleNamespace(proc=process, shutdown=shutdown), "exit_callbacks": [callback]}
+    monkeypatch.setattr(probe.atexit, "unregister", lambda item: events.append(("unregister", item)))
+    with pytest.raises(RuntimeError) as error:
+        probe.close_owned_spark_gateway(owner)
+    assert error.value is failure
+    assert events == [("unregister", callback), "shutdown", "stdin-closed", ("wait", 1)]
+    events.clear()
+    borrowed = {"gateway": SimpleNamespace(proc=None, shutdown=shutdown), "exit_callbacks": [callback]}
+    assert probe.close_owned_spark_gateway(borrowed) is False
+    assert events == []
+
+
+def test_spark_launcher_observer_retains_only_its_sdk_exit_callback(monkeypatch):
+    import sys
+    from types import SimpleNamespace
+
+    from tests.verification_support import _load
+
+    registered = []
+    exit_module = SimpleNamespace(register=lambda callback: registered.append(callback) or callback)
+    sdk = SimpleNamespace(atexit=exit_module)
+    monkeypatch.setitem(sys.modules, "pyspark.java_gateway", sdk)
+
+    def killChild():
+        pass
+
+    killChild.__module__ = "pyspark.java_gateway"
+
+    def unrelated():
+        pass
+
+    gateway = object()
+
+    def launch():
+        sdk.atexit.register(killChild)
+        sdk.atexit.register(unrelated)
+        return gateway
+
+    launch.__module__ = "pyspark.java_gateway"
+    context = type("SyntheticContext", (), {"__module__": "synthetic_owned_spark_context"})
+    context_module = SimpleNamespace(launch_gateway=launch)
+    monkeypatch.setitem(sys.modules, context.__module__, context_module)
+    probe = _load("native_distributed_probe")
+    with probe.spark_gateway_progress(context, lambda label: None) as owner:
+        assert context_module.launch_gateway() is gateway
+    assert owner == {"gateway": gateway, "exit_callbacks": [killChild]}
+    assert registered == [killChild, unrelated]
+    assert sdk.atexit is exit_module and context_module.launch_gateway is launch
+
+
+def test_real_owned_spark_gateway_is_reaped_before_driver_exit(tmp_path):
+    log = tmp_path / "owned-spark-gateway.log"
+    runtime = OwnedProbe("spark", log)
+    launcher = None
+    try:
+        assert runtime.receive()["ready"] is True
+        owner = decode(runtime.call("spark_gateway_owner"))
+        assert owner["alive"] is True
+        launcher = (owner["pid"], psutil.Process(owner["pid"]).create_time())
+    finally:
+        runtime.close()
+    assert "native-probe:spark-gateway-reaped" in log.read_text(encoding="utf-8").splitlines()
+    try:
+        process = psutil.Process(launcher[0])
+        assert process.create_time() != launcher[1] or process.status() == psutil.STATUS_ZOMBIE
+    except psutil.NoSuchProcess:
+        pass
+
+
+@pytest.mark.parametrize("returncode", [0, 5])
+def test_owned_windows_spark_tree_kill_is_synchronous_and_cleanup_failure_stays_visible(monkeypatch, returncode):
+    from types import SimpleNamespace
+
+    from tests.verification_support import _load
+
+    probe = _load("native_distributed_probe")
+    calls, waits = [], []
+
+    def wait(timeout):
+        waits.append(timeout)
+        if len(waits) == 1:
+            raise probe.subprocess.TimeoutExpired("owned-launcher", timeout)
+        return 0
+
+    process = SimpleNamespace(pid=12345, stdin=SimpleNamespace(closed=True), poll=lambda: None, wait=wait)
+    owner = {"gateway": SimpleNamespace(proc=process, shutdown=lambda: None), "exit_callbacks": []}
+    monkeypatch.setattr(probe, "os", SimpleNamespace(name="nt", environ={"SYSTEMROOT": "C:\\Windows"}))
+
+    def run(argv, **kwargs):
+        calls.append((argv, kwargs))
+        return SimpleNamespace(returncode=returncode)
+
+    monkeypatch.setattr(probe.subprocess, "run", run)
+    if returncode:
+        with pytest.raises(RuntimeError, match="Owned Spark launcher cleanup failed"):
+            probe.close_owned_spark_gateway(owner)
+    else:
+        assert probe.close_owned_spark_gateway(owner) is True
+    assert len(calls) == 1
+    argv, options = calls[0]
+    assert argv[1:] == ["/f", "/t", "/pid", "12345"]
+    assert argv[0].endswith("System32\\taskkill.exe")
+    assert options["timeout"] == 2 and options.get("shell", False) is False
+    assert waits == ([1] if returncode else [1, 1])

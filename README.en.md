@@ -303,7 +303,7 @@ The `dev` extra includes the MCP SDK for integration contracts; dashboard produc
 and cleanup checks run as ordinary contract tests. Release checks also verify a fresh
 base installation without the SDK. The `all` extra includes the MCP runtime.
 Native distributed contracts also run actual local Ray and Spark SDKs from the
-`dev` extra. Provision Java 17+ for Spark and select the matching Python worker;
+`dev` extra. Native SDK verification closes and reaps its owned Spark launcher before the worker exits. Provision Java 17+ for Spark and select the matching Python worker;
 these contracts do not connect to remote clusters.
 Native Parquet checkpoints and atomic stores flush writable staged files on Windows as well.
 Ray checkpoints create the staging destination and explicitly select the local filesystem.

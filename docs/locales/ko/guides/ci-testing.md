@@ -267,3 +267,9 @@ Spark 시간 초과 진단은 SDK gateway 실행과 Spark 세션 생성을 구�
 네이티브 20초 traceback snapshot은 SDK가 Python GIL을 보유한 호출에서도 소유한 비공개 로그에만 남습니다. 외부 증거는 설치된 Ray/PySpark/Py4J SDK frame 최대 16개의 패키지·파일 basename·함수·행 번호만 포함하며 메시지·전체 경로·다른 코드 frame은 제외합니다.
 
 수동 `ray-startup` 진단은 지원 Windows Python 버전마다 실제 Ray 캐시 계약을 새로운 driver 프로세스 20개에서 분리 실행하며 기존 응답·job 제한을 유지합니다. 모든 반복이 필수이며 전체 릴리스 게이트를 대체하지 않습니다.
+
+Ray 준비 표식은 설치된 SDK의 Raylet 시작 문구와 노드 등록 완료 문구에 맞춥니다. 선택적 dashboard 모듈 import 경고만으로 시작 실패 원인을 판정하지 않으며 정상·실패 증거를 비교해야 합니다.
+
+소유한 Spark fixture는 실행한 gateway의 stdin을 명시적으로 닫고 해당 launcher 프로세스의 종료를 기다린 뒤 정리를 마칩니다. 해당 launcher에서 포착한 PySpark Windows 종료 콜백만 해제하여 비동기 `taskkill`이 Python 소유자 밖으로 남지 않도록 합니다. 빌린 gateway나 다른 종료 콜백은 바꾸지 않으며 RPC·프로세스 회수 실패는 실패로 유지합니다.
+
+소유한 Windows JVM이 stdin EOF를 감지하지 못하면 fixture는 여전히 소유한 launcher에 SDK의 프로세스 트리 종료 작업을 동기 실행하고 종료를 확인합니다. 종료 명령은 기존 소유자 수명 안에서 제한 시간과 join을 적용하며, launcher가 살아 있는데 종료 명령이 실패하면 정리 실패로 처리합니다.

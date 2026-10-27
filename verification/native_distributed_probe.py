@@ -7,12 +7,15 @@ to an external cluster; the caller owns its process and diagnostic directory.
 from __future__ import annotations
 
 import argparse
+import atexit
 import contextlib
 import faulthandler
 import importlib.metadata
 import json
 import logging
+import ntpath
 import os
+import subprocess
 import sys
 import tempfile
 import threading
@@ -94,21 +97,79 @@ def runtime_directory(prefix):
 
 @contextlib.contextmanager
 def spark_gateway_progress(context, phase):
-    """Observe the existing SDK launcher without changing arguments or retries."""
+    """Track the gateway and its exact SDK exit callback in this owned fixture."""
     module = sys.modules[context.__module__]
     original = module.launch_gateway
+    owner = {"gateway": None, "exit_callbacks": []}
+    launcher = sys.modules.get(original.__module__)
+    exit_module = getattr(launcher, "atexit", None) if original.__module__ == "pyspark.java_gateway" else None
+
+    class ExitObserver:
+        def register(self, callback, *args, **kwargs):
+            result = exit_module.register(callback, *args, **kwargs)
+            if (
+                getattr(callback, "__module__", None) == "pyspark.java_gateway"
+                and getattr(callback, "__name__", None) == "killChild"
+                and not args and not kwargs
+            ):
+                owner["exit_callbacks"].append(callback)
+            return result
+
+        def __getattr__(self, name):
+            return getattr(exit_module, name)
 
     def launch(*args, **kwargs):
         phase("spark-gateway-start")
         result = original(*args, **kwargs)
+        owner["gateway"] = result
         phase("spark-gateway-started")
         return result
 
     module.launch_gateway = launch
+    if exit_module is not None:
+        launcher.atexit = ExitObserver()
     try:
-        yield
+        yield owner
     finally:
         module.launch_gateway = original
+        if exit_module is not None:
+            launcher.atexit = exit_module
+
+
+def close_owned_spark_gateway(owner):
+    """Reap the exact launched SDK process before its Python owner can exit."""
+    gateway = owner.get("gateway")
+    process = getattr(gateway, "proc", None)
+    if process is None:
+        return False  # A connected/borrowed gateway is not this fixture's process.
+    # PySpark's Windows exit handler starts an unjoined taskkill subprocess.
+    # This fixture and its outer process-tree owner perform explicit cleanup;
+    # do not leave a deferred PID-based kill after the launcher has exited.
+    for callback in owner["exit_callbacks"]:
+        atexit.unregister(callback)
+    try:
+        gateway.shutdown()
+    finally:
+        try:
+            if process.stdin is not None and not process.stdin.closed:
+                process.stdin.close()
+        finally:
+            try:
+                process.wait(timeout=1)
+            except subprocess.TimeoutExpired as error:
+                if os.name != "nt":
+                    raise
+                if process.poll() is None:
+                    result = subprocess.run(
+                        [ntpath.join(os.environ["SYSTEMROOT"], "System32", "taskkill.exe"),
+                         "/f", "/t", "/pid", str(process.pid)],
+                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                        timeout=2, check=False,
+                    )
+                    if result.returncode and process.poll() is None:
+                        raise RuntimeError("Owned Spark launcher cleanup failed") from error
+                process.wait(timeout=1)
+    return True
 
 
 @contextlib.contextmanager
@@ -171,9 +232,10 @@ def engine(backend, scratch, progress=None):
             raise RuntimeError("The probe requires its own local Spark lifetime")
         previous_gateway = SparkContext._gateway
         spark = None
+        gateway_owner = {"gateway": None, "exit_callbacks": []}
         try:
             phase("spark-start")
-            with spark_gateway_progress(SparkContext, phase):
+            with spark_gateway_progress(SparkContext, phase) as gateway_owner:
                 spark = (
                     SparkSession.builder.master("local[1]")
                     .appName("truthound-native-probe")
@@ -203,13 +265,20 @@ def engine(backend, scratch, progress=None):
             traceback.print_exc()
             raise
         finally:
-            if spark is not None:
-                spark.stop()
-            if previous_gateway is None and SparkContext._gateway is not None:
-                SparkContext._gateway.shutdown()
+            try:
+                if spark is not None:
+                    spark.stop()
+            finally:
+                if previous_gateway is None and close_owned_spark_gateway(gateway_owner):
+                    phase("spark-gateway-reaped")
 
 
 def execute(native, command):
+    if command == "spark_gateway_owner":
+        from pyspark import SparkContext
+
+        process = SparkContext._gateway.proc
+        return {"pid": process.pid, "alive": process.poll() is None}
     if command == "checkpoint_prerequisites":
         jvm = native.spark_dataframe.sparkSession.sparkContext._jvm
         return {

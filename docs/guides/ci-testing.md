@@ -286,3 +286,9 @@ The manual Windows diagnostic can compare lazy uv bytecode creation with `byteco
 A native 20-second traceback snapshot remains in the owned private log even during SDK calls that hold the Python GIL. Exported evidence retains at most 16 frames from the installed Ray/PySpark/Py4J SDKs, with package, file basename, function and line number only; traceback messages, full paths and other code frames are excluded.
 
 The manual `ray-startup` diagnostic isolates the real Ray cache contract in 20 fresh driver processes per supported Windows Python version, with the same reply and job deadlines. Every iteration is mandatory; this diagnostic never replaces the complete release gate.
+
+Ray readiness markers match the installed SDK's Raylet-started banner and completed node registration. Optional dashboard module-import warnings alone do not identify a startup failure; normal and failed startup evidence must be compared.
+
+Owned Spark fixtures explicitly close the launched gateway's stdin and wait for that exact launcher process before returning from teardown. Only that launcher's captured PySpark Windows exit callback is unregistered, preventing its asynchronous `taskkill` from escaping the Python owner. Borrowed gateways and unrelated exit callbacks are untouched; RPC or reaping failures remain failures.
+
+If the owned Windows JVM does not observe stdin EOF, the fixture synchronously runs the SDK's tree-stop operation against its still-owned launcher and verifies process exit. The stop command is joined and bounded inside the existing owner lifetime; a nonzero stop result while the launcher remains alive is a cleanup failure.
