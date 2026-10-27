@@ -101,8 +101,7 @@ jobs:
       - uses: astral-sh/setup-uv@v4
       - name: Install local native PDF verification prerequisites
         run: |
-          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 update
-          sudo apt-get -o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30 install --no-install-recommends -y libpango-1.0-0 libpangoft2-1.0-0 poppler-utils fonts-noto-cjk
+          python verification/ci/native_prerequisites.py libpango-1.0-0 libpangoft2-1.0-0 poppler-utils
       - run: uv sync --frozen --extra dev --extra mcp --extra benchmarks --extra pdf --group nightly-local
       - uses: actions/download-artifact@v4
         with:

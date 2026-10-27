@@ -134,7 +134,10 @@ def test_prepared_reflex_native_and_approved_mcp_lifecycle(prepared_reflex, runt
 
 
 @pytest.mark.fault
-def test_prepared_reflex_child_exits_on_owner_death_and_changed_config_is_refused(prepared_reflex):
+@pytest.mark.parametrize("previous_state", ["fresh", "stopped"])
+def test_prepared_reflex_child_exits_on_owner_death_and_changed_config_is_refused(
+    prepared_reflex, previous_state
+):
     import psutil
 
     server = prepared_reflex
@@ -189,6 +192,15 @@ finally: server.close()
             child.kill()
         owner.stdout.close()
         owner.stderr.close()
+    # Each shard must establish its own process state, independently of whether
+    # the lifecycle test ran earlier against the module-scoped prepared project.
+    server = type(server)(server.project_directory, server.config)
+    if previous_state == "stopped":
+        assert server.start()["ready"]
+        assert not server.stop()["running"]
+        assert server._process.poll() is not None
+    else:
+        assert server._process is None
     config = server.project_directory / "configuration.json"
     original = config.read_bytes()
     previous_process = server._process
@@ -197,6 +209,9 @@ finally: server.close()
         with pytest.raises(ValueError, match="configuration has changed"):
             server.start()
         assert server._process is previous_process
-        assert server._process.poll() is not None
+        if previous_state == "stopped":
+            assert server._process.poll() is not None
+        else:
+            assert server._process is None
     finally:
         config.write_bytes(original)

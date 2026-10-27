@@ -226,3 +226,8 @@ and shared caches are retained.
 The build applies only Apache's [HADOOP-19977 fix](https://github.com/apache/hadoop/commit/7609530caaa260261a6302a4fb20fa6a26c65110)
 to rename the internal helper that conflicts with Windows SDK 26100. The SDK
 provenance also verifies this compatibility commit.
+
+Native PDF and lineage lanes retain CJK fonts. Font downloads verify the APT
+index SHA-256, enforce transfer speed/time limits and retry official Ubuntu
+mirrors; test selection and job deadlines remain unchanged. Prepared Reflex
+owner-loss tests establish fresh and stopped states independently in each shard.
