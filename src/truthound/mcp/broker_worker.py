@@ -179,7 +179,15 @@ async def serve(wire, owner_type=BrokerOwner):
                     guard = binding_guard(request)
                     guard()
                     capabilities = stack.enter_context(approved_capabilities(request["plugins"]))
-                    runtime = await stack.enter_async_context(capabilities[request["capability"]]())
+                    startup = contextlib.nullcontext()
+                    if request.get("native_group") == "execution_services":
+                        from truthound.execution.distributed._spark_startup import (
+                            local_gateway_launcher,
+                        )
+
+                        startup = local_gateway_launcher(resident=True)
+                    with startup:
+                        runtime = await stack.enter_async_context(capabilities[request["capability"]]())
                     owner = owner_type(runtime, request)
                 else:
                     if owner is None:

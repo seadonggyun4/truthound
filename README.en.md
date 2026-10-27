@@ -309,6 +309,7 @@ Native distributed contracts also run actual local Ray and Spark SDKs from the
 `dev` extra. Native SDK verification closes and reaps its owned Spark launcher before the worker exits.
 Ray global scalar reductions reuse cached native statistics; `clear_cache()` and `cache_results=False` control recomputation.
 Ray computes count, null count, mean, sample standard deviation and extrema in one native statistics aggregation.
+Owned Windows Spark 4.2 startup reuses the SDK command builder and preserves native readiness, authentication and cleanup.
 Windows Ray 2.58 owned local startup queries its existing SDK node client for the exact ALIVE node and valid manager port, avoiding the temporary `GlobalStateAccessor.GetNode` path that produced a native access violation. The scoped hooks are restored on success or failure; other threads and external clusters retain SDK behavior, and the startup deadline is not extended.
 Provision Java 17+ for Spark and select the matching Python worker;
 these contracts do not connect to remote clusters.

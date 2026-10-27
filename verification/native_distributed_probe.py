@@ -178,13 +178,17 @@ def close_owned_spark_gateway(owner):
     """Reap the exact launched SDK process before its Python owner can exit."""
     gateway = owner.get("gateway")
     process = getattr(gateway, "proc", None)
-    if process is None:
-        return False  # A connected/borrowed gateway is not this fixture's process.
+    if gateway is not None and process is None:
+        return False  # A borrowed gateway and its callbacks remain untouched.
     # PySpark's Windows exit handler starts an unjoined taskkill subprocess.
     # This fixture and its outer process-tree owner perform explicit cleanup;
     # do not leave a deferred PID-based kill after the launcher has exited.
     for callback in owner["exit_callbacks"]:
         atexit.unregister(callback)
+    if process is None:
+        # Initialization may fail after registering its SDK callback but before
+        # returning a gateway. The outer owner still reaps recorded descendants.
+        return False
     try:
         gateway.shutdown()
     finally:
@@ -195,6 +199,10 @@ def close_owned_spark_gateway(owner):
             try:
                 process.wait(timeout=1)
             except subprocess.TimeoutExpired as error:
+                if getattr(process, "_truthound_owned_local_jvm", False):
+                    process.kill()  # Exact Popen handle, no deferred PID-based taskkill.
+                    process.wait(timeout=1)
+                    return True
                 if os.name != "nt":
                     raise
                 if process.poll() is None:
@@ -211,7 +219,7 @@ def close_owned_spark_gateway(owner):
 
 
 @contextlib.contextmanager
-def engine(backend, scratch, progress=None, *, guard_node_lookup=False):
+def engine(backend, scratch, progress=None, *, guard_node_lookup=False, direct_spark_launcher=False):
     def phase(label):
         print("native-probe:" + label, flush=True)
         if progress is not None:
@@ -264,6 +272,7 @@ def engine(backend, scratch, progress=None, *, guard_node_lookup=False):
         from pyspark.sql import SparkSession
         from pyspark.sql.types import DoubleType, StringType, StructField, StructType
 
+        from truthound.execution.distributed._spark_startup import local_gateway_launcher
         from truthound.execution.distributed.spark_engine import (
             SparkEngineConfig,
             SparkExecutionEngine,
@@ -277,7 +286,10 @@ def engine(backend, scratch, progress=None, *, guard_node_lookup=False):
         gateway_owner = {"gateway": None, "exit_callbacks": []}
         try:
             phase("spark-start")
-            with spark_gateway_progress(SparkContext, phase) as gateway_owner:
+            with (
+                local_gateway_launcher(force=direct_spark_launcher, progress=phase) as launcher,
+                spark_gateway_progress(SparkContext, phase) as gateway_owner,
+            ):
                 spark = (
                     SparkSession.builder.master("local[1]")
                     .appName("truthound-native-probe")
@@ -299,6 +311,8 @@ def engine(backend, scratch, progress=None, *, guard_node_lookup=False):
             )
             phase("spark-frame")
             with SparkExecutionEngine(frame, SparkEngineConfig(shuffle_partitions=1)) as native:
+                native._verification_sdk_launcher_uses = launcher["launches"]
+                native._verification_sdk_launcher_state = launcher
                 phase("spark-ready")
                 yield native
         except BaseException as error:
@@ -952,6 +966,7 @@ def main():
     parser.add_argument("backend", choices=("ray", "spark"))
     parser.add_argument("--log-path", type=Path, required=True)
     parser.add_argument("--guard-node-lookup", action="store_true")
+    parser.add_argument("--direct-spark-launcher", action="store_true")
     arguments = parser.parse_args()
     wire = redirect_native_output(arguments.log_path)
     # Fatal SDK exits can precede the 20-second timed snapshot.
@@ -986,7 +1001,8 @@ def main():
         # generated session suffix. macOS's default temp directory is too long.
         with (
             runtime_directory("th-native-") as directory,
-            engine(arguments.backend, Path(directory), progress=progress, guard_node_lookup=arguments.guard_node_lookup) as native,
+            engine(arguments.backend, Path(directory), progress=progress, guard_node_lookup=arguments.guard_node_lookup,
+                   direct_spark_launcher=arguments.direct_spark_launcher) as native,
         ):
             faulthandler.cancel_dump_traceback_later()
             watchdog.cancel()
@@ -998,6 +1014,7 @@ def main():
                         "ready": True,
                         "owner_pid": os.getpid(),
                         "node_lookup_queries": native._verification_node_lookup_queries if arguments.backend == "ray" else 0,
+                        "sdk_launcher_uses": native._verification_sdk_launcher_uses if arguments.backend == "spark" else 0,
                         "version": importlib.metadata.version(
                             "ray" if arguments.backend == "ray" else "pyspark"
                         ),

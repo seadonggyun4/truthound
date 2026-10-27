@@ -1,6 +1,7 @@
 """Approved installed factories own actual local Ray and Spark lifetimes."""
 
 import json
+import sys
 import time
 
 import pytest
@@ -47,9 +48,12 @@ def startup_evidence(runtime, record_property, monkeypatch):
         record_property("native_startup_diagnostics", json.dumps(records, sort_keys=True))
 
 
-@pytest.mark.parametrize("backend", ["ray", "spark"])
+@pytest.mark.parametrize("backend", ["ray", "spark", "spark-direct"])
 def test_approved_native_distributed_engines_children_and_reopen(runtime, monkeypatch, backend, startup_evidence):
     adapter, _, marker, _, _ = runtime
+    if backend == "spark-direct":
+        marker.with_name("execution-direct-launcher").touch()
+        backend = "spark"
     if backend == "spark":
         java = environment().get("JAVA_HOME")
         if java:
@@ -129,3 +133,7 @@ def test_approved_native_distributed_engines_children_and_reopen(runtime, monkey
     assert call("count_rows", key="fresh-native-count")["value"] == 3
     assert call("shutdown", key="fresh-native-shutdown")["shutdown"]
     plugins.invoke(adapter, "resources_release", resource_id=identity)
+    if backend == "spark" and sys.platform == "win32":
+        cancellations = [line for line in marker.read_text().splitlines()
+                         if line.startswith("native-sdk-exit-callbacks:")]
+        assert cancellations == ["native-sdk-exit-callbacks:1"] * 2

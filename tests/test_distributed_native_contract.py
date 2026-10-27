@@ -24,6 +24,19 @@ def test_real_owned_ray_startup_uses_registered_alive_node_before_native_work(tm
     assert runtime.process.returncode == 0
 
 
+def test_real_spark_sdk_command_builder_starts_native_engine_without_shell(tmp_path):
+    runtime = OwnedProbe("spark", tmp_path / "spark-sdk-builder.log", direct_spark_launcher=True)
+    try:
+        ready = runtime.receive()
+        assert ready["ready"] is True and ready["sdk_launcher_uses"] == 1
+        result = decode(runtime.call("basics"))
+        assert result["rows"] == 3 and result["stats"]["count"] == 2
+        assert result["stats"]["mean"] == 2
+    finally:
+        runtime.close()
+    assert runtime.process.returncode == 0
+
+
 def test_native_probe_utf8_log_does_not_corrupt_its_separate_protocol(tmp_path):
     import os
     import subprocess
@@ -634,6 +647,45 @@ def test_native_wait_stack_exports_sdk_structure_without_paths_or_payload(tmp_pa
     assert report["sdk_wait_frames"] == [{"package": "ray", "file": "node.py", "line": 1, "function": "<module>"}]
     encoded = json.dumps(report)
     assert secret not in encoded and str(tmp_path) not in encoded and "private_function" not in encoded
+
+
+def test_failed_spark_initialization_unregisters_owned_callback_before_gateway_exists(monkeypatch):
+    from tests.verification_support import _load
+
+    probe = _load("native_distributed_probe")
+    callback, events = object(), []
+    monkeypatch.setattr(probe.atexit, "unregister", events.append)
+    assert probe.close_owned_spark_gateway({"gateway": None, "exit_callbacks": [callback]}) is False
+    assert events == [callback]
+
+
+def test_owned_direct_jvm_cleanup_uses_its_process_handle_without_taskkill(monkeypatch):
+    import subprocess
+    from types import SimpleNamespace
+
+    from tests.verification_support import _load
+
+    probe = _load("native_distributed_probe")
+    events = []
+
+    def wait(timeout):
+        events.append(("wait", timeout))
+        if events.count(("wait", timeout)) == 1:
+            raise subprocess.TimeoutExpired("synthetic-java", timeout)
+
+    process = SimpleNamespace(
+        _truthound_owned_local_jvm=True,
+        stdin=SimpleNamespace(closed=False, close=lambda: events.append("stdin-close")),
+        wait=wait, kill=lambda: events.append("handle-kill"),
+    )
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("A direct JVM must not launch a PID-based taskkill")
+
+    monkeypatch.setattr(probe.subprocess, "run", forbidden)
+    gateway = SimpleNamespace(proc=process, shutdown=lambda: events.append("shutdown"))
+    assert probe.close_owned_spark_gateway({"gateway": gateway, "exit_callbacks": []}) is True
+    assert events == ["shutdown", "stdin-close", ("wait", 1), "handle-kill", ("wait", 1)]
 
 
 def test_owned_spark_gateway_cancels_only_its_callback_and_reaps_after_rpc_failure(monkeypatch):

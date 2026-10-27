@@ -108,7 +108,7 @@ def owned_process_snapshot(child, created, elapsed):
 
 
 class OwnedProbe:
-    def __init__(self, backend, log_path, *, guard_node_lookup=False):
+    def __init__(self, backend, log_path, *, guard_node_lookup=False, direct_spark_launcher=False):
         self.log_path = Path(log_path)
         self.directory = tempfile.TemporaryDirectory(prefix="truthound-native-driver-")
         self.pool = ThreadPoolExecutor(max_workers=1)
@@ -138,6 +138,7 @@ class OwnedProbe:
                     "--log-path",
                     str(log_path),
                     *(["--guard-node-lookup"] if guard_node_lookup else []),
+                    *(["--direct-spark-launcher"] if direct_spark_launcher else []),
                 ],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
@@ -261,6 +262,8 @@ class OwnedProbe:
                 "gateway-start",
                 "gateway-started",
                 "gateway-reaped",
+                "launcher-build",
+                "launcher-built",
                 "dataset",
                 "frame",
                 "ready",
