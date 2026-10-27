@@ -65,6 +65,8 @@ $sdkSource = Join-Path $env:RUNNER_TEMP "truthound-hadoop-source-$($env:GITHUB_R
 if (Test-Path -LiteralPath $sdkSource) { throw 'HADOOP_SDK_SOURCE_ALREADY_EXISTS' }
 git init --quiet $sdkSource
 if ($LASTEXITCODE) { throw 'HADOOP_SDK_GIT_INIT_FAILED' }
+git -C $sdkSource config core.longpaths true
+if ($LASTEXITCODE) { throw 'HADOOP_SDK_LONG_PATHS_FAILED' }
 git -C $sdkSource remote add origin https://github.com/apache/hadoop.git
 if ($LASTEXITCODE) { throw 'HADOOP_SDK_GIT_REMOTE_FAILED' }
 git -C $sdkSource -c core.autocrlf=false fetch --depth=1 origin $hadoopRevision
