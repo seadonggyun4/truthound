@@ -16,6 +16,9 @@ contract deadline, assertions and test inputs are unchanged.
 Malformed native SDK replies retain only byte count, empty/newline flags and
 elapsed wait time in diagnostics. Reply contents stay private; EOF, truncation,
 oversized replies and the existing 30-second deadline remain failures.
+Fatal SDK stacks are captured from startup. Failed replies also retain the
+driver's exit code after the existing owned cleanup and whether that cleanup
+had to kill the driver; this adds no wait or retry to successful replies.
 
 Native benchmark workers establish the declared workload workspace boundary
 before zero-config discovery. Run JSON, metric history and HTML docs stay inside

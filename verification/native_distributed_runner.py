@@ -297,6 +297,7 @@ class OwnedProbe:
             )
         except TimeoutError as error:
             # Only closed synthetic stage labels may leave the owned SDK log.
+            self.reply_failure = error
             error.add_note(self._diagnostic_note())
             raise
         self.protocol_reply = {
@@ -308,6 +309,7 @@ class OwnedProbe:
         self.capture()
         if not line.endswith(b"\n") or len(line) > 1024 * 1024:
             error = RuntimeError("Native runtime did not return a bounded protocol reply")
+            self.reply_failure = error
             error.add_note(self._diagnostic_note())
             raise error
         value = json.loads(line)
@@ -336,6 +338,7 @@ class OwnedProbe:
         if self.closed:
             return
         self.closed = True
+        forced_driver_exit = False
         self.capture()
         try:
             if self.process.poll() is None:
@@ -346,6 +349,7 @@ class OwnedProbe:
                     self.process.wait(timeout=5)
                 except subprocess.TimeoutExpired:
                     self.capture()
+                    forced_driver_exit = True
                     self.process.kill()
                     self.process.wait(timeout=5)
             self.stop_monitor.set()
@@ -372,6 +376,17 @@ class OwnedProbe:
             if errors:
                 raise ExceptionGroup("Native probe cleanup failed", errors)
         finally:
+            failure = getattr(self, "reply_failure", None)
+            if failure is not None:
+                failure.add_note(
+                    "Native probe termination: "
+                    + json.dumps(
+                        {
+                            "driver_exit_code": self.process.poll(),
+                            "driver_killed_after_close_deadline": forced_driver_exit,
+                        }
+                    )
+                )
             self.stop_monitor.set()
             self.monitor.join(timeout=2)
             for stream in (self.process.stdin, self.process.stdout):

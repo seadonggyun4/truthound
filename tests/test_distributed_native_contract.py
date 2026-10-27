@@ -61,6 +61,33 @@ def test_bounded_protocol_failure_records_structure_without_reply_content(tmp_pa
     assert 0 <= observed["elapsed_seconds"] < 30
 
 
+def test_early_pipe_eof_retains_natural_driver_exit_after_owned_cleanup(tmp_path, monkeypatch):
+    import subprocess
+    import sys
+
+    from tests.verification_support import _load
+
+    runner = _load("native_distributed_runner")
+    original = subprocess.Popen
+    program = "import os,time;os.close(1);time.sleep(0.2);os._exit(7)"
+
+    def launch(_argv, **kwargs):
+        if any(str(value).endswith("native_distributed_probe.py") for value in _argv):
+            return original([sys.executable, "-I", "-c", program], **kwargs)
+        return original(_argv, **kwargs)
+
+    monkeypatch.setattr(runner.subprocess, "Popen", launch)
+    runtime = runner.OwnedProbe("ray", tmp_path / "driver.log")
+    with pytest.raises(RuntimeError, match="bounded protocol reply") as error:
+        try:
+            runtime.receive()
+        finally:
+            runtime.close()
+    records = [json.loads(note.split(": ", 1)[1]) for note in error.value.__notes__]
+    assert records[0]["protocol_reply"]["empty"] is True
+    assert records[-1] == {"driver_exit_code": 7, "driver_killed_after_close_deadline": False}
+
+
 def test_native_startup_diagnostic_keeps_only_closed_markers(tmp_path):
     import json
     from types import SimpleNamespace

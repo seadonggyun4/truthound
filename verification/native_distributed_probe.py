@@ -877,6 +877,8 @@ def main():
     parser.add_argument("--log-path", type=Path, required=True)
     arguments = parser.parse_args()
     wire = redirect_native_output(arguments.log_path)
+    # Fatal SDK exits can precede the 20-second timed snapshot.
+    faulthandler.enable(file=sys.stderr, all_threads=True)
     started = time.monotonic()
     main_thread = threading.get_ident()
 
