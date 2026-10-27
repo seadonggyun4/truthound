@@ -370,8 +370,7 @@ async def core_profile():
                     assert pending.isError and pending.structuredContent["issues"]==[{"code":"approval_required"}]
                     subprocess.run([sys.executable,"-I","-m","truthound.mcp","approve-plan","--control-dir",str(control),"--plan-id",pending.structuredContent["data"]["plan_id"]],check=True,capture_output=True)
                     controls.append(await invoke(operation,arguments))
-                worker_args=list(params.args)
-                worker_args[3]="worker"
+                worker_args=["-I","-m","truthound.mcp","worker","--allow-dir",str(data),"--workspace-dir",str(workspace),"--control-dir",str(control),"--profile","core","--allow-sensitive-results"]
                 subprocess.run([sys.executable,*worker_args,"--once"],check=True,capture_output=True)
                 recurrence=await invoke("schedules_status",{"idempotency_key":"installed-recurring-job"})
                 assert (await invoke("jobs_status",{"job_id":recurrence["job_id"]}))["state"]=="succeeded"

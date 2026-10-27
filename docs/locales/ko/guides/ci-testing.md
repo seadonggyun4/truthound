@@ -240,3 +240,5 @@ aiobotocore·Testcontainers도 설치합니다. `Disposable broker integration` 
 Kafka fixture 소비자는 earliest 오프셋을 명시하고 독립 시나리오마다 별도 토픽을 사용합니다. 배치 전송은 각 메시지의 라우팅과 serializer를 유지한 채 네이티브 producer에 전송을 큐잉하고 전달 실패를 포함한 모든 확인 응답을 관찰합니다.
 
 브로커 통합은 네이티브 밀리초 윈도 설정, await한 aggregator-factory 처리와 정규화된 Kinesis stream-info 계약을 사용합니다. 모든 자동·강제 방출 결과의 메시지 수와 합계를 빠짐없이 검증합니다. macOS 클라이언트 fixture는 권한 부여 전에 소유한 임시 디렉터리의 실제 경로를 구하며 제품은 심볼릭 링크 별칭을 계속 거부합니다.
+
+설치형 Core 데스크톱 스모크는 데스크톱 런처의 인자 배열과 독립적으로 신뢰된 Core worker CLI를 구성하여 반복 자동화를 실행합니다.
