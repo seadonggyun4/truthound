@@ -2962,8 +2962,8 @@ For Dask and Ray, `checkpoint_dir` selects an operator-owned local directory.
 `checkpoint()` writes native Parquet into a unique staging directory, flushes the
 files and SHA-256 inventory, and publishes a completed snapshot by directory
 rename. The returned child exposes its local `checkpoint_path` in Python.
-Ray creates its local destination directory before native path resolution, so
-Windows drive paths are not inferred as URI schemes for nonexistent locations.
+Ray creates its local destination directory and explicitly selects Arrow's local
+filesystem for native writes and reads, including Windows drive paths.
 `DaskExecutionEngine.from_checkpoint(path, config, client=...)` and
 `RayExecutionEngine.from_checkpoint(path, config)` validate the complete inventory
 before opening the native reader. Pending directories, corrupt files and wrong

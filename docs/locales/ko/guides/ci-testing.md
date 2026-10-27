@@ -158,6 +158,9 @@ PDF 렌더링 검사용 Poppler·CJK font를 계속 설치합니다. APT 다운�
 Windows native SDK scratch는 driver가 종료할 때까지 비공개 작업 디렉터리
 아래에 유지합니다. 부모가 소유한 자식 프로세스를 회수한 뒤 작업 디렉터리를
 삭제하므로 native 로그 handle과 디렉터리 삭제가 경합하지 않습니다.
+Windows Spark checkpoint 검사는 SDK의 Hadoop native·winutils 가용성 검사를
+먼저 통과해야 실제 checkpoint를 실행하며, 필수 의존성이 없으면 실패합니다.
+진단은 SDK 예외의 원격 formatter를 호출하지 않습니다.
 faulthandler의 soft timeout은 stack만 출력하며,
 별도의 pytest-timeout thread deadline이 프로세스를 강제 종료합니다.
 강제 종료로 최종 JSON/JUnit이 없을 수 있으므로 부분 증거는 보존하되 gate는 실패합니다.

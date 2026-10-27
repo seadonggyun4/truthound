@@ -1128,13 +1128,15 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
 
     def checkpoint(self) -> RayExecutionEngine:
         """Publish native Parquet in checkpoint_dir and return its independent plan."""
+        from pyarrow.fs import LocalFileSystem
+
         from truthound.execution.distributed.checkpoints import publish
 
         def write(path):
             # An existing local directory prevents URI inference for a Windows
             # drive path in Ray/PyArrow's native destination resolver.
             path.mkdir()
-            self._ds.write_parquet(str(path))
+            self._ds.write_parquet(path.as_posix(), filesystem=LocalFileSystem())
             if not any(path.rglob("*.parquet")):
                 # Ray legitimately emits no files for zero rows. Preserve the
                 # known Arrow schema before committing an empty snapshot.
@@ -1160,11 +1162,15 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
         from pathlib import Path
 
         import ray.data
+        from pyarrow.fs import LocalFileSystem
 
         from truthound.execution.distributed.checkpoints import validate
 
         data = validate(location, "ray")
-        restored = cls(ray.data.read_parquet(data), config, _apply_defaults=False)
+        restored = cls(
+            ray.data.read_parquet(Path(data).as_posix(), filesystem=LocalFileSystem()),
+            config, _apply_defaults=False,
+        )
         restored._checkpoint_path = str(Path(location).resolve())
         return restored
 

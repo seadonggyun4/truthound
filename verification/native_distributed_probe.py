@@ -24,12 +24,11 @@ def failure_diagnostic(error):
 
     def message_of(value):
         nonlocal unavailable
-        try:
-            return str(value)[:32768]
-        except Exception:
-            # A Py4J exception may outlive the JVM needed by its __str__.
+        # SDK exception formatters can make blocking RPCs to a stopped JVM.
+        # Classify only already captured literal string arguments.
+        if type(value).__module__ != "builtins":
             unavailable = True
-            return ""
+        return "\n".join(part[:32768] for part in value.args if type(part) is str)
 
     frames = [
         {"file": Path(frame.filename).name, "function": frame.name, "line": frame.lineno}
@@ -162,6 +161,12 @@ def engine(backend, scratch):
 
 
 def execute(native, command):
+    if command == "checkpoint_prerequisites":
+        jvm = native.spark_dataframe.sparkSession.sparkContext._jvm
+        return {
+            "hadoop_native_loaded": bool(jvm.org.apache.hadoop.util.NativeCodeLoader.isNativeCodeLoaded()),
+            "hadoop_winutils_available": bool(jvm.org.apache.hadoop.util.Shell.hasWinutilsPath()),
+        }
     from truthound.execution._protocols import AggregationType
 
     if command == "arrow_bridge_policy":
@@ -746,10 +751,10 @@ def main():
                     raise
                 wire.write(json.dumps({"ok": True, "value": encode(value)}, allow_nan=False) + "\n")
     except Exception as error:
-        traceback.print_exc()
         diagnostic = primary_diagnostic or failure_diagnostic(error)
         if primary_error is not None and error is not primary_error:
             diagnostic["cleanup_failure"] = failure_diagnostic(error)
+        print(json.dumps({"native_failure": diagnostic}), flush=True)
         wire.write(json.dumps({"ok": False, **diagnostic}) + "\n")
         return 1
     finally:

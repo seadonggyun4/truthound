@@ -39,7 +39,7 @@ jobs:
           if ($env:NATIVE_SCOPE -eq 'engines') {
             $targets = @('tests/test_dask_native_contract.py', 'tests/test_distributed_native_contract.py', 'tests/test_mcp_distributed_engines.py', 'tests/stores/concurrency/test_atomic.py')
           } elseif ($env:NATIVE_SCOPE -eq 'checkpoints') {
-            $targets = @('tests/test_distributed_native_contract.py::test_native_checkpoint_enabled_creates_real_snapshot', 'tests/test_distributed_native_contract.py::test_native_ray_empty_checkpoint_preserves_schema', 'tests/test_mcp_distributed_engines.py::test_approved_native_distributed_engines_children_and_reopen[ray]')
+            $targets = @('tests/test_distributed_native_contract.py::test_native_ray_local_checkpoint_destination_resolves_as_one_directory', 'tests/test_distributed_native_contract.py::test_native_checkpoint_enabled_creates_real_snapshot', 'tests/test_distributed_native_contract.py::test_native_ray_empty_checkpoint_preserves_schema', 'tests/test_mcp_distributed_engines.py::test_approved_native_distributed_engines_children_and_reopen[ray]')
           } else {
             $targets = @('tests/test_mcp_profiler_services.py', 'tests/test_mcp_store_reconciliation.py', 'tests/test_mcp_store_concurrent.py', 'tests/test_mcp_dashboards.py')
           }

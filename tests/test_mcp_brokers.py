@@ -28,7 +28,10 @@ def approved(runtime, operation, **request):
         prefix = "native-fixture-diagnostic:"
         diagnostics = [json.loads(line[len(prefix):]) for line in runtime[2].read_text().splitlines()
                        if line.startswith(prefix)]
-    assert result["execution_status"] == "succeeded", (result, diagnostics)
+    assert result["execution_status"] == "succeeded", json.dumps({
+        "execution_status": result["execution_status"], "issues": result["issues"],
+        "native_diagnostics": diagnostics,
+    }, sort_keys=True)
     return result
 
 

@@ -9,6 +9,16 @@ from truthound.mcp.tables import decode
 pytestmark = pytest.mark.contract
 
 
+def test_native_ray_local_checkpoint_destination_resolves_as_one_directory(tmp_path):
+    from pyarrow.fs import FileType, LocalFileSystem
+    from ray.data.datasource.path_util import _resolve_paths_and_filesystem
+
+    target = tmp_path / "owned checkpoint destination"
+    target.mkdir()
+    paths, filesystem = _resolve_paths_and_filesystem(target.as_posix(), LocalFileSystem())
+    assert len(paths) == 1 and filesystem.get_file_info(paths[0]).type == FileType.Directory
+
+
 def test_native_failure_diagnostic_preserves_causes_without_messages_or_paths(tmp_path):
     import json
 
@@ -235,6 +245,12 @@ def test_native_checkpoint_enabled_creates_real_snapshot(tmp_path, backend):
     runtime = OwnedProbe(backend, tmp_path / (backend + "-checkpoint.log"))
     try:
         assert runtime.receive()["ready"] is True
+        if backend == "spark":
+            import os
+
+            if os.name == "nt":
+                prerequisites = decode(runtime.call("checkpoint_prerequisites"))
+                assert all(prerequisites.values()), prerequisites
         result = decode(runtime.call("checkpoint_configuration"))
         assert result["rows"] == 3
         if backend == "ray":

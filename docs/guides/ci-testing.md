@@ -135,6 +135,9 @@ bounded timeouts and retries; download failures still fail the job.
 On Windows, native SDK scratch directories stay under the private driver
 workspace until that driver exits. Its parent then removes the workspace after
 reaping owned descendants, so native log handles cannot race directory deletion.
+Windows Spark checkpoint tests first require the SDK's Hadoop native/winutils
+availability checks to pass, then execute the checkpoint. Missing prerequisites
+fail the test. Diagnostics never invoke an SDK exception's remote formatter.
 Pytest faulthandler emits stacks at the soft threshold without killing the test.
 The separate pytest-timeout thread deadline terminates a stuck pytest process;
 such termination can prevent final JSON/JUnit cleanup. Partial evidence remains,

@@ -297,7 +297,7 @@ Native distributed contracts also run actual local Ray and Spark SDKs from the
 `dev` extra. Provision Java 17+ for Spark and select the matching Python worker;
 these contracts do not connect to remote clusters.
 Native Parquet checkpoints and atomic stores flush writable staged files on Windows as well.
-Ray checkpoints create the local staging destination before native path resolution.
+Ray checkpoints create the staging destination and explicitly select the local filesystem.
 
 ```bash
 uv run --frozen --extra dev python -m pytest -q
