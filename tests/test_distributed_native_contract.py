@@ -1,5 +1,7 @@
 """Actual SDK regressions, isolated from shared cluster and JVM lifetimes."""
 
+import json
+
 import psutil
 import pytest
 
@@ -46,7 +48,7 @@ def test_native_startup_diagnostic_keeps_only_closed_markers(tmp_path):
     (logs / "gcs_server.out").write_text("GcsServer server started " + secret)
     (logs / "unreviewed.log").write_text("No module named " + secret)
     driver = tmp_path / "driver.log"
-    driver.write_text("native-probe:ray-start\nnative-probe:spark-gateway-start\nRunning Spark version " + secret + "\nnative-probe:" + secret + "\n")
+    driver.write_text("native-probe-time:ray-start:1.25\nnative-probe-time:ray-start:nan\nnative-probe-time:private-stage:2.0\nnative-probe:ray-start\nnative-probe:spark-gateway-start\nRunning Spark version " + secret + "\nnative-probe:" + secret + "\n")
     probe = object.__new__(OwnedProbe)
     probe.directory = SimpleNamespace(name=str(root))
     probe.log_path = driver
@@ -55,6 +57,7 @@ def test_native_startup_diagnostic_keeps_only_closed_markers(tmp_path):
     assert secret not in note and str(tmp_path) not in note
     value = json.loads(note.split(": ", 1)[1])
     assert value["phases"] == ["ray-start", "spark-gateway-start"]
+    assert value["phase_elapsed_seconds"] == {"ray-start": 1.25}
     assert value["native_startup"]["spark_markers"]["spark_context_started"] is True
     assert value["native_startup"]["log_files"] == 1
     assert value["native_startup"]["markers"]["gcs_started"] is True
@@ -124,10 +127,11 @@ def test_windows_native_scratch_is_removed_only_after_its_owner_closes(tmp_path,
 
 
 @pytest.mark.parametrize("backend", ["ray", "spark"])
-def test_null_statistics_and_sampling_use_observed_rows(tmp_path, backend):
+def test_null_statistics_and_sampling_use_observed_rows(tmp_path, backend, record_property):
     runtime = OwnedProbe(backend, tmp_path / (backend + ".log"))
     try:
         assert runtime.receive()["ready"] is True
+        record_property("native_startup", json.dumps(runtime.startup_metrics, sort_keys=True))
         basic = decode(runtime.call("basics"))
         sample = decode(runtime.call("sample"))
         assert (basic["rows"], basic["nulls"], basic["sum"]) == (3, 1, 4)
@@ -174,10 +178,11 @@ def test_null_statistics_and_sampling_use_observed_rows(tmp_path, backend):
             pass
 
 
-def test_ray_native_task_limit_actor_execution_and_block_target_are_applied(tmp_path):
+def test_ray_native_task_limit_actor_execution_and_block_target_are_applied(tmp_path, record_property):
     runtime = OwnedProbe("ray", tmp_path / "ray-configuration.log")
     try:
         assert runtime.receive()["ready"] is True
+        record_property("native_startup", json.dumps(runtime.startup_metrics, sort_keys=True))
         result = decode(runtime.call("ray_configuration"))
         assert result["task_rows"] == result["actor_rows"] == result["calls"] == 4
         assert result["peak"] == 1 and result["all_actor"] is True
@@ -187,10 +192,11 @@ def test_ray_native_task_limit_actor_execution_and_block_target_are_applied(tmp_
 
 
 @pytest.mark.parametrize("backend", ["ray", "spark"])
-def test_native_row_cache_honors_disabled_cache_and_explicit_invalidation(tmp_path, backend):
+def test_native_row_cache_honors_disabled_cache_and_explicit_invalidation(tmp_path, backend, record_property):
     runtime = OwnedProbe(backend, tmp_path / (backend + "-cache.log"))
     try:
         assert runtime.receive()["ready"] is True
+        record_property("native_startup", json.dumps(runtime.startup_metrics, sort_keys=True))
         assert decode(runtime.call("cache_configuration")) == {
             "uncached_calls": 2,
             "cached_calls": 1,
@@ -399,3 +405,17 @@ def test_spark_gateway_observer_restores_launcher_and_preserves_failure(monkeypa
     assert calls == [(("configuration",), {"popen_kwargs": {"stdin": 1}})]
     assert module.launch_gateway is launch
     assert phases == (["spark-gateway-start"] if fail else ["spark-gateway-start", "spark-gateway-started"])
+
+
+def test_startup_watchdog_classifies_only_reviewed_sdk_frames():
+    from types import SimpleNamespace
+    from tests.verification_support import _load
+
+    def frame(module, function, parent=None):
+        return SimpleNamespace(f_globals={"__name__": module, "private": "private-frame-value"}, f_code=SimpleNamespace(co_name=function), f_back=parent)
+
+    probe = _load("native_distributed_probe")
+    sdk = frame("ray._private.services", "start_api_server")
+    assert probe.blocked_startup_phase(frame("private-module", "private-function", sdk)) == "ray-api-server-wait"
+    assert probe.blocked_startup_phase(frame("private-module", "start_api_server")) is None
+    assert probe.blocked_startup_phase(frame("pyspark.java_gateway", "launch_gateway")) == "spark-gateway-wait"

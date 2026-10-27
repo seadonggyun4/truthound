@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
 import subprocess
 import sys
 import tempfile
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import suppress
 from pathlib import Path
@@ -69,6 +71,9 @@ class OwnedProbe:
         self.pool = ThreadPoolExecutor(max_workers=1)
         self.owned = {}
         self.ownership_lock = threading.Lock()
+        self.capture_count = 0
+        self.capture_wall = 0.0
+        self.capture_cpu = 0.0
         self.stop_monitor = threading.Event()
         self.closed = False
         native_environment = environment(self.directory.name)
@@ -111,6 +116,7 @@ class OwnedProbe:
             self.capture()
 
     def capture(self):
+        started, cpu = time.monotonic(), time.thread_time()
         try:
             root = psutil.Process(self.process.pid)
             if root.create_time() == self.created:
@@ -123,6 +129,11 @@ class OwnedProbe:
                         continue
         except (psutil.Error, OSError):
             pass
+        finally:
+            with self.ownership_lock:
+                self.capture_count += 1
+                self.capture_wall += time.monotonic() - started
+                self.capture_cpu += time.thread_time() - cpu
 
     def _native_startup_state(self):
         markers = {
@@ -180,30 +191,62 @@ class OwnedProbe:
             "spark_markers": {key: token in driver for key, token in driver_markers.items()},
         }
 
-    def _diagnostic_note(self):
+    def _diagnostic_report(self):
         allowed = {"core-import", "core-imported"} | {
             backend + "-" + stage
             for backend in ("ray", "spark")
-            for stage in ("import", "imported", "start", "started", "gateway-start", "gateway-started", "dataset", "frame", "ready")
+            for stage in (
+                "import",
+                "imported",
+                "start",
+                "started",
+                "gateway-start",
+                "gateway-started",
+                "dataset",
+                "frame",
+                "ready",
+            )
+        }
+        allowed |= {
+            "ray-api-server-wait",
+            "ray-gcs-wait",
+            "ray-node-wait",
+            "spark-gateway-wait",
+            "spark-jvm-rpc-wait",
         }
         phases = []
+        elapsed = {}
         if self.log_path.is_file():
             with self.log_path.open("rb") as stream:
                 stream.seek(max(0, self.log_path.stat().st_size - 65536))
                 for line in stream.read(65536).decode("utf-8", errors="replace").splitlines():
                     if line.startswith("native-probe:") and line[13:] in allowed:
                         phases.append(line[13:])
+                    if line.startswith("native-probe-time:"):
+                        parts = line.split(":")
+                        if len(parts) == 3 and parts[1] in allowed:
+                            try:
+                                value = float(parts[2])
+                            except ValueError:
+                                continue
+                            if math.isfinite(value) and 0 <= value <= 3600:
+                                elapsed[parts[1]] = value
         try:
             startup = self._native_startup_state()
         except OSError:
             startup = {"unavailable": True}
-        return "Native probe state: " + json.dumps(
-            {
-                "phases": phases,
-                "returncode": self.process.poll(),
-                "native_startup": startup,
-            }
-        )
+        return {
+            "phases": phases,
+            "phase_elapsed_seconds": elapsed,
+            "returncode": self.process.poll(),
+            "native_startup": startup,
+            "capture_count": getattr(self, "capture_count", 0),
+            "capture_wall_seconds": getattr(self, "capture_wall", 0.0),
+            "capture_cpu_seconds": getattr(self, "capture_cpu", 0.0),
+        }
+
+    def _diagnostic_note(self):
+        return "Native probe state: " + json.dumps(self._diagnostic_report())
 
     def receive(self):
         try:
@@ -220,6 +263,8 @@ class OwnedProbe:
             error.add_note(self._diagnostic_note())
             raise error
         value = json.loads(line)
+        if value.get("ready") is True:
+            self.startup_metrics = self._diagnostic_report()
         if value.get("ok") is not True:
             raise RuntimeError("Native runtime failed: " + json.dumps(value, sort_keys=True))
         return value

@@ -7,6 +7,11 @@ on:
         type: choice
         options: [all, engines, operators, checkpoints, ai, spark-startup, spark-after-ray]
         default: all
+      bytecode:
+        description: Compare normal lazy uv installation with precompiled installed bytecode
+        type: choice
+        options: [lazy, compiled]
+        default: lazy
 permissions:
   contents: read
 jobs:
@@ -23,6 +28,7 @@ jobs:
         scope: ${{ fromJSON(inputs.scope == 'spark-after-ray' && '["spark-after-ray"]' || inputs.scope == 'spark-startup' && '["spark-startup"]' || inputs.scope == 'engines' && '["engines"]' || inputs.scope == 'operators' && '["operators"]' || inputs.scope == 'checkpoints' && '["checkpoints"]' || inputs.scope == 'ai' && '["ai"]' || '["engines","operators"]') }}
     env:
       NATIVE_SCOPE: ${{ matrix.scope }}
+      UV_COMPILE_BYTECODE: ${{ inputs.bytecode == 'compiled' && '1' || '0' }}
       POLARS_MAX_THREADS: '1'
       OMP_NUM_THREADS: '1'
       OPENBLAS_NUM_THREADS: '1'
@@ -74,7 +80,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: truthound-windows-native-${{ matrix.python }}-${{ matrix.scope }}
+          name: truthound-windows-native-${{ matrix.python }}-${{ matrix.scope }}-${{ inputs.bytecode }}
           path: test-artifacts/windows-native*.xml
           if-no-files-found: error
           retention-days: 7

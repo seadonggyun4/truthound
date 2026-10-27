@@ -14,8 +14,30 @@ import logging
 import os
 import sys
 import tempfile
+import threading
+import time
 import traceback
 from pathlib import Path
+
+
+def blocked_startup_phase(frame):
+    """Classify only reviewed SDK call sites, never paths or frame locals."""
+    stages = {
+        ("ray._private.services", "start_api_server"): "ray-api-server-wait",
+        ("ray._private.node", "start_gcs_server"): "ray-gcs-wait",
+        ("ray._private.services", "wait_for_node"): "ray-node-wait",
+        ("pyspark.java_gateway", "launch_gateway"): "spark-gateway-wait",
+        ("py4j.clientserver", "send_command"): "spark-jvm-rpc-wait",
+        ("py4j.java_gateway", "send_command"): "spark-jvm-rpc-wait",
+    }
+    for _ in range(128):
+        if frame is None:
+            break
+        label = stages.get((frame.f_globals.get("__name__"), frame.f_code.co_name))
+        if label:
+            return label
+        frame = frame.f_back
+    return None
 
 
 def failure_diagnostic(error):
@@ -747,20 +769,39 @@ def main():
     parser.add_argument("--log-path", type=Path, required=True)
     arguments = parser.parse_args()
     wire = redirect_native_output(arguments.log_path)
+    started = time.monotonic()
+    main_thread = threading.get_ident()
+
+    def progress(label):
+        print("native-probe-time:" + label + ":" + str(time.monotonic() - started), flush=True)
+
+    def blocked():
+        label = blocked_startup_phase(sys._current_frames().get(main_thread))
+        if label:
+            print("native-probe:" + label, flush=True)
+            progress(label)
+
+    watchdog = threading.Timer(20, blocked)
+    watchdog.daemon = True
+    watchdog.start()
     primary_error = None
     primary_diagnostic = None
     try:
         print("native-probe:core-import", flush=True)
+        progress("core-import")
         from truthound.mcp.encoding import encode
 
         print("native-probe:core-imported", flush=True)
+        progress("core-imported")
 
         # Ray's Unix socket paths must fit the platform limit, including its
         # generated session suffix. macOS's default temp directory is too long.
         with (
             runtime_directory("th-native-") as directory,
-            engine(arguments.backend, Path(directory)) as native,
+            engine(arguments.backend, Path(directory), progress=progress) as native,
         ):
+            watchdog.cancel()
+            watchdog.join()
             wire.write(
                 json.dumps(
                     {
@@ -794,6 +835,8 @@ def main():
         wire.write(json.dumps({"ok": False, **diagnostic}) + "\n")
         return 1
     finally:
+        watchdog.cancel()
+        watchdog.join()
         wire.close()
     return 0
 
