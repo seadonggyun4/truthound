@@ -164,6 +164,7 @@ def test_ray_fatal_evidence_keeps_closed_cause_markers_and_reviewed_source_locat
         + "\n[synthetic E 12 34] private_component.cc:456: " + secret
         + "\n[synthetic I 12 34] raylet_client.cc:999: " + secret
         + "\n[synthetic W 12 34] raylet_ipc_client.cc:72: Exiting because the Raylet IPC connection failed and the local Raylet is dead. " + secret
+        + "\n[synthetic I 12 34] io_service_pool.cc:55: " + secret
     )
     probe = object.__new__(OwnedProbe)
     probe.directory = SimpleNamespace(name=str(tmp_path))
@@ -179,6 +180,7 @@ def test_ray_fatal_evidence_keeps_closed_cause_markers_and_reviewed_source_locat
         {"file": "agent_manager.cc", "line": 77}, {"file": "core_worker.cc", "line": 123},
         {"file": "raylet_ipc_client.cc", "line": 72},
     ]
+    assert {"role": "driver", "file": "io_service_pool.cc", "line": 55, "level": "I"} in report["ray_startup_locations"]
 
 
 def test_native_ray_local_checkpoint_destination_resolves_as_one_directory(tmp_path):
@@ -610,7 +612,9 @@ def test_owned_sdk_process_samples_omit_names_ids_arguments_and_reused_pids():
     from contextlib import nullcontext
     from types import SimpleNamespace
 
-    from verification.native_distributed_runner import owned_process_snapshot
+    from tests.verification_support import _load
+
+    owned_process_snapshot = _load("native_distributed_runner").owned_process_snapshot
 
     def forbidden():
         pytest.fail("Process arguments must never be read")
@@ -621,11 +625,13 @@ def test_owned_sdk_process_samples_omit_names_ids_arguments_and_reused_pids():
         cmdline=forbidden, pid=123456,
         cpu_times=lambda: SimpleNamespace(user=2, system=3),
         memory_info=lambda: SimpleNamespace(rss=4096), num_threads=lambda: 2,
+        status=lambda: "synthetic-private-status",
     )
     assert owned_process_snapshot(process, 2, 20) is None
     report = owned_process_snapshot(process, 1, 20)
     assert report["role"] == "other" and report["last_cpu_seconds"] == 5
     assert report["last_rss_bytes"] == 4096 and report["last_threads"] == 2
+    assert report["status"] == "other"
     assert "synthetic-private" not in json.dumps(report) and "123456" not in json.dumps(report)
 
 

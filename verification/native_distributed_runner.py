@@ -90,6 +90,8 @@ def owned_process_snapshot(child, created, elapsed):
         "powershell.exe": "sdk-guid-shell", "pwsh.exe": "sdk-guid-shell",
         "cmd.exe": "command", "python": "python", "python.exe": "python",
         "python3": "python", "python3.exe": "python",
+        "gcs_server": "gcs", "gcs_server.exe": "gcs",
+        "raylet": "raylet", "raylet.exe": "raylet",
     }
     with child.oneshot():
         if child.create_time() != created:
@@ -97,8 +99,10 @@ def owned_process_snapshot(child, created, elapsed):
         cpu = child.cpu_times()
         name = child.name().lower()
         role = "python" if re.fullmatch(r"python(?:3(?:\.[0-9]{1,2})?)?(?:\.exe)?", name) else roles.get(name, "other")
+        status = child.status()
         return {
             "role": role,
+            "status": status if status in {"running", "sleeping", "disk-sleep", "stopped", "zombie"} else "other",
             "sample_elapsed_seconds": elapsed,
             "sample_age_seconds": max(0, time.time() - created),
             "last_cpu_seconds": cpu.user + cpu.system,
@@ -108,7 +112,7 @@ def owned_process_snapshot(child, created, elapsed):
 
 
 class OwnedProbe:
-    def __init__(self, backend, log_path, *, guard_node_lookup=False, direct_spark_launcher=False):
+    def __init__(self, backend, log_path, *, guard_node_lookup=False, direct_spark_launcher=False, native_ray_startup=False):
         self.log_path = Path(log_path)
         self.directory = tempfile.TemporaryDirectory(prefix="truthound-native-driver-")
         self.pool = ThreadPoolExecutor(max_workers=1)
@@ -139,6 +143,7 @@ class OwnedProbe:
                     str(log_path),
                     *(["--guard-node-lookup"] if guard_node_lookup else []),
                     *(["--direct-spark-launcher"] if direct_spark_launcher else []),
+                    *(["--native-ray-startup"] if native_ray_startup else []),
                 ],
                 stdin=subprocess.PIPE,
                 stdout=subprocess.PIPE,
@@ -169,16 +174,21 @@ class OwnedProbe:
         try:
             root = psutil.Process(self.process.pid)
             if root.create_time() == self.created:
-                sample = self.backend == "spark" and started - self.metrics_sampled_at >= 1
+                sample = started - self.metrics_sampled_at >= 1
                 if sample:
                     self.metrics_sampled_at = started
+                    snapshot = owned_process_snapshot(root, self.created, started - self.capture_epoch)
+                    if snapshot is not None:
+                        snapshot["role"] = "driver"
+                        with self.ownership_lock:
+                            self.sdk_metrics[(root.pid, self.created)] = snapshot
                 for child in root.children(recursive=True):
                     try:
                         created = child.create_time()
                         with self.ownership_lock:
                             self.owned[child.pid] = created
                         identity = (child.pid, created)
-                        observe = self.backend == "spark" and (sample or identity not in self.sdk_metrics)
+                        observe = sample or identity not in self.sdk_metrics
                         if observe and (identity in self.sdk_metrics or len(self.sdk_metrics) < 64):
                             snapshot = owned_process_snapshot(child, created, started - self.capture_epoch)
                             if snapshot is not None:
@@ -223,6 +233,23 @@ class OwnedProbe:
         }
         failures = {key: False for key in failure_tokens}
         locations = set()
+        startup_locations = {}
+
+        def observe_startup(raw, role):
+            entries = startup_locations.setdefault(role, [])
+            for line in raw.splitlines():
+                level = re.search(rb"\b([IWEF]) [0-9]+ [0-9]+\]", line)
+                if level is None:
+                    continue
+                for source in re.finditer(
+                    rb"\b(main|raylet|gcs_server|gcs_server_main|gcs_node_manager|gcs_client|gcs_rpc_client|grpc_server|grpc_client|global_state_accessor|node_manager|io_service_pool|worker_pool|raylet_ipc_client|core_worker|core_worker_process|client_connection|agent_manager|runtime_env_agent_client|local_object_manager|object_manager)\.cc:([0-9]{1,7})\b",
+                    line,
+                ):
+                    entry = {"role": role, "file": source[1].decode("ascii") + ".cc",
+                             "line": int(source[2]), "level": level[1].decode("ascii")}
+                    if not entries or entries[-1] != entry:
+                        entries.append(entry)
+                        del entries[:-8]
 
         def observe_failure(raw):
             for key, tokens in failure_tokens.items():
@@ -266,6 +293,8 @@ class OwnedProbe:
                 for key, tokens in markers.items():
                     observed[key] |= any(token in tail for token in tokens)
                 observe_failure(tail)
+                role = "gcs" if name.startswith("gcs_server") else "raylet" if name.startswith("raylet") else "agent"
+                observe_startup(tail, role)
         driver_markers = {
             "jvm_started": b"Using Spark's default log4j profile",
             "spark_context_started": b"Running Spark version",
@@ -281,11 +310,13 @@ class OwnedProbe:
                 stream.seek(max(0, self.log_path.stat().st_size - 65536))
                 driver = stream.read(65536)
         observe_failure(driver)
+        observe_startup(driver, "driver")
         return {
             "log_files": count,
             "markers": observed,
             "spark_markers": {key: token in driver for key, token in driver_markers.items()},
             "ray_failure_markers": failures,
+            "ray_startup_locations": [entry for role in sorted(startup_locations) for entry in startup_locations[role]],
             "native_source_locations": [
                 {"file": file, "line": line} for file, line in sorted(locations)[:16]
             ],
@@ -311,6 +342,7 @@ class OwnedProbe:
             )
         }
         allowed |= {
+            "ray-start-sdk", "ray-start-core",
             "ray-data-import",
             "ray-data-imported",
             "startup-unclassified-wait",

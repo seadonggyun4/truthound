@@ -5,7 +5,7 @@ on:
       scope:
         description: Diagnostic component; full release verification remains separate
         type: choice
-        options: [all, engines, operators, checkpoints, ai, installed-spark, spark-startup, spark-after-ray, ray-startup]
+        options: [all, engines, operators, checkpoints, ai, installed-spark, spark-startup, spark-after-ray, ray-startup, ray-startup-compare]
         default: all
       bytecode:
         description: Compare normal lazy uv installation with precompiled installed bytecode
@@ -25,7 +25,7 @@ jobs:
       fail-fast: false
       matrix:
         python: ['3.11', '3.12', '3.13']
-        scope: ${{ fromJSON(inputs.scope == 'installed-spark' && '["installed-spark"]' || inputs.scope == 'ray-startup' && '["ray-startup"]' || inputs.scope == 'spark-after-ray' && '["spark-after-ray"]' || inputs.scope == 'spark-startup' && '["spark-startup"]' || inputs.scope == 'engines' && '["engines"]' || inputs.scope == 'operators' && '["operators"]' || inputs.scope == 'checkpoints' && '["checkpoints"]' || inputs.scope == 'ai' && '["ai"]' || '["engines","operators"]') }}
+        scope: ${{ fromJSON(inputs.scope == 'ray-startup-compare' && '["ray-startup-compare"]' || inputs.scope == 'installed-spark' && '["installed-spark"]' || inputs.scope == 'ray-startup' && '["ray-startup"]' || inputs.scope == 'spark-after-ray' && '["spark-after-ray"]' || inputs.scope == 'spark-startup' && '["spark-startup"]' || inputs.scope == 'engines' && '["engines"]' || inputs.scope == 'operators' && '["operators"]' || inputs.scope == 'checkpoints' && '["checkpoints"]' || inputs.scope == 'ai' && '["ai"]' || '["engines","operators"]') }}
     env:
       NATIVE_SCOPE: ${{ matrix.scope }}
       UV_COMPILE_BYTECODE: ${{ inputs.bytecode == 'compiled' && '1' || '0' }}
@@ -56,6 +56,10 @@ jobs:
       - run: uv sync --python ${{ matrix.python }} --frozen --extra dev --extra mcp
       - name: Run actual native engine and installed operator regressions
         run: |
+          if ($env:NATIVE_SCOPE -eq 'ray-startup-compare') {
+            uv run --python ${{ matrix.python }} --frozen --extra dev --extra mcp python verification/ray_startup_compare.py --pairs 20 --output test-artifacts
+            exit $LASTEXITCODE
+          }
           if ($env:NATIVE_SCOPE -in @('installed-spark', 'spark-startup', 'spark-after-ray', 'ray-startup')) {
             $targets = @('tests/test_distributed_native_contract.py::test_native_row_cache_honors_disabled_cache_and_explicit_invalidation[spark]')
             if ($env:NATIVE_SCOPE -eq 'spark-after-ray') {
@@ -92,6 +96,8 @@ jobs:
         if: always()
         with:
           name: truthound-windows-native-${{ matrix.python }}-${{ matrix.scope }}-${{ inputs.bytecode }}
-          path: test-artifacts/windows-native*.xml
+          path: |
+            test-artifacts/windows-native*.xml
+            test-artifacts/ray-startup-compare.json
           if-no-files-found: error
           retention-days: 7

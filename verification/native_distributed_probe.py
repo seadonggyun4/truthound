@@ -237,7 +237,7 @@ def close_owned_spark_gateway(owner):
 
 
 @contextlib.contextmanager
-def engine(backend, scratch, progress=None, *, guard_node_lookup=False, direct_spark_launcher=False):
+def engine(backend, scratch, progress=None, *, guard_node_lookup=False, direct_spark_launcher=False, native_ray_startup=False):
     def phase(label):
         print("native-probe:" + label, flush=True)
         if progress is not None:
@@ -267,7 +267,8 @@ def engine(backend, scratch, progress=None, *, guard_node_lookup=False, direct_s
 
             scope = local_node_lookup() if guard_node_lookup else contextlib.nullcontext(None)
             with scope as lookup_state:
-                initialize = ray.init if guard_node_lookup else initialize_ray
+                phase("ray-start-sdk" if native_ray_startup else "ray-start-core")
+                initialize = ray.init if guard_node_lookup or native_ray_startup else initialize_ray
                 initialize(
                     address="local", num_cpus=2, num_gpus=0,
                     include_dashboard=False, object_store_memory=80 * 1024**2,
@@ -1003,7 +1004,10 @@ def main():
     parser.add_argument("--log-path", type=Path, required=True)
     parser.add_argument("--guard-node-lookup", action="store_true")
     parser.add_argument("--direct-spark-launcher", action="store_true")
+    parser.add_argument("--native-ray-startup", action="store_true")
     arguments = parser.parse_args()
+    if arguments.native_ray_startup and (arguments.backend != "ray" or arguments.guard_node_lookup):
+        parser.error("The SDK startup control requires Ray without a lookup override")
     wire = redirect_native_output(arguments.log_path)
     # Fatal SDK exits can precede the 20-second timed snapshot.
     faulthandler.enable(file=sys.stderr, all_threads=True)
@@ -1038,7 +1042,7 @@ def main():
         with (
             runtime_directory("th-native-") as directory,
             engine(arguments.backend, Path(directory), progress=progress, guard_node_lookup=arguments.guard_node_lookup,
-                   direct_spark_launcher=arguments.direct_spark_launcher) as native,
+                   direct_spark_launcher=arguments.direct_spark_launcher, native_ray_startup=arguments.native_ray_startup) as native,
         ):
             watchdog.cancel()
             watchdog.join(timeout=1)
