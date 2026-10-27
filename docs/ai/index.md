@@ -28,6 +28,10 @@ route failures.
 
 Install the additive namespace with:
 
+Truthound 3.3.0 requires Pydantic 2.11 or newer (below 3.0) for `ai`,
+matching the shared `mcp` and `all` baseline. Upgrade an older Pydantic 2.x
+installation when enabling these extras.
+
 ```bash
 pip install truthound[ai]
 ```

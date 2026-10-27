@@ -28,6 +28,10 @@ route 실패.
 
 AI 제안, 분석, 승인 흐름에서 Install을(를) 다루는 항목입니다:
 
+Truthound 3.3.0의 `ai` extra는 `mcp`·`all`과 동일하게 Pydantic 2.11 이상,
+3.0 미만을 요구합니다. 이전 Pydantic 2.x 환경에서는 해당 extra 설치 시
+Pydantic 업그레이드가 필요합니다.
+
 ```bash
 pip install truthound[ai]
 ```

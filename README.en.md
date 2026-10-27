@@ -289,6 +289,8 @@ The root package intentionally exposes a small API.
 
 Expression validation keeps failure samples, counts and rows attached to the reported column after passing checks are omitted.
 
+The `ai`, `mcp` and `all` extras share a Pydantic 2.11 minimum in 3.3.0.
+
 ## Development
 
 The development dashboard runtime contracts use Node/npm and actual local servers.

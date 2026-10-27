@@ -119,28 +119,35 @@ class OwnedProbe:
         except (psutil.Error, OSError):
             pass
 
+    def _diagnostic_note(self):
+        allowed = {"core-import", "core-imported"} | {
+            backend + "-" + stage
+            for backend in ("ray", "spark")
+            for stage in ("import", "imported", "start", "started", "dataset", "frame", "ready")
+        }
+        phases = []
+        if self.log_path.is_file():
+            with self.log_path.open("rb") as stream:
+                stream.seek(max(0, self.log_path.stat().st_size - 65536))
+                for line in stream.read(65536).decode("utf-8", errors="replace").splitlines():
+                    if line.startswith("native-probe:") and line[13:] in allowed:
+                        phases.append(line[13:])
+        return "Native probe state: " + json.dumps(
+            {"phases": phases, "returncode": self.process.poll()}
+        )
+
     def receive(self):
         try:
             line = self.pool.submit(self.process.stdout.readline, 1024 * 1024 + 1).result(timeout=30)
         except TimeoutError as error:
             # Only closed synthetic stage labels may leave the owned SDK log.
-            allowed = {"core-import", "core-imported"} | {
-                backend + "-" + stage
-                for backend in ("ray", "spark")
-                for stage in ("import", "imported", "start", "started", "dataset", "frame", "ready")
-            }
-            phases = []
-            if self.log_path.is_file():
-                with self.log_path.open("rb") as stream:
-                    stream.seek(max(0, self.log_path.stat().st_size - 65536))
-                    for line in stream.read(65536).decode("utf-8", errors="replace").splitlines():
-                        if line.startswith("native-probe:") and line[13:] in allowed:
-                            phases.append(line[13:])
-            error.add_note("Native probe stages: " + json.dumps(phases))
+            error.add_note(self._diagnostic_note())
             raise
         self.capture()
         if not line.endswith(b"\n") or len(line) > 1024 * 1024:
-            raise RuntimeError("Native runtime did not return a bounded protocol reply")
+            error = RuntimeError("Native runtime did not return a bounded protocol reply")
+            error.add_note(self._diagnostic_note())
+            raise error
         value = json.loads(line)
         if value.get("ok") is not True:
             raise RuntimeError("Native runtime failed: " + json.dumps(value, sort_keys=True))

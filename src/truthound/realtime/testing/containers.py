@@ -15,9 +15,23 @@ from typing import Any, AsyncIterator
 import asyncio
 import logging
 import os
+from threading import Lock
 
 
 logger = logging.getLogger(__name__)
+_REAPER_BOOTSTRAP_LOCK = Lock()
+
+
+def _start_native_container(container):
+    # The SDK singleton is not synchronized. Bootstrap it once before parallel
+    # native service starts, without changing the caller's cleanup policy.
+    from testcontainers.core.config import testcontainers_config
+    from testcontainers.core.container import Reaper
+
+    if not testcontainers_config.ryuk_disabled:
+        with _REAPER_BOOTSTRAP_LOCK:
+            Reaper.get_instance()
+    return container.start()
 
 
 # =============================================================================
@@ -120,7 +134,7 @@ class KafkaTestContainer(ITestContainer):
 
         def _start_sync():
             self._container = KafkaContainer(self._config.image)
-            self._container.start()
+            _start_native_container(self._container)
             return self._container
 
         # Run in thread pool to avoid blocking
@@ -252,8 +266,8 @@ class RedisTestContainer(ITestContainer):
             )
 
         def _start_sync():
-            self._container = RedisContainer(self._config.image)
-            self._container.start()
+            self._container = RedisContainer(self._config.image, port=self._config.port)
+            _start_native_container(self._container)
             return self._container
 
         loop = asyncio.get_event_loop()
@@ -280,7 +294,9 @@ class RedisTestContainer(ITestContainer):
         """Get Redis connection URL."""
         if not self._container:
             raise RuntimeError("Container not started")
-        return self._container.get_connection_url()
+        host = self.get_host()
+        address = f"[{host}]" if ":" in host else host
+        return f"redis://{address}:{self.get_port()}"
 
     def get_host(self) -> str:
         """Get Redis host."""
@@ -368,7 +384,7 @@ class LocalStackTestContainer(ITestContainer):
             self._container = LocalStackContainer(self._config.image)
             for service in self._config.services:
                 self._container.with_services(service)
-            self._container.start()
+            _start_native_container(self._container)
             return self._container
 
         loop = asyncio.get_event_loop()

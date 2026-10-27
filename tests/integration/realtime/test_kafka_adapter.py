@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import pytest
+import pytest_asyncio
 from datetime import datetime, timezone
 
 # Skip all tests if dependencies not available
@@ -26,14 +27,6 @@ except ImportError:
     AIOKAFKA_AVAILABLE = False
 
 
-@pytest.fixture(scope="module")
-def event_loop():
-    """Create event loop for async tests."""
-    loop = asyncio.new_event_loop()
-    yield loop
-    loop.close()
-
-
 @pytest.mark.skipif(
     not TESTCONTAINERS_AVAILABLE,
     reason="testcontainers not installed"
@@ -45,7 +38,7 @@ def event_loop():
 class TestKafkaAdapterIntegration:
     """Integration tests for KafkaAdapter with real Kafka."""
 
-    @pytest.fixture(scope="class")
+    @pytest_asyncio.fixture(scope="class", loop_scope="class")
     async def kafka_container(self):
         """Start Kafka container for tests."""
         from truthound.realtime.testing.containers import KafkaTestContainer
@@ -225,7 +218,7 @@ class TestKafkaAdapterIntegration:
 class TestKafkaStreamingPipeline:
     """Integration tests for complete streaming pipeline with Kafka."""
 
-    @pytest.fixture(scope="class")
+    @pytest_asyncio.fixture(scope="class", loop_scope="class")
     async def kafka_env(self):
         """Start Kafka environment for pipeline tests."""
         from truthound.realtime.testing.containers import StreamTestEnvironment

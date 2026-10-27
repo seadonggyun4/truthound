@@ -5711,7 +5711,7 @@ requires-dist = [
     { name = "pyarrow", marker = "extra == 'all'", specifier = ">=14.0.0" },
     { name = "pyarrow", marker = "extra == 'dev'", specifier = ">=14.0.0" },
     { name = "pyarrow", marker = "extra == 'streaming'", specifier = ">=14.0.0" },
-    { name = "pydantic", marker = "extra == 'ai'", specifier = ">=2.0.0,<3.0.0" },
+    { name = "pydantic", marker = "extra == 'ai'", specifier = ">=2.11.0,<3.0.0" },
     { name = "pydantic", marker = "extra == 'all'", specifier = ">=2.11.0,<3.0.0" },
     { name = "pydantic", marker = "extra == 'dev'", specifier = ">=2.11.0,<3.0.0" },
     { name = "pydantic", marker = "extra == 'mcp'", specifier = ">=2.11.0,<3.0.0" },

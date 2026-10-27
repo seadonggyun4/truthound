@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import pytest
+import pytest_asyncio
 from datetime import datetime, timezone
 
 pytest_plugins = ["pytest_asyncio"]
@@ -25,14 +26,6 @@ except ImportError:
     AIOBOTOCORE_AVAILABLE = False
 
 
-@pytest.fixture(scope="module")
-def event_loop():
-    """Create event loop for async tests."""
-    loop = asyncio.new_event_loop()
-    yield loop
-    loop.close()
-
-
 @pytest.mark.skipif(
     not TESTCONTAINERS_AVAILABLE,
     reason="testcontainers not installed"
@@ -44,7 +37,7 @@ def event_loop():
 class TestKinesisAdapterIntegration:
     """Integration tests for KinesisAdapter with LocalStack."""
 
-    @pytest.fixture(scope="class")
+    @pytest_asyncio.fixture(scope="class", loop_scope="class")
     async def localstack_container(self):
         """Start LocalStack container for tests."""
         from truthound.realtime.testing.containers import LocalStackTestContainer
@@ -225,7 +218,7 @@ class TestKinesisAdapterIntegration:
 class TestKinesisStreamingPipeline:
     """Integration tests for complete streaming pipeline with Kinesis."""
 
-    @pytest.fixture(scope="class")
+    @pytest_asyncio.fixture(scope="class", loop_scope="class")
     async def kinesis_env(self):
         """Start Kinesis environment for pipeline tests."""
         from truthound.realtime.testing.containers import StreamTestEnvironment

@@ -228,3 +228,9 @@ CI 전용 `nightly-local` 그룹은 승인된 임시 Kafka·LocalStack 테스트
 aiobotocore·Testcontainers도 설치합니다. `Disposable broker integration` 검증은
 선택된 테스트의 건너뜀을 거부하고, 더미 AWS 키와 loopback 소켓만 사용합니다.
 실제 계정이 필요한 웨어하우스·클라우드·유료 AI 검증은 활성화하지 않습니다.
+
+임시 스트리밍 환경은 서비스 병렬 시작 전에 Testcontainers 정리 프로세스를 한 번
+초기화합니다. Redis URL은 선택한 SDK 포트 매핑과 IPv6 표기를 사용합니다.
+비동기 브로커 fixture는 이벤트 루프 범위를 명시하며 pytest의 엄격한 경고·오류
+판정은 유지합니다. 네이티브 프로브 EOF 진단에는 고정된 단계 이름과 종료 코드만
+남깁니다.

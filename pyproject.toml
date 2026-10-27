@@ -60,7 +60,7 @@ execution-spark = ["pyspark[sql]>=4.0.0,<5.0.0", "psutil>=5.9.0,<8.0.0"]
 
 # Optional AI artifact and provider contract surface
 ai = [
-    "pydantic>=2.0.0,<3.0.0",
+    "pydantic>=2.11.0,<3.0.0",
     "openai>=1.35.0,<2.0.0",
 ]
 

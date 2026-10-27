@@ -247,3 +247,9 @@ Testcontainers for approved disposable Kafka/LocalStack tests. The focused
 `Disposable broker integration` workflow requires every selected test to run
 without skips, uses only dummy AWS keys, and rejects non-loopback Python socket
 connections. It never enables live-account warehouse, cloud or paid-AI gates.
+
+Disposable streaming environments initialize the Testcontainers cleanup singleton
+once before parallel service starts. Redis endpoint URLs use the selected mapped
+SDK port, including IPv6 formatting. Async broker fixtures declare their event-loop
+scope explicitly; strict pytest warning/error policy remains enabled. Native probe
+EOF diagnostics retain only closed phase names and the process exit code.
