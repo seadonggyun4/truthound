@@ -8,13 +8,14 @@ from dataclasses import asdict
 from pathlib import Path
 
 from truthound.mcp.encoding import encode
+from truthound.mcp.native_stdio import native_worker_wire
 from truthound.mcp.policy import MCPError
 from truthound.mcp.resources import BoundedWriter
 
 
 def main():
     source = iterator = None
-    wire = sys.stdout
+    wire = native_worker_wire()
     try:
         with open(os.devnull, "w", encoding="utf-8") as sink:
             while line := sys.stdin.buffer.readline(131073):

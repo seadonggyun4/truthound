@@ -1,0 +1,40 @@
+"""Separate an owned CLI worker's protocol from native standard descriptors."""
+
+import os
+import sys
+
+
+def native_worker_wire():
+    """Permanently isolate this worker; SDK atexit output stays isolated too."""
+    sys.stdout.flush()
+    sys.stderr.flush()
+    wire = os.fdopen(os.dup(sys.stdout.fileno()), "w", buffering=1, encoding="utf-8", newline="\n")
+    try:
+        descriptor = os.open(os.devnull, os.O_WRONLY | getattr(os, "O_BINARY", 0))
+        try:
+            os.dup2(descriptor, 1)
+            os.dup2(descriptor, 2)
+        finally:
+            os.close(descriptor)
+        if os.name == "nt":
+            import ctypes
+            import msvcrt
+            from ctypes import wintypes
+
+            # CRT descriptors and Win32 standard handles are separate APIs.
+            # Newly loaded SDK DLLs and their subprocesses must see the sink.
+            kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+            set_standard = kernel.SetStdHandle
+            set_standard.argtypes = (wintypes.DWORD, wintypes.HANDLE)
+            set_standard.restype = wintypes.BOOL
+            for selector, fd in ((-11, 1), (-12, 2)):
+                if not set_standard(selector, msvcrt.get_osfhandle(fd)):
+                    raise ctypes.WinError(ctypes.get_last_error())
+        # A Windows pipe can start as cp1252. Even discarded Python progress
+        # must accept SDK Unicode without raising before reaching the sink.
+        for stream in (sys.stdout, sys.stderr):
+            stream.reconfigure(encoding="utf-8", errors="strict", newline="\n")
+    except BaseException:
+        wire.close()
+        raise
+    return wire

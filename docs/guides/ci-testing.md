@@ -348,3 +348,5 @@ Timed 20-second probe stack snapshots enter through a Python watchdog thread hol
 Resident factories activate the Spark startup scope only when they import the actual optional SDK; Ray, Polars and SQL factories do not preload PySpark. Native Ray probes import `ray.data` before starting local workers, within the same reply deadline, and record both import boundaries.
 
 Fatal native Ray startup diagnostics retain closed cause markers and reviewed SDK source basenames with numeric line numbers, including bounded agent logs. Raw messages, IDs, command arguments, private paths and data remain excluded; these diagnostics never convert an early SDK exit into success.
+
+The installed factory regression writes directly to OS descriptors 1 and 2, checks the Windows CRT and Win32 standard handles agree, then performs native computation and shutdown through the intact JSON protocol. Python stream redirection alone does not satisfy this gate.

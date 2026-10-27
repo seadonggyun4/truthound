@@ -14,6 +14,33 @@ from truthound.mcp.model_process import OwnedModelProcess
 pytestmark = pytest.mark.fault
 
 
+def test_native_worker_wire_excludes_native_child_and_atexit_output():
+    program = '''
+import atexit, os, subprocess, sys
+from truthound.mcp.native_stdio import native_worker_wire
+sys.stdout.reconfigure(encoding="cp1252")
+sys.stderr.reconfigure(encoding="cp1252")
+wire = native_worker_wire()
+assert not os.get_inheritable(wire.fileno())
+print("synthetic-private-unicode-\u2713")
+print("synthetic-private-unicode-\u03bb", file=sys.stderr)
+os.write(1, b"synthetic-private-native-stdout\\n")
+os.write(2, b"synthetic-private-native-stderr\\n")
+subprocess.run([sys.executable, "-I", "-c",
+                "import os; os.write(1,b'synthetic-private-child\\\\n')"], check=True)
+atexit.register(os.write, 1, b"synthetic-private-native-exit\\n")
+if os.name == "nt":
+    import _winapi, msvcrt
+    assert _winapi.GetStdHandle(-11) == msvcrt.get_osfhandle(1)
+    assert _winapi.GetStdHandle(-12) == msvcrt.get_osfhandle(2)
+wire.write('{"ok":true}\\n')
+wire.close()
+'''
+    result = subprocess.run([sys.executable, "-I", "-c", program],
+                            capture_output=True, check=True, timeout=15)
+    assert result.stdout == b'{"ok":true}\n' and result.stderr == b""
+
+
 def test_dead_worker_reaps_recorded_descendant_and_leaves_sibling_alive(monkeypatch):
     original = subprocess.Popen
     sibling = original([sys.executable, "-I", "-c", "import time;time.sleep(600)"])

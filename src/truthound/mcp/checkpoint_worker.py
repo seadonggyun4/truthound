@@ -11,6 +11,7 @@ from pathlib import Path
 
 from truthound.mcp.approval import private_read
 from truthound.mcp.encoding import encode
+from truthound.mcp.native_stdio import native_worker_wire
 from truthound.mcp.parent_pipe import watch_parent
 from truthound.mcp.plugin_bindings import approved_capabilities, fingerprint
 from truthound.mcp.policy import MCPError
@@ -80,7 +81,7 @@ def execute(request):
 
 
 def main():
-    wire = sys.stdout
+    wire = native_worker_wire()
     try:
         line = sys.stdin.buffer.readline(2 * 1024**2 + 1)
         if len(line) > 2 * 1024**2 or not line.endswith(b"\n"):

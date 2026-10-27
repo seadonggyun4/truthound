@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 
 from truthound.mcp.encoding import encode
+from truthound.mcp.native_stdio import native_worker_wire
 from truthound.mcp.policy import MCPError
 from truthound.mcp.resources import BoundedWriter
 
@@ -42,7 +43,7 @@ def save_bounded(model, request):
 
 def main():
     model, revision = None, 0
-    wire = sys.stdout
+    wire = native_worker_wire()
     with open(os.devnull, "w", encoding="utf-8") as sink:
         while True:
             line = sys.stdin.buffer.readline(131073)

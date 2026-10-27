@@ -9,11 +9,12 @@ import json
 import logging
 import os
 import sys
-import threading
 from pathlib import Path
 
 from truthound.mcp.approval import private_read
 from truthound.mcp.encoding import encode
+from truthound.mcp.native_stdio import native_worker_wire
+from truthound.mcp.parent_pipe import watch_parent
 from truthound.mcp.plugin_bindings import approved_capabilities, fingerprint
 from truthound.mcp.policy import MCPError
 from truthound.mcp.resources import BoundedWriter
@@ -160,7 +161,7 @@ def restore(runtime, previous):
 
 
 def main():
-    wire = sys.stdout
+    wire = native_worker_wire()
     for name in ("history", "watcher", "breaking_alerts"):
         handler = FailClosed()
         handler.setLevel(logging.WARNING)
@@ -171,14 +172,7 @@ def main():
             raise MCPError("resource_exhausted")
         request = json.loads(line)
 
-        def parent_disconnected():
-            # The owner keeps stdin open until it consumes our reply. EOF (or
-            # an unexpected second command) revokes this one-shot process even
-            # if a trusted plugin blocks forever. Never kill another process.
-            os.read(sys.stdin.fileno(), 1)
-            os._exit(75)
-
-        threading.Thread(target=parent_disconnected, daemon=True).start()
+        watch_parent(sys.stdin.fileno())
         with (
             open(os.devnull, "w", encoding="utf-8") as sink,
             contextlib.redirect_stdout(sink),

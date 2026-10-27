@@ -10,6 +10,7 @@ from pathlib import Path
 
 from truthound.mcp.approval import private_read
 from truthound.mcp.encoding import encode
+from truthound.mcp.native_stdio import native_worker_wire
 from truthound.mcp.plugin_bindings import approved_capabilities, fingerprint
 from truthound.mcp.policy import MCPError
 from truthound.mcp.resources import BoundedWriter
@@ -18,7 +19,7 @@ from truthound.mcp.schema_monitor_runtime import MonitorRuntime
 
 
 def main():
-    wire = sys.stdout
+    wire = native_worker_wire()
     runtime = None
     for name in ("history", "watcher", "breaking_alerts"):
         handler = FailClosed()

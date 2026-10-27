@@ -54,6 +54,16 @@ def command(runtime, group, identity, command_name, *, key=None, **arguments):
     return plugins.source_artifact(runtime[0], response["data"]["resource_id"])
 
 
+
+def test_native_descriptor_output_cannot_corrupt_resident_protocol(runtime, monkeypatch):
+    runtime[2].with_name("native-descriptor-output").touch()
+    identity = prepare(runtime, monkeypatch, "execution_services")
+    result = command(runtime, "execution_services", identity, "count_rows")
+    assert result["value"] == 3
+    assert "synthetic-private-native" not in json.dumps(result)
+    assert command(runtime, "execution_services", identity, "shutdown")["shutdown"] is True
+
+
 def test_engine_cleanup_attempts_every_child_and_root_after_failure():
     import asyncio
 

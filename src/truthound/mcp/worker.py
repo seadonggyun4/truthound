@@ -9,6 +9,7 @@ import os
 import sys
 from pathlib import Path
 
+from truthound.mcp.native_stdio import native_worker_wire
 from truthound.mcp.projection import project, response
 
 
@@ -60,6 +61,7 @@ def execute(request: dict) -> dict:
 
 
 def main() -> None:
+    wire = native_worker_wire()
     request = json.loads(sys.stdin.read(131072))
     extended = "contract_version" in request
 
@@ -91,7 +93,8 @@ def main() -> None:
                 if isinstance(exc, ImportError)
                 else "core_error"
             )
-    sys.stdout.write(json.dumps(result, ensure_ascii=True, allow_nan=False))
+    wire.write(json.dumps(result, ensure_ascii=True, allow_nan=False))
+    wire.close()
 
 
 if __name__ == "__main__":

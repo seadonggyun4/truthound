@@ -978,6 +978,19 @@ def redirect_native_output(path):
         os.dup2(descriptor, 2)
     finally:
         os.close(descriptor)
+    if os.name == "nt":
+        import ctypes
+        import msvcrt
+        from ctypes import wintypes
+
+        # CRT dup2 does not update the Win32 handles consulted by SDK DLLs.
+        kernel = ctypes.WinDLL("kernel32", use_last_error=True)
+        set_standard = kernel.SetStdHandle
+        set_standard.argtypes = (wintypes.DWORD, wintypes.HANDLE)
+        set_standard.restype = wintypes.BOOL
+        for selector, fd in ((-11, 1), (-12, 2)):
+            if not set_standard(selector, msvcrt.get_osfhandle(fd)):
+                raise ctypes.WinError(ctypes.get_last_error())
     for stream in (sys.stdout, sys.stderr):
         stream.reconfigure(encoding="utf-8", errors="strict", newline="\n")
     return wire

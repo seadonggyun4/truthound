@@ -9,6 +9,7 @@ from pathlib import Path
 
 from truthound.mcp.checkpoint_worker import binding_guard
 from truthound.mcp.encoding import encode
+from truthound.mcp.native_stdio import native_worker_wire
 from truthound.mcp.parent_pipe import watch_resident_parent
 from truthound.mcp.plugin_bindings import approved_capabilities
 from truthound.mcp.policy import MCPError
@@ -391,18 +392,15 @@ async def serve(wire):
 
 
 def main():
-    wire = sys.stdout
+    wire = native_worker_wire()
     try:
         watch_resident_parent(sys.stdin.fileno())
-        with (
-            open(os.devnull, "w", encoding="utf-8") as sink,
-            contextlib.redirect_stdout(sink),
-            contextlib.redirect_stderr(sink),
-        ):
-            asyncio.run(serve(wire))
+        asyncio.run(serve(wire))
     except Exception as error:
         wire.write(json.dumps({"ok": False, "code": failure_code(error)}) + "\n")
         wire.flush()
+    finally:
+        wire.close()
 
 
 if __name__ == "__main__":
