@@ -18,6 +18,47 @@ import traceback
 from pathlib import Path
 
 
+def failure_diagnostic(error):
+    """Return structural SDK diagnostics without messages or full paths."""
+    unavailable = False
+
+    def message_of(value):
+        nonlocal unavailable
+        try:
+            return str(value)[:32768]
+        except Exception:
+            # A Py4J exception may outlive the JVM needed by its __str__.
+            unavailable = True
+            return ""
+
+    frames = [
+        {"file": Path(frame.filename).name, "function": frame.name, "line": frame.lineno}
+        for frame in traceback.extract_tb(error.__traceback__)
+    ]
+    messages = [message_of(error)]
+    chain = []
+    current = error.__cause__ or error.__context__
+    seen = {id(error)}
+    while current is not None and id(current) not in seen and len(chain) < 4:
+        seen.add(id(current))
+        messages.append(message_of(current))
+        chain.append({"error_type": type(current).__name__, "frames": [
+            {"file": Path(frame.filename).name, "function": frame.name, "line": frame.lineno}
+            for frame in traceback.extract_tb(current.__traceback__)
+        ]})
+        current = current.__cause__ or current.__context__
+    message = "\n".join(messages)
+    return {"error_type": type(error).__name__, "frames": frames,
+            "known_causes": {
+                "windows_hadoop_native_missing": any(token in message for token in ("winutils.exe", "HADOOP_HOME", "NativeIO$Windows")),
+                "native_jni_missing": "UnsatisfiedLinkError" in message,
+                "gcs_start_failed": "Failed to start GCS" in message,
+                "home_unresolved": "Could not determine home directory" in message,
+            }, "exception_chain": chain, "message_unavailable": unavailable,
+            "errno": getattr(error, "errno", None),
+            "winerror": getattr(error, "winerror", None)}
+
+
 @contextlib.contextmanager
 def runtime_directory(prefix):
     if os.name == "nt":
@@ -666,6 +707,8 @@ def main():
     os.dup2(descriptor, 1)
     os.dup2(descriptor, 2)
     os.close(descriptor)
+    primary_error = None
+    primary_diagnostic = None
     try:
         print("native-probe:core-import", flush=True)
         from truthound.mcp.encoding import encode
@@ -694,37 +737,20 @@ def main():
                 request = json.loads(line)
                 if request == {"close": True}:
                     break
-                value = execute(native, request["command"])
+                try:
+                    value = execute(native, request["command"])
+                except Exception as error:
+                    # Capture lazy JVM-backed diagnostics before SDK teardown.
+                    primary_error = error
+                    primary_diagnostic = failure_diagnostic(error)
+                    raise
                 wire.write(json.dumps({"ok": True, "value": encode(value)}, allow_nan=False) + "\n")
     except Exception as error:
         traceback.print_exc()
-        # Only structural diagnostics cross the verification protocol. Native
-        # messages and full paths remain in the private owned log.
-        frames = [
-            {"file": Path(frame.filename).name, "function": frame.name, "line": frame.lineno}
-            for frame in traceback.extract_tb(error.__traceback__)
-        ]
-        message = str(error)[:32768]
-        causes = {
-            "windows_hadoop_native_missing": any(token in message for token in ("winutils.exe", "HADOOP_HOME", "NativeIO$Windows")),
-            "native_jni_missing": "UnsatisfiedLinkError" in message,
-            "gcs_start_failed": "Failed to start GCS" in message,
-            "home_unresolved": "Could not determine home directory" in message,
-        }
-        chain = []
-        current = error.__cause__ or error.__context__
-        seen = {id(error)}
-        while current is not None and id(current) not in seen and len(chain) < 4:
-            seen.add(id(current))
-            chain.append({"error_type": type(current).__name__, "frames": [
-                {"file": Path(frame.filename).name, "function": frame.name, "line": frame.lineno}
-                for frame in traceback.extract_tb(current.__traceback__)
-            ]})
-            current = current.__cause__ or current.__context__
-        wire.write(json.dumps({"ok": False, "error_type": type(error).__name__, "frames": frames,
-                               "known_causes": causes, "exception_chain": chain,
-                               "errno": getattr(error, "errno", None),
-                               "winerror": getattr(error, "winerror", None)}) + "\n")
+        diagnostic = primary_diagnostic or failure_diagnostic(error)
+        if primary_error is not None and error is not primary_error:
+            diagnostic["cleanup_failure"] = failure_diagnostic(error)
+        wire.write(json.dumps({"ok": False, **diagnostic}) + "\n")
         return 1
     finally:
         wire.close()

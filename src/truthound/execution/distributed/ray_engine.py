@@ -1131,6 +1131,9 @@ class RayExecutionEngine(BaseDistributedEngine[RayEngineConfig]):
         from truthound.execution.distributed.checkpoints import publish
 
         def write(path):
+            # An existing local directory prevents URI inference for a Windows
+            # drive path in Ray/PyArrow's native destination resolver.
+            path.mkdir()
             self._ds.write_parquet(str(path))
             if not any(path.rglob("*.parquet")):
                 # Ray legitimately emits no files for zero rows. Preserve the

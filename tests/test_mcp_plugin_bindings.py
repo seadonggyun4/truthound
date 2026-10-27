@@ -1269,14 +1269,14 @@ def runtime(tmp_path, monkeypatch):
         "        note('profiler-close')\n"
         '@asynccontextmanager\n'
         'async def diagnosed_native(factory):\n'
-        '    import json, traceback\n'
+        '    import json\n'
+        '    from .distributed_fixture import failure_diagnostic\n'
         '    try:\n'
         '        async with factory() as runtime:\n'
         "            note('native-fixture-diagnostic:'+json.dumps({'factory':factory.__name__,'phase':'entered'}))\n"
         '            yield runtime\n'
         '    except Exception as error:\n'
-        "        frames = [{'file':Path(f.filename).name,'function':f.name,'line':f.lineno} for f in traceback.extract_tb(error.__traceback__)]\n"
-        "        note('native-fixture-diagnostic:'+json.dumps({'factory':factory.__name__,'error_type':type(error).__name__,'frames':frames,'errno':getattr(error,'errno',None),'winerror':getattr(error,'winerror',None)}))\n"
+        "        note('native-fixture-diagnostic:'+json.dumps({'factory':factory.__name__,**failure_diagnostic(error)}))\n"
         '        raise\n'
         "class FixturePlugin(Plugin):\n"
         "    @property\n"
@@ -1318,7 +1318,7 @@ def runtime(tmp_path, monkeypatch):
         "        manager.register_capability('security-factory', security_factory)\n"
         "        manager.register_capability('rate-limit-factory', rate_limit_factory)\n"
         "        manager.register_capability('tenant-factory', tenant_factory)\n"
-        "        manager.register_capability('execution-factory', execution_factory)\n"
+        "        manager.register_capability('execution-factory', lambda: diagnosed_native(execution_factory))\n"
         "        manager.register_capability('store-factory', lambda: diagnosed_native(store_factory))\n"
         "        manager.register_capability('profiler-factory', lambda: diagnosed_native(profiler_factory))\n"
         "        from .ml_monitor_fixture import factory as ml_factory\n"

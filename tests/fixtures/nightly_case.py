@@ -12,14 +12,18 @@ def test_boundary():
 
 
 def native_value():
-    return 42
+    return os.getpid(), 42
 
 
 def test_spawned_callable():
-    from truthound.profiler.process_timeout import ProcessExecutionStrategy
+    import multiprocessing
+    from concurrent.futures import ProcessPoolExecutor
 
-    result = ProcessExecutionStrategy().execute(native_value, timeout_seconds=5)
-    assert result.success and result.value == 42
+    # This boundary tests the manifest's spawn import path. Core process
+    # strategy tests separately exercise native execution and termination.
+    with ProcessPoolExecutor(max_workers=1, mp_context=multiprocessing.get_context("spawn")) as worker:
+        pid, value = worker.submit(native_value).result()
+    assert pid != os.getpid() and value == 42
 
 
 def test_required_failure():

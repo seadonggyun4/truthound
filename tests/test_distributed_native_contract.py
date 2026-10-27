@@ -9,6 +9,37 @@ from truthound.mcp.tables import decode
 pytestmark = pytest.mark.contract
 
 
+def test_native_failure_diagnostic_preserves_causes_without_messages_or_paths(tmp_path):
+    import json
+
+    from tests.verification_support import _load
+
+    probe = _load("native_distributed_probe")
+    try:
+        try:
+            raise OSError(13, "synthetic-private-query HADOOP_HOME", str(tmp_path / "private-data"))
+        except OSError as inner:
+            raise RuntimeError("synthetic-private-shutdown") from inner
+    except RuntimeError as outer:
+        report = probe.failure_diagnostic(outer)
+    encoded = json.dumps(report)
+    assert "synthetic-private" not in encoded and str(tmp_path) not in encoded
+    assert report["error_type"] == "RuntimeError"
+    assert report["exception_chain"][0]["error_type"] == "PermissionError"
+    assert report["known_causes"]["windows_hadoop_native_missing"]
+    assert report["frames"] and report["exception_chain"][0]["frames"]
+    for item in [report, *report["exception_chain"]]:
+        assert all("/" not in frame["file"] and "\\" not in frame["file"] for frame in item["frames"])
+
+    class UnavailableNativeMessage(RuntimeError):
+        def __str__(self):
+            raise RuntimeError("synthetic-private-closed-JVM")
+
+    unavailable = probe.failure_diagnostic(UnavailableNativeMessage())
+    assert unavailable["message_unavailable"]
+    assert "synthetic-private" not in json.dumps(unavailable)
+
+
 def test_windows_native_scratch_is_removed_only_after_its_owner_closes(tmp_path, monkeypatch):
     import tempfile
     from pathlib import Path

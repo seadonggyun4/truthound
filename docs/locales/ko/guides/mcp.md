@@ -2657,6 +2657,8 @@ Dask와 Ray의 `checkpoint_dir`는 운영자가 소유하는 로컬 디렉터리
 `checkpoint()`는 고유 staging 디렉터리에 native Parquet를 쓰고 파일과 SHA-256
 목록을 flush한 뒤 디렉터리 rename으로 완료 snapshot을 게시합니다. Python에서
 반환된 child의 `checkpoint_path`를 조회할 수 있습니다.
+Ray는 native 경로 해석 전에 로컬 목적지 디렉터리를 생성하므로 아직 없는
+Windows drive 경로를 URI scheme으로 추론하지 않습니다.
 `DaskExecutionEngine.from_checkpoint(path, config, client=...)`와
 `RayExecutionEngine.from_checkpoint(path, config)`는 전체 파일 목록을 검증한
 다음 native reader를 엽니다. 미완료 디렉터리, 손상 파일, 다른 backend의 응답은
