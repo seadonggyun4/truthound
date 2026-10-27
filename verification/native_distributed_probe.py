@@ -709,15 +709,15 @@ def execute(native, command):
 
 
 def redirect_native_output(path):
-    wire = os.fdopen(os.dup(sys.stdout.fileno()), "w", buffering=1, encoding="utf-8")
-    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    wire = os.fdopen(os.dup(sys.stdout.fileno()), "w", buffering=1, encoding="utf-8", newline="\n")
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | getattr(os, "O_BINARY", 0), 0o600)
     try:
         os.dup2(descriptor, 1)
         os.dup2(descriptor, 2)
     finally:
         os.close(descriptor)
     for stream in (sys.stdout, sys.stderr):
-        stream.reconfigure(encoding="utf-8", errors="strict")
+        stream.reconfigure(encoding="utf-8", errors="strict", newline="\n")
     return wire
 
 

@@ -32,7 +32,7 @@ def test_native_probe_utf8_log_does_not_corrupt_its_separate_protocol(tmp_path):
         env={**os.environ, "PYTHONIOENCODING": "cp1252"}, check=True,
     )
     assert result.stdout.splitlines() == [b"protocol-only"] and result.stderr == b""
-    assert log.read_text(encoding="utf-8").splitlines() == ["native progress ✔", "native error λ"]
+    assert log.read_bytes() == "native progress ✔\nnative error λ\n".encode("utf-8")
 
 
 def test_native_startup_diagnostic_keeps_only_closed_markers(tmp_path):
