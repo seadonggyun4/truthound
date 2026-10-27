@@ -257,3 +257,5 @@ Windows 네이티브 로그 descriptor는 바이너리 모드와 UTF-8/LF 텍스
 KMS 잘못된 키 검사는 네이티브 키·암호문 거부를 요구하며 자체 assertion이나 연결·인증 오류를 성공으로 삼킬 수 없습니다. 자격증명 없는 호환 fixture에서 `latest`를 사용하지 않는 이유는 [LocalStack 이미지 변경 안내](https://blog.localstack.cloud/localstack-single-image-next-steps/)에 설명되어 있습니다.
 
 Spark 시간 초과 진단은 SDK gateway 실행과 Spark 세션 생성을 구분하고 고정된 시작 표식만 노출합니다. 수동 `spark-startup` 범위는 지원 Windows Python 버전마다 새 프로세스의 cold start 5회를 모두 요구하며 한 번이라도 실패하면 진단이 실패합니다. 기존 30초 응답 제한을 늘리거나 전체 릴리스 검증을 대체하지 않습니다.
+
+수동 `spark-after-ray` 진단은 원래의 Ray 테스트 3개와 이후 Spark 캐시 계약 순서를 Windows Python 버전마다 5회 반복합니다. 모든 반복이 통과해야 하며 이전 전체 실행의 실패를 지우지 않습니다.

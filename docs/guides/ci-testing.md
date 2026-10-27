@@ -276,3 +276,5 @@ The credential-free LocalStack KMS fixture uses the same pinned major-3 compatib
 Wrong-key KMS checks require the native incorrect-key/ciphertext denial, and cannot swallow their own assertion or accept connectivity/authentication failures. The [LocalStack image change](https://blog.localstack.cloud/localstack-single-image-next-steps/) explains why credential-free compatibility fixtures do not use `latest`.
 
 Spark timeout diagnostics distinguish SDK gateway launch from Spark session creation and expose only fixed startup markers. The manual `spark-startup` scope requires five fresh cold starts per supported Windows Python version; any failed iteration fails the diagnostic. It does not extend the 30-second reply deadline or replace full release verification.
+
+The manual `spark-after-ray` diagnostic repeats the original three-Ray-test prefix before the Spark cache contract, five times per Windows Python version. Every iteration must pass; its result cannot erase a prior full-run failure.
