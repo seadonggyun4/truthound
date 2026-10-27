@@ -708,16 +708,25 @@ def execute(native, command):
     raise ValueError("Unknown native probe command")
 
 
+def redirect_native_output(path):
+    wire = os.fdopen(os.dup(sys.stdout.fileno()), "w", buffering=1, encoding="utf-8")
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        os.dup2(descriptor, 1)
+        os.dup2(descriptor, 2)
+    finally:
+        os.close(descriptor)
+    for stream in (sys.stdout, sys.stderr):
+        stream.reconfigure(encoding="utf-8", errors="strict")
+    return wire
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("backend", choices=("ray", "spark"))
     parser.add_argument("--log-path", type=Path, required=True)
     arguments = parser.parse_args()
-    wire = os.fdopen(os.dup(sys.stdout.fileno()), "w", buffering=1)
-    descriptor = os.open(arguments.log_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    os.dup2(descriptor, 1)
-    os.dup2(descriptor, 2)
-    os.close(descriptor)
+    wire = redirect_native_output(arguments.log_path)
     primary_error = None
     primary_diagnostic = None
     try:
@@ -737,6 +746,7 @@ def main():
                     {
                         "ok": True,
                         "ready": True,
+                        "owner_pid": os.getpid(),
                         "version": importlib.metadata.version(
                             "ray" if arguments.backend == "ray" else "pyspark"
                         ),

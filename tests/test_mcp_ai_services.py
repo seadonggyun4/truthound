@@ -17,6 +17,17 @@ pytestmark = pytest.mark.contract
 
 def prepare(runtime, monkeypatch):
     from truthound.mcp import model_process
+    from truthound.mcp.ai_services import AIServices
+
+    created = []
+    original = AIServices.process_type
+
+    def tracked(ttl):
+        worker = original(ttl)
+        created.append(worker)
+        return worker
+
+    monkeypatch.setattr(AIServices, "process_type", staticmethod(tracked))
 
     adapter, control, marker, _, _ = runtime
     root = control.parent / "ai-workspace"
@@ -36,9 +47,37 @@ def prepare(runtime, monkeypatch):
     settings["plugins"]["fixture"]["capabilities"]["ai-factory"] = "ai-factory"
     settings["ai_services"] = {"local-ai": "ai-factory"}
     path.write_text(json.dumps(settings), encoding="utf-8")
-    result = approved(
-        runtime, "ai_services_open", binding_id="local-ai", idempotency_key="ai-open-01"
-    )
+    try:
+        result = approved(
+            runtime, "ai_services_open", binding_id="local-ai", idempotency_key="ai-open-01"
+        )
+    except AssertionError as error:
+        allowed = {
+            "worker_error",
+            "timeout",
+            "invalid_handle",
+            "exchange_failed",
+            "access_denied",
+            "invalid_binding",
+        }
+        error.add_note(
+            json.dumps(
+                {
+                    "ai_owners": [
+                        {
+                            "failure_category": worker.failure_category
+                            if getattr(worker, "failure_category", None) in allowed
+                            else "other",
+                            "exit_status_after_cleanup": getattr(
+                                worker, "failure_exit_status_after_cleanup", None
+                            ),
+                        }
+                        for worker in created
+                    ]
+                }
+            )
+        )
+        raise
     assert "ai-provider" not in marker.read_text()
     return result["data"]["resource_id"]
 

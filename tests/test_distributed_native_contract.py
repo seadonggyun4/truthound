@@ -9,6 +9,57 @@ from truthound.mcp.tables import decode
 pytestmark = pytest.mark.contract
 
 
+def test_native_probe_utf8_log_does_not_corrupt_its_separate_protocol(tmp_path):
+    import os
+    import subprocess
+    import sys
+    from pathlib import Path
+
+    probe = Path(__file__).resolve().parents[1] / "verification/native_distributed_probe.py"
+    program = (
+        "import importlib.util,sys; "
+        "spec=importlib.util.spec_from_file_location('native_probe',sys.argv[1]); "
+        "m=importlib.util.module_from_spec(spec);spec.loader.exec_module(m); "
+        "assert sys.stdout.encoding.lower()=='cp1252'; "
+        "wire=m.redirect_native_output(sys.argv[2]); "
+        "print('native progress \\u2714',flush=True); "
+        "print('native error \\u03bb',file=sys.stderr,flush=True); "
+        "wire.write('protocol-only\\n');wire.close()"
+    )
+    log = tmp_path / "native.log"
+    result = subprocess.run(
+        [sys.executable, "-c", program, str(probe), str(log)], capture_output=True,
+        env={**os.environ, "PYTHONIOENCODING": "cp1252"}, check=True,
+    )
+    assert result.stdout.splitlines() == [b"protocol-only"] and result.stderr == b""
+    assert log.read_text(encoding="utf-8").splitlines() == ["native progress ✔", "native error λ"]
+
+
+def test_native_startup_diagnostic_keeps_only_closed_markers(tmp_path):
+    import json
+    from types import SimpleNamespace
+
+    root = tmp_path / "owned"
+    logs = root / "th-native-test" / "session_test" / "logs"
+    logs.mkdir(parents=True)
+    secret = "synthetic-private-native-log-value"
+    (logs / "gcs_server.out").write_text("GcsServer server started " + secret)
+    (logs / "unreviewed.log").write_text("No module named " + secret)
+    driver = tmp_path / "driver.log"
+    driver.write_text("native-probe:ray-start\nnative-probe:" + secret + "\n")
+    probe = object.__new__(OwnedProbe)
+    probe.directory = SimpleNamespace(name=str(root))
+    probe.log_path = driver
+    probe.process = SimpleNamespace(poll=lambda: None)
+    note = probe._diagnostic_note()
+    assert secret not in note and str(tmp_path) not in note
+    value = json.loads(note.split(": ", 1)[1])
+    assert value["phases"] == ["ray-start"]
+    assert value["native_startup"]["log_files"] == 1
+    assert value["native_startup"]["markers"]["gcs_started"] is True
+    assert value["native_startup"]["markers"]["module_missing"] is False
+
+
 def test_native_ray_local_checkpoint_destination_resolves_as_one_directory(tmp_path):
     from pyarrow.fs import FileType, LocalFileSystem
     from ray.data.datasource.path_util import _resolve_paths_and_filesystem
@@ -244,7 +295,9 @@ def test_native_partition_strategy_keeps_key_groups_ranges_and_round_robin_rows(
 def test_native_checkpoint_enabled_creates_real_snapshot(tmp_path, backend):
     runtime = OwnedProbe(backend, tmp_path / (backend + "-checkpoint.log"))
     try:
-        assert runtime.receive()["ready"] is True
+        ready = runtime.receive()
+        assert ready["ready"] is True
+        assert ready["owner_pid"] == runtime.process.pid
         if backend == "spark":
             import os
 

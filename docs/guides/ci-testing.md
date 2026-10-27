@@ -263,3 +263,5 @@ Broker integration uses the native millisecond window configuration, awaited agg
 Installed Core desktop smoke launches recurring automation through the trusted Core worker CLI independently of the desktop launcher argument layout.
 
 Performance failures retain wall-clock and process-CPU samples for every iteration. Separate diagnostic profiles cover local null and range checks as well as schema, mixed and SQLite workloads; these profiles never replace acceptance measurements or change thresholds.
+
+Native verification owns the actual Windows interpreter while preserving its venv, and checks the reported owner PID. Protocol and SDK logs use separate UTF-8 streams. Timeout diagnostics disclose only reviewed startup markers and numeric exit state; AI fixture failures retain closed owner categories and never call a paid provider.

@@ -1276,6 +1276,7 @@ def runtime(tmp_path, monkeypatch):
         '    import json\n'
         '    from .distributed_fixture import failure_diagnostic\n'
         '    try:\n'
+        "        note('native-fixture-diagnostic:'+json.dumps({'factory':factory.__name__,'phase':'starting'}))\n"
         '        async with factory() as runtime:\n'
         "            note('native-fixture-diagnostic:'+json.dumps({'factory':factory.__name__,'phase':'entered'}))\n"
         '            yield runtime\n'
@@ -1310,7 +1311,7 @@ def runtime(tmp_path, monkeypatch):
         "        manager.register_capability('checkpoint-runner-factory', checkpoint_runner_factory)\n"
         "        manager.register_capability('escalation-factory', escalation_factory)\n"
         "        manager.register_capability('broker-factory', broker_factory)\n"
-        "        manager.register_capability('ai-factory', ai_factory)\n"
+        "        manager.register_capability('ai-factory', lambda: diagnosed_native(ai_factory))\n"
         "        manager.register_capability('audit-factory', audit_factory)\n"
         "        manager.register_capability('documentation-factory', documentation_factory)\n"
         "        manager.register_capability('benchmark-factory', benchmark_factory)\n"

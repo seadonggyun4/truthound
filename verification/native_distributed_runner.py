@@ -71,10 +71,15 @@ class OwnedProbe:
         self.ownership_lock = threading.Lock()
         self.stop_monitor = threading.Event()
         self.closed = False
+        native_environment = environment(self.directory.name)
+        executable = sys.executable
+        if sys.platform == "win32" and executable != sys._base_executable:
+            native_environment["__PYVENV_LAUNCHER__"] = executable
+            executable = sys._base_executable
         try:
             self.process = subprocess.Popen(
                 [
-                    sys.executable,
+                    executable,
                     "-I",
                     str(Path(__file__).with_name("native_distributed_probe.py")),
                     backend,
@@ -85,7 +90,7 @@ class OwnedProbe:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.DEVNULL,
                 cwd=self.directory.name,
-                env=environment(self.directory.name),
+                env=native_environment,
             )
             self.created = psutil.Process(self.process.pid).create_time()
         except BaseException:
@@ -119,6 +124,44 @@ class OwnedProbe:
         except (psutil.Error, OSError):
             pass
 
+    def _native_startup_state(self):
+        markers = {
+            "gcs_started": (b"GcsServer server started",),
+            "gcs_connection_failed": (b"Failed to connect to GCS",),
+            "raylet_started": (b"Raylet started",),
+            "node_registered": (b"Registering node",),
+            "port_bind_failed": (
+                b"Address already in use",
+                b"Only one usage of each socket address",
+            ),
+            "module_missing": (b"No module named",),
+            "worker_registration_timeout": (b"not registered within the timeout",),
+        }
+        observed = {key: False for key in markers}
+        count = 0
+        root = Path(self.directory.name)
+        for logs in root.glob("th-native-*/session_*/logs"):
+            if logs.parent.is_symlink() or not logs.resolve().is_relative_to(root.resolve()):
+                continue
+            for name in (
+                "gcs_server.out",
+                "gcs_server.err",
+                "raylet.out",
+                "raylet.err",
+                "dashboard.log",
+                "monitor.log",
+            ):
+                path = logs / name
+                if path.is_symlink() or not path.is_file():
+                    continue
+                count += 1
+                with path.open("rb") as stream:
+                    stream.seek(max(0, path.stat().st_size - 65536))
+                    tail = stream.read(65536)
+                for key, tokens in markers.items():
+                    observed[key] |= any(token in tail for token in tokens)
+        return {"log_files": count, "markers": observed}
+
     def _diagnostic_note(self):
         allowed = {"core-import", "core-imported"} | {
             backend + "-" + stage
@@ -132,13 +175,23 @@ class OwnedProbe:
                 for line in stream.read(65536).decode("utf-8", errors="replace").splitlines():
                     if line.startswith("native-probe:") and line[13:] in allowed:
                         phases.append(line[13:])
+        try:
+            startup = self._native_startup_state()
+        except OSError:
+            startup = {"unavailable": True}
         return "Native probe state: " + json.dumps(
-            {"phases": phases, "returncode": self.process.poll()}
+            {
+                "phases": phases,
+                "returncode": self.process.poll(),
+                "native_startup": startup,
+            }
         )
 
     def receive(self):
         try:
-            line = self.pool.submit(self.process.stdout.readline, 1024 * 1024 + 1).result(timeout=30)
+            line = self.pool.submit(self.process.stdout.readline, 1024 * 1024 + 1).result(
+                timeout=30
+            )
         except TimeoutError as error:
             # Only closed synthetic stage labels may leave the owned SDK log.
             error.add_note(self._diagnostic_note())

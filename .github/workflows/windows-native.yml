@@ -5,7 +5,7 @@ on:
       scope:
         description: Diagnostic component; full release verification remains separate
         type: choice
-        options: [all, engines, operators, checkpoints]
+        options: [all, engines, operators, checkpoints, ai]
         default: all
 permissions:
   contents: read
@@ -20,7 +20,7 @@ jobs:
       fail-fast: false
       matrix:
         python: ['3.11', '3.12', '3.13']
-        scope: ${{ fromJSON(inputs.scope == 'engines' && '["engines"]' || inputs.scope == 'operators' && '["operators"]' || inputs.scope == 'checkpoints' && '["checkpoints"]' || '["engines","operators"]') }}
+        scope: ${{ fromJSON(inputs.scope == 'engines' && '["engines"]' || inputs.scope == 'operators' && '["operators"]' || inputs.scope == 'checkpoints' && '["checkpoints"]' || inputs.scope == 'ai' && '["ai"]' || '["engines","operators"]') }}
     env:
       NATIVE_SCOPE: ${{ matrix.scope }}
       POLARS_MAX_THREADS: '1'
@@ -54,8 +54,10 @@ jobs:
             $targets = @('tests/test_dask_native_contract.py', 'tests/test_distributed_native_contract.py', 'tests/test_mcp_distributed_engines.py', 'tests/stores/concurrency/test_atomic.py')
           } elseif ($env:NATIVE_SCOPE -eq 'checkpoints') {
             $targets = @('tests/test_distributed_native_contract.py::test_native_ray_local_checkpoint_destination_resolves_as_one_directory', 'tests/test_distributed_native_contract.py::test_native_checkpoint_enabled_creates_real_snapshot', 'tests/test_distributed_native_contract.py::test_native_ray_empty_checkpoint_preserves_schema', 'tests/test_mcp_distributed_engines.py::test_approved_native_distributed_engines_children_and_reopen[ray]')
+          } elseif ($env:NATIVE_SCOPE -eq 'ai') {
+            $targets = @('tests/test_mcp_ai_services.py')
           } else {
-            $targets = @('tests/test_mcp_profiler_services.py', 'tests/test_mcp_store_reconciliation.py', 'tests/test_mcp_store_concurrent.py', 'tests/test_mcp_dashboards.py')
+            $targets = @('tests/test_mcp_profiler_services.py', 'tests/test_mcp_store_reconciliation.py', 'tests/test_mcp_store_concurrent.py', 'tests/test_mcp_dashboards.py', 'tests/test_mcp_ai_services.py')
           }
           uv run --python ${{ matrix.python }} --frozen --extra dev --extra mcp python -m pytest -q @targets -p no:cacheprovider --junitxml test-artifacts/windows-native.xml
       - uses: actions/upload-artifact@v4
