@@ -21,7 +21,7 @@ GRACE_SECONDS = 5
 
 @pytest.mark.parametrize("failed_artifact", [None, "wheel.whl", "source.tar.gz"])
 def test_artifact_smoke_parallel_isolation_and_failure_barrier(tmp_path, monkeypatch, failed_artifact):
-    """All seven stages survive concurrency; either branch failure blocks the launcher."""
+    """All eight stages survive concurrency; either branch failure blocks both launchers."""
     import importlib.util
     from types import SimpleNamespace
 
@@ -39,12 +39,15 @@ def test_artifact_smoke_parallel_isolation_and_failure_barrier(tmp_path, monkeyp
             installs.append(list(map(str, command)))
 
     def smoke(command, code, artifact, stage, cwd):
-        if stage == "uv-launcher":
+        if stage in {"uv-launcher", "core-uv-launcher"}:
             assert failed_artifact is None
             assert all(not directory.exists() for directory in directories.values())
             assert all(value == ["base-install", "mcp-install", "registry-cli-install"]
-                       for value in stages.values())
-            stages["launcher"] = [stage]
+                       for key, value in stages.items() if key != "launcher")
+            assert list(stages.get("launcher", [])) == (
+                [] if stage == "uv-launcher" else ["uv-launcher"]
+            )
+            stages.setdefault("launcher", []).append(stage)
             return
         with lock:
             stages.setdefault(artifact.name, []).append(stage)
@@ -69,7 +72,7 @@ def test_artifact_smoke_parallel_isolation_and_failure_barrier(tmp_path, monkeyp
         assert "launcher" not in stages
     else:
         release.smoke_artifacts(args, tmp_path, wheel, sdist, "3.2.0", "uv", smoke)
-        assert stages.pop("launcher") == ["uv-launcher"]
+        assert stages.pop("launcher") == ["uv-launcher", "core-uv-launcher"]
     assert set(stages) == {wheel.name, sdist.name}
     assert len(set(directories.values())) == 2
     assert all(not directory.exists() for directory in directories.values())
