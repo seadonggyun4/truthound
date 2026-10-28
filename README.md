@@ -41,24 +41,20 @@ and ends at the closing </p> of the badge block above.
 
 ## 플러그인 플랫폼 (Plugin Platform)
 
+### MCP로 사용하기
 
-프로세스·컨테이너 작업자는 크기가 제한된 데이터 전용 값을 반환합니다. 실행 또는 cleanup을 await하여 소유 작업자의 종료를 확인하세요. 컨테이너 이미지는 미리 설치해야 합니다. 명시적 호스트 경로에 읽기 또는 쓰기 권한을 부여할 수 있으며 적용되는 제한과 남은 정책 제약은 고급 플러그인 가이드에 설명되어 있습니다.
+Codex와 Claude Desktop에서 Truthound Local을 연결해 승인한 로컬 데이터의 결측값·중복을 검사하고, 컬럼 요약과 PII 표본 탐지를 실행할 수 있습니다.
 
-개발 Core 프로파일은 네이티브 수동 계보 추적·의존성/경로 조회·영향 요약 및 수준/유형별 필터·JSON 입출력, 테이블·컬럼별 프로파일 기반 규칙 생성과 검증기 설정 내보내기(자동 적용 제외), 두 자산의 스키마 변경 및 설정 가능한 컬럼 이름 변경 후보·신뢰도 분석, ML 예측 점수·이상치·드리프트 컬럼 조회와 크기 기반·ALL/ANY 복합 보존 정책도 제공합니다. 전체 Core 동등성은 아직 미검증입니다.
+![Truthound Local 플러그인 화면 — 로컬 데이터 폴더 설정과 CSV 검사](docs/assets/truthound-local-plugin.png)
 
-개발 소스에는 별도 승인된 영구 cron 반복 예약과 자동 보존 정책, 운영자가 직접 시작하는 포그라운드 실행기도 포함됩니다. 내장 스키마 호환성 분석, 스키마 이력의 버전 저장·조회·비교·롤백·삭제, 승인된 파일 이력 체크포인트와 세션 간 복구, 요청 기반 스키마 변경 감지·로컬 알림, 별도 승인된 세션 소유 동기·비동기 상시 감시와 운영자가 고정한 알림 객체의 전송, worker 재시작 후 승인 기간 내 감시 복구와 영구 알림 대기열(불명확한 전송은 자동 재시도하지 않음), 운영자가 고정·승인한 동기·비동기 네이티브 데이터소스 팩토리의 연결·검증·종료도 지원합니다. 원격 실서비스는 미검증이며 게시된 3.2.0 패키지의 기능은 아닙니다. 승인 기반 영구 감시 일시중지·재개, unknown 알림의 운영자 확인·중복 위험 승인 재시도, 해결된 대기열·체크포인트 이력의 네이티브 나이·개수 보존 정책, 명시적 만료 갱신·실패 감시 복구·승인된 정의 삭제도 제공합니다. 운영자가 고정·승인한 네이티브 Checkpoint 실행은 구성된 액션·라우팅·재시도를 민감한 결과 산출물에 보존합니다. 네이티브 비동기 실행과 별도 승인된 세션 소유 CheckpointRunner 예약·EscalationEngine 수명주기 명령도 제공합니다. 승인된 즉시 실행·제거, 정책·사건 조회와 새 정책·트리거·단계·알림 대상 편집도 지원합니다. 정지 및 실행 스레드 종료 후 실행 이력을 유지하며 간격·cron·공유 트리거와 checkpoint 정의를 편집할 수 있습니다. 서명된 실행기·정책 설정은 새 세션의 정지 서비스로 복원합니다. 운영자가 구성한 영구 네이티브 실행기·escalation 서비스는 재시작 후 대기 작업을 복구하고 중복 소유를 차단하며 불명확한 효과를 자동 재전송하지 않습니다. 외부 전달을 정확히 한 번 보장하는 것은 아닙니다.
+- **[Codex 설치 안내](docs/locales/ko/guides/mcp.md#openai-로컬-플러그인과-저장소-마켓플레이스)** — 준비 사항, 저장소 마켓플레이스 추가, 플러그인 설치와 허용 폴더 설정
+- **[Claude Desktop 설치 안내](docs/locales/ko/guides/mcp.md#claude-desktop-설치-파일)** — MCPB 다운로드, 확장 설치와 허용 폴더 설정
 
-3.3.0 개발 후보에서는 기존 3개 MCP 도구를 유지하면서 선택형 Core 프로파일을 확장하고 있습니다. 고정된 네이티브 벤치마크 워크로드는 실패 산출물과 원본 측정값 복원을 보존하고 협력적 시간·RSS 제한을 적용합니다. 시드를 적용한 네이티브 생성기는 페이지·Arrow 출력을 제공합니다. 승인된 API 문서 생성은 파일 해시와 부분 실패 산출물을 보존하며 고정 스캐폴딩·엄격한 docstring 검사도 생성 파일·네이티브 진단을 보존하고 공유 Core reporter 설정을 적용합니다. SQL 엔진은 전체 통계에 구체화 제한을 적용하고 지원 드라이버의 범위·집합 값을 바인딩합니다. 검증기 설정, 데이터·결과·스키마 핸들, 네이티브 Polars·SQLite·DuckDB 데이터소스 수명주기, 로컬 파일 스트림 커서, 선언형 커널 suite, 고급 프로파일, 드리프트·기계학습·계보(학습 모델 저장·복원, 앙상블 편집, 승인된 세션 간 스냅샷, 학습 규칙 조회·변환과 전체·부분 그래프 JSON·DOT·Mermaid와 전체 그래프 HTML·Markdown·SVG·PNG 산출물 포함), 네이티브 cron 미리보기·승인된 영구 체크포인트 복구·불명확한 결과 처리·네이티브 스트리밍 저장소 세션·writer/reader·최종 집계와 실행 엔진·일반 저장소 수명주기와 원자적 파일 게시·인덱스 조정·복사된 동시 저장소 코덱/잠금 설정·메모리 설정 적용·S3·GCS·Azure 조건부 receipt·비공개 연결 정보 없는 SQL 풀 제어·선택형 그룹/스트리밍 집계 계획·NULL 그룹을 포함한 중복 처리·제한된 SQL 집계 fallback·네이티브 검증기 port·실행 엔진 checkpoint와 Arrow cursor·모드별 캐시와 소유한 지연 쓰기·불명확 쓰기 명시적 복구·종료 완료 응답, 고정 예측·기준·정답 자산을 사용하는 네이티브 모델 모니터의 주기 수집·실제 알림 이력·불명확 전송 실패 상태, 비공개 payload 슬롯을 쓰는 팩토리 소유 네이티브 adaptive·청크 압축·암호화·범위 읽기·증분 코덱 세션·백프레셔, migration preview·적용·재열기·명시적 배치 복구·정리, 라이브 소스 읽기·프로파일·PII·마스킹·스키마 facade·binding 기반 로컬 대시보드·브로커·AI·감사·관측 수명주기·네이티브 트래커 문맥 작업·이력·그래프 저장/재열기와 결과 불명을 보존하는 승인형 OpenLineage 전송·네이티브 tenant 행 정책 필터·편집과 보안·rate budget 제어와 비밀 값을 제외한 secret provider·cache 관리·승인된 영구·유한 반복 검증 작업과 시간·개수 보존 정책·승인 삭제·스키마 감사, 리포트와 별도 승인된 영구 context 수명주기·네이티브 확장 바인딩·같은 소유자의 provider/검사/reporter 실행과 상세 hook 결과, 승인된 사용자 프로파일러 구성·native 표본 유지·규칙 품질/이력·로컬 타입 추론 feedback·네이티브 가중 sklearn 분류기 학습/복원·팩토리 기반 추론·HTML/PDF 보고서·분산 profiler·표본 sketch 조회·프로파일/suite 저장·복원·생성 suite 실행과 분석/변환 실패 상태를 연결하며 민감한 읽기에는 운영자의 허용이 필요합니다. **아직 전체 Core 동등성이나 게시된 3.2.0의 기능이 아닙니다.** [현재 구현·실행 방법과 남은 제약](docs/locales/ko/guides/mcp.md#core-프로파일-아직-배포하지-않은-소스-기능)
+설치 후에는 사용할 데이터 폴더를 별도로 승인해야 합니다. 다른 MCP 클라이언트의 설정은 [Registry·클라이언트 연결 안내](docs/locales/ko/guides/mcp.md#registry-메타데이터와-설치)를 참고하세요.
 
-- **Codex·ChatGPT 데스크톱 (플러그인 0.1.4)**: [Truthound 저장소 마켓플레이스](.agents/plugins/marketplace.json)를 추가한 뒤 **Plugins → Truthound Plugins → Truthound Local → Install → Set up**에서 허용 폴더를 지정합니다. 최초 마켓플레이스 추가: `codex plugin marketplace add seadonggyun4/truthound --ref main`. [설치·권한·공식 등재 절차](docs/locales/ko/guides/mcp.md)
-- **마켓플레이스에서 찾기**: [공식 MCP Registry](https://registry.modelcontextprotocol.io/)에서 `io.github.seadonggyun4/truthound`를 검색하세요. 연동 클라이언트의 마켓플레이스에 표시되면 **Install**을 누르고 접근을 허용할 데이터 폴더를 지정합니다. [등록된 3.2.0 정보](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.seadonggyun4%2Ftruthound/versions/3.2.0)
-- **Claude Desktop**: [MCPB 다운로드](https://github.com/seadonggyun4/truthound/releases/download/v3.2.0/truthound-3.2.0.mcpb) → **Settings → Extensions → Advanced settings → Install Extension…** → 파일 선택·허용 폴더 설정. [공식 설치 안내](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop)
+개발 중인 Core 프로파일의 기능과 지원 범위는 [MCP 가이드](docs/locales/ko/guides/mcp.md#core-프로파일-아직-배포하지-않은-소스-기능)를 참고하세요.
 
 ---
-
-벤치마크 CLI는 `--size stress`(1억 행)를 지원하며 `--rows`로 행 수를 재정의할 수 있습니다. [벤치마크 명령](docs/cli/benchmark/run.md)을 참고하세요. 콘솔과 JSON 벤치마크 출력에는 선택적인 HTML 리포트 의존성이 필요하지 않습니다.
-
-플러그인 의존성·설치 버전을 검사하고 선택된 MCP 소유자의 명시적 종료를 확인합니다. 플러그인 생명주기 진입 시 인증된 소스 서명을 요구할 수 있습니다. [서명 계약](docs/locales/ko/guides/advanced/plugins.md#인증된-서명과-생명주기-진입-검사)을 참고하세요.
 
 ## 개요 (Overview)
 
