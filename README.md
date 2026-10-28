@@ -184,7 +184,7 @@ masked = th.mask(
 drift = compare({"score": [0.1, 0.2]}, {"score": [0.1, 0.8]})
 ```
 
-- **보고서**: A4 HTML/PDF, `light`·`dark`·`minimal` 테마, 번호가 붙은 표·그림·부록과 품질 차원·진단 기준·임계값을 제공합니다.
+- **보고서**: A4 HTML/PDF를 생성하며 공개 테마는 `light`·`dark`·`minimal`입니다. 번호가 붙은 표·그림·부록과 품질 차원·진단 기준·임계값을 제공합니다.
 - **PDF 배치**: 긴 표·섹션은 페이지별로 나누고, 한 페이지에 들어가는 카드는 함께 배치합니다. 긴 컬럼명과 JSON 예시는 생략 없이 줄바꿈합니다.
 - **자료형·통계**: 자료형은 `inferred_type` → `physical_type` → `dtype` 순으로 표시하며, 없으면 `unknown`입니다. 정의되지 않은 왜도·첨도는 JSON `null`로 표현하고 원본 값과 다른 통계는 유지합니다.
 - **고급 연동**: `ReportDocument`로 구조를 검사하며 `generate_html_report`, `HTMLReportBuilder`, `export_to_pdf` 호환성을 유지합니다.

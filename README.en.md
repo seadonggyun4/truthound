@@ -180,7 +180,7 @@ masked = th.mask(
 drift = compare({"score": [0.1, 0.2]}, {"score": [0.1, 0.8]})
 ```
 
-- **Reports**: A4 HTML/PDF with `light`, `dark`, and `minimal` themes, numbered tables, figures and appendices, quality dimensions, diagnostic criteria and thresholds.
+- **Reports**: A4 HTML/PDF; public themes are `light`, `dark`, and `minimal`. Reports include numbered tables, figures and appendices, quality dimensions, diagnostic criteria and thresholds.
 - **PDF layout**: Long tables and sections span pages; cards that fit on one page stay together. Long column names and JSON examples wrap without truncation.
 - **Types and statistics**: Types use `inferred_type` → `physical_type` → `dtype`, falling back to `unknown`. Undefined skewness and kurtosis use JSON `null`; source values and other statistics remain unchanged.
 - **Advanced integration**: Inspect structure with `ReportDocument`; compatibility with `generate_html_report`, `HTMLReportBuilder`, and `export_to_pdf` is preserved.
