@@ -1,6 +1,7 @@
 """Operator-bound native source factories with explicit, session-owned effects."""
 
 import json
+import time
 from contextlib import suppress
 from typing import Annotated
 
@@ -120,9 +121,14 @@ async def open_source(controller, arguments):
             "input_kind": "source",
         }
         authorize(session, metadata)
+        deadline = time.monotonic() + policy.timeout_seconds
+        worker = SourceProcess(policy.handle_ttl_seconds)
+        await worker.call({"prepare": True}, max(0, deadline - time.monotonic()))
+        authorize(session, metadata)
+        if time.monotonic() >= deadline:
+            raise TimeoutError
         store.begin(plan["plan_id"], session=session.identity, policy=stamp)
         started = True
-        worker = SourceProcess(policy.handle_ttl_seconds)
         await worker.call(
             {
                 "operation": "sources_open_binding",
@@ -130,7 +136,7 @@ async def open_source(controller, arguments):
                 "capability": capability,
                 "public_name": arguments.binding_id,
             },
-            policy.timeout_seconds,
+            max(0, deadline - time.monotonic()),
         )
         authorize(session, metadata)
         entry = resources.commit(

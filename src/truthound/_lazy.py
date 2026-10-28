@@ -68,7 +68,16 @@ class PackageImportMetrics:
 # =============================================================================
 
 # Truthound 3.0 intentionally keeps the root package small.
-TRUTHOUND_IMPORT_MAP: dict[str, tuple[str, str | None]] = {}
+TRUTHOUND_IMPORT_MAP: dict[str, tuple[str, str | None]] = {
+    **{name: ("truthound.api", name) for name in ("check", "mask", "profile", "read", "scan")},
+    **{name: ("truthound.context", name) for name in ("TruthoundContext", "get_context")},
+    **{name: ("truthound.core", name) for name in (
+        "CheckResult", "CheckSpec", "SchemaSpec", "ValidationRunResult", "ValidationSuite"
+    )},
+    "validator": ("truthound.decorators", "validator"),
+    "Schema": ("truthound.schema", "Schema"),
+    "learn": ("truthound.schema", "learn"),
+}
 
 
 class LazyPackageLoader:
@@ -78,11 +87,14 @@ class LazyPackageLoader:
         self,
         import_map: dict[str, tuple[str, str | None]],
         metrics: PackageImportMetrics | None = None,
+        *,
+        preserve_import_errors: bool = False,
     ):
         self._import_map = import_map
         self._cache: dict[str, Any] = {}
         self._metrics = metrics or PackageImportMetrics()
         self._loaded_modules: dict[str, Any] = {}
+        self._preserve_import_errors = preserve_import_errors
 
     def load(self, name: str) -> Any:
         """Load and return an attribute by name."""
@@ -126,6 +138,8 @@ class LazyPackageLoader:
             return result
 
         except (ImportError, AttributeError) as e:
+            if self._preserve_import_errors and isinstance(e, ImportError):
+                raise
             logger.warning(f"Failed to lazy load '{name}' from '{module_path}': {e}")
             raise AttributeError(
                 f"cannot load '{name}' from '{module_path}': {e}"
@@ -152,7 +166,7 @@ def get_package_loader() -> LazyPackageLoader:
     """Get or create the global package loader."""
     global _package_loader
     if _package_loader is None:
-        _package_loader = LazyPackageLoader(TRUTHOUND_IMPORT_MAP)
+        _package_loader = LazyPackageLoader(TRUTHOUND_IMPORT_MAP, preserve_import_errors=True)
     return _package_loader
 
 
@@ -163,6 +177,13 @@ def truthound_getattr(name: str) -> Any:
     to enable lazy loading.
     """
     return get_package_loader().load(name)
+
+
+def _reset_truthound_import_cache() -> None:
+    """Refresh facade aliases on package reload without reloading native modules."""
+    if _package_loader is not None:
+        _package_loader._cache.clear()
+        _package_loader._loaded_modules.clear()
 
 
 def get_truthound_import_metrics() -> dict[str, Any]:

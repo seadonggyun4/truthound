@@ -37,6 +37,12 @@ def main():
                     if len(line) > 131072 or not line.endswith(b"\n"):
                         raise MCPError("resource_exhausted")
                     request = json.loads(line)
+                    if request == {"prepare": True}:
+                        if runtime is not None:
+                            raise MCPError("invalid_arguments")
+                        wire.write('{"ok":true}\n')
+                        wire.flush()
+                        continue
                     if "open" in request:
                         if runtime is not None:
                             raise MCPError("invalid_arguments")

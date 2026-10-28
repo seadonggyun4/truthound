@@ -48,9 +48,14 @@ def approve(adapter, control, operation, **request):
     if request.get("service_id") is not None:
         owner = adapter._session._checkpoint_services.workers.get(request["service_id"])
     result = invoke(adapter, operation, **request)
+    if owner is None:
+        owner = getattr(adapter, "_test_checkpoint_open_worker", None)
     diagnostic = {
         "category": getattr(owner, "failure_category", None),
         "exit_status_after_cleanup": getattr(owner, "failure_exit_status_after_cleanup", None),
+        "phase": getattr(owner, "exchange_phase", None),
+        "reply_seconds": getattr(owner, "exchange_reply_seconds", None),
+        "reply_bytes": getattr(owner, "exchange_reply_bytes", None),
     }
     assert result["execution_status"] == "succeeded", (result, diagnostic)
     return result
@@ -60,6 +65,15 @@ def prepare(runtime, monkeypatch, kind, *, approved=True):
     from truthound.mcp import model_process
 
     adapter, control, marker, _, _ = runtime
+    from truthound.mcp import checkpoint_services
+    original_process = checkpoint_services.ServiceProcess
+
+    def tracked_process(ttl):
+        worker = original_process(ttl)
+        adapter._test_checkpoint_open_worker = worker
+        return worker
+
+    monkeypatch.setattr(checkpoint_services, "ServiceProcess", tracked_process)
     monkeypatch.setattr(
         model_process,
         "sys",

@@ -6,6 +6,10 @@ stdio를 지원하는 에이전트에서 사용할 수 있습니다.
 
 ## 설치와 실행
 
+개발 소스에서 루트 패키지를 import하면 검증 facade와 Polars는 첫 접근까지
+로드를 미룹니다. 공개 함수와 타입은 기존 Core 객체를 그대로 반환하며,
+worker 시작 시 사용하지 않는 검증 의존성을 불러오는 일을 줄입니다.
+
 ```bash
 pip install "truthound[mcp]==3.2.0"
 truthound-mcp serve --allow-dir /absolute/path/to/data
@@ -172,6 +176,26 @@ JavaScript의 정확한 정수 범위를 넘는 값에는 십진 문자열 태�
 0이 아닌 시작 위치도 거부합니다. 안정적인 핸들은 아래의 보관 데이터 도구를 사용합니다.
 전체 결과가 응답 크기 제한보다 크면 오류를 반환하며 일부를 자르고 전체 결과라고
 표시하지 않습니다. 기존 파일·시간·동시 실행 제한과 메모리 한계는 그대로 적용됩니다.
+
+### 구현 범위와 남은 작업
+
+전체 Core–MCP 동등성은 아직 검증되지 않았습니다. 연결된 기능과 일부 테스트의
+통과만으로 모든 네이티브 설정·실패·재시작 경로의 동등성을 판단하지 않습니다.
+
+| 영역 | 현재 경계·남은 작업 |
+| --- | --- |
+| Checkpoint 설정 수명주기 | 서명된 저장·복원, 승인된 조회·삭제와 저장·조회 또는 명시적 실행 시 네이티브 나이·개수·크기 영구 보존 정책을 제공합니다. 유휴 백그라운드 정리는 제공하지 않습니다. |
+| 네이티브 실시간 검증 | 브로커 consume/ack·윈도·처리는 제공하지만, 별도 `realtime.StreamingValidator`의 batch 검증·통계·초기화는 승인 팩토리로 연결합니다. 승인된 sync/async generator 세션·cursor·종료도 연결합니다. |
+| 스트리밍 검증 pipeline | 등록된 스트리밍 검증기와 로컬 파일 커서는 제공하지만 `StreamingValidationPipeline.validate_source`·`stream_validate_many` orchestration도 승인 세션으로 제공합니다. |
+| Arrow Flight 스트림 | 네이티브 `ArrowFlightStreamingSource`는 승인된 `BrokerRuntime.file_source`로 연결합니다. `streams_open`은 로컬 파일 전용입니다. |
+| 물리적 tenant SQL 격리 | 검증된 물리 소스 wrapper는 파일 기반 SQLite·DuckDB, PostgreSQL 일반 테이블, MySQL InnoDB 테이블과 Oracle PDB 일반 테이블을 허용하며 SQL Server는 구현 후 네이티브 x86 검증이 남아 있으며 그 밖의 SQL provider는 아직 구현되지 않았습니다. |
+| 저장소·실행·profiler·보고·확장 | 기존 네이티브 service binding은 있지만 전체 설정·결과·실패·영속화·재시작 동등성은 미검증입니다. 임의 코드·자격증명·경로는 계속 운영자 binding이 필요합니다. |
+| 외부 서비스 | 실제 클라우드·외부 브로커·유료 AI·외부 알림은 미검증이며 로컬 adapter 미구현과 구분합니다. |
+
+네이티브 Checkpoint 실행기·에스컬레이션의 영구 복구 구현은 현재 존재합니다.
+영구 서비스 복구 전체를 미구현으로 분류한 이전 설명은 오래된 내용입니다.
+서명된 설정 스냅샷과 실행 상태 복구 journal은 별도 자원입니다.
+이 표가 남은 작업 전체를 빠짐없이 열거했다는 의미는 아닙니다.
 
 ### 승인된 네이티브 데이터소스 팩토리
 
@@ -1204,6 +1228,47 @@ ML 산출물에는 `encoding`, `model_algorithm`, `model_revision`과 태그로 
 복원은 일치하는 네이티브 객체를 편집하고 영구 트리거 이력을 보존하며 예약을 시작하거나
 이전 액션을 재실행하지 않습니다. 실행기·에스컬레이션 스냅샷을 교차 사용할 수 없습니다.
 
+`checkpoint_services_execute(command="configuration_list", ...)`는 현재 binding·서비스
+종류·승인 범위의 서명된 설정 스냅샷을 조회하며 별도 정확한 요청 승인이 필요합니다.
+`configuration_limit`(1–100, 세션 항목 한도 이내)·`configuration_offset`으로
+안정된 ID 순서를 페이지 조회합니다. ID·SHA-256·바이트 수·서비스 종류만 반환하고
+설정 내용과 비공개 팩토리 필드는 공개하지 않습니다.
+
+`configuration_delete`는 중복 없는 명시적 `snapshot_ids` 1–100개와 별도 승인이
+필요합니다. 삭제 전 선택 전체의 서명·권한을 확인하며 없는 항목·변조·다른 binding·
+다른 서비스 종류가 포함되면 유효한 앞 항목도 삭제하지 않습니다. 삭제 전에 영수증
+크기 한도를 검사하고 같은 요청 재실행은 보관한 승인 결과를 사용합니다.
+스냅샷 개수·바이트 용량만 회수하며 실행 중 서비스·journal·알림 시도는 변경하지
+않습니다. 삭제된 스냅샷은 복원할 수 없습니다. 명시적 논리 삭제이며 물리적 완전 삭제를 보장하지 않습니다.
+
+`configuration_retention_set`은 현재 binding·서비스 종류에 별도 승인된 영구
+정책을 저장합니다. `retention`에는 Unix 초인 `expires_at`과 `max_age_minutes`·
+`max_count`·`max_size_bytes` 중 하나 이상이 필요합니다. `mode`는 네이티브 Core의
+`all` 또는 `any` 의미를 따르며 `enabled: false`로 정리를 해제합니다.
+`configuration_retention_status`는 서명된 정책과 활성 상태를 조회하고,
+`configuration_retention_apply`는 별도 승인으로 즉시 정리합니다. 활성 기간에는
+스냅샷 저장·조회 시에도 자동 정리하며 유휴 상태의 백그라운드 타이머는 없습니다.
+비공개 제어 저장소를 다시 열어도 정책을 유지하며 원래 승인 범위와 만료를
+검사합니다. 생성 시각이 없는 기존 스냅샷은 보존합니다. 서명·권한·출력 한도
+실패 시 트랜잭션을 되돌립니다. 저장 영수증의 `retained: false`는 보존 정책이
+새 스냅샷을 즉시 삭제하여 이후 복원할 수 없다는 뜻입니다.
+
+별도 고정 데이터소스·일회성 동기/비동기 Checkpoint·스키마 감시도 승인 소비 전에 준비 응답을 확인합니다. 부모의 요청·산출물 준비를 마친 뒤 실행 intent를 시작합니다.
+
+일회성 Checkpoint는 준비 단계에서 고정된 Core 검증 facade와 동기·비동기
+Checkpoint 클래스를 불러온 뒤 운영자 factory를 로드합니다. 이 단계의 Core
+의존성 오류는 수정 후 기존 승인을 사용할 수 있습니다. 기존 공통 제한 시간을
+유지하며 불명확한 운영자 효과를 자동 재실행하지 않습니다.
+
+저장소·실행·프로파일러·플러그인·tenant 등을 포함한 공통 factory 서비스도 승인 소비 전에 효과 없는 준비 응답을 확인합니다. 준비와 native factory 호출은 원래 제한 시간을 공유합니다. 시작 준비 실패 시 승인을 유지하며, factory 진입 후 불확실한 실패는 계속 자동 재실행을 막습니다.
+
+Checkpoint 서비스는 운영자 팩토리 실행 전에 효과 없는 Core worker 준비 응답을
+확인합니다. 준비와 팩토리 실행은 원래 요청 제한 시간을 공유하며 추가 대기 시간을
+부여하지 않습니다. 준비 실패 시 worker를 정리하고 팩토리가 실행되지 않은 정확한
+요청의 승인 상태를 유지합니다. 네이티브 팩토리 실행을 시작한 뒤 불확실한 실패는
+계속 `outcome_unknown`이며 자동 재실행하지 않습니다. 호스트 부하가 높으면 실제
+시작 timeout은 여전히 발생할 수 있으며 준비 확인이 시작 성공을 보장하지는 않습니다.
+
 ### 영구 체크포인트 복구
 
 운영자 팩토리에서 `RunnerConfig(journal_path=...)` 또는
@@ -1459,6 +1524,55 @@ import 경로·topic·콜백을 지정하지 않습니다. 원시 메시지에�
 batch·window는 상주 소유자 상태이며 세션 간 상태·offset·복구 내구성은 네이티브
 backend에 따릅니다. 테스트는 실제 Core 로컬 테스트 어댑터를 사용하며
 Kafka·Kinesis·클라우드 실서비스는 미검증입니다.
+
+운영자 팩토리는 `BrokerRuntime(..., validator=StreamingValidator(...))`로 네이티브
+검증기와 콜백·설정을 고정할 수 있습니다. `validate_batch`는 보관한 `batch_id`에
+네이티브 `MessageBatch.to_dataframe()`과 `StreamingValidator.validate_batch()`를
+적용합니다. `validation_stats`·`validation_reset`은 네이티브 통계 조회·초기화입니다.
+각 명령은 정확한 요청 승인이 필요하며 같은 요청 재실행은 기존 영수증을 사용합니다.
+검증은 자동 ack·processor 실행을 하지 않습니다. native 실패·결과 한도 초과는
+실패로 보존하며 효과 시작 뒤 불확실한 요청을 자동 재실행하지 않습니다.
+반복 검증 세션은 다음 절의 별도 stream 명령으로 제공합니다.
+
+#### 네이티브 stream·async-stream 검증 세션
+
+승인된 `brokers` 팩토리는 브로커 adapter 없이도 `BrokerRuntime`을 반환할 수 있습니다.
+`stream_source`는 네이티브 `truthound.realtime.StreamingSource`, `file_source`는
+네이티브 파일·Arrow·Flight `StreamingSource`입니다. 두 소스를 함께 지정할 수
+없으며 처음에는 연결되지 않아야 합니다. 예를 들어 팩토리에서
+`BrokerRuntime(file_source=ArrowFlightStreamingSource(...), validator=StreamingValidator(...),
+pipeline=StreamingValidationPipeline(...), streaming_validators=[NullValidator()])`를
+고정합니다. 주소·ticket·TLS·token·검증기·콜백·설정은 운영자 팩토리가 소유하고
+MCP 요청으로 호스트·URL·인증정보·import·경로를 전달할 수 없습니다.
+Flight 팩토리에는 worker 환경에 Flight를 지원하는 선택형 PyArrow 의존성이 필요합니다.
+
+`brokers_open` 후 각 `brokers_execute` 요청을 별도로 승인합니다.
+
+| 명령 | 동작 |
+| --- | --- |
+| `source_connect` / `source_disconnect` | 네이티브 연결·열기와 generator 종료·연결 해제. |
+| `source_status` | 인증정보 없이 연결·검증 generator·raw cursor 상태 조회. |
+| `stream_start` | `stream_mode="sync"` 또는 `"async"`, 유한 `max_batches`(1–10000, 기본 100)로 네이티브 `validate_stream`·`validate_stream_async`를 시작. |
+| `stream_next` | `limit`개까지 batch 결과 조회. 네이티브 generator가 끝났을 때만 `exhausted`를 반환하며 추가 batch를 미리 소비하지 않음. |
+| `stream_cancel` | 멈춰 있는 generator 종료. 현재 provider cursor를 유지하며 rewind·ack를 하지 않음. |
+| `source_next` | 검증이 비활성일 때 네이티브 원시 청크 페이지 조회. 민감 결과 권한과 산출물 크기 제한 적용. |
+| `pipeline_validate` | 보관된 브로커 `batch_id`에 고정된 네이티브 pipeline 적용. |
+| `pipeline_stream` | 연결된 파일·Flight 소스에 네이티브 `StreamingValidationPipeline.validate_source`를 적용해 상태 공유·최종 집계. |
+| `stream_validate_many` | 네이티브 다중 검증기 스트리밍과 검증기별 집계. |
+
+페이지 한도는 세션 항목 제한도 따릅니다. 같은 정확한 요청 재실행은 기존 산출물을
+반환하고 cursor·콜백을 다시 진행하지 않습니다. 페이지가 정확히 가득 차면 다음
+호출에서 소진을 확인할 수 있습니다. raw cursor와 검증 generator는 동시에 사용할
+수 없습니다. 새 읽기는 연결 해제·재연결 후 네이티브 provider 의미를 따릅니다.
+네이티브 실패·부분 결과·크기·시간 제한 실패를 검증 완료로 표시하지 않으며
+불확실한 효과는 자동 재시도하지 않습니다. 자원 해제·만료·권한 철회·부모 종료·
+서비스 종료 시 소유 worker와 연결을 정리합니다. 추가 자원은 팩토리가 정리합니다.
+
+Flight는 실제 `FlightStreamChunk.data`를 읽고 남은 RecordBatch 전체를 유지하며,
+Arrow slice offset을 정규화한 뒤 지원 Polars로 변환합니다. 설정한 RPC timeout과
+인증 헤더를 적용하고 reader 취소 후 client를 닫습니다. 미확정 행 수는 소진 전까지
+`TypeError`이며 음수 Python 길이를 반환하지 않습니다. 실제 클라우드 Flight나
+운영 자격증명의 검증을 의미하지 않습니다.
 
 ### 네이티브 AI 제안 검토와 적용
 
@@ -1790,6 +1904,12 @@ null/빈 입력 first/last·선택 필터·persist·Arrow·파생 객체 종료�
 backend·namespace·직렬화·압축·자격 증명·정책·wrapper 설정과 저장소 종료는 factory가
 소유합니다. `VersionedStore`도 네이티브 `BaseStore`이며 `config`는 실제 내부 backend
 설정을 반영합니다. 요청에 연결·저장 경로를 넣을 수 없습니다.
+
+factory가 선택한 cache/batch wrapper를 중첩할 수 있습니다. 알려진 wrapper의
+primary 연결을 실제 네이티브 기본 저장소까지 확인하며 순환과 64개를 넘는 중첩은
+거부합니다. 연결된 cache·batch·replication wrapper 각각에 승인 guard를 적용합니다.
+기본 저장소와 내부 wrapper 정리는 factory가 소유하며 종료 완료 응답은 해당
+factory 정리를 기다립니다.
 
 `store_services_execute`는 초기화·저장·조회·존재·삭제·목록·query·개수·제한 삭제,
 최신·이력·실패 조회·suite와 반복 조회를 Core에 위임합니다. 필터는 `data_asset_id`,
@@ -2746,22 +2866,53 @@ ID 등 잘못된 형식도 거부합니다. header·token·resolver 코드는 wi
 `source_catalog`는 별칭을 나열하고
 `source_read(tenant_id, source_id, columns?, offset?, limit?)`는 민감 결과 동의와
 정확한 승인 아래 선택된 소스의 제한된 페이지를 반환합니다. native wrapper는
-`SQLiteDataSource`를 빌려 고정 native tenant ID에 연결하고, SQLite savepoint 안에서
-실제로 조회하는 동일 연결을 조회 전후 검증합니다. DATABASE 격리는 실제 DB 파일과
+`SQLiteDataSource` 또는 `DuckDBDataSource`를 빌려 고정 native tenant ID에
+연결하고 실제 조회 연결을 조회 전후 검증합니다. SQLite는 savepoint를 사용합니다.
+DuckDB cursor는 별도 연결이므로 실제 조회 cursor에서 트랜잭션을 열며 임시
+테이블의 이름 가리기를 거부합니다. DATABASE 격리는 실제 DB 파일과
 tenant의 절대 `database_name`을 비교합니다. SCHEMA 격리는 native schema 이름과
 wrapper에 명시한 절대 `namespace_database` 모두 일치해야 합니다. 운영자가 attach한
-SQLite DB도 지원합니다. 연결 정리는 factory 책임이며 경로와 namespace는 비공개입니다.
+SQLite DB도 지원합니다.
+PostgreSQL의 DATABASE 격리는 `current_database()`와 tenant DB 이름을 비교하고,
+SCHEMA 격리는 factory에 고정한 `namespace_database` 이름도 확인합니다.
+유휴 factory 연결의 반복 읽기·읽기 전용 트랜잭션에서 메타데이터 확인과 제한된
+`ONLY` 조회를 함께 실행합니다. view·foreign table·임시 테이블·상속 부모는
+거부합니다. 기존 호출자 트랜잭션은 commit·rollback하지 않고 거부합니다.
+MySQL은 schema를 DB namespace로 취급하여 실제 `DATABASE()`·소스 DB와 native
+namespace를 비교하고, SCHEMA에는 고정 `namespace_database`도 요구합니다.
+일반 InnoDB 테이블만 허용합니다. 실제 cursor의 읽기 전용·반복 읽기 트랜잭션에서
+테이블 메타데이터를 고정한 뒤 조회하며 view·임시 테이블 이름 가리기·다른 저장
+엔진·기존 호출자 트랜잭션은 거부합니다. 소유한 읽기 트랜잭션만 rollback합니다.
+테스트 서버는 시스템 설정 없이 초기화하며 생성한 프로세스와 데이터 디렉터리만
+정리합니다.
+SQL Server는 `SQLServerConfig(autocommit=True, dbapi_driver="pymssql")`로 고정한 전용 네이티브 연결을 사용합니다. 기존 자동 드라이버 선택은 `auto`로 유지됩니다. 물리적 tenant 읽기는 유휴 연결과 대상 테이블의 SELECT 전용 실효 권한을 요구합니다. 실제 DB·스키마를 확인하고 간접 테이블을 거부하며, serializable 트랜잭션과 `TABLOCK, HOLDLOCK`으로 읽기를 보호합니다. 소유 트랜잭션을 rollback한 뒤 기존 격리 수준과 잠금 제한 시간을 복원합니다. 호출자가 시작한 트랜잭션은 rollback 없이 거부합니다. 로컬 에뮬레이션에서 네이티브 읽기·MCP 재열기·SDK 종료를 검증했으며 네이티브 x86 CI와 최신 wheel 설치형 검증은 아직 필요합니다. 클라우드 SQL 및 전체 설정 동등성 검증 완료를 의미하지 않습니다.
+
+Oracle은 유휴·비자동 commit 애플리케이션 연결의 native 읽기 전용 트랜잭션을
+사용합니다. DATABASE는 실제 `CON_NAME` PDB와 tenant DB를 비교하고, SCHEMA는
+정확한 소스 owner와 factory에 고정한 `namespace_database` PDB도 확인합니다.
+단순 애플리케이션 식별자와 일반 테이블만 허용합니다. `SHARE ... NOWAIT` 잠금으로
+테이블 정의를 고정하며 `ROW SHARE`가 허용하는 `ADD COLUMN`도 차단합니다.
+제한된 읽기 동안 동시 쓰기도 차단합니다. 조회 전후 dictionary 객체 ID와 native
+`DBMS_UTILITY.NAME_RESOLVE` 객체 ID가 일치해야 합니다. view·synonym·외부/임시
+테이블·SYS/SYSDBA 연결과 기존 호출자 트랜잭션은 거부하며 소유한 트랜잭션만
+rollback합니다. 최근·동시 DDL의 Oracle snapshot 오류를 자동 재실행하지 않습니다.
+통합 fixture만 생성한 테스트 DDL의 서버 시간 경계가 지난 뒤 일반 읽기를 검증하며,
+제품 요청 제한 시간은 유지합니다. 실제 thin driver `oracledb==4.0.1`와 폐기 가능한
+Oracle Free PDB에서 SDK stdio 승인·owner 재열기·frontend 종료도 검증합니다.
+폐기 가능한 로컬 PostgreSQL·MySQL·Oracle로 native 격리 및 MCP owner 재시작을 검증하며,
+이는 운영 서버나 다른 SQL provider의 검증을 의미하지 않습니다.
+ 연결 정리는 factory 책임이며 경로와 namespace는 비공개입니다.
 정지된 tenant, 다른 tenant ID, query mode, view, virtual table, 메모리 DB 및 검증되지
 않은 원격 provider는 거부합니다. 일반 테이블 조회가 소스의 `materialization_row_limit`을
 초과하면 행을 반환하기 전에 실패합니다. 페이지 크기는 이 한도를 대체하지 않습니다.
 이미 반환한 데이터의 지속적인 회수가 아닌 구체화된 조회 snapshot입니다. 호출자가 제공한
-Arrow 자산은 여전히 schema/DB 소속을 증명하지 못합니다. 설치 worker의 SQLite 재시작
+Arrow 자산은 여전히 schema/DB 소속을 증명하지 못합니다. 설치 worker의 SQLite·DuckDB 재시작
 검증은 원격 DB provider 지원의 증거가 아닙니다.
 
 Profiler 서비스는 고정된 `quality_scorers`·`quality_rules`를 `quality_score`,
 `quality_compare`, `quality_cache_clear`로 제공합니다. 입력은 고정 자산이며 정렬된
 Boolean `label_column`을 지정할 수 있습니다. sampling·설정·사용자 규칙 코드는
-factory가 소유합니다. [품질 점수](profiler/quality-scoring.md)를 참조하세요.
+factory가 소유합니다. 품질 점수 결과는 지표·공개 규칙 별칭과 함께 native 권고문과 사용 여부를 보존합니다. [품질 점수](profiler/quality-scoring.md)를 참조하세요.
 
 고정 profiler 서비스는 native 표본 snapshot, 로컬 타입 추론 feedback·모델 영속화,
 완료 profile의 예산 제한 HTML artifact·고정 슬롯 내보내기도 제공합니다.

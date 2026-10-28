@@ -29,7 +29,7 @@ jobs:
       - run: uv sync --frozen --extra mcp
       - run: uv pip install --python .venv/bin/python -r verification/ci/requirements-lite.txt
       - name: Verify actual stdio, data privacy, errors, bundle and registry contracts
-        run: .venv/bin/python -m pytest -q tests/test_mcp.py tests/test_mcp_faults.py tests/test_mcp_bundle.py tests/test_mcp_environment.py tests/test_mcp_dtype_privacy.py tests/test_mcp_registry.py --junitxml=test-artifacts/mcp-checks.xml -p no:cacheprovider
+        run: .venv/bin/python -m pytest -q tests/test_root_lazy_exports.py tests/test_mcp.py tests/test_mcp_faults.py tests/test_mcp_bundle.py tests/test_mcp_environment.py tests/test_mcp_dtype_privacy.py tests/test_mcp_registry.py tests/test_mcp_checkpoint_configurations.py tests/test_mcp_snapshot_retention.py tests/test_mcp_bound_startup.py tests/test_mcp_store_composition.py tests/test_mcp_checkpoints.py tests/test_mcp_schema_monitor.py tests/test_mcp_broker_validation.py --junitxml=test-artifacts/mcp-checks.xml -p no:cacheprovider
       - uses: actions/upload-artifact@v4
         if: always()
         with:

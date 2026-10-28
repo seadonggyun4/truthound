@@ -1,6 +1,7 @@
 """Approved resident native services with pinned factory and session ownership."""
 
 import json
+import time
 from contextlib import suppress
 
 from truthound.mcp.approved_sources import resolve
@@ -113,10 +114,8 @@ class BoundServiceSession(MonitorSession):
             authorize(session, metadata)
             for item in inputs.values():
                 resources.get(item.id)
-            store.begin(plan["plan_id"], session=session.identity, policy=stamp)
-            started = True
+            deadline = time.monotonic() + policy.timeout_seconds
             if opening:
-                path.write_text(json.dumps({"binding_id": arguments.binding_id}), encoding="utf-8")
                 worker = self.process_type(policy.handle_ttl_seconds)
 
                 def authorized():
@@ -127,6 +126,14 @@ class BoundServiceSession(MonitorSession):
                         return False
 
                 worker.watch_policy(authorized)
+                # Imports/bootstrap cannot run an operator factory. Retain the
+                # approval until this effect-free exchange has succeeded.
+                await worker.call({"prepare": True}, max(0, deadline - time.monotonic()))
+                authorize(session, metadata)
+                if time.monotonic() >= deadline:
+                    raise TimeoutError
+            if opening:
+                path.write_text(json.dumps({"binding_id": arguments.binding_id}), encoding="utf-8")
                 request = {
                     "open": True,
                     "plugins": plugins,
@@ -145,7 +152,9 @@ class BoundServiceSession(MonitorSession):
                     worker.expire_after(max(0, bound.expires - resources.clock()))
                     request["inputs"] = {key: str(item.path) for key, item in inputs.items()}
             request.update(output_path=str(path), budget=resources.available_bytes)
-            reply = await worker.call(request, policy.timeout_seconds)
+            store.begin(plan["plan_id"], session=session.identity, policy=stamp)
+            started = True
+            reply = await worker.call(request, max(0, deadline - time.monotonic()))
             authorize(session, metadata)
             for item in inputs.values():
                 resources.get(item.id)

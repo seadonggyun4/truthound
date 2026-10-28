@@ -14,9 +14,40 @@ pytestmark = pytest.mark.contract
 
 
 def prepare(runtime, monkeypatch):
+    import time
     from truthound.mcp import model_process
+    from truthound.mcp.tenancy import TenantServices
 
     adapter, control, _, _, _ = runtime
+    original = getattr(TenantServices.process_type, "_test_original", TenantServices.process_type)
+
+    def tracked(ttl):
+        worker = original(ttl)
+        adapter._test_native_worker = worker
+        worker._test_exchanges = []
+        native_call = worker.call
+
+        async def measured(payload, timeout):
+            started = time.perf_counter()
+            before = getattr(worker, "exchange_request_index", 0)
+            try:
+                return await native_call(payload, timeout)
+            finally:
+                worker._test_exchanges.append({
+                    "kind": "prepare" if payload == {"prepare": True} else "native",
+                    "budget": timeout, "seconds": time.perf_counter() - started,
+                    "phase": getattr(worker, "exchange_phase", None),
+                    "failure": getattr(worker, "exchange_failure", None),
+                    "category": getattr(worker, "exchange_worker_category", None),
+                    "request_index": getattr(worker, "exchange_request_index", None),
+                    "dispatch_started": getattr(worker, "exchange_request_index", 0) > before,
+                })
+
+        worker.call = measured
+        return worker
+
+    tracked._test_original = original
+    monkeypatch.setattr(TenantServices, "process_type", staticmethod(tracked))
     monkeypatch.setattr(
         model_process,
         "sys",
@@ -318,8 +349,9 @@ def test_native_tenant_resolver_cannot_create_unselected_identity(runtime, monke
     plugins.invoke(runtime[0], "resources_release", resource_id=reopened)
 
 
-def test_installed_structured_source_reads_same_database_after_owner_restart(runtime, monkeypatch):
-    runtime[2].with_name('tenant-source-mode').write_text('sqlite')
+@pytest.mark.parametrize("provider", ["sqlite", "duckdb"])
+def test_installed_structured_source_reads_same_database_after_owner_restart(runtime, monkeypatch, provider):
+    runtime[2].with_name('tenant-source-mode').write_text(provider)
     identity = prepare(runtime, monkeypatch)
     assert command(runtime, identity, 'source_catalog') == {'sources': ['records'], 'total': 1}
     first = command(runtime, identity, 'source_read', tenant_id='structured', source_id='records', limit=1)

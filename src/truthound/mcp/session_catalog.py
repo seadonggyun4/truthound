@@ -404,7 +404,7 @@ def operations(descriptor):
         ),
         (
             "brokers_open",
-            "Approve a pinned operator factory yielding a disconnected native broker adapter with optional window/transaction processor. No wire credentials, endpoints or topics. Opening does not connect; every effect requires fresh approval. Unknown effects are never automatically retried.",
+            "Approve a pinned operator factory yielding a disconnected native broker and/or stream/Flight source, validators and pipeline. No wire credentials, endpoints, tickets or topics. Opening does not connect; every effect requires exact approval. Unknown effects are never automatically retried.",
             SourceBindingOpen,
             "truthound.realtime.adapters.base.BaseStreamAdapter",
             wire.ResourceInfo | wire.OperationPlan,
@@ -412,7 +412,7 @@ def operations(descriptor):
         ),
         (
             "brokers_execute",
-            "Approve connect/disconnect/status, bounded consume, retained-batch ack/window/process, seek, produce to an operator-selected topic, flush or native transaction rollback recovery. Results may contain sensitive messages; recovery is not a delivery guarantee.",
+            "Approve native broker actions, sync/async stream start/next/cancel, source connection and cursor reads, batch validation, shared-state pipeline or multi-validator streaming, and validation statistics/reset. Transports and validators are operator-pinned. Exact replay never advances cursors; results may be sensitive. Recovery is not a delivery guarantee.",
             BrokerCommand,
             "truthound.realtime.adapters.base.BaseStreamAdapter",
             wire.ResourceInfo | wire.OperationPlan,

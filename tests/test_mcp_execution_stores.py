@@ -15,9 +15,39 @@ pytestmark = pytest.mark.contract
 
 
 def prepare(runtime, monkeypatch, group, mode=None):
+    import time
     from truthound.mcp import model_process
+    from truthound.mcp.execution_services import ExecutionServices
+    from truthound.mcp.store_services import StoreServices
 
     adapter, control, marker, _, _ = runtime
+    service = ExecutionServices if group == "execution_services" else StoreServices
+    original = getattr(service.process_type, "_test_original", service.process_type)
+
+    def tracked(ttl):
+        worker = original(ttl)
+        adapter._test_native_worker = worker
+        worker._test_exchanges = []
+        native_call = worker.call
+
+        async def measured(payload, timeout):
+            started = time.perf_counter()
+            try:
+                return await native_call(payload, timeout)
+            finally:
+                worker._test_exchanges.append({
+                    "kind": "prepare" if payload == {"prepare": True} else "native",
+                    "budget": timeout, "seconds": time.perf_counter() - started,
+                    "phase": getattr(worker, "exchange_phase", None),
+                    "failure": getattr(worker, "exchange_failure", None),
+                    "category": getattr(worker, "exchange_worker_category", None),
+                })
+
+        worker.call = measured
+        return worker
+
+    tracked._test_original = original
+    monkeypatch.setattr(service, "process_type", staticmethod(tracked))
     monkeypatch.setattr(
         model_process,
         "sys",

@@ -7,6 +7,7 @@ PR과 main push에서는 변경한 구성 요소에 해당하는 CI만 자동 �
 | `README*` | README 링크, 한·영 공개 계약, 보고서 정책, MCP Registry 메타데이터 |
 | `docs/**`, MkDocs 설정 | full/public 문서 빌드, 링크, 한국어·공개 범위 검사 |
 | Core 소스·제품 테스트 | 계약 4개 분할, fault/e2e, lint |
+| MCP stream·Flight·스트리밍 검증기 | 전용 경량 loopback Flight·sync/async cursor·pipeline 회귀 |
 | MCP 소스·MCP 테스트·`server.json` | Linux 단일 job의 실제 stdio·개인정보·오류·번들·Registry 계약 |
 | 로컬 플러그인 정의·승인 | 플러그인 설치·실행 계약 |
 | 벤치마크 구현·워크로드 | 벤치마크 단위·CLI 검사와 parity smoke |
@@ -323,3 +324,15 @@ Ray 네이티브 시작 중 치명적 종료 진단은 크기가 제한된 에�
 설치형 팩터리 회귀는 OS 파일 디스크립터 1·2에 직접 쓰고, Windows CRT와 Win32 표준 핸들이 일치하는지 확인한 뒤 온전한 JSON 프로토콜로 네이티브 계산과 종료를 수행합니다. Python 스트림만 리디렉션하는 구현으로는 이 검증을 통과할 수 없습니다.
 
 진단용 `ray-startup-compare` 범위는 같은 Windows 러너에서 새 소유 프로세스로 Core·기본 SDK 경로를 교차 순서로 고정 20쌍 실행합니다. 각 경로는 기존 30초 응답 제한 안에서 실제 네이티브 통계와 정리를 수행하고, 실패한 쌍은 재시도 없이 중단하며 40회 모두 통과해야 성공입니다. 비식별 JSON·JUnit에는 고정된 프로세스 역할·상태, CPU·RSS·스레드·생존 시간과 제한된 SDK 소스 위치만 기록합니다. 원문 로그, 프로세스 ID, 전체 경로, 인자, 메시지와 행 데이터는 업로드하지 않습니다. 이 대조는 시작 지연 진단이며 제품 검증을 대체하지 않습니다.
+
+SQL tenant 변경은 `mcp-sql-isolation.yml`에서 SQLite·DuckDB와 테스트가 생성한 임시 PostgreSQL·MySQL 및 설치형 운영자 worker 재시작을 검증합니다. 기존 DB나 운영 자격증명은 사용하지 않습니다.
+
+Oracle tenant 변경은 `mcp-oracle-isolation.yml`에서 고정 Oracle Free 이미지와
+thin driver를 사용합니다. 빌드한 wheel을 별도 클라이언트 환경에 설치한 뒤
+native namespace·읽기 전용/DDL 경계·호출자 snapshot 보존·실제 SDK stdio·서버
+세션 정리를 검증합니다. fixture가 컨테이너를 소유하고 삭제하며, 마스킹한 시작
+로그·정리 증거·JUnit·wheel 해시만 업로드합니다. provider 통합 테스트 파일은
+일반 Core 품질 suite 대신 전용 lane을 실행하고, 공통 SQL/worker 변경은 영향을
+받는 lane을 함께 실행합니다.
+
+SQL Server tenant 변경은 `mcp-sqlserver-isolation.yml`, 고정된 임시 이미지와 `pymssql==2.3.13`을 사용합니다. 네이티브 x86 Docker 엔진을 필수로 확인하고 별도 환경에 설치한 wheel의 SDK 종료·서버 세션 정리를 검증합니다. 공유 SDK 테스트 변경은 Oracle과 SQL Server 작업을 함께 선택합니다.

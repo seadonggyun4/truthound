@@ -492,3 +492,16 @@ from truthound.datasources.streaming import (
 구성한 backend 의미를 유지하며 `recover()`의 pending transaction rollback은 외부의
 정확히 한 번 전달 증거가 아닙니다. 개발 MCP 프로파일의 소유자·batch·ack·window·
 복구 제어는 [MCP 가이드](../mcp.md#네이티브-브로커와-처리-수명주기)에 설명합니다.
+
+
+## 네이티브 검증 pipeline과 Flight
+
+`StreamingValidationPipeline.validate_source(source)`는 네이티브 파일·Arrow Flight
+청크를 공유 검증기 상태로 처리한 뒤 완료된 전체 행 수로 한 번 최종 집계합니다.
+닫힌 소스는 호출이 열고 실패를 포함해 항상 닫습니다. 이미 열린 소스는 빌려 쓰며
+호출자가 계속 소유합니다. 실패를 숨기지 않습니다.
+
+Flight는 `FlightStreamChunk.data`와 남은 batch·slice offset을 보존하고 컬럼 선택·
+행 제한을 적용하며 reader 취소 후 client를 닫습니다. 소진 전 행 수는 미확정으로
+`len`은 `TypeError`입니다. 스트림 요청에 네이티브 RPC timeout·인증 헤더를 적용합니다.
+[승인된 MCP 스트리밍 세션](../mcp.md#네이티브-streamasync-stream-검증-세션)에서도 사용할 수 있습니다.

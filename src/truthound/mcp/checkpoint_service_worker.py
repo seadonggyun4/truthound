@@ -301,6 +301,14 @@ async def serve(wire):
     async with contextlib.AsyncExitStack() as stack:
         try:
             async for request in requests():
+                if request == {"prepare": True}:
+                    if service is not None:
+                        raise MCPError("invalid_arguments")
+                    # Core imports and transport are ready. No operator binding
+                    # or factory has been loaded and no native effect started.
+                    wire.write('{"ok":true}\n')
+                    wire.flush()
+                    continue
                 if request == {"close": True}:
                     break
                 if "open" in request:

@@ -1,6 +1,7 @@
 """Explicit approval of pinned, session-owned native schema polling and sending."""
 
 import threading
+import time
 from contextlib import suppress
 from typing import Annotated, Literal
 
@@ -152,10 +153,15 @@ class MonitorSession:
                 }
                 path.write_text(arguments.model_dump_json(), encoding="utf-8")
                 authorize(session, metadata)
-                store.begin(plan["plan_id"], session=session.identity, policy=stamp)
-                started = True
+                deadline = time.monotonic() + policy.timeout_seconds
                 worker = MonitorProcess(policy.handle_ttl_seconds)
                 worker.watch_policy(lambda: session.policy == policy)
+                await worker.call({"prepare": True}, max(0, deadline - time.monotonic()))
+                authorize(session, metadata)
+                if time.monotonic() >= deadline:
+                    raise TimeoutError
+                store.begin(plan["plan_id"], session=session.identity, policy=stamp)
+                started = True
                 await worker.call(
                     {
                         "open": arguments.model_dump(),
@@ -167,7 +173,7 @@ class MonitorSession:
                             policy.max_file_bytes, policy.max_session_bytes, 16 * 1024**2
                         ),
                     },
-                    policy.timeout_seconds,
+                    max(0, deadline - time.monotonic()),
                 )
                 authorize(session, metadata)
                 entry = resources.commit(

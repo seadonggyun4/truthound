@@ -1,6 +1,7 @@
 """Approved, session-owned native runner and escalation lifecycle controls."""
 
 import json
+import time
 from contextlib import suppress
 from datetime import datetime
 from typing import Annotated, Literal
@@ -149,6 +150,21 @@ class CheckpointDefinitionUpdate(WireModel):
         return self
 
 
+class ConfigurationRetention(WireModel):
+    max_age_minutes: Annotated[int, Field(ge=1, le=5256000)] | None = None
+    max_count: Annotated[int, Field(ge=1, le=128)] | None = None
+    max_size_bytes: Annotated[int, Field(ge=1, le=16 * 1024**2)] | None = None
+    mode: Literal["all", "any"] = "all"
+    enabled: bool = True
+    expires_at: Annotated[float, Field(gt=0, allow_inf_nan=False)]
+
+    @model_validator(mode="after")
+    def bounds(self):
+        if all(value is None for value in (self.max_age_minutes,self.max_count,self.max_size_bytes)):
+            raise ValueError("Supply at least one native retention bound")
+        return self
+
+
 class CheckpointServiceCommand(SourceBindingOpen):
     # The binding is repeated intentionally: each approval pins both identity
     # and the live handle, rather than authorizing a portable command.
@@ -173,6 +189,11 @@ class CheckpointServiceCommand(SourceBindingOpen):
         "policy_update",
         "policy_create",
         "persist_configuration",
+        "configuration_list",
+        "configuration_delete",
+        "configuration_retention_set",
+        "configuration_retention_status",
+        "configuration_retention_apply",
         "policy_remove",
         "active_records",
         "incident_records",
@@ -180,6 +201,13 @@ class CheckpointServiceCommand(SourceBindingOpen):
         "recovery_resolve",
         "recovery_forget",
     ]
+    retention: ConfigurationRetention | None = None
+    snapshot_ids: Annotated[
+        list[Annotated[str, Field(pattern=r"^servicesnapshot_[0-9a-f]{64}$")]],
+        Field(min_length=1, max_length=100),
+    ] | None = None
+    configuration_limit: Annotated[int, Field(ge=1, le=100)] = 50
+    configuration_offset: Annotated[int, Field(ge=0)] = 0
     record_id: Name | None = None
     incident_id: Name | None = None
     trigger_type: Trigger = "unacknowledged"
@@ -207,6 +235,16 @@ class CheckpointServiceCommand(SourceBindingOpen):
 
     @model_validator(mode="after")
     def shape(self):
+        if (self.command == "configuration_retention_set") != (self.retention is not None):
+            raise ValueError("retention is required only for configuration_retention_set")
+        if (self.command == "configuration_delete") != (self.snapshot_ids is not None):
+            raise ValueError("snapshot_ids is required only for configuration_delete")
+        if self.snapshot_ids is not None and len(set(self.snapshot_ids)) != len(self.snapshot_ids):
+            raise ValueError("snapshot_ids must be unique")
+        if self.command != "configuration_list" and self.model_fields_set & {
+            "configuration_limit", "configuration_offset"
+        }:
+            raise ValueError("configuration pagination is only supported by configuration_list")
         record = self.command in {"record", "acknowledge", "resolve", "cancel", "escalate"}
         if record != (self.record_id is not None):
             raise ValueError("record_id is required only for record commands")
@@ -329,6 +367,11 @@ class CheckpointServices(MonitorSession):
                 "recovery_status",
                 "recovery_resolve",
                 "recovery_forget",
+                "configuration_list",
+                "configuration_delete",
+                "configuration_retention_set",
+                "configuration_retention_status",
+                "configuration_retention_apply",
             } | (
                 {
                     "results",
@@ -370,6 +413,8 @@ class CheckpointServices(MonitorSession):
                 and arguments.recovery_limit > policy.max_items
             ):
                 raise MCPError("resource_exhausted")
+            if arguments.command == "configuration_list" and arguments.configuration_limit > policy.max_items:
+                raise MCPError("resource_exhausted")
             worker = self.workers.get(entry.id)
             if worker is None or worker.closed:
                 raise MCPError("invalid_handle")
@@ -385,14 +430,22 @@ class CheckpointServices(MonitorSession):
             },
             policy=stamp,
             session=session.identity,
-            effects=[
-                "installed_extension_execute",
-                "native_checkpoint_service_control",
-                "operator_configured_actions_and_external_notifications",
-                "operator_configured_native_action_retries",
-                "approved_notification_target_configuration",
-                "persistent_configuration_storage_or_restore",
-            ],
+            effects=(
+                ["persistent_configuration_retention_policy_and_automatic_deletion"]
+                if not opening and arguments.command.startswith("configuration_retention_")
+                else ["persistent_configuration_metadata_read"]
+                if not opening and arguments.command == "configuration_list"
+                else ["persistent_configuration_delete"]
+                if not opening and arguments.command == "configuration_delete"
+                else [
+                    "installed_extension_execute",
+                    "native_checkpoint_service_control",
+                    "operator_configured_actions_and_external_notifications",
+                    "operator_configured_native_action_retries",
+                    "approved_notification_target_configuration",
+                    "persistent_configuration_storage_or_restore",
+                ]
+            ),
         )
         if "committed_result" in plan:
             response = plan["committed_result"]
@@ -413,15 +466,8 @@ class CheckpointServices(MonitorSession):
             }
         try:
             authorize(session, metadata)
-            store.begin(plan["plan_id"], session=session.identity, policy=stamp)
-            started = True
+            deadline = time.monotonic() + policy.timeout_seconds
             if opening:
-                if snapshot is None:
-                    path.write_text(json.dumps({"kind": arguments.kind}), encoding="utf-8")
-                else:
-                    if len(snapshot) > resources.available_bytes:
-                        raise MCPError("resource_exhausted")
-                    path.write_bytes(snapshot)
                 worker = ServiceProcess(policy.handle_ttl_seconds)
 
                 def authorized():
@@ -432,6 +478,19 @@ class CheckpointServices(MonitorSession):
                         return False
 
                 worker.watch_policy(authorized)
+                # Bootstrap is effect-free: do not consume the approved intent
+                # or claim uncertain native effects before the worker is ready.
+                await worker.call({"prepare": True}, max(0, deadline - time.monotonic()))
+                authorize(session, metadata)
+                if time.monotonic() >= deadline:
+                    raise TimeoutError
+            if opening:
+                if snapshot is None:
+                    path.write_text(json.dumps({"kind": arguments.kind}), encoding="utf-8")
+                else:
+                    if len(snapshot) > resources.available_bytes:
+                        raise MCPError("resource_exhausted")
+                    path.write_bytes(snapshot)
                 request = {
                     "open": arguments.kind,
                     "plugins": plugins,
@@ -454,7 +513,14 @@ class CheckpointServices(MonitorSession):
                     "output_path": str(path),
                     "budget": resources.available_bytes,
                 }
-            await worker.call(request, policy.timeout_seconds)
+            store.begin(plan["plan_id"], session=session.identity, policy=stamp)
+            started = True
+            if not opening and arguments.command in {"configuration_list", "configuration_delete", "configuration_retention_set", "configuration_retention_status", "configuration_retention_apply"}:
+                from truthound.mcp.durable_checkpoint_services import manage
+
+                manage(session, metadata, arguments, path, resources.available_bytes)
+            else:
+                await worker.call(request, max(0, deadline - time.monotonic()))
             authorize(session, metadata)
             if not opening and arguments.command == "persist_configuration":
                 from truthound.mcp.durable_checkpoint_services import persist

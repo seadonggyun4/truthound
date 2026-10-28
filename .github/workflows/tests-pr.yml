@@ -3,10 +3,10 @@ name: Tests PR
 on:
   merge_group:
   pull_request:
-    paths: ["src/**", "!src/truthound/mcp/**", "tests/**", "!tests/test_mcp*.py", "!tests/test_openai_plugin.py", "!tests/test_docs*.py", "!tests/test_ci*.py", "pyproject.toml", "uv.lock", "conftest.py", "pytest.ini"]
+    paths: ["src/**", "!src/truthound/mcp/**", "!src/truthound/validators/streaming/**", "tests/**", "!tests/test_mcp*.py", "!tests/test_openai_plugin.py", "!tests/test_docs*.py", "!tests/test_ci*.py", "!tests/test_streaming_sources.py", "!tests/test_tenant_postgresql_isolation.py", "!tests/test_tenant_mysql_isolation.py", "!tests/test_tenant_oracle_isolation.py", "!tests/test_tenant_sqlserver_isolation.py", "!tests/mcp_sql_client.py", "!tests/validators/test_streaming_validators.py", "pyproject.toml", "uv.lock", "conftest.py", "pytest.ini"]
   push:
     branches: [main]
-    paths: ["src/**", "!src/truthound/mcp/**", "tests/**", "!tests/test_mcp*.py", "!tests/test_openai_plugin.py", "!tests/test_docs*.py", "!tests/test_ci*.py", "pyproject.toml", "uv.lock", "conftest.py", "pytest.ini"]
+    paths: ["src/**", "!src/truthound/mcp/**", "!src/truthound/validators/streaming/**", "tests/**", "!tests/test_mcp*.py", "!tests/test_openai_plugin.py", "!tests/test_docs*.py", "!tests/test_ci*.py", "!tests/test_streaming_sources.py", "!tests/test_tenant_postgresql_isolation.py", "!tests/test_tenant_mysql_isolation.py", "!tests/test_tenant_oracle_isolation.py", "!tests/test_tenant_sqlserver_isolation.py", "!tests/mcp_sql_client.py", "!tests/validators/test_streaming_validators.py", "pyproject.toml", "uv.lock", "conftest.py", "pytest.ini"]
 
 concurrency:
   group: tests-pr-${{ github.event.pull_request.number || github.ref }}

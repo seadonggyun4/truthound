@@ -40,6 +40,13 @@ def binding_guard(request):
     return BindingGuard(request["control"], request["digest"], request["plugins"])
 
 
+def _prepare_native():
+    """Resolve fixed Core code before the parent records an operator effect."""
+    from truthound.api import check  # noqa: F401
+    from truthound.checkpoint import Checkpoint  # noqa: F401
+    from truthound.checkpoint.async_checkpoint import AsyncCheckpoint  # noqa: F401
+
+
 async def execute_async(request):
     from truthound.checkpoint.async_checkpoint import AsyncCheckpoint
 
@@ -87,6 +94,14 @@ def main():
         if len(line) > 2 * 1024**2 or not line.endswith(b"\n"):
             raise MCPError("resource_exhausted")
         request = json.loads(line)
+        while request == {"prepare": True}:
+            _prepare_native()
+            wire.write('{"ok":true}\n')
+            wire.flush()
+            line = sys.stdin.buffer.readline(2 * 1024**2 + 1)
+            if len(line) > 2 * 1024**2 or not line.endswith(b"\n"):
+                raise MCPError("resource_exhausted")
+            request = json.loads(line)
 
         watch_parent(sys.stdin.fileno())
         with (
@@ -98,8 +113,20 @@ def main():
         with BoundedWriter(Path(request["output_path"]), request["budget"]) as output:
             output.write(json.dumps(result, allow_nan=False).encode())
         wire.write('{"ok":true}\n')
-    except Exception:
-        wire.write('{"ok":false,"code":"checkpoint_execution_failed"}\n')
+    except Exception as error:
+        category = (
+            error.code if isinstance(error, MCPError) and error.code in {
+                "access_denied", "plugin_identity_mismatch", "invalid_binding",
+                "resource_exhausted", "invalid_arguments", "unsupported_value",
+            } else "timeout" if isinstance(error, TimeoutError) else
+            "resource_exhausted" if isinstance(error, MemoryError) else
+            "missing_dependency" if isinstance(error, ImportError) else
+            "value_error" if isinstance(error, ValueError) else
+            "type_error" if isinstance(error, TypeError) else
+            "io_error" if isinstance(error, OSError) else "native_error"
+        )
+        wire.write(json.dumps({"ok": False, "code": "checkpoint_execution_failed",
+                               "category": category}) + "\n")
     wire.flush()
 
 

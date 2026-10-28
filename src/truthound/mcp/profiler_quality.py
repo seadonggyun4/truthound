@@ -46,7 +46,8 @@ def execute(owner, args, inputs):
             owner.guard()
         results.append({
             "rule_id": alias, "rule_type": score.rule_type.value, "column": score.column,
-            "metrics": score.metrics.to_dict(), "should_use": score.should_use,
+            "metrics": score.metrics.to_dict(), "recommendation": score.recommendation,
+            "should_use": score.should_use,
         })
     if args["command"] == "quality_compare":
         results.sort(key=lambda row: row["metrics"]["f1_score"], reverse=True)

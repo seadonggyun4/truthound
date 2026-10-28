@@ -6,6 +6,10 @@ and `th.scan()` APIs. It does not need a hosted validation service.
 
 ## Install and start
 
+In the development source, importing the root package defers the validation facade
+and Polars until first access. Public functions and types remain the native Core
+objects; this avoids loading unused validation dependencies during worker startup.
+
 ```bash
 pip install "truthound[mcp]==3.2.0"
 truthound-mcp serve --allow-dir /absolute/path/to/data
@@ -182,6 +186,26 @@ continuation offset is provided and nonzero input offsets are rejected. The
 retained-data tools below instead provide stable handles. Large inline full results fail with
 `response_too_large`, not a silently truncated full-result claim. All existing
 file, timeout, concurrency and memory limitations still apply.
+
+### Implementation boundaries and remaining work
+
+Full Core-to-MCP parity is not established. Existing bindings and scoped tests do
+not certify every native configuration, error or restart path.
+
+| Area | Current boundary / remaining work |
+| --- | --- |
+| Checkpoint configuration lifecycle | Signed save/restore, approved discovery/deletion and persistent native age/count/size retention on save/list or explicit apply. Idle background cleanup is not provided. |
+| Native realtime validation | Broker consume/ack/window/processing exists. Approved factories connect `realtime.StreamingValidator` batch validation, statistics and reset. Approved sync/async generator sessions, cursor reads and closure are connected. |
+| Streaming validation pipelines | Registered streaming validators and local file cursors exist. `StreamingValidationPipeline.validate_source` and `stream_validate_many` orchestration are exposed through approved sessions. |
+| Arrow Flight streams | Native `ArrowFlightStreamingSource` is accepted through approved `BrokerRuntime.file_source`; `streams_open` remains local-file only. |
+| Physical tenant SQL isolation | The verified physical-source wrapper accepts file-backed SQLite/DuckDB, PostgreSQL ordinary tables, MySQL InnoDB tables and ordinary Oracle PDB tables. SQL Server is implemented with native x86 verification pending; other SQL providers remain unimplemented by this wrapper. |
+| Stores, execution, profiler, reporting and extensions | Existing native service bindings are present; exhaustive configuration/result/error/persistence/restart equivalence remains unverified. Arbitrary code, credentials and paths must still come from operator bindings. |
+| External services | Real cloud, external brokers, paid AI and external notification targets remain unverified; this is distinct from missing local adapter code. |
+
+The full native Checkpoint runner/escalation durable recovery implementation is
+present; older descriptions that call all durable service recovery unimplemented
+are obsolete. Signed configuration snapshots and runtime recovery journals are
+separate resources. This table does not claim that the remaining work is exhaustive.
 
 ### Retained data, constructors and artifacts
 
@@ -1356,6 +1380,52 @@ a snapshot. Rich non-JSON metadata is rejected. Snapshot restore edits matching 
 objects and preserves durable trigger history; it neither starts scheduling nor
 replays previous actions. Runner and escalation snapshots cannot be interchanged.
 
+`checkpoint_services_execute(command="configuration_list", ...)` discovers signed
+configuration snapshots for the current binding, service kind and authorization.
+It requires its own exact-request approval. `configuration_limit` (1–100, bounded
+by the session item limit) and `configuration_offset` page stable snapshot IDs;
+only ID, SHA-256, byte count and service kind are returned, never configuration
+contents or private factory fields.
+
+`configuration_delete` requires an explicit unique `snapshot_ids` list (1–100)
+and a separate approval. The entire selection is authenticated and authorized
+before any deletion; missing, corrupted, foreign-binding or wrong-kind entries
+reject the batch without removing a valid prefix. The receipt is bounded before
+deletion, and an exact replay uses the retained approval result. Deletion frees
+snapshot count/byte capacity without changing running services, journals or
+notification attempts. Deleted snapshots cannot be restored. This is explicit
+logical deletion without guaranteed physical erasure.
+
+`configuration_retention_set` persists a separately approved policy for the current
+binding and service kind. `retention` requires `expires_at` (Unix seconds) and at
+least one of `max_age_minutes`, `max_count`, `max_size_bytes`; `mode` is `all` or
+`any`, using native Core policy semantics. `enabled: false` disables cleanup.
+`configuration_retention_status` reports the signed policy and whether it is active;
+`configuration_retention_apply` explicitly performs cleanup with its own approval.
+While active, cleanup also runs automatically during snapshot save and discovery.
+There is no idle background timer. Policies survive reopening the private control
+store, remain bound to the original authorization, and stop at expiry. Undated
+legacy snapshots are preserved. Signature, authorization or output-budget failures
+roll back the transaction. A save receipt's `retained: false` means the policy
+immediately removed that snapshot; it cannot subsequently be restored.
+
+Standalone bound data sources, one-shot sync/async Checkpoints and schema monitors also check readiness before consuming approval. Parent-only request/artifact preparation finishes before the execution intent starts.
+
+One-shot Checkpoints resolve the fixed Core validation facade and sync/async
+Checkpoint classes during readiness, before loading an operator factory. A missing
+Core dependency at this stage leaves the approval available after repair. This
+uses the existing shared deadline and does not retry uncertain operator effects.
+
+Shared factory-bound services (including store, execution, profiler, plugin and tenant services) use the same effect-free readiness exchange before consuming an approval. The readiness and native factory calls share the original deadline. Bootstrap failures preserve approval; uncertainty after factory entry still blocks automatic replay.
+
+Checkpoint service startup first performs an effect-free Core worker readiness
+exchange. It shares the original request deadline with factory execution; it does
+not grant another timeout window. A readiness failure closes the worker and leaves
+the exact request approved because no operator factory has run. Once native
+factory execution begins, an uncertain failure remains `outcome_unknown` and is
+not automatically replayed. High host load may still cause a real startup timeout;
+readiness is not a guarantee of eventual startup.
+
 ### Durable checkpoint recovery
 
 The operator factory can opt into `RunnerConfig(journal_path=...)` or
@@ -1610,6 +1680,68 @@ are `outcome_unknown`, never automatically retried. Batch/window state stays in 
 resident owner; cross-session state, source offsets and recovery durability depend
 on the operator's native backend. Local tests use the real Core test adapter;
 Kafka/Kinesis/cloud services remain unverified.
+
+An operator factory may pin a native validator, callbacks and settings with
+`BrokerRuntime(..., validator=StreamingValidator(...))`. `validate_batch` requires
+a retained `batch_id` and uses native `MessageBatch.to_dataframe()` followed by
+`StreamingValidator.validate_batch()`. `validation_stats` and `validation_reset`
+use native statistics and reset. Each command requires exact-request approval;
+replaying the same request uses its retained receipt. Validation does not imply
+acknowledgement or processor execution. Native failures and output-limit failures
+remain failures; uncertain effects are not automatically replayed. Native stream/async-stream sessions use the separate commands below.
+
+#### Native stream and async-stream validation sessions
+
+An approved `brokers` factory may return `BrokerRuntime` with no broker adapter:
+
+```python
+runtime = BrokerRuntime(
+    file_source=ArrowFlightStreamingSource(
+        host=operator_host, port=operator_port, ticket=operator_ticket,
+        use_tls=True, token=operator_token, chunk_size=1000,
+    ),
+    validator=StreamingValidator(validators=["null"], config=StreamingConfig(error_handling="fail")),
+    pipeline=StreamingValidationPipeline([StreamingNullValidator()], chunk_size=1000),
+    streaming_validators=[NullValidator()],
+)
+```
+
+Flight factories require PyArrow with Flight support in the worker environment; it is an optional provider dependency.
+The factory pins transports, credentials, validator objects, callbacks and settings.
+`stream_source` instead accepts a native `truthound.realtime.StreamingSource`.
+`file_source` accepts native file/Arrow/Flight `StreamingSource` objects; the two
+source fields are mutually exclusive and initially disconnected. The factory owns
+any additional resources; MCP owns generator closure and source disconnection.
+The caller cannot supply hosts, URLs, tickets, tokens, imports or paths.
+
+After `brokers_open`, use separately approved `brokers_execute` requests:
+
+| Command | Behavior |
+| --- | --- |
+| `source_connect` / `source_disconnect` | Native connection/open and generator close/disconnect. |
+| `source_status` | Connection and active validation/raw-cursor state, without credentials. |
+| `stream_start` | Pin `stream_mode="sync"` or `"async"` and finite `max_batches` (1–10000, default 100). Uses native `validate_stream` or `validate_stream_async`. |
+| `stream_next` | Read up to `limit` native batch results; returns `exhausted` only when the native generator stops. No speculative extra batch is consumed. |
+| `stream_cancel` | Close the paused native generator; preserves the current provider cursor. It does not rewind or acknowledge data. |
+| `source_next` | Page native raw chunks when validation is inactive; JSON data remains subject to sensitive-result permission and artifact budgets. |
+| `pipeline_validate` | Apply the pinned native pipeline to retained broker `batch_id`. |
+| `pipeline_stream` | Run native `StreamingValidationPipeline.validate_source` over the connected file/Flight source with shared validator state and finalization. |
+| `stream_validate_many` | Run native multi-validator streaming and return its per-validator aggregates. |
+
+`stream_next`/`source_next` limits also obey session item limits. Exact-request
+replay returns the prior artifact rather than advancing the cursor or rerunning
+callbacks. An exactly full page may need another call to observe exhaustion.
+Do not mix a raw cursor with a validation generator; disconnect/reconnect to start
+a new read according to the native provider's semantics. Native errors, partial
+results and budget/deadline failures are not reported as completed validation;
+uncertain effects are not automatically retried. Release, expiry, revocation,
+parent loss and service shutdown terminate the owned worker and connection.
+
+Flight uses real `FlightStreamChunk.data`, preserves all leftover RecordBatches,
+normalizes Arrow slice offsets before supported Polars imports, applies configured
+RPC timeouts and bearer headers, and cancels the reader before closing its client.
+Unknown row count raises `TypeError` until exhaustion; it never returns a negative
+Python length. No public/cloud Flight endpoint or production credential is implied.
 
 ### Native AI proposal review and application
 
@@ -1988,6 +2120,12 @@ aliases and a fixed version actor. The factory owns backend, namespace, serializ
 compression, credentials, native policy/wrapper configuration and store close.
 `VersionedStore` is a native `BaseStore` subclass; its `config` reflects the wrapped
 backend. No connection or storage path can be supplied through the tool.
+
+Factory-selected cache/batch wrappers may be nested. The known wrapper primary
+chain is checked down to its native backing store; cycles and chains deeper than
+64 wrappers are rejected. Authorization guards cover every selected cache,
+batch and replication wrapper in that chain. The factory owns the backing stores
+and inner-wrapper teardown; acknowledged shutdown waits for that factory cleanup.
 
 `store_services_execute` supports native initialization, save/get/exists/delete,
 query/list/count, bounded clear, latest/history/failure reads, suite operations,
@@ -3054,11 +3192,49 @@ newlines, are rejected. Headers, tokens and resolver code are not wire inputs.
 `truthound.multitenancy.sources.TenantSQLSource`. `source_catalog` lists aliases;
 `source_read(tenant_id, source_id, columns?, offset?, limit?)` reads a selected
 source and returns a bounded page under sensitive-result consent and exact
-approval. The native wrapper borrows a `SQLiteDataSource`, binds one native tenant
-ID, and verifies the actual reading connection before and after fetching rows
-inside a SQLite savepoint. DATABASE isolation compares the actual database file
+approval. The native wrapper borrows a `SQLiteDataSource` or `DuckDBDataSource`, binds one
+native tenant ID, and verifies the actual reading connection before and after
+fetching rows. SQLite uses a savepoint. DuckDB uses a transaction on the actual
+reading cursor because its cursor is an independent connection; temporary table
+shadowing is rejected. DATABASE isolation compares the actual database file
 with the tenant's absolute `database_name`; SCHEMA isolation requires both the
 native schema name and the wrapper's explicit absolute `namespace_database`.
+For PostgreSQL, DATABASE compares `current_database()` to the tenant database
+name; SCHEMA additionally requires the factory-pinned `namespace_database` name.
+Metadata and bounded `ONLY` table reads share one repeatable-read, read-only
+transaction on an idle factory-owned connection. Views, foreign tables, temporary
+relations and inheritance parents are rejected. An existing caller transaction is
+rejected rather than committed or rolled back. The factory must close connections.
+MySQL treats schemas as database namespaces: both isolation modes compare the
+actual `DATABASE()` and configured database with the native namespace. SCHEMA
+also requires a pinned `namespace_database`. Only ordinary InnoDB tables are
+allowed. The actual cursor uses a read-only repeatable-read transaction and pins
+table metadata before reading; views, temporary-table shadowing, other storage
+engines and existing caller transactions fail closed. Rollback covers owned
+read transactions only. Disposable test servers are initialized without system
+configuration, and only their own processes/data directories are cleaned up.
+
+SQL Server uses a dedicated native connection with `SQLServerConfig(autocommit=True, dbapi_driver="pymssql")`. The automatic driver preference remains available as `auto`. Physical tenant reads require an idle connection and effective SELECT-only table permissions. The wrapper checks the actual database and schema, rejects indirect tables, acquires a serializable transaction with `TABLOCK, HOLDLOCK`, and restores its transaction isolation and lock timeout after rollback. Existing caller transactions are rejected without rollback. Local emulation has exercised native reads, MCP reopen and SDK shutdown; native x86 CI and the latest installed-wheel verification remain required. This does not establish cloud SQL or complete configuration parity.
+
+Oracle uses an idle, non-autocommit application connection and a native read-only
+transaction. DATABASE compares the actual `CON_NAME` PDB with the tenant database;
+SCHEMA also requires the exact source owner and a factory-pinned
+`namespace_database` PDB. Simple application identifiers and ordinary tables are
+required. A `SHARE ... NOWAIT` table lock fences definition changes, including
+`ADD COLUMN`, which Oracle permits under `ROW SHARE`. This also blocks concurrent
+writes during the bounded read. Dictionary identity and native
+`DBMS_UTILITY.NAME_RESOLVE` identity must agree before and after reading.
+Views, synonyms, external/temporary tables, SYS/SYSDBA connections and existing
+caller transactions fail closed. Only the wrapper's transaction is rolled back.
+Recent/concurrent DDL can produce Oracle snapshot errors; these are not silently
+retried. The integration fixture waits for its own seeded DDL's server-time
+boundary before testing ordinary reads; product requests retain their deadline.
+The actual thin-driver path is tested with `oracledb==4.0.1` and a disposable
+Oracle Free PDB, including SDK stdio approval, owner reopen and frontend shutdown.
+
+Disposable local PostgreSQL, MySQL and Oracle tests cover native fencing and MCP owner restart;
+this does not verify a production server or another SQL provider.
+
 This also supports operator-attached SQLite databases. The factory owns connection
 cleanup; source paths and namespaces stay private. Suspended tenants, another
 tenant ID, query mode, views, virtual tables, in-memory databases and unverified
@@ -3066,13 +3242,13 @@ remote providers fail closed. Ordinary table reads are bounded by the source's
 `materialization_row_limit`; exceeding it fails before returning any rows. Page
 limits do not replace that bound. This is a materialized read snapshot, not ongoing
 revocation of data already returned. Caller-provided Arrow assets still cannot
-establish schema/database provenance. Installed-worker tests cover SQLite owner
+establish schema/database provenance. Installed-worker tests cover SQLite and DuckDB owner
 restart; they do not establish remote database provider support.
 
 Profiler services now expose bound `quality_scorers` and `quality_rules` through
 `quality_score`, `quality_compare` and `quality_cache_clear`. Inputs are pinned
 assets with an optional aligned Boolean `label_column`; sampling/configuration
-and custom rule code remain factory-owned. See [quality scoring](profiler/quality-scoring.md).
+and custom rule code remain factory-owned. Quality score results include the native recommendation and usage decision, alongside metrics and the public rule alias. See [quality scoring](profiler/quality-scoring.md).
 
 Bound profiler services also expose native sampling snapshots, local type-inference
 feedback/model persistence, and complete-profile HTML export to budgeted artifacts

@@ -54,6 +54,10 @@ Codex와 Claude Desktop에서 Truthound Local을 연결해 승인한 로컬 데�
 
 개발 중인 Core 프로파일의 기능과 지원 범위는 [MCP 가이드](docs/locales/ko/guides/mcp.md#core-프로파일-아직-배포하지-않은-소스-기능)를 참고하세요.
 
+승인된 팩토리로 stream·async-stream 검증, 스트리밍 pipeline과 Arrow Flight를 연결할 수 있습니다.
+
+[기능별 연결 범위와 남은 작업](docs/locales/ko/guides/mcp.md#구현-범위와-남은-작업)
+
 ---
 
 ## 개요 (Overview)
@@ -243,6 +247,7 @@ Lineage sample 메타데이터는 명시적 활성화 시에만 행·바이트 �
 
 
 루트 패키지는 의도적으로 작은 API만 노출합니다.
+공개 함수와 타입은 첫 접근 시 로드하며 기존 Core 객체와 동작을 유지합니다.
 
 - 안정 파사드: `check`, `scan`, `mask`, `profile`, `learn`, `read`, `get_context`
 - 핵심 타입: `TruthoundContext`, `ValidationSuite`, `CheckSpec`, `SchemaSpec`, `ValidationRunResult`, `CheckResult`

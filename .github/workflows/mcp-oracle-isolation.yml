@@ -1,0 +1,50 @@
+name: MCP Oracle isolation
+on:
+  pull_request:
+    paths: ["src/truthound/__init__.py", "src/truthound/_lazy.py", "src/truthound/multitenancy/**", "src/truthound/datasources/sql/base.py", "src/truthound/datasources/sql/__init__.py", "src/truthound/datasources/sql/oracle.py", "src/truthound/mcp/tenancy*", "src/truthound/mcp/bound_services.py", "src/truthound/mcp/checkpoint_services.py", "src/truthound/mcp/model_process.py", "src/truthound/mcp/broker_worker.py", "src/truthound/mcp/checkpoint_worker.py", "tests/test_tenant_oracle_isolation.py", "tests/mcp_sql_client.py", "tests/test_mcp_plugin_bindings.py", "pyproject.toml", "uv.lock", "verification/ci/requirements-lite.txt", "verification/ci/requirements-oracle-isolation.txt", ".github/workflows/mcp-oracle-isolation.yml"]
+  push:
+    branches: [main]
+    paths: ["src/truthound/__init__.py", "src/truthound/_lazy.py", "src/truthound/multitenancy/**", "src/truthound/datasources/sql/base.py", "src/truthound/datasources/sql/__init__.py", "src/truthound/datasources/sql/oracle.py", "src/truthound/mcp/tenancy*", "src/truthound/mcp/bound_services.py", "src/truthound/mcp/checkpoint_services.py", "src/truthound/mcp/model_process.py", "src/truthound/mcp/broker_worker.py", "src/truthound/mcp/checkpoint_worker.py", "tests/test_tenant_oracle_isolation.py", "tests/mcp_sql_client.py", "tests/test_mcp_plugin_bindings.py", "pyproject.toml", "uv.lock", "verification/ci/requirements-lite.txt", "verification/ci/requirements-oracle-isolation.txt", ".github/workflows/mcp-oracle-isolation.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: mcp-oracle-isolation-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  oracle:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      POLARS_MAX_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      TRUTHOUND_ORACLE_TEST_EVIDENCE: test-artifacts/oracle-runtime-evidence
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --frozen --extra mcp
+      - run: uv pip install --python .venv/bin/python -r verification/ci/requirements-lite.txt -r verification/ci/requirements-oracle-isolation.txt
+      - name: Install this wheel in an isolated client environment
+        run: |
+          uv build --wheel --out-dir test-artifacts/oracle-dist
+          uv pip freeze --python .venv/bin/python --exclude-editable > test-artifacts/oracle-dependencies.txt
+          uv venv --python .venv/bin/python "$RUNNER_TEMP/truthound-oracle-installed"
+          uv pip install --python "$RUNNER_TEMP/truthound-oracle-installed/bin/python" -r test-artifacts/oracle-dependencies.txt test-artifacts/oracle-dist/*.whl
+          sha256sum test-artifacts/oracle-dist/*.whl > test-artifacts/oracle-wheel.sha256
+      - name: Pull the pinned disposable Oracle runtime
+        run: docker pull ghcr.io/gvenzl/oracle-free@sha256:6d61d267a3b978c24c5ac1790e62e927416a0aec446bd86e4b3a1527562757bd
+      - name: Verify native fencing, SDK connection and owned cleanup from the installed wheel
+        run: '"$RUNNER_TEMP/truthound-oracle-installed/bin/python" -I -m pytest -q -o pythonpath= tests/test_tenant_oracle_isolation.py --run-integration --junitxml=test-artifacts/mcp-oracle-isolation.xml -p no:cacheprovider'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: truthound-mcp-oracle-isolation
+          path: |
+            test-artifacts/mcp-oracle-isolation.xml
+            test-artifacts/oracle-runtime-evidence
+            test-artifacts/oracle-wheel.sha256
+          if-no-files-found: error

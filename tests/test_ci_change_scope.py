@@ -51,11 +51,23 @@ def selected(paths, event):
     (['.github/workflows/tests-pr.yml'], {'ci-policy'}),
     (['.github/workflows/windows-native.yml'], {'ci-policy'}),
     (['tests/test_ci_change_scope.py'], {'ci-policy'}),
+    (['src/truthound/__init__.py'], {'tests-pr', 'docs', 'mcp-checks', 'mcp-streaming', 'mcp-sql-isolation','mcp-oracle-isolation','mcp-sqlserver-isolation'}),
     (['src/truthound/core/runtime.py'], {'tests-pr', 'docs', 'mcp-checks'}),
     (['src/truthound/benchmark/runner.py'], {'tests-pr', 'docs', 'mcp-checks', 'benchmarks-pr'}),
+    (['src/truthound/multitenancy/sources.py'], {'tests-pr','docs','mcp-checks','mcp-sql-isolation','mcp-oracle-isolation','mcp-sqlserver-isolation'}),
+    (['src/truthound/mcp/bound_services.py'], {'mcp-checks','mcp-streaming','mcp-sql-isolation','mcp-oracle-isolation','mcp-sqlserver-isolation'}),
+    (['src/truthound/mcp/checkpoint_worker.py'], {'mcp-checks','mcp-streaming','mcp-sql-isolation','mcp-oracle-isolation','mcp-sqlserver-isolation'}),
+    (['src/truthound/datasources/sql/oracle.py'], {'tests-pr','docs','mcp-checks','mcp-oracle-isolation'}),
+    (['tests/test_tenant_oracle_isolation.py'], {'mcp-oracle-isolation'}),
+    (['tests/test_tenant_postgresql_isolation.py'], {'mcp-sql-isolation'}),
+    (['tests/test_tenant_sqlserver_isolation.py'], {'mcp-sqlserver-isolation'}),
+    (['tests/mcp_sql_client.py'], {'mcp-oracle-isolation','mcp-sqlserver-isolation'}),
+    (['tests/test_tenant_mysql_isolation.py'], {'mcp-sql-isolation'}),
+    (['src/truthound/mcp/stream_validation.py'], {'mcp-checks','mcp-streaming'}),
+    (['src/truthound/validators/streaming/sources.py'], {'docs','mcp-checks','mcp-streaming'}),
     (['README.md', 'src/truthound/mcp/server.py'], {'readme', 'mcp-checks'}),
-    (['verification/ci/requirements-lite.txt'], {'readme', 'mcp-checks', 'ci-policy', 'docs'}),
-    (['uv.lock'], {'tests-pr', 'docs', 'mcp-checks', 'benchmarks-pr'}),
+    (['verification/ci/requirements-lite.txt'], {'readme', 'mcp-checks', 'ci-policy', 'docs', 'mcp-streaming', 'mcp-sql-isolation','mcp-oracle-isolation','mcp-sqlserver-isolation'}),
+    (['uv.lock'], {'tests-pr', 'docs', 'mcp-checks', 'benchmarks-pr', 'mcp-streaming', 'mcp-sql-isolation','mcp-oracle-isolation','mcp-sqlserver-isolation'}),
 ])
 def test_component_changes_only_run_affected_workflows(event, paths, expected):
     assert selected(paths, event) == expected
@@ -75,11 +87,12 @@ def test_full_verification_and_publication_are_not_ordinary_push_gates():
 def test_small_lanes_do_not_install_distributed_development_sdks():
     import tomllib
     versions = {p['name']: p['version'] for p in tomllib.loads((ROOT / 'uv.lock').read_text())['package']}
-    for line in (ROOT / 'verification/ci/requirements-lite.txt').read_text().splitlines():
-        if line and not line.startswith('#'):
-            name, version = line.split('==')
-            assert versions[name] == version
-    for name in ('readme', 'mcp-checks', 'ci-policy', 'docs'):
+    for filename in ('requirements-lite.txt', 'requirements-streaming.txt', 'requirements-sql-isolation.txt', 'requirements-oracle-isolation.txt'):
+        for line in (ROOT / 'verification/ci' / filename).read_text().splitlines():
+            if line and not line.startswith('#'):
+                name, version = line.split('==')
+                assert versions[name] == version
+    for name in ('readme', 'mcp-checks', 'ci-policy', 'docs', 'mcp-streaming', 'mcp-sql-isolation', 'mcp-oracle-isolation'):
         jobs = workflows()[name]['jobs']
         for job in jobs.values():
             commands = '\n'.join(step.get('run', '') for step in job['steps'])

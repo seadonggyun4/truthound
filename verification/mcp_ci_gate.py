@@ -14,6 +14,7 @@ from collections import Counter
 from pathlib import Path
 
 TEST_FILES = (
+    "tests/test_root_lazy_exports.py",
     "tests/test_lineage_graph_contract.py",
     "tests/test_lineage_render_contract.py",
     "tests/test_lineage_tracking_contract.py",
@@ -76,6 +77,12 @@ TEST_FILES = (
     "tests/test_mcp_durable_schema.py",
     "tests/test_mcp_checkpoints.py",
     "tests/test_mcp_checkpoint_services.py",
+    "tests/test_mcp_checkpoint_configurations.py",
+    "tests/test_mcp_snapshot_retention.py",
+    "tests/test_mcp_bound_startup.py",
+    "tests/test_mcp_store_composition.py",
+    "tests/test_mcp_broker_validation.py",
+    "tests/test_mcp_native_stream_sessions.py",
     "tests/test_core_execution_accounting.py",
     "tests/test_mcp_profiling.py",
     "tests/test_mcp_suites.py",

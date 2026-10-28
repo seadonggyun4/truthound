@@ -287,6 +287,14 @@ def test_installed_quality_scoring_uses_changed_labels_and_redacts_native_rule(r
         ])['data']['resource_id'])
     _, first = call(runtime, service, 'quality_score', scorer_id='sampling', rule_ids=['positive'], asset_id=assets[0], label_column='valid')
     _, second = call(runtime, service, 'quality_compare', scorer_id='sampling', rule_ids=['positive'], asset_id=assets[1], label_column='valid')
+    from truthound.profiler.quality import RuleQualityScorer, ValidationRule, RuleType
+    import polars as pl
+    scorer = RuleQualityScorer(estimator_options={"random_seed": 7})
+    rule = ValidationRule("private-quality-rule", RuleType.RANGE, column="x", min_value=0, nullable=False)
+    for response, labels in [(first, [True, False]), (second, [False, True])]:
+        native = scorer.score(rule, pl.DataFrame({"x": [1, -1], "valid": labels}), pl.Series("valid", labels))
+        assert response["scores"][0]["recommendation"] == native.recommendation
+        assert response["scores"][0]["should_use"] == native.should_use
     assert first['scores'][0]['metrics']['f1_score'] == 1
     assert second['scores'][0]['metrics']['f1_score'] == 0
     assert first['labels_provided'] is True and first['scores'][0]['rule_id'] == 'positive'

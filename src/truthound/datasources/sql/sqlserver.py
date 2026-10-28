@@ -17,25 +17,32 @@ from truthound.datasources.sql.base import (
 )
 
 
-def _check_sqlserver_available() -> tuple[str, Any]:
+def _check_sqlserver_available(preferred: str = "auto") -> tuple[str, Any]:
     """Check if SQL Server driver is available.
 
     Returns:
         Tuple of (driver_name, driver_module).
     """
-    # Try pyodbc first (more feature-complete)
-    try:
-        import pyodbc
-        return "pyodbc", pyodbc
-    except ImportError:
-        pass
+    if preferred not in {"auto", "pyodbc", "pymssql"}:
+        raise ValueError("dbapi_driver must be auto, pyodbc or pymssql")
+    # Keep the existing automatic preference, but permit a pinned factory to
+    # select its native driver even when another optional SDK is installed.
+    if preferred in {"auto", "pyodbc"}:
+        try:
+            import pyodbc
+            return "pyodbc", pyodbc
+        except ImportError:
+            if preferred == "pyodbc":
+                raise ImportError("pyodbc is required for the selected SQL Server driver") from None
 
     # Fall back to pymssql
-    try:
-        import pymssql
-        return "pymssql", pymssql
-    except ImportError:
-        pass
+    if preferred in {"auto", "pymssql"}:
+        try:
+            import pymssql
+            return "pymssql", pymssql
+        except ImportError:
+            if preferred == "pymssql":
+                raise ImportError("pymssql is required for the selected SQL Server driver") from None
 
     raise ImportError(
         "pyodbc or pymssql is required for SQLServerDataSource. "
@@ -64,6 +71,8 @@ class SQLServerConfig(SQLDataSourceConfig):
         trust_server_certificate: Trust self-signed certificates.
         application_name: Application name for connection.
         connection_timeout: Connection timeout in seconds.
+        autocommit: Driver autocommit mode; false preserves the existing default.
+        dbapi_driver: Auto preference or explicit pyodbc/pymssql selection.
     """
 
     host: str | None = None
@@ -77,6 +86,8 @@ class SQLServerConfig(SQLDataSourceConfig):
     trust_server_certificate: bool = False
     application_name: str = "Truthound"
     connection_timeout: int = 30
+    autocommit: bool = False
+    dbapi_driver: str = "auto"
 
 
 # =============================================================================
@@ -156,10 +167,12 @@ class SQLServerDataSource(BaseSQLDataSource):
             encrypt: Encrypt connection.
             config: Optional configuration.
         """
-        self._driver_name, self._driver = _check_sqlserver_available()
-
         if config is None:
             config = SQLServerConfig()
+        self._driver_name, self._driver = (
+            _check_sqlserver_available() if config.dbapi_driver == "auto"
+            else _check_sqlserver_available(config.dbapi_driver)
+        )
 
         config.host = host
         config.port = port
@@ -216,7 +229,7 @@ class SQLServerDataSource(BaseSQLDataSource):
         conn_str_parts.append(f"Connection Timeout={self._config.connection_timeout}")
 
         conn_str = ";".join(conn_str_parts)
-        return pyodbc.connect(conn_str)
+        return pyodbc.connect(conn_str, autocommit=self._config.autocommit)
 
     def _create_pymssql_connection(self) -> Any:
         """Create connection using pymssql."""
@@ -230,6 +243,7 @@ class SQLServerDataSource(BaseSQLDataSource):
             database=self._config.database,
             appname=self._config.application_name,
             login_timeout=self._config.connection_timeout,
+            autocommit=self._config.autocommit,
         )
 
     def _fetch_schema(self) -> list[tuple[str, str]]:

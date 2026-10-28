@@ -493,3 +493,17 @@ output and statistics path as `run()`. It preserves the configured backend
 semantics; `recover()` rolls back pending transactions and is not proof of external
 exactly-once delivery. The development MCP profile provides approved broker owner,
 batch, ack, window and recovery controls in the [MCP guide](../mcp.md#native-broker-adapters-and-processing).
+
+
+## Native validator pipelines and Flight
+
+`StreamingValidationPipeline.validate_source(source)` processes native file/Arrow
+Flight chunks using shared validator state, then finalizes once over the completed
+row count. A closed source is opened and always closed by the call; an already
+open source is borrowed and remains owned by its caller. Failures propagate.
+
+Arrow Flight reads `FlightStreamChunk.data`, preserves leftover batches and slice
+offsets, honors projection and row limits, and cancels its reader before closing
+the client. Row count is unknown (`TypeError` from `len`) until exhaustion. Native
+RPC timeouts and authentication headers apply to the stream request. These APIs
+can also be used through [approved MCP streaming sessions](../mcp.md#native-stream-and-async-stream-validation-sessions).

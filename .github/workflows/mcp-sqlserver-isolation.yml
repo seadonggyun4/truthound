@@ -1,0 +1,51 @@
+name: MCP SQL Server isolation
+on:
+  pull_request:
+    paths: ["src/truthound/__init__.py", "src/truthound/_lazy.py", "src/truthound/multitenancy/**", "src/truthound/datasources/sql/base.py", "src/truthound/datasources/sql/__init__.py", "src/truthound/datasources/sql/sqlserver.py", "src/truthound/mcp/tenancy*", "src/truthound/mcp/bound_services.py", "src/truthound/mcp/checkpoint_services.py", "src/truthound/mcp/model_process.py", "src/truthound/mcp/broker_worker.py", "src/truthound/mcp/checkpoint_worker.py", "tests/test_tenant_sqlserver_isolation.py", "tests/mcp_sql_client.py", "tests/test_mcp_plugin_bindings.py", "pyproject.toml", "uv.lock", "verification/ci/requirements-lite.txt", "verification/ci/requirements-sqlserver-isolation.txt", ".github/workflows/mcp-sqlserver-isolation.yml"]
+  push:
+    branches: [main]
+    paths: ["src/truthound/__init__.py", "src/truthound/_lazy.py", "src/truthound/multitenancy/**", "src/truthound/datasources/sql/base.py", "src/truthound/datasources/sql/__init__.py", "src/truthound/datasources/sql/sqlserver.py", "src/truthound/mcp/tenancy*", "src/truthound/mcp/bound_services.py", "src/truthound/mcp/checkpoint_services.py", "src/truthound/mcp/model_process.py", "src/truthound/mcp/broker_worker.py", "src/truthound/mcp/checkpoint_worker.py", "tests/test_tenant_sqlserver_isolation.py", "tests/mcp_sql_client.py", "tests/test_mcp_plugin_bindings.py", "pyproject.toml", "uv.lock", "verification/ci/requirements-lite.txt", "verification/ci/requirements-sqlserver-isolation.txt", ".github/workflows/mcp-sqlserver-isolation.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: mcp-sqlserver-isolation-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  sqlserver:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      TRUTHOUND_SQLSERVER_REQUIRE_NATIVE: '1'
+      POLARS_MAX_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      OPENBLAS_NUM_THREADS: '1'
+      TRUTHOUND_SQLSERVER_TEST_EVIDENCE: test-artifacts/sqlserver-runtime-evidence
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --frozen --extra mcp
+      - run: uv pip install --python .venv/bin/python -r verification/ci/requirements-lite.txt -r verification/ci/requirements-sqlserver-isolation.txt
+      - name: Install this wheel in an isolated client environment
+        run: |
+          uv build --wheel --out-dir test-artifacts/sqlserver-dist
+          uv pip freeze --python .venv/bin/python --exclude-editable > test-artifacts/sqlserver-dependencies.txt
+          uv venv --python .venv/bin/python "$RUNNER_TEMP/truthound-sqlserver-installed"
+          uv pip install --python "$RUNNER_TEMP/truthound-sqlserver-installed/bin/python" -r test-artifacts/sqlserver-dependencies.txt test-artifacts/sqlserver-dist/*.whl
+          sha256sum test-artifacts/sqlserver-dist/*.whl > test-artifacts/sqlserver-wheel.sha256
+      - name: Pull the pinned disposable SQL Server runtime
+        run: docker pull mcr.microsoft.com/mssql/server@sha256:cf8f0ab2ebe61feec2eed2629061a07d247f791c2a8ddda74a4ac9f06a291718
+      - name: Verify native fencing, SDK connection and owned cleanup from the installed wheel
+        run: '"$RUNNER_TEMP/truthound-sqlserver-installed/bin/python" -I -m pytest -q -o pythonpath= tests/test_tenant_sqlserver_isolation.py --run-integration --junitxml=test-artifacts/mcp-sqlserver-isolation.xml -p no:cacheprovider'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: truthound-mcp-sqlserver-isolation
+          path: |
+            test-artifacts/mcp-sqlserver-isolation.xml
+            test-artifacts/sqlserver-runtime-evidence
+            test-artifacts/sqlserver-wheel.sha256
+          if-no-files-found: error

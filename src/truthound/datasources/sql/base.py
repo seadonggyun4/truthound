@@ -723,6 +723,7 @@ class BaseSQLDataSource(BaseDataSource[SQLDataSourceConfig]):
         *,
         max_rows: int,
         connection_scope=None,
+        cursor_scope=None,
     ) -> tuple[list[str], list[dict[str, Any]]]:
         """Fetch no more than ``max_rows`` using DB-API batches."""
 
@@ -733,18 +734,23 @@ class BaseSQLDataSource(BaseDataSource[SQLDataSourceConfig]):
         ):
             cursor = conn.cursor()
             try:
-                cursor.execute(query)
-                columns = [str(desc[0]) for desc in (cursor.description or ())]
-                rows: list[dict[str, Any]] = []
-                while len(rows) < max_rows:
-                    requested = min(batch_size, max_rows - len(rows))
-                    batch = cursor.fetchmany(requested)
-                    if not batch:
-                        break
-                    rows.extend(_row_mapping(row, columns) for row in batch)
-                return columns, rows
+                with cursor_scope(cursor) if cursor_scope else nullcontext():
+                    return self._read_bounded_cursor(cursor, query, max_rows, batch_size)
             finally:
                 cursor.close()
+
+    @staticmethod
+    def _read_bounded_cursor(cursor, query, max_rows, batch_size):
+        cursor.execute(query)
+        columns = [str(desc[0]) for desc in (cursor.description or ())]
+        rows: list[dict[str, Any]] = []
+        while len(rows) < max_rows:
+            requested = min(batch_size, max_rows - len(rows))
+            batch = cursor.fetchmany(requested)
+            if not batch:
+                break
+            rows.extend(_row_mapping(row, columns) for row in batch)
+        return columns, rows
 
     def to_polars_lazyframe(self) -> pl.LazyFrame:
         """Convert a safely bounded SQL result to a Polars LazyFrame.

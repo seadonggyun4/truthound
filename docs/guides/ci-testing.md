@@ -7,6 +7,7 @@ Automatic CI is scoped to the changed component on PRs and main pushes:
 | `README*` | README links, bilingual public contracts, report policy and MCP registry metadata |
 | `docs/**`, MkDocs configuration | Full/public documentation builds, links, Korean and public surface checks |
 | Core source and product tests | Four contract shards, fault/e2e and lint |
+| Native MCP streams/Flight and streaming validators | Dedicated lightweight loopback Flight, sync/async cursor and pipeline regressions |
 | MCP source, MCP tests, `server.json` | One Linux job for real stdio, privacy, errors, bundles and registry contracts |
 | Local plugin definitions and consent | Plugin installation and runtime contracts |
 | Benchmark implementation and workloads | Benchmark unit/CLI tests and parity smoke |
@@ -372,3 +373,16 @@ Fatal native Ray startup diagnostics retain closed cause markers and reviewed SD
 The installed factory regression writes directly to OS descriptors 1 and 2, checks the Windows CRT and Win32 standard handles agree, then performs native computation and shutdown through the intact JSON protocol. Python stream redirection alone does not satisfy this gate.
 
 The diagnostic `ray-startup-compare` scope runs twenty fixed, counterbalanced Core/stock-SDK pairs in fresh owned processes on the same Windows runner. Each arm retains the 30-second reply limit, performs real native statistics and cleanup, and a failed pair stops without retry; success requires all forty trials. Sanitized JSON/JUnit records closed process roles/status, CPU/RSS/thread/age metrics and bounded SDK source locations. Raw logs, process IDs, full paths, arguments, messages and row data are not uploaded. This control diagnoses startup and does not replace the product gates.
+
+SQL tenant changes use `mcp-sql-isolation.yml`: SQLite/DuckDB plus a test-owned temporary PostgreSQL/MySQL instances, including installed operator-worker restart. No existing database or production credentials are used.
+
+Oracle tenant changes use `mcp-oracle-isolation.yml` with the pinned Oracle Free
+image and thin driver. The job installs the built wheel into a separate client
+environment, then tests native namespaces, read-only/DDL fencing, caller snapshot
+preservation, real SDK stdio and server-session cleanup. Its fixture owns and
+removes the container. Only masked startup logs, cleanup evidence, JUnit and the
+wheel hash are uploaded. Provider integration test files trigger their dedicated
+lanes rather than the general Core quality suite; shared SQL/worker changes still
+trigger the affected lanes.
+
+SQL Server tenant changes use `mcp-sqlserver-isolation.yml`, a pinned disposable image and `pymssql==2.3.13`. The gate requires a native x86 Docker engine and tests the isolated installed wheel, including SDK shutdown and server-session cleanup. Shared SDK test changes select both Oracle and SQL Server lanes.

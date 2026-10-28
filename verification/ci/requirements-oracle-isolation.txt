@@ -1,0 +1,2 @@
+# Match uv.lock; the native tenant integration uses the thin driver.
+oracledb==4.0.1

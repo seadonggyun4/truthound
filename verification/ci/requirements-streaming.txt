@@ -1,0 +1,3 @@
+# Native loopback Flight CI; matches uv.lock.
+pyarrow==23.0.1
+numpy==2.4.1

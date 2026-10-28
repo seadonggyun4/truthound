@@ -40,11 +40,13 @@ class BrokerOwner:
         from truthound.realtime.processing.exactly_once import ExactlyOnceProcessor
         from truthound.realtime.processing.windows import WindowProcessor
 
-        if not isinstance(runtime, BrokerRuntime) or not isinstance(
-            runtime.adapter, BaseStreamAdapter
+        if not isinstance(runtime, BrokerRuntime) or (
+            runtime.adapter is not None and not isinstance(runtime.adapter, BaseStreamAdapter)
         ):
             raise MCPError("invalid_binding")
-        if runtime.adapter.is_connected:
+        if runtime.adapter is None and runtime.stream_source is None and runtime.file_source is None:
+            raise MCPError("invalid_binding")
+        if runtime.adapter is not None and runtime.adapter.is_connected:
             raise MCPError("invalid_binding")
         if runtime.window is not None and not isinstance(runtime.window, WindowProcessor):
             raise MCPError("invalid_binding")
@@ -52,6 +54,12 @@ class BrokerOwner:
             runtime.processor, ExactlyOnceProcessor
         ):
             raise MCPError("invalid_binding")
+        from truthound.realtime.base import StreamingValidator
+
+        if runtime.validator is not None and not isinstance(runtime.validator, StreamingValidator):
+            raise MCPError("invalid_binding")
+        from truthound.mcp.stream_validation import StreamValidationOwner
+        self.streams = StreamValidationOwner(runtime)
         self.runtime = runtime
         self.batches = {}
         self.windowed = set()
@@ -62,6 +70,10 @@ class BrokerOwner:
 
         runtime, command = self.runtime, args["command"]
         adapter = runtime.adapter
+        if command in self.streams.commands:
+            return await self.streams.execute(args, budget, self.batches)
+        if adapter is None and command not in {"validation_stats", "validation_reset"}:
+            raise MCPError("invalid_binding")
         if command == "connect":
             await adapter.connect()
         elif command == "disconnect":
@@ -83,11 +95,25 @@ class BrokerOwner:
             identity = "batch_" + uuid4().hex
             self.batches[identity] = (batch, size)
             return {"batch_id": identity, "messages": value, "size": batch.size}
-        elif command in {"ack", "window_add", "process"}:
+        elif command in {"validation_stats", "validation_reset"}:
+            if runtime.validator is None:
+                raise MCPError("invalid_binding")
+            if command == "validation_reset":
+                runtime.validator.reset_stats()
+            return {"stats": runtime.validator.get_stats()}
+        elif command in {"ack", "window_add", "process", "validate_batch"}:
             identity = args["batch_id"]
             if identity not in self.batches:
                 raise MCPError("invalid_handle")
             batch = self.batches[identity][0]
+            if command == "validate_batch":
+                if runtime.validator is None:
+                    raise MCPError("invalid_binding")
+                frame = batch.to_dataframe()
+                # Use the native validator and its operator-owned callbacks/config.
+                # No acknowledgement or processor transaction is implied.
+                result = runtime.validator.validate_batch(frame, batch_id=identity)
+                return {"result": result.to_dict()}
             if command == "ack":
                 await adapter.commit_batch(batch.messages)
                 del self.batches[identity]
@@ -161,7 +187,11 @@ class BrokerOwner:
         }
 
     async def close(self):
-        await self.runtime.adapter.disconnect()
+        try:
+            await self.streams.close()
+        finally:
+            if self.runtime.adapter is not None:
+                await self.runtime.adapter.disconnect()
 
 
 async def serve(wire, owner_type=BrokerOwner):
@@ -171,6 +201,12 @@ async def serve(wire, owner_type=BrokerOwner):
             async for request in requests():
                 if request == {"close": True}:
                     break
+                if request == {"prepare": True}:
+                    if owner is not None:
+                        raise MCPError("invalid_arguments")
+                    wire.write(json.dumps({"ok": True}) + "\n")
+                    wire.flush()
+                    continue
                 reply = {"ok": True}
                 shutdown = False
                 if request.get("open"):

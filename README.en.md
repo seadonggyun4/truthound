@@ -54,6 +54,10 @@ After installation, approve the data directories you want to use. For other MCP 
 
 For the development Core profile and its supported scope, see the [MCP guide](docs/guides/mcp.md#core-profile-unreleased-source-checkout).
 
+Approved factories connect stream/async-stream validation, streaming pipelines and Arrow Flight.
+
+[Implementation boundaries and remaining work](docs/guides/mcp.md#implementation-boundaries-and-remaining-work)
+
 ---
 
 ## Overview
@@ -230,6 +234,8 @@ Use `truthound doctor . --workspace` to check the structural integrity of the lo
 ---
 
 ## Public Surface
+
+Public functions and types load on first access and retain the existing native Core objects and behavior.
 
 Lineage sample metadata now requires explicit opt-in and is copied with row/byte bounds; source assets are never sampled automatically.
 

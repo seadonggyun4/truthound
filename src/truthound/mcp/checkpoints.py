@@ -1,5 +1,6 @@
 """Approved one-shot native Checkpoints, including operator-selected actions."""
 
+import time
 from contextlib import suppress
 
 from truthound.mcp.approved_sources import SourceBindingOpen, resolve
@@ -64,8 +65,7 @@ async def run(session, arguments, *, operation="checkpoints_run"):
     }
     try:
         authorize(session, metadata)
-        store.begin(plan["plan_id"], session=session.identity, policy=stamp)
-        started = True
+        deadline = time.monotonic() + policy.timeout_seconds
         worker = CheckpointProcess(policy.handle_ttl_seconds)
         session._checkpoint_workers.add(worker)
 
@@ -77,6 +77,12 @@ async def run(session, arguments, *, operation="checkpoints_run"):
                 return False
 
         worker.watch_policy(authorized)
+        await worker.call({"prepare": True}, max(0, deadline - time.monotonic()))
+        authorize(session, metadata)
+        if time.monotonic() >= deadline:
+            raise TimeoutError
+        store.begin(plan["plan_id"], session=session.identity, policy=stamp)
+        started = True
         await worker.call(
             {
                 "plugins": plugins,
@@ -89,7 +95,7 @@ async def run(session, arguments, *, operation="checkpoints_run"):
                 "output_path": str(path),
                 "budget": resources.available_bytes,
             },
-            policy.timeout_seconds,
+            max(0, deadline - time.monotonic()),
         )
         authorize(session, metadata)
         entry = resources.commit(

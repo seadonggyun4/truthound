@@ -6,6 +6,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 from contextlib import suppress
 
 import psutil
@@ -146,15 +147,34 @@ class OwnedModelProcess:
     def _exchange(self, request):
         if self.closed:
             raise MCPError("invalid_handle")
+        self.exchange_phase = "writing"
+        self.exchange_started = time.monotonic()
+        self.exchange_failure = None
+        self.exchange_worker_category = None
+        self.exchange_request_index = getattr(self, "exchange_request_index", 0) + 1
+        self.exchange_request_kind = "prepare" if request == {"prepare": True} else "native"
         self.process.stdin.write(json.dumps(request, allow_nan=False).encode() + b"\n")
         self.process.stdin.flush()
+        self.exchange_phase = "reading"
         response = self._reader.readline(self.max_reply_bytes + 1)
+        self.exchange_reply_seconds = time.monotonic() - self.exchange_started
+        self.exchange_reply_bytes = len(response)
+        self.exchange_phase = "validating"
         if len(response) > self.max_reply_bytes or not response.endswith(b"\n"):
             raise MCPError("worker_error")
         result = json.loads(response)
         if result.get("ok") is not True:
+            category = result.get("category")
+            if isinstance(category, str) and category in {
+                "access_denied", "plugin_identity_mismatch", "invalid_binding",
+                "resource_exhausted", "invalid_arguments", "unsupported_value", "timeout",
+                "missing_dependency", "value_error", "type_error", "io_error", "native_error",
+            }:
+                self.exchange_worker_category = category
             raise MCPError(result.get("code", "worker_error"))
-        return self.validate_reply(result)
+        reply = self.validate_reply(result)
+        self.exchange_phase = "completed"
+        return reply
 
     def validate_reply(self, result):
         extra = {"detached_spec", "detached_trained"} if "detached_spec" in result else set()
@@ -181,10 +201,20 @@ class OwnedModelProcess:
                     self._exchange, request, abandon_on_cancel=True
                 )
         except MCPError as exc:
+            self.exchange_failure = exc.code if exc.code in {
+                "worker_error", "checkpoint_execution_failed", "missing_dependency",
+                "native_source_error", "monitor_execution_failed", "access_denied",
+                "invalid_binding", "invalid_arguments",
+            } else "mcp_error"
             if exc.code == "worker_error":
                 self.close()
             raise
-        except BaseException:
+        except BaseException as exc:
+            self.exchange_failure = (
+                "timeout" if isinstance(exc, TimeoutError) else
+                "os_error" if isinstance(exc, OSError) else
+                "eof" if isinstance(exc, EOFError) else "worker_failure"
+            )
             # A protocol failure or cancellation invalidates resident state.
             # Never continue with a model whose mutation outcome is uncertain.
             self.close()

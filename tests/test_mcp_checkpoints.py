@@ -17,9 +17,37 @@ invoke = plugins.invoke
 
 
 def prepare(runtime, monkeypatch, *, approve=True, asynchronous=False):
+    import time
     from truthound.mcp import model_process
+    from truthound.mcp import checkpoints
 
     adapter, control, marker, _, _ = runtime
+    original = getattr(checkpoints.CheckpointProcess, "_test_original", checkpoints.CheckpointProcess)
+
+    def tracked(ttl):
+        worker = original(ttl)
+        adapter._test_checkpoint_worker = worker
+        worker._test_exchanges = []
+        native_call = worker.call
+
+        async def measured(payload, timeout):
+            started = time.perf_counter()
+            try:
+                return await native_call(payload, timeout)
+            finally:
+                worker._test_exchanges.append({
+                    "kind": "prepare" if payload == {"prepare": True} else "native",
+                    "budget": timeout, "seconds": time.perf_counter() - started,
+                    "phase": getattr(worker, "exchange_phase", None),
+                    "failure": getattr(worker, "exchange_failure", None),
+                    "category": getattr(worker, "exchange_worker_category", None),
+                })
+
+        worker.call = measured
+        return worker
+
+    tracked._test_original = original
+    monkeypatch.setattr(checkpoints, "CheckpointProcess", tracked)
     monkeypatch.setattr(
         model_process,
         "sys",
@@ -145,7 +173,14 @@ def test_checkpoint_artifact_authority_is_revocable(runtime, monkeypatch, change
     adapter, control, _, code, _ = runtime
     request = prepare(runtime, monkeypatch)
     response = invoke(adapter, "checkpoints_run", **request)
-    assert response["execution_status"] == "succeeded", response
+    worker = adapter._test_checkpoint_worker
+    diagnostic = {key: getattr(worker, key, None) for key in (
+        "exchange_phase", "exchange_failure", "exchange_worker_category", "exchange_request_kind", "exchange_request_index",
+        "exchange_reply_seconds", "exchange_reply_bytes",
+    )}
+    diagnostic["exit_code"] = worker.process.poll()
+    diagnostic["exchanges"] = worker._test_exchanges
+    assert response["execution_status"] == "succeeded", {"response": response, "diagnostic": diagnostic}
     identity = response["data"]["resource_id"]
     if change == "binding":
         (control / "bindings.json").write_text("{}", encoding="utf-8")

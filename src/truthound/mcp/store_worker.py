@@ -36,13 +36,17 @@ class StoreOwner:
         store = runtime.store
         if not isinstance(store, (BaseStore, CachedStore, BatchedStore, ReplicatedStore)):
             raise MCPError("invalid_binding")
-        self.base = (
-            store.primary
-            if isinstance(store, ReplicatedStore)
-            else store.store
-            if isinstance(store, (CachedStore, BatchedStore))
-            else store
-        )
+        self.base = store
+        self.wrapper_layers = []
+        seen = set()
+        while isinstance(self.base, (CachedStore, BatchedStore, ReplicatedStore)):
+            if id(self.base) in seen or len(self.wrapper_layers) >= 64:
+                raise MCPError("invalid_binding")
+            seen.add(id(self.base))
+            self.wrapper_layers.append(self.base)
+            self.base = (
+                self.base.primary if isinstance(self.base, ReplicatedStore) else self.base.store
+            )
         if not isinstance(self.base, BaseStore) or any(
             not isinstance(value, (ValidationResult, ExpectationSuite))
             for value in runtime.records.values()
@@ -75,22 +79,22 @@ class StoreOwner:
             ),
         ):
             self.base.set_io_guard(self.guard)
-        if isinstance(store, CachedStore):
-            store.set_io_guard(self.guard)
         if isinstance(store, ReplicatedStore):
             if set(runtime.replicas.values()) != {target.name for target in store.config.targets}:
                 raise MCPError("invalid_binding")
-            store.set_io_guard(self.guard)
         if isinstance(store, TieredStore) and set(runtime.tiers.values()) != set(store.tiers):
             raise MCPError("invalid_binding")
-        if isinstance(store, BatchedStore):
-            write = store._write_batch
+        for layer in self.wrapper_layers:
+            if isinstance(layer, (CachedStore, ReplicatedStore)):
+                layer.set_io_guard(self.guard)
+            if isinstance(layer, BatchedStore):
+                write = layer._write_batch
 
-            def guarded_write(items):
-                self.guard()
-                return write(items)
+                def guarded_write(items, native_write=write):
+                    self.guard()
+                    return native_write(items)
 
-            store._write_batch = guarded_write
+                layer._write_batch = guarded_write
 
     def reference(self, native_id):
         for alias, value in self.records.items():

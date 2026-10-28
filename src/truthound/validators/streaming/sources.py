@@ -575,7 +575,7 @@ class ArrowIPCStreamingSource(StreamingSource):
                 chunk_table = combined.slice(0, self.config.chunk_size)
                 remaining_table = combined.slice(self.config.chunk_size)
 
-                chunk_df = pl.from_arrow(chunk_table)
+                chunk_df = _stream_frame(chunk_table)
 
                 # Apply max_rows limit
                 if max_rows is not None:
@@ -589,7 +589,7 @@ class ArrowIPCStreamingSource(StreamingSource):
 
                 # Update buffer
                 if remaining_table.num_rows > 0:
-                    buffer = [remaining_table.to_batches()[0]] if remaining_table.to_batches() else []
+                    buffer = remaining_table.to_batches()
                     buffer_rows = remaining_table.num_rows
                 else:
                     buffer = []
@@ -601,7 +601,7 @@ class ArrowIPCStreamingSource(StreamingSource):
         # Yield remaining buffer
         if buffer and (max_rows is None or rows_yielded < max_rows):
             combined = pa.Table.from_batches(buffer)
-            chunk_df = pl.from_arrow(combined)
+            chunk_df = _stream_frame(combined)
 
             if max_rows is not None:
                 limit = max_rows - rows_yielded
@@ -636,6 +636,21 @@ class ArrowFlightConfig(StreamingSourceConfig):
     use_tls: bool = False
     token: str | None = None
     timeout_seconds: float = 60.0
+
+
+def _stream_frame(table):
+    """Normalize sliced Arrow offsets before the supported Polars boundary.
+
+    Some supported Polars runtimes discard nonzero offsets on C-stream import.
+    Native Arrow concatenation rebases buffers without Python value conversion,
+    preserving the schema, nulls and dictionary/temporal values.
+    """
+    normalized = pa.Table.from_arrays(
+        [pa.concat_arrays(column.chunks) if column.num_chunks
+         else pa.array([], type=column.type) for column in table.columns],
+        schema=table.schema,
+    )
+    return pl.from_arrow(normalized)
 
 
 class ArrowFlightStreamingSource(StreamingSource):
@@ -700,42 +715,43 @@ class ArrowFlightStreamingSource(StreamingSource):
             ) from exc
 
     def open(self) -> None:
-        """Connect to the Flight server."""
+        """Connect using the operator-selected ticket and authentication."""
         super().open()
-        self._check_flight_available()
+        try:
+            self._check_flight_available()
+            import pyarrow.flight as flight
 
-        import pyarrow.flight as flight
-
-        # Build connection string
-        scheme = "grpc+tls" if self.config.use_tls else "grpc"
-        location = f"{scheme}://{self.config.host}:{self.config.port}"
-
-        # Create client
-        self._client = flight.connect(location)
-
-        # Authenticate if token provided
-        if self.config.token:
-            self._client.authenticate_basic_token("", self.config.token)
-
-        # Create reader from ticket
-        ticket = flight.Ticket(self.config.ticket)
-        self._reader = self._client.do_get(ticket)
+            scheme = "grpc+tls" if self.config.use_tls else "grpc"
+            self._client = flight.connect(f"{scheme}://{self.config.host}:{self.config.port}")
+            options = flight.FlightCallOptions(timeout=self.config.timeout_seconds)
+            if self.config.token:
+                header = self._client.authenticate_basic_token("", self.config.token, options=options)
+                options = flight.FlightCallOptions(timeout=self.config.timeout_seconds, headers=[header])
+            self._reader = self._client.do_get(flight.Ticket(self.config.ticket), options=options)
+            self._total_rows = None
+        except BaseException:
+            self.close()
+            raise
 
     def close(self) -> None:
-        """Disconnect from the Flight server."""
-        if self._reader:
-            self._reader.close()
-            self._reader = None
-        if self._client:
-            self._client.close()
-            self._client = None
-        super().close()
+        """Cancel the native reader and always release the owned client."""
+        reader, self._reader = self._reader, None
+        client, self._client = self._client, None
+        try:
+            if reader is not None:
+                reader.cancel()
+        finally:
+            try:
+                if client is not None:
+                    client.close()
+            finally:
+                super().close()
 
     def __len__(self) -> int:
         # Flight doesn't always provide row count upfront
         if self._total_rows is not None:
             return self._total_rows
-        return -1  # Unknown
+        raise TypeError("Arrow Flight row count is unknown until exhaustion")
 
     def __iter__(self) -> Iterator[pl.DataFrame]:
         if not self._is_open or not self._reader:
@@ -747,7 +763,10 @@ class ArrowFlightStreamingSource(StreamingSource):
         buffer_rows = 0
 
         # Stream record batches from Flight
-        for batch in self._reader:
+        for chunk in self._reader:
+            batch = chunk.data
+            if batch is None:
+                continue
             if max_rows is not None and rows_yielded >= max_rows:
                 break
 
@@ -764,7 +783,7 @@ class ArrowFlightStreamingSource(StreamingSource):
                 chunk_table = combined.slice(0, self.config.chunk_size)
                 remaining_table = combined.slice(self.config.chunk_size)
 
-                chunk_df = pl.from_arrow(chunk_table)
+                chunk_df = _stream_frame(chunk_table)
 
                 if max_rows is not None:
                     limit = max_rows - rows_yielded
@@ -776,7 +795,7 @@ class ArrowFlightStreamingSource(StreamingSource):
                 yield chunk_df
 
                 if remaining_table.num_rows > 0:
-                    buffer = [remaining_table.to_batches()[0]] if remaining_table.to_batches() else []
+                    buffer = remaining_table.to_batches()
                     buffer_rows = remaining_table.num_rows
                 else:
                     buffer = []
@@ -788,7 +807,7 @@ class ArrowFlightStreamingSource(StreamingSource):
         # Yield remaining buffer
         if buffer and (max_rows is None or rows_yielded < max_rows):
             combined = pa.Table.from_batches(buffer)
-            chunk_df = pl.from_arrow(combined)
+            chunk_df = _stream_frame(combined)
 
             if max_rows is not None:
                 limit = max_rows - rows_yielded
@@ -797,8 +816,9 @@ class ArrowFlightStreamingSource(StreamingSource):
 
             if len(chunk_df) > 0:
                 self._rows_read += len(chunk_df)
-                self._total_rows = (self._total_rows or 0) + len(chunk_df)
+                rows_yielded += len(chunk_df)
                 yield chunk_df
+        self._total_rows = rows_yielded
 
 
 # =============================================================================

@@ -12,22 +12,25 @@ from typing import TYPE_CHECKING, Any
 from truthound._ai_support import AISupportStatus, get_ai_support_status, has_ai_support
 from truthound._lazy import (
     TRUTHOUND_IMPORT_MAP,
+    _reset_truthound_import_cache,
     get_truthound_import_metrics,
     truthound_getattr,
 )
 from truthound._version import resolve_truthound_version
-from truthound.api import check, mask, profile, read, scan
-from truthound.context import TruthoundContext, get_context
-from truthound.core import CheckResult, CheckSpec, SchemaSpec, ValidationRunResult, ValidationSuite
-from truthound.decorators import validator
-from truthound.schema import Schema, learn
+
+# Refresh cached aliases when importlib.reload() re-executes this module.
+for _root_name in TRUTHOUND_IMPORT_MAP:
+    globals().pop(_root_name, None)
+_reset_truthound_import_cache()
 
 __version__ = resolve_truthound_version()
 
 
 def __getattr__(name: str) -> Any:
     if name in TRUTHOUND_IMPORT_MAP:
-        return truthound_getattr(name)
+        value = truthound_getattr(name)
+        globals()[name] = value
+        return value
     raise AttributeError(f"module 'truthound' has no attribute '{name}'")
 
 
@@ -57,6 +60,11 @@ def __dir__() -> list[str]:
 
 
 if TYPE_CHECKING:
+    from truthound.api import check, mask, profile, read, scan
+    from truthound.context import TruthoundContext, get_context
+    from truthound.core import CheckResult, CheckSpec, SchemaSpec, ValidationRunResult, ValidationSuite
+    from truthound.decorators import validator
+    from truthound.schema import Schema, learn
     from truthound import checkpoint as checkpoint
     from truthound import datadocs as datadocs
     from truthound import datasources as datasources

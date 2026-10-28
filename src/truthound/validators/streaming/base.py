@@ -278,6 +278,41 @@ class StreamingValidationPipeline:
 
         return all_issues
 
+    def validate_source(self, source) -> list[ValidationIssue]:
+        """Validate native file/Flight chunks with one shared pipeline state.
+
+        An already open source is borrowed. A closed source is opened and
+        always closed here, including partial-open and validator failures.
+        """
+        from truthound.validators.streaming.sources import StreamingSource
+
+        if not isinstance(source, StreamingSource):
+            raise TypeError("Expected a native StreamingSource")
+        if not isinstance(self.chunk_size, int) or self.chunk_size <= 0:
+            raise ValueError("chunk_size must be positive")
+        owned = not source.is_open
+        states = [StreamingState() for _ in self.validators]
+        total_rows, chunk_index = 0, 0
+        try:
+            if owned:
+                source.open()
+            for frame in source:
+                for offset in range(0, len(frame), self.chunk_size):
+                    chunk = frame.slice(offset, self.chunk_size)
+                    for validator, state in zip(self.validators, states):
+                        validator.process_chunk(chunk, state, chunk_index, total_rows)
+                        state.chunk_count += 1
+                        state.total_rows += len(chunk)
+                    total_rows += len(chunk)
+                    chunk_index += 1
+            if total_rows == 0:
+                return []
+            return [issue for validator, state in zip(self.validators, states)
+                    for issue in validator.finalize(state, total_rows)]
+        finally:
+            if owned:
+                source.close()
+
     def add_validator(self, validator: StreamingValidator) -> "StreamingValidationPipeline":
         """Add a validator to the pipeline.
 

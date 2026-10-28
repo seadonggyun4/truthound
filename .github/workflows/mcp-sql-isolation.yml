@@ -1,0 +1,39 @@
+name: MCP SQL isolation
+on:
+  pull_request:
+    paths: ["src/truthound/__init__.py", "src/truthound/_lazy.py", "src/truthound/mcp/bound_services.py", "src/truthound/mcp/checkpoint_services.py", "src/truthound/mcp/model_process.py", "src/truthound/mcp/broker_worker.py", "src/truthound/mcp/checkpoint_worker.py", "src/truthound/multitenancy/**", "src/truthound/datasources/sql/**", "!src/truthound/datasources/sql/oracle.py", "!src/truthound/datasources/sql/sqlserver.py", "src/truthound/mcp/tenancy*", "tests/test_tenant_isolation_contract.py", "tests/test_tenant_postgresql_isolation.py", "tests/test_tenant_mysql_isolation.py", "tests/test_mcp_tenancy.py", "tests/test_mcp_plugin_bindings.py", "pyproject.toml", "uv.lock", "verification/ci/requirements-lite.txt", "verification/ci/requirements-streaming.txt", "verification/ci/requirements-sql-isolation.txt", ".github/workflows/mcp-sql-isolation.yml"]
+  push:
+    branches: [main]
+    paths: ["src/truthound/__init__.py", "src/truthound/_lazy.py", "src/truthound/mcp/bound_services.py", "src/truthound/mcp/checkpoint_services.py", "src/truthound/mcp/model_process.py", "src/truthound/mcp/broker_worker.py", "src/truthound/mcp/checkpoint_worker.py", "src/truthound/multitenancy/**", "src/truthound/datasources/sql/**", "!src/truthound/datasources/sql/oracle.py", "!src/truthound/datasources/sql/sqlserver.py", "src/truthound/mcp/tenancy*", "tests/test_tenant_isolation_contract.py", "tests/test_tenant_postgresql_isolation.py", "tests/test_tenant_mysql_isolation.py", "tests/test_mcp_tenancy.py", "tests/test_mcp_plugin_bindings.py", "pyproject.toml", "uv.lock", "verification/ci/requirements-lite.txt", "verification/ci/requirements-streaming.txt", "verification/ci/requirements-sql-isolation.txt", ".github/workflows/mcp-sql-isolation.yml"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: mcp-sql-isolation-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  sql:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      POLARS_MAX_THREADS: '1'
+      OMP_NUM_THREADS: '1'
+      OPENBLAS_NUM_THREADS: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --frozen --extra mcp
+      - run: uv pip install --python .venv/bin/python -r verification/ci/requirements-lite.txt -r verification/ci/requirements-streaming.txt -r verification/ci/requirements-sql-isolation.txt
+      - name: Locate PostgreSQL binaries for a test-owned disposable instance
+        run: pg_config --bindir >> "$GITHUB_PATH"
+      - name: Verify physical namespaces, native limits and installed worker reopen
+        run: .venv/bin/python -m pytest -q tests/test_tenant_isolation_contract.py tests/test_tenant_postgresql_isolation.py tests/test_tenant_mysql_isolation.py tests/test_mcp_tenancy.py --run-integration --junitxml=test-artifacts/mcp-sql-isolation.xml -p no:cacheprovider
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: truthound-mcp-sql-isolation
+          path: test-artifacts/mcp-sql-isolation.xml
+          if-no-files-found: error

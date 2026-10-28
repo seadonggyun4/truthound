@@ -31,6 +31,7 @@ def approved(runtime, operation, **request):
     assert result["execution_status"] == "succeeded", json.dumps({
         "execution_status": result["execution_status"], "issues": result["issues"],
         "native_diagnostics": diagnostics,
+        "worker_exchanges": getattr(getattr(adapter, "_test_native_worker", None), "_test_exchanges", []),
     }, sort_keys=True)
     return result
 

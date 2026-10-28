@@ -495,9 +495,18 @@ def runtime(tmp_path, monkeypatch):
             "purelib", scheme=scheme, vars={"base": str(root), "platbase": str(root)}
         )
     )
-    # Add the exact test interpreter's already installed Core/SDK dependencies.
-    # Only package/code directories, never admitted customer-data directories.
-    paths = [str(Path(item).resolve()) for item in sys.path if item and Path(item).is_dir()]
+    # Inherit the selected Core and installed dependencies, not pytest's working
+    # directory or unrelated source roots. Installed-client tests must not rely
+    # on checkout discovery, including importlib.metadata scans of that checkout.
+    import truthound
+
+    core_root = Path(truthound.__file__).resolve().parent.parent
+    dependency_paths = {
+        str(path) for item in sys.path if item
+        and (path := Path(item).resolve()).is_dir()
+        and {"site-packages", "dist-packages"}.intersection(path.parts)
+    }
+    paths = [str(core_root), *sorted(dependency_paths - {str(core_root)})]
     (site / "test-runtime.pth").write_text("\n".join(paths) + "\n", encoding="utf-8")
     build = tmp_path / "fixture-build"
     build.mkdir()
@@ -654,7 +663,21 @@ def runtime(tmp_path, monkeypatch):
         "    adapter = ObservedAdapter(MockAdapterConfig(num_messages=3, seed=42, error_rate=0, enable_health_check=False))\n"
         "    window = TumblingWindowProcessor(WindowConfig(size_ms=60000), CountAggregator)\n"
         "    processor = ExactlyOnceProcessor(adapter, process_fn=lambda message: message)\n"
-        "    try: yield BrokerRuntime(adapter, window, processor, output_topic='operator-output')\n"
+        "    from truthound.realtime.base import StreamingValidator, StreamingConfig\n"
+        "    validator = StreamingValidator(validators=['null'], config=StreamingConfig(error_handling='fail'))\n"
+        "    import json\n"
+        f"    settings_path = Path({str(tmp_path / 'stream-settings.json')!r})\n"
+        "    stream_options = json.loads(settings_path.read_text()) if settings_path.exists() else {}\n"
+        "    from truthound.realtime.streaming import MockStreamingSource, MockStreamingConfig\n"
+        "    from truthound.validators.streaming.sources import ArrowFlightStreamingSource, LazyFrameStreamingSource\n"
+        "    from truthound.validators.streaming.base import StreamingValidationPipeline\n"
+        "    from truthound.validators.streaming.completeness import StreamingNullValidator\n"
+        "    from truthound.validators import NullValidator\n"
+        "    native_source = MockStreamingSource(MockStreamingConfig(num_batches=3, records_per_batch=2, error_rate=0)) if stream_options.get('mode') == 'realtime' else None\n"
+        "    file_source = ArrowFlightStreamingSource(host='127.0.0.1', port=stream_options['port'], ticket=b'approved', chunk_size=2) if stream_options.get('mode') == 'flight' else None\n"
+        "    if stream_options.get('mode') == 'local': file_source = LazyFrameStreamingSource(pl.DataFrame({'x':[1,None,3,None,5]}).lazy(), chunk_size=2)\n"
+        "    pipeline = StreamingValidationPipeline([StreamingNullValidator()], chunk_size=2)\n"
+        "    try: yield BrokerRuntime(None if stream_options.get('mode') in {'flight','local'} else adapter, window, processor, output_topic='operator-output', validator=validator, stream_source=native_source, file_source=file_source, pipeline=pipeline, streaming_validators=[NullValidator()])\n"
         "    finally: await adapter.disconnect(); note('broker-close')\n"
         "@asynccontextmanager\n"
         "async def ai_factory():\n"
@@ -843,7 +866,74 @@ def runtime(tmp_path, monkeypatch):
         '        store.save(tenant)\n'
         "        tenants['structured'] = tenant.id\n"
         "        source = stack.enter_context(SQLiteDataSource(table='records',database=str(path)))\n"
-        "        sources['records'] = TenantSQLSource(source,tenant_id=tenant.id)\n"
+        "        if MARKER.with_name('tenant-source-mode').read_text() == 'duckdb':\n"
+        '            import duckdb\n'
+        '            from truthound.datasources.sql.duckdb import DuckDBDataSource, DuckDBDataSourceConfig\n'
+        "            path = MARKER.with_name('private-tenant-data.duckdb')\n"
+        '            with duckdb.connect(str(path)) as connection:\n'
+        "                connection.execute('CREATE TABLE IF NOT EXISTS records AS SELECT * FROM (VALUES (1), (2)) t(x)')\n"
+        '            tenant.database_name = str(path)\n'
+        '            store.save(tenant)\n'
+        "            source = stack.enter_context(DuckDBDataSource(table='records',database=str(path),config=DuckDBDataSourceConfig(threads=1)))\n"
+        "        mode = MARKER.with_name('tenant-source-mode').read_text()\n"
+        '        namespace_database = None\n'
+        "        if mode.startswith('postgres:'):\n"
+        '            import psycopg2\n'
+        '            from truthound.datasources.sql.postgresql import PostgreSQLDataSource\n'
+        "            port = int(mode.split(':')[1])\n"
+        "            with psycopg2.connect(host='127.0.0.1',port=port,user='truthound_test',dbname='postgres') as connection:\n"
+        '                with connection.cursor() as cursor:\n'
+        "                    cursor.execute('CREATE TABLE IF NOT EXISTS public.worker_records (x INTEGER)')\n"
+        "                    cursor.execute('SELECT COUNT(*) FROM public.worker_records')\n"
+        '                    if cursor.fetchone()[0] == 0:\n'
+        "                        cursor.execute('INSERT INTO public.worker_records VALUES (1), (2)')\n"
+        "            tenant.database_name = 'postgres'\n"
+        '            store.save(tenant)\n'
+        "            source = stack.enter_context(PostgreSQLDataSource(table='worker_records',host='127.0.0.1',port=port,user='truthound_test',database='postgres'))\n"
+        "        if mode.startswith('mysql:'):\n"
+        '            import pymysql\n'
+        '            from truthound.datasources.sql.mysql import MySQLDataSource\n'
+        "            port = int(mode.split(':')[1])\n"
+        "            with pymysql.connect(host='127.0.0.1',port=port,user='root',autocommit=True) as connection:\n"
+        '                with connection.cursor() as cursor:\n'
+        "                    cursor.execute('CREATE DATABASE IF NOT EXISTS worker_scope')\n"
+        "                    cursor.execute('CREATE TABLE IF NOT EXISTS worker_scope.records (x INTEGER) ENGINE=InnoDB')\n"
+        "                    cursor.execute('SELECT COUNT(*) FROM worker_scope.records')\n"
+        '                    if cursor.fetchone()[0] == 0:\n'
+        "                        cursor.execute('INSERT INTO worker_scope.records VALUES (1), (2)')\n"
+        "            tenant.database_name = 'worker_scope'\n"
+        '            store.save(tenant)\n'
+        "            source = stack.enter_context(MySQLDataSource(table='records',host='127.0.0.1',port=port,user='root',database='worker_scope'))\n"
+        "        if mode.startswith('oracle:'):\n"
+        '            import json\n'
+        '            from truthound.datasources.sql.oracle import OracleDataSource, OracleConfig\n'
+        "            settings = json.loads(MARKER.with_name('tenant-oracle-settings.json').read_text())\n"
+        "            tenant.isolation_level = IsolationLevel.SCHEMA\n"
+        "            tenant.schema_name = 'TH_TENANT'\n"
+        "            tenant.database_name = namespace_database = 'FREEPDB1'\n"
+        '            store.save(tenant)\n'
+        "            source = stack.enter_context(OracleDataSource(table='RECORDS',host='127.0.0.1',port=int(mode.split(':')[1]),service_name='FREEPDB1',user='TH_TENANT',password=settings['password'],schema='TH_TENANT',config=OracleConfig(materialization_row_limit=3)))\n"
+        '            class DiagnosedOracleSource(TenantSQLSource):\n'
+        '                def read(self, manager, tenant_id):\n'
+        '                    try: return super().read(manager, tenant_id)\n'
+        '                    except Exception as error:\n'
+        '                        import oracledb\n'
+        "                        kind = type(error).__name__ if type(error).__name__ in {'TenantIsolationError','TenantSuspendedError','DataSourceSizeError','DatabaseError','InterfaceError','OperationalError'} else 'native_error'\n"
+        "                        reasons = {'An idle factory-owned Oracle connection is required':'caller_transaction','Database namespace does not match':'database_mismatch','Schema namespace does not match':'schema_mismatch','An ordinary application connection is required':'privileged_connection','An unchanged ordinary application table is required':'table_changed','Table resolution does not match the approved namespace':'resolution_mismatch'}\n"
+        "                        note('native-fixture-diagnostic:' + json.dumps({'exception':kind,'oracle_code':error.args[0].code if isinstance(error,oracledb.Error) else None,'reason':reasons.get(str(error),'native_error')},sort_keys=True))\n"
+        '                        raise\n'
+        '            source_type = DiagnosedOracleSource\n'
+        '        else: source_type = TenantSQLSource\n'
+        "        if mode.startswith('sqlserver:'):\n"
+        '            import json\n'
+        '            from truthound.datasources.sql.sqlserver import SQLServerConfig, SQLServerDataSource\n'
+        "            settings = json.loads(MARKER.with_name('tenant-sqlserver-settings.json').read_text())\n"
+        '            tenant.isolation_level = IsolationLevel.SCHEMA\n'
+        "            tenant.schema_name = 'th_scope'\n"
+        "            tenant.database_name = namespace_database = 'th_tenantdb'\n"
+        '            store.save(tenant)\n'
+        "            source = stack.enter_context(SQLServerDataSource(table='records',host='127.0.0.1',port=int(mode.split(':')[1]),database='th_tenantdb',user='th_reader',password=settings['password'],schema='th_scope',config=SQLServerConfig(dbapi_driver='pymssql',autocommit=True,materialization_row_limit=3)))\n"
+        "        sources['records'] = source_type(source,tenant_id=tenant.id,namespace_database=namespace_database)\n"
         "    policies = {'positive':RowLevelPolicy('private-positive-policy',lambda row,tenant: row['x'] > 0), 'untyped':RowLevelPolicy('private-untyped-policy',lambda row,tenant: 'False')}\n"
         "    try: yield TenantRuntime(manager,tenants=tenants,sources=sources,settings={'local':TenantSettings(timezone='Asia/Seoul')},policies=policies,contexts={'selected':{'headers':{'X-Tenant-ID':'internal-private-tenant','Authorization':'synthetic-private-context-token'}},'outside':{'headers':{'X-Tenant-ID':'outside'}},'missing':{}})\n"
         "    finally: stack.close(); store.close(); note('tenant-close')\n"
@@ -1085,6 +1175,12 @@ def runtime(tmp_path, monkeypatch):
         "        from truthound.stores.backends.concurrent_filesystem import ConcurrentFileSystemExpectationStore\n"
         "        base = ConcurrentFileSystemExpectationStore(base_path=str(MARKER.with_name('native-store')),serialization_format='yaml',file_extension='.yaml',use_compression=True)\n"
         "    if mode == 'cached': store = CachedStore(base, cache=LRUCache())\n"
+        "    elif mode == 'nested-cache-batch':\n"
+        "        inner = BatchedStore(base, BatchConfig(batch_size=100,flush_interval_seconds=3600))\n"
+        "        store = CachedStore(inner, cache=LRUCache())\n"
+        "    elif mode == 'nested-batch-cache':\n"
+        "        inner = CachedStore(base, cache=LRUCache())\n"
+        "        store = BatchedStore(inner, BatchConfig(batch_size=100,flush_interval_seconds=3600))\n"
         "    elif mode == 'cached-behind':\n"
         "        from truthound.stores.caching.store import CacheMode\n"
         "        store = CachedStore(base, cache=LRUCache(), mode=CacheMode.WRITE_BEHIND)\n"
@@ -1138,6 +1234,8 @@ def runtime(tmp_path, monkeypatch):
         "        metrics['saves'] = StoreMetric('operations_total', labels={'store_type':native.store_type,'store_id':native.store_id,'operation':'save'})\n"
         "    try: yield StoreRuntime(store, metrics=metrics, records=records,data_assets={'local':'private-native-asset'},tiers={'hot':'private-hot','cold':'private-cold'} if mode == 'tiered' else {},replicas={'local':'private-replica'} if mode.startswith('replicated') else {})\n"
         "    finally:\n"
+        "        if mode == 'nested-cache-batch': store.close(); await inner.stop()\n"
+        "        if mode == 'nested-batch-cache': await store.stop(); inner.close()\n"
         "        if mode == 'batched': await store.stop()\n"
         "        if mode.startswith('replicated'): await store.stop()\n"
         "        if mode == 'tiered' or mode.startswith('replicated'): secondary.close()\n"
