@@ -440,3 +440,55 @@ def test_real_sdk_catalog_schema_authorization_and_three_core_facades(dataset):
                 }
 
     asyncio.run(scenario())
+
+
+def test_real_sdk_core_quality_workflow_preserves_input(dataset):
+    """Exercise user-facing core actions across the actual stdio boundary."""
+    async def scenario():
+        original = dataset.read_bytes()
+        params = StdioServerParameters(command=sys.executable, args=[
+            "-I", "-m", "truthound.mcp", "serve", "--profile", "core",
+            "--allow-dir", str(dataset.parent), "--allow-sensitive-results"])
+        async with stdio_client(params) as (read, write), ClientSession(read, write) as client:
+            await client.initialize()
+
+            async def call(name, **arguments):
+                result = await client.call_tool(name, arguments)
+                assert not result.isError, result
+                envelope = result.structuredContent
+                assert envelope["execution_status"] == "succeeded", envelope
+                return envelope
+
+            validation = await call("validation_check", path=str(dataset), checks=[
+                {"validator": "null"}, {"validator": "unique", "columns": ["email"]}])
+            assert validation["quality_status"] == "fail"
+            schema = await call("validation_check", path=str(dataset), schema_spec={
+                "columns": {"age": {"name": "age", "dtype": "Int64", "max_value": 100}}})
+            # Automatic schema suites intentionally do not claim full target accounting.
+            assert schema["data"]["success"] is False, schema
+            assert schema["data"]["issue_count"] > 0
+            assert schema["quality_status"] == "unknown"
+            assert schema["coverage"]["accounting_complete"] is False
+            await call("data_profile", path=str(dataset))
+            await call("privacy_scan", path=str(dataset))
+            await call("schema_learn", path=str(dataset), infer_constraints=False)
+            masked = await call("data_mask", path=str(dataset), columns=["email"], strategy="hash", strict=True)
+            assert "a@example.com" not in json.dumps(masked)
+            assets = []
+            for shift in (0, 1000):
+                result = await call("assets_inline", columns=[{"name": "x", "dtype": {"kind": "Float64"},
+                    "values": [float(i + shift) for i in range(30)]}])
+                assets.append(result["data"]["resource_id"])
+            drift = await call("drift_compare", baseline_id=assets[0], current_id=assets[1], columns=["x"], method="ks", threshold=0.05)
+            import base64
+            chunks, offset = [], 0
+            while offset is not None:
+                chunk = await call("artifacts_read", resource_id=drift["data"]["resource_id"], offset=offset, limit=32768)
+                chunks.append(base64.b64decode(chunk["data"]["base64"]))
+                offset = chunk["data"]["next_offset"]
+            from truthound.mcp.tables import decode
+            assert decode(json.loads(b"".join(chunks)))["drifted_columns"] == 1
+            for identity in [drift["data"]["resource_id"], *assets]:
+                await call("resources_release", resource_id=identity)
+        assert dataset.read_bytes() == original
+    asyncio.run(scenario())

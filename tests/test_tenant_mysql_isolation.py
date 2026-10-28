@@ -176,3 +176,40 @@ def test_mysql_temporary_shadow_and_existing_transaction_fail_closed(mysql_port,
                 assert connection.server_status & 1
                 connection.rollback()
                 assert bound.read(manager, tenant.id).collect()["x"].to_list() == [1]
+
+
+def test_mysql_streaming_cursor_fetch_and_connection_reuse(mysql_port):
+    import pymysql
+    from truthound.datasources.sql.mysql import MySQLDataSource, MySQLDataSourceConfig
+
+    config = MySQLDataSourceConfig(host="127.0.0.1", port=mysql_port, user="root",
+        database="mysql", use_server_side_cursor=True, pool_size=1)
+    with MySQLDataSource(table="unused", config=config) as source:
+        with source._get_connection() as connection:
+            with connection.cursor() as cursor:
+                assert isinstance(cursor, pymysql.cursors.SSDictCursor)
+                cursor.execute("SELECT 1 AS x UNION ALL SELECT 2")
+                assert cursor.fetchmany(1) == [{"x": 1}]
+                assert cursor.fetchmany(1) == [{"x": 2}]
+                assert cursor.fetchone() is None
+        assert source.execute_scalar("SELECT 42") == 42
+
+
+def test_mysql_query_timeout_cancels_read_and_reuses_pool(mysql_port):
+    import pymysql
+    from truthound.datasources.sql.mysql import MySQLDataSource, MySQLDataSourceConfig
+    config = MySQLDataSourceConfig(host="127.0.0.1", port=mysql_port, user="root",
+        database="mysql", query_timeout=0.02, pool_size=1)
+    with MySQLDataSource(table="unused", config=config) as source:
+        assert source.execute_scalar("SELECT @@session.max_execution_time") == 20
+        source.execute_query("CREATE TABLE timeout_records (x INTEGER)")
+        try:
+            for value in range(100):
+                source.execute_query("INSERT INTO timeout_records VALUES (%s)", (value,))
+            with pytest.raises(pymysql.err.OperationalError) as error:
+                source.execute_query("SELECT SUM(a.x*b.x+c.x*d.x) FROM timeout_records a "
+                    "CROSS JOIN timeout_records b CROSS JOIN timeout_records c CROSS JOIN timeout_records d")
+            assert error.value.args[0] == 3024
+            assert source.execute_scalar("SELECT 42") == 42
+        finally:
+            source.execute_query("DROP TABLE timeout_records")

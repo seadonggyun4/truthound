@@ -8,6 +8,8 @@ Requires: pip install oracledb
 
 from __future__ import annotations
 
+import math
+
 from dataclasses import dataclass
 from typing import Any
 
@@ -189,6 +191,9 @@ class OracleDataSource(BaseSQLDataSource):
             return f'"{self._schema}"."{self._table}"'
         return f'"{self._table}"'
 
+    def _connection_is_healthy(self, connection) -> bool:
+        return connection.is_healthy()
+
     def _create_connection(self) -> Any:
         """Create Oracle connection."""
         import oracledb
@@ -223,7 +228,19 @@ class OracleDataSource(BaseSQLDataSource):
             if self._config.wallet_password:
                 conn_params["wallet_password"] = self._config.wallet_password
 
-        return oracledb.connect(**conn_params)
+        timeout = self._config.query_timeout
+        if not math.isfinite(timeout) or timeout <= 0:
+            raise ValueError("query_timeout must be finite and positive")
+        timeout_ms = math.ceil(timeout * 1000)
+        if timeout_ms > 4294967295:
+            raise ValueError("query_timeout exceeds Oracle call_timeout range")
+        connection = oracledb.connect(**conn_params)
+        try:
+            connection.call_timeout = timeout_ms
+        except BaseException:
+            connection.close()
+            raise
+        return connection
 
     def _fetch_schema(self) -> list[tuple[str, str]]:
         """Fetch schema from Oracle."""

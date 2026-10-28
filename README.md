@@ -52,11 +52,7 @@ Codex와 Claude Desktop에서 Truthound Local을 연결해 승인한 로컬 데�
 
 설치 후에는 사용할 데이터 폴더를 별도로 승인해야 합니다. 다른 MCP 클라이언트의 설정은 [Registry·클라이언트 연결 안내](docs/locales/ko/guides/mcp.md#registry-메타데이터와-설치)를 참고하세요.
 
-개발 중인 Core 프로파일의 기능과 지원 범위는 [MCP 가이드](docs/locales/ko/guides/mcp.md#core-프로파일-아직-배포하지-않은-소스-기능)를 참고하세요.
-
-승인된 팩토리로 stream·async-stream 검증, 스트리밍 pipeline과 Arrow Flight를 연결할 수 있습니다.
-
-[기능별 연결 범위와 남은 작업](docs/locales/ko/guides/mcp.md#구현-범위와-남은-작업)
+기본 검증·프로파일링·PII 탐지 외에 Core 프로파일에서 드리프트 비교·마스킹·스키마 검증을 사용할 수 있습니다. [핵심 사용 흐름과 프로파일 선택](docs/locales/ko/guides/mcp.md#핵심-데이터-품질-작업)을 참고하세요.
 
 ---
 

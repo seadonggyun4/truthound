@@ -52,11 +52,7 @@ Connect Truthound Local to Codex or Claude Desktop to check approved local data 
 
 After installation, approve the data directories you want to use. For other MCP clients, see the [Registry and client connection guide](docs/guides/mcp.md#registry-metadata-and-installation).
 
-For the development Core profile and its supported scope, see the [MCP guide](docs/guides/mcp.md#core-profile-unreleased-source-checkout).
-
-Approved factories connect stream/async-stream validation, streaming pipelines and Arrow Flight.
-
-[Implementation boundaries and remaining work](docs/guides/mcp.md#implementation-boundaries-and-remaining-work)
+Use the Core profile for drift comparison, masking and schema validation alongside basic validation, profiling and PII detection. See [the core workflow and profile selection](docs/guides/mcp.md#core-data-quality-workflow).
 
 ---
 

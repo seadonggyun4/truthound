@@ -6,6 +6,8 @@ Requires: pip install psycopg2-binary (or psycopg2)
 
 from __future__ import annotations
 
+import math
+
 from dataclasses import dataclass
 from typing import Any
 
@@ -176,6 +178,12 @@ class PostgreSQLDataSource(BaseSQLDataSource):
 
         cfg: PostgreSQLDataSourceConfig = self._config  # type: ignore
 
+        if not math.isfinite(cfg.query_timeout) or cfg.query_timeout <= 0:
+            raise ValueError("query_timeout must be finite and positive")
+        timeout_ms = math.ceil(cfg.query_timeout * 1000)
+        if timeout_ms > 2147483647:
+            raise ValueError("query_timeout exceeds PostgreSQL statement_timeout range")
+
         try:
             conn = psycopg2.connect(
                 host=cfg.host,
@@ -185,6 +193,7 @@ class PostgreSQLDataSource(BaseSQLDataSource):
                 password=cfg.password,
                 sslmode=cfg.sslmode,
                 application_name=cfg.application_name,
+                options=f"-c statement_timeout={timeout_ms}",
             )
             # Set autocommit for read operations
             conn.autocommit = True

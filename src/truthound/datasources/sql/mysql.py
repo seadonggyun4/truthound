@@ -6,6 +6,8 @@ Requires: pip install pymysql (or mysql-connector-python)
 
 from __future__ import annotations
 
+import math
+
 from dataclasses import dataclass
 from typing import Any
 
@@ -168,6 +170,12 @@ class MySQLDataSource(BaseSQLDataSource):
 
         cfg: MySQLDataSourceConfig = self._config  # type: ignore
 
+        if not math.isfinite(cfg.query_timeout) or cfg.query_timeout <= 0:
+            raise ValueError("query_timeout must be finite and positive")
+        timeout_ms = math.ceil(cfg.query_timeout * 1000)
+        if timeout_ms > 4294967295:
+            raise ValueError("query_timeout exceeds MySQL max_execution_time range")
+
         try:
             conn = pymysql.connect(
                 host=cfg.host,
@@ -176,9 +184,11 @@ class MySQLDataSource(BaseSQLDataSource):
                 user=cfg.user,
                 password=cfg.password,
                 charset=cfg.charset,
+                init_command=f"SET SESSION max_execution_time = {timeout_ms}",
                 autocommit=cfg.autocommit,
                 ssl=cfg.ssl,
-                cursorclass=pymysql.cursors.DictCursor,
+                cursorclass=(pymysql.cursors.SSDictCursor if cfg.use_server_side_cursor
+                             else pymysql.cursors.DictCursor),
             )
             return conn
         except pymysql.Error as exc:

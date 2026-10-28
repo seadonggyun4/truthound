@@ -1,5 +1,25 @@
 # 로컬 MCP 연동
 
+## 핵심 데이터 품질 작업
+
+1. 아래 Codex·Claude Desktop 안내로 설치한 뒤 사용할 데이터 폴더만 승인합니다.
+2. 프로파일을 선택합니다. Truthound Local은 `check_file`, `profile_file`, `scan_pii`를 제공합니다. 개발 Core 프로파일은 아래 작업도 제공하며, 게시된 3.2.0 패키지에는 이 확장 프로파일이 포함되지 않습니다.
+3. 작업을 요청하고 결과를 확인합니다. `execution_status`는 실행 성공 여부, `quality_status`는 데이터 품질을 나타냅니다. 실행이 성공해도 데이터 품질은 실패일 수 있습니다. 자동 생성한 스키마 검사에서 전체 대상 적용 여부를 확인할 수 없으면 `quality_status: unknown`을 반환할 수 있습니다. 이를 통과로 해석하지 말고 `data.success`와 개별 검사·문제를 확인합니다.
+
+| 작업·요청 예시 | Core 작업 |
+| --- | --- |
+| “이 CSV의 결측값·중복·0–100 범위를 벗어난 나이를 검사해줘.” | 검사 규칙을 지정한 `validation_check` |
+| “컬럼 자료형과 품질을 요약해줘.” | `data_profile` |
+| “PII가 의심되는 컬럼을 찾아줘.” | `privacy_scan` |
+| “원본 파일을 바꾸지 말고 이메일을 해시 마스킹해줘.” | `data_mask` |
+| “스키마를 학습하고 합의한 스키마로 검증해줘.” | `schema_learn`; `schema_spec`을 지정한 `validation_check` |
+| “기준 데이터와 이번 배치의 드리프트를 비교해줘.” | 두 입력을 asset으로 등록한 뒤 `drift_compare` |
+
+로컬에서 빌드한 Core wheel은 클라이언트 환경에 설치하고 `truthound-mcp serve --profile core --allow-dir /absolute/path/to/data`로 실행합니다. 스키마 내용·마스킹된 행을 반환하려면 운영자가 `--allow-sensitive-results`를 명시적으로 허용해야 합니다. 설치만으로 권한이 부여되지는 않습니다. 결과가 핸들로 반환되면 해당 산출물을 읽고 사용 후 핸들을 해제합니다. 기본 요약 응답에는 원시 데이터가 포함되지 않습니다.
+
+기존 Core·MCP 기능은 그대로 유지됩니다. 상세 설정과 수명주기는 이 가이드의 뒤쪽에서 설명하며 이 빠른 사용 흐름에서는 나열하지 않습니다.
+
+
 Truthound 3.2의 선택 기능인 MCP 서버는 사용자 컴퓨터에서 기존 Core의
 `th.check()`, `th.profile()`, `th.scan()`을 호출합니다. 원격 검증 서버 없이
 stdio를 지원하는 에이전트에서 사용할 수 있습니다.
@@ -2885,7 +2905,15 @@ namespace를 비교하고, SCHEMA에는 고정 `namespace_database`도 요구합
 엔진·기존 호출자 트랜잭션은 거부합니다. 소유한 읽기 트랜잭션만 rollback합니다.
 테스트 서버는 시스템 설정 없이 초기화하며 생성한 프로세스와 데이터 디렉터리만
 정리합니다.
+SQLite의 `query_timeout`은 연결을 빌린 각 범위에서 실행·fetch를 포함한 네이티브 SQLite VM 작업 시간을 제한합니다. 만료되면 네이티브 쿼리 중단 오류가 발생하며, 연결을 풀에 반환하기 전에 진행 콜백을 제거합니다. 새 작업에는 새 제한 시간이 적용됩니다. 잠금 대기는 별도 `timeout`을 사용하며 Python UDF 실행은 이 콜백으로 선점 중단할 수 없습니다. 다른 SQL provider의 시간 제한이나 서버 측 커서 지원까지 검증됐다는 의미는 아닙니다.
+
+MySQL은 `use_server_side_cursor=True`일 때 네이티브 비버퍼링 `SSDictCursor`를 선택하며 기본값은 `DictCursor`입니다. 연결을 재사용하기 전에 커서를 모두 읽거나 닫아야 합니다. `query_timeout`은 밀리초로 올림해 연결 생성 시 세션의 `max_execution_time`에 적용합니다. 이는 MySQL의 읽기 전용 SELECT 실행 제한이며 쓰기·저장 프로시저·네트워크 전체의 제한이 아닙니다. 합성 테이블 조회의 실제 취소를 검증했으며, 테이블 없는 SLEEP/BENCHMARK 표현식에서는 취소 오류가 발생하지 않아 이 보장에 포함하지 않습니다. 잘못되거나 범위를 초과한 값은 거부하고, 지원하지 않는 서버에서는 설정을 무시하는 대신 연결 준비가 실패합니다.
+
+PostgreSQL은 새 네이티브 연결을 만들 때 `query_timeout`을 밀리초 단위로 올림하여 `statement_timeout`에 적용합니다. 유한하지 않거나 양수가 아니거나 서버 범위를 초과하는 값은 거부합니다. 시간 초과는 네이티브 취소 오류로 전달하며 자동 commit 연결은 재사용할 수 있습니다. 기존 풀 연결에는 생성 당시 설정이 유지되므로 변경하려면 소스를 다시 생성해야 합니다.
+
 SQL Server는 `SQLServerConfig(autocommit=True, dbapi_driver="pymssql")`로 고정한 전용 네이티브 연결을 사용합니다. 기존 자동 드라이버 선택은 `auto`로 유지됩니다. 물리적 tenant 읽기는 유휴 연결과 대상 테이블의 SELECT 전용 실효 권한을 요구합니다. 실제 DB·스키마를 확인하고 간접 테이블을 거부하며, serializable 트랜잭션과 `TABLOCK, HOLDLOCK`으로 읽기를 보호합니다. 소유 트랜잭션을 rollback한 뒤 기존 격리 수준과 잠금 제한 시간을 복원합니다. 호출자가 시작한 트랜잭션은 rollback 없이 거부합니다. 로컬 에뮬레이션에서 네이티브 읽기·MCP 재열기·SDK 종료를 검증했으며 네이티브 x86 CI와 최신 wheel 설치형 검증은 아직 필요합니다. 클라우드 SQL 및 전체 설정 동등성 검증 완료를 의미하지 않습니다.
+
+Oracle은 `query_timeout`을 밀리초로 올림해 네이티브 연결의 `call_timeout`에 적용합니다. 각 DB 왕복 호출의 제한이며 여러 fetch 호출이나 클라이언트 작업 전체의 총시간 제한은 아닙니다. 취소 오류는 네이티브 식별자를 유지하며 풀은 연결을 빌려주기 전에 네이티브 건강 상태를 확인합니다. 무효 연결은 닫고 기존 풀 대기 제한 시간 안에서 교체하며 실패한 문장을 자동 재실행하지 않습니다. 시간 제한 설정이 실패하면 새 연결을 닫습니다.
 
 Oracle은 유휴·비자동 commit 애플리케이션 연결의 native 읽기 전용 트랜잭션을
 사용합니다. DATABASE는 실제 `CON_NAME` PDB와 tenant DB를 비교하고, SCHEMA는

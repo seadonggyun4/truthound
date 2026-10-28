@@ -12,6 +12,7 @@ from contextlib import contextmanager, nullcontext, suppress
 from dataclasses import dataclass
 from queue import Empty, Queue
 from threading import Lock
+from time import monotonic
 from typing import TYPE_CHECKING, Any
 
 from truthound.datasources._protocols import (
@@ -172,6 +173,7 @@ class SQLConnectionPool:
         connection_factory: callable,
         size: int = 5,
         timeout: float = 30.0,
+        connection_validator=None,
     ) -> None:
         """Initialize connection pool.
 
@@ -180,6 +182,7 @@ class SQLConnectionPool:
             size: Maximum number of connections.
             timeout: Timeout for acquiring a connection.
         """
+        self._validator = connection_validator
         self._factory = connection_factory
         self._size = size
         self._timeout = timeout
@@ -210,23 +213,34 @@ class SQLConnectionPool:
         if self._closed:
             raise DataSourceConnectionError("pool", "Connection pool is closed")
 
-        conn = None
-
-        # Try to get from pool first
-        try:
-            conn = self._pool.get_nowait()
-        except Empty:
-            # Try to create new connection
-            conn = self._create_connection()
-
-            if conn is None:
-                # Pool is full, wait for available connection
-                try:
-                    conn = self._pool.get(timeout=self._timeout)
-                except Empty:
-                    raise DataSourceConnectionError(
-                        "pool", f"Timeout waiting for connection after {self._timeout}s"
-                    ) from None
+        deadline = monotonic() + self._timeout
+        while True:
+            try:
+                conn = self._pool.get_nowait()
+            except Empty:
+                conn = self._create_connection()
+                if conn is None:
+                    remaining = deadline - monotonic()
+                    if remaining <= 0:
+                        raise DataSourceConnectionError("pool", f"Timeout waiting for connection after {self._timeout}s")
+                    try:
+                        conn = self._pool.get(timeout=remaining)
+                    except Empty:
+                        raise DataSourceConnectionError("pool", f"Timeout waiting for connection after {self._timeout}s") from None
+            if self._validator is None:
+                break
+            try:
+                healthy = self._validator(conn)
+            except Exception:
+                healthy = False
+            if healthy:
+                break
+            with suppress(Exception):
+                conn.close()
+            with self._lock:
+                self._created -= 1
+            if monotonic() >= deadline:
+                raise DataSourceConnectionError("pool", "No healthy connection before deadline")
 
         try:
             yield conn
@@ -446,6 +460,9 @@ class BaseSQLDataSource(BaseDataSource[SQLDataSourceConfig]):
     # Connection Management
     # -------------------------------------------------------------------------
 
+    def _connection_is_healthy(self, connection) -> bool:
+        return True
+
     def _connect(self) -> None:
         """Initialize connection pool."""
         if self._pool is None:
@@ -453,6 +470,7 @@ class BaseSQLDataSource(BaseDataSource[SQLDataSourceConfig]):
                 connection_factory=self._create_connection,
                 size=self._config.pool_size,
                 timeout=self._config.pool_timeout,
+                connection_validator=self._connection_is_healthy,
             )
         self._is_connected = True
 

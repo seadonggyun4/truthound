@@ -118,3 +118,15 @@ def test_installed_postgresql_worker_reopen_and_cleanup(runtime, monkeypatch, po
     assert second["rows"] == [{"x": 2}]
     assert plugins.invoke(runtime[0], "resources_release", resource_id=reopened)["execution_status"] == "succeeded"
     assert runtime[2].read_text().splitlines().count("tenant-close") == 2
+
+
+def test_postgresql_query_timeout_cancels_native_statement_and_reuses_pool(postgres_port):
+    import psycopg2
+    from truthound.datasources.sql.postgresql import PostgreSQLDataSource, PostgreSQLDataSourceConfig
+
+    config = PostgreSQLDataSourceConfig(host="127.0.0.1", port=postgres_port,
+        database="postgres", user="truthound_test", query_timeout=0.02, pool_size=1)
+    with PostgreSQLDataSource(table="unused", config=config) as source:
+        with pytest.raises(psycopg2.errors.QueryCanceled):
+            source.execute_scalar("SELECT pg_sleep(0.1)")
+        assert source.execute_scalar("SELECT 42") == 42

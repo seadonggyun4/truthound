@@ -392,3 +392,17 @@ def test_real_sdk_oracle_approval_read_and_frontend_shutdown(runtime, oracle_run
     read_tenant_source_over_stdio(runtime, on_live=live)
     assert_app_sessions_closed(oracle_runtime)
     assert runtime[2].read_text().splitlines().count("tenant-close") == 1
+
+
+def test_oracle_query_timeout_interrupts_round_trip_and_connection_recovers(oracle_runtime):
+    import oracledb
+    source = oracle_source(oracle_runtime)
+    source._config.query_timeout = 0.02
+    source._config.pool_size = 1
+    with source:
+        with source._get_connection() as connection:
+            with connection.cursor() as cursor:
+                with pytest.raises(oracledb.DatabaseError) as error:
+                    cursor.execute("BEGIN DBMS_SESSION.SLEEP(0.2); END;")
+                assert error.value.args[0].full_code in {"DPY-4024", "DPI-1067", "ORA-01013", "DPY-4011", "DPI-1080"}
+        assert source.execute_scalar("SELECT 42 FROM DUAL") == 42

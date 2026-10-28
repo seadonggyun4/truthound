@@ -8,6 +8,9 @@ dependencies are required.
 from __future__ import annotations
 
 import sqlite3
+import math
+import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -139,6 +142,25 @@ class SQLiteDataSource(BaseSQLDataSource):
         conn.row_factory = sqlite3.Row
 
         return conn
+
+    @contextmanager
+    def _get_connection(self):
+        """Bound native VM work while a pooled connection is borrowed.
+
+        The progress callback is removed before returning the connection. SQLite
+        lock waits retain their separate ``timeout`` setting; Python UDF calls
+        cannot be preempted by the SQLite VM progress callback.
+        """
+        timeout = self._config.query_timeout
+        if not math.isfinite(timeout) or timeout <= 0:
+            raise ValueError("query_timeout must be finite and positive")
+        with super()._get_connection() as connection:
+            deadline = time.monotonic() + timeout
+            connection.set_progress_handler(lambda: int(time.monotonic() >= deadline), 1000)
+            try:
+                yield connection
+            finally:
+                connection.set_progress_handler(None, 0)
 
     def _get_table_schema_query(self) -> str:
         """Get SQLite schema query using PRAGMA."""

@@ -1,5 +1,25 @@
 # Local MCP integration
 
+## Core data quality workflow
+
+1. Install the plugin for your client using the Codex or Claude Desktop instructions below, then approve only the data directory you intend to use.
+2. Choose the profile. Truthound Local exposes `check_file`, `profile_file` and `scan_pii`. The development Core profile also exposes the operations below; the published 3.2.0 package does not include that expanded profile.
+3. Ask for the task and inspect the result. `execution_status` describes whether execution succeeded; `quality_status` describes data quality. A successfully executed check can report failing data quality. Automatically generated schema suites can return `quality_status: unknown` when complete target accounting is unavailable; inspect `data.success`, checks and issues rather than treating unknown as a pass.
+
+| Task / example request | Core operation |
+| --- | --- |
+| “Check this CSV for nulls, duplicates and ages outside 0–100.” | `validation_check` with explicit checks |
+| “Summarize column types and quality.” | `data_profile` |
+| “Find likely PII columns.” | `privacy_scan` |
+| “Hash the email column without changing the source file.” | `data_mask` |
+| “Learn this file's schema, then validate against the agreed schema.” | `schema_learn`; `validation_check` with `schema_spec` |
+| “Compare this batch against the baseline for drift.” | Capture both inputs as assets, then `drift_compare` |
+
+For a locally built Core wheel, install it in your client environment and start `truthound-mcp serve --profile core --allow-dir /absolute/path/to/data`. Schema contents and masked rows require the operator's explicit `--allow-sensitive-results` grant; installation alone does not grant it. Results may be returned as handles: read the associated artifact and release handles after use. Summary-only responses omit raw data by default.
+
+Other existing Core and MCP capabilities remain available. Their configuration and lifecycle details are documented later in this guide; this quick workflow does not enumerate them.
+
+
 Truthound 3.2 adds an optional Model Context Protocol (MCP) adapter. Its stdio
 server runs on your computer and calls the existing `th.check()`, `th.profile()`
 and `th.scan()` APIs. It does not need a hosted validation service.
@@ -3214,7 +3234,15 @@ engines and existing caller transactions fail closed. Rollback covers owned
 read transactions only. Disposable test servers are initialized without system
 configuration, and only their own processes/data directories are cleaned up.
 
+SQLite `query_timeout` bounds native SQLite VM work during each borrowed connection scope, including execute and fetch. Expiry raises the native interrupted-query error; cleanup removes the progress callback before returning the connection to its pool. A new operation receives a fresh deadline. SQLite lock waits still use `timeout`; Python UDF execution cannot be preempted by this callback. This does not establish timeout or server-side cursor support for other SQL providers.
+
+MySQL selects the native unbuffered `SSDictCursor` when `use_server_side_cursor=True`; default reads retain `DictCursor`. Exhaust or close each cursor before reusing its connection. `query_timeout` is rounded up to milliseconds and sets the session `max_execution_time` at connection creation. This is MySQL’s read-only SELECT execution limit, not a general write, stored-procedure or network timeout. Native tests verify cancellation on a synthetic table query; table-free SLEEP/BENCHMARK expressions did not raise cancellation and are not covered by this guarantee. Invalid or out-of-range values are rejected; unsupported servers fail connection setup instead of silently ignoring the setting.
+
+PostgreSQL applies `query_timeout` to each newly created native connection as `statement_timeout`, rounded up to milliseconds. Nonfinite, nonpositive and out-of-range values are rejected. A timed-out statement raises the native cancellation error; autocommit connections remain reusable. Existing pooled connections retain the timeout selected at creation, so recreate the source to change it.
+
 SQL Server uses a dedicated native connection with `SQLServerConfig(autocommit=True, dbapi_driver="pymssql")`. The automatic driver preference remains available as `auto`. Physical tenant reads require an idle connection and effective SELECT-only table permissions. The wrapper checks the actual database and schema, rejects indirect tables, acquires a serializable transaction with `TABLOCK, HOLDLOCK`, and restores its transaction isolation and lock timeout after rollback. Existing caller transactions are rejected without rollback. Local emulation has exercised native reads, MCP reopen and SDK shutdown; native x86 CI and the latest installed-wheel verification remain required. This does not establish cloud SQL or complete configuration parity.
+
+Oracle applies `query_timeout` to the native connection `call_timeout`, rounded up to milliseconds. The limit covers each database round trip, not the total duration of multiple fetch calls or client-side work. Cancellation errors retain their native identity; the pool checks the native connection health before lending it. An invalid connection is closed and replaced within the original pool wait deadline, without replaying the failed statement. If configuring the timeout fails, the newly opened connection is closed.
 
 Oracle uses an idle, non-autocommit application connection and a native read-only
 transaction. DATABASE compares the actual `CON_NAME` PDB with the tenant database;
