@@ -184,20 +184,10 @@ masked = th.mask(
 drift = compare({"score": [0.1, 0.2]}, {"score": [0.1, 0.8]})
 ```
 
-Data Docs는 A4 보고서형 HTML/PDF 산출물을 만들며, 공개 테마는 `light`,
-`dark`, `minimal`입니다. 보고서에는 번호가 붙은 표/그림/부록, 품질 차원
-매핑, 진단 기준 및 임계값 부록이 포함됩니다. 고급 연동에서는
-`ReportDocument`로 보고서 구조를 검사할 수 있으며 `generate_html_report`,
-`HTMLReportBuilder`, `export_to_pdf` 호환성은 유지됩니다.
-Profile의 표·차트·카드는 동일한 자료형 표기 규칙을 사용합니다.
-비어 있지 않은 `inferred_type`, `physical_type`, `dtype` 순으로 원래 값을 표시하며,
-모두 없으면 `unknown`으로 표시합니다. 자료형을 추측하거나 입력·품질 결과를 바꾸지 않습니다.
-PDF에서는 긴 섹션·표를 페이지 경계에서 나누고, 제목을 이어지는 내용과 함께 배치합니다.
-한 페이지에 들어가는 컬럼 카드는 분리하지 않으며 긴 컬럼명은 줄바꿈합니다.
-한 페이지에 들어가는 짧은 알림 카드는 제목·본문·제안을 함께 배치하여 페이지 경계에서 잘리지 않게 합니다.
-긴 JSON 패턴 예시도 내용을 생략하지 않고 PDF 페이지 너비에 맞춰 줄바꿈합니다.
-상수·단일 행의 정의되지 않은 왜도·첨도는 Profile JSON에서 `null`로 표현합니다.
-측정값 0으로 대체하지 않으며 다른 통계나 원본 값을 정제하지 않습니다.
+- **보고서**: A4 HTML/PDF, `light`·`dark`·`minimal` 테마, 번호가 붙은 표·그림·부록과 품질 차원·진단 기준·임계값을 제공합니다.
+- **PDF 배치**: 긴 표·섹션은 페이지별로 나누고, 한 페이지에 들어가는 카드는 함께 배치합니다. 긴 컬럼명과 JSON 예시는 생략 없이 줄바꿈합니다.
+- **자료형·통계**: 자료형은 `inferred_type` → `physical_type` → `dtype` 순으로 표시하며, 없으면 `unknown`입니다. 정의되지 않은 왜도·첨도는 JSON `null`로 표현하고 원본 값과 다른 통계는 유지합니다.
+- **고급 연동**: `ReportDocument`로 구조를 검사하며 `generate_html_report`, `HTMLReportBuilder`, `export_to_pdf` 호환성을 유지합니다.
 
 ### CLI
 

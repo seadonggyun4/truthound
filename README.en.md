@@ -180,14 +180,10 @@ masked = th.mask(
 drift = compare({"score": [0.1, 0.2]}, {"score": [0.1, 0.8]})
 ```
 
-Data Docs produces A4-style HTML/PDF reports. The public themes are `light`,
-`dark`, and `minimal`, and reports include numbered tables, figures,
-appendices, quality-dimension mapping, and a methodology appendix for diagnostic
-criteria and thresholds. Advanced integrations can inspect the report
-architecture with `ReportDocument` while keeping `generate_html_report`,
-`HTMLReportBuilder`, and `export_to_pdf` compatible.
-Printed alert cards that fit on one page keep their title, message, and suggestion together at page boundaries.
-Long JSON pattern examples also wrap within the PDF page without omitting their content.
+- **Reports**: A4 HTML/PDF with `light`, `dark`, and `minimal` themes, numbered tables, figures and appendices, quality dimensions, diagnostic criteria and thresholds.
+- **PDF layout**: Long tables and sections span pages; cards that fit on one page stay together. Long column names and JSON examples wrap without truncation.
+- **Types and statistics**: Types use `inferred_type` → `physical_type` → `dtype`, falling back to `unknown`. Undefined skewness and kurtosis use JSON `null`; source values and other statistics remain unchanged.
+- **Advanced integration**: Inspect structure with `ReportDocument`; compatibility with `generate_html_report`, `HTMLReportBuilder`, and `export_to_pdf` is preserved.
 
 ### CLI
 
