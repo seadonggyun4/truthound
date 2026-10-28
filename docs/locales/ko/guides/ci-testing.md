@@ -1,34 +1,29 @@
 # 저장소 CI와 full Nightly 검증
 
-실계정 BigQuery·Snowflake·Redshift·Databricks fixture에는
-`TRUTHOUND_CLOUD_DW_RUN_LIVE=1`, 기존 유료 OpenAI smoke에는
-`TRUTHOUND_AI_RUN_LIVE_SMOKE=1`이 필요합니다. 별도 계정·비용 승인 없이 설정하지
-않습니다. 이번 릴리스에서는 선택된 테스트를 제거하지 않고 `live_account`
-SKIP/미검증으로 기록하여 필수 PASS와 분리합니다. 계정 없이 실행 가능한 생성기·설정
-검증은 유지합니다. 기존 선택적 소비자 snapshot 검증도 없을 경우
-`optional_consumer` 미검증으로 구분합니다. 로컬 라이브러리 누락이나 서비스
-시작 실패, 예상하지 못한 runtime SKIP에는 이 예외를 적용하지 않습니다.
-기존 수집 시점 선택적 SKIP(자격증명 기반 cloud store, Kafka/LocalStack
-Testcontainers, 기본 비활성 Redis-stream 테스트)은 `other_optional_skipped`로
-별도 보고하며 검증 완료로 표현하지 않습니다. 새 필수 실패나 runtime SKIP은 허용하지
-않습니다.
+PR과 main push에서는 변경한 구성 요소에 해당하는 CI만 자동 실행합니다.
 
-integration VM의 Redis·Elasticsearch는 실제 로컬 서비스 컨테이너이며 mock으로
-대체하지 않습니다. 기존 KMS/TMS mock fixture는 mock 검증임을 JUnit에 기록하며
-실계정 검증으로 표현하지 않습니다. 시작·준비 실패는 FAIL입니다. SQLAlchemy
-queue pool은 `pool_timeout`을 엔진에 전달하며 실제 SQLite 연결·쿼리로 검증합니다.
+| 변경 파일 | 자동 검증 |
+| --- | --- |
+| `README*` | README 링크, 한·영 공개 계약, 보고서 정책, MCP Registry 메타데이터 |
+| `docs/**`, MkDocs 설정 | full/public 문서 빌드, 링크, 한국어·공개 범위 검사 |
+| Core 소스·제품 테스트 | 계약 4개 분할, fault/e2e, lint |
+| MCP 소스·MCP 테스트·`server.json` | Linux 단일 job의 실제 stdio·개인정보·오류·번들·Registry 계약 |
+| 로컬 플러그인 정의·승인 | 플러그인 설치·실행 계약 |
+| 벤치마크 구현·워크로드 | 벤치마크 단위·CLI 검사와 parity smoke |
+| CI workflow·정책 helper | CI 정책·변경 경로 회귀 검사 |
 
-Elasticsearch 로그 fixture는 기존 100행을 유지하고 datetime 연산으로 초·분 경계를
-넘어도 유효한 시각을 생성합니다. 정리는 literal 테스트 prefix로 이름을 먼저 조회한
-뒤 일치하는 명시적 인덱스만 삭제합니다. 빈 값·wildcard prefix나 범위 밖 이름은
-거부하며 Elasticsearch의 destructive-action 이름 보호 설정은 끄지 않습니다.
-정리에 실패해도 fixture 종료는 실행하고, 정리 실패를 PASS로 숨기지 않습니다.
+여러 구성 요소가 바뀌면 해당 검증의 합집합을 실행합니다. 공통 패키지·의존성
+변경은 Core·문서·MCP·벤치마크에 반영합니다. README만 수정하면 제품 전체
+테스트·벤치마크·컨테이너 빌드·클라이언트 재설치를 실행하지 않습니다.
+`docs/assets`의 README 이미지는 문서 자산 검증도 받습니다.
+새 push로 대체된 PR 실행은 취소할 수 있지만 취소를 통과로 취급하지 않습니다.
+merge queue에서는 각 workflow에 선언한 구성 요소 검증을 유지합니다.
 
-개발 검증은 PR·병합 큐·main push에서 실행하며 일반 작업 브랜치 push의 중복
-실행은 제거합니다. 직접 push가 가능한 동안 main 검증은 유지합니다. 이전 PR
-실행은 취소할 수 있지만 취소를 PASS로 기록하지 않습니다. contract 4개 분할과
-fault/e2e는 유지하고 lint 3개 대상은 한 job에서 모두 검사합니다. 문서는
-full/public strict 빌드·한국어·공개 제외 검사를 유지합니다.
+전체 MCP 배포 행렬은 정기·명시적 수동 실행과 릴리스 검증에서 유지합니다.
+일반 MCP 검사는 집중 회귀 검사이며 전체 의미 동등성·설치 인증이 아닙니다.
+테스트 파일·검증문·제한 시간·릴리스 판정 기준은 제거하지 않습니다.
+전체 Nightly·고정 러너 성능·OS/Python 설치 행렬·게시는 별도 workflow로
+분리하며 게시에는 같은 SHA의 전체 릴리스 검증이 필요합니다.
 
 엄격한 수동 nightly·릴리스 성능 suite는 같은 고정 benchmark 러너에서 배타적
 잠금·새 소유 가상환경·명시한 하드웨어 메타데이터를 사용합니다. 입력·측정·판정
@@ -56,7 +51,7 @@ PR과 full Nightly는 독립 실행이 검토된 `test_mcp_algorithm_parity.py` 
 workspace 안에 저장합니다. 문맥 초기화·영구 저장은 계속 측정 구간에서 실행하며
 입력 행·warm 7회·wall-clock 시간·엄격한 성능 기준은 유지합니다.
 
-MCP는 `verification/mcp_ci_gate.py`에 명시한 모든 필수 테스트 파일을
+전체 배포 검증에서 MCP는 `verification/mcp_ci_gate.py`에 명시한 모든 필수 테스트 파일을
 Linux Python 3.11에서 8개 비중복 분할로 실행합니다.
 알고리즘 사례는 제거하지 않습니다. 소스·실행 증명 집계는 누락·중복·실패·skip을
 거부합니다. 다른 환경에서는 프로세스 정리·권한·UTF-8·자원·영속성·승인 경계
@@ -68,11 +63,10 @@ Linux Python 3.11에서 8개 비중복 분할로 실행합니다.
 
 wheel·sdist·MCPB 4종(summary/Core, public/local)은 한 번 빌드합니다. 각 설치 job은 SHA256SUMS를 검사하고
 동일 파일을 설치하며 MCPB 내장 wheel도 원본과 바이트 단위로 같아야 합니다.
-8개 새 환경 설치·실행기 검증은 모두 유지합니다. 개발 환경은 Linux
+명시적 호환성 실행에서는 8개 새 환경 설치·실행기 검증을 모두 유지합니다. 축소 호환성 수동 실행 환경은 Linux
 3.11/3.13과 Windows/macOS 3.11입니다. 주간·릴리스에서는
 지원 OS/Python 9개 조합을 모두 검증합니다. OS 독립적
-의미 검증 전체를 9번 반복하지 않습니다. 공통 소스·테스트·설정·의존성 변경은
-보수적으로 MCP 영향에 포함합니다. 이 구성이 전체 Core 기능 동등성을 의미하지는
+의미 검증 전체를 9번 반복하지 않습니다. 공통 소스·의존성 변경은 집중 MCP 검사를 실행하며 관련 없는 문서·workflow·제품 테스트 변경은 전체 MCP 배포 검증을 시작하지 않습니다. 이 구성이 전체 Core 기능 동등성을 의미하지는
 않습니다.
 
 추가 OS·Python 환경의 경계 테스트는 각각 4개 비중복 분할로 실행합니다. 설치 전에 같은 환경의 분할을 집계하여 누락·중복·실패와

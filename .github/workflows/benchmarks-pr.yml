@@ -4,34 +4,10 @@ on:
   merge_group:
   workflow_dispatch:
   pull_request:
-    paths:
-      - ".github/workflows/benchmarks-pr.yml"
-      - ".github/workflows/benchmarks-release.yml"
-      - "benchmarks/**"
-      - "scripts/benchmarks/**"
-      - "README.md"
-      - "CLAUDE.md"
-      - "pyproject.toml"
-      - "src/truthound/benchmark/**"
-      - "src/truthound/cli_modules/advanced/benchmark.py"
-      - "tests/test_benchmark*.py"
-      - "tests/test_release_package_benchmark.py"
-      - "tests/cli_modules/test_benchmark_parity_cli.py"
+    paths: [".github/workflows/benchmarks-pr.yml", ".github/workflows/benchmarks-release.yml", ".github/workflows/benchmarks-nightly.yml", "benchmarks/**", "scripts/benchmarks/**", "pyproject.toml", "uv.lock", "src/truthound/benchmark/**", "src/truthound/cli_modules/advanced/benchmark.py", "tests/test_benchmark*.py", "tests/test_release_package_benchmark.py", "tests/cli_modules/test_benchmark_parity_cli.py"]
   push:
     branches: [main]
-    paths:
-      - ".github/workflows/benchmarks-pr.yml"
-      - ".github/workflows/benchmarks-release.yml"
-      - "benchmarks/**"
-      - "scripts/benchmarks/**"
-      - "README.md"
-      - "CLAUDE.md"
-      - "pyproject.toml"
-      - "src/truthound/benchmark/**"
-      - "src/truthound/cli_modules/advanced/benchmark.py"
-      - "tests/test_benchmark*.py"
-      - "tests/test_release_package_benchmark.py"
-      - "tests/cli_modules/test_benchmark_parity_cli.py"
+    paths: [".github/workflows/benchmarks-pr.yml", ".github/workflows/benchmarks-release.yml", ".github/workflows/benchmarks-nightly.yml", "benchmarks/**", "scripts/benchmarks/**", "pyproject.toml", "uv.lock", "src/truthound/benchmark/**", "src/truthound/cli_modules/advanced/benchmark.py", "tests/test_benchmark*.py", "tests/test_release_package_benchmark.py", "tests/cli_modules/test_benchmark_parity_cli.py"]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}

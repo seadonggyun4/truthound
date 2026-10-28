@@ -3,38 +3,10 @@ name: Tests PR
 on:
   merge_group:
   pull_request:
-    paths:
-      - ".github/workflows/tests-pr.yml"
-      - ".github/workflows/tests-nightly.yml"
-      - ".github/workflows/docs.yml"
-      - ".github/workflows/release-pypi.yml"
-      - "README.md"
-      - "CLAUDE.md"
-      - "docs/**"
-      - "mkdocs.yml"
-      - "mkdocs.public.yml"
-      - "pyproject.toml"
-      - "uv.lock"
-      - "src/**"
-      - "tests/**"
-      - "verification/**"
+    paths: ["src/**", "!src/truthound/mcp/**", "tests/**", "!tests/test_mcp*.py", "!tests/test_openai_plugin.py", "!tests/test_docs*.py", "!tests/test_ci*.py", "pyproject.toml", "uv.lock", "conftest.py", "pytest.ini"]
   push:
     branches: [main]
-    paths:
-      - ".github/workflows/tests-pr.yml"
-      - ".github/workflows/tests-nightly.yml"
-      - ".github/workflows/docs.yml"
-      - ".github/workflows/release-pypi.yml"
-      - "README.md"
-      - "CLAUDE.md"
-      - "docs/**"
-      - "mkdocs.yml"
-      - "mkdocs.public.yml"
-      - "pyproject.toml"
-      - "uv.lock"
-      - "src/**"
-      - "tests/**"
-      - "verification/**"
+    paths: ["src/**", "!src/truthound/mcp/**", "tests/**", "!tests/test_mcp*.py", "!tests/test_openai_plugin.py", "!tests/test_docs*.py", "!tests/test_ci*.py", "pyproject.toml", "uv.lock", "conftest.py", "pytest.ini"]
 
 concurrency:
   group: tests-pr-${{ github.event.pull_request.number || github.ref }}

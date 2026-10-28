@@ -316,12 +316,10 @@ def test_tests_pr_workflow_uses_sharded_quality_gate():
     assert "quality-fault-e2e" in workflow["jobs"]
     assert "quality-ruff-ratchet" in workflow["jobs"]
     assert "quality-gate" in workflow["jobs"]
-    assert ".github/workflows/docs.yml" in on_section["pull_request"]["paths"]
-    assert "docs/**" in on_section["pull_request"]["paths"]
-    assert "mkdocs.public.yml" in on_section["pull_request"]["paths"]
-    assert ".github/workflows/docs.yml" in on_section["push"]["paths"]
-    assert "docs/**" in on_section["push"]["paths"]
-    assert "mkdocs.public.yml" in on_section["push"]["paths"]
+    for event in ("pull_request", "push"):
+        assert "src/**" in on_section[event]["paths"]
+        assert "docs/**" not in on_section[event]["paths"]
+        assert "README.md" not in on_section[event]["paths"]
     assert workflow["jobs"]["quality-contract"]["strategy"]["matrix"]["shard_id"] == [0, 1, 2, 3]
     assert "strategy" not in workflow["jobs"]["quality-ruff-ratchet"]
     assert workflow["jobs"]["quality-gate"]["needs"] == [

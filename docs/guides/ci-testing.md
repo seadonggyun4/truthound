@@ -1,11 +1,31 @@
 # Repository CI and full nightly verification
 
-Development workflows run on PRs, merge queues and main pushes, not every branch
-push. Main validation remains enabled while direct pushes are allowed. Superseded
-PR executions may be cancelled; cancellation is never evidence of success.
-Contract tests retain four shards and fault/e2e; the three lint targets share one
-job without removing checks. Documentation retains full/public strict builds,
-Korean checks and public-surface exclusions.
+Automatic CI is scoped to the changed component on PRs and main pushes:
+
+| Changed files | Automatic verification |
+| --- | --- |
+| `README*` | README links, bilingual public contracts, report policy and MCP registry metadata |
+| `docs/**`, MkDocs configuration | Full/public documentation builds, links, Korean and public surface checks |
+| Core source and product tests | Four contract shards, fault/e2e and lint |
+| MCP source, MCP tests, `server.json` | One Linux job for real stdio, privacy, errors, bundles and registry contracts |
+| Local plugin definitions and consent | Plugin installation and runtime contracts |
+| Benchmark implementation and workloads | Benchmark unit/CLI tests and parity smoke |
+| CI workflows and policy helpers | CI policy and change-routing regression tests |
+
+Mixed changes run the union of affected workflows. Shared package/dependency
+changes run the affected Core, documentation, MCP and benchmark checks.
+README-only edits do not run product suites, benchmark smoke, container builds
+or fresh client installations. README images under `docs/assets` also receive
+documentation asset verification. PRs superseded by a new push can be cancelled;
+cancellation is never a passing result. Merge queue events retain the component
+checks declared by each workflow.
+
+The complete MCP distribution matrix is scheduled or explicitly requested,
+and remains part of release verification. Ordinary MCP checks are a focused
+regression lane, not full semantic or installation certification. No test file,
+assertion, deadline or release acceptance threshold is removed. Full Nightly,
+fixed-runner benchmarks, OS/Python installation matrices and publication remain
+separate workflows. Publication still requires exact-SHA release verification.
 
 Strict manual-nightly and release performance suites run on the same fixed
 benchmark runner under an exclusive lock, with newly claimed virtual environments
@@ -37,7 +57,7 @@ that workspace even beneath an existing project. Context initialization and
 persistence still execute within the measured checks; workload rows, seven warm
 iterations, wall-clock timing and strict performance thresholds are unchanged.
 
-MCP semantic coverage runs every mandatory file listed in
+In full distribution verification, MCP semantic coverage runs every mandatory file listed in
 `verification/mcp_ci_gate.py` in eight disjoint Linux Python 3.11 shards. No algorithm case is removed. The source/execution aggregate
 still rejects missing, duplicate, failed or skipped tests. Platform boundary
 contracts cover subprocess cleanup, permissions, UTF-8, resources, persistence
@@ -50,7 +70,7 @@ Source distributions exclude generated `dist/` output even when it contains nest
 The canonical wheel, sdist and four MCPBs (summary/Core, public/local) are built once. Every installation job
 verifies SHA256SUMS and installs those exact files; the embedded wheel must match
 the canonical wheel byte-for-byte. All eight fresh installation/launcher checks
-remain. Development uses Linux 3.11/3.13 and Windows/macOS 3.11.
+remain in explicit compatibility runs. Explicit reduced compatibility runs use Linux 3.11/3.13 and Windows/macOS 3.11.
 Weekly and release verification use all nine supported OS/Python combinations. Platform-independent semantic cases are not repeated nine times.
 Every additional OS/Python boundary runtime uses four disjoint shards. Installation first aggregates the matching
 partitions and rejects missing, duplicated, failed or wrong-scope evidence.
@@ -62,8 +82,8 @@ both boundary tests and eight installations against one deadline. No tests or
 runtime combinations are removed or repeated. Installation jobs download the
 matching boundary proof, and the final gate requires full tests, build, platform
 contracts and installation success; failed or missing contracts cannot be bypassed.
-Shared source, test, configuration and dependency changes remain conservative MCP
-inputs. This is not a claim of complete Core capability parity.
+Shared source and dependency changes trigger the focused MCP checks; unrelated
+documentation, workflow and product-test edits do not start full MCP distribution. This is not a claim of complete Core capability parity.
 
 `release-verify.yml` explicitly coordinates full Nightly, full MCP compatibility,
 strict documentation, plugin installation, benchmark contracts, lint ratchets and

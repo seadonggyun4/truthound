@@ -26,13 +26,14 @@ def test_full_universe_is_preserved_and_boundary_cannot_impersonate_it():
     assert "tests/test_mcp_algorithm_parity.py" in gate.TEST_FILES
     assert "tests/test_mcp_model_persistence.py" in gate.BOUNDARY_FILES
     assert "tests/test_mcp_lifecycle.py" in gate.BOUNDARY_FILES
-    for name in ("tests-pr", "docs", "benchmarks-pr", "openai-plugin", "mcp"):
+    for name in ("tests-pr", "docs", "benchmarks-pr", "openai-plugin", "mcp-checks"):
         workflow = yaml.load(
             (ROOT / f".github/workflows/{name}.yml").read_text(), Loader=yaml.BaseLoader
         )
         assert workflow["on"]["push"]["branches"] == ["main"]
         assert "pull_request" in workflow["on"] and "merge_group" in workflow["on"]
     workflow = yaml.load((ROOT / ".github/workflows/mcp.yml").read_text(), Loader=yaml.BaseLoader)
+    assert set(workflow["on"]) == {"workflow_call", "workflow_dispatch", "schedule"}
     matrix = workflow["jobs"]["compatibility"]["strategy"]["matrix"]["include"]
     full, development = [json.loads(value) for value in matrix.split("'") if value.startswith("[{")]
     assert {(r["os"], r["python"]) for r in full} == {

@@ -5,12 +5,6 @@ on:
       full_compatibility:
         type: boolean
         default: true
-  pull_request:
-    paths: ["src/**", "tests/**", "verification/**", "server.json", "README*", "pyproject.toml", "uv.lock", "conftest.py", "pytest.ini", ".github/workflows/**"]
-  push:
-    branches: [main]
-    paths: ["src/**", "tests/**", "verification/**", "server.json", "README*", "pyproject.toml", "uv.lock", "conftest.py", "pytest.ini", ".github/workflows/**"]
-  merge_group:
   schedule:
     - cron: "0 19 * * 3"
   workflow_dispatch:

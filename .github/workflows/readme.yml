@@ -1,0 +1,29 @@
+name: README
+on:
+  pull_request:
+    paths: ["README*", "docs/assets/**", ".github/workflows/readme.yml", "verification/ci/requirements-lite.txt"]
+  push:
+    branches: [main]
+    paths: ["README*", "docs/assets/**", ".github/workflows/readme.yml", "verification/ci/requirements-lite.txt"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: readme-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  readme:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --frozen
+      - run: uv pip install --python .venv/bin/python -r verification/ci/requirements-lite.txt
+      - name: Check README links and public documentation contracts
+        run: |
+          .venv/bin/python docs/scripts/check_links.py README.md README.en.md
+          .venv/bin/python -m pytest -q tests/test_docs_surface_alignment.py tests/test_docs_public_portal.py tests/test_public_surface.py tests/datadocs/test_release_readiness.py::test_release_docs_surface_mentions_report_policy_without_private_engine_paths tests/test_mcp_registry.py -p no:cacheprovider

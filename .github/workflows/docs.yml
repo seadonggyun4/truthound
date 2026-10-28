@@ -5,38 +5,10 @@ on:
   merge_group:
   workflow_dispatch:
   pull_request:
-    paths:
-      - ".github/workflows/docs.yml"
-      - "README.md"
-      - "README.en.md"
-      - "CLAUDE.md"
-      - "docs/**"
-      - "mkdocs.yml"
-      - "mkdocs.public.yml"
-      - "pyproject.toml"
-      - "uv.lock"
-      - "src/**"
-      - "tests/cli_modules/test_plugins_cli.py"
-      - "tests/test_docs_surface_alignment.py"
-      - "tests/test_docs_public_portal.py"
-      - "tests/test_public_surface.py"
+    paths: [".github/workflows/docs.yml", "docs/**", "mkdocs.yml", "mkdocs.public.yml", "pyproject.toml", "uv.lock", "src/**", "!src/truthound/mcp/**", "tests/cli_modules/test_plugins_cli.py", "tests/test_docs*.py", "tests/test_public_surface.py", "verification/ci/requirements-lite.txt"]
   push:
     branches: [main]
-    paths:
-      - ".github/workflows/docs.yml"
-      - "README.md"
-      - "README.en.md"
-      - "CLAUDE.md"
-      - "docs/**"
-      - "mkdocs.yml"
-      - "mkdocs.public.yml"
-      - "pyproject.toml"
-      - "uv.lock"
-      - "src/**"
-      - "tests/cli_modules/test_plugins_cli.py"
-      - "tests/test_docs_surface_alignment.py"
-      - "tests/test_docs_public_portal.py"
-      - "tests/test_public_surface.py"
+    paths: [".github/workflows/docs.yml", "docs/**", "mkdocs.yml", "mkdocs.public.yml", "pyproject.toml", "uv.lock", "src/**", "!src/truthound/mcp/**", "tests/cli_modules/test_plugins_cli.py", "tests/test_docs*.py", "tests/test_public_surface.py", "verification/ci/requirements-lite.txt"]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
@@ -54,46 +26,48 @@ jobs:
 
       - uses: astral-sh/setup-uv@v4
 
-      - name: Install project with docs and dev extras
-        run: uv pip install --system ".[docs,dev]"
+      - name: Install only documentation and lightweight test dependencies
+        run: |
+          uv sync --frozen --extra docs
+          uv pip install --python .venv/bin/python -r verification/ci/requirements-lite.txt
 
       - name: Stage full docs
-        run: python docs/scripts/prepare_public_docs.py --mode full
+        run: .venv/bin/python docs/scripts/prepare_public_docs.py --mode full
 
       - name: Stage public docs
-        run: python docs/scripts/prepare_public_docs.py --mode public
+        run: .venv/bin/python docs/scripts/prepare_public_docs.py --mode public
 
       - name: Check markdown links
-        run: python docs/scripts/check_links.py --mkdocs mkdocs.yml README.md CLAUDE.md build/full-docs
+        run: .venv/bin/python docs/scripts/check_links.py --mkdocs mkdocs.yml README.md CLAUDE.md build/full-docs
 
       - name: Check public markdown links
-        run: python docs/scripts/check_links.py --mkdocs mkdocs.public.yml build/public-docs
+        run: .venv/bin/python docs/scripts/check_links.py --mkdocs mkdocs.public.yml build/public-docs
 
       - name: Verify docs and public API surface alignment
-        run: python -m pytest -q tests/test_docs_surface_alignment.py tests/test_public_surface.py -p no:cacheprovider
+        run: .venv/bin/python -m pytest -q tests/test_docs_surface_alignment.py tests/test_public_surface.py -p no:cacheprovider
 
       - name: Build full docs
-        run: mkdocs build --strict
+        run: .venv/bin/mkdocs build --strict
 
       - name: Verify full Korean docs including optional Core UI references
-        run: python docs/scripts/verify_korean_docs.py --site-dir site --surface full
+        run: .venv/bin/python docs/scripts/verify_korean_docs.py --site-dir site --surface full
 
       - name: Build public docs
-        run: mkdocs build --strict -f mkdocs.public.yml
+        run: .venv/bin/mkdocs build --strict -f mkdocs.public.yml
 
       - name: Verify docs public portal
-        run: python -m pytest -q tests/test_docs_public_portal.py -p no:cacheprovider
+        run: .venv/bin/python -m pytest -q tests/test_docs_public_portal.py -p no:cacheprovider
 
       - name: Verify generated public surface
-        run: python docs/scripts/verify_public_surface.py --manifest docs/public_docs.yml --site-dir site
+        run: .venv/bin/python docs/scripts/verify_public_surface.py --manifest docs/public_docs.yml --site-dir site
 
       - name: Verify generated Korean docs
-        run: python docs/scripts/verify_korean_docs.py --site-dir site
+        run: .venv/bin/python docs/scripts/verify_korean_docs.py --site-dir site
 
       - name: Verify public deployment identity
         run: |
-          python -m pytest -q tests/test_docs_deployment_identity.py -p no:cacheprovider
-          python docs/scripts/write_deployment_manifest.py --site-dir site
+          .venv/bin/python -m pytest -q tests/test_docs_deployment_identity.py -p no:cacheprovider
+          .venv/bin/python docs/scripts/write_deployment_manifest.py --site-dir site
 
       - name: Verify plugins CLI snapshot
-        run: python -m pytest -q tests/cli_modules/test_plugins_cli.py -p no:cacheprovider
+        run: .venv/bin/python -m pytest -q tests/cli_modules/test_plugins_cli.py -p no:cacheprovider

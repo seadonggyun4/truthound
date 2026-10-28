@@ -1,0 +1,26 @@
+name: CI policy
+on:
+  pull_request:
+    paths: [".github/workflows/**", "verification/ci/**", "tests/test_ci*.py"]
+  push:
+    branches: [main]
+    paths: [".github/workflows/**", "verification/ci/**", "tests/test_ci*.py"]
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: ci-policy-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+jobs:
+  policy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - uses: astral-sh/setup-uv@v4
+      - run: uv sync --frozen
+      - run: uv pip install --python .venv/bin/python -r verification/ci/requirements-lite.txt
+      - run: .venv/bin/python -m pytest -q tests/test_ci_execution_policy.py tests/test_ci_quality_helpers.py tests/test_ci_change_scope.py -p no:cacheprovider
