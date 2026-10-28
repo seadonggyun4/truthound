@@ -75,12 +75,6 @@ Truthound is an open-source framework for data validation and data quality workf
 3.3.0의 `ai`·`mcp`·`all` extra는 Pydantic 2.11 이상을 요구합니다.
 `truthound-mcp bundle --profile core --output truthound-core.mcpb`로 Core 번들을 만듭니다. 별도 `truthound-core` 플러그인 후보는 Core 3.3.0을 고정하며 데이터·작업공간·승인 저장소·민감 결과 권한을 명시적으로 설정하고 변경 후 재연결합니다.
 
-## 개발 목적 (Motivation)
-
-데이터 품질 검증은 대부분 개별 프로젝트마다 서로 다른 방식으로 구현되어 재사용과 표준화가 어렵습니다. Truthound는 데이터 검증과 품질 관리 과정을 코드 기반 프레임워크와 워크플로우로 표준화하여, 누구나 일관되고 재현 가능한 데이터 검증 환경을 구축할 수 있도록 하는 것을 목표로 합니다.
-
----
-
 ## 프로젝트 소개 (Introduction)
 
 Truthound는 Polars 기반의 오픈소스 데이터 검증 프레임워크와 워크플로우 오케스트레이션을 제공하는 프로젝트입니다. 데이터 스키마 검증, 사용자 정의 규칙, 품질 검사, 이상 데이터 탐지 등 다양한 검증 기능을 지원하며, Airflow, Dagster, Prefect 등 주요 워크플로우 환경과 연계하여 검증 절차를 자동화할 수 있습니다. 코드 중심의 선언적 검증 방식을 통해 데이터 품질 관리의 재현성과 유지보수성을 높이고, 다양한 데이터 파이프라인에서 쉽게 활용할 수 있도록 설계되었습니다.
@@ -91,12 +85,6 @@ Truthound는 두 개의 저장소로 구성된 하나의 오픈소스 생태계�
 | --- | --- | --- |
 | **Truthound** | [`truthound`](https://github.com/seadonggyun4/truthound) | 검증 커널 — `th.check()`, `ValidationRunResult`, 플래너/런타임, 제로 설정 워크스페이스, 리포터, 체크포인트 |
 | **Truthound Orchestration** | [`truthound-orchestration`](https://github.com/seadonggyun4/truthound-orchestration) | Airflow, Dagster, Prefect, dbt, Mage, Kestra 등 워크플로우 환경 연동 레이어 |
-
----
-
-## 기대 효과 (Impact)
-
-데이터 검증 로직을 표준화하고 자동화함으로써 반복적인 품질 관리 비용을 줄이고, 데이터 파이프라인의 신뢰성과 운영 효율성을 높일 수 있습니다. 또한 다양한 오픈소스 생태계와 연계 가능한 구조를 제공하여 데이터 분석, ETL, AI/ML 등 여러 분야에서 재사용 가능한 데이터 품질 기반을 마련할 것으로 기대합니다.
 
 ---
 
@@ -294,52 +282,6 @@ Lineage sample 메타데이터는 명시적 활성화 시에만 행·바이트 �
 - 오케스트레이션: [truthound.netlify.app/orchestration/](https://truthound.netlify.app/orchestration/)
 - 오케스트레이션 시작하기: [docs/orchestration/getting-started.md](https://github.com/seadonggyun4/truthound/blob/main/docs/orchestration/getting-started.md)
 - 최신 검증 벤치마크 요약: [docs/releases/latest-benchmark-summary.md](https://github.com/seadonggyun4/truthound/blob/main/docs/releases/latest-benchmark-summary.md)
-
----
-
-## 개발 (Development)
-
-문서 배포는 `deployment-manifest.json`에 공개 소스 커밋과 검증 페이지 해시를 기록합니다.
-소스 배포본은 생성된 `dist/` 검증 출력을 제외합니다.
-PR과 full Nightly는 독립 실행 가능한 알고리즘 사례를 같은 contract 4개 분할에 분산하며 범위·제한 시간은 유지합니다.
-엄격한 nightly·릴리스 성능 suite는 배타적 고정 러너와 격리 인터프리터를 사용하며 입력·판정 기준은 유지합니다.
-벤치마크 worker는 자체 workspace 경계를 만들어 상위 프로젝트로 결과·이력·문서가 섞이지 않게 하며 영구 저장 비용도 계속 측정합니다.
-
-개발 대시보드 실행 계약은 Node/npm과 실제 로컬 서버를 사용합니다. `dev` extra는
-통합 계약용 MCP SDK를 포함하며 대시보드 production 빌드·정리도 일반 계약으로
-검증합니다. 릴리스 검사는 SDK가 없는 새 기본 설치도 확인합니다. `all` extra도
-MCP 런타임을 포함합니다.
-네이티브 분산 계약도 `dev` extra의 실제 로컬 Ray·Spark SDK를 실행합니다.
-네이티브 SDK 검증은 worker 종료 전에 소유한 Spark launcher를 닫고 회수합니다.
-Ray 전역 스칼라 집계는 캐시된 네이티브 통계를 재사용하며 `clear_cache()`·`cache_results=False`로 재계산을 제어합니다.
-Ray의 개수·null 개수·평균·표본 표준편차·최솟값·최댓값 통계는 한 네이티브 집계로 계산합니다.
-소유한 Windows Spark 4.2 시작은 SDK 명령 빌더를 재사용하고 네이티브 준비 확인·인증·정리를 유지합니다.
-네이티브 MCP worker는 stdout/stderr 파일 디스크립터와 Windows 표준 핸들을 비공개 JSON 프로토콜에서 분리하며, SDK 종료 출력도 격리합니다.
-Windows Ray 2.58의 소유한 로컬 시작은 기존 SDK 노드 클라이언트로 정확한 ALIVE 노드와 유효한 관리 포트를 조회하여 네이티브 접근 위반이 발생한 임시 `GlobalStateAccessor.GetNode` 경로를 우회합니다. 범위를 제한한 훅은 성공·실패 모두 복원하며, 다른 스레드·외부 클러스터는 SDK 동작을 유지하고 시작 제한 시간을 늘리지 않습니다.
-Spark에는 Java 17+와 일치하는 Python worker를 준비해야 하며 원격 클러스터에
-연결하지 않습니다.
-네이티브 Parquet checkpoint와 atomic store는 Windows에서도 쓰기 가능한 staging 파일을 동기화합니다.
-Ray checkpoint는 staging 목적지를 생성하고 로컬 filesystem을 명시적으로 선택합니다.
-로컬 경로 resolver 회귀가 있는 Ray 2.59.0은 제외합니다. Windows Spark 로컬
-checkpoint에는 일치하는 native Hadoop SDK가 필요하며 비공개 worker sink는 UTF-8을 사용합니다.
-
-```bash
-uv run --frozen --extra dev python -m pytest -q
-uv run --frozen --extra dev python -m pytest --collect-only -q tests
-uv run --frozen --extra dev python -m pytest -q -m "contract or fault or e2e" -p no:cacheprovider
-uv run --frozen --extra benchmarks python -m truthound.cli benchmark parity --suite pr-fast --frameworks truthound --backend local --strict
-uv run --frozen --extra benchmarks python -m truthound.cli benchmark parity --suite nightly-core --frameworks both --backend local --strict
-uv run --frozen --extra dev --extra docs mkdocs build --strict
-```
-
-테스트는 실패 우선(failure-first) 레인 모델을 따릅니다.
-
-- `contract`: 안정 공개 API와 호환성 경계
-- `fault`: 결정론적 실패 주입, 타임아웃, 손상, 동시성 시나리오
-- `integration`: 옵트인 백엔드·외부 서비스 커버리지
-- `soak` / `stress`: 야간 전용 부하·카오스 커버리지
-
-공식 성능 수치는 `.truthound/benchmarks/release/` 아래의 검증된 릴리스 등급 패리티 아티팩트에서만 인용합니다. 야간 출력은 추세 확인용이며 공개 벤치마크 포지셔닝 용도가 아닙니다.
 
 ---
 

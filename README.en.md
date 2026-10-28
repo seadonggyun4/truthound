@@ -71,12 +71,6 @@ The benchmark CLI supports `--size stress` (100 million rows); `--rows` override
 
 ---
 
-## Motivation
-
-Data quality validation is often implemented differently in every project, which makes reuse and standardization difficult. Truthound aims to standardize data validation and quality management as a code-based framework and workflow so anyone can build a consistent, reproducible validation environment.
-
----
-
 ## Introduction
 
 Truthound provides an open-source data validation framework and workflow orchestration layer built on Polars. It supports schema validation, custom rules, quality checks, anomaly detection, and related validation capabilities. It can also be connected to major workflow environments such as Airflow, Dagster, and Prefect to automate validation steps. With a code-first declarative validation style, Truthound improves reproducibility and maintainability for data quality management and is designed to fit naturally into many data pipelines.
@@ -87,12 +81,6 @@ Truthound is an open-source ecosystem composed of two repositories.
 | --- | --- | --- |
 | **Truthound** | [`truthound`](https://github.com/seadonggyun4/truthound) | Validation kernel — `th.check()`, `ValidationRunResult`, planner/runtime, zero-configuration workspace, reporters, checkpoints |
 | **Truthound Orchestration** | [`truthound-orchestration`](https://github.com/seadonggyun4/truthound-orchestration) | Workflow integration layer for Airflow, Dagster, Prefect, dbt, Mage, Kestra, and similar environments |
-
----
-
-## Impact
-
-By standardizing and automating data validation logic, Truthound reduces repetitive quality-management work and improves the reliability and operational efficiency of data pipelines. Its integration-friendly open-source structure can also provide a reusable data quality foundation for data analytics, ETL, AI/ML, and other data-driven domains.
 
 ---
 
@@ -288,53 +276,6 @@ Expression validation keeps failure samples, counts and rows attached to the rep
 
 The `ai`, `mcp` and `all` extras share a Pydantic 2.11 minimum in 3.3.0.
 Build a Core MCPB with `truthound-mcp bundle --profile core --output truthound-core.mcpb`. The separate `truthound-core` plugin candidate pins Core 3.3.0 and uses explicit data, workspace, control and disclosure grants; reconnect after changes.
-
-## Development
-
-Source distributions exclude generated `dist/` verification output.
-PR and full Nightly distribute independently executable algorithm cases across the same four contract shards without changing coverage or deadlines.
-Strict nightly and release performance suites share an exclusive fixed runner and isolated interpreters; workload and acceptance criteria remain unchanged.
-Benchmark workers establish their own workspace boundary so parent projects cannot absorb their run, history and documentation artifacts; persistence remains measured.
-
-Documentation deployments record the public source commit and verification-page hashes in `deployment-manifest.json`.
-
-The development dashboard runtime contracts use Node/npm and actual local servers.
-The `dev` extra includes the MCP SDK for integration contracts; dashboard production-build
-and cleanup checks run as ordinary contract tests. Release checks also verify a fresh
-base installation without the SDK. The `all` extra includes the MCP runtime.
-Native distributed contracts also run actual local Ray and Spark SDKs from the
-`dev` extra. Native SDK verification closes and reaps its owned Spark launcher before the worker exits.
-Ray global scalar reductions reuse cached native statistics; `clear_cache()` and `cache_results=False` control recomputation.
-Ray computes count, null count, mean, sample standard deviation and extrema in one native statistics aggregation.
-Owned Windows Spark 4.2 startup reuses the SDK command builder and preserves native readiness, authentication and cleanup.
-Native MCP workers isolate native stdout/stderr descriptors and Windows standard handles from their private JSON protocol, including SDK shutdown output.
-Windows Ray 2.58 owned local startup queries its existing SDK node client for the exact ALIVE node and valid manager port, avoiding the temporary `GlobalStateAccessor.GetNode` path that produced a native access violation. The scoped hooks are restored on success or failure; other threads and external clusters retain SDK behavior, and the startup deadline is not extended.
-Provision Java 17+ for Spark and select the matching Python worker;
-these contracts do not connect to remote clusters.
-Native Parquet checkpoints and atomic stores flush writable staged files on Windows as well.
-Ray checkpoints create the staging destination and explicitly select the local filesystem.
-Ray 2.59.0 is excluded for its local-path resolver regression. Windows Spark local
-checkpoints require the matching native Hadoop SDK; private worker sinks use UTF-8.
-
-```bash
-uv run --frozen --extra dev python -m pytest -q
-uv run --frozen --extra dev python -m pytest --collect-only -q tests
-uv run --frozen --extra dev python -m pytest -q -m "contract or fault or e2e" -p no:cacheprovider
-uv run --frozen --extra benchmarks python -m truthound.cli benchmark parity --suite pr-fast --frameworks truthound --backend local --strict
-uv run --frozen --extra benchmarks python -m truthound.cli benchmark parity --suite nightly-core --frameworks both --backend local --strict
-uv run --frozen --extra dev --extra docs mkdocs build --strict
-```
-
-Tests follow a failure-first lane model.
-
-- `contract`: stable public API and compatibility boundaries
-- `fault`: deterministic failure injection, timeout, corruption, and concurrency scenarios
-- `integration`: opt-in backend and external-service coverage
-- `soak` / `stress`: nightly-only load and chaos coverage
-
-Official performance numbers must only be cited from the verified release-grade parity artifacts under `.truthound/benchmarks/release/`. Nightly output is for trend visibility, not public benchmark positioning.
-
----
 
 ## License
 
