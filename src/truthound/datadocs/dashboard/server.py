@@ -85,6 +85,12 @@ class ReflexDashboardServer(DashboardServer):
             return None
         return hashlib.sha256(Path(self.config.profile_path).read_bytes()).hexdigest()
 
+    def start(self, *, timeout_seconds=10):
+        # Reject modified prepared inputs before probing the port or changing
+        # process ownership. Keep the launch-time check as well.
+        self._prepare_launch()
+        return super().start(timeout_seconds=timeout_seconds)
+
     def _prepare_launch(self):
         configuration = self.project_directory / "configuration.json"
         prepared = json.loads((self.project_directory / "prepared.json").read_text())

@@ -20,6 +20,29 @@ runtime = plugins.runtime
 pytestmark = pytest.mark.contract
 
 
+@pytest.mark.fault
+def test_changed_prepared_configuration_is_rejected_before_occupied_port(tmp_path):
+    import hashlib
+    from truthound.datadocs.dashboard import DashboardConfig, ReflexDashboardServer
+
+    with socket.socket() as listener:
+        listener.bind(("127.0.0.1", 0))
+        listener.listen()
+        config = DashboardConfig(host="127.0.0.1", port=listener.getsockname()[1])
+        original = json.dumps(asdict(config))
+        (tmp_path / "configuration.json").write_text(original)
+        (tmp_path / "prepared.json").write_text(json.dumps({
+            "config_sha256": hashlib.sha256(original.encode()).hexdigest(),
+            "profile_sha256": None,
+        }))
+        (tmp_path / "configuration.json").write_text(json.dumps({**asdict(config), "title": "Changed"}))
+        server = ReflexDashboardServer(tmp_path, config)
+        with pytest.raises(ValueError, match="configuration has changed"):
+            server.start()
+        assert server._process is None
+        assert listener.getsockname()[1] == config.port
+
+
 def test_reflex_native_page_compiles_with_real_profile_and_reactive_state():
     from truthound.datadocs.dashboard import DashboardApp, DashboardConfig, ProfileState
 

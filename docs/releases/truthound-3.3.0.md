@@ -55,6 +55,10 @@ operator-selected graph save/load. Native graph files do not persist context his
 
 ## Native correctness and generated artifacts
 
+Prepared Reflex dashboards validate configuration and profile integrity before
+probing the port or changing process ownership, so a port conflict cannot mask
+a modified prepared configuration.
+
 This candidate repairs bounded SQL statistics and bound range/set operands, null-aware
 duplicate groups, copied store configuration, checked conditional object-store writes,
 cache cleanup and uncertain-write handling. Native scaffolds preserve quoted metadata,
