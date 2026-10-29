@@ -84,6 +84,7 @@ jobs:
       TRUTHOUND_TEST_REDIS_PORT: ${{ matrix.lane == 'integration' && '6379' || '0' }}
       TRUTHOUND_TEST_ELASTICSEARCH_HOST: ${{ matrix.lane == 'integration' && '127.0.0.1' || '' }}
       TRUTHOUND_TEST_ELASTICSEARCH_PORT: ${{ matrix.lane == 'integration' && '9200' || '0' }}
+      TRUTHOUND_SQLSERVER_REQUIRE_NATIVE: '1'
     timeout-minutes: ${{ matrix.job_minutes }}
     strategy:
       fail-fast: false
@@ -103,6 +104,17 @@ jobs:
         run: |
           python verification/ci/native_prerequisites.py libpango-1.0-0 libpangoft2-1.0-0 poppler-utils
       - run: uv sync --frozen --extra dev --extra mcp --extra benchmarks --extra pdf --group nightly-local
+      - name: Prepare native SQL providers for the integration manifest
+        if: matrix.lane == 'integration'
+        run: |
+          uv pip install --python .venv/bin/python \
+            -r verification/ci/requirements-sql-isolation.txt \
+            -r verification/ci/requirements-oracle-isolation.txt \
+            -r verification/ci/requirements-sqlserver-isolation.txt
+          pg_config --bindir >> "$GITHUB_PATH"
+          command -v mysqld
+          docker pull ghcr.io/gvenzl/oracle-free@sha256:6d61d267a3b978c24c5ac1790e62e927416a0aec446bd86e4b3a1527562757bd
+          docker pull mcr.microsoft.com/mssql/server@sha256:cf8f0ab2ebe61feec2eed2629061a07d247f791c2a8ddda74a4ac9f06a291718
       - uses: actions/download-artifact@v4
         with:
           name: truthound-nightly-plan

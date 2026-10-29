@@ -458,6 +458,19 @@ def test_tests_nightly_workflow_publishes_collect_summary():
     assert any("nightly_plan.py collect" in s.get("run", "") for s in collect["steps"])
     assert lane["needs"] == "nightly-collect"
     assert lane["strategy"]["fail-fast"] is False
+    sql_setup = next(s for s in lane["steps"] if "pg_config --bindir" in s.get("run", ""))
+    assert sql_setup["if"] == "matrix.lane == 'integration'"
+    for provider in ("sql", "oracle", "sqlserver"):
+        assert f"-r verification/ci/requirements-{provider}-isolation.txt" in sql_setup["run"]
+    assert 'command -v mysqld' in sql_setup["run"]
+    assert lane["env"]["TRUTHOUND_SQLSERVER_REQUIRE_NATIVE"] == "1"
+    root = workflow_path.parents[2]
+    for provider in ("oracle", "sqlserver"):
+        fixture = (root / "tests" / f"test_tenant_{provider}_isolation.py").read_text()
+        image = next(line.split('"')[1] for line in fixture.splitlines() if line.startswith('IMAGE = "'))
+        assert f"docker pull {image}" in sql_setup["run"]
+    execute_index = next(i for i, s in enumerate(lane["steps"]) if "run_pytest_manifest.py" in s.get("run", ""))
+    assert lane["steps"].index(sql_setup) < execute_index
     execute = next(s["run"] for s in lane["steps"] if "run_pytest_manifest.py" in s.get("run", ""))
     assert "--run-expensive" in execute and "--run-soak" in execute
     assert "--execution-report" in execute and "--junitxml" in execute
