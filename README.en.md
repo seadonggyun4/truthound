@@ -1,5 +1,5 @@
 <div align="center">
-  <img width="500" alt="Truthound Banner" src="docs/assets/truthound_banner.png?v=a4bd297" />
+  <img width="500" alt="Truthound Banner" src="docs/assets/truthound_banner.png?v=9d79fbef" />
 </div>
 
 <h1 align="center">Truthound — Data Quality Workflow</h1>
