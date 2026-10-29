@@ -115,8 +115,8 @@ timeout은 파일 복사 시간을 포함하지 않습니다. 압축 파일은 �
 
 ## Core 프로파일: 3.3.0
 
-3.3.0에는 선택형 `core` 프로파일이 추가됩니다. **이미 게시된 3.2.0 wheel,
-Registry 등록 정보, 버전이 고정된 마켓플레이스 플러그인에는 포함되지 않습니다.**
+3.3.0에는 선택형 `core` 프로파일이 추가됩니다. **이미 게시된 3.2.0 wheel
+및 해당 버전의 과거 Registry 등록 정보에는 포함되지 않습니다.**
 별도 환경에 3.3.0을 설치한 뒤 사용합니다. 기본 프로파일의 기존
 도구 세 개와 버전 1 응답 계약은 바꾸지 않습니다.
 
@@ -2388,14 +2388,15 @@ truthound-mcp plugin-fingerprint --distribution your-reviewed-distribution
 
 ## Claude Desktop 설치 파일
 
-게시된 버전은 [3.2.0 MCPB 다운로드](https://github.com/seadonggyun4/truthound/releases/download/v3.2.0/truthound-3.2.0.mcpb) → **Settings → Extensions → Advanced settings → Install Extension…** → 파일 선택·허용 폴더 설정 순서로 설치합니다. [공식 설치 안내](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop)를 참고하세요. 이는 사용자 지정 확장 설치이며 Claude 공식 디렉터리 등재를 뜻하지 않습니다.
+아래 명령으로 공개된 3.3.0 패키지를 설치하고 번들을 생성합니다. Claude Desktop에서 **Settings → Extensions → Advanced settings → Install Extension…** → 생성된 파일 선택·허용 폴더 설정 순서로 설치합니다. [공식 설치 안내](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop)를 참고하세요. 이는 사용자 지정 확장 설치이며 Claude 공식 디렉터리 등재를 뜻하지 않습니다.
 
 ```bash
-truthound-mcp bundle --output truthound-3.2.0.mcpb
+python -m pip install --upgrade "truthound[mcp]==3.3.0"
+truthound-mcp bundle --output truthound-3.3.0.mcpb
 ```
 
 `.mcpb`는 manifest·launcher·의존성 선언·라이선스를 포함합니다. UV runtime은
-PyPI에서 정확히 `truthound[mcp]==3.2.0`을 설치하고 하위 의존성을 해석합니다.
+PyPI에서 정확히 `truthound[mcp]==3.3.0`을 설치하고 하위 의존성을 해석합니다.
 최초 설정에는 네트워크와 manifest 0.4/UV를 지원하는 Claude Desktop이
 필요합니다. archive 바이트는 결정론적이지만 완전히 잠긴 오프라인 환경은 아닙니다.
 생성된 번들은 서명되지 않았으며 설치 시 host의 동의가 필요합니다.
@@ -2403,7 +2404,7 @@ PyPI에서 정확히 `truthound[mcp]==3.2.0`을 설치하고 하위 의존성을
 PyPI 게시 전에 테스트하려면 동일 버전 wheel을 포함합니다.
 
 ```bash
-truthound-mcp bundle --wheel dist/truthound-3.2.0-py3-none-any.whl --output truthound-3.2.0-local.mcpb
+truthound-mcp bundle --wheel dist/truthound-3.3.0-py3-none-any.whl --output truthound-3.3.0-local.mcpb
 ```
 
 Claude Desktop 확장 설치 UI에서 파일을 설치하고 허용 데이터 폴더를 선택합니다.
@@ -2414,8 +2415,8 @@ Anthropic 승인이나 GUI 검증을 주장하지 않습니다. 개발 환경·�
 
 ## OpenAI 로컬 플러그인과 저장소 마켓플레이스
 
-OpenAI 플러그인은 Core와 별도인 버전 `0.1.4`이며 공개 PyPI의
-`truthound[mcp]==3.2.0`과 고정된 UV dependency lock을 사용합니다.
+OpenAI 플러그인은 Core와 별도인 버전 `0.1.5`이며 공개 PyPI의
+`truthound[mcp]==3.3.0`과 고정된 UV dependency lock을 사용합니다.
 로컬 데스크톱용이며 원격 서비스나 ChatGPT 웹 커넥터가 아닙니다.
 UV를 설치해 데스크톱 앱의 PATH에서 사용할 수 있어야 하며 최초 설치에는
 네트워크와 Python 3.11–3.13 런타임이 필요합니다.
@@ -2424,6 +2425,13 @@ UV를 설치해 데스크톱 앱의 PATH에서 사용할 수 있어야 하며 �
 
 ```bash
 codex plugin marketplace add seadonggyun4/truthound --ref main
+```
+
+기존 설치는 마켓플레이스를 갱신한 뒤 플러그인을 다시 설치하고 클라이언트를 재연결합니다. 기존 폴더 권한은 유지됩니다.
+
+```bash
+codex plugin marketplace upgrade truthound
+codex plugin add truthound@truthound
 ```
 
 필요하면 앱을 새로고침·재시작한 뒤 **Plugins → Truthound Plugins 소스 →
@@ -2488,6 +2496,8 @@ ZIP 생성·저장소 설치 성공을 allowlist·법적 동의·심사 승인·
 
 ## Registry 메타데이터와 설치
 
+아래 3.2.0 Registry 링크는 과거 배포 기록입니다. 3.3.0은 아래의 명시적 설치 명령을 사용합니다. 저장소 메타데이터 수정만으로 새 Registry 항목이 게시되지는 않습니다.
+
 MCP CI는 Linux Python 3.11에서 전체 필수 테스트를 결정적인 4개 분할로 나누되
 15분 job 제한은 유지합니다. 모든 분할이 성공한 뒤에만 패키징을 시작합니다.
 다른 선택된 OS·Python 조합은 플랫폼 경계 테스트를 실행하며 Windows는 2개
@@ -2500,11 +2510,11 @@ MCP CI는 Linux Python 3.11에서 전체 필수 테스트를 결정적인 4개 �
 [공식 MCP Registry](https://registry.modelcontextprotocol.io/)에서 `io.github.seadonggyun4/truthound`를 검색할 수 있으며 [3.2.0이 게시되어 있습니다](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.seadonggyun4%2Ftruthound/versions/3.2.0). 연동 클라이언트의 마켓플레이스에 표시되면 **Install**을 누르고 접근을 허용할 폴더를 지정합니다. Registry 등록만으로 모든 클라이언트의 마켓플레이스 노출·승인이 보장되지는 않습니다.
 
 저장소의 `server.json`은 `io.github.seadonggyun4/truthound`, 기존 PyPI 패키지
-`truthound` 버전 `3.2.0`과 로컬 stdio를 선언합니다. UV의 `--with`로 MCP
+`truthound` 버전 `3.3.0`과 로컬 stdio를 선언합니다. UV의 `--with`로 MCP
 extra를 설치하고 기존 CLI 별칭을 실행합니다.
 
 ```bash
-uvx --with "truthound[mcp]==3.2.0" truthound@3.2.0 mcp serve --allow-dir /absolute/path/to/data
+uvx --with "truthound[mcp]==3.3.0" truthound@3.3.0 mcp serve --allow-dir /absolute/path/to/data
 ```
 
 GitHub namespace는 실제 저장소 소유자에 맞추며 README의 `mcp-name`도 정확히
@@ -3125,7 +3135,7 @@ files={별칭: 운영자_절대경로})`를 반환합니다. 팩터리는 네이
 
 ### Core 3.3.0 설치 후보
 
-공개 `truthound` 0.1.4 플러그인은 Core 3.2.0을 유지합니다. 별도 `truthound-core` 0.2.0 후보는 Core 3.3.0을 고정하며 Core 프로파일을 사용하려면 해당 버전을 PyPI에서 설치합니다. 전이 의존성은 설치 시 허용 범위에서 해석하며 이 별도 플러그인 후보에는 공개 인덱스 고정 lock을 포함하지 않습니다. 후보 CI는 소스 체크아웃 대신 새 wheel을 설치합니다.
+`truthound` 0.1.5 플러그인은 고정 의존성 lock으로 공개 Core 3.3.0을 사용합니다. 별도 `truthound-core` 0.2.0 후보는 Core 3.3.0을 고정하며 Core 프로파일을 사용하려면 해당 버전을 PyPI에서 설치합니다. 전이 의존성은 설치 시 허용 범위에서 해석하며 이 별도 플러그인 후보에는 공개 인덱스 고정 lock을 포함하지 않습니다. 후보 CI는 소스 체크아웃 대신 새 wheel을 설치합니다.
 
 ```bash
 codex plugin add truthound-core@truthound --json

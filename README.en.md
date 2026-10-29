@@ -273,7 +273,7 @@ The root package intentionally exposes a small API.
 Expression validation keeps failure samples, counts and rows attached to the reported column after passing checks are omitted.
 
 The `ai`, `mcp` and `all` extras share a Pydantic 2.11 minimum in 3.3.0.
-Build a Core MCPB with `truthound-mcp bundle --profile core --output truthound-core.mcpb`. The separate `truthound-core` plugin candidate pins Core 3.3.0 and uses explicit data, workspace, control and disclosure grants; reconnect after changes.
+Build a Core MCPB with `truthound-mcp bundle --profile core --output truthound-core.mcpb`. Truthound Local plugin 0.1.5 and the separate `truthound-core` plugin candidate pin Core 3.3.0 and uses explicit data, workspace, control and disclosure grants; reconnect after changes.
 
 ## License
 

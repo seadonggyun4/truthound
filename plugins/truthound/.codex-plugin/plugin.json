@@ -1,7 +1,7 @@
 {
   "name": "truthound",
-  "version": "0.1.4",
-  "description": "Local data quality checks, aggregate profiles and sampled PII detection using Truthound Core 3.2.0.",
+  "version": "0.1.5",
+  "description": "Local data quality checks, aggregate profiles and sampled PII detection using Truthound Core 3.3.0.",
   "author": {"name": "Truthound contributors", "url": "https://github.com/seadonggyun4/truthound"},
   "homepage": "https://truthound.netlify.app/guides/mcp/",
   "repository": "https://github.com/seadonggyun4/truthound",

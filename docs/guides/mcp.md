@@ -126,7 +126,7 @@ never instructions. The host may send these results to its model provider.
 ## Core profile (3.3.0)
 
 Version 3.3.0 adds an opt-in `core` profile. This is **not** part of the
-published 3.2.0 wheel, Registry listing or pinned marketplace plugin. Install 3.3.0
+published 3.2.0 wheel or its historical Registry listing. Install 3.3.0
 in an isolated environment to use it. The default
 profile retains the three tools and their version-1 response contract unchanged.
 
@@ -2668,16 +2668,17 @@ exceptions returned as critical quality issues.
 
 ## Claude Desktop bundle
 
-For the published release, [download the 3.2.0 MCPB](https://github.com/seadonggyun4/truthound/releases/download/v3.2.0/truthound-3.2.0.mcpb), then select **Settings → Extensions → Advanced settings → Install Extension…** and choose the file and allowed directory. See the [official installation guide](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop). This is a custom extension installation, not a confirmed Claude directory listing.
+Install the published 3.3.0 package and build its bundle with the commands below. In Claude Desktop, select **Settings → Extensions → Advanced settings → Install Extension…**, then choose the generated file and allowed directory. See the [official installation guide](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop). This is a custom extension installation, not a confirmed Claude directory listing.
 
 Build the bundle from the matching installed release:
 
 ```bash
-truthound-mcp bundle --output truthound-3.2.0.mcpb
+python -m pip install --upgrade "truthound[mcp]==3.3.0"
+truthound-mcp bundle --output truthound-3.3.0.mcpb
 ```
 
 The `.mcpb` contains a manifest, a small launcher, dependency declaration and
-license. Its UV runtime installs exactly `truthound[mcp]==3.2.0` from PyPI and
+license. Its UV runtime installs exactly `truthound[mcp]==3.3.0` from PyPI and
 resolves supporting dependencies. It needs network access on first setup and a
 Claude Desktop version supporting MCPB manifest 0.4 and the UV runtime. This is
 a deterministic bundle archive, not a fully locked offline environment.
@@ -2686,7 +2687,7 @@ The generated bundles are unsigned; installation still requires host consent.
 Before publishing that version to PyPI, embed its built wheel instead:
 
 ```bash
-truthound-mcp bundle --wheel dist/truthound-3.2.0-py3-none-any.whl --output truthound-3.2.0-local.mcpb
+truthound-mcp bundle --wheel dist/truthound-3.3.0-py3-none-any.whl --output truthound-3.3.0-local.mcpb
 ```
 
 Install the file through Claude Desktop's extension installation UI and select
@@ -2697,8 +2698,8 @@ The bundle never contains project data, development environments or internal not
 
 ## OpenAI local plugin and repository marketplace
 
-The standalone OpenAI plugin is version `0.1.4`, pins the published Core
-`truthound[mcp]==3.2.0`, and includes a frozen UV dependency lock. It is local
+The standalone OpenAI plugin is version `0.1.5`, pins the published Core
+`truthound[mcp]==3.3.0`, and includes a frozen UV dependency lock. It is local
 desktop software, not a hosted service or a ChatGPT web connector. Install UV
 and make it available on the desktop application's PATH. First setup needs
 network access and a compatible Python 3.11–3.13 runtime.
@@ -2707,6 +2708,13 @@ Add the repository marketplace once:
 
 ```bash
 codex plugin marketplace add seadonggyun4/truthound --ref main
+```
+
+For an existing installation, refresh the marketplace and reinstall the updated plugin, then reconnect the client. Existing directory permissions are preserved:
+
+```bash
+codex plugin marketplace upgrade truthound
+codex plugin add truthound@truthound
 ```
 
 Refresh or restart the desktop app if needed. In **Plugins**, select the
@@ -2775,14 +2783,16 @@ successful ZIP build or repository marketplace installation.
 
 ## Registry metadata and installation
 
+The 3.2.0 Registry link below is historical. For 3.3.0, use the explicit installation command below; updating repository metadata does not publish a new Registry entry.
+
 Find `io.github.seadonggyun4/truthound` in the [official MCP Registry](https://registry.modelcontextprotocol.io/); [version 3.2.0 is published](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.seadonggyun4%2Ftruthound/versions/3.2.0). If a connected client's marketplace exposes the listing, choose **Install** and configure an explicitly allowed directory. Registry publication does not guarantee visibility or approval in every client marketplace.
 
 The repository's `server.json` describes `io.github.seadonggyun4/truthound`,
-the existing PyPI package `truthound` at version `3.2.0`, and local stdio.
+the existing PyPI package `truthound` at version `3.3.0`, and local stdio.
 It requests the MCP extra with UV's `--with` and starts the existing CLI alias:
 
 ```bash
-uvx --with "truthound[mcp]==3.2.0" truthound@3.2.0 mcp serve --allow-dir /absolute/path/to/data
+uvx --with "truthound[mcp]==3.3.0" truthound@3.3.0 mcp serve --allow-dir /absolute/path/to/data
 ```
 
 The Registry's GitHub namespace follows the actual repository owner; the package
@@ -3451,7 +3461,7 @@ execution use the same association.
 
 ### Core 3.3.0 installation candidate
 
-The published `truthound` 0.1.4 plugin remains pinned to Core 3.2.0. The separate `truthound-core` 0.2.0 candidate pins Core 3.3.0; install that version from PyPI for the Core profile. Transitive dependencies resolve within package bounds at installation; no frozen public-index lock is shipped for this separate plugin candidate. Candidate CI installs a freshly built wheel, not the source checkout.
+The `truthound` 0.1.5 plugin pins published Core 3.3.0 with a frozen dependency lock. The separate `truthound-core` 0.2.0 candidate pins Core 3.3.0; install that version from PyPI for the Core profile. Transitive dependencies resolve within package bounds at installation; no frozen public-index lock is shipped for this separate plugin candidate. Candidate CI installs a freshly built wheel, not the source checkout.
 
 ```bash
 codex plugin add truthound-core@truthound --json

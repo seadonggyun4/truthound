@@ -13,7 +13,7 @@ from truthound.mcp.server import serve
 
 
 class ConsentPolicy:
-    # Match the pinned Core 3.2.0 defaults; no quality computation is duplicated.
+    # Match the pinned Core 3.3.0 defaults; no quality computation is duplicated.
     max_file_bytes = 100 * 1024 * 1024
     max_items = 100
     max_response_bytes = 65536
