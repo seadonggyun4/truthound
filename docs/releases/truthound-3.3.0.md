@@ -1,10 +1,41 @@
-# Truthound 3.3.0 candidate
+# Truthound 3.3.0
 
-This source candidate extends the optional local MCP integration with an opt-in
+This release extends the optional local MCP integration with an opt-in
 Core profile. Publication, client marketplace listing and deployment are separate
 verification steps; this page does not assert that the candidate has been published.
 The existing three default tools remain available. See the [MCP guide](../guides/mcp.md)
 for commands, operator bindings, consent and service-specific limits.
+
+## Install and use the core workflow
+
+```bash
+python -m pip install --upgrade "truthound[mcp]==3.3.0"
+truthound-mcp serve --profile core --allow-dir /absolute/path/to/data
+```
+
+- Validate nulls, duplicates, ranges and an agreed schema.
+- Profile columns, detect PII and mask approved columns without changing the input.
+- Learn schemas and compare retained baseline/current assets for drift.
+- Read and release result handles. Schema contents and masked rows require the
+  explicit `--allow-sensitive-results` operator grant.
+
+See the [core workflow](../guides/mcp.md#core-data-quality-workflow) for operations
+and result interpretation. Execution success and data-quality success are distinct;
+incomplete schema target accounting remains `unknown`, not a pass.
+
+## SQL query limits and recovery
+
+- SQLite applies a query deadline through its native progress handler for each
+  borrowed connection scope; it cannot interrupt a Python UDF.
+- PostgreSQL applies native `statement_timeout`.
+- MySQL applies `max_execution_time` to supported read-only table SELECTs and
+  honors server-side cursor settings; this is not a universal I/O deadline.
+- Oracle applies a per-round-trip call timeout. Its pool replaces unhealthy
+  connections before lending them again, without replaying the failed statement.
+
+Existing Core APIs, the three default MCP tools and advanced capabilities remain
+available. Full Core/MCP equivalence and live cloud services are not certified by
+this release. Marketplace bundles pinned to 3.2.0 remain separate distributions.
 
 ## Core operations and native services
 

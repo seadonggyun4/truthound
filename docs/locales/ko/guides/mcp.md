@@ -3,7 +3,7 @@
 ## 핵심 데이터 품질 작업
 
 1. 아래 Codex·Claude Desktop 안내로 설치한 뒤 사용할 데이터 폴더만 승인합니다.
-2. 프로파일을 선택합니다. Truthound Local은 `check_file`, `profile_file`, `scan_pii`를 제공합니다. 개발 Core 프로파일은 아래 작업도 제공하며, 게시된 3.2.0 패키지에는 이 확장 프로파일이 포함되지 않습니다.
+2. 프로파일을 선택합니다. Truthound Local은 `check_file`, `profile_file`, `scan_pii`를 제공합니다. 3.3.0의 Core 프로파일은 아래 작업도 제공하며, 게시된 3.2.0 패키지에는 이 확장 프로파일이 포함되지 않습니다.
 3. 작업을 요청하고 결과를 확인합니다. `execution_status`는 실행 성공 여부, `quality_status`는 데이터 품질을 나타냅니다. 실행이 성공해도 데이터 품질은 실패일 수 있습니다. 자동 생성한 스키마 검사에서 전체 대상 적용 여부를 확인할 수 없으면 `quality_status: unknown`을 반환할 수 있습니다. 이를 통과로 해석하지 말고 `data.success`와 개별 검사·문제를 확인합니다.
 
 | 작업·요청 예시 | Core 작업 |
@@ -15,7 +15,7 @@
 | “스키마를 학습하고 합의한 스키마로 검증해줘.” | `schema_learn`; `schema_spec`을 지정한 `validation_check` |
 | “기준 데이터와 이번 배치의 드리프트를 비교해줘.” | 두 입력을 asset으로 등록한 뒤 `drift_compare` |
 
-로컬에서 빌드한 Core wheel은 클라이언트 환경에 설치하고 `truthound-mcp serve --profile core --allow-dir /absolute/path/to/data`로 실행합니다. 스키마 내용·마스킹된 행을 반환하려면 운영자가 `--allow-sensitive-results`를 명시적으로 허용해야 합니다. 설치만으로 권한이 부여되지는 않습니다. 결과가 핸들로 반환되면 해당 산출물을 읽고 사용 후 핸들을 해제합니다. 기본 요약 응답에는 원시 데이터가 포함되지 않습니다.
+클라이언트 환경에 `truthound[mcp]==3.3.0`을 설치하고 `truthound-mcp serve --profile core --allow-dir /absolute/path/to/data`로 실행합니다. 스키마 내용·마스킹된 행을 반환하려면 운영자가 `--allow-sensitive-results`를 명시적으로 허용해야 합니다. 설치만으로 권한이 부여되지는 않습니다. 결과가 핸들로 반환되면 해당 산출물을 읽고 사용 후 핸들을 해제합니다. 기본 요약 응답에는 원시 데이터가 포함되지 않습니다.
 
 기존 Core·MCP 기능은 그대로 유지됩니다. 상세 설정과 수명주기는 이 가이드의 뒤쪽에서 설명하며 이 빠른 사용 흐름에서는 나열하지 않습니다.
 
@@ -26,12 +26,12 @@ stdio를 지원하는 에이전트에서 사용할 수 있습니다.
 
 ## 설치와 실행
 
-개발 소스에서 루트 패키지를 import하면 검증 facade와 Polars는 첫 접근까지
+3.3.0에서 루트 패키지를 import하면 검증 facade와 Polars는 첫 접근까지
 로드를 미룹니다. 공개 함수와 타입은 기존 Core 객체를 그대로 반환하며,
 worker 시작 시 사용하지 않는 검증 의존성을 불러오는 일을 줄입니다.
 
 ```bash
-pip install "truthound[mcp]==3.2.0"
+pip install "truthound[mcp]==3.3.0"
 truthound-mcp serve --allow-dir /absolute/path/to/data
 ```
 
@@ -113,11 +113,11 @@ timeout은 파일 복사 시간을 포함하지 않습니다. 압축 파일은 �
 컬럼명과 집계값도 민감할 수 있으며 에이전트가 모델 제공자에 전달할 수 있습니다.
 반환 메타데이터는 명령이 아닌 신뢰하지 않는 데이터로 취급해야 합니다.
 
-## Core 프로파일: 아직 배포하지 않은 소스 기능
+## Core 프로파일: 3.3.0
 
-현재 소스에는 선택형 `core` 프로파일이 추가됩니다. **이미 게시된 3.2.0 wheel,
+3.3.0에는 선택형 `core` 프로파일이 추가됩니다. **이미 게시된 3.2.0 wheel,
 Registry 등록 정보, 버전이 고정된 마켓플레이스 플러그인에는 포함되지 않습니다.**
-수정한 소스를 별도 환경에 빌드·설치한 뒤 사용해야 합니다. 기본 프로파일의 기존
+별도 환경에 3.3.0을 설치한 뒤 사용합니다. 기본 프로파일의 기존
 도구 세 개와 버전 1 응답 계약은 바꾸지 않습니다.
 
 ```bash
@@ -451,7 +451,7 @@ NaN·무한대·불리언은 수치 설정으로 허용하지 않습니다. 자�
 `then`, 선택적 `description`만 받으며 두 조건은 아래의 제한된 Polars 식을 사용합니다.
 Python 코드를 받지 않습니다.
 
-개발 소스의 Core 수정은 MCP에서도 알고리즘 동작에 반영됩니다. 숫자형 PSI·CSI와
+3.3.0의 Core 수정은 MCP에서도 알고리즘 동작에 반영됩니다. 숫자형 PSI·CSI와
 PSI 기반 feature drift는 기준 히스토그램 범위 밖의 관측치를 버리지 않고 집계합니다.
 PSI의 캐시·비캐시 경로에 같은 꼬리 집계 규칙을 적용하며 임계값은 바꾸지 않습니다.
 상수 기준분포도 빈 히스토그램으로 처리하지 않고 점질량을 보존합니다. 기본 참조 캐시는
@@ -462,7 +462,7 @@ PSI의 캐시·비캐시 경로에 같은 꼬리 집계 규칙을 적용하며 �
 scaler와 kernel projection은 첫 배치에서 학습한 뒤 고정하며 이후 배치는 추정기를
 갱신합니다. 이전 이진 대체 모델의 예측과 동등하지 않습니다.
 이 구성은 [scikit-learn의 one-class SGD 안내](https://scikit-learn.org/stable/modules/outlier_detection.html#scaling-up-the-one-class-svm)를 따릅니다.
-미배포 소스 변경이며 이미 게시된 3.2.0 파일을 바꾼 것은 아닙니다.
+3.3.0의 변경이며 이미 게시된 3.2.0 파일을 바꾼 것은 아닙니다.
 
 Core의 JSON 스키마 검증기는 선택 라이브러리가 있으면 Draft 7을 사용합니다.
 신뢰하지 않은 스키마 설정으로 외부 참조를 가져오지 않습니다. 전송 경계는 로컬
@@ -1106,7 +1106,7 @@ ML 산출물에는 `encoding`, `model_algorithm`, `model_revision`과 태그로 
 
 ### 네이티브 체크포인트 서비스
 
-개발 Core 프로파일은 `checkpoint_services_open`과
+3.3.0의 Core 프로파일은 `checkpoint_services_open`과
 `checkpoint_services_execute`도 제공합니다. 팩토리는 비공개 `checkpoints`
 바인딩에 등록합니다. `kind="runner"`의 팩토리는 중지된 네이티브
 `CheckpointRunner`를 제공하는 동기 컨텍스트 관리자이며, 체크포인트·트리거·
@@ -1149,7 +1149,7 @@ ML 산출물에는 `encoding`, `model_algorithm`, `model_revision`과 태그로 
 종료는 이미 전송한 알림을 취소하거나 서드파티의 정상 정리를 보장하지 않습니다.
 이는 세션 소유 서비스입니다. 정책 설정은 아래 방식으로 영속화·복원할 수 있지만
 영구 네이티브 실행은 아래의 별도 복구 설정을 운영자 팩토리에서 선택해야 합니다. 외부 알림·저장소
-실서비스는 미검증입니다. 게시된 3.2.0이 아닌 개발 소스의 기능입니다.
+실서비스는 미검증입니다. 3.2.0이 아닌 3.3.0의 기능입니다.
 
 추가 승인 기반 관리 명령은 네이티브 서비스 메서드를 재사용합니다.
 
@@ -3125,7 +3125,7 @@ files={별칭: 운영자_절대경로})`를 반환합니다. 팩터리는 네이
 
 ### Core 3.3.0 설치 후보
 
-공개 `truthound` 0.1.4 플러그인은 Core 3.2.0을 유지합니다. 별도 `truthound-core` 0.2.0 후보는 Core 3.3.0을 고정하며 일반 공개 인덱스 설치에는 해당 버전의 실제 게시가 필요합니다. 전이 의존성은 설치 시 허용 범위에서 해석하며 미게시 후보의 공개 인덱스 고정 lock은 포함하지 않습니다. 후보 CI는 소스 체크아웃 대신 새 wheel을 설치합니다.
+공개 `truthound` 0.1.4 플러그인은 Core 3.2.0을 유지합니다. 별도 `truthound-core` 0.2.0 후보는 Core 3.3.0을 고정하며 Core 프로파일을 사용하려면 해당 버전을 PyPI에서 설치합니다. 전이 의존성은 설치 시 허용 범위에서 해석하며 이 별도 플러그인 후보에는 공개 인덱스 고정 lock을 포함하지 않습니다. 후보 CI는 소스 체크아웃 대신 새 wheel을 설치합니다.
 
 ```bash
 codex plugin add truthound-core@truthound --json

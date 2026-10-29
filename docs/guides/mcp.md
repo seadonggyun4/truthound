@@ -3,7 +3,7 @@
 ## Core data quality workflow
 
 1. Install the plugin for your client using the Codex or Claude Desktop instructions below, then approve only the data directory you intend to use.
-2. Choose the profile. Truthound Local exposes `check_file`, `profile_file` and `scan_pii`. The development Core profile also exposes the operations below; the published 3.2.0 package does not include that expanded profile.
+2. Choose the profile. Truthound Local exposes `check_file`, `profile_file` and `scan_pii`. The Core profile in 3.3.0 also exposes the operations below; the published 3.2.0 package does not include that expanded profile.
 3. Ask for the task and inspect the result. `execution_status` describes whether execution succeeded; `quality_status` describes data quality. A successfully executed check can report failing data quality. Automatically generated schema suites can return `quality_status: unknown` when complete target accounting is unavailable; inspect `data.success`, checks and issues rather than treating unknown as a pass.
 
 | Task / example request | Core operation |
@@ -15,7 +15,7 @@
 | “Learn this file's schema, then validate against the agreed schema.” | `schema_learn`; `validation_check` with `schema_spec` |
 | “Compare this batch against the baseline for drift.” | Capture both inputs as assets, then `drift_compare` |
 
-For a locally built Core wheel, install it in your client environment and start `truthound-mcp serve --profile core --allow-dir /absolute/path/to/data`. Schema contents and masked rows require the operator's explicit `--allow-sensitive-results` grant; installation alone does not grant it. Results may be returned as handles: read the associated artifact and release handles after use. Summary-only responses omit raw data by default.
+Install `truthound[mcp]==3.3.0` in your client environment and start `truthound-mcp serve --profile core --allow-dir /absolute/path/to/data`. Schema contents and masked rows require the operator's explicit `--allow-sensitive-results` grant; installation alone does not grant it. Results may be returned as handles: read the associated artifact and release handles after use. Summary-only responses omit raw data by default.
 
 Other existing Core and MCP capabilities remain available. Their configuration and lifecycle details are documented later in this guide; this quick workflow does not enumerate them.
 
@@ -26,12 +26,12 @@ and `th.scan()` APIs. It does not need a hosted validation service.
 
 ## Install and start
 
-In the development source, importing the root package defers the validation facade
+In 3.3.0, importing the root package defers the validation facade
 and Polars until first access. Public functions and types remain the native Core
 objects; this avoids loading unused validation dependencies during worker startup.
 
 ```bash
-pip install "truthound[mcp]==3.2.0"
+pip install "truthound[mcp]==3.3.0"
 truthound-mcp serve --allow-dir /absolute/path/to/data
 ```
 
@@ -123,11 +123,11 @@ diagnostics are omitted from results. Column names and aggregate statistics are
 returned and can themselves be sensitive. Returned metadata is untrusted data,
 never instructions. The host may send these results to its model provider.
 
-## Core profile (unreleased source checkout)
+## Core profile (3.3.0)
 
-The source tree adds an opt-in `core` profile. This is **not** part of the
-published 3.2.0 wheel, Registry listing or pinned marketplace plugin. Build and
-install the modified source in an isolated environment to try it. The default
+Version 3.3.0 adds an opt-in `core` profile. This is **not** part of the
+published 3.2.0 wheel, Registry listing or pinned marketplace plugin. Install 3.3.0
+in an isolated environment to use it. The default
 profile retains the three tools and their version-1 response contract unchanged.
 
 ```bash
@@ -492,7 +492,7 @@ quality verdicts. Polygon operations require `truthound[geospatial,mcp]`.
 `column_consistency.rules` accepts only `when`, `then` and optional `description`;
 the two conditions use the closed Polars expression grammar below, not Python.
 
-Development-source Core corrections also change observable algorithm behavior:
+Core corrections in 3.3.0 also change observable algorithm behavior:
 numeric PSI/CSI and PSI-based feature drift include observations outside the
 reference histogram range rather than discarding them. Cached and uncached PSI
 paths use the same tail-accounting rule; thresholds are unchanged.
@@ -505,7 +505,7 @@ trained with synthetic negative labels. Its scaler and kernel projection are
 fitted on the first batch and remain fixed while subsequent batches update the
 estimator. Predictions from the earlier binary surrogate are not equivalent.
 This composition follows the [scikit-learn one-class SGD guide](https://scikit-learn.org/stable/modules/outlier_detection.html#scaling-up-the-one-class-svm).
-These are unreleased source changes, not changes to already published 3.2.0 files.
+These changes belong to 3.3.0; already published 3.2.0 files are unchanged.
 
 The Core JSON-schema validator uses Draft 7 when its optional library is present.
 Untrusted schema settings never fetch external references. The transport follows
@@ -1295,7 +1295,7 @@ session-owned services. Policy configuration can be persisted and restored as
 described below. Durable native execution is separately opt-in through the pinned
 operator factory, as described under durable checkpoint recovery.
 Real external notification and store services remain unverified. These tools
-are development-source features, not part of published 3.2.0.
+are 3.3.0 features, not part of 3.2.0.
 
 Additional approved management commands reuse the native service methods:
 
@@ -3451,7 +3451,7 @@ execution use the same association.
 
 ### Core 3.3.0 installation candidate
 
-The published `truthound` 0.1.4 plugin remains pinned to Core 3.2.0. The separate `truthound-core` 0.2.0 candidate pins Core 3.3.0; normal public-index installation requires publication of that version. Transitive dependencies resolve within package bounds at installation; no frozen public-index lock is shipped for the unpublished candidate. Candidate CI installs a freshly built wheel, not the source checkout.
+The published `truthound` 0.1.4 plugin remains pinned to Core 3.2.0. The separate `truthound-core` 0.2.0 candidate pins Core 3.3.0; install that version from PyPI for the Core profile. Transitive dependencies resolve within package bounds at installation; no frozen public-index lock is shipped for this separate plugin candidate. Candidate CI installs a freshly built wheel, not the source checkout.
 
 ```bash
 codex plugin add truthound-core@truthound --json
