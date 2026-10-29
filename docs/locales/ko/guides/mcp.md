@@ -2388,6 +2388,10 @@ truthound-mcp plugin-fingerprint --distribution your-reviewed-distribution
 
 ## Claude Desktop 설치 파일
 
+[아이콘 포함 3.3.0 번들 다운로드](https://github.com/seadonggyun4/truthound/releases/download/mcp-desktop-3.3.0-1/truthound-3.3.0.mcpb).
+
+아이콘을 포함한 배포 번들은 Codex 플러그인과 같은 주황색 아이콘을 사용합니다. 이미 게시된 PyPI 3.3.0 패키지는 이 패키징 변경 이전 버전이므로 기존 `bundle` 명령으로 생성하면 아이콘이 없습니다. Claude에는 아이콘 포함 배포 파일을 사용하며 실행 패키지는 계속 `truthound[mcp]==3.3.0`으로 고정됩니다. 같은 버전이 이미 설치됐다면 확장을 재설치하고 승인한 폴더·도구 권한을 유지합니다.
+
 아래 명령으로 공개된 3.3.0 패키지를 설치하고 번들을 생성합니다. Claude Desktop에서 **Settings → Extensions → Advanced settings → Install Extension…** → 생성된 파일 선택·허용 폴더 설정 순서로 설치합니다. [공식 설치 안내](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop)를 참고하세요. 이는 사용자 지정 확장 설치이며 Claude 공식 디렉터리 등재를 뜻하지 않습니다.
 
 ```bash
@@ -2496,7 +2500,7 @@ ZIP 생성·저장소 설치 성공을 allowlist·법적 동의·심사 승인·
 
 ## Registry 메타데이터와 설치
 
-아래 3.2.0 Registry 링크는 과거 배포 기록입니다. 3.3.0은 아래의 명시적 설치 명령을 사용합니다. 저장소 메타데이터 수정만으로 새 Registry 항목이 게시되지는 않습니다.
+공식 Registry에 3.3.0이 게시되었습니다. 등록된 로컬 stdio 명령은 같은 버전의 PyPI 패키지를 설치하며, 검색·설치만으로 폴더 접근 권한이 생기지는 않습니다.
 
 MCP CI는 Linux Python 3.11에서 전체 필수 테스트를 결정적인 4개 분할로 나누되
 15분 job 제한은 유지합니다. 모든 분할이 성공한 뒤에만 패키징을 시작합니다.
@@ -2507,7 +2511,7 @@ MCP CI는 Linux Python 3.11에서 전체 필수 테스트를 결정적인 4개 �
 누락·중복·SKIP·실패를 거부합니다. 일부 분할의 통과만으로 전체 검증 완료를
 선언하지 않습니다.
 
-[공식 MCP Registry](https://registry.modelcontextprotocol.io/)에서 `io.github.seadonggyun4/truthound`를 검색할 수 있으며 [3.2.0이 게시되어 있습니다](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.seadonggyun4%2Ftruthound/versions/3.2.0). 연동 클라이언트의 마켓플레이스에 표시되면 **Install**을 누르고 접근을 허용할 폴더를 지정합니다. Registry 등록만으로 모든 클라이언트의 마켓플레이스 노출·승인이 보장되지는 않습니다.
+[공식 MCP Registry](https://registry.modelcontextprotocol.io/)에서 `io.github.seadonggyun4/truthound`를 검색할 수 있으며 [3.3.0이 게시되어 있습니다](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.seadonggyun4%2Ftruthound/versions/3.3.0). 연동 클라이언트의 마켓플레이스에 표시되면 **Install**을 누르고 접근을 허용할 폴더를 지정합니다. Registry 등록만으로 모든 클라이언트의 마켓플레이스 노출·승인이 보장되지는 않습니다.
 
 저장소의 `server.json`은 `io.github.seadonggyun4/truthound`, 기존 PyPI 패키지
 `truthound` 버전 `3.3.0`과 로컬 stdio를 선언합니다. UV의 `--with`로 MCP

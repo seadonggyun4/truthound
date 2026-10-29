@@ -16,9 +16,12 @@ def test_bundle_is_deterministic_versioned_and_private_free(tmp_path):
     second = build_bundle(tmp_path / "second.mcpb")
     assert hashlib.sha256(first.read_bytes()).digest() == hashlib.sha256(second.read_bytes()).digest()
     with zipfile.ZipFile(first) as z:
-        assert set(z.namelist()) == {"manifest.json", "pyproject.toml", "server.py", "LICENSE"}
+        assert set(z.namelist()) == {"manifest.json", "pyproject.toml", "server.py", "LICENSE", "assets/icon.png"}
         manifest = json.loads(z.read("manifest.json"))
         assert manifest["server"]["type"] == "uv"
+        icon = z.read(manifest["icon"])
+        assert icon.startswith(b"\x89PNG\r\n\x1a\n")
+        assert icon == (Path(__file__).resolve().parents[1] / "plugins/truthound/assets/icon.png").read_bytes()
         project = tomllib.loads(z.read("pyproject.toml").decode())
         assert project["project"]["version"] == manifest["version"]
         assert "tool" not in project  # PyPI mode must not carry a local wheel source.

@@ -6,6 +6,7 @@
   "version": "3.3.0",
   "repository": {"url": "https://github.com/seadonggyun4/truthound", "source": "github"},
   "websiteUrl": "https://truthound.netlify.app/guides/mcp/",
+  "icons": [{"src": "https://raw.githubusercontent.com/seadonggyun4/truthound/a0257bc2e05edf32815c7a5029bdbe8321df0121/plugins/truthound/assets/icon.png", "mimeType": "image/png", "sizes": ["1254x1254"]}],
   "packages": [{
     "registryType": "pypi",
     "registryBaseUrl": "https://pypi.org",

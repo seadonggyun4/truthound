@@ -634,6 +634,7 @@ print("TRUTHOUND_RUNTIME_PROOF:"+json.dumps({
             "pyproject.toml",
             "server.py",
             "LICENSE",
+            "assets/icon.png",
             "wheels/" + wheel.name,
         }
         assert z.read("wheels/" + wheel.name) == wheel.read_bytes()
@@ -644,6 +645,7 @@ print("TRUTHOUND_RUNTIME_PROOF:"+json.dumps({
             "pyproject.toml",
             "server.py",
             "LICENSE",
+            "assets/icon.png",
             "wheels/" + wheel.name,
         }
         assert z.read("wheels/" + wheel.name) == wheel.read_bytes()

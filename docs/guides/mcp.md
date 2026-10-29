@@ -2668,6 +2668,10 @@ exceptions returned as critical quality issues.
 
 ## Claude Desktop bundle
 
+[Download the icon-enabled 3.3.0 bundle](https://github.com/seadonggyun4/truthound/releases/download/mcp-desktop-3.3.0-1/truthound-3.3.0.mcpb).
+
+The icon-enabled distribution bundle includes the same orange icon as the Codex plugin. The immutable PyPI 3.3.0 package predates this packaging change: its original `bundle` command produces an icon-free bundle. Use the icon-enabled distribution file for Claude; the runtime remains pinned to `truthound[mcp]==3.3.0`. Reinstall an existing same-version extension to refresh its icon, retaining the approved directory and tool permissions.
+
 Install the published 3.3.0 package and build its bundle with the commands below. In Claude Desktop, select **Settings → Extensions → Advanced settings → Install Extension…**, then choose the generated file and allowed directory. See the [official installation guide](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop). This is a custom extension installation, not a confirmed Claude directory listing.
 
 Build the bundle from the matching installed release:
@@ -2783,9 +2787,9 @@ successful ZIP build or repository marketplace installation.
 
 ## Registry metadata and installation
 
-The 3.2.0 Registry link below is historical. For 3.3.0, use the explicit installation command below; updating repository metadata does not publish a new Registry entry.
+Version 3.3.0 is published in the official Registry. The registered local stdio command installs the matching PyPI release; discovery does not grant directory access.
 
-Find `io.github.seadonggyun4/truthound` in the [official MCP Registry](https://registry.modelcontextprotocol.io/); [version 3.2.0 is published](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.seadonggyun4%2Ftruthound/versions/3.2.0). If a connected client's marketplace exposes the listing, choose **Install** and configure an explicitly allowed directory. Registry publication does not guarantee visibility or approval in every client marketplace.
+Find `io.github.seadonggyun4/truthound` in the [official MCP Registry](https://registry.modelcontextprotocol.io/); [version 3.3.0 is published](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.seadonggyun4%2Ftruthound/versions/3.3.0). If a connected client's marketplace exposes the listing, choose **Install** and configure an explicitly allowed directory. Registry publication does not guarantee visibility or approval in every client marketplace.
 
 The repository's `server.json` describes `io.github.seadonggyun4/truthound`,
 the existing PyPI package `truthound` at version `3.3.0`, and local stdio.

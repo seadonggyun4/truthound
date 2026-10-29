@@ -50,6 +50,7 @@ def build_bundle(output: Path, *, wheel: Path | None = None, profile: str = "sum
         "manifest_version": "0.4",
         "name": "truthound",
         "display_name": "Truthound",
+        "icon": "assets/icon.png",
         "version": __version__,
         "description": "Local data quality checks, aggregate profiles and sampled PII detection.",
         "author": {"name": "Truthound contributors"},
@@ -152,6 +153,7 @@ def build_bundle(output: Path, *, wheel: Path | None = None, profile: str = "sum
             "pyproject.toml": project.encode(),
             "server.py": launcher,
             "LICENSE": _license().encode(),
+            "assets/icon.png": (Path(__file__).parent / "assets" / "icon.png").read_bytes(),
         }
     )
     # Exclusive create protects an existing release artifact from replacement.
