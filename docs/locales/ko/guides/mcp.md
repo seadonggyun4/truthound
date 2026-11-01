@@ -1,5 +1,45 @@
 # 로컬 MCP 연동
 
+## Local과 Core 선택
+
+두 구성 모두 로컬에서 공개 PyPI의 Truthound 3.3.0을 실행합니다. 간단한 파일 검사는 Local, 드리프트·마스킹·스키마 검증까지 필요하면 Core를 선택하세요.
+
+Codex에서는 저장소 마켓플레이스를 한 번 추가한 뒤 원하는 플러그인을 설치합니다.
+
+```bash
+codex plugin marketplace add seadonggyun4/truthound --ref main
+```
+
+<a id="local-installation"></a>
+
+### Local 설치
+
+Codex에서 **Truthound Local → Install → Set up**을 선택하고 읽을 데이터 폴더를 승인합니다.
+
+```bash
+codex plugin add truthound@truthound
+```
+
+Claude Desktop에서는 아래 번들을 내려받아 **Settings → Extensions → Advanced settings → Install Extension…**에서 설치한 뒤 허용 폴더를 설정합니다.
+
+[Local 3.3.0 MCPB](https://github.com/seadonggyun4/truthound/releases/download/mcp-desktop-3.3.0-1/truthound-3.3.0.mcpb) · [설치 상세](#claude-desktop-설치-파일)
+
+<a id="core-installation"></a>
+
+### Core 설치
+
+Codex에서 **Truthound Core → Install → Set up**을 선택합니다. 데이터 폴더와 필요한 작업공간·운영자 제어·민감 결과 권한을 명시적으로 승인한 뒤 재연결합니다.
+
+```bash
+codex plugin add truthound-core@truthound
+```
+
+Claude Desktop에서는 아래 번들을 내려받아 **Settings → Extensions → Advanced settings → Install Extension…**에서 설치한 뒤 허용 폴더를 설정합니다.
+
+[Core 3.3.0 MCPB](https://github.com/seadonggyun4/truthound/releases/download/mcp-desktop-3.3.0-1/truthound-3.3.0-core.mcpb) · [권한·고급 설정](#core-330-설치)
+
+설치만으로 데이터 접근 권한이 생기지 않습니다. 두 번들은 사용자 지정 확장이며 공식 디렉터리 심사 승인과는 별개입니다. Core의 전체 MCP 동등성은 아직 검증되지 않았습니다.
+
 ## 핵심 데이터 품질 작업
 
 1. 아래 Codex·Claude Desktop 안내로 설치한 뒤 사용할 데이터 폴더만 승인합니다.
@@ -2392,7 +2432,7 @@ truthound-mcp plugin-fingerprint --distribution your-reviewed-distribution
 
 아이콘을 포함한 배포 번들은 Codex 플러그인과 같은 주황색 아이콘을 사용합니다. 이미 게시된 PyPI 3.3.0 패키지는 이 패키징 변경 이전 버전이므로 기존 `bundle` 명령으로 생성하면 아이콘이 없습니다. Claude에는 아이콘 포함 배포 파일을 사용하며 실행 패키지는 계속 `truthound[mcp]==3.3.0`으로 고정됩니다. 같은 버전이 이미 설치됐다면 확장을 재설치하고 승인한 폴더·도구 권한을 유지합니다.
 
-아래 명령으로 공개된 3.3.0 패키지를 설치하고 번들을 생성합니다. Claude Desktop에서 **Settings → Extensions → Advanced settings → Install Extension…** → 생성된 파일 선택·허용 폴더 설정 순서로 설치합니다. [공식 설치 안내](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop)를 참고하세요. 이는 사용자 지정 확장 설치이며 Claude 공식 디렉터리 등재를 뜻하지 않습니다.
+위의 아이콘 포함 배포 번들을 사용하거나, 아래 명령으로 아이콘 없는 번들을 생성합니다. Claude Desktop에서 **Settings → Extensions → Advanced settings → Install Extension…** → 내려받거나 생성한 파일 선택·허용 폴더 설정 순서로 설치합니다. [공식 설치 안내](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop)를 참고하세요. 이는 사용자 지정 확장 설치이며 Claude 공식 디렉터리 등재를 뜻하지 않습니다.
 
 ```bash
 python -m pip install --upgrade "truthound[mcp]==3.3.0"
@@ -3137,9 +3177,9 @@ files={별칭: 운영자_절대경로})`를 반환합니다. 팩터리는 네이
 통과하거나 `mostly`로 생략돼도 뒤 실패의 증거가 다른 컬럼으로 이동하지 않습니다.
 단독·배치 Core 실행은 같은 연결 규칙을 사용합니다.
 
-### Core 3.3.0 설치 후보
+### Core 3.3.0 설치
 
-`truthound` 0.1.5 플러그인은 고정 의존성 lock으로 공개 Core 3.3.0을 사용합니다. 별도 `truthound-core` 0.2.0 후보는 Core 3.3.0을 고정하며 Core 프로파일을 사용하려면 해당 버전을 PyPI에서 설치합니다. 전이 의존성은 설치 시 허용 범위에서 해석하며 이 별도 플러그인 후보에는 공개 인덱스 고정 lock을 포함하지 않습니다. 후보 CI는 소스 체크아웃 대신 새 wheel을 설치합니다.
+`truthound` 0.1.5 플러그인은 고정 의존성 lock으로 공개 Core 3.3.0을 사용합니다. 별도 `truthound-core` 0.2.0 플러그인는 Core 3.3.0을 고정하며 Core 프로파일을 사용하려면 해당 버전을 PyPI에서 설치합니다. 전이 의존성은 설치 시 허용 범위에서 해석하며 이 별도 플러그인에는 공개 인덱스 고정 lock을 포함하지 않습니다. 패키지 CI는 소스 체크아웃 대신 새 wheel을 설치합니다.
 
 ```bash
 codex plugin add truthound-core@truthound --json

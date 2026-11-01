@@ -1,5 +1,45 @@
 # Local MCP integration
 
+## Choose Local or Core
+
+Both configurations run the published Truthound 3.3.0 locally. Choose Local for simple file checks, or Core for drift, masking and schema validation too.
+
+In Codex, add the repository marketplace once, then install the plugin you need.
+
+```bash
+codex plugin marketplace add seadonggyun4/truthound --ref main
+```
+
+<a id="local-installation"></a>
+
+### Install Local
+
+In Codex, choose **Truthound Local → Install → Set up** and approve the data directory to read.
+
+```bash
+codex plugin add truthound@truthound
+```
+
+In Claude Desktop, download the bundle below and install it through **Settings → Extensions → Advanced settings → Install Extension…**, then configure allowed directories.
+
+[Local 3.3.0 MCPB](https://github.com/seadonggyun4/truthound/releases/download/mcp-desktop-3.3.0-1/truthound-3.3.0.mcpb) · [Installation details](#claude-desktop-bundle)
+
+<a id="core-installation"></a>
+
+### Install Core
+
+In Codex, choose **Truthound Core → Install → Set up**. Explicitly approve data directories and any required workspace, operator-control and sensitive-result permissions, then reconnect.
+
+```bash
+codex plugin add truthound-core@truthound
+```
+
+In Claude Desktop, download the bundle below and install it through **Settings → Extensions → Advanced settings → Install Extension…**, then configure allowed directories.
+
+[Core 3.3.0 MCPB](https://github.com/seadonggyun4/truthound/releases/download/mcp-desktop-3.3.0-1/truthound-3.3.0-core.mcpb) · [Permissions and advanced settings](#core-330-installation)
+
+Installation grants no data access. Both bundles are custom extensions, separate from official directory approval. Full Core parity through MCP has not been verified.
+
 ## Core data quality workflow
 
 1. Install the plugin for your client using the Codex or Claude Desktop instructions below, then approve only the data directory you intend to use.
@@ -2672,7 +2712,7 @@ exceptions returned as critical quality issues.
 
 The icon-enabled distribution bundle includes the same orange icon as the Codex plugin. The immutable PyPI 3.3.0 package predates this packaging change: its original `bundle` command produces an icon-free bundle. Use the icon-enabled distribution file for Claude; the runtime remains pinned to `truthound[mcp]==3.3.0`. Reinstall an existing same-version extension to refresh its icon, retaining the approved directory and tool permissions.
 
-Install the published 3.3.0 package and build its bundle with the commands below. In Claude Desktop, select **Settings → Extensions → Advanced settings → Install Extension…**, then choose the generated file and allowed directory. See the [official installation guide](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop). This is a custom extension installation, not a confirmed Claude directory listing.
+Use the published icon-enabled bundle above, or build an icon-free bundle with the commands below. In Claude Desktop, select **Settings → Extensions → Advanced settings → Install Extension…**, then choose the downloaded or generated file and allowed directory. See the [official installation guide](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop). This is a custom extension installation, not a confirmed Claude directory listing.
 
 Build the bundle from the matching installed release:
 
@@ -3463,9 +3503,9 @@ value counts and full rows. Passing earlier columns and checks suppressed by
 `mostly` do not shift evidence onto a later failure; standalone and batched Core
 execution use the same association.
 
-### Core 3.3.0 installation candidate
+### Core 3.3.0 installation
 
-The `truthound` 0.1.5 plugin pins published Core 3.3.0 with a frozen dependency lock. The separate `truthound-core` 0.2.0 candidate pins Core 3.3.0; install that version from PyPI for the Core profile. Transitive dependencies resolve within package bounds at installation; no frozen public-index lock is shipped for this separate plugin candidate. Candidate CI installs a freshly built wheel, not the source checkout.
+The `truthound` 0.1.5 plugin pins published Core 3.3.0 with a frozen dependency lock. The published repository marketplace provides `truthound-core` 0.2.0, which installs Core 3.3.0 from PyPI. Transitive dependencies resolve within package bounds at installation; no frozen public-index lock is shipped for this separate plugin. Package CI installs a freshly built wheel, not the source checkout.
 
 ```bash
 codex plugin add truthound-core@truthound --json
@@ -3475,7 +3515,7 @@ truthound-mcp bundle --profile core --wheel dist/truthound-3.3.0-py3-none-any.wh
 
 Installation grants no data access. Inside the installed UV project, use `python -m truthound.mcp.consent configure --allow-dir <approved-directory> --confirm`. Optional `--workspace-dir`, `--control-dir` and `--allow-sensitive-results` are separate operator grants. Configuration replaces all prior grants in `~/.truthound-core/permissions.json`; `python -m truthound.mcp.consent revoke` removes them. Changes close the session and invalidate retained handles; reconnect afterward. Individual execution plans still require trusted operator approval outside MCP.
 
-The Core MCPB exposes the current catalog and separate data, workspace, control and sensitive-result settings. Blank optional directories grant no access; sensitive disclosure defaults to false. Restart after editing desktop settings. The default bundle still exposes three summary tools. Core coverage remains partial; neither candidate has official directory approval.
+The Core MCPB exposes the current catalog and separate data, workspace, control and sensitive-result settings. Blank optional directories grant no access; sensitive disclosure defaults to false. Restart after editing desktop settings. The default bundle still exposes three summary tools. Core coverage remains partial; neither plugin has official directory approval.
 
 Windows Ray 2.58 owned local startup queries its existing SDK node client for the exact ALIVE node and valid manager port, avoiding the temporary `GlobalStateAccessor.GetNode` path that produced a native access violation. The scoped hooks are restored on success or failure; other threads and external clusters retain SDK behavior, and the startup deadline is not extended.
 

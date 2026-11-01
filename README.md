@@ -43,16 +43,18 @@ and ends at the closing </p> of the badge block above.
 
 ### MCP로 사용하기
 
-Codex와 Claude Desktop에서 Truthound Local을 연결해 승인한 로컬 데이터의 결측값·중복을 검사하고, 컬럼 요약과 PII 표본 탐지를 실행할 수 있습니다.
+Codex와 Claude Desktop에서 두 가지 Truthound MCP 구성을 선택할 수 있습니다. 둘 다 로컬에서 Truthound 3.3.0을 실행합니다.
 
-![Truthound Local 플러그인 화면 — 로컬 데이터 폴더 설정과 CSV 검사](docs/assets/truthound-local-plugin.png)
+| Truthound Local | Truthound Core |
+| --- | --- |
+| ![Truthound Local](docs/assets/truthound-local-plugin.png) | ![Truthound Core](docs/assets/truthound-core-plugin.png) |
 
-- **[Codex 설치 안내](docs/locales/ko/guides/mcp.md#openai-로컬-플러그인과-저장소-마켓플레이스)** — 준비 사항, 저장소 마켓플레이스 추가, 플러그인 설치와 허용 폴더 설정
-- **[Claude Desktop 설치 안내](docs/locales/ko/guides/mcp.md#claude-desktop-설치-파일)** — MCPB 다운로드, 확장 설치와 허용 폴더 설정
+| 구성 | 주요 용도 | 설치 안내 |
+| --- | --- | --- |
+| **Truthound Local** | 결측값·중복 검사, 컬럼 요약, PII 표본 탐지 | [Codex · Claude Desktop](docs/locales/ko/guides/mcp.md#local-installation) |
+| **Truthound Core** | 기본 검증·프로파일링·PII 및 드리프트 비교·마스킹·스키마 검증 | [Codex · Claude Desktop](docs/locales/ko/guides/mcp.md#core-installation) |
 
-설치 후에는 사용할 데이터 폴더를 별도로 승인해야 합니다. 다른 MCP 클라이언트의 설정은 [Registry·클라이언트 연결 안내](docs/locales/ko/guides/mcp.md#registry-메타데이터와-설치)를 참고하세요.
-
-기본 검증·프로파일링·PII 탐지 외에 Core 프로파일에서 드리프트 비교·마스킹·스키마 검증을 사용할 수 있습니다. [핵심 사용 흐름과 프로파일 선택](docs/locales/ko/guides/mcp.md#핵심-데이터-품질-작업)을 참고하세요.
+설치 후 데이터 폴더를 별도로 승인해야 합니다. Core는 작업공간·운영자 제어·민감 결과 권한을 추가로 구분하며, 전체 Core 기능의 MCP 동등성은 아직 검증되지 않았습니다.
 
 ---
 
@@ -73,7 +75,7 @@ Truthound is an open-source framework for data validation and data quality workf
 표현식 검증은 통과한 검사를 생략해도 실패 샘플·빈도·행을 해당 컬럼에 연결합니다.
 
 3.3.0의 `ai`·`mcp`·`all` extra는 Pydantic 2.11 이상을 요구합니다.
-`truthound-mcp bundle --profile core --output truthound-core.mcpb`로 Core 번들을 만듭니다. Truthound Local 플러그인 0.1.5와 별도 `truthound-core` 플러그인 후보는 Core 3.3.0을 고정하며 데이터·작업공간·승인 저장소·민감 결과 권한을 명시적으로 설정하고 변경 후 재연결합니다.
+`truthound-mcp bundle --profile core --output truthound-core.mcpb`로 Core 번들을 만듭니다. Truthound Local 플러그인 0.1.5와 별도 `truthound-core` 0.2.0 플러그인은 Core 3.3.0을 고정하며 데이터·작업공간·승인 저장소·민감 결과 권한을 명시적으로 설정하고 변경 후 재연결합니다.
 
 ## 프로젝트 소개 (Introduction)
 

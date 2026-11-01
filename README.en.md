@@ -43,16 +43,18 @@ and ends at the closing </p> of the badge block above.
 
 ### Use through MCP
 
-Connect Truthound Local to Codex or Claude Desktop to check approved local data for nulls and duplicates, summarize columns, and run sampled PII detection.
+Choose between two Truthound MCP configurations in Codex or Claude Desktop. Both run Truthound 3.3.0 locally.
 
-![Truthound Local plugin screen — approve a local data directory and check a CSV](docs/assets/truthound-local-plugin.png)
+| Truthound Local | Truthound Core |
+| --- | --- |
+| ![Truthound Local](docs/assets/truthound-local-plugin.png) | ![Truthound Core](docs/assets/truthound-core-plugin.png) |
 
-- **[Install in Codex](docs/guides/mcp.md#openai-local-plugin-and-repository-marketplace)** — prerequisites, repository marketplace setup, plugin installation, and directory approval
-- **[Install in Claude Desktop](docs/guides/mcp.md#claude-desktop-bundle)** — MCPB download, extension installation, and directory configuration
+| Plugin | Main uses | Installation |
+| --- | --- | --- |
+| **Truthound Local** | Null/duplicate checks, column summaries, sampled PII detection | [Codex · Claude Desktop](docs/guides/mcp.md#local-installation) |
+| **Truthound Core** | Validation, profiling, PII, drift comparison, masking and schema validation | [Codex · Claude Desktop](docs/guides/mcp.md#core-installation) |
 
-After installation, approve the data directories you want to use. For other MCP clients, see the [Registry and client connection guide](docs/guides/mcp.md#registry-metadata-and-installation).
-
-Use the Core profile for drift comparison, masking and schema validation alongside basic validation, profiling and PII detection. See [the core workflow and profile selection](docs/guides/mcp.md#core-data-quality-workflow).
+Approve data directories after installation. Core separates workspace, operator-control and sensitive-result permissions; full Core parity through MCP has not been verified.
 
 ---
 
@@ -273,7 +275,7 @@ The root package intentionally exposes a small API.
 Expression validation keeps failure samples, counts and rows attached to the reported column after passing checks are omitted.
 
 The `ai`, `mcp` and `all` extras share a Pydantic 2.11 minimum in 3.3.0.
-Build a Core MCPB with `truthound-mcp bundle --profile core --output truthound-core.mcpb`. Truthound Local plugin 0.1.5 and the separate `truthound-core` plugin candidate pin Core 3.3.0 and uses explicit data, workspace, control and disclosure grants; reconnect after changes.
+Build a Core MCPB with `truthound-mcp bundle --profile core --output truthound-core.mcpb`. Truthound Local plugin 0.1.5 and the separate `truthound-core` 0.2.0 plugin pin Core 3.3.0 and use explicit data, workspace, control and disclosure grants; reconnect after changes.
 
 ## License
 
