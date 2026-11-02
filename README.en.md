@@ -46,7 +46,7 @@ and ends at the closing </p> of the badge block above.
 See the [3.3.1 release notes](docs/releases/truthound-3.3.1.md) for changes and publication evidence.
 
 
-Choose between two Truthound MCP configurations in Codex or Claude Desktop. Both run Truthound 3.3.1 locally.
+Choose between two Truthound MCP configurations in Codex or Claude Desktop. Both run Truthound 3.3.1 locally. For local CSV/Parquet null checks, duplicate detection, profiling and sampled PII, start with the [data validation MCP guide](https://truthound.netlify.app/en/guides/data-validation-mcp/).
 
 | Truthound Local | Truthound Core |
 | --- | --- |

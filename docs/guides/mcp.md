@@ -1,5 +1,7 @@
 # Local MCP integration
 
+For a concise overview of local file checks, read [Data validation MCP for CSV and Parquet](data-validation-mcp.md). This reference also covers the separate Core profile.
+
 ## Choose Local or Core
 
 Both configurations run the published Truthound 3.3.1 locally. Choose Local for simple file checks, or Core for drift, masking and schema validation too.

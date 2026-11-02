@@ -46,7 +46,7 @@ and ends at the closing </p> of the badge block above.
 3.3.1 변경과 실제 배포 검증은 [릴리스 노트](docs/releases/truthound-3.3.1.md)를 참고하세요.
 
 
-Codex와 Claude Desktop에서 두 가지 Truthound MCP 구성을 선택할 수 있습니다. 둘 다 로컬에서 Truthound 3.3.1을 실행합니다.
+Codex와 Claude Desktop에서 두 가지 Truthound MCP 구성을 선택할 수 있습니다. 둘 다 로컬에서 Truthound 3.3.1을 실행합니다. 로컬 CSV·Parquet 결측·중복 검사, 프로파일링, 개인정보 표본 탐지는 [데이터 검증 MCP 가이드](https://truthound.netlify.app/guides/data-validation-mcp/)에서 시작하세요.
 
 | Truthound Local | Truthound Core |
 | --- | --- |

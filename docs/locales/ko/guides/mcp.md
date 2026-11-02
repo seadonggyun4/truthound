@@ -1,5 +1,7 @@
 # 로컬 MCP 연동
 
+간단한 파일 검사는 [CSV·Parquet 데이터 검증 MCP 가이드](data-validation-mcp.md)에서 시작하세요. 이 상세 문서는 별도 Core 프로파일도 함께 설명합니다.
+
 ## Local과 Core 선택
 
 두 구성 모두 로컬에서 공개 PyPI의 Truthound 3.3.1을 실행합니다. 간단한 파일 검사는 Local, 드리프트·마스킹·스키마 검증까지 필요하면 Core를 선택하세요.
