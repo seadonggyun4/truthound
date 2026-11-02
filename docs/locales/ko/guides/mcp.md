@@ -2459,7 +2459,7 @@ Anthropic 승인이나 GUI 검증을 주장하지 않습니다. 개발 환경·�
 
 ## OpenAI 로컬 플러그인과 저장소 마켓플레이스
 
-OpenAI 플러그인은 Core와 별도인 버전 `0.1.5`이며 공개 PyPI의
+OpenAI 플러그인은 Core와 별도인 버전 `0.1.6`이며 공개 PyPI의
 `truthound[mcp]==3.3.0`과 고정된 UV dependency lock을 사용합니다.
 로컬 데스크톱용이며 원격 서비스나 ChatGPT 웹 커넥터가 아닙니다.
 UV를 설치해 데스크톱 앱의 PATH에서 사용할 수 있어야 하며 최초 설치에는
@@ -3179,7 +3179,7 @@ files={별칭: 운영자_절대경로})`를 반환합니다. 팩터리는 네이
 
 ### Core 3.3.0 설치
 
-`truthound` 0.1.5 플러그인은 고정 의존성 lock으로 공개 Core 3.3.0을 사용합니다. 별도 `truthound-core` 0.2.0 플러그인는 Core 3.3.0을 고정하며 Core 프로파일을 사용하려면 해당 버전을 PyPI에서 설치합니다. 전이 의존성은 설치 시 허용 범위에서 해석하며 이 별도 플러그인에는 공개 인덱스 고정 lock을 포함하지 않습니다. 패키지 CI는 소스 체크아웃 대신 새 wheel을 설치합니다.
+`truthound` 0.1.6 플러그인은 고정 의존성 lock으로 공개 Core 3.3.0을 사용합니다. 별도 `truthound-core` 0.2.0 플러그인는 Core 3.3.0을 고정하며 Core 프로파일을 사용하려면 해당 버전을 PyPI에서 설치합니다. 전이 의존성은 설치 시 허용 범위에서 해석하며 이 별도 플러그인에는 공개 인덱스 고정 lock을 포함하지 않습니다. 패키지 CI는 소스 체크아웃 대신 새 wheel을 설치합니다.
 
 ```bash
 codex plugin add truthound-core@truthound --json
@@ -3202,3 +3202,38 @@ Windows 표준 스트림을 복제한 경우를 포함해 프로토콜 디스크
 소유한 상주 worker의 응답 reader는 파이프 가용성을 확인하며, 취소 시 다른 writer가 닫히기를 기다리지 않고 중단합니다. 기존 응답 크기와 시간 제한은 유지합니다.
 
 Windows 바이트 모드 파이프에서는 writer가 열린 상태에서도 크기 0 가용성 조회의 바이트 수를 사용합니다.
+
+## Claude Code: Styxis marketplace
+
+Truthound는 AI Agent를 위한 로컬 우선 데이터 품질·검증 도구입니다.
+Local plugin은 승인된 CSV·Parquet의 결측값·중복 행 검사, 열 타입·집계
+프로파일링, 표본 기반 개인정보 탐지를 제공합니다. 임의 스키마를 받는
+검증, RAG 답변의 의미 품질 평가, 데이터 편집, 법적 준수 판정은 제공하지
+않습니다. RAG·eval은 해당 워크플로에 넣을 표 형식 입력의 사전 검사를
+뜻합니다. 셀 원문은 반환하지 않지만 경로·열 이름·집계는 host 모델에 전달될 수 있습니다.
+
+```bash
+claude plugin marketplace add seadonggyun4/styxis-plugin
+claude plugin install truthound@styxis-plugin
+```
+
+Plugin 0.1.6은 독립 `.claude-plugin/plugin.json`과
+`${CLAUDE_PLUGIN_ROOT}` 기반 절대경로 launcher를 제공합니다.
+portable `mcp.json`과 Codex 호환 `.mcp.json`의 plugin-relative `cwd`는
+유지합니다. Local runtime은 배포된 `truthound[mcp]==3.3.0`에 고정됩니다.
+소스의 `tools/list` 설명·schema 개선은 향후 Core 배포 후 적용됩니다.
+plugin 설치만으로 해당 의존성이 업그레이드되지는 않습니다.
+
+setup skill에서 정확한 기존 데이터 디렉터리를 승인해야 합니다. 설치는
+데이터 접근을 승인하지 않으며, 승인 정보가 없으면 호출이 차단됩니다.
+`permissions.py --revoke`로 철회합니다. 호환성을 위해 `check_file`,
+`profile_file`, `scan_pii` 이름을 유지하고 서버 namespace로 식별합니다.
+Local에 별도 alias나 Core tool을 추가하지 않습니다. 의존성 준비 뒤
+stdio로 로컬 실행하며, 최초 설치에는 패키지 다운로드가 필요할 수 있습니다.
+오프라인 실행에는 준비된 runtime이 필요합니다.
+
+Official MCP Registry에는 3.3.0이 이미 게시되어 있습니다. 소스 `server.json`의
+개선 문구는 다음 불변 Registry 버전을 위한 제안이며 현재 게시 내용이
+변경됐다는 뜻이 아닙니다. Git push와 Registry 게시는 별개입니다.
+재현 가능한 합성 파일 검증은
+[discovery evaluation](https://github.com/seadonggyun4/styxis-plugin/tree/main/evaluation)을 참고하세요.

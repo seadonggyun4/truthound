@@ -1,0 +1,38 @@
+{
+  "name": "truthound",
+  "version": "0.1.6",
+  "description": "Truthound is a local-first data quality and validation tool for AI agents. Validate CSV/Parquet missing values and duplicate rows, profile columns, and scan sampled PII in approved directories without uploading raw values. 승인한 로컬 데이터의 결측·중복 검사, 프로파일링, 개인정보 표본 탐지.",
+  "author": {
+    "name": "Truthound contributors",
+    "url": "https://github.com/seadonggyun4/truthound"
+  },
+  "homepage": "https://truthound.netlify.app/guides/mcp/",
+  "repository": "https://github.com/seadonggyun4/truthound",
+  "license": "Apache-2.0",
+  "keywords": [
+    "data-quality",
+    "data-validation",
+    "csv",
+    "parquet",
+    "data-profiling",
+    "pii-detection",
+    "local-first",
+    "mcp"
+  ],
+  "skills": "./skills/",
+  "mcpServers": {
+    "truthound": {
+      "type": "stdio",
+      "command": "uv",
+      "args": [
+        "run",
+        "--no-config",
+        "--frozen",
+        "--directory",
+        "${CLAUDE_PLUGIN_ROOT}",
+        "python",
+        "${CLAUDE_PLUGIN_ROOT}/server.py"
+      ]
+    }
+  }
+}

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import tomllib
 from pathlib import Path
 
@@ -75,17 +76,29 @@ def runtime_argv(document: dict, directory: Path) -> list[str]:
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--print-command", type=Path)
+    parser.add_argument("--prepare-registry-version", help="Prepare a distinct registry-only prerelease; never authenticate or publish")
+    parser.add_argument("--output", type=Path)
     args = parser.parse_args()
     document = json.loads((ROOT / "server.json").read_text(encoding="utf-8"))
     version = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))["project"]["version"]
     validate_metadata(
         document, version, [(ROOT / name).read_text(encoding="utf-8") for name in ("README.md", "README.en.md")]
     )
+    if args.prepare_registry_version:
+        if not args.output or not re.fullmatch(re.escape(version) + r"-[a-z][a-z0-9.-]*", args.prepare_registry_version):
+            parser.error("Preparation requires --output and a distinct package-version-prefixed prerelease")
+        document["version"] = args.prepare_registry_version
+        schema = json.loads((ROOT / "verification/schemas/mcp-server-2025-12-11.schema.json").read_text())
+        Draft7Validator(schema, format_checker=FormatChecker()).validate(document)
+        args.output.write_text(json.dumps(document, indent=2) + "\n")
+    elif args.output:
+        parser.error("--output requires --prepare-registry-version")
     print(
         json.dumps(
             dict(
                 name=NAME,
-                version=version,
+                version=document["version"],
+                package_version=version,
                 schema_valid=True,
                 publication_verified=False,
                 argv=runtime_argv(document, args.print_command) if args.print_command else None,

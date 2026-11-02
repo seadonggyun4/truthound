@@ -1,6 +1,6 @@
 ---
 name: truthound-setup
-description: Set up or revoke explicitly approved local data-directory access for the Truthound desktop MCP plugin. Use for Truthound installation or permission changes, not general data analysis.
+description: Install Truthound local MCP and grant or revoke an exact directory for CSV/Parquet data-quality checks, aggregate profiling and sampled PII detection. Use for setup and permission changes; installation alone grants no access. 로컬 데이터 검사 도구 설치·디렉터리 승인.
 ---
 
 # Truthound local setup

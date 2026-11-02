@@ -13,13 +13,32 @@ if TYPE_CHECKING:
 TOOLS = {
     "check_file": (
         "check",
-        "Check nulls and duplicate rows in a local file; quality failures are successful tool executions.",
+        "Validate an approved local CSV or Parquet dataset for missing values (nulls) and "
+        "duplicate rows. Use for data-quality checks, RAG ingestion preparation or evaluation "
+        "dataset validation when these checks are sufficient. Returns bounded aggregate check "
+        "results; quality failures are successful tool executions, not transport errors. "
+        "Runs locally with explicit directory consent; no raw values are returned or uploaded. "
+        "Does not edit data, accept custom schema/rules, judge RAG answer quality or certify compliance. "
+        "데이터 품질: 승인된 로컬 CSV·Parquet의 결측값과 중복 행 검사.",
     ),
     "profile_file": (
         "profile",
-        "Return bounded column types and aggregate statistics; no sample values.",
+        "Profile an approved local CSV or Parquet dataset before analysis, RAG ingestion or "
+        "evaluation. Use to inspect column types and aggregate statistics, including null counts. "
+        "Returns a bounded summary with truncation indicators, without sample/raw values. "
+        "Runs locally with explicit directory consent and does not upload or edit data. "
+        "Inferred types are observations, not validation against a supplied schema; no charts "
+        "or semantic RAG evaluation. 데이터 프로파일링: 승인된 로컬 파일의 열 타입·집계 통계.",
     ),
-    "scan_pii": ("scan", "Detect potential PII using Core sampling; finding counts are estimates."),
+    "scan_pii": (
+        "scan",
+        "Scan an approved local CSV or Parquet dataset for likely PII (sensitive personal data). "
+        "Use for sensitive-data screening before RAG ingestion or sharing an evaluation dataset. "
+        "Returns bounded finding summaries and sampled count estimates, never matched raw values. "
+        "Runs locally with explicit directory consent and does not upload or edit data. "
+        "Sampling can miss PII; a clean scan is not proof of absence or a legal compliance "
+        "determination. Not cloud DLP or redaction. 개인정보·민감정보 탐지: 표본 기반 로컬 검사.",
+    ),
 }
 
 
@@ -61,7 +80,10 @@ async def serve(policy: MCPPolicy) -> None:
                 description=description,
                 inputSchema={
                     "type": "object",
-                    "properties": {"path": {"type": "string", "minLength": 1, "maxLength": 4096}},
+                    "properties": {"path": {
+                        "type": "string", "minLength": 1, "maxLength": 4096,
+                        "description": "Absolute path to an existing CSV or Parquet file inside an operator-approved directory. No URLs or directory grants.",
+                    }},
                     "required": ["path"],
                     "additionalProperties": False,
                 },
@@ -71,7 +93,7 @@ async def serve(policy: MCPPolicy) -> None:
                         "schema_version": {"const": 1},
                         "operation": {"type": "string"},
                         "ok": {"type": "boolean"},
-                        "data": {"type": ["object", "null"]},
+                        "data": {"type": ["object", "null"], "description": "Bounded aggregate evidence only; no raw row/sample/matched values. Null on execution error."},
                         "truncated": {"type": "boolean"},
                         "error": {"type": ["object", "null"]},
                     },

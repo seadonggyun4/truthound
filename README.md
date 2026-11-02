@@ -56,6 +56,8 @@ Codex와 Claude Desktop에서 두 가지 Truthound MCP 구성을 선택할 수 �
 
 설치 후 데이터 폴더를 별도로 승인해야 합니다. Core는 작업공간·운영자 제어·민감 결과 권한을 추가로 구분하며, 전체 Core 기능의 MCP 동등성은 아직 검증되지 않았습니다.
 
+Claude Code 로컬 검사는 [Styxis marketplace](https://github.com/seadonggyun4/styxis-plugin)의 `truthound` plugin으로 설치할 수 있습니다. [설치·권한·Local 기능 범위](https://truthound.netlify.app/guides/mcp/#claude-code-styxis-marketplace)를 먼저 확인하세요.
+
 ---
 
 ## 개요 (Overview)

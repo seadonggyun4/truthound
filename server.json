@@ -2,23 +2,56 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.seadonggyun4/truthound",
   "title": "Truthound",
-  "description": "Validate local data files, summarize profiles and detect PII without returning raw values.",
+  "description": "Local data quality for CSV/Parquet: nulls, duplicates, profiles, sampled PII; directory consent.",
   "version": "3.3.0",
-  "repository": {"url": "https://github.com/seadonggyun4/truthound", "source": "github"},
+  "repository": {
+    "url": "https://github.com/seadonggyun4/truthound",
+    "source": "github"
+  },
   "websiteUrl": "https://truthound.netlify.app/guides/mcp/",
-  "icons": [{"src": "https://raw.githubusercontent.com/seadonggyun4/truthound/a0257bc2e05edf32815c7a5029bdbe8321df0121/plugins/truthound/assets/icon.png", "mimeType": "image/png", "sizes": ["1254x1254"]}],
-  "packages": [{
-    "registryType": "pypi",
-    "registryBaseUrl": "https://pypi.org",
-    "identifier": "truthound",
-    "version": "3.3.0",
-    "runtimeHint": "uvx",
-    "runtimeArguments": [{"type": "named", "name": "--with", "value": "truthound[mcp]==3.3.0"}],
-    "packageArguments": [
-      {"type": "positional", "value": "mcp"},
-      {"type": "positional", "value": "serve"},
-      {"type": "named", "name": "--allow-dir", "description": "An absolute local directory explicitly approved for data validation.", "format": "filepath", "isRequired": true}
-    ],
-    "transport": {"type": "stdio"}
-  }]
+  "icons": [
+    {
+      "src": "https://raw.githubusercontent.com/seadonggyun4/truthound/a0257bc2e05edf32815c7a5029bdbe8321df0121/plugins/truthound/assets/icon.png",
+      "mimeType": "image/png",
+      "sizes": [
+        "1254x1254"
+      ]
+    }
+  ],
+  "packages": [
+    {
+      "registryType": "pypi",
+      "registryBaseUrl": "https://pypi.org",
+      "identifier": "truthound",
+      "version": "3.3.0",
+      "runtimeHint": "uvx",
+      "runtimeArguments": [
+        {
+          "type": "named",
+          "name": "--with",
+          "value": "truthound[mcp]==3.3.0"
+        }
+      ],
+      "packageArguments": [
+        {
+          "type": "positional",
+          "value": "mcp"
+        },
+        {
+          "type": "positional",
+          "value": "serve"
+        },
+        {
+          "type": "named",
+          "name": "--allow-dir",
+          "description": "An absolute local directory explicitly approved for data validation.",
+          "format": "filepath",
+          "isRequired": true
+        }
+      ],
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
 }

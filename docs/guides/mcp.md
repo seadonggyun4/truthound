@@ -2742,7 +2742,7 @@ The bundle never contains project data, development environments or internal not
 
 ## OpenAI local plugin and repository marketplace
 
-The standalone OpenAI plugin is version `0.1.5`, pins the published Core
+The standalone OpenAI plugin is version `0.1.6`, pins the published Core
 `truthound[mcp]==3.3.0`, and includes a frozen UV dependency lock. It is local
 desktop software, not a hosted service or a ChatGPT web connector. Install UV
 and make it available on the desktop application's PATH. First setup needs
@@ -3505,7 +3505,7 @@ execution use the same association.
 
 ### Core 3.3.0 installation
 
-The `truthound` 0.1.5 plugin pins published Core 3.3.0 with a frozen dependency lock. The published repository marketplace provides `truthound-core` 0.2.0, which installs Core 3.3.0 from PyPI. Transitive dependencies resolve within package bounds at installation; no frozen public-index lock is shipped for this separate plugin. Package CI installs a freshly built wheel, not the source checkout.
+The `truthound` 0.1.6 plugin pins published Core 3.3.0 with a frozen dependency lock. The published repository marketplace provides `truthound-core` 0.2.0, which installs Core 3.3.0 from PyPI. Transitive dependencies resolve within package bounds at installation; no frozen public-index lock is shipped for this separate plugin. Package CI installs a freshly built wheel, not the source checkout.
 
 ```bash
 codex plugin add truthound-core@truthound --json
@@ -3528,3 +3528,39 @@ The protocol descriptor inheritance flag is explicitly cleared, including Window
 Owned resident reply readers poll pipe availability and stop on cancellation without waiting for another writer to close. The existing reply-size and timeout limits still apply.
 
 On Windows byte-mode pipes the zero-size availability check uses the byte count, including when the writer stays open.
+
+## Claude Code: Styxis marketplace
+
+Truthound is a local-first data quality and validation tool for AI agents. The
+Local plugin checks missing values and duplicate rows, profiles column types and
+aggregate statistics, and scans sampled PII in approved CSV/Parquet files. It
+does not accept an arbitrary validation schema, evaluate RAG answer quality,
+edit datasets or establish legal compliance. RAG and eval refer to preparing
+tabular inputs for those workflows. Raw cell values are not returned; paths,
+column names and aggregates can still reach the host model provider.
+
+```bash
+claude plugin marketplace add seadonggyun4/styxis-plugin
+claude plugin install truthound@styxis-plugin
+```
+
+Plugin 0.1.6 has an independent `.claude-plugin/plugin.json` and a Claude-specific
+absolute launcher using `${CLAUDE_PLUGIN_ROOT}`. The portable `mcp.json` and
+Codex compatibility `.mcp.json` retain their plugin-relative `cwd`. The public
+Local runtime remains frozen to published `truthound[mcp]==3.3.0`. Source changes
+to `tools/list` descriptions and schemas take effect only in a future Core
+package release; installing this plugin does not upgrade that dependency.
+
+Approve only the exact existing data directory through the setup skill.
+Installation grants no access; missing consent denies calls. Revoke access with
+`permissions.py --revoke`. The installed names remain `check_file`,
+`profile_file`, `scan_pii` for client compatibility; the server namespace supplies
+product identity. No aliases or extra Core tools are added to the Local surface.
+Execution after dependency setup is local over stdio; first setup can download
+packages. Offline execution requires the runtime already to be available.
+
+The Official MCP Registry already lists 3.3.0. The checked-in `server.json`
+description is a proposal for the next immutable Registry version, not proof
+that the live record changed. Registry publication is separate from Git push.
+See the [discovery evaluation](https://github.com/seadonggyun4/styxis-plugin/tree/main/evaluation)
+for reproducible synthetic-file installation and invocation evidence.

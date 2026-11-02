@@ -56,6 +56,8 @@ Choose between two Truthound MCP configurations in Codex or Claude Desktop. Both
 
 Approve data directories after installation. Core separates workspace, operator-control and sensitive-result permissions; full Core parity through MCP has not been verified.
 
+Install the local `truthound` Claude Code plugin through the [Styxis marketplace](https://github.com/seadonggyun4/styxis-plugin). See [installation, consent and Local capabilities](https://truthound.netlify.app/en/guides/mcp/#claude-code-styxis-marketplace).
+
 ---
 
 ## Overview

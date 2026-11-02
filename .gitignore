@@ -99,6 +99,7 @@ tests/fixtures/**/*.py[cod]
 !plugins/truthound/mcp.json
 !plugins/truthound/.mcp.json
 !plugins/truthound/.codex-plugin/plugin.json
+!plugins/truthound/.claude-plugin/plugin.json
 !plugins/truthound-core/plugin.json
 !plugins/truthound-core/mcp.json
 !plugins/truthound-core/.mcp.json

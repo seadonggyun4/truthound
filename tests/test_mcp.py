@@ -102,6 +102,7 @@ def test_stdio_initialize_discovery_call_and_errors(dataset):
         params = StdioServerParameters(
             command=sys.executable,
             args=["-m", "truthound.mcp", "serve", "--allow-dir", str(dataset.parent)],
+            env={"PYTHONPATH": str(Path(__file__).resolve().parents[1] / "src")},
         )
         async with stdio_client(params) as (read, write):
             async with ClientSession(read, write) as client:
@@ -111,6 +112,14 @@ def test_stdio_initialize_discovery_call_and_errors(dataset):
                 assert initialized.protocolVersion == "2025-11-25"
                 tools = await client.list_tools()
                 assert {t.name for t in tools.tools} == {"check_file", "profile_file", "scan_pii"}
+                for tool in tools.tools:
+                    assert tool.annotations.readOnlyHint is True
+                    assert tool.annotations.openWorldHint is False
+                    assert tool.inputSchema["additionalProperties"] is False
+                    assert "operator-approved" in tool.inputSchema["properties"]["path"]["description"]
+                    assert "CSV or Parquet" in tool.description
+                    assert "consent" in tool.description
+                assert "custom schema" in tools.tools[0].description
                 result = await client.call_tool("profile_file", {"path": str(dataset)})
                 assert not result.isError
                 assert result.structuredContent["data"]["row_count"] == 3

@@ -18,6 +18,10 @@ keywords = [
     "polars",
     "pii-detection",
     "data-masking",
+    "mcp",
+    "csv",
+    "parquet",
+    "data-profiling",
 ]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
@@ -396,6 +400,9 @@ truthound-mcp = "truthound.mcp.__main__:main"
 truthound = "truthound.cli:app"
 
 [project.urls]
+Documentation = "https://truthound.netlify.app/"
+"Local MCP" = "https://truthound.netlify.app/guides/mcp/"
+"Claude marketplace" = "https://github.com/seadonggyun4/styxis-plugin"
 Homepage = "https://github.com/seadonggyun4/Truthound"
 Repository = "https://github.com/seadonggyun4/Truthound"
 Issues = "https://github.com/seadonggyun4/Truthound/issues"
