@@ -1,5 +1,7 @@
 # truthound check
 
+> **CLI 명령 대신 MCP로 데이터를 검사하려면** [데이터 검증 MCP 안내](../../guides/data-validation-mcp.md)에서 승인된 CSV·Parquet의 결측·중복 검사, 프로파일링과 개인정보 표본 탐지를 확인하고 [실제 결과를 재현](../../guides/local-mcp-example.md)하세요. Local MCP는 이 CLI 명령의 사용자 지정 검증기 옵션을 받지 않습니다.
+
 CLI 명령 실행에서 Validate을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
 
 ## Synopsis

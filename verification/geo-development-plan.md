@@ -30,3 +30,11 @@ needed for these documentation changes. Private source details are omitted.
 Local QA completed: 57 existing documentation/public-surface/deployment-identity
 contracts passed, full/public strict builds and links passed, both Korean checks
 and generated public surface passed. Live serving remains a separate gate.
+
+Search-entry follow-up: branded diagnostic search returned existing file-source
+and check-CLI pages, not the new focused guide. Add contextual links to the MCP
+guide and reproducible example on those two established pages in both languages.
+Extend exact deployment page hashes to include them. Branded diagnostics are not
+unbranded discovery successes. Repeat required docs gates for this change.
+
+Keep both deployment-verification guides aligned with the expanded explicit page allowlist; avoid a stale hardcoded page count.

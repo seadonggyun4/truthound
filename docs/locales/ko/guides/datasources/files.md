@@ -1,5 +1,7 @@
 # 파일-Based Data Sources
 
+> **AI 에이전트로 로컬 CSV·Parquet을 검사하려면** [데이터 검증 MCP 안내](../data-validation-mcp.md)에서 결측·중복 검사, 집계 프로파일링과 개인정보 표본 탐지에 맞는 Local 도구를 확인하세요. [실제 CSV·Parquet 실행 예제](../local-mcp-example.md)도 제공합니다. 이 페이지는 Python 파일 데이터 소스를 다룹니다.
+
 실무 운영 가이드에서 Truthound, JSON, CSV, Parquet, NDJSON을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
 
 ## 개요

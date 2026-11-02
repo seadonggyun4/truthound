@@ -1,5 +1,7 @@
 # File-Based Data Sources
 
+> **Using an AI agent with local CSV or Parquet?** The [data validation MCP guide](../data-validation-mcp.md) maps missing-value and duplicate checks, aggregate profiling and sampled PII screening to the three Local tools. See the [actual CSV/Parquet execution example](../local-mcp-example.md). This page covers Python file data sources.
+
 This document covers file-based data sources in Truthound, including CSV, Parquet, JSON, and NDJSON formats.
 
 ## Overview

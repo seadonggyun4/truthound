@@ -1,5 +1,7 @@
 # truthound check
 
+> **Need data checks through MCP instead of a CLI command?** Start with [data validation MCP](../../guides/data-validation-mcp.md) for approved local CSV/Parquet null and duplicate checks, profiling and sampled PII screening, then [reproduce the actual results](../../guides/local-mcp-example.md). Local MCP does not accept this CLI command's custom validator options.
+
 Validate data quality in a file. This command runs validators against your data and reports any issues found.
 
 ## Synopsis

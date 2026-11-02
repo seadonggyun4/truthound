@@ -141,6 +141,6 @@ python docs/scripts/verify_public_surface.py --manifest docs/public_docs.yml --s
 
 ## 공개 배포 식별 정보
 
-공개·한국어 빌드 gate 이후 `deployment-manifest.json`에 소스 Git 커밋, 패키지 버전과 공개 검증 문서 6개의 SHA-256 해시만 기록합니다. 환경 변수, 비공개 기록, 임의 파일을 수집하지 않습니다. 이 기록은 Release CI 성공이나 PyPI 게시 증거를 대신하지 않습니다.
+공개·한국어 빌드 gate 이후 `deployment-manifest.json`에 소스 Git 커밋, 패키지 버전과 명시적으로 허용한 공개 검증 문서의 SHA-256 해시만 기록합니다. 허용 목록에는 MCP 참조·작업 안내·재현 예제, 기존 파일·CLI 진입 문서, CI 검사와 배포 검증 문서가 두 언어로 포함됩니다. 환경 변수, 비공개 기록, 임의 파일을 수집하지 않습니다. 이 기록은 Release CI 성공이나 PyPI 게시 증거를 대신하지 않습니다.
 
 `https://truthound.netlify.app/deployment-manifest.json`의 `source_commit`이 최종 목표 커밋과 같은지 확인하고 고정된 공개 페이지 각각의 실제 응답 바이트를 `page_sha256`과 대조합니다. 이전 커밋, 누락 페이지, 해시 불일치는 배포 검증 실패입니다. 기본 한국어 페이지는 `/guides/.../`, 영어는 `/en/guides/.../`를 사용합니다. HTTP 200과 문구 일치만으로 배포 커밋을 증명하지 않습니다.
