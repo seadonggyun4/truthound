@@ -2,7 +2,7 @@
 
 ## Local과 Core 선택
 
-두 구성 모두 로컬에서 공개 PyPI의 Truthound 3.3.0을 실행합니다. 간단한 파일 검사는 Local, 드리프트·마스킹·스키마 검증까지 필요하면 Core를 선택하세요.
+두 구성 모두 로컬에서 공개 PyPI의 Truthound 3.3.1을 실행합니다. 간단한 파일 검사는 Local, 드리프트·마스킹·스키마 검증까지 필요하면 Core를 선택하세요.
 
 Codex에서는 저장소 마켓플레이스를 한 번 추가한 뒤 원하는 플러그인을 설치합니다.
 
@@ -22,7 +22,7 @@ codex plugin add truthound@truthound
 
 Claude Desktop에서는 아래 번들을 내려받아 **Settings → Extensions → Advanced settings → Install Extension…**에서 설치한 뒤 허용 폴더를 설정합니다.
 
-[Local 3.3.0 MCPB](https://github.com/seadonggyun4/truthound/releases/download/mcp-desktop-3.3.0-1/truthound-3.3.0.mcpb) · [설치 상세](#claude-desktop-설치-파일)
+[Local 3.3.1 MCPB](https://github.com/seadonggyun4/truthound/releases/download/v3.3.1/truthound-3.3.1.mcpb) · [설치 상세](#claude-desktop-설치-파일)
 
 <a id="core-installation"></a>
 
@@ -36,7 +36,7 @@ codex plugin add truthound-core@truthound
 
 Claude Desktop에서는 아래 번들을 내려받아 **Settings → Extensions → Advanced settings → Install Extension…**에서 설치한 뒤 허용 폴더를 설정합니다.
 
-[Core 3.3.0 MCPB](https://github.com/seadonggyun4/truthound/releases/download/mcp-desktop-3.3.0-1/truthound-3.3.0-core.mcpb) · [권한·고급 설정](#core-330-설치)
+[Core 3.3.1 MCPB](https://github.com/seadonggyun4/truthound/releases/download/v3.3.1/truthound-3.3.1-core.mcpb) · [권한·고급 설정](#core-331-설치)
 
 설치만으로 데이터 접근 권한이 생기지 않습니다. 두 번들은 사용자 지정 확장이며 공식 디렉터리 심사 승인과는 별개입니다. Core의 전체 MCP 동등성은 아직 검증되지 않았습니다.
 
@@ -55,7 +55,7 @@ Claude Desktop에서는 아래 번들을 내려받아 **Settings → Extensions 
 | “스키마를 학습하고 합의한 스키마로 검증해줘.” | `schema_learn`; `schema_spec`을 지정한 `validation_check` |
 | “기준 데이터와 이번 배치의 드리프트를 비교해줘.” | 두 입력을 asset으로 등록한 뒤 `drift_compare` |
 
-클라이언트 환경에 `truthound[mcp]==3.3.0`을 설치하고 `truthound-mcp serve --profile core --allow-dir /absolute/path/to/data`로 실행합니다. 스키마 내용·마스킹된 행을 반환하려면 운영자가 `--allow-sensitive-results`를 명시적으로 허용해야 합니다. 설치만으로 권한이 부여되지는 않습니다. 결과가 핸들로 반환되면 해당 산출물을 읽고 사용 후 핸들을 해제합니다. 기본 요약 응답에는 원시 데이터가 포함되지 않습니다.
+클라이언트 환경에 `truthound[mcp]==3.3.1`을 설치하고 `truthound-mcp serve --profile core --allow-dir /absolute/path/to/data`로 실행합니다. 스키마 내용·마스킹된 행을 반환하려면 운영자가 `--allow-sensitive-results`를 명시적으로 허용해야 합니다. 설치만으로 권한이 부여되지는 않습니다. 결과가 핸들로 반환되면 해당 산출물을 읽고 사용 후 핸들을 해제합니다. 기본 요약 응답에는 원시 데이터가 포함되지 않습니다.
 
 기존 Core·MCP 기능은 그대로 유지됩니다. 상세 설정과 수명주기는 이 가이드의 뒤쪽에서 설명하며 이 빠른 사용 흐름에서는 나열하지 않습니다.
 
@@ -71,7 +71,7 @@ stdio를 지원하는 에이전트에서 사용할 수 있습니다.
 worker 시작 시 사용하지 않는 검증 의존성을 불러오는 일을 줄입니다.
 
 ```bash
-pip install "truthound[mcp]==3.3.0"
+pip install "truthound[mcp]==3.3.1"
 truthound-mcp serve --allow-dir /absolute/path/to/data
 ```
 
@@ -2428,19 +2428,19 @@ truthound-mcp plugin-fingerprint --distribution your-reviewed-distribution
 
 ## Claude Desktop 설치 파일
 
-[아이콘 포함 3.3.0 번들 다운로드](https://github.com/seadonggyun4/truthound/releases/download/mcp-desktop-3.3.0-1/truthound-3.3.0.mcpb).
+[아이콘 포함 3.3.1 번들 다운로드](https://github.com/seadonggyun4/truthound/releases/download/v3.3.1/truthound-3.3.1.mcpb).
 
-아이콘을 포함한 배포 번들은 Codex 플러그인과 같은 주황색 아이콘을 사용합니다. 이미 게시된 PyPI 3.3.0 패키지는 이 패키징 변경 이전 버전이므로 기존 `bundle` 명령으로 생성하면 아이콘이 없습니다. Claude에는 아이콘 포함 배포 파일을 사용하며 실행 패키지는 계속 `truthound[mcp]==3.3.0`으로 고정됩니다. 같은 버전이 이미 설치됐다면 확장을 재설치하고 승인한 폴더·도구 권한을 유지합니다.
+3.3.1 배포 번들과 PyPI의 `bundle` 명령은 Codex 플러그인과 같은 주황색 아이콘을 포함합니다. 실행 패키지는 `truthound[mcp]==3.3.1`으로 고정됩니다. 확장을 갱신하고 승인한 폴더·도구 권한을 확인합니다. 이전 3.3.0 PyPI 패키지의 아이콘 없는 생성 동작은 바뀌지 않습니다.
 
-위의 아이콘 포함 배포 번들을 사용하거나, 아래 명령으로 아이콘 없는 번들을 생성합니다. Claude Desktop에서 **Settings → Extensions → Advanced settings → Install Extension…** → 내려받거나 생성한 파일 선택·허용 폴더 설정 순서로 설치합니다. [공식 설치 안내](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop)를 참고하세요. 이는 사용자 지정 확장 설치이며 Claude 공식 디렉터리 등재를 뜻하지 않습니다.
+위의 배포 번들을 사용하거나 아래 명령으로 같은 버전의 번들을 생성합니다. Claude Desktop에서 **Settings → Extensions → Advanced settings → Install Extension…** → 내려받거나 생성한 파일 선택·허용 폴더 설정 순서로 설치합니다. [공식 설치 안내](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop)를 참고하세요. 이는 사용자 지정 확장 설치이며 Claude 공식 디렉터리 등재를 뜻하지 않습니다.
 
 ```bash
-python -m pip install --upgrade "truthound[mcp]==3.3.0"
-truthound-mcp bundle --output truthound-3.3.0.mcpb
+python -m pip install --upgrade "truthound[mcp]==3.3.1"
+truthound-mcp bundle --output truthound-3.3.1.mcpb
 ```
 
 `.mcpb`는 manifest·launcher·의존성 선언·라이선스를 포함합니다. UV runtime은
-PyPI에서 정확히 `truthound[mcp]==3.3.0`을 설치하고 하위 의존성을 해석합니다.
+PyPI에서 정확히 `truthound[mcp]==3.3.1`을 설치하고 하위 의존성을 해석합니다.
 최초 설정에는 네트워크와 manifest 0.4/UV를 지원하는 Claude Desktop이
 필요합니다. archive 바이트는 결정론적이지만 완전히 잠긴 오프라인 환경은 아닙니다.
 생성된 번들은 서명되지 않았으며 설치 시 host의 동의가 필요합니다.
@@ -2448,7 +2448,7 @@ PyPI에서 정확히 `truthound[mcp]==3.3.0`을 설치하고 하위 의존성을
 PyPI 게시 전에 테스트하려면 동일 버전 wheel을 포함합니다.
 
 ```bash
-truthound-mcp bundle --wheel dist/truthound-3.3.0-py3-none-any.whl --output truthound-3.3.0-local.mcpb
+truthound-mcp bundle --wheel dist/truthound-3.3.1-py3-none-any.whl --output truthound-3.3.1-local.mcpb
 ```
 
 Claude Desktop 확장 설치 UI에서 파일을 설치하고 허용 데이터 폴더를 선택합니다.
@@ -2459,8 +2459,8 @@ Anthropic 승인이나 GUI 검증을 주장하지 않습니다. 개발 환경·�
 
 ## OpenAI 로컬 플러그인과 저장소 마켓플레이스
 
-OpenAI 플러그인은 Core와 별도인 버전 `0.1.6`이며 공개 PyPI의
-`truthound[mcp]==3.3.0`과 고정된 UV dependency lock을 사용합니다.
+OpenAI 플러그인은 Core와 별도인 버전 `0.1.7`이며 공개 PyPI의
+`truthound[mcp]==3.3.1`과 고정된 UV dependency lock을 사용합니다.
 로컬 데스크톱용이며 원격 서비스나 ChatGPT 웹 커넥터가 아닙니다.
 UV를 설치해 데스크톱 앱의 PATH에서 사용할 수 있어야 하며 최초 설치에는
 네트워크와 Python 3.11–3.13 런타임이 필요합니다.
@@ -2540,7 +2540,7 @@ ZIP 생성·저장소 설치 성공을 allowlist·법적 동의·심사 승인·
 
 ## Registry 메타데이터와 설치
 
-공식 Registry에 3.3.0이 게시되었습니다. 등록된 로컬 stdio 명령은 같은 버전의 PyPI 패키지를 설치하며, 검색·설치만으로 폴더 접근 권한이 생기지는 않습니다.
+공식 Registry에 3.3.1이 게시되었습니다. 등록된 로컬 stdio 명령은 같은 버전의 PyPI 패키지를 설치하며, 검색·설치만으로 폴더 접근 권한이 생기지는 않습니다.
 
 MCP CI는 Linux Python 3.11에서 전체 필수 테스트를 결정적인 4개 분할로 나누되
 15분 job 제한은 유지합니다. 모든 분할이 성공한 뒤에만 패키징을 시작합니다.
@@ -2551,14 +2551,14 @@ MCP CI는 Linux Python 3.11에서 전체 필수 테스트를 결정적인 4개 �
 누락·중복·SKIP·실패를 거부합니다. 일부 분할의 통과만으로 전체 검증 완료를
 선언하지 않습니다.
 
-[공식 MCP Registry](https://registry.modelcontextprotocol.io/)에서 `io.github.seadonggyun4/truthound`를 검색할 수 있으며 [3.3.0이 게시되어 있습니다](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.seadonggyun4%2Ftruthound/versions/3.3.0). 연동 클라이언트의 마켓플레이스에 표시되면 **Install**을 누르고 접근을 허용할 폴더를 지정합니다. Registry 등록만으로 모든 클라이언트의 마켓플레이스 노출·승인이 보장되지는 않습니다.
+[공식 MCP Registry](https://registry.modelcontextprotocol.io/)에서 `io.github.seadonggyun4/truthound`를 검색할 수 있으며 [3.3.1이 게시되어 있습니다](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.seadonggyun4%2Ftruthound/versions/3.3.1). 연동 클라이언트의 마켓플레이스에 표시되면 **Install**을 누르고 접근을 허용할 폴더를 지정합니다. Registry 등록만으로 모든 클라이언트의 마켓플레이스 노출·승인이 보장되지는 않습니다.
 
 저장소의 `server.json`은 `io.github.seadonggyun4/truthound`, 기존 PyPI 패키지
-`truthound` 버전 `3.3.0`과 로컬 stdio를 선언합니다. UV의 `--with`로 MCP
+`truthound` 버전 `3.3.1`과 로컬 stdio를 선언합니다. UV의 `--with`로 MCP
 extra를 설치하고 기존 CLI 별칭을 실행합니다.
 
 ```bash
-uvx --with "truthound[mcp]==3.3.0" truthound@3.3.0 mcp serve --allow-dir /absolute/path/to/data
+uvx --with "truthound[mcp]==3.3.1" truthound@3.3.1 mcp serve --allow-dir /absolute/path/to/data
 ```
 
 GitHub namespace는 실제 저장소 소유자에 맞추며 README의 `mcp-name`도 정확히
@@ -3177,14 +3177,14 @@ files={별칭: 운영자_절대경로})`를 반환합니다. 팩터리는 네이
 통과하거나 `mostly`로 생략돼도 뒤 실패의 증거가 다른 컬럼으로 이동하지 않습니다.
 단독·배치 Core 실행은 같은 연결 규칙을 사용합니다.
 
-### Core 3.3.0 설치
+### Core 3.3.1 설치
 
-`truthound` 0.1.6 플러그인은 고정 의존성 lock으로 공개 Core 3.3.0을 사용합니다. 별도 `truthound-core` 0.2.0 플러그인는 Core 3.3.0을 고정하며 Core 프로파일을 사용하려면 해당 버전을 PyPI에서 설치합니다. 전이 의존성은 설치 시 허용 범위에서 해석하며 이 별도 플러그인에는 공개 인덱스 고정 lock을 포함하지 않습니다. 패키지 CI는 소스 체크아웃 대신 새 wheel을 설치합니다.
+`truthound` 0.1.7 플러그인은 고정 의존성 lock으로 공개 Core 3.3.1을 사용합니다. 별도 `truthound-core` 0.2.1 플러그인는 Core 3.3.1을 고정하며 Core 프로파일을 사용하려면 해당 버전을 PyPI에서 설치합니다. 전이 의존성은 설치 시 허용 범위에서 해석하며 이 별도 플러그인에는 공개 인덱스 고정 lock을 포함하지 않습니다. 패키지 CI는 소스 체크아웃 대신 새 wheel을 설치합니다.
 
 ```bash
 codex plugin add truthound-core@truthound --json
-truthound-mcp bundle --profile core --output truthound-3.3.0-core.mcpb
-truthound-mcp bundle --profile core --wheel dist/truthound-3.3.0-py3-none-any.whl --output truthound-3.3.0-core-local.mcpb
+truthound-mcp bundle --profile core --output truthound-3.3.1-core.mcpb
+truthound-mcp bundle --profile core --wheel dist/truthound-3.3.1-py3-none-any.whl --output truthound-3.3.1-core-local.mcpb
 ```
 
 설치만으로 데이터 접근을 허용하지 않습니다. 설치된 UV 프로젝트에서 `python -m truthound.mcp.consent configure --allow-dir <승인한-디렉터리> --confirm`을 실행합니다. `--workspace-dir`, `--control-dir`, `--allow-sensitive-results`는 각각 별도 운영자 승인 항목입니다. 전체 설정은 `~/.truthound-core/permissions.json`의 이전 권한을 대체하며 `python -m truthound.mcp.consent revoke`로 모두 철회합니다. 변경 시 세션을 종료하고 보유 핸들을 무효화하므로 재연결해야 합니다. 개별 실행 계획 승인은 여전히 MCP 외부의 신뢰된 운영자 명령으로 수행합니다.
@@ -3217,12 +3217,12 @@ claude plugin marketplace add seadonggyun4/styxis-plugin
 claude plugin install truthound@styxis-plugin
 ```
 
-Plugin 0.1.6은 독립 `.claude-plugin/plugin.json`과
+Plugin 0.1.7은 독립 `.claude-plugin/plugin.json`과
 `${CLAUDE_PLUGIN_ROOT}` 기반 절대경로 launcher를 제공합니다.
 portable `mcp.json`과 Codex 호환 `.mcp.json`의 plugin-relative `cwd`는
-유지합니다. Local runtime은 배포된 `truthound[mcp]==3.3.0`에 고정됩니다.
-소스의 `tools/list` 설명·schema 개선은 향후 Core 배포 후 적용됩니다.
-plugin 설치만으로 해당 의존성이 업그레이드되지는 않습니다.
+유지합니다. Local runtime은 배포된 `truthound[mcp]==3.3.1`에 고정됩니다.
+3.3.1 패키지에 개선된 `tools/list` 설명·schema가 포함됩니다.
+기존 설치는 marketplace를 갱신하고 plugin을 재설치한 뒤 다시 연결합니다.
 
 setup skill에서 정확한 기존 데이터 디렉터리를 승인해야 합니다. 설치는
 데이터 접근을 승인하지 않으며, 승인 정보가 없으면 호출이 차단됩니다.
@@ -3232,12 +3232,12 @@ Local에 별도 alias나 Core tool을 추가하지 않습니다. 의존성 준�
 stdio로 로컬 실행하며, 최초 설치에는 패키지 다운로드가 필요할 수 있습니다.
 오프라인 실행에는 준비된 runtime이 필요합니다.
 
-Official MCP Registry에는 3.3.0이 이미 게시되어 있습니다. 소스 `server.json`의
-개선 문구는 다음 불변 Registry 버전을 위한 제안이며 현재 게시 내용이
-변경됐다는 뜻이 아닙니다. Git push와 Registry 게시는 별개입니다.
+Official MCP Registry의 새 불변 버전 3.3.1에 소스 `server.json`과 같은
+설명·PyPI pin·명시적 `--allow-dir` 계약이 게시되었습니다. Git push와 별도로
+공식 API의 active 상태와 최신 버전을 확인했습니다.
 재현 가능한 합성 파일 검증은
 [discovery evaluation](https://github.com/seadonggyun4/styxis-plugin/tree/main/evaluation)을 참고하세요.
 
-## Core 3.3.1 릴리스 후보
+## Core 3.3.1 배포
 
-[3.3.1 릴리스 노트](../releases/truthound-3.3.1.md)에서 metadata 개선, 같은 세 tool 이름, 패키지·plugin 단계별 게시를 확인할 수 있습니다. 별도 검증된 의존성 갱신 전 Local 0.1.6은 Core 3.3.0을 사용합니다.
+[3.3.1 릴리스 노트](../releases/truthound-3.3.1.md)에서 실제 PyPI·Registry 게시와 검증 출처를 확인할 수 있습니다. Local 0.1.7은 frozen lock으로 Core 3.3.1을 사용합니다. 실제 Agent 선택 정확성은 CLI 접근 제한으로 미측정입니다.

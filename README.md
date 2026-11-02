@@ -43,10 +43,10 @@ and ends at the closing </p> of the badge block above.
 
 ### MCP로 사용하기
 
-3.3.1 릴리스 후보의 변경과 배포 검증 범위는 [릴리스 노트](docs/releases/truthound-3.3.1.md)를 참고하세요.
+3.3.1 변경과 실제 배포 검증은 [릴리스 노트](docs/releases/truthound-3.3.1.md)를 참고하세요.
 
 
-Codex와 Claude Desktop에서 두 가지 Truthound MCP 구성을 선택할 수 있습니다. 둘 다 로컬에서 Truthound 3.3.0을 실행합니다.
+Codex와 Claude Desktop에서 두 가지 Truthound MCP 구성을 선택할 수 있습니다. 둘 다 로컬에서 Truthound 3.3.1을 실행합니다.
 
 | Truthound Local | Truthound Core |
 | --- | --- |
@@ -80,7 +80,7 @@ Truthound is an open-source framework for data validation and data quality workf
 표현식 검증은 통과한 검사를 생략해도 실패 샘플·빈도·행을 해당 컬럼에 연결합니다.
 
 3.3.0의 `ai`·`mcp`·`all` extra는 Pydantic 2.11 이상을 요구합니다.
-`truthound-mcp bundle --profile core --output truthound-core.mcpb`로 Core 번들을 만듭니다. Truthound Local 플러그인 0.1.5와 별도 `truthound-core` 0.2.0 플러그인은 Core 3.3.0을 고정하며 데이터·작업공간·승인 저장소·민감 결과 권한을 명시적으로 설정하고 변경 후 재연결합니다.
+`truthound-mcp bundle --profile core --output truthound-core.mcpb`로 Core 번들을 만듭니다. Truthound Local 플러그인 0.1.7와 별도 `truthound-core` 0.2.1 플러그인은 Core 3.3.1을 고정하며 데이터·작업공간·승인 저장소·민감 결과 권한을 명시적으로 설정하고 변경 후 재연결합니다.
 
 ## 프로젝트 소개 (Introduction)
 

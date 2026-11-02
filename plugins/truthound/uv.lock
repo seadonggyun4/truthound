@@ -708,7 +708,7 @@ wheels = [
 
 [[package]]
 name = "truthound"
-version = "3.3.0"
+version = "3.3.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "polars" },
@@ -716,9 +716,9 @@ dependencies = [
     { name = "rich" },
     { name = "typer" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/19/c2/8d413567be7128e66f3215e2a4484fc864dba5883e4db37b86cb6c5a33b5/truthound-3.3.0.tar.gz", hash = "sha256:ef2b61896e0da582866943816fa31927d9e34da1358931f7fab9f25e41f5c868", size = 12542851, upload-time = "2026-10-29T02:30:46.352Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/52/fd/3bd575e873e54dc72869f66fef50a4703da84cf2695c871a6266c88592bd/truthound-3.3.1.tar.gz", hash = "sha256:eb9d559c1f28233ed06bc9e857bcf2a946eb465f7e93defa801fe44751f53832", size = 14626587, upload-time = "2026-11-02T02:38:29.685Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/21/d8/57049a17d558b2cf80d64cfc99e6a7cd6b6edda806855aea80909696643a/truthound-3.3.0-py3-none-any.whl", hash = "sha256:546d7f4851481e16f8d9a9b9d5b6c1623803ccbea6a52f4c1882f6fad08f2157", size = 4074182, upload-time = "2026-10-29T02:30:43.734Z" },
+    { url = "https://files.pythonhosted.org/packages/5c/a3/1ae2b5241568ab43166f5b38a7c33c8ee11e65016a86b624b026be7aba99/truthound-3.3.1-py3-none-any.whl", hash = "sha256:7631e8c63df59021496d093bd81ba961614b3ad9fb096da249c4f6e662a9f589", size = 5016134, upload-time = "2026-11-02T02:38:26.998Z" },
 ]
 
 [package.optional-dependencies]
@@ -733,14 +733,14 @@ mcp = [
 
 [[package]]
 name = "truthound-openai-plugin"
-version = "0.1.6"
+version = "0.1.7"
 source = { virtual = "." }
 dependencies = [
     { name = "truthound", extra = ["mcp"] },
 ]
 
 [package.metadata]
-requires-dist = [{ name = "truthound", extras = ["mcp"], specifier = "==3.3.0" }]
+requires-dist = [{ name = "truthound", extras = ["mcp"], specifier = "==3.3.1" }]
 
 [[package]]
 name = "typer"

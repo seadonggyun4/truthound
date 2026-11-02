@@ -1,5 +1,5 @@
 [project]
 name = "truthound-openai-plugin"
-version = "0.1.6"
+version = "0.1.7"
 requires-python = ">=3.11,<3.14"
-dependencies = ["truthound[mcp]==3.3.0"]
+dependencies = ["truthound[mcp]==3.3.1"]

@@ -88,7 +88,7 @@ async def smoke(plugin: Path, work: Path) -> dict:
     ):
         initialized = await client.initialize()
         assert (
-            initialized.serverInfo.version == "3.3.0"
+            initialized.serverInfo.version == "3.3.1"
             and initialized.protocolVersion == "2025-11-25"
         )
         tools = {t.name for t in (await client.list_tools()).tools}
@@ -120,7 +120,7 @@ async def smoke(plugin: Path, work: Path) -> dict:
         capture_output=True,
         text=True,
     ).stdout.strip()
-    assert version == "3.3.0"
+    assert version == "3.3.1"
     return {
         "core_version": version,
         "protocol": initialized.protocolVersion,
@@ -207,10 +207,10 @@ def main() -> None:
     virtual = next(p for p in lock["package"] if p["name"] == project["name"])
     assert virtual["version"] == manifest["version"]
     core = next(p for p in lock["package"] if p["name"] == "truthound")
-    assert core["version"] == "3.3.0" and core["source"] == {"registry": "https://pypi.org/simple"}
+    assert core["version"] == "3.3.1" and core["source"] == {"registry": "https://pypi.org/simple"}
     assert (
         core["wheels"][0]["hash"]
-        == "sha256:546d7f4851481e16f8d9a9b9d5b6c1623803ccbea6a52f4c1882f6fad08f2157"
+        == "sha256:7631e8c63df59021496d093bd81ba961614b3ad9fb096da249c4f6e662a9f589"
     )
     args.output.mkdir(parents=True, exist_ok=False)
     output = args.output / ("truthound-openai-plugin-" + manifest["version"] + ".zip")

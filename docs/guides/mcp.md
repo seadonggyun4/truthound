@@ -2,7 +2,7 @@
 
 ## Choose Local or Core
 
-Both configurations run the published Truthound 3.3.0 locally. Choose Local for simple file checks, or Core for drift, masking and schema validation too.
+Both configurations run the published Truthound 3.3.1 locally. Choose Local for simple file checks, or Core for drift, masking and schema validation too.
 
 In Codex, add the repository marketplace once, then install the plugin you need.
 
@@ -22,7 +22,7 @@ codex plugin add truthound@truthound
 
 In Claude Desktop, download the bundle below and install it through **Settings → Extensions → Advanced settings → Install Extension…**, then configure allowed directories.
 
-[Local 3.3.0 MCPB](https://github.com/seadonggyun4/truthound/releases/download/mcp-desktop-3.3.0-1/truthound-3.3.0.mcpb) · [Installation details](#claude-desktop-bundle)
+[Local 3.3.1 MCPB](https://github.com/seadonggyun4/truthound/releases/download/v3.3.1/truthound-3.3.1.mcpb) · [Installation details](#claude-desktop-bundle)
 
 <a id="core-installation"></a>
 
@@ -36,7 +36,7 @@ codex plugin add truthound-core@truthound
 
 In Claude Desktop, download the bundle below and install it through **Settings → Extensions → Advanced settings → Install Extension…**, then configure allowed directories.
 
-[Core 3.3.0 MCPB](https://github.com/seadonggyun4/truthound/releases/download/mcp-desktop-3.3.0-1/truthound-3.3.0-core.mcpb) · [Permissions and advanced settings](#core-330-installation)
+[Core 3.3.1 MCPB](https://github.com/seadonggyun4/truthound/releases/download/v3.3.1/truthound-3.3.1-core.mcpb) · [Permissions and advanced settings](#core-331-installation)
 
 Installation grants no data access. Both bundles are custom extensions, separate from official directory approval. Full Core parity through MCP has not been verified.
 
@@ -55,7 +55,7 @@ Installation grants no data access. Both bundles are custom extensions, separate
 | “Learn this file's schema, then validate against the agreed schema.” | `schema_learn`; `validation_check` with `schema_spec` |
 | “Compare this batch against the baseline for drift.” | Capture both inputs as assets, then `drift_compare` |
 
-Install `truthound[mcp]==3.3.0` in your client environment and start `truthound-mcp serve --profile core --allow-dir /absolute/path/to/data`. Schema contents and masked rows require the operator's explicit `--allow-sensitive-results` grant; installation alone does not grant it. Results may be returned as handles: read the associated artifact and release handles after use. Summary-only responses omit raw data by default.
+Install `truthound[mcp]==3.3.1` in your client environment and start `truthound-mcp serve --profile core --allow-dir /absolute/path/to/data`. Schema contents and masked rows require the operator's explicit `--allow-sensitive-results` grant; installation alone does not grant it. Results may be returned as handles: read the associated artifact and release handles after use. Summary-only responses omit raw data by default.
 
 Other existing Core and MCP capabilities remain available. Their configuration and lifecycle details are documented later in this guide; this quick workflow does not enumerate them.
 
@@ -71,7 +71,7 @@ and Polars until first access. Public functions and types remain the native Core
 objects; this avoids loading unused validation dependencies during worker startup.
 
 ```bash
-pip install "truthound[mcp]==3.3.0"
+pip install "truthound[mcp]==3.3.1"
 truthound-mcp serve --allow-dir /absolute/path/to/data
 ```
 
@@ -2708,21 +2708,21 @@ exceptions returned as critical quality issues.
 
 ## Claude Desktop bundle
 
-[Download the icon-enabled 3.3.0 bundle](https://github.com/seadonggyun4/truthound/releases/download/mcp-desktop-3.3.0-1/truthound-3.3.0.mcpb).
+[Download the icon-enabled 3.3.1 bundle](https://github.com/seadonggyun4/truthound/releases/download/v3.3.1/truthound-3.3.1.mcpb).
 
-The icon-enabled distribution bundle includes the same orange icon as the Codex plugin. The immutable PyPI 3.3.0 package predates this packaging change: its original `bundle` command produces an icon-free bundle. Use the icon-enabled distribution file for Claude; the runtime remains pinned to `truthound[mcp]==3.3.0`. Reinstall an existing same-version extension to refresh its icon, retaining the approved directory and tool permissions.
+The 3.3.1 distribution bundles and PyPI `bundle` command include the same orange icon as the Codex plugin. The runtime pins `truthound[mcp]==3.3.1`. Update the extension and review retained directory/tool permissions. The historical icon-free builder in immutable PyPI 3.3.0 is unchanged.
 
-Use the published icon-enabled bundle above, or build an icon-free bundle with the commands below. In Claude Desktop, select **Settings → Extensions → Advanced settings → Install Extension…**, then choose the downloaded or generated file and allowed directory. See the [official installation guide](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop). This is a custom extension installation, not a confirmed Claude directory listing.
+Use the published bundle above, or build the matching version with the commands below. In Claude Desktop, select **Settings → Extensions → Advanced settings → Install Extension…**, then choose the downloaded or generated file and allowed directory. See the [official installation guide](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop). This is a custom extension installation, not a confirmed Claude directory listing.
 
 Build the bundle from the matching installed release:
 
 ```bash
-python -m pip install --upgrade "truthound[mcp]==3.3.0"
-truthound-mcp bundle --output truthound-3.3.0.mcpb
+python -m pip install --upgrade "truthound[mcp]==3.3.1"
+truthound-mcp bundle --output truthound-3.3.1.mcpb
 ```
 
 The `.mcpb` contains a manifest, a small launcher, dependency declaration and
-license. Its UV runtime installs exactly `truthound[mcp]==3.3.0` from PyPI and
+license. Its UV runtime installs exactly `truthound[mcp]==3.3.1` from PyPI and
 resolves supporting dependencies. It needs network access on first setup and a
 Claude Desktop version supporting MCPB manifest 0.4 and the UV runtime. This is
 a deterministic bundle archive, not a fully locked offline environment.
@@ -2731,7 +2731,7 @@ The generated bundles are unsigned; installation still requires host consent.
 Before publishing that version to PyPI, embed its built wheel instead:
 
 ```bash
-truthound-mcp bundle --wheel dist/truthound-3.3.0-py3-none-any.whl --output truthound-3.3.0-local.mcpb
+truthound-mcp bundle --wheel dist/truthound-3.3.1-py3-none-any.whl --output truthound-3.3.1-local.mcpb
 ```
 
 Install the file through Claude Desktop's extension installation UI and select
@@ -2742,8 +2742,8 @@ The bundle never contains project data, development environments or internal not
 
 ## OpenAI local plugin and repository marketplace
 
-The standalone OpenAI plugin is version `0.1.6`, pins the published Core
-`truthound[mcp]==3.3.0`, and includes a frozen UV dependency lock. It is local
+The standalone OpenAI plugin is version `0.1.7`, pins the published Core
+`truthound[mcp]==3.3.1`, and includes a frozen UV dependency lock. It is local
 desktop software, not a hosted service or a ChatGPT web connector. Install UV
 and make it available on the desktop application's PATH. First setup needs
 network access and a compatible Python 3.11–3.13 runtime.
@@ -2827,16 +2827,16 @@ successful ZIP build or repository marketplace installation.
 
 ## Registry metadata and installation
 
-Version 3.3.0 is published in the official Registry. The registered local stdio command installs the matching PyPI release; discovery does not grant directory access.
+Version 3.3.1 is published in the official Registry. The registered local stdio command installs the matching PyPI release; discovery does not grant directory access.
 
-Find `io.github.seadonggyun4/truthound` in the [official MCP Registry](https://registry.modelcontextprotocol.io/); [version 3.3.0 is published](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.seadonggyun4%2Ftruthound/versions/3.3.0). If a connected client's marketplace exposes the listing, choose **Install** and configure an explicitly allowed directory. Registry publication does not guarantee visibility or approval in every client marketplace.
+Find `io.github.seadonggyun4/truthound` in the [official MCP Registry](https://registry.modelcontextprotocol.io/); [version 3.3.1 is published](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.seadonggyun4%2Ftruthound/versions/3.3.1). If a connected client's marketplace exposes the listing, choose **Install** and configure an explicitly allowed directory. Registry publication does not guarantee visibility or approval in every client marketplace.
 
 The repository's `server.json` describes `io.github.seadonggyun4/truthound`,
-the existing PyPI package `truthound` at version `3.3.0`, and local stdio.
+the existing PyPI package `truthound` at version `3.3.1`, and local stdio.
 It requests the MCP extra with UV's `--with` and starts the existing CLI alias:
 
 ```bash
-uvx --with "truthound[mcp]==3.3.0" truthound@3.3.0 mcp serve --allow-dir /absolute/path/to/data
+uvx --with "truthound[mcp]==3.3.1" truthound@3.3.1 mcp serve --allow-dir /absolute/path/to/data
 ```
 
 The Registry's GitHub namespace follows the actual repository owner; the package
@@ -3503,14 +3503,14 @@ value counts and full rows. Passing earlier columns and checks suppressed by
 `mostly` do not shift evidence onto a later failure; standalone and batched Core
 execution use the same association.
 
-### Core 3.3.0 installation
+### Core 3.3.1 installation
 
-The `truthound` 0.1.6 plugin pins published Core 3.3.0 with a frozen dependency lock. The published repository marketplace provides `truthound-core` 0.2.0, which installs Core 3.3.0 from PyPI. Transitive dependencies resolve within package bounds at installation; no frozen public-index lock is shipped for this separate plugin. Package CI installs a freshly built wheel, not the source checkout.
+The `truthound` 0.1.7 plugin pins published Core 3.3.1 with a frozen dependency lock. The published repository marketplace provides `truthound-core` 0.2.1, which installs Core 3.3.1 from PyPI. Transitive dependencies resolve within package bounds at installation; no frozen public-index lock is shipped for this separate plugin. Package CI installs a freshly built wheel, not the source checkout.
 
 ```bash
 codex plugin add truthound-core@truthound --json
-truthound-mcp bundle --profile core --output truthound-3.3.0-core.mcpb
-truthound-mcp bundle --profile core --wheel dist/truthound-3.3.0-py3-none-any.whl --output truthound-3.3.0-core-local.mcpb
+truthound-mcp bundle --profile core --output truthound-3.3.1-core.mcpb
+truthound-mcp bundle --profile core --wheel dist/truthound-3.3.1-py3-none-any.whl --output truthound-3.3.1-core-local.mcpb
 ```
 
 Installation grants no data access. Inside the installed UV project, use `python -m truthound.mcp.consent configure --allow-dir <approved-directory> --confirm`. Optional `--workspace-dir`, `--control-dir` and `--allow-sensitive-results` are separate operator grants. Configuration replaces all prior grants in `~/.truthound-core/permissions.json`; `python -m truthound.mcp.consent revoke` removes them. Changes close the session and invalidate retained handles; reconnect afterward. Individual execution plans still require trusted operator approval outside MCP.
@@ -3544,12 +3544,12 @@ claude plugin marketplace add seadonggyun4/styxis-plugin
 claude plugin install truthound@styxis-plugin
 ```
 
-Plugin 0.1.6 has an independent `.claude-plugin/plugin.json` and a Claude-specific
+Plugin 0.1.7 has an independent `.claude-plugin/plugin.json` and a Claude-specific
 absolute launcher using `${CLAUDE_PLUGIN_ROOT}`. The portable `mcp.json` and
 Codex compatibility `.mcp.json` retain their plugin-relative `cwd`. The public
-Local runtime remains frozen to published `truthound[mcp]==3.3.0`. Source changes
-to `tools/list` descriptions and schemas take effect only in a future Core
-package release; installing this plugin does not upgrade that dependency.
+Local runtime remains frozen to published `truthound[mcp]==3.3.1`. The improved
+`tools/list` descriptions and schemas ship in Core 3.3.1. Refresh the marketplace,
+reinstall the plugin and reconnect to update an existing installation.
 
 Approve only the exact existing data directory through the setup skill.
 Installation grants no access; missing consent denies calls. Revoke access with
@@ -3559,12 +3559,12 @@ product identity. No aliases or extra Core tools are added to the Local surface.
 Execution after dependency setup is local over stdio; first setup can download
 packages. Offline execution requires the runtime already to be available.
 
-The Official MCP Registry already lists 3.3.0. The checked-in `server.json`
-description is a proposal for the next immutable Registry version, not proof
-that the live record changed. Registry publication is separate from Git push.
+The Official MCP Registry now publishes immutable version 3.3.1 with the same
+description, PyPI pin and explicit `--allow-dir` contract as `server.json`. The
+official API confirms active/latest status separately from Git push.
 See the [discovery evaluation](https://github.com/seadonggyun4/styxis-plugin/tree/main/evaluation)
 for reproducible synthetic-file installation and invocation evidence.
 
-## Core 3.3.1 release candidate
+## Core 3.3.1 publication
 
-The [3.3.1 release notes](../releases/truthound-3.3.1.md) describe the source metadata patch, unchanged three-tool IDs and staged package/plugin publication. Installing Local 0.1.6 still uses Core 3.3.0 until a separately verified repin.
+The [3.3.1 release notes](../releases/truthound-3.3.1.md) record actual PyPI/Registry publication and verification provenance. Local 0.1.7 pins Core 3.3.1 with a frozen lock. Actual Agent selection accuracy remains unmeasured because CLI access was rejected.

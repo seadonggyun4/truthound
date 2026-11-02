@@ -14,11 +14,10 @@ docs/guides/mcp.md, docs/locales/ko/guides/mcp.md; existing MCP navigation and p
 manifest entry retained. Full/public/KO docs gates are required. SECURITY.md is
 GitHub reporting guidance; no web security certification or SLA is implied.
 
-Core package version remains 3.3.0 in this development checkout. Source metadata
-is not in the already published 3.3.0 wheel. A future Core release must carry it;
-do not alter the frozen Local dependency or claim installed descriptions changed.
-Registry metadata for an existing published version is immutable. Prepare a new
-Registry-only version or align a future package release before publishing.
+The initial distribution retained published 3.3.0 while source descriptions were
+unreleased. The 3.3.1 follow-up publishes the exact same-source verified Core
+artifacts, then repins Local to 0.1.7/Core 3.3.1 and publishes a new immutable
+Registry record. Historical 3.3.0 artifacts and Registry metadata remain unchanged.
 
 QA: existing MCP, bundle, Registry, portable plugin and docs/public-surface tests;
 Claude validates the actual standalone manifest; styxis-plugin scripts/e2e.py
@@ -40,3 +39,5 @@ MCP guide and Korean overlay, new bilingual 3.3.1 release page, full/public navi
 and public page counts. Preserve all banners and GitHub About. Stage Local repin
 after PyPI publication to avoid a verification dependency on an unpublished package.
 Use the existing full same-revision release gate; never weaken or bypass it.
+
+Publication evidence: docs/releases/truthound-3.3.1.md. Same-source Core gate: https://github.com/seadonggyun4/truthound/actions/runs/41371907329. Local repin is a later plugin packaging commit; do not assign it the Core artifact provenance. Actual Agent decisions remain unmeasured after readiness rejection.
