@@ -43,6 +43,9 @@ and ends at the closing </p> of the badge block above.
 
 ### Use through MCP
 
+See the [3.3.1 release notes](docs/releases/truthound-3.3.1.md) for candidate changes and publication evidence.
+
+
 Choose between two Truthound MCP configurations in Codex or Claude Desktop. Both run Truthound 3.3.0 locally.
 
 | Truthound Local | Truthound Core |

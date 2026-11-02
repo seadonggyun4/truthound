@@ -3237,3 +3237,7 @@ Official MCP Registry에는 3.3.0이 이미 게시되어 있습니다. 소스 `s
 변경됐다는 뜻이 아닙니다. Git push와 Registry 게시는 별개입니다.
 재현 가능한 합성 파일 검증은
 [discovery evaluation](https://github.com/seadonggyun4/styxis-plugin/tree/main/evaluation)을 참고하세요.
+
+## Core 3.3.1 릴리스 후보
+
+[3.3.1 릴리스 노트](../releases/truthound-3.3.1.md)에서 metadata 개선, 같은 세 tool 이름, 패키지·plugin 단계별 게시를 확인할 수 있습니다. 별도 검증된 의존성 갱신 전 Local 0.1.6은 Core 3.3.0을 사용합니다.

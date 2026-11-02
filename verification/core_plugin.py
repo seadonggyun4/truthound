@@ -7,6 +7,8 @@ import asyncio
 import hashlib
 import json
 import os
+import re
+import tomllib
 import subprocess
 import tempfile
 import zipfile
@@ -27,7 +29,18 @@ FILES = (
 )
 
 
+def versions(plugin):
+    project = tomllib.loads((plugin / "pyproject.toml").read_text())["project"]
+    manifest = json.loads((plugin / "plugin.json").read_text())
+    assert manifest["version"] == project["version"]
+    dependency = next(d for d in project["dependencies"] if d.startswith("truthound[mcp]=="))
+    match = re.fullmatch(r"truthound\[mcp\]==(\d+\.\d+\.\d+)", dependency)
+    assert match is not None
+    return manifest["version"], match.group(1)
+
+
 async def smoke(plugin, wheel, work):
+    _, core_version = versions(plugin)
     import anyio
     from mcp import ClientSession, StdioServerParameters
     from mcp.client.stdio import stdio_client
@@ -69,11 +82,12 @@ async def smoke(plugin, wheel, work):
                 "-I",
                 "-c",
                 "import importlib.metadata,sys,zipfile; from pathlib import Path; "
-                "d=importlib.metadata.distribution('truthound'); assert d.version=='3.3.0'; "
+                "d=importlib.metadata.distribution('truthound'); assert d.version==sys.argv[2]; "
                 "z=zipfile.ZipFile(sys.argv[1]); names=[n for n in z.namelist() "
                 "if n.startswith('truthound/') and n.endswith(('.py','.json'))]; "
                 "assert names and all(Path(d.locate_file(n)).read_bytes()==z.read(n) for n in names)",
                 str(wheel),
+                core_version,
             ],
             cwd=plugin,
             env=environment,
@@ -82,7 +96,7 @@ async def smoke(plugin, wheel, work):
         )
     async with stdio_client(parameters) as (read, write), ClientSession(read, write) as client:
         initialized = await client.initialize()
-        assert initialized.serverInfo.version == "3.3.0"
+        assert initialized.serverInfo.version == core_version
         names = {tool.name for tool in (await client.list_tools()).tools}
         assert {"capabilities_list", "assets_capture", "execution_services_open"} <= names
         result = await client.call_tool("check_file", {"path": str(source)})
@@ -146,9 +160,14 @@ def main():
     plugin = ROOT / "plugins/truthound-core"
     validate_portable(plugin)
     manifest = json.loads((plugin / "plugin.json").read_text())
-    assert manifest["name"] == "truthound-core" and manifest["version"] == "0.2.0"
+    assert manifest["name"] == "truthound-core"
+    plugin_version, core_version = versions(plugin)
+    if args.wheel and args.wheel.is_dir():
+        matches = list(args.wheel.glob(f"truthound-{core_version}-py3-none-any.whl"))
+        assert len(matches) == 1, "Expected exactly one matching candidate wheel"
+        args.wheel = matches[0]
     args.output.mkdir(parents=True, exist_ok=False)
-    output = args.output / "truthound-core-openai-plugin-0.2.0.zip"
+    output = args.output / f"truthound-core-openai-plugin-{plugin_version}.zip"
     with output.open("xb") as stream, zipfile.ZipFile(stream, "w", zipfile.ZIP_DEFLATED) as archive:
         for name in sorted(FILES):
             source = plugin / name
@@ -159,8 +178,8 @@ def main():
             entry.compress_type = zipfile.ZIP_DEFLATED
             archive.writestr(entry, source.read_bytes())
     proof = {
-        "plugin_version": "0.2.0",
-        "core_version": "3.3.0",
+        "plugin_version": plugin_version,
+        "core_version": core_version,
         "zip_sha256": hashlib.sha256(output.read_bytes()).hexdigest(),
         "openai_public_directory_published": False,
     }

@@ -3564,3 +3564,7 @@ description is a proposal for the next immutable Registry version, not proof
 that the live record changed. Registry publication is separate from Git push.
 See the [discovery evaluation](https://github.com/seadonggyun4/styxis-plugin/tree/main/evaluation)
 for reproducible synthetic-file installation and invocation evidence.
+
+## Core 3.3.1 release candidate
+
+The [3.3.1 release notes](../releases/truthound-3.3.1.md) describe the source metadata patch, unchanged three-tool IDs and staged package/plugin publication. Installing Local 0.1.6 still uses Core 3.3.0 until a separately verified repin.

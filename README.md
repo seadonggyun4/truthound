@@ -43,6 +43,9 @@ and ends at the closing </p> of the badge block above.
 
 ### MCP로 사용하기
 
+3.3.1 릴리스 후보의 변경과 배포 검증 범위는 [릴리스 노트](docs/releases/truthound-3.3.1.md)를 참고하세요.
+
+
 Codex와 Claude Desktop에서 두 가지 Truthound MCP 구성을 선택할 수 있습니다. 둘 다 로컬에서 Truthound 3.3.0을 실행합니다.
 
 | Truthound Local | Truthound Core |

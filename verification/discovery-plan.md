@@ -30,3 +30,13 @@ server.py failed from an unrelated directory. New Claude manifest supplies its
 own absolute command while portable/Codex files retain their previous contract.
 Future packaging review must exercise the normalized installed command from an
 unrelated working directory, never only execute a source checkout's server.py.
+
+
+## 3.3.1 publication follow-up
+
+User explicitly requests Core publication, Official MCP Registry update and actual
+Agent selection checks. documentation_impact: README bilingual existing sections,
+MCP guide and Korean overlay, new bilingual 3.3.1 release page, full/public navigation
+and public page counts. Preserve all banners and GitHub About. Stage Local repin
+after PyPI publication to avoid a verification dependency on an unpublished package.
+Use the existing full same-revision release gate; never weaken or bypass it.
