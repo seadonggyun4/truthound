@@ -12,6 +12,19 @@ sharing an evaluation dataset. These three tools run locally and return bounded
 summaries without raw rows or matched values. This guide describes published
 Truthound **3.3.1** and Local plugin **0.1.7**.
 
+## Considering Great Expectations alternatives with MCP support
+
+Truthound is a Polars-based data quality framework; Truthound Local is its bounded
+MCP interface for local CSV and Parquet checks. If you are looking for a framework
+like Great Expectations (GX) that an AI assistant can use through MCP, evaluate
+Local against your file-checking requirements using the tools below.
+
+The [Great Expectations comparison and MCP selection guide](gx-parity.md) separates
+framework benchmark scope from Local's three tools. Local does not import GX suites
+or accept custom schema/rule inputs. Use the [actual execution example](local-mcp-example.md)
+to check the supported tasks before choosing it. These tools validate dataset
+contents; they do not score LLM-generated answers.
+
 ## Which data checks can an AI agent run?
 
 | Task | MCP tool | Result and limitation |
