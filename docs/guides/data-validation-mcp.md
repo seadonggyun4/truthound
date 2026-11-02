@@ -86,6 +86,15 @@ semantic quality of generated answers.
 Here it means validating dataset contents. Truthound Local is not an MCP
 protocol-conformance or JSON-RPC server-testing tool.
 
+
+## Try a verified CSV and Parquet example
+
+The [reproducible Local MCP example](local-mcp-example.md) shows the synthetic input,
+six actual tool results and a script to rerun them with the published package.
+The Python package supplies Core 3.3.1; Local plugin 0.1.7 exposes three file tools;
+Styxis plugin marketplace is their installation catalog. These are related surfaces,
+not three competing data-validation servers.
+
 ## Official sources and execution evidence
 
 - [Published package: Truthound 3.3.1](https://pypi.org/project/truthound/3.3.1/)

@@ -53,11 +53,12 @@ external_sources:
 
 support_files:
   - _redirects
+  - robots.txt
 
 support_directories:
   - assets
   - stylesheets
   - javascripts
 
-expected_page_count: 347
-expected_markdown_count: 356
+expected_page_count: 348
+expected_markdown_count: 357

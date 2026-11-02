@@ -1,122 +1,39 @@
 # 가이드
 
-실무 운영 가이드에서 Truthound, Guides, Core을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-실무 운영 가이드에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-실무 운영 가이드에서 `truthound`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+할 일이 정해졌다면 이 페이지에서 해당 작업의 문서로 이동하세요.
+로컬 파일 검사부터 검증 규칙 설계, 결과 저장과 운영 자동화까지 공개 Core 기능을 안내합니다.
 
-실무 운영 가이드에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-실무 운영 가이드에서 Truthound, Orchestration을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-실무 운영 가이드에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-실무 운영 가이드에서 Truthound을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-실무 운영 가이드에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-UI, jump to Truthound 워크플로우 documentation.
+## 작업별 시작 지점
 
-> 실무 운영 가이드에서 CLI, Looking, See, Reference을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-> 
-> 실무 운영 가이드에서 API, Looking, Python, See, Reference을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+| 하고 싶은 일 | 먼저 볼 문서 |
+| --- | --- |
+| AI 에이전트로 CSV·Parquet의 결측·중복과 개인정보 표본 검사 | [데이터 검증 MCP](data-validation-mcp.md) · [실행 예제](local-mcp-example.md) |
+| 검증기 선택과 검증 규칙 설계 | [검증기](validators/index.md) |
+| 파일·SQL·웨어하우스 연결 | [데이터 소스](datasources/index.md) |
+| 프로파일링과 규칙 학습 | [프로파일러](profiler/index.md) |
+| 반복 실행과 정책 구성 | [체크포인트](checkpoint/index.md) · [체크포인트 개요](checkpoints.md) |
+| 결과 표시·보고서·저장 | [리포터](reporters/index.md) · [Data Docs](datadocs/index.md) · [스토어](stores/index.md) |
+| 성능 조정과 측정 근거 확인 | [성능](performance.md) · [벤치마크 방법론](benchmark-methodology.md) · [워크로드](benchmark-workloads.md) |
 
-## What Belongs Here
+## 로컬 데이터 검증 MCP
 
-| 실무 운영 가이드에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
-|------|--------------|
-| 실무 운영 가이드에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | [검증기](validators/index.md) |
-| 실무 운영 가이드에서 SQL을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | [데이터 소스](datasources/index.md) |
-| 실무 운영 가이드에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
-| render output or persist 아티팩트 | 실무 운영 가이드에서 Data Docs, Data, Docs을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
-| 실무 운영 가이드에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | [프로파일러](profiler/index.md) |
-| 실무 운영 가이드에서 관련 설정과 실행 흐름을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. | 실무 운영 가이드에서 Methodology, Workloads을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다. |
+Truthound Local MCP는 승인한 CSV·Parquet에 세 도구를 제공합니다.
+`check_file`은 결측·중복 검사, `profile_file`은 자료형과 집계,
+`scan_pii`는 개인정보 표본 탐지를 담당합니다. 설치는 데이터 접근 승인이 아닙니다.
+사용자 지정 스키마 검증이나 LLM 답변 평가는 이 세 도구의 기능이 아닙니다.
+[실제 입력과 결과를 재현](local-mcp-example.md)하거나
+[상세 MCP 설정](mcp.md)을 확인하세요.
 
-## 실무 운영 가이드 개요
+## 운영과 확장
 
-- 실무 운영 가이드에서 Truthound, Host-native, Orchestration을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-- 실무 운영 가이드에서 Truthound을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-- 실무 운영 가이드에서 Truthound, Repository을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-- 실무 운영 가이드에서 Command, Reference을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-- 실무 운영 가이드에서 Sequential, Tutorials을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+- [설정](configuration/index.md), [CI/CD](ci-cd/index.md), [알림](notifications.md)
+- [Data Docs](datadocs/index.md), [리포터 SDK](reporter-sdk.md), [개인정보](privacy.md), [데이터 마스킹](data-masking.md)
+- [Great Expectations 비교](gx-parity.md), [3.0 마이그레이션](migration-3.0.md)
 
-## Common Core Entry Points
+## 다른 진입점이 필요한 경우
 
-```python
-import truthound as th
-from truthound.drift import compare
-
-# Basic validation through the core kernel
-run = th.check("data.csv")
-print(f"Found {len(run.issues)} issues")
-
-# Explicit validators when you need them
-run = th.check("data.csv", validators=["null", "duplicate", "range"])
-
-# Learn a baseline schema from trusted data
-schema = th.learn("baseline.csv")
-
-# Compare two datasets for drift
-drift = compare("baseline.csv", "current.csv", method="auto")
-```
-
-## Guide Families
-
-### 검증 and Data Access
-
-- [검증기](validators/index.md)
-- [데이터 소스](datasources/index.md)
-- 실무 운영 가이드에서 Data, Masking을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-- [개인정보](privacy.md)
-
-### 실무 운영 가이드 개요
-
-- [체크포인트 개요](checkpoints.md)
-- [체크포인트 Family](checkpoint/index.md)
-- [설정](configuration/index.md)
-- 실무 운영 가이드에서 CI/CD을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-- [알림](notifications.md)
-
-### Reporting, 아티팩트, and Persistence
-
-- [리포터](reporters/index.md)
-- 실무 운영 가이드에서 Data Docs, Data, Docs을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-- 실무 운영 가이드에서 Reporter, SDK을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-- [스토어](stores/index.md)
-
-### 프로파일링 and Extended Core 워크플로우s
-
-- [프로파일러](profiler/index.md)
-- [성능](performance.md)
-- [벤치마크 Methodology](benchmark-methodology.md)
-- [벤치마크 Workloads](benchmark-workloads.md)
-- 실무 운영 가이드에서 Great Expectations, Great, Expectations, Comparison을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-- [마이그레이션 to 3.0](migration-3.0.md)
-
-## Suggested Reading Paths
-
-### New adopter path
-
-1. [검증기](validators/index.md)
-2. [데이터 소스](datasources/index.md)
-3. [리포터](reporters/index.md)
-4. [체크포인트 개요](checkpoints.md)
-
-### 플랫폼 team path
-
-1. [설정](configuration/index.md)
-2. [체크포인트 Family](checkpoint/index.md)
-3. [스토어](stores/index.md)
-4. [성능](performance.md)
-
-### Extended 워크플로우 path
-
-1. [프로파일러](profiler/index.md)
-2. 실무 운영 가이드에서 Data Docs, Data, Docs을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-3. 실무 운영 가이드에서 Great Expectations, Great, Expectations, Comparison을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-4. 실무 운영 가이드에서 Truthound을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-5. 실무 운영 가이드에서 Truthound, Orchestration을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-
-## Related Reading
-
-- [시작하기](../getting-started/index.md)
-- [튜토리얼](../tutorials/index.md)
-- [레퍼런스](../reference/index.md)
-- [개념 & 아키텍처](../concepts/index.md)
-- 실무 운영 가이드에서 Truthound을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-- [Truthound 오케스트레이션](../orchestration/index.md)
-- Truthound 워크플로우 documentation
+- 처음부터 학습: [시작하기](../getting-started/index.md), [튜토리얼](../tutorials/index.md)
+- 명령·API 조회: [CLI](../cli/index.md), [Python API](../python-api/index.md), [레퍼런스](../reference/index.md)
+- 사람이 검토할 AI 제안·실행 분석: [Truthound AI](../ai/index.md)
+- 스케줄러·워크플로우 연동: [Truthound Orchestration](../orchestration/index.md)
+- 전체 구조: [개념과 아키텍처](../concepts/index.md)

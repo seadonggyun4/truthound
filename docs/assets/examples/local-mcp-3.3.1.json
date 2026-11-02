@@ -1,0 +1,187 @@
+{
+  "schema_version": 1,
+  "observed_at": "2026-11-02T07:01:05.780093+00:00",
+  "package_version": "3.3.1",
+  "mcp_sdk_version": "1.30.0",
+  "protocol_version": "2025-11-25",
+  "fixture": {
+    "rows": 3,
+    "columns": 2,
+    "csv_sha256": "4ad739dbeae1f10dfb9cf4bfb7ae20ddf0597f18903c26747e61ca4611403b23",
+    "contains_synthetic_email": true
+  },
+  "results": [
+    {
+      "format": "csv",
+      "tool": "check_file",
+      "result": {
+        "schema_version": 1,
+        "operation": "check",
+        "ok": true,
+        "data": {
+          "row_count": 3,
+          "column_count": 2,
+          "success": false,
+          "issue_count": 2,
+          "execution_issue_count": 0,
+          "checks": [
+            {
+              "name": "null",
+              "success": false,
+              "issue_count": 1
+            },
+            {
+              "name": "duplicate",
+              "success": false,
+              "issue_count": 1
+            }
+          ]
+        },
+        "truncated": false,
+        "error": null
+      }
+    },
+    {
+      "format": "csv",
+      "tool": "profile_file",
+      "result": {
+        "schema_version": 1,
+        "operation": "profile",
+        "ok": true,
+        "data": {
+          "row_count": 3,
+          "column_count": 2,
+          "columns": [
+            {
+              "name": "email",
+              "null_pct": "33.3%",
+              "unique_pct": "67%",
+              "dtype": "String"
+            },
+            {
+              "name": "score",
+              "null_pct": "0.0%",
+              "unique_pct": "67%",
+              "dtype": "Int64"
+            }
+          ]
+        },
+        "truncated": false,
+        "error": null
+      }
+    },
+    {
+      "format": "csv",
+      "tool": "scan_pii",
+      "result": {
+        "schema_version": 1,
+        "operation": "scan",
+        "ok": true,
+        "data": {
+          "row_count": 3,
+          "finding_count": 1,
+          "count_semantics": "estimated_from_first_1000_non_null_values",
+          "findings": [
+            {
+              "column": "email",
+              "pii_type": "Email Address",
+              "count": 2,
+              "confidence": 99
+            }
+          ]
+        },
+        "truncated": false,
+        "error": null
+      }
+    },
+    {
+      "format": "parquet",
+      "tool": "check_file",
+      "result": {
+        "schema_version": 1,
+        "operation": "check",
+        "ok": true,
+        "data": {
+          "row_count": 3,
+          "column_count": 2,
+          "success": false,
+          "issue_count": 2,
+          "execution_issue_count": 0,
+          "checks": [
+            {
+              "name": "null",
+              "success": false,
+              "issue_count": 1
+            },
+            {
+              "name": "duplicate",
+              "success": false,
+              "issue_count": 1
+            }
+          ]
+        },
+        "truncated": false,
+        "error": null
+      }
+    },
+    {
+      "format": "parquet",
+      "tool": "profile_file",
+      "result": {
+        "schema_version": 1,
+        "operation": "profile",
+        "ok": true,
+        "data": {
+          "row_count": 3,
+          "column_count": 2,
+          "columns": [
+            {
+              "name": "email",
+              "null_pct": "33.3%",
+              "unique_pct": "67%",
+              "dtype": "String"
+            },
+            {
+              "name": "score",
+              "null_pct": "0.0%",
+              "unique_pct": "67%",
+              "dtype": "Int64"
+            }
+          ]
+        },
+        "truncated": false,
+        "error": null
+      }
+    },
+    {
+      "format": "parquet",
+      "tool": "scan_pii",
+      "result": {
+        "schema_version": 1,
+        "operation": "scan",
+        "ok": true,
+        "data": {
+          "row_count": 3,
+          "finding_count": 1,
+          "count_semantics": "estimated_from_first_1000_non_null_values",
+          "findings": [
+            {
+              "column": "email",
+              "pii_type": "Email Address",
+              "count": 2,
+              "confidence": 99
+            }
+          ]
+        },
+        "truncated": false,
+        "error": null
+      }
+    }
+  ],
+  "checks": {
+    "outside_directory_denied": true,
+    "source_files_unchanged": true,
+    "synthetic_raw_sentinels_absent": true
+  },
+  "scope": "Actual published Local MCP execution on generated fixtures; not a web-search exposure or Agent-selection benchmark."
+}

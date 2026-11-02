@@ -82,6 +82,14 @@ Truthound Local의 `check_file`은 승인된 파일에 내장 검사를 실행�
 이 가이드의 검증 대상은 데이터셋 내용입니다. Truthound Local은 MCP 프로토콜 적합성이나
 JSON-RPC 서버 구현을 검사하는 도구가 아닙니다.
 
+
+## 검증된 CSV·Parquet 예제 따라 하기
+
+[Local MCP 실행 예제](local-mcp-example.md)에서 합성 입력, 실제 여섯 번의 도구 결과와
+공개 패키지로 다시 실행할 스크립트를 확인할 수 있습니다. Python 패키지는 Core 3.3.1을
+제공하고 Local 플러그인 0.1.7은 세 파일 도구를 노출합니다. Styxis 플러그인 마켓플레이스는
+설치 카탈로그입니다. 서로 연결된 구성이며 별개의 경쟁 데이터 검증 서버 세 개가 아닙니다.
+
 ## 공식 출처와 실행 증거
 
 - [공개 패키지: Truthound 3.3.1](https://pypi.org/project/truthound/3.3.1/)

@@ -30,6 +30,7 @@ boundary level without reproducing the full console implementation here.
 
 | I want to... | Start here |
 |--------------|------------|
+| Ask an AI agent to inspect local CSV/Parquet quality or sampled PII | [Data validation MCP](guides/data-validation-mcp.md) · [Reproducible example](guides/local-mcp-example.md) |
 | Run my first validation with almost no setup | [Core Getting Started](getting-started/quickstart.md) |
 | Learn the core workflow end to end | [Core Tutorials](tutorials/index.md) |
 | Use Truthound from scripts or services | [Core Python API](python-api/index.md) |

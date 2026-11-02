@@ -19,6 +19,7 @@ UI, jump to Truthound workflow documentation.
 
 | If you need to... | Use these guides |
 |------|--------------|
+| inspect local CSV/Parquet with an AI agent | [Data validation MCP](data-validation-mcp.md) and [actual execution example](local-mcp-example.md) |
 | validate data and design suites | [Validators](validators/index.md) |
 | connect files, SQL systems, or warehouses | [Datasources](datasources/index.md) |
 | automate runs and policies inside the core repo | [Checkpoint family](checkpoint/index.md) and [Checkpoints overview](checkpoints.md) |

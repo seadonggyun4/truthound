@@ -12,6 +12,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 PAGES = (
+    "/guides/data-validation-mcp/",
+    "/en/guides/data-validation-mcp/",
+    "/guides/local-mcp-example/",
+    "/en/guides/local-mcp-example/",
     "/guides/mcp/",
     "/en/guides/mcp/",
     "/guides/ci-testing/",

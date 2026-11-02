@@ -21,6 +21,7 @@ Truthound는 데이터 품질 검증을 중심에 둔 워크플로우 프레임�
 
 | 하고 싶은 일 | 시작 위치 |
 |--------------|-----------|
+| AI 에이전트로 로컬 CSV·Parquet 품질·개인정보 표본 검사 | [데이터 검증 MCP](guides/data-validation-mcp.md) · [실행 예제](guides/local-mcp-example.md) |
 | 거의 설정 없이 첫 검증을 실행 | [빠른 시작](getting-started/quickstart.md) |
 | Core 흐름을 처음부터 따라가기 | [튜토리얼](tutorials/index.md) |
 | Python 코드에서 Truthound 사용 | [Python API](python-api/index.md) |
