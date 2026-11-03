@@ -35,11 +35,11 @@ claude plugin install truthound-core@styxis-plugin
 설치만으로 데이터 접근을 허용하지 않습니다. 기존 권한은 업데이트해도 유지됩니다. 두 프로파일은 공개 Core 3.3.1을 사용하며 MCP를 통한 전체 Core 동등성은 검증되지 않았습니다.
 기존 카탈로그는 Codex의 `codex plugin marketplace upgrade styxis-plugin`, Claude Code의 `claude plugin marketplace update styxis-plugin`으로 갱신한 뒤 해당 플러그인을 다시 설치합니다.
 
-이 CLI 안내는 **Claude Code**용입니다. Claude Desktop 앱의 MCPB 확장과는 다른 설치 형식이며, 이 페이지에서는 별도 수동 설치 경로를 안내하지 않습니다.
+이 CLI 안내는 **Claude Code**용입니다. Claude Desktop 앱의 `.mcpb` 확장 번들과는 다른 설치 형식이며, 이 페이지에서는 별도 수동 설치 경로를 안내하지 않습니다.
 
 ## 핵심 데이터 품질 작업
 
-1. 아래 Codex·Claude Desktop 안내로 설치한 뒤 사용할 데이터 폴더만 승인합니다.
+1. 위 Codex CLI·Claude Code 안내로 설치한 뒤 사용할 데이터 폴더만 승인합니다.
 2. 프로파일을 선택합니다. Truthound Local은 `check_file`, `profile_file`, `scan_pii`를 제공합니다. 3.3.0의 Core 프로파일은 아래 작업도 제공하며, 게시된 3.2.0 패키지에는 이 확장 프로파일이 포함되지 않습니다.
 3. 작업을 요청하고 결과를 확인합니다. `execution_status`는 실행 성공 여부, `quality_status`는 데이터 품질을 나타냅니다. 실행이 성공해도 데이터 품질은 실패일 수 있습니다. 자동 생성한 스키마 검사에서 전체 대상 적용 여부를 확인할 수 없으면 `quality_status: unknown`을 반환할 수 있습니다. 이를 통과로 해석하지 말고 `data.success`와 개별 검사·문제를 확인합니다.
 

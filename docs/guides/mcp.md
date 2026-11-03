@@ -35,11 +35,11 @@ claude plugin install truthound-core@styxis-plugin
 Installation grants no data access. Updates retain existing permissions. Both profiles use published Core 3.3.1; full Core parity through MCP is not verified.
 Refresh an existing catalog with `codex plugin marketplace upgrade styxis-plugin` or `claude plugin marketplace update styxis-plugin`, then install the relevant plugin again.
 
-These CLI instructions target **Claude Code**. Claude Desktop's MCPB extension is a different installation format; this guide provides one plugin-based CLI setup route.
+These CLI instructions target **Claude Code**. Claude Desktop's `.mcpb` extension bundle is a different installation format; this guide provides one plugin-based CLI setup route.
 
 ## Core data quality workflow
 
-1. Install the plugin for your client using the Codex or Claude Desktop instructions below, then approve only the data directory you intend to use.
+1. Install the plugin for your client using the Codex CLI or Claude Code instructions above, then approve only the data directory you intend to use.
 2. Choose the profile. Truthound Local exposes `check_file`, `profile_file` and `scan_pii`. The Core profile in 3.3.0 also exposes the operations below; the published 3.2.0 package does not include that expanded profile.
 3. Ask for the task and inspect the result. `execution_status` describes whether execution succeeded; `quality_status` describes data quality. A successfully executed check can report failing data quality. Automatically generated schema suites can return `quality_status: unknown` when complete target accounting is unavailable; inspect `data.success`, checks and issues rather than treating unknown as a pass.
 
