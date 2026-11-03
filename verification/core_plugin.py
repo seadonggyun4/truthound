@@ -111,7 +111,7 @@ async def smoke(plugin, wheel, work, client_kind="codex"):
         env=environment,
     )
     if wheel:
-        subprocess.run(
+        checked = subprocess.run(
             [
                 connection["command"],
                 "run",
@@ -123,15 +123,21 @@ async def smoke(plugin, wheel, work, client_kind="codex"):
                 "d=importlib.metadata.distribution('truthound'); assert d.version==sys.argv[2]; "
                 "z=zipfile.ZipFile(sys.argv[1]); names=[n for n in z.namelist() "
                 "if n.startswith('truthound/') and n.endswith(('.py','.json'))]; "
-                "assert names and all(Path(d.locate_file(n)).read_bytes()==z.read(n) for n in names)",
+                "mismatches=[n for n in names if Path(d.locate_file(n)).read_bytes()!=z.read(n)]; "
+                "assert names and not mismatches, mismatches[:10]",
                 str(wheel),
                 core_version,
             ],
             cwd=plugin,
             env=environment,
-            check=True,
+            check=False,
             capture_output=True,
         )
+        if checked.returncode != 0:
+            raise RuntimeError(
+                "Installed wheel byte verification failed: "
+                + checked.stderr.decode("utf-8", errors="replace")[-2000:]
+            )
     async with stdio_client(parameters) as (read, write), ClientSession(read, write) as client:
         initialized = await client.initialize()
         assert initialized.serverInfo.version == core_version

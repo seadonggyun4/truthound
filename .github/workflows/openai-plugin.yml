@@ -25,6 +25,9 @@ jobs:
     env:
       POLARS_MAX_THREADS: "1"
     steps:
+      # Compare wheel bytes against the public artifact without OS line-ending conversion.
+      - name: Preserve Git source bytes for wheel verification
+        run: git config --global core.autocrlf false
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
