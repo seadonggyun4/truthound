@@ -38,30 +38,11 @@ arguments, edit datasets, execute arbitrary SQL, or evaluate LLM answer quality.
 For explicit schema rules, drift comparison or masking, see the separate
 [Core profile](mcp.md#core-installation); full Core parity through MCP is not verified.
 
-## Install and connect locally
+## Install and connect through the plugin
 
-Use Python 3.11–3.13 and install the published MCP extra:
+Connect the Codex CLI or Claude Code catalog using the [Styxis Plugins installation guide](https://github.com/seadonggyun4/styxis-plugin#install), then install `truthound@styxis-plugin`. The plugin supplies the pinned runtime and MCP configuration; no separate pip installation or manual JSON configuration is needed.
 
-```bash
-pip install "truthound[mcp]==3.3.1"
-truthound-mcp serve --allow-dir /absolute/path/to/data
-```
-
-Configure a local stdio-capable MCP host to start this executable with the same
-arguments. Installing does not register the server with your host or grant any
-folder access. A client that requires a hosted HTTP/OAuth connector cannot use
-this local stdio configuration directly. See the
-[client configuration and supported formats](mcp.md#install-and-start).
-
-For Claude Code, the existing public marketplace installs the Local plugin:
-
-```bash
-claude plugin marketplace add seadonggyun4/styxis-plugin
-claude plugin install truthound@styxis-plugin
-```
-
-Then ask its setup skill to approve only the existing absolute data directory you
-intend to inspect. See [plugin setup and permission handling](mcp.md#claude-code-styxis-marketplace).
+After installation, ask the Truthound setup skill to approve only the existing absolute data directory you intend to inspect. Installation alone grants no file access. See [MCP installation and permissions](mcp.md#local-installation) for prerequisites, updates and the Core profile.
 
 ## What stays local, and what reaches the AI?
 

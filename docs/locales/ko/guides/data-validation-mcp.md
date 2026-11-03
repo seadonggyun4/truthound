@@ -36,29 +36,11 @@ Local 세 도구의 기능을 구분합니다. Local은 GX suite 가져오기나
 명시적인 스키마 규칙·드리프트 비교·마스킹은 별도 [Core 프로파일](mcp.md#core-installation)을
 확인하세요. Core의 전체 MCP 기능 동등성은 검증되지 않았습니다.
 
-## 로컬 설치와 연결
+## 플러그인으로 설치하고 연결하기
 
-Python 3.11–3.13에서 공개 MCP 추가 의존성을 설치합니다.
+[Styxis Plugins 설치 안내](https://github.com/seadonggyun4/styxis-plugin#install)에서 Codex CLI 또는 Claude Code 카탈로그를 연결한 뒤 `truthound@styxis-plugin`을 설치합니다. 플러그인이 고정 런타임과 MCP 설정을 제공하므로 별도의 pip 설치나 수동 JSON 설정이 필요하지 않습니다.
 
-```bash
-pip install "truthound[mcp]==3.3.1"
-truthound-mcp serve --allow-dir /absolute/path/to/data
-```
-
-로컬 stdio를 지원하는 MCP 클라이언트가 위 실행 파일과 인수를 시작하도록 설정합니다.
-설치만으로 클라이언트에 자동 등록되거나 폴더 접근 권한이 생기지 않습니다.
-호스팅된 HTTP/OAuth 연결만 받는 클라이언트는 이 로컬 stdio 구성을 직접 사용할 수 없습니다.
-[클라이언트 설정과 지원 형식](mcp.md#설치와-실행)을 확인하세요.
-
-Claude Code에서는 기존 공개 마켓플레이스로 Local 플러그인을 설치합니다.
-
-```bash
-claude plugin marketplace add seadonggyun4/styxis-plugin
-claude plugin install truthound@styxis-plugin
-```
-
-설정 스킬에 검사할 기존 절대 경로 디렉터리만 승인하도록 요청합니다.
-[플러그인 설치·권한 안내](mcp.md#claude-code-styxis-marketplace)를 확인하세요.
+설치 후 Truthound setup 스킬에 검사할 기존 절대 경로 디렉터리만 승인하도록 요청합니다. 설치 자체는 파일 접근을 허용하지 않습니다. 요구사항·업데이트·Core 선택은 [MCP 설치·권한 안내](mcp.md#local-installation)를 확인하세요.
 
 ## 무엇이 로컬에 남고, 무엇이 AI에 전달되나요?
 

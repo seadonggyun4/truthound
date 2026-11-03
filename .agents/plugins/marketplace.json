@@ -1,32 +1,7 @@
 {
   "name": "truthound",
   "interface": {
-    "displayName": "Truthound Plugins"
+    "displayName": "Truthound \u2014 install through Styxis Plugins"
   },
-  "plugins": [
-    {
-      "name": "truthound",
-      "source": {
-        "source": "local",
-        "path": "./plugins/truthound"
-      },
-      "policy": {
-        "installation": "AVAILABLE",
-        "authentication": "ON_INSTALL"
-      },
-      "category": "Developer Tools"
-    },
-    {
-      "name": "truthound-core",
-      "source": {
-        "source": "local",
-        "path": "./plugins/truthound-core"
-      },
-      "policy": {
-        "installation": "AVAILABLE",
-        "authentication": "ON_INSTALL"
-      },
-      "category": "Developer Tools"
-    }
-  ]
+  "plugins": []
 }

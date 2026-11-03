@@ -1,63 +1,41 @@
 # 로컬 MCP 연동
 
-간단한 파일 검사는 [CSV·Parquet 데이터 검증 MCP 가이드](data-validation-mcp.md)에서 시작하세요. 이 상세 문서는 별도 Core 프로파일도 함께 설명합니다.
+## Styxis 플러그인으로 설치
 
-## Local과 Core 선택
+일반 사용자 설치 창구는 [Styxis Plugins](https://github.com/seadonggyun4/styxis-plugin#install)입니다. Codex CLI와 Claude Code에서 플러그인을 설치하면 MCP 등록·실행 명령과 고정 런타임을 함께 제공합니다. Git·`uv`·Python 3.11–3.13이 필요하며 최초 실행에는 패키지 다운로드가 필요할 수 있습니다.
 
-두 구성 모두 로컬에서 공개 PyPI의 Truthound 3.3.1을 실행합니다. 간단한 파일 검사는 Local, 드리프트·마스킹·스키마 검증까지 필요하면 Core를 선택하세요.
-
-Codex에서는 저장소 마켓플레이스를 한 번 추가한 뒤 원하는 플러그인을 설치합니다.
-
-```bash
-codex plugin marketplace add seadonggyun4/truthound --ref main
-```
-
-<a id="local-installation"></a>
-
-### Local 설치
-
-Codex에서 **Truthound Local → Install → Set up**을 선택하고 읽을 데이터 폴더를 승인합니다.
-
-```bash
-codex plugin add truthound@truthound
-```
-
-Claude Desktop에서는 아래 번들을 내려받아 **Settings → Extensions → Advanced settings → Install Extension…**에서 설치한 뒤 허용 폴더를 설정합니다.
-
-[Local 3.3.1 MCPB](https://github.com/seadonggyun4/truthound/releases/download/v3.3.1/truthound-3.3.1.mcpb) · [설치 상세](#claude-desktop-설치-파일)
-
-<a id="core-installation"></a>
-
-### Core 설치
-
-Codex에서 **Truthound Core → Install → Set up**을 선택합니다. 데이터 폴더와 필요한 작업공간·운영자 제어·민감 결과 권한을 명시적으로 승인한 뒤 재연결합니다.
-
-```bash
-codex plugin add truthound-core@truthound
-```
-
-Claude Desktop에서는 아래 번들을 내려받아 **Settings → Extensions → Advanced settings → Install Extension…**에서 설치한 뒤 허용 폴더를 설정합니다.
-
-[Core 3.3.1 MCPB](https://github.com/seadonggyun4/truthound/releases/download/v3.3.1/truthound-3.3.1-core.mcpb) · [권한·고급 설정](#core-331-설치)
-
-설치만으로 데이터 접근 권한이 생기지 않습니다. 두 번들은 사용자 지정 확장이며 공식 디렉터리 심사 승인과는 별개입니다. Core의 전체 MCP 동등성은 아직 검증되지 않았습니다.
-
-
-Styxis 카탈로그에서도 Claude Code와 Codex용 두 프로파일을 설치할 수 있습니다. Claude Code:
-
-```bash
-claude plugin marketplace add seadonggyun4/styxis-plugin
-claude plugin install truthound-core@styxis-plugin
-```
-
-Codex:
+### Codex CLI
 
 ```bash
 codex plugin marketplace add seadonggyun4/styxis-plugin
+# Local 또는 Core를 선택합니다.
+codex plugin add truthound@styxis-plugin
 codex plugin add truthound-core@styxis-plugin
 ```
 
-Local은 `truthound-core` 대신 `truthound`를 사용합니다. Core 0.2.2는 설치된 플러그인 루트의 절대경로를 사용하는 Claude manifest와 공개 인덱스 고정 의존성 lock을 포함합니다. 읽기·작업공간·승인 저장소·민감 결과 권한은 별도로 승인해야 하며 설치만으로 데이터 접근을 허용하지 않습니다. 사용자 정의 마켓플레이스 배포이며 공식 디렉터리 승인을 뜻하지 않습니다.
+### Claude Code
+
+```bash
+claude plugin marketplace add seadonggyun4/styxis-plugin
+# Local 또는 Core를 선택합니다.
+claude plugin install truthound@styxis-plugin
+claude plugin install truthound-core@styxis-plugin
+```
+
+<a id="local-installation"></a>
+<a id="core-installation"></a>
+
+### 프로파일과 권한
+
+| 프로파일 | 기능 | 설치 후 |
+| --- | --- | --- |
+| Local | 결측·중복 검사, 프로파일링, PII 표본 탐지 | Truthound setup 스킬에서 읽을 폴더 승인 |
+| Core | 스키마·드리프트·마스킹 등 추가 작업 | Core setup 스킬에서 읽기·작업공간·제어·민감 결과 권한을 각각 승인하고 재연결 |
+
+설치만으로 데이터 접근을 허용하지 않습니다. 기존 권한은 업데이트해도 유지됩니다. 두 프로파일은 공개 Core 3.3.1을 사용하며 MCP를 통한 전체 Core 동등성은 검증되지 않았습니다.
+기존 카탈로그는 Codex의 `codex plugin marketplace upgrade styxis-plugin`, Claude Code의 `claude plugin marketplace update styxis-plugin`으로 갱신한 뒤 해당 플러그인을 다시 설치합니다.
+
+이 CLI 안내는 **Claude Code**용입니다. Claude Desktop 앱의 MCPB 확장과는 다른 설치 형식이며, 이 페이지에서는 별도 수동 설치 경로를 안내하지 않습니다.
 
 ## 핵심 데이터 품질 작업
 
@@ -74,7 +52,7 @@ Local은 `truthound-core` 대신 `truthound`를 사용합니다. Core 0.2.2는 �
 | “스키마를 학습하고 합의한 스키마로 검증해줘.” | `schema_learn`; `schema_spec`을 지정한 `validation_check` |
 | “기준 데이터와 이번 배치의 드리프트를 비교해줘.” | 두 입력을 asset으로 등록한 뒤 `drift_compare` |
 
-클라이언트 환경에 `truthound[mcp]==3.3.1`을 설치하고 `truthound-mcp serve --profile core --allow-dir /absolute/path/to/data`로 실행합니다. 스키마 내용·마스킹된 행을 반환하려면 운영자가 `--allow-sensitive-results`를 명시적으로 허용해야 합니다. 설치만으로 권한이 부여되지는 않습니다. 결과가 핸들로 반환되면 해당 산출물을 읽고 사용 후 핸들을 해제합니다. 기본 요약 응답에는 원시 데이터가 포함되지 않습니다.
+위 Core 플러그인을 설치하고 setup 스킬에서 필요한 폴더를 승인합니다. 스키마 내용·마스킹된 행을 반환하려면 운영자가 `--allow-sensitive-results`를 명시적으로 허용해야 합니다. 설치만으로 권한이 부여되지는 않습니다. 결과가 핸들로 반환되면 해당 산출물을 읽고 사용 후 핸들을 해제합니다. 기본 요약 응답에는 원시 데이터가 포함되지 않습니다.
 
 기존 Core·MCP 기능은 그대로 유지됩니다. 상세 설정과 수명주기는 이 가이드의 뒤쪽에서 설명하며 이 빠른 사용 흐름에서는 나열하지 않습니다.
 
@@ -83,45 +61,12 @@ Truthound 3.2의 선택 기능인 MCP 서버는 사용자 컴퓨터에서 기존
 `th.check()`, `th.profile()`, `th.scan()`을 호출합니다. 원격 검증 서버 없이
 stdio를 지원하는 에이전트에서 사용할 수 있습니다.
 
-## 설치와 실행
+<a id="설치와-실행"></a>
+<a id="install-and-start"></a>
 
-3.3.0에서 루트 패키지를 import하면 검증 facade와 Polars는 첫 접근까지
-로드를 미룹니다. 공개 함수와 타입은 기존 Core 객체를 그대로 반환하며,
-worker 시작 시 사용하지 않는 검증 의존성을 불러오는 일을 줄입니다.
+## 연결과 지원 형식
 
-```bash
-pip install "truthound[mcp]==3.3.1"
-truthound-mcp serve --allow-dir /absolute/path/to/data
-```
-
-`truthound mcp serve`, `python -m truthound.mcp serve`도 지원합니다.
-에이전트에는 별도 CLI 플러그인을 검색하지 않는 `truthound-mcp`를 권장합니다.
-허용 폴더는 기본값이 없으며 `--allow-dir`를 반복해 지정할 수 있습니다.
-상대 입력 경로는 첫 번째 허용 폴더 기준입니다. 에이전트는 설치된 Python
-환경의 실행 파일을 사용해야 하며 pip 설치만으로 자동 연결되지는 않습니다.
-기본 패키지와 MCP extra는 Polars 1.x를 사용합니다. Core PII scanner가 Polars 2에서
-제거된 API를 사용하므로 저장소 lockfile과 별도로 클린 설치를 검증합니다.
-
-Linux/macOS/Windows CI는 Python 3.11–3.13을 검증합니다. Windows에서는
-POSIX의 `bin/truthound-mcp` 대신 설치 환경의 `Scripts/truthound-mcp.exe`를
-사용합니다. 아래는 클라이언트 형식에 맞춰 조정하는 수동 stdio 설정 예시입니다.
-
-```json
-{
-  "mcpServers": {
-    "truthound": {
-      "command": "/absolute/path/to/venv/bin/truthound-mcp",
-      "args": ["serve", "--allow-dir", "/absolute/path/to/data"]
-    }
-  }
-}
-```
-
-로컬 stdio 서버이며 HTTP/OAuth 원격 endpoint를 제공하지 않습니다.
-원격 connector가 필요한 클라이언트에는 이 설정을 직접 적용할 수 없습니다.
-초기화 후 `profile_file`에 `{"path": "example.csv"}`를 전달하면 명시적으로
-허용된 폴더의 파일을 검사하고 원본 행 대신 제한된 집계 메타데이터를 반환합니다.
-`check_file`, `scan_pii`도 같은 입력 형식입니다.
+위 플러그인 설치와 setup 스킬을 사용합니다. Python 환경을 별도로 만들거나 MCP JSON을 직접 편집할 필요가 없습니다. Local은 `.csv`, `.parquet`, `.json`, `.ndjson`, `.jsonl`을 지원합니다. 서버는 로컬 stdio이며 원격 HTTP/OAuth 커넥터가 아닙니다. 초기화 뒤 승인된 폴더의 `path`로 도구를 호출합니다.
 
 ## 도구와 결과
 
@@ -176,12 +121,10 @@ timeout은 파일 복사 시간을 포함하지 않습니다. 압축 파일은 �
 
 3.3.0에는 선택형 `core` 프로파일이 추가됩니다. **이미 게시된 3.2.0 wheel
 및 해당 버전의 과거 Registry 등록 정보에는 포함되지 않습니다.**
-별도 환경에 3.3.0을 설치한 뒤 사용합니다. 기본 프로파일의 기존
+Core 플러그인은 공개 3.3.1 런타임을 제공합니다. 기본 프로파일의 기존
 도구 세 개와 버전 1 응답 계약은 바꾸지 않습니다.
 
-```bash
-truthound-mcp serve --allow-dir /absolute/path/to/data --profile core
-```
+Core setup 스킬에서 읽을 디렉터리를 승인하고 재연결합니다.
 
 다음 여덟 파일·조회 도구는 최초 호환 계약을 유지합니다. 보관 데이터용 추가
 도구는 아래에서 설명하며 각 입력·출력은 명시적인 형식으로 검사합니다.
@@ -2445,156 +2388,23 @@ truthound-mcp plugin-fingerprint --distribution your-reviewed-distribution
 기록할 수 있으며 MCP는 이 구분과 전체 문제를 보존합니다. 모든 등록 검증기의 생성자
 거부를 확인했다고 알고리즘별 전체 런타임 오류 분기까지 증명한 것은 아닙니다.
 
-## Claude Desktop 설치 파일
+<a id="claude-desktop-bundle"></a>
 
-[아이콘 포함 3.3.1 번들 다운로드](https://github.com/seadonggyun4/truthound/releases/download/v3.3.1/truthound-3.3.1.mcpb).
+## 이전 확장 형식
 
-3.3.1 배포 번들과 PyPI의 `bundle` 명령은 Codex 플러그인과 같은 주황색 아이콘을 포함합니다. 실행 패키지는 `truthound[mcp]==3.3.1`으로 고정됩니다. 확장을 갱신하고 승인한 폴더·도구 권한을 확인합니다. 이전 3.3.0 PyPI 패키지의 아이콘 없는 생성 동작은 바뀌지 않습니다.
+기존 MCPB 산출물은 해당 버전의 릴리스 기록입니다. 현재 Codex CLI·Claude Code 설치는 위 Styxis 플러그인 안내를 따릅니다.
 
-위의 배포 번들을 사용하거나 아래 명령으로 같은 버전의 번들을 생성합니다. Claude Desktop에서 **Settings → Extensions → Advanced settings → Install Extension…** → 내려받거나 생성한 파일 선택·허용 폴더 설정 순서로 설치합니다. [공식 설치 안내](https://support.claude.com/en/articles/10949351-getting-started-with-local-mcp-servers-on-claude-desktop)를 참고하세요. 이는 사용자 지정 확장 설치이며 Claude 공식 디렉터리 등재를 뜻하지 않습니다.
+<a id="openai-local-plugin-and-repository-marketplace"></a>
 
-```bash
-python -m pip install --upgrade "truthound[mcp]==3.3.1"
-truthound-mcp bundle --output truthound-3.3.1.mcpb
-```
+## 플러그인 소유권과 권한
 
-`.mcpb`는 manifest·launcher·의존성 선언·라이선스를 포함합니다. UV runtime은
-PyPI에서 정확히 `truthound[mcp]==3.3.1`을 설치하고 하위 의존성을 해석합니다.
-최초 설정에는 네트워크와 manifest 0.4/UV를 지원하는 Claude Desktop이
-필요합니다. archive 바이트는 결정론적이지만 완전히 잠긴 오프라인 환경은 아닙니다.
-생성된 번들은 서명되지 않았으며 설치 시 host의 동의가 필요합니다.
+Truthound 저장소는 Local·Core 패키지와 런타임·권한·제품 테스트를 관리합니다. 일반 사용자 카탈로그는 Styxis Plugins에서만 제공합니다. 제품 저장소의 이전 카탈로그는 배포 항목이 없는 호환 표식이며, 개발·CI는 검증기가 생성하는 임시 카탈로그로 실제 설치를 검사합니다.
 
-PyPI 게시 전에 테스트하려면 동일 버전 wheel을 포함합니다.
+Local 권한은 `~/.truthound-openai/permissions.json`, Core 권한은 `~/.truthound-core/permissions.json`에 보관합니다. 업데이트는 권한을 새로 부여하지 않습니다. setup 스킬로 허용 범위를 변경하고 Core는 변경 뒤 재연결합니다. 경로·열 이름·집계는 호스트 모델에 전달될 수 있으며 전체 Core 동등성이나 공식 디렉터리 승인을 주장하지 않습니다.
 
-```bash
-truthound-mcp bundle --wheel dist/truthound-3.3.1-py3-none-any.whl --output truthound-3.3.1-local.mcpb
-```
+## Registry 메타데이터
 
-Claude Desktop 확장 설치 UI에서 파일을 설치하고 허용 데이터 폴더를 선택합니다.
-설치와 접근 동의는 별개이며 디렉터리 심사·공개 등록도 별도입니다. 번들 생성만으로
-Anthropic 승인이나 GUI 검증을 주장하지 않습니다. 개발 환경·프로젝트 데이터·내부
-작업 기록은 포함하지 않습니다. 구현 경계와 연구 근거는
-[설계 문서](../adr/005-local-mcp.md)를 참고하세요.
-
-## OpenAI 로컬 플러그인과 저장소 마켓플레이스
-
-OpenAI 플러그인은 Core와 별도인 버전 `0.1.7`이며 공개 PyPI의
-`truthound[mcp]==3.3.1`과 고정된 UV dependency lock을 사용합니다.
-로컬 데스크톱용이며 원격 서비스나 ChatGPT 웹 커넥터가 아닙니다.
-UV를 설치해 데스크톱 앱의 PATH에서 사용할 수 있어야 하며 최초 설치에는
-네트워크와 Python 3.11–3.13 런타임이 필요합니다.
-
-마켓플레이스를 한 번 추가합니다.
-
-```bash
-codex plugin marketplace add seadonggyun4/truthound --ref main
-```
-
-기존 설치는 마켓플레이스를 갱신한 뒤 플러그인을 다시 설치하고 클라이언트를 재연결합니다. 기존 폴더 권한은 유지됩니다.
-
-```bash
-codex plugin marketplace upgrade truthound
-codex plugin add truthound@truthound
-```
-
-필요하면 앱을 새로고침·재시작한 뒤 **Plugins → Truthound Plugins 소스 →
-Truthound Local → Install → Set up**에서 읽기를 허용할 정확한 절대경로
-폴더에 동의합니다. CLI 설치는 `codex plugin add truthound@truthound`입니다.
-클라이언트 버전과 조직 정책에 따라 저장소 마켓플레이스 사용 가능 여부가 다릅니다.
-패키지는 portable manifest와 구형 Codex용 호환 manifest를 함께 제공합니다.
-**Set up**이 없는 클라이언트에서는 에이전트에게 패키지의 **Truthound setup**
-스킬 실행을 요청하세요. 폴더 동의 절차를 생략하지 않습니다.
-MCP 명령은 host별 인자 placeholder 치환에 의존하지 않고 플러그인 기준의 상대
-`cwd`를 사용합니다. 0.1.1은 Codex 0.141.0에서 0.1.0의 시작 문제를 수정합니다.
-0.1.2는 표준 `./` 접두사를 사용하고, ZIP 생성 전에 두 portable manifest를
-저장소에 고정한 공식 Agent Plugins 1.0.0 schema로 검증합니다.
-0.1.4는 회색 외곽 여백이나 이미지 자체의 둥근 타일 없이 정사각형 아이콘·로고의
-가장자리까지 주황 배경을 채웁니다. 모서리 클리핑과 UI 자체 여백은 host가
-관리합니다. 기존 설치에서는 플러그인을
-업데이트하고 클라이언트 캐시를 새로고침하기 전까지 이전 이미지가 보일 수 있습니다.
-OS별 CI는 실제 Codex 설치·정규화된 실행 설정과 frozen UV 실행을 함께 검사합니다.
-Windows 검증기는 `.cmd` shim을 shell 평가하지 않고 npm의 Codex JS 진입점을
-Node로 직접 실행합니다.
-
-설치만으로 데이터 접근 권한은 생기지 않습니다. 세 도구는 정상 연결되지만
-폴더 동의 전에는 `access_denied`를 반환합니다. 온보딩은 사용자 동의 후에만
-패키지의 `permissions.py`를 실행하며 설정은 plugin·입력 폴더 외부의
-`~/.truthound-openai/permissions.json`에 원자적으로 저장합니다.
-다음 도구 호출부터 새 정책을 읽으므로 서버 재시작은 필요하지 않습니다.
-재설정은 기존 목록을 교체하며 `permissions.py --revoke`로 철회합니다.
-철회는 다음 호출에 적용되고 진행 중인 호출을 소급 취소하지는 않습니다.
-누락·손상·안전하지 않은 설정·빈 목록은 접근을 거부합니다. POSIX에서는
-파일 소유자·쓰기 모드를 검사하며 Windows는 사용자 폴더·NTFS 권한에
-의존합니다. POSIX mode가 Windows ACL을 강제한다고 주장하지 않습니다.
-
-Core의 MCP transport·service·파일 정책·worker를 재사용하고 로컬 동의 로더만
-추가합니다. HTTP listener·업로드 도구·OAuth·자격증명·유료 모델 호출은 없습니다.
-원시 값은 숨기지만 파일 경로·컬럼명은 host가 모델 제공자에게 보낼 수 있는
-도구 메타데이터입니다. 선택적 `TRUTHOUND_OPENAI_CONFIG` 절대경로 override는
-운영자가 지정한 별도 설정 파일이나 격리 테스트용이며 접근 권한 자체가 아닙니다.
-
-### OpenAI 공식 디렉터리 승인 절차
-
-저장소 배포는 **OpenAI 공식 공개 디렉터리 게시가 아닙니다.** 현재 플러그인은
-OpenAI 승인이나 공개 listing ID가 없습니다. 공식 **Desktop only** 등재 절차는 다음과 같습니다.
-
-1. 제출 조직 소유자가 OpenAI 담당자에게 로컬 MCP 파트너 자격·조직 allowlist를
-   요청하고 승인 확인을 기다립니다.
-2. 개발자·사업자 본인 확인을 완료합니다. 제출자는 조직 owner 또는
-   **Apps Management Write** 권한이 필요합니다. 자격증명을 대화·ZIP에 넣지 않습니다.
-3. 실제 게시자 소유의 개인정보·이용약관 URL, 심사 메타데이터, 양성 5개·음성 3개
-   테스트와 접근 가능한 시연 영상 URL을 준비합니다. 현재 패키지는 법적 정책·영상
-   심사 자료까지 완성된 제출물이 아닙니다.
-4. 깨끗한 데스크톱 설치, 새 대화·기존 대화의 온보딩과 주요 workflow를 검증합니다.
-5. [제출 포털](https://platform.openai.com/plugins)에서 승인된 로컬 MCP용
-   **Skills only / Upload ZIP** 경로를 사용하되 실제 MCP 설정을 유지합니다.
-   자동 검증 지적을 해결하고 게시자에게 정책 확인·동의를 받습니다.
-6. 심사 제출 후 승인을 받은 버전에서만 **Publish plugin**을 선택합니다.
-   실제 listing URL을 기록하고 공식 디렉터리의 Install을 별도 검증합니다.
-
-[공식 패키징](https://developers.openai.com/plugins/build/plugins),
-[데스크톱 제출 자격](https://developers.openai.com/plugins/deploy/desktop-only),
-[심사·게시 요건](https://developers.openai.com/plugins/deploy/submission)을 참고하세요.
-ZIP 생성·저장소 설치 성공을 allowlist·법적 동의·심사 승인·웹 지원으로 대신하지 않습니다.
-
-## Registry 메타데이터와 설치
-
-공식 Registry에 3.3.1이 게시되었습니다. 등록된 로컬 stdio 명령은 같은 버전의 PyPI 패키지를 설치하며, 검색·설치만으로 폴더 접근 권한이 생기지는 않습니다.
-
-MCP CI는 Linux Python 3.11에서 전체 필수 테스트를 결정적인 4개 분할로 나누되
-15분 job 제한은 유지합니다. 모든 분할이 성공한 뒤에만 패키징을 시작합니다.
-다른 선택된 OS·Python 조합은 플랫폼 경계 테스트를 실행하며 Windows는 2개
-비중복 분할, 나머지는 단일 분할을 사용합니다. 설치 전에 해당 증거를 집계하며
-경계 테스트를 전체 의미 동등성 검증의 대체물로 사용하지 않습니다.
-합산 gate는 전체 수집 목록·소스 해시·setup/call/teardown 단계와 JUnit을 대조하고,
-누락·중복·SKIP·실패를 거부합니다. 일부 분할의 통과만으로 전체 검증 완료를
-선언하지 않습니다.
-
-[공식 MCP Registry](https://registry.modelcontextprotocol.io/)에서 `io.github.seadonggyun4/truthound`를 검색할 수 있으며 [3.3.1이 게시되어 있습니다](https://registry.modelcontextprotocol.io/v0.1/servers/io.github.seadonggyun4%2Ftruthound/versions/3.3.1). 연동 클라이언트의 마켓플레이스에 표시되면 **Install**을 누르고 접근을 허용할 폴더를 지정합니다. Registry 등록만으로 모든 클라이언트의 마켓플레이스 노출·승인이 보장되지는 않습니다.
-
-저장소의 `server.json`은 `io.github.seadonggyun4/truthound`, 기존 PyPI 패키지
-`truthound` 버전 `3.3.1`과 로컬 stdio를 선언합니다. UV의 `--with`로 MCP
-extra를 설치하고 기존 CLI 별칭을 실행합니다.
-
-```bash
-uvx --with "truthound[mcp]==3.3.1" truthound@3.3.1 mcp serve --allow-dir /absolute/path/to/data
-```
-
-GitHub namespace는 실제 저장소 소유자에 맞추며 README의 `mcp-name`도 정확히
-일치해야 합니다. dev 환경의 `python verification/mcp_registry.py`가 버전 고정
-공식 JSON Schema와 설치 계약을 검사합니다. 필수 디렉터리 입력에는 기본값이
-없으며 검색 목록 등록이 파일 접근 권한을 부여하지 않습니다. UV 격리 환경은
-무관한 CLI plugin 설치를 피하며, 수동 host 구성에서는 전용 `truthound-mcp`
-실행 파일을 계속 권장합니다.
-
-PyPI는 Python 산출물을 저장하고 pip/pipx/uvx는 이를 설치합니다. 공식 MCP
-Registry는 검색용 메타데이터 목록이지 패키지 저장소나 원격 검증 서버가 아닙니다.
-manifest 검증만으로 실제 등록·외부 marketplace 승인을 주장하지 않습니다.
-Registry 인증은 GitHub CLI 로그인과 별개이며 새 OAuth grant는 사용자가 직접
-승인합니다. 토큰·Trusted Publisher·계정을 자동 설정하지 않습니다.
-[공식 PyPI 소유권 규칙](https://modelcontextprotocol.io/registry/package-types)과
-[인증 가이드](https://modelcontextprotocol.io/registry/authentication)를 참고하세요.
-
+[공식 MCP Registry](https://registry.modelcontextprotocol.io/)의 `io.github.seadonggyun4/truthound`는 검색용 서버 메타데이터입니다. 카탈로그 등록만으로 폴더 접근이나 클라이언트 지원을 보장하지 않습니다. Codex CLI·Claude Code 설치는 Styxis Plugins를 사용합니다. Registry 게시와 Python 패키지 릴리스는 제품 유지관리 절차입니다.
 
 ### 승인된 네이티브 스트리밍 저장소
 
@@ -3196,19 +3006,11 @@ files={별칭: 운영자_절대경로})`를 반환합니다. 팩터리는 네이
 통과하거나 `mostly`로 생략돼도 뒤 실패의 증거가 다른 컬럼으로 이동하지 않습니다.
 단독·배치 Core 실행은 같은 연결 규칙을 사용합니다.
 
-### Core 3.3.1 설치
+<a id="core-331-installation"></a>
 
-`truthound` 0.1.7 플러그인은 고정 의존성 lock으로 공개 Core 3.3.1을 사용합니다. 별도 `truthound-core` 0.2.2 플러그인는 Core 3.3.1을 고정하며 Core 프로파일을 사용하려면 해당 버전을 PyPI에서 설치합니다. 두 플러그인 모두 공개 인덱스 의존성 lock과 `uv run --frozen`을 사용합니다. 패키지 CI는 소스 체크아웃 대신 새 wheel을 설치합니다.
+### Core 플러그인
 
-```bash
-codex plugin add truthound-core@truthound --json
-truthound-mcp bundle --profile core --output truthound-3.3.1-core.mcpb
-truthound-mcp bundle --profile core --wheel dist/truthound-3.3.1-py3-none-any.whl --output truthound-3.3.1-core-local.mcpb
-```
-
-설치만으로 데이터 접근을 허용하지 않습니다. 설치된 UV 프로젝트에서 `python -m truthound.mcp.consent configure --allow-dir <승인한-디렉터리> --confirm`을 실행합니다. `--workspace-dir`, `--control-dir`, `--allow-sensitive-results`는 각각 별도 운영자 승인 항목입니다. 전체 설정은 `~/.truthound-core/permissions.json`의 이전 권한을 대체하며 `python -m truthound.mcp.consent revoke`로 모두 철회합니다. 변경 시 세션을 종료하고 보유 핸들을 무효화하므로 재연결해야 합니다. 개별 실행 계획 승인은 여전히 MCP 외부의 신뢰된 운영자 명령으로 수행합니다.
-
-Core MCPB는 현재 카탈로그와 데이터·작업공간·승인 저장소·민감 결과 설정을 제공합니다. 선택 디렉터리를 비우면 접근을 허용하지 않으며 민감 결과 공개 기본값은 false입니다. 데스크톱 설정 변경 후 재시작합니다. 기본 번들은 요약 도구 3개를 유지합니다. Core 지원은 부분적이며 공식 디렉터리 승인은 없습니다.
+Core 0.2.2는 공개 Core 3.3.1과 고정 의존성 lock을 사용합니다. 위 Styxis 설치와 Core setup 스킬로 권한을 관리합니다. 기존 권한을 유지하며 개별 실행 계획은 별도의 신뢰된 운영자 승인이 필요합니다.
 
 Windows Ray 2.58의 소유한 로컬 시작은 기존 SDK 노드 클라이언트로 정확한 ALIVE 노드와 유효한 관리 포트를 조회하여 네이티브 접근 위반이 발생한 임시 `GlobalStateAccessor.GetNode` 경로를 우회합니다. 범위를 제한한 훅은 성공·실패 모두 복원하며, 다른 스레드·외부 클러스터는 SDK 동작을 유지하고 시작 제한 시간을 늘리지 않습니다.
 
@@ -3222,18 +3024,12 @@ Windows 표준 스트림을 복제한 경우를 포함해 프로토콜 디스크
 
 Windows 바이트 모드 파이프에서는 writer가 열린 상태에서도 크기 0 가용성 조회의 바이트 수를 사용합니다.
 
-## Claude Code: Styxis marketplace
+<a id="claude-code-styxis-marketplace"></a>
 
-Truthound는 AI Agent를 위한 로컬 우선 데이터 품질·검증 도구입니다.
-Local plugin은 승인된 CSV·Parquet의 결측값·중복 행 검사, 열 타입·집계
-프로파일링, 표본 기반 개인정보 탐지를 제공합니다. 임의 스키마를 받는
-검증, RAG 답변의 의미 품질 평가, 데이터 편집, 법적 준수 판정은 제공하지
-않습니다. RAG·eval은 해당 워크플로에 넣을 표 형식 입력의 사전 검사를
-뜻합니다. 셀 원문은 반환하지 않지만 경로·열 이름·집계는 host 모델에 전달될 수 있습니다.
+## 배포 카탈로그
 
-```bash
-claude plugin marketplace add seadonggyun4/styxis-plugin
-claude plugin install truthound@styxis-plugin
+최신 설치 명령과 카탈로그 고정 버전은 [Styxis Plugins](https://github.com/seadonggyun4/styxis-plugin#install)에서 관리합니다. Local과 Core는 독립 플러그인이며 필요한 프로파일을 선택합니다.
+
 # Or install the separately permissioned Core profile:
 claude plugin install truthound-core@styxis-plugin
 ```

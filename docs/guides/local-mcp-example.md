@@ -14,7 +14,7 @@ in a host and the separate Local/Core capability boundaries.
 
 ## Input: three synthetic rows
 
-The [reproduction script](https://github.com/seadonggyun4/styxis-plugin/blob/main/scripts/verify_local_example.py)
+The [reproduction script](https://github.com/seadonggyun4/styxis-plugin/blob/4a66f306042df865ae126f26908606689138ae6b/scripts/verify_local_example.py)
 creates this CSV and a Parquet copy inside a temporary directory:
 
 ```csv
@@ -46,23 +46,13 @@ source files remained unchanged. Raw email values were absent from the results.
 Paths, column names and aggregates can still reach the selected AI host; inspect
 the host's own data policy separately.
 
-## Reproduce with the published package
+## Verify through the installed plugin
 
-The following uses a POSIX shell and Python 3.11–3.13. Review the script before
-running it. First setup downloads dependencies; the MCP calls run locally.
+1. Install Local through [Styxis Plugins](https://github.com/seadonggyun4/styxis-plugin#install).
+2. Save the synthetic CSV above in a test directory and approve only that directory through the setup skill.
+3. Ask the agent to check nulls/duplicates, profile the file and scan sampled PII, then compare with the observations above.
 
-```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install "truthound[mcp]==3.3.1"
-git clone https://github.com/seadonggyun4/styxis-plugin.git
-.venv/bin/python styxis-plugin/scripts/verify_local_example.py --output local-example.json
-```
-
-The script checks package identity, tool discovery, six successful executions,
-the expected failed quality result, outside-directory denial, raw-value absence
-and unchanged inputs. It removes its temporary fixtures when finished. This is
-an execution example, not an independent performance comparison or evidence that
-an AI engine recommends the project. A PII scan can miss sensitive information.
+The linked script and receipt are historical verification evidence pinned to their original revision. Current installation uses the plugin. This record does not establish search recommendation effects or complete PII detection.
 
 ## Which public project should I install?
 

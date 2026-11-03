@@ -43,23 +43,20 @@ and ends at the closing </p> of the badge block above.
 
 ### Use through MCP
 
-See the [3.3.1 release notes](docs/releases/truthound-3.3.1.md) for changes and publication evidence.
-
-
-Choose between two Truthound MCP configurations in Codex or Claude Desktop. Both run Truthound 3.3.1 locally. For local CSV/Parquet null checks, duplicate detection, profiling and sampled PII, start with the [data validation MCP guide](https://truthound.netlify.app/en/guides/data-validation-mcp/).
+Install MCP through Styxis plugins in Codex CLI or Claude Code. The plugin manages the runtime and MCP configuration; approve the data directories separately after installation.
 
 | Truthound Local | Truthound Core |
 | --- | --- |
 | ![Truthound Local](docs/assets/truthound-local-plugin.png) | ![Truthound Core](docs/assets/truthound-core-plugin.png) |
 
-| Plugin | Main uses | Installation |
+| Plugin | Codex CLI | Claude Code |
 | --- | --- | --- |
-| **Truthound Local** | Null/duplicate checks, column summaries, sampled PII detection | [Codex · Claude Desktop](docs/guides/mcp.md#local-installation) |
-| **Truthound Core** | Validation, profiling, PII, drift comparison, masking and schema validation | [Codex · Claude Desktop](docs/guides/mcp.md#core-installation) |
+| **Truthound Local** — nulls, duplicates, profiling and sampled PII | `codex plugin add truthound@styxis-plugin` | `claude plugin install truthound@styxis-plugin` |
+| **Truthound Core** — additional schema, drift and masking workflows | `codex plugin add truthound-core@styxis-plugin` | `claude plugin install truthound-core@styxis-plugin` |
 
-Approve data directories after installation. Core separates workspace, operator-control and sensitive-result permissions; full Core parity through MCP has not been verified.
+[Connect the catalog and install through Styxis Plugins →](https://github.com/seadonggyun4/styxis-plugin#install)
 
-Install the `truthound` Local or `truthound-core` Claude Code plugin through the [Styxis marketplace](https://github.com/seadonggyun4/styxis-plugin). See [installation, consent and profile capabilities](https://truthound.netlify.app/en/guides/mcp/#claude-code-styxis-marketplace).
+Requires Git, `uv`, Python 3.11–3.13 and a plugin-capable client. Core workspace, operator-control and sensitive-result permissions require separate approval. Full Core parity through MCP has not been verified.
 
 ---
 
@@ -280,7 +277,7 @@ The root package intentionally exposes a small API.
 Expression validation keeps failure samples, counts and rows attached to the reported column after passing checks are omitted.
 
 The `ai`, `mcp` and `all` extras share a Pydantic 2.11 minimum in 3.3.0.
-Build a Core MCPB with `truthound-mcp bundle --profile core --output truthound-core.mcpb`. Truthound Local plugin 0.1.7 and the separate `truthound-core` 0.2.2 plugin pin Core 3.3.1 and use explicit data, workspace, control and disclosure grants; reconnect after changes.
+Truthound Local plugin 0.1.7 and the separate `truthound-core` 0.2.2 plugin pin Core 3.3.1 and use explicit data, workspace, control and disclosure grants; reconnect after changes.
 
 ## License
 

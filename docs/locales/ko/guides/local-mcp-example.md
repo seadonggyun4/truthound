@@ -13,7 +13,7 @@ AI 답변이나 검색 순위를 흉내 낸 결과가 아닙니다. 설치와 Lo
 
 ## 입력: 합성 데이터 세 행
 
-[재현 스크립트](https://github.com/seadonggyun4/styxis-plugin/blob/main/scripts/verify_local_example.py)는
+[재현 스크립트](https://github.com/seadonggyun4/styxis-plugin/blob/4a66f306042df865ae126f26908606689138ae6b/scripts/verify_local_example.py)는
 임시 폴더에 다음 CSV와 같은 내용의 Parquet을 만듭니다.
 
 ```csv
@@ -43,22 +43,13 @@ geo-example-721@example.com,1
 결과에는 이메일 원문이 없었습니다. 경로·열 이름·집계는 선택한 AI 호스트에 전달될 수
 있으므로 호스트의 데이터 처리 정책도 확인하세요.
 
-## 공개 패키지로 재현하기
+## 설치한 플러그인으로 확인하기
 
-다음은 POSIX 셸과 Python 3.11–3.13 기준입니다. 실행 전에 스크립트를 검토하세요.
-최초 준비에는 의존성 다운로드가 필요하며 MCP 호출은 로컬에서 실행합니다.
+1. [Styxis Plugins](https://github.com/seadonggyun4/styxis-plugin#install)에서 Local을 설치합니다.
+2. 위 합성 CSV를 테스트 폴더에 저장하고, setup 스킬에서 그 폴더만 승인합니다.
+3. 에이전트에 해당 CSV의 결측·중복 검사, 프로파일링, 개인정보 표본 탐지를 요청하고 위 관측 결과와 비교합니다.
 
-```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install "truthound[mcp]==3.3.1"
-git clone https://github.com/seadonggyun4/styxis-plugin.git
-.venv/bin/python styxis-plugin/scripts/verify_local_example.py --output local-example.json
-```
-
-스크립트는 패키지 식별, 도구 조회, 여섯 번의 정상 실행, 예상된 품질 실패,
-폴더 밖 접근 차단, 원문 비노출과 입력 보존을 확인합니다. 끝나면 임시 파일을 지웁니다.
-실행 예제이며 독립 성능 비교나 AI 검색 추천의 증거가 아닙니다.
-개인정보 검사는 민감정보를 놓칠 수 있습니다.
+연결된 스크립트와 실행 기록은 당시 검증을 고정한 역사적 증거입니다. 현재 설치는 플러그인을 사용하며 이 기록은 검색 추천 효과나 완전한 개인정보 탐지의 증거가 아닙니다.
 
 ## 어떤 공개 프로젝트를 설치하나요?
 
