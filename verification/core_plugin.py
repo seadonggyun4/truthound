@@ -8,9 +8,9 @@ import hashlib
 import json
 import os
 import re
-import tomllib
 import subprocess
 import tempfile
+import tomllib
 import zipfile
 from pathlib import Path
 
@@ -19,6 +19,8 @@ from openai_plugin import codex_command, validate_portable
 ROOT = Path(__file__).resolve().parents[1]
 FILES = (
     "plugin.json",
+    ".claude-plugin/plugin.json",
+    "uv.lock",
     ".codex-plugin/plugin.json",
     "mcp.json",
     ".mcp.json",
@@ -33,13 +35,22 @@ def versions(plugin):
     project = tomllib.loads((plugin / "pyproject.toml").read_text())["project"]
     manifest = json.loads((plugin / "plugin.json").read_text())
     assert manifest["version"] == project["version"]
+    for name in (".claude-plugin/plugin.json", ".codex-plugin/plugin.json"):
+        other = json.loads((plugin / name).read_text())
+        assert other["name"] == manifest["name"] and other["version"] == manifest["version"]
+    lock = tomllib.loads((plugin / "uv.lock").read_text())
+    assert (
+        next(p for p in lock["package"] if p["name"] == project["name"])["version"]
+        == project["version"]
+    )
     dependency = next(d for d in project["dependencies"] if d.startswith("truthound[mcp]=="))
     match = re.fullmatch(r"truthound\[mcp\]==(\d+\.\d+\.\d+)", dependency)
     assert match is not None
+    assert next(p for p in lock["package"] if p["name"] == "truthound")["version"] == match.group(1)
     return manifest["version"], match.group(1)
 
 
-async def smoke(plugin, wheel, work):
+async def smoke(plugin, wheel, work, client_kind="codex"):
     _, core_version = versions(plugin)
     import anyio
     from mcp import ClientSession, StdioServerParameters
@@ -47,20 +58,44 @@ async def smoke(plugin, wheel, work):
     from mcp.shared.exceptions import McpError
 
     connection = json.loads((plugin / "mcp.json").read_text())["mcpServers"]["truthound-core"]
+    work.mkdir(parents=True, exist_ok=True)
+    working_directory = plugin
+    if client_kind == "claude":
+        connection = json.loads((plugin / ".claude-plugin/plugin.json").read_text())["mcpServers"][
+            "truthound-core"
+        ]
+        connection["args"] = [
+            a.replace("${CLAUDE_PLUGIN_ROOT}", str(plugin)) for a in connection["args"]
+        ]
+        assert not any("${" in a for a in connection["args"])
+        working_directory = work / "unrelated working directory"
+        working_directory.mkdir()
     environment = {
         **os.environ,
         "TRUTHOUND_CORE_CONFIG": str(work / "consent" / "permissions.json"),
         "UV_PROJECT_ENVIRONMENT": str(work / "venv"),
-        "UV_NO_SOURCES": "true",
         "POLARS_MAX_THREADS": "1",
     }
+    environment.pop("UV_NO_SOURCES", None)
     if wheel:
         environment["UV_FIND_LINKS"] = str(wheel.parent)
+    work.mkdir(parents=True, exist_ok=True)
     data = work / "data"
     data.mkdir()
     source = data / "input.csv"
     source.write_text("x\n1\n1\n", encoding="utf-8")
     command = [connection["command"], *connection["args"][:-1]]
+    # An installed but unconfigured plugin must remain connected and deny data.
+    initial = StdioServerParameters(
+        command=connection["command"],
+        args=connection["args"],
+        cwd=str(working_directory),
+        env=environment,
+    )
+    async with stdio_client(initial) as (read, write), ClientSession(read, write) as client:
+        await client.initialize()
+        denied = await client.call_tool("check_file", {"path": str(source)})
+        assert denied.isError
     # Replace serve with the trusted local operator command, never an MCP tool.
     subprocess.run(
         command + ["configure", "--allow-dir", str(data), "--confirm"],
@@ -70,7 +105,10 @@ async def smoke(plugin, wheel, work):
         capture_output=True,
     )
     parameters = StdioServerParameters(
-        command=connection["command"], args=connection["args"], cwd=str(plugin), env=environment
+        command=connection["command"],
+        args=connection["args"],
+        cwd=str(working_directory),
+        env=environment,
     )
     if wheel:
         subprocess.run(
@@ -143,6 +181,8 @@ async def smoke(plugin, wheel, work):
     return {
         "tools": len(names),
         "read_boundary": True,
+        "unconfigured_denied": True,
+        "client": client_kind,
         "sensitive_denied": True,
         "revoked": True,
         "live_session_revoked": True,
@@ -210,7 +250,15 @@ def main():
                 assert set(archive.namelist()) == set(FILES)
                 archive.extractall(extracted)
             proof["smoke"] = asyncio.run(
-                smoke(extracted, args.wheel.resolve() if args.wheel else None, work)
+                smoke(extracted, args.wheel.resolve() if args.wheel else None, work / "codex")
+            )
+            proof["claude_smoke"] = asyncio.run(
+                smoke(
+                    extracted,
+                    args.wheel.resolve() if args.wheel else None,
+                    work / "claude",
+                    "claude",
+                )
             )
     (args.output / "verification.json").write_text(json.dumps(proof, indent=2), encoding="utf-8")
     (args.output / "SHA256SUMS").write_text(proof["zip_sha256"] + "  " + output.name + "\n")

@@ -59,7 +59,7 @@ Codex와 Claude Desktop에서 두 가지 Truthound MCP 구성을 선택할 수 �
 
 설치 후 데이터 폴더를 별도로 승인해야 합니다. Core는 작업공간·운영자 제어·민감 결과 권한을 추가로 구분하며, 전체 Core 기능의 MCP 동등성은 아직 검증되지 않았습니다.
 
-Claude Code 로컬 검사는 [Styxis marketplace](https://github.com/seadonggyun4/styxis-plugin)의 `truthound` plugin으로 설치할 수 있습니다. [설치·권한·Local 기능 범위](https://truthound.netlify.app/guides/mcp/#claude-code-styxis-marketplace)를 먼저 확인하세요.
+Claude Code Local과 Core는 [Styxis marketplace](https://github.com/seadonggyun4/styxis-plugin)의 `truthound` 또는 `truthound-core` plugin으로 설치할 수 있습니다. [설치·권한·프로파일 기능 범위](https://truthound.netlify.app/guides/mcp/#claude-code-styxis-marketplace)를 먼저 확인하세요.
 
 ---
 
@@ -80,7 +80,7 @@ Truthound is an open-source framework for data validation and data quality workf
 표현식 검증은 통과한 검사를 생략해도 실패 샘플·빈도·행을 해당 컬럼에 연결합니다.
 
 3.3.0의 `ai`·`mcp`·`all` extra는 Pydantic 2.11 이상을 요구합니다.
-`truthound-mcp bundle --profile core --output truthound-core.mcpb`로 Core 번들을 만듭니다. Truthound Local 플러그인 0.1.7와 별도 `truthound-core` 0.2.1 플러그인은 Core 3.3.1을 고정하며 데이터·작업공간·승인 저장소·민감 결과 권한을 명시적으로 설정하고 변경 후 재연결합니다.
+`truthound-mcp bundle --profile core --output truthound-core.mcpb`로 Core 번들을 만듭니다. Truthound Local 플러그인 0.1.7와 별도 `truthound-core` 0.2.2 플러그인은 Core 3.3.1을 고정하며 데이터·작업공간·승인 저장소·민감 결과 권한을 명시적으로 설정하고 변경 후 재연결합니다.
 
 ## 프로젝트 소개 (Introduction)
 

@@ -8,6 +8,7 @@
       "args": [
         "run",
         "--no-config",
+        "--frozen",
         "python",
         "-m",
         "truthound.mcp.consent",

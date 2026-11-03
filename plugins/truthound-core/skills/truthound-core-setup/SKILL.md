@@ -14,7 +14,7 @@ Use the installed plugin directory containing `pyproject.toml`, rather than a
 source checkout. Configure only the authorized grants:
 
 ```bash
-uv run --no-config --directory <installed-plugin-root> python -m truthound.mcp.consent configure --allow-dir <approved-data-directory> --confirm
+uv run --no-config --frozen --directory <installed-plugin-root> python -m truthound.mcp.consent configure --allow-dir <approved-data-directory> --confirm
 ```
 
 Repeat `--allow-dir` for additional data roots. Add `--workspace-dir`,
@@ -29,7 +29,7 @@ old MCP session and invalidate retained handles. Reconnect the client before
 testing the new grants. Revoke all grants with:
 
 ```bash
-uv run --no-config --directory <installed-plugin-root> python -m truthound.mcp.consent revoke
+uv run --no-config --frozen --directory <installed-plugin-root> python -m truthound.mcp.consent revoke
 ```
 
 Verify `capabilities_list` and the requested operations through the live MCP

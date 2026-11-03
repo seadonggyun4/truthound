@@ -1,0 +1,36 @@
+{
+  "name": "truthound-core",
+  "version": "0.2.2",
+  "description": "Explicitly authorized local Core tools using Truthound Core 3.3.1.",
+  "author": {
+    "name": "Truthound contributors",
+    "url": "https://github.com/seadonggyun4/truthound"
+  },
+  "homepage": "https://truthound.netlify.app/guides/mcp/",
+  "repository": "https://github.com/seadonggyun4/truthound",
+  "license": "Apache-2.0",
+  "keywords": [
+    "data-quality",
+    "local",
+    "mcp",
+    "privacy"
+  ],
+  "skills": "./skills/",
+  "mcpServers": {
+    "truthound-core": {
+      "type": "stdio",
+      "command": "uv",
+      "args": [
+        "run",
+        "--no-config",
+        "--frozen",
+        "--directory",
+        "${CLAUDE_PLUGIN_ROOT}",
+        "python",
+        "-m",
+        "truthound.mcp.consent",
+        "serve"
+      ]
+    }
+  }
+}

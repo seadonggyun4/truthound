@@ -42,6 +42,23 @@ Claude Desktop에서는 아래 번들을 내려받아 **Settings → Extensions 
 
 설치만으로 데이터 접근 권한이 생기지 않습니다. 두 번들은 사용자 지정 확장이며 공식 디렉터리 심사 승인과는 별개입니다. Core의 전체 MCP 동등성은 아직 검증되지 않았습니다.
 
+
+Styxis 카탈로그에서도 Claude Code와 Codex용 두 프로파일을 설치할 수 있습니다. Claude Code:
+
+```bash
+claude plugin marketplace add seadonggyun4/styxis-plugin
+claude plugin install truthound-core@styxis-plugin
+```
+
+Codex:
+
+```bash
+codex plugin marketplace add seadonggyun4/styxis-plugin
+codex plugin add truthound-core@styxis-plugin
+```
+
+Local은 `truthound-core` 대신 `truthound`를 사용합니다. Core 0.2.2는 설치된 플러그인 루트의 절대경로를 사용하는 Claude manifest와 공개 인덱스 고정 의존성 lock을 포함합니다. 읽기·작업공간·승인 저장소·민감 결과 권한은 별도로 승인해야 하며 설치만으로 데이터 접근을 허용하지 않습니다. 사용자 정의 마켓플레이스 배포이며 공식 디렉터리 승인을 뜻하지 않습니다.
+
 ## 핵심 데이터 품질 작업
 
 1. 아래 Codex·Claude Desktop 안내로 설치한 뒤 사용할 데이터 폴더만 승인합니다.
@@ -3181,7 +3198,7 @@ files={별칭: 운영자_절대경로})`를 반환합니다. 팩터리는 네이
 
 ### Core 3.3.1 설치
 
-`truthound` 0.1.7 플러그인은 고정 의존성 lock으로 공개 Core 3.3.1을 사용합니다. 별도 `truthound-core` 0.2.1 플러그인는 Core 3.3.1을 고정하며 Core 프로파일을 사용하려면 해당 버전을 PyPI에서 설치합니다. 전이 의존성은 설치 시 허용 범위에서 해석하며 이 별도 플러그인에는 공개 인덱스 고정 lock을 포함하지 않습니다. 패키지 CI는 소스 체크아웃 대신 새 wheel을 설치합니다.
+`truthound` 0.1.7 플러그인은 고정 의존성 lock으로 공개 Core 3.3.1을 사용합니다. 별도 `truthound-core` 0.2.2 플러그인는 Core 3.3.1을 고정하며 Core 프로파일을 사용하려면 해당 버전을 PyPI에서 설치합니다. 두 플러그인 모두 공개 인덱스 의존성 lock과 `uv run --frozen`을 사용합니다. 패키지 CI는 소스 체크아웃 대신 새 wheel을 설치합니다.
 
 ```bash
 codex plugin add truthound-core@truthound --json
@@ -3217,7 +3234,11 @@ Local plugin은 승인된 CSV·Parquet의 결측값·중복 행 검사, 열 타�
 ```bash
 claude plugin marketplace add seadonggyun4/styxis-plugin
 claude plugin install truthound@styxis-plugin
+# Or install the separately permissioned Core profile:
+claude plugin install truthound-core@styxis-plugin
 ```
+
+Core 플러그인 0.2.2도 동일한 공개 Core 버전과 frozen lock을 사용합니다. 별도 Claude manifest는 설치 경로의 절대경로로 `truthound.mcp.consent serve`를 실행합니다. Core setup 스킬에서 권한을 명시적으로 승인하고 변경 뒤 재연결하세요.
 
 Plugin 0.1.7은 독립 `.claude-plugin/plugin.json`과
 `${CLAUDE_PLUGIN_ROOT}` 기반 절대경로 launcher를 제공합니다.
@@ -3237,8 +3258,8 @@ stdio로 로컬 실행하며, 최초 설치에는 패키지 다운로드가 필�
 Official MCP Registry의 새 불변 버전 3.3.1에 소스 `server.json`과 같은
 설명·PyPI pin·명시적 `--allow-dir` 계약이 게시되었습니다. Git push와 별도로
 공식 API의 active 상태와 최신 버전을 확인했습니다.
-재현 가능한 합성 파일 검증은
-[discovery evaluation](https://github.com/seadonggyun4/styxis-plugin/tree/main/evaluation)을 참고하세요.
+현재 설치 안내는
+[배포 카탈로그](https://github.com/seadonggyun4/styxis-plugin)을 참고하세요. 제품 실행 검증은 Truthound 저장소에서 관리합니다.
 
 ## Core 3.3.1 배포
 

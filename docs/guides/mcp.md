@@ -42,6 +42,23 @@ In Claude Desktop, download the bundle below and install it through **Settings â
 
 Installation grants no data access. Both bundles are custom extensions, separate from official directory approval. Full Core parity through MCP has not been verified.
 
+
+The Styxis catalog also distributes both profiles for Claude Code and Codex. In Claude Code:
+
+```bash
+claude plugin marketplace add seadonggyun4/styxis-plugin
+claude plugin install truthound-core@styxis-plugin
+```
+
+In Codex:
+
+```bash
+codex plugin marketplace add seadonggyun4/styxis-plugin
+codex plugin add truthound-core@styxis-plugin
+```
+
+Replace `truthound-core` with `truthound` for Local. Core 0.2.2 includes a Claude manifest with an absolute plugin-root UV command and a frozen public-index dependency lock. Core still requires separate read, workspace, control and sensitive-result grants; installation grants no data access. This is custom marketplace distribution, not official directory approval.
+
 ## Core data quality workflow
 
 1. Install the plugin for your client using the Codex or Claude Desktop instructions below, then approve only the data directory you intend to use.
@@ -3507,7 +3524,7 @@ execution use the same association.
 
 ### Core 3.3.1 installation
 
-The `truthound` 0.1.7 plugin pins published Core 3.3.1 with a frozen dependency lock. The published repository marketplace provides `truthound-core` 0.2.1, which installs Core 3.3.1 from PyPI. Transitive dependencies resolve within package bounds at installation; no frozen public-index lock is shipped for this separate plugin. Package CI installs a freshly built wheel, not the source checkout.
+The `truthound` 0.1.7 plugin pins published Core 3.3.1 with a frozen dependency lock. The published repository marketplace provides `truthound-core` 0.2.2, which installs Core 3.3.1 from PyPI. Both plugins ship public-index dependency locks and use `uv run --frozen`. Package CI installs a freshly built wheel, not the source checkout.
 
 ```bash
 codex plugin add truthound-core@truthound --json
@@ -3544,7 +3561,11 @@ column names and aggregates can still reach the host model provider.
 ```bash
 claude plugin marketplace add seadonggyun4/styxis-plugin
 claude plugin install truthound@styxis-plugin
+# Or install the separately permissioned Core profile:
+claude plugin install truthound-core@styxis-plugin
 ```
+
+Core plugin 0.2.2 uses the same published Core pin and a frozen lock. Its separate Claude manifest launches `truthound.mcp.consent serve` from the absolute installed plugin directory. Use the Core setup skill for explicit grants and reconnect after changes.
 
 Plugin 0.1.7 has an independent `.claude-plugin/plugin.json` and a Claude-specific
 absolute launcher using `${CLAUDE_PLUGIN_ROOT}`. The portable `mcp.json` and
@@ -3564,8 +3585,8 @@ packages. Offline execution requires the runtime already to be available.
 The Official MCP Registry now publishes immutable version 3.3.1 with the same
 description, PyPI pin and explicit `--allow-dir` contract as `server.json`. The
 official API confirms active/latest status separately from Git push.
-See the [discovery evaluation](https://github.com/seadonggyun4/styxis-plugin/tree/main/evaluation)
-for reproducible synthetic-file installation and invocation evidence.
+See the [distribution catalog](https://github.com/seadonggyun4/styxis-plugin)
+for current installation instructions. Product runtime verification is maintained in the Truthound repository.
 
 ## Core 3.3.1 publication
 

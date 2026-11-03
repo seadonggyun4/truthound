@@ -59,7 +59,7 @@ Choose between two Truthound MCP configurations in Codex or Claude Desktop. Both
 
 Approve data directories after installation. Core separates workspace, operator-control and sensitive-result permissions; full Core parity through MCP has not been verified.
 
-Install the local `truthound` Claude Code plugin through the [Styxis marketplace](https://github.com/seadonggyun4/styxis-plugin). See [installation, consent and Local capabilities](https://truthound.netlify.app/en/guides/mcp/#claude-code-styxis-marketplace).
+Install the `truthound` Local or `truthound-core` Claude Code plugin through the [Styxis marketplace](https://github.com/seadonggyun4/styxis-plugin). See [installation, consent and profile capabilities](https://truthound.netlify.app/en/guides/mcp/#claude-code-styxis-marketplace).
 
 ---
 
@@ -280,7 +280,7 @@ The root package intentionally exposes a small API.
 Expression validation keeps failure samples, counts and rows attached to the reported column after passing checks are omitted.
 
 The `ai`, `mcp` and `all` extras share a Pydantic 2.11 minimum in 3.3.0.
-Build a Core MCPB with `truthound-mcp bundle --profile core --output truthound-core.mcpb`. Truthound Local plugin 0.1.7 and the separate `truthound-core` 0.2.1 plugin pin Core 3.3.1 and use explicit data, workspace, control and disclosure grants; reconnect after changes.
+Build a Core MCPB with `truthound-mcp bundle --profile core --output truthound-core.mcpb`. Truthound Local plugin 0.1.7 and the separate `truthound-core` 0.2.2 plugin pin Core 3.3.1 and use explicit data, workspace, control and disclosure grants; reconnect after changes.
 
 ## License
 
