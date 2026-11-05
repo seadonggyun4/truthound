@@ -8,8 +8,8 @@
 `seadonggyun4/Truthound` 저장소를 사용합니다. `main` push는 운영 문서를,
 다른 브랜치와 pull request는 인증이 필요한 Preview를 배포합니다.
 `vercel.json`에서 설치·빌드 명령, 출력 디렉터리 `site`, `/ko/` 호환
-영구 리디렉션을 관리합니다. Python 3.11에서 `uv sync --frozen --extra docs`로
-의존성을 설치하며, `sh docs/scripts/build_site.sh`로 공개 문서를 검증하고 빌드합니다.
+영구 리디렉션을 관리합니다. 설치 도구는 임시 가상환경에 격리합니다. Vercel이 제공하는 Python에서
+`uv sync --frozen --extra docs`로 의존성을 설치하며, Docs CI는 같은 lockfile을 Python 3.11에서 검증합니다. `sh docs/scripts/build_site.sh`로 공개 문서를 검증하고 빌드합니다.
 오케스트레이션 문서는 커밋된 스냅샷을 사용하며 빌드 도중 외부 main을 가져오지 않습니다.
 API나 서버리스 실행 환경은 배포하지 않습니다.
 

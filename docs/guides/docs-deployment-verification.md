@@ -8,8 +8,9 @@ The `truthound-docs` project uses the Hobby plan and the GitHub repository
 `seadonggyun4/Truthound`. Pushes to `main` deploy the production documentation;
 other branches and pull requests produce authenticated Preview deployments.
 `vercel.json` owns the install command, build command, `site` output directory,
-and permanent `/ko/` compatibility redirects. The install uses Python 3.11 and
-`uv sync --frozen --extra docs`. Builds use the committed orchestration snapshot,
+and permanent `/ko/` compatibility redirects. The install isolates its tools in a temporary virtual environment and uses
+Vercel's supplied Python interpreter with `uv sync --frozen --extra docs`.
+The Docs CI independently verifies the same lockfile with Python 3.11. Builds use the committed orchestration snapshot,
 not a moving upstream checkout. No API or serverless runtime is deployed.
 
 The canonical address is `https://truthound-docs.vercel.app/`. Korean pages use
