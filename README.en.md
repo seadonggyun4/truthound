@@ -15,7 +15,7 @@
   <em>Sniffs out bad data.</em>
 </p>
 
-[![Documentation](https://img.shields.io/badge/docs-truthound-docs.vercel.app-blue)](https://truthound-docs.vercel.app/en/)
+[![Documentation](https://img.shields.io/badge/docs-Vercel-black?logo=vercel)](https://truthound-docs.vercel.app/en/)
 [![PyPI](https://img.shields.io/pypi/v/truthound.svg)](https://pypi.org/project/truthound/)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-orange.svg)](https://opensource.org/licenses/Apache-2.0)
