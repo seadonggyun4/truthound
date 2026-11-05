@@ -71,7 +71,7 @@ async def smoke(plugin: Path, work: Path, client_kind: str = "codex") -> dict:
     working_directory = plugin / connection["cwd"]
     placeholder = "${PLUGIN_ROOT}"
     if client_kind == "claude":
-        connection = json.loads((plugin / ".claude-plugin/plugin.json").read_text())["mcpServers"]["truthound"]
+        connection = json.loads((plugin / ".claude-plugin/plugin.json").read_text(encoding="utf-8"))["mcpServers"]["truthound"]
         placeholder = "${CLAUDE_PLUGIN_ROOT}"
         working_directory = work / "unrelated working directory"
         working_directory.mkdir()

@@ -154,9 +154,9 @@ def test_cli_build_rejects_claude_version_drift_before_creating_archive(tmp_path
     shutil.copytree(ROOT / "plugins/truthound", plugin,
                     ignore=shutil.ignore_patterns(".venv", "__pycache__"))
     path = plugin / ".claude-plugin/plugin.json"
-    manifest = json.loads(path.read_text())
+    manifest = json.loads(path.read_text(encoding="utf-8"))
     manifest["version"] = "999.0.0"
-    path.write_text(json.dumps(manifest))
+    path.write_text(json.dumps(manifest), encoding="utf-8")
     output = tmp_path / "dist"
     result = subprocess.run(
         [sys.executable, str(ROOT / "verification/openai_plugin.py"),
