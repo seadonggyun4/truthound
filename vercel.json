@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": null,
-  "installCommand": "python3 -m venv /tmp/truthound-docs-tools && /tmp/truthound-docs-tools/bin/pip install uv==0.9.13 && /tmp/truthound-docs-tools/bin/uv sync --frozen --extra docs --python 3.11",
+  "installCommand": "python3 -m venv /tmp/truthound-docs-tools && /tmp/truthound-docs-tools/bin/pip install uv==0.9.13 && UV_PYTHON_DOWNLOADS=automatic /tmp/truthound-docs-tools/bin/uv python install 3.11 && /tmp/truthound-docs-tools/bin/uv sync --frozen --extra docs --python 3.11",
   "buildCommand": "sh docs/scripts/build_site.sh",
   "outputDirectory": "site",
   "trailingSlash": true,
