@@ -44,7 +44,7 @@ jobs:
         run: .venv/bin/python docs/scripts/check_links.py --mkdocs mkdocs.public.yml build/public-docs
 
       - name: Verify docs and public API surface alignment
-        run: .venv/bin/python -m pytest -q tests/test_docs_surface_alignment.py tests/test_public_surface.py -p no:cacheprovider
+        run: .venv/bin/python -m pytest -q tests/test_docs_surface_alignment.py tests/test_public_surface.py tests/test_mcp_bundle.py::test_documentation_and_optional_dependency_contract -p no:cacheprovider
 
       - name: Build full docs
         run: .venv/bin/mkdocs build --strict

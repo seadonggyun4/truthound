@@ -34,7 +34,7 @@ claude plugin install truthound-core@styxis-plugin
 | Local | Null/duplicate checks, profiling and sampled PII | Approve read directories with the Truthound setup skill |
 | Core | Additional schema, drift and masking workflows | Approve read, workspace, control and sensitive-result grants separately with Core setup, then reconnect |
 
-Installation grants no data access. Updates retain existing permissions. Both profiles use published Core 3.3.2; full Core parity through MCP is not verified.
+Installation grants no data access. Updates retain existing permissions. Both profiles install the pinned `truthound[mcp]==3.3.2` runtime from PyPI through Styxis; full Core parity through MCP is not verified.
 Refresh an existing catalog with `codex plugin marketplace upgrade styxis-plugin` or `claude plugin marketplace update styxis-plugin`, then install the relevant plugin again.
 
 These CLI instructions target **Claude Code**. Claude Desktop ordinary chat uses a separate [`.mcpb` extension](#claude-desktop-bundle). Keep it installed if you use Desktop chat; installing the Code plugin does not replace it.

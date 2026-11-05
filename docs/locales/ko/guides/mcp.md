@@ -34,7 +34,7 @@ claude plugin install truthound-core@styxis-plugin
 | Local | 결측·중복 검사, 프로파일링, PII 표본 탐지 | Truthound setup 스킬에서 읽을 폴더 승인 |
 | Core | 스키마·드리프트·마스킹 등 추가 작업 | Core setup 스킬에서 읽기·작업공간·제어·민감 결과 권한을 각각 승인하고 재연결 |
 
-설치만으로 데이터 접근을 허용하지 않습니다. 기존 권한은 업데이트해도 유지됩니다. 두 프로파일은 공개 Core 3.3.2을 사용하며 MCP를 통한 전체 Core 동등성은 검증되지 않았습니다.
+설치만으로 데이터 접근을 허용하지 않습니다. 기존 권한은 업데이트해도 유지됩니다. 두 프로파일은 Styxis를 통해 PyPI의 `truthound[mcp]==3.3.2` 런타임을 고정 설치하며 MCP를 통한 전체 Core 동등성은 검증되지 않았습니다.
 기존 카탈로그는 Codex의 `codex plugin marketplace upgrade styxis-plugin`, Claude Code의 `claude plugin marketplace update styxis-plugin`으로 갱신한 뒤 해당 플러그인을 다시 설치합니다.
 
 이 CLI 안내는 **Claude Code**용입니다. Claude Desktop 일반 채팅은 별도 [`.mcpb` 확장](#claude-desktop-bundle)을 사용합니다. Desktop 채팅을 사용한다면 확장을 유지하세요. Code 플러그인 설치가 이를 대체하지 않습니다.
