@@ -3356,7 +3356,7 @@ execution use the same association.
 
 ### Core plugin
 
-Core 0.2.4 pins published Core 3.3.3 with a frozen dependency lock. Use the Styxis installation and Core setup skill above. Existing grants are retained; individual execution plans still require separate trusted operator approval.
+Core 0.2.5 pins published Core 3.3.3 with a frozen dependency lock. Use the Styxis installation and Core setup skill above. Existing grants are retained; individual execution plans still require separate trusted operator approval.
 
 Windows Ray 2.58 owned local startup queries its existing SDK node client for the exact ALIVE node and valid manager port, avoiding the temporary `GlobalStateAccessor.GetNode` path that produced a native access violation. The scoped hooks are restored on success or failure; other threads and external clusters retain SDK behavior, and the startup deadline is not extended.
 

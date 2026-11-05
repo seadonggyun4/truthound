@@ -32,7 +32,7 @@ def _check_korean_site(tmp_path, monkeypatch, body: str, surface: str) -> int:
 
 
 def test_full_korean_gate_accepts_only_actual_core_ui_links(tmp_path, monkeypatch):
-    body = '''<link rel="canonical" href="https://truthound-docs.vercel.app/dashboard/">
+    body = '''<link rel="canonical" href="https://www.truthound-docs.tech/dashboard/">
     <link rel="alternate" href="../en/dashboard/" hreflang="en">
     <a href="../cli/dashboard/">명령어</a>
     <a href="../guides/datadocs/dashboard/">사용법</a>
@@ -41,19 +41,19 @@ def test_full_korean_gate_accepts_only_actual_core_ui_links(tmp_path, monkeypatc
 
 
 @pytest.mark.parametrize("surface,body", [
-    ("public", '<a href="https://truthound-docs.vercel.app/dashboard/">UI</a>'),
+    ("public", '<a href="https://www.truthound-docs.tech/dashboard/">UI</a>'),
     ("full", '<a href="https://evil.example/dashboard/">외부</a>'),
     ("full", '<a href="https://[invalid/dashboard/">잘못된 URL</a>'),
-    ("full", '<a href="https://truthound-docs.vercel.app/other/dashboard/">미등록</a>'),
-    ("full", '<a href="https://truthound-docs.vercel.app/dashboard/?redirect=external">질의</a>'),
+    ("full", '<a href="https://www.truthound-docs.tech/other/dashboard/">미등록</a>'),
+    ("full", '<a href="https://www.truthound-docs.tech/dashboard/?redirect=external">질의</a>'),
     ("full", '<p>/dashboard/</p>'),
-    ("full", '<script>const copied = \'<a href="https://truthound-docs.vercel.app/dashboard/">UI</a>\';</script>'),
-    ("full", '<!-- <a href="https://truthound-docs.vercel.app/dashboard/">UI</a> -->'),
-    ("full", '<a data-href="https://truthound-docs.vercel.app/dashboard/">속성</a>'),
-    ("full", '''<a title="href='https://truthound-docs.vercel.app/dashboard/'">제목</a>'''),
-    ("full", '''<a href="https://truthound-docs.vercel.app/dashboard/" title="href='https://truthound-docs.vercel.app/dashboard/'">제목</a>'''),
-    ("full", '<a href="https://truthound-docs.vercel.app/dashboard/">허용</a><p>truthound-dashboard</p>'),
-    ("full", '<a href="https://truthound-docs.vercel.app/depot/">차단</a>'),
+    ("full", '<script>const copied = \'<a href="https://www.truthound-docs.tech/dashboard/">UI</a>\';</script>'),
+    ("full", '<!-- <a href="https://www.truthound-docs.tech/dashboard/">UI</a> -->'),
+    ("full", '<a data-href="https://www.truthound-docs.tech/dashboard/">속성</a>'),
+    ("full", '''<a title="href='https://www.truthound-docs.tech/dashboard/'">제목</a>'''),
+    ("full", '''<a href="https://www.truthound-docs.tech/dashboard/" title="href='https://www.truthound-docs.tech/dashboard/'">제목</a>'''),
+    ("full", '<a href="https://www.truthound-docs.tech/dashboard/">허용</a><p>truthound-dashboard</p>'),
+    ("full", '<a href="https://www.truthound-docs.tech/depot/">차단</a>'),
 ])
 def test_korean_route_policy_still_rejects_removed_or_untrusted_surfaces(tmp_path, monkeypatch, surface, body):
     assert _check_korean_site(tmp_path, monkeypatch, body, surface) == 1
@@ -62,7 +62,7 @@ def test_korean_route_policy_still_rejects_removed_or_untrusted_surfaces(tmp_pat
 def test_core_ui_link_permission_does_not_bypass_language_gate(tmp_path, monkeypatch):
     page = tmp_path / "dashboard/index.html"
     page.parent.mkdir()
-    page.write_text('<a href="https://truthound-docs.vercel.app/dashboard/">English only</a>' * 40, encoding="utf-8")
+    page.write_text('<a href="https://www.truthound-docs.tech/dashboard/">English only</a>' * 40, encoding="utf-8")
     monkeypatch.setattr(sys, "argv", ["verify_korean_docs", "--site-dir", str(tmp_path), "--surface", "full"])
     assert _korean_checker().main() == 1
 
@@ -408,7 +408,7 @@ def test_docs_deployment_verification_excludes_dashboard_and_depot_surface() -> 
         REPO_ROOT / "docs" / "guides" / "docs-deployment-verification.md"
     ).read_text(encoding="utf-8")
 
-    assert "https://truthound-docs.vercel.app/" in verification_doc
+    assert "https://www.truthound-docs.tech/" in verification_doc
     assert "dashboard and Depot pages are not hosted inside the Vercel site" in verification_doc
     assert "dashboard and Depot docs remain outside the public MkDocs surface" in verification_doc
     assert "docs/dashboard/index.md" not in verification_doc

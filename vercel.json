@@ -7,6 +7,17 @@
   "trailingSlash": true,
   "redirects": [
     {
+      "source": "/:path*",
+      "has": [
+        {
+          "type": "host",
+          "value": "truthound-docs.vercel.app"
+        }
+      ],
+      "destination": "https://www.truthound-docs.tech/:path*",
+      "permanent": true
+    },
+    {
       "source": "/ko/",
       "destination": "/",
       "permanent": true

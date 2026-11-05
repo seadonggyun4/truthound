@@ -13,11 +13,13 @@ Vercel's supplied Python interpreter with `uv sync --frozen --extra docs`.
 The Docs CI independently verifies the same lockfile with Python 3.11. Builds use the committed orchestration snapshot,
 not a moving upstream checkout. No API or serverless runtime is deployed.
 
-The canonical address is `https://truthound-docs.vercel.app/`. Korean pages use
+The canonical address is `https://www.truthound-docs.tech/`. Korean pages use
 `/`; English pages use `/en/`. Production is indexable; Vercel protects Preview
 URLs and applies its Preview indexing policy. Source-map protection stays enabled.
 The old hosting configuration is removed. Previously published package metadata
 cannot be rewritten; future packages and plugin updates carry the new links.
+
+The apex `truthound-docs.tech` redirects to `www.truthound-docs.tech`. The previous `truthound-docs.vercel.app` hostname permanently redirects to the canonical host while preserving the requested path and query. Existing published package and Registry links remain usable through this redirect; source metadata uses the canonical address.
 
 ## Vercel Configuration Checklist
 
@@ -25,12 +27,12 @@ cannot be rewritten; future packages and plugin updates carry the new links.
 - [ ] the production branch is `main`
 - [ ] the build command is `sh docs/scripts/build_site.sh`
 - [ ] the publish directory is `site`
-- [ ] the deployed site uses `https://truthound-docs.vercel.app/` as the canonical docs URL
+- [ ] the deployed site uses `https://www.truthound-docs.tech/` as the canonical docs URL
 - [ ] the docs operator runbook treats the public docs host as the only MkDocs deployment surface
 
 ## Repo Configuration Checklist
 
-- [ ] `mkdocs.yml` sets `site_url: https://truthound-docs.vercel.app/`
+- [ ] `mkdocs.yml` sets `site_url: https://www.truthound-docs.tech/`
 - [ ] `mkdocs.yml` builds from the staged full docs tree
 - [ ] `mkdocs.public.yml` builds from the staged public docs tree
 - [ ] `vercel.json` points at the repo-owned docs build script
@@ -160,7 +162,7 @@ python docs/scripts/verify_public_surface.py --manifest docs/public_docs.yml --s
 
 After the public/Korean build gates, the build writes `deployment-manifest.json` containing only the source Git commit, package version and SHA-256 hashes of explicitly allowlisted public verification pages. The allowlist covers the MCP reference, focused MCP guide, reproducible example, established file/CLI entry pages, CI testing and deployment-verification pages in both languages. It does not collect environment variables, private records or arbitrary files. A deployment record is not evidence of Release CI success or PyPI publication.
 
-Fetch `https://truthound-docs.vercel.app/deployment-manifest.json`, require `source_commit` to equal the intended final commit, then download each fixed public page and compare its exact response bytes with `page_sha256`. An old commit, missing page or hash mismatch remains a failed deployment check. The default Korean pages use `/guides/.../`; English uses `/en/guides/.../`. HTTP 200 and matching text alone do not prove the deployed commit.
+Fetch `https://www.truthound-docs.tech/deployment-manifest.json`, require `source_commit` to equal the intended final commit, then download each fixed public page and compare its exact response bytes with `page_sha256`. An old commit, missing page or hash mismatch remains a failed deployment check. The default Korean pages use `/guides/.../`; English uses `/en/guides/.../`. HTTP 200 and matching text alone do not prove the deployed commit.
 
 ## Visitor and performance analytics
 

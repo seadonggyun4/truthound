@@ -1,13 +1,13 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "truthound",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "Truthound is a local-first data quality and validation tool for AI agents. Validate CSV/Parquet missing values and duplicate rows, profile columns, and scan sampled PII in approved directories without uploading raw values. 승인한 로컬 데이터의 결측·중복 검사, 프로파일링, 개인정보 표본 탐지.",
   "author": {
     "name": "Truthound contributors",
     "url": "https://github.com/seadonggyun4/truthound"
   },
-  "homepage": "https://truthound-docs.vercel.app/guides/mcp/",
+  "homepage": "https://www.truthound-docs.tech/guides/mcp/",
   "repository": "https://github.com/seadonggyun4/truthound",
   "license": "Apache-2.0",
   "keywords": [
@@ -34,7 +34,7 @@
           "Read approved local data",
           "Aggregate quality summaries"
         ],
-        "websiteURL": "https://truthound-docs.vercel.app/guides/mcp/",
+        "websiteURL": "https://www.truthound-docs.tech/guides/mcp/",
         "supportURL": "https://github.com/seadonggyun4/truthound/issues",
         "composerIcon": "./assets/icon.png",
         "logo": "./assets/icon.png",

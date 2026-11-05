@@ -15,7 +15,7 @@
   <em>Sniffs out bad data.</em>
 </p>
 
-[![Documentation](https://img.shields.io/badge/docs-Vercel-black?logo=vercel)](https://truthound-docs.vercel.app/en/)
+[![Documentation](https://img.shields.io/badge/docs-Vercel-black?logo=vercel)](https://www.truthound-docs.tech/en/)
 [![PyPI](https://img.shields.io/pypi/v/truthound.svg)](https://pypi.org/project/truthound/)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-orange.svg)](https://opensource.org/licenses/Apache-2.0)
@@ -73,7 +73,7 @@ workflows, built on a Polars-first validation kernel.
 
 The benchmark CLI supports `--size stress` (100 million rows); `--rows` overrides the preset. See the [benchmark command](docs/cli/benchmark/run.md). Console and JSON benchmark output work without the optional HTML reporting dependencies.
 
-**Documentation**: [truthound-docs.vercel.app](https://truthound-docs.vercel.app/en/)
+**Documentation**: [www.truthound-docs.tech](https://www.truthound-docs.tech/en/)
 
 ---
 
@@ -262,7 +262,7 @@ The root package intentionally exposes a small API.
 
 ## Documentation
 
-- Main docs portal: [truthound-docs.vercel.app](https://truthound-docs.vercel.app/en/)
+- Main docs portal: [www.truthound-docs.tech](https://www.truthound-docs.tech/en/)
 - Overview: [docs/index.md](https://github.com/seadonggyun4/truthound/blob/main/docs/index.md)
 - Getting started: [docs/getting-started/index.md](https://github.com/seadonggyun4/truthound/blob/main/docs/getting-started/index.md)
 - Architecture: [docs/concepts/architecture.md](https://github.com/seadonggyun4/truthound/blob/main/docs/concepts/architecture.md)
@@ -270,7 +270,7 @@ The root package intentionally exposes a small API.
 - Guides: [docs/guides/index.md](https://github.com/seadonggyun4/truthound/blob/main/docs/guides/index.md)
 - Reference: [docs/reference/index.md](https://github.com/seadonggyun4/truthound/blob/main/docs/reference/index.md)
 - AI docs: [docs/ai/index.md](https://github.com/seadonggyun4/truthound/blob/main/docs/ai/index.md)
-- Orchestration: [truthound-docs.vercel.app/orchestration/](https://truthound-docs.vercel.app/en/orchestration/)
+- Orchestration: [www.truthound-docs.tech/orchestration/](https://www.truthound-docs.tech/en/orchestration/)
 - Orchestration getting started: [docs/orchestration/getting-started.md](https://github.com/seadonggyun4/truthound/blob/main/docs/orchestration/getting-started.md)
 - Latest verified benchmark summary: [docs/releases/latest-benchmark-summary.md](https://github.com/seadonggyun4/truthound/blob/main/docs/releases/latest-benchmark-summary.md)
 

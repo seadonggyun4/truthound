@@ -57,7 +57,7 @@ def test_client_or_lock_version_drift_rejected(tmp_path, monkeypatch, file):
         value["version"] = "999.0.0"
         path.write_text(json.dumps(value))
     else:
-        path.write_text(path.read_text().replace('version = "0.2.4"', 'version = "999.0.0"'))
+        path.write_text(path.read_text().replace('version = "0.2.5"', 'version = "999.0.0"'))
     with pytest.raises(AssertionError):
         api(monkeypatch)["versions"](plugin)
 

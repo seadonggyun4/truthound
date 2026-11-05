@@ -2,7 +2,7 @@
 
 This patch updates package documentation links to the Vercel documentation portal.
 
-- [English documentation](https://truthound-docs.vercel.app/en/) and [Korean documentation](https://truthound-docs.vercel.app/) now use the same deployment.
+- [English documentation](https://www.truthound-docs.tech/en/) and [Korean documentation](https://www.truthound-docs.tech/) now use the same deployment.
 - MCP installation starts at the [Styxis plugin marketplace](https://github.com/seadonggyun4/styxis-plugin#install).
 - The MCP Registry metadata points to the new documentation address.
 - Validation behavior, tool names and directory permissions are unchanged. Installation grants no data access.

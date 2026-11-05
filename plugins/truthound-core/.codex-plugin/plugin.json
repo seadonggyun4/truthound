@@ -1,12 +1,12 @@
 {
   "name": "truthound-core",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "Explicitly authorized local Core tools using Truthound Core 3.3.3.",
   "author": {
     "name": "Truthound contributors",
     "url": "https://github.com/seadonggyun4/truthound"
   },
-  "homepage": "https://truthound-docs.vercel.app/guides/mcp/",
+  "homepage": "https://www.truthound-docs.tech/guides/mcp/",
   "repository": "https://github.com/seadonggyun4/truthound",
   "license": "Apache-2.0",
   "keywords": [
@@ -33,7 +33,7 @@
       "Approved local Core operations",
       "Explicit workspace and disclosure grants"
     ],
-    "websiteURL": "https://truthound-docs.vercel.app/guides/mcp/",
+    "websiteURL": "https://www.truthound-docs.tech/guides/mcp/",
     "supportURL": "https://github.com/seadonggyun4/truthound/issues",
     "composerIcon": "./assets/icon.png",
     "logo": "./assets/icon.png",

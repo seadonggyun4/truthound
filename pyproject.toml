@@ -400,8 +400,8 @@ truthound-mcp = "truthound.mcp.__main__:main"
 truthound = "truthound.cli:app"
 
 [project.urls]
-Documentation = "https://truthound-docs.vercel.app/"
-"Local MCP" = "https://truthound-docs.vercel.app/guides/mcp/"
+Documentation = "https://www.truthound-docs.tech/"
+"Local MCP" = "https://www.truthound-docs.tech/guides/mcp/"
 "Claude marketplace" = "https://github.com/seadonggyun4/styxis-plugin"
 Homepage = "https://github.com/seadonggyun4/Truthound"
 Repository = "https://github.com/seadonggyun4/Truthound"

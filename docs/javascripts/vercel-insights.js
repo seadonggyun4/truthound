@@ -1,6 +1,6 @@
 /* Collect public documentation traffic only on the production host. */
 (function () {
-  if (window.location.hostname !== "truthound-docs.vercel.app") return;
+  if (window.location.hostname !== "www.truthound-docs.tech") return;
   if (window.__truthoundInsightsLoaded) return;
   window.__truthoundInsightsLoaded = true;
 

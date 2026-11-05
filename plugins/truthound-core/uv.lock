@@ -737,7 +737,7 @@ mcp = [
 
 [[package]]
 name = "truthound-core-openai-plugin"
-version = "0.2.4"
+version = "0.2.5"
 source = { virtual = "." }
 dependencies = [
     { name = "truthound", extra = ["mcp"] },
