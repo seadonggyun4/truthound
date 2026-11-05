@@ -21,7 +21,9 @@ def test_bundle_is_deterministic_versioned_and_private_free(tmp_path):
         assert manifest["server"]["type"] == "uv"
         icon = z.read(manifest["icon"])
         assert icon.startswith(b"\x89PNG\r\n\x1a\n")
-        assert icon == (Path(__file__).resolve().parents[1] / "plugins/truthound/assets/icon.png").read_bytes()
+        assert len(icon) < 100_000  # Desktop embeds preview icons under a size cap.
+        import struct
+        assert struct.unpack(">II", icon[16:24]) == (256, 256)
         project = tomllib.loads(z.read("pyproject.toml").decode())
         assert project["project"]["version"] == manifest["version"]
         assert "tool" not in project  # PyPI mode must not carry a local wheel source.
@@ -50,6 +52,12 @@ def test_core_bundle_exposes_the_catalog_and_denies_blank_optional_grants(tmp_pa
     bundle = build_bundle(tmp_path / "core.mcpb", profile="core")
     with zipfile.ZipFile(bundle) as archive:
         manifest = json.loads(archive.read("manifest.json"))
+        assert manifest["name"] == "truthound-core"
+        with zipfile.ZipFile(build_bundle(tmp_path / "local.mcpb")) as local:
+            local_manifest = json.loads(local.read("manifest.json"))
+            assert local_manifest["name"] != manifest["name"]
+            assert local_manifest["display_name"] == "Truthound Local"
+            assert local.read(local_manifest["icon"]) == archive.read(manifest["icon"])
         assert {tool["name"] for tool in manifest["tools"]} == set(CATALOG) | {
             "check_file", "profile_file", "scan_pii"
         }
@@ -62,6 +70,13 @@ def test_core_bundle_exposes_the_catalog_and_denies_blank_optional_grants(tmp_pa
             for argument in command[4:]
         ]
         assert arguments(substituted) == ["serve", "--profile", "core", "--allow-dir", str(tmp_path)]
+        assert arguments([
+            "--allowed-directory", str(tmp_path),
+            "--workspace-directory", "${user_config.workspace_directory}",
+            "--control-directory", "${user_config.control_directory}",
+        ]) == ["serve", "--profile", "core", "--allow-dir", str(tmp_path)]
+        with pytest.raises(SystemExit):
+            arguments(["--allowed-directory", "${user_config.allowed_directory}"])
         assert b"truthound.mcp.desktop" in archive.read("server.py")
         with pytest.raises(SystemExit):
             arguments(["--allowed-directory", ""])

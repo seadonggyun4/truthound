@@ -1,3 +1,5 @@
+<!-- MCP 배포 유지보수: MCP 변경 후에는 반드시 Styxis의 Truthound Local·Core 플러그인에 반영하고, 한·영 설치 문서를 동기화한 뒤 필요한 CI·공개 배포·실제 업데이트 설치를 검증한다. 사용자 설치 진입점은 항상 https://github.com/seadonggyun4/styxis-plugin#install 이며 Claude Desktop 별도 확장 안내도 여기서 연결한다. -->
+
 # 로컬 MCP 연동
 
 ## Styxis 플러그인으로 설치
@@ -35,7 +37,7 @@ claude plugin install truthound-core@styxis-plugin
 설치만으로 데이터 접근을 허용하지 않습니다. 기존 권한은 업데이트해도 유지됩니다. 두 프로파일은 공개 Core 3.3.1을 사용하며 MCP를 통한 전체 Core 동등성은 검증되지 않았습니다.
 기존 카탈로그는 Codex의 `codex plugin marketplace upgrade styxis-plugin`, Claude Code의 `claude plugin marketplace update styxis-plugin`으로 갱신한 뒤 해당 플러그인을 다시 설치합니다.
 
-이 CLI 안내는 **Claude Code**용입니다. Claude Desktop 앱의 `.mcpb` 확장 번들과는 다른 설치 형식이며, 이 페이지에서는 별도 수동 설치 경로를 안내하지 않습니다.
+이 CLI 안내는 **Claude Code**용입니다. Claude Desktop 일반 채팅은 별도 [`.mcpb` 확장](#claude-desktop-bundle)을 사용합니다. Desktop 채팅을 사용한다면 확장을 유지하세요. Code 플러그인 설치가 이를 대체하지 않습니다.
 
 ## 핵심 데이터 품질 작업
 
@@ -2390,9 +2392,17 @@ truthound-mcp plugin-fingerprint --distribution your-reviewed-distribution
 
 <a id="claude-desktop-bundle"></a>
 
-## 이전 확장 형식
+## Claude Desktop 확장
 
-기존 MCPB 산출물은 해당 버전의 릴리스 기록입니다. 현재 Codex CLI·Claude Code 설치는 위 Styxis 플러그인 안내를 따릅니다.
+Desktop 일반 채팅과 Claude Code는 별도로 설치합니다. 검증된 Local 또는 Core `.mcpb` 번들을 설치하고, 설정에서 계속 유지할 실제 데이터 폴더를 선택하세요. 재시작 후 사라질 수 있는 임시 폴더는 피합니다. Core의 작업공간·운영자 제어·민감 결과 권한은 별도 승인 전까지 부여하지 않습니다.
+
+현재 소스의 번들 생성기는 Local과 Core가 공존하도록 확장 ID를 `truthound`와 `truthound-core`로 구분하고 작은 PNG 아이콘을 포함합니다. 이전 번들은 ID가 같을 수 있습니다. 이 수정은 이미 게시된 3.3.1 파일을 변경하지 않으며, 로컬 재빌드 번들은 별도 버전과 해시로 구분해야 합니다.
+
+설치 후 Desktop을 재시작하고 커넥터의 도구 목록과 승인한 합성 데이터에 대한 실제 호출을 모두 확인하세요. MCP 초기화 성공만으로 Desktop의 스키마 수락을 확인할 수 없습니다. Core 도구를 불러오지 못하면 재귀 모델을 포함한 모든 입력 스키마의 최상위 객체 타입을 확인하되, 중첩 검증 조건은 유지해야 합니다.
+
+수동 `mcpServers`에 같은 커넥터가 중복 등록됐을 때만 해당 항목을 정리합니다. Desktop 복구를 위해 Codex·Claude Code 플러그인을 제거하지 마세요.
+
+빈 작업공간·운영자 제어 설정이 Desktop에서 미치환 문자열로 전달될 수 있습니다. 실행기는 해당 두 문자열만 권한 없음으로 처리하고, 필수 데이터 경로가 미치환 상태이면 거부합니다.
 
 <a id="openai-local-plugin-and-repository-marketplace"></a>
 

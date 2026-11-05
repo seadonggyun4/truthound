@@ -41,6 +41,8 @@ and ends at the closing </p> of the badge block above.
 
 ## Plugin Platform
 
+<!-- MCP release maintenance: Every MCP update must reach the Styxis Truthound Local/Core plugins, synchronize English/Korean installation docs, and complete required CI, public release and actual update-install verification. Always use https://github.com/seadonggyun4/styxis-plugin#install as the user installation entry point, including links to separate Claude Desktop extensions. -->
+
 ### Use through MCP
 
 Install MCP through Styxis plugins in Codex CLI or Claude Code. The plugin manages the runtime and MCP configuration; approve the data directories separately after installation.

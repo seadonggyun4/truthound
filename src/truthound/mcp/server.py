@@ -42,6 +42,21 @@ TOOLS = {
 }
 
 
+def tool_schema(model):
+    """Expose an object root required by MCP, preserving recursive definitions."""
+    schema = model.model_json_schema()
+    reference = schema.get("$ref")
+    if reference is not None:
+        prefix = "#/$defs/"
+        if not reference.startswith(prefix):
+            raise ValueError("MCP tool schema requires a local object reference")
+        definition = schema["$defs"][reference[len(prefix):]]
+        schema = {**definition, **{k: v for k, v in schema.items() if k != "$ref"}}
+    if schema.get("type") != "object":
+        raise ValueError("MCP tool schema requires an object root")
+    return schema
+
+
 async def serve(policy: MCPPolicy) -> None:
     from mcp import types
     from mcp.server.lowlevel import Server
@@ -116,8 +131,8 @@ async def serve(policy: MCPPolicy) -> None:
             types.Tool(
                 name=operation.operation_id,
                 description=operation.description,
-                inputSchema=operation.input_type.model_json_schema(),
-                outputSchema=operation.output_type().model_json_schema(),
+                inputSchema=tool_schema(operation.input_type),
+                outputSchema=tool_schema(operation.output_type()),
                 annotations=types.ToolAnnotations(
                     readOnlyHint=not operation.mutating,
                     destructiveHint=operation.mutating,

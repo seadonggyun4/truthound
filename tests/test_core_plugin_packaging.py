@@ -87,3 +87,15 @@ def test_development_catalog_copies_only_packaged_files(tmp_path, monkeypatch):
 def test_product_catalog_is_a_retired_compatibility_marker():
     catalog = json.loads((ROOT / ".agents/plugins/marketplace.json").read_text())
     assert catalog["name"] == "truthound" and catalog["plugins"] == []
+
+
+@pytest.mark.parametrize('metadata', [None, 'Name: other\nVersion: 3.3.2\n', 'Name: truthound\nVersion: untrusted\n'])
+def test_candidate_fixture_rejects_wrong_distribution_before_install(tmp_path, monkeypatch, metadata):
+    wheel = tmp_path / 'candidate.whl'
+    with zipfile.ZipFile(wheel, 'w') as archive:
+        if metadata is not None:
+            archive.writestr('candidate.dist-info/METADATA', metadata)
+    output = tmp_path / 'plugin'
+    with pytest.raises(AssertionError):
+        api(monkeypatch)['candidate_plugin'](ROOT / 'plugins/truthound-core', wheel, output)
+    assert not output.exists()

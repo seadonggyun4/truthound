@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import subprocess
 import tempfile
 import tomllib
@@ -29,6 +30,30 @@ FILES = (
     "assets/icon.png",
     "skills/truthound-core-setup/SKILL.md",
 )
+
+
+def candidate_plugin(plugin, wheel, output):
+    """Test an unpublished wheel in an isolated fixture, never rewrite release pins."""
+    from email.parser import BytesParser
+
+    with zipfile.ZipFile(wheel) as archive:
+        metadata = [n for n in archive.namelist() if n.endswith('.dist-info/METADATA')]
+        assert len(metadata) == 1
+        info = BytesParser().parsebytes(archive.read(metadata[0]))
+        assert info['Name'] == 'truthound'
+        version = info['Version']
+        assert re.fullmatch(r'\d+\.\d+\.\d+', version)
+    output.mkdir(parents=True)
+    for name in FILES:
+        target = output / name
+        target.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(plugin / name, target)
+    project = output / 'pyproject.toml'
+    text = re.sub(r'truthound\[mcp\]==\d+\.\d+\.\d+', f'truthound[mcp]=={version}', project.read_text())
+    text += '\n[tool.uv.sources]\ntruthound = { path = ' + json.dumps(str(wheel.resolve())) + ' }\n'
+    project.write_text(text)
+    subprocess.run(['uv', 'lock', '--directory', str(output)], check=True)
+    return output
 
 
 def versions(plugin):
@@ -142,6 +167,9 @@ async def smoke(plugin, wheel, work, client_kind="codex"):
         initialized = await client.initialize()
         assert initialized.serverInfo.version == core_version
         names = {tool.name for tool in (await client.list_tools()).tools}
+        if wheel is not None:
+            for tool in (await client.list_tools()).tools:
+                assert tool.inputSchema.get('type') == 'object', tool.name
         assert {"capabilities_list", "assets_capture", "execution_services_open"} <= names
         result = await client.call_tool("check_file", {"path": str(source)})
         assert not result.isError and result.structuredContent["data"]["row_count"] == 2
@@ -200,9 +228,25 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--wheel", type=Path)
+    parser.add_argument("--candidate-wheel", type=Path)
     parser.add_argument("--smoke", action="store_true")
     parser.add_argument("--check-codex", action="store_true")
     args = parser.parse_args()
+    if args.candidate_wheel:
+        assert args.smoke and not args.wheel and not args.check_codex
+        wheel = args.candidate_wheel.resolve(strict=True)
+        if wheel.is_dir():
+            (wheel,) = wheel.glob('truthound-*-py3-none-any.whl')
+        args.output.mkdir(parents=True, exist_ok=False)
+        with tempfile.TemporaryDirectory(prefix='truthound-candidate-plugin-') as directory:
+            work = Path(directory).resolve()
+            plugin = candidate_plugin(ROOT / 'plugins/truthound-core', wheel, work / 'plugin')
+            proof = {'candidate_only': True, 'wheel_sha256': hashlib.sha256(wheel.read_bytes()).hexdigest()}
+            for kind in ('codex', 'claude'):
+                proof[kind] = asyncio.run(smoke(plugin, wheel, work / kind, kind))
+            (args.output / 'verification.json').write_text(json.dumps(proof, indent=2))
+            print(json.dumps(proof))
+        return
     plugin = ROOT / "plugins/truthound-core"
     validate_portable(plugin)
     manifest = json.loads((plugin / "plugin.json").read_text())

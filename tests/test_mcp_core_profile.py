@@ -409,6 +409,9 @@ def test_real_sdk_catalog_schema_authorization_and_three_core_facades(dataset):
             ):
                 await client.initialize()
                 tools = await client.list_tools()
+                for tool in tools.tools:
+                    assert tool.inputSchema.get("type") == "object", tool.name
+                    assert tool.outputSchema.get("type") == "object", tool.name
                 assert {tool.name for tool in tools.tools} == set(CATALOG) | {
                     "check_file",
                     "profile_file",
@@ -440,6 +443,25 @@ def test_real_sdk_catalog_schema_authorization_and_three_core_facades(dataset):
                 }
 
     asyncio.run(scenario())
+
+
+def test_recursive_model_discovery_schema_preserves_validation():
+    from jsonschema import Draft202012Validator
+
+    from truthound.mcp.server import tool_schema
+
+    model = CATALOG["models_create"].input_type
+    original = model.model_json_schema()
+    schema = tool_schema(model)
+    assert schema["type"] == "object"
+    assert schema["properties"]["algorithm"]["type"] == "string"
+    assert schema["$defs"] == original["$defs"]
+    Draft202012Validator.check_schema(schema)
+    old, new = Draft202012Validator(original), Draft202012Validator(schema)
+    for value in ({"algorithm": "ensemble", "detectors": [{"algorithm": "isolation_forest"}]},
+                  {"algorithm": "ensemble", "detectors": [{}]}, {}, [],
+                  {"algorithm": "x", "unexpected": True}):
+        assert new.is_valid(value) == old.is_valid(value)
 
 
 def test_real_sdk_core_quality_workflow_preserves_input(dataset):

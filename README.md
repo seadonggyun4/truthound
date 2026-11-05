@@ -41,6 +41,8 @@ and ends at the closing </p> of the badge block above.
 
 ## 플러그인 플랫폼 (Plugin Platform)
 
+<!-- MCP 배포 유지보수: MCP 변경 후에는 반드시 Styxis의 Truthound Local·Core 플러그인에 반영하고, 한·영 설치 문서를 동기화한 뒤 필요한 CI·공개 배포·실제 업데이트 설치를 검증한다. 사용자 설치 진입점은 항상 https://github.com/seadonggyun4/styxis-plugin#install 이며 Claude Desktop 별도 확장 안내도 여기서 연결한다. -->
+
 ### MCP로 사용하기
 
 Codex CLI와 Claude Code에서 Styxis 플러그인으로 MCP를 설치합니다. 런타임과 MCP 설정은 플러그인이 관리하며, 설치 후 사용할 데이터 폴더를 별도로 승인합니다.

@@ -49,7 +49,7 @@ def build_bundle(output: Path, *, wheel: Path | None = None, profile: str = "sum
     manifest = {
         "manifest_version": "0.4",
         "name": "truthound",
-        "display_name": "Truthound",
+        "display_name": "Truthound Local",
         "icon": "assets/icon.png",
         "version": __version__,
         "description": "Local data quality checks, aggregate profiles and sampled PII detection.",
@@ -94,6 +94,7 @@ def build_bundle(output: Path, *, wheel: Path | None = None, profile: str = "sum
         from truthound.mcp.catalog import CATALOG
 
         manifest["display_name"] = "Truthound Core"
+        manifest["name"] = "truthound-core"
         manifest["description"] = (
             "Local Core operations with explicit data, workspace and disclosure grants."
         )

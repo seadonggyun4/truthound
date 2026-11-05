@@ -1,3 +1,5 @@
+<!-- MCP release maintenance: Every MCP update must reach the Styxis Truthound Local/Core plugins, synchronize English/Korean installation docs, and complete required CI, public release and actual update-install verification. Always use https://github.com/seadonggyun4/styxis-plugin#install as the user installation entry point, including links to separate Claude Desktop extensions. -->
+
 # Local MCP integration
 
 ## Install through Styxis plugins
@@ -35,7 +37,7 @@ claude plugin install truthound-core@styxis-plugin
 Installation grants no data access. Updates retain existing permissions. Both profiles use published Core 3.3.1; full Core parity through MCP is not verified.
 Refresh an existing catalog with `codex plugin marketplace upgrade styxis-plugin` or `claude plugin marketplace update styxis-plugin`, then install the relevant plugin again.
 
-These CLI instructions target **Claude Code**. Claude Desktop's `.mcpb` extension bundle is a different installation format; this guide provides one plugin-based CLI setup route.
+These CLI instructions target **Claude Code**. Claude Desktop ordinary chat uses a separate [`.mcpb` extension](#claude-desktop-bundle). Keep it installed if you use Desktop chat; installing the Code plugin does not replace it.
 
 ## Core data quality workflow
 
@@ -2665,9 +2667,17 @@ exceptions returned as critical quality issues.
 
 <a id="claude-desktop-bundle"></a>
 
-## Legacy extension artifacts
+## Claude Desktop extensions
 
-Existing MCPB artifacts belong to their versioned release history. Current Codex CLI and Claude Code installation uses the Styxis plugin route above.
+Desktop ordinary chat and Claude Code have separate installations. Install a verified Local or Core `.mcpb` bundle, then select an existing, persistent data directory in its configuration. Avoid temporary directories that may disappear after a restart. Core workspace, operator control and sensitive-result grants are optional and remain off unless explicitly approved.
+
+The bundle builder in the current source uses distinct extension IDs (`truthound` and `truthound-core`) so Local and Core can coexist, and includes a compact PNG icon. Older bundles may share the same ID. These source fixes do not change already published 3.3.1 files; a locally rebuilt bundle must be identified by its own version and hash.
+
+After installation, restart Desktop and check both the connector's tool list and an actual call against approved synthetic data. A successful MCP handshake alone does not prove that Desktop accepted the tool schemas. If Core tools fail to load, check that every advertised input schema has an object root, including recursive model definitions. Keep their nested validation constraints intact.
+
+Remove a duplicate manual `mcpServers` entry only after identifying the same connector. Do not uninstall the Codex or Claude Code plugin to repair Desktop.
+
+Blank optional workspace/control settings may arrive as literal Desktop placeholders. The launcher treats only those exact placeholders as absent grants; an unresolved required data directory is rejected.
 
 <a id="openai-local-plugin-and-repository-marketplace"></a>
 

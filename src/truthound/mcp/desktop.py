@@ -15,14 +15,15 @@ def arguments(argv=None):
         "--sensitive-results", choices=("true", "false"), default="false", type=str.lower
     )
     options = parser.parse_args(argv)
-    if not options.allowed_directory.strip():
+    if not options.allowed_directory.strip() or options.allowed_directory == "${user_config.allowed_directory}":
         parser.error("An explicit data directory is required")
     result = ["serve", "--profile", "core", "--allow-dir", options.allowed_directory]
-    for value, flag in (
-        (options.workspace_directory, "--workspace-dir"),
-        (options.control_directory, "--control-dir"),
+    for value, flag, placeholder in (
+        (options.workspace_directory, "--workspace-dir", "${user_config.workspace_directory}"),
+        (options.control_directory, "--control-dir", "${user_config.control_directory}"),
     ):
-        if value.strip():
+        # Desktop may leave an empty optional setting unexpanded. It grants nothing.
+        if value.strip() and value != placeholder:
             result.extend([flag, value])
     if options.sensitive_results == "true":
         result.append("--allow-sensitive-results")
