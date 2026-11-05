@@ -221,6 +221,7 @@ extra_css:
 
 extra_javascript:
   - javascripts/language-redirect.js
+  - javascripts/vercel-insights.js
 
 nav:
   - Home: index.md
