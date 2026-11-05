@@ -1,7 +1,7 @@
 {
   "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
   "name": "truthound",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "Truthound is a local-first data quality and validation tool for AI agents. Validate CSV/Parquet missing values and duplicate rows, profile columns, and scan sampled PII in approved directories without uploading raw values. 승인한 로컬 데이터의 결측·중복 검사, 프로파일링, 개인정보 표본 탐지.",
   "author": {
     "name": "Truthound contributors",

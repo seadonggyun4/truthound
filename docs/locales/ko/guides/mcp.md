@@ -34,8 +34,22 @@ claude plugin install truthound-core@styxis-plugin
 | Local | 결측·중복 검사, 프로파일링, PII 표본 탐지 | Truthound setup 스킬에서 읽을 폴더 승인 |
 | Core | 스키마·드리프트·마스킹 등 추가 작업 | Core setup 스킬에서 읽기·작업공간·제어·민감 결과 권한을 각각 승인하고 재연결 |
 
-설치만으로 데이터 접근을 허용하지 않습니다. 기존 권한은 업데이트해도 유지됩니다. 두 프로파일은 Styxis를 통해 PyPI의 `truthound[mcp]==3.3.2` 런타임을 고정 설치하며 MCP를 통한 전체 Core 동등성은 검증되지 않았습니다.
-기존 카탈로그는 Codex의 `codex plugin marketplace upgrade styxis-plugin`, Claude Code의 `claude plugin marketplace update styxis-plugin`으로 갱신한 뒤 해당 플러그인을 다시 설치합니다.
+설치만으로 데이터 접근을 허용하지 않습니다. 기존 권한은 업데이트해도 유지됩니다. 두 프로파일은 Styxis를 통해 PyPI의 `truthound[mcp]==3.3.3` 런타임을 고정 설치하며 MCP를 통한 전체 Core 동등성은 검증되지 않았습니다.
+업데이트할 때는 카탈로그를 갱신한 다음, 이미 사용하는 프로파일만 업데이트합니다.
+
+```bash
+# Codex
+codex plugin marketplace upgrade styxis-plugin
+codex plugin add truthound@styxis-plugin
+codex plugin add truthound-core@styxis-plugin
+
+# Claude Code
+claude plugin marketplace update styxis-plugin
+claude plugin update truthound@styxis-plugin
+claude plugin update truthound-core@styxis-plugin
+```
+
+업데이트 후 클라이언트를 재시작하거나 다시 연결합니다. 설치 버전과 도구 목록, 승인된 합성 파일 호출을 확인하고 기존 디렉터리 권한은 유지합니다.
 
 이 CLI 안내는 **Claude Code**용입니다. Claude Desktop 일반 채팅은 별도 [`.mcpb` 확장](#claude-desktop-bundle)을 사용합니다. Desktop 채팅을 사용한다면 확장을 유지하세요. Code 플러그인 설치가 이를 대체하지 않습니다.
 
@@ -123,7 +137,7 @@ timeout은 파일 복사 시간을 포함하지 않습니다. 압축 파일은 �
 
 3.3.0에는 선택형 `core` 프로파일이 추가됩니다. **이미 게시된 3.2.0 wheel
 및 해당 버전의 과거 Registry 등록 정보에는 포함되지 않습니다.**
-Core 플러그인은 공개 3.3.2 런타임을 제공합니다. 기본 프로파일의 기존
+Core 플러그인은 공개 3.3.3 런타임을 제공합니다. 기본 프로파일의 기존
 도구 세 개와 버전 1 응답 계약은 바꾸지 않습니다.
 
 Core setup 스킬에서 읽을 디렉터리를 승인하고 재연결합니다.
@@ -396,7 +410,7 @@ rollback journal DB와 실제 테이블만 받으며 WAL·뷰·모델이 작성�
 `sources_open_duckdb`는 `path`, 물리적 `table` 이름, 선택적 `config`를 받습니다.
 네이티브 기본·SQL·DuckDB 설정을 전달하되 `database`는 비공개 복사본에,
 `read_only`는 참으로 고정합니다. 운영자가 관리하는 환경에서는
-게시된 `truthound[mcp,duckdb]==3.3.2` 런타임을 사용할 수 있습니다. 안정 버전
+게시된 `truthound[mcp,duckdb]==3.3.3` 런타임을 사용할 수 있습니다. 안정 버전
 DuckDB 1.4 이상·2 미만이 필요하며 구버전·사전 배포판은 `unsupported_dependency`입니다.
 Core의 실제 SQL 엔진과 표본 추출을 사용하며 메모리 DataFrame 엔진으로 대체하지 않습니다.
 WAL·뷰·임의 SQL은 거부하며 복사 도중 파일 상태나 WAL이 변하면 게시하지 않습니다.
@@ -1881,7 +1895,7 @@ root 해제는 `resources_release(service_id)`를 사용합니다. SQL 필터는
 무손실 태그 인코딩을 사용합니다. 로컬 Polars·SQLite와 실제 로컬 Dask·Ray·Spark SDK
 증거는 원격 SQL·원격 클러스터 배포 검증을 뜻하지 않습니다.
 
-운영자가 관리하는 Core 3.3.2 환경에서는 선택한 runtime에 따라 `truthound[execution-dask,mcp]`,
+운영자가 관리하는 Core 3.3.3 환경에서는 선택한 runtime에 따라 `truthound[execution-dask,mcp]`,
 `truthound[execution-ray,mcp]`, `truthound[execution-spark,mcp]`를 설치합니다.
 Spark에는 운영자가 준비한 Java 17+와 올바른 Python worker 인터프리터가 추가로
 필요하며 pip가 이 런타임을 설치하지는 않습니다. 분산 명령은 파티션 수,
@@ -3020,7 +3034,7 @@ files={별칭: 운영자_절대경로})`를 반환합니다. 팩터리는 네이
 
 ### Core 플러그인
 
-Core 0.2.3은 공개 Core 3.3.2과 고정 의존성 lock을 사용합니다. 위 Styxis 설치와 Core setup 스킬로 권한을 관리합니다. 기존 권한을 유지하며 개별 실행 계획은 별도의 신뢰된 운영자 승인이 필요합니다.
+Core 0.2.4은 공개 Core 3.3.3과 고정 의존성 lock을 사용합니다. 위 Styxis 설치와 Core setup 스킬로 권한을 관리합니다. 기존 권한을 유지하며 개별 실행 계획은 별도의 신뢰된 운영자 승인이 필요합니다.
 
 Windows Ray 2.58의 소유한 로컬 시작은 기존 SDK 노드 클라이언트로 정확한 ALIVE 노드와 유효한 관리 포트를 조회하여 네이티브 접근 위반이 발생한 임시 `GlobalStateAccessor.GetNode` 경로를 우회합니다. 범위를 제한한 훅은 성공·실패 모두 복원하며, 다른 스레드·외부 클러스터는 SDK 동작을 유지하고 시작 제한 시간을 늘리지 않습니다.
 
@@ -3044,4 +3058,4 @@ Styxis 카탈로그를 갱신하고 선택한 플러그인을 업데이트한 �
 
 실행은 로컬 stdio를 사용합니다. 최초 설치에는 고정 런타임 다운로드가 필요할 수 있으며, 오프라인 사용에는 의존성이 미리 준비돼 있어야 합니다. 도구 발견·호출 검증이 Agent 선택 정확성이나 전체 Core 동등성을 뜻하지는 않습니다.
 
-MCP Registry는 발견용 메타데이터를 제공합니다. Registry 게시 상태는 Git push·플러그인 설치와 별도입니다. 패키지와 검증 내역은 [3.3.1 배포 이력](../releases/truthound-3.3.1.md)과 [3.3.2 배포 상태](../releases/truthound-3.3.2.md)를 참고하세요.
+MCP Registry는 발견용 메타데이터를 제공합니다. Registry 게시 상태는 Git push·플러그인 설치와 별도입니다. 패키지와 검증 내역은 [3.3.1 배포 이력](../releases/truthound-3.3.1.md)과 [3.3.3 배포 상태](../releases/truthound-3.3.3.md)를 참고하세요.

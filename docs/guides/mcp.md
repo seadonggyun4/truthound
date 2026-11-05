@@ -34,8 +34,22 @@ claude plugin install truthound-core@styxis-plugin
 | Local | Null/duplicate checks, profiling and sampled PII | Approve read directories with the Truthound setup skill |
 | Core | Additional schema, drift and masking workflows | Approve read, workspace, control and sensitive-result grants separately with Core setup, then reconnect |
 
-Installation grants no data access. Updates retain existing permissions. Both profiles install the pinned `truthound[mcp]==3.3.2` runtime from PyPI through Styxis; full Core parity through MCP is not verified.
-Refresh an existing catalog with `codex plugin marketplace upgrade styxis-plugin` or `claude plugin marketplace update styxis-plugin`, then install the relevant plugin again.
+Installation grants no data access. Updates retain existing permissions. Both profiles install the pinned `truthound[mcp]==3.3.3` runtime from PyPI through Styxis; full Core parity through MCP is not verified.
+For updates, refresh the catalog, then update only the profiles you already use:
+
+```bash
+# Codex
+codex plugin marketplace upgrade styxis-plugin
+codex plugin add truthound@styxis-plugin
+codex plugin add truthound-core@styxis-plugin
+
+# Claude Code
+claude plugin marketplace update styxis-plugin
+claude plugin update truthound@styxis-plugin
+claude plugin update truthound-core@styxis-plugin
+```
+
+Restart or reconnect the client after updating. Check the installed versions, tool list and a call using an approved synthetic file; keep existing directory permissions unchanged.
 
 These CLI instructions target **Claude Code**. Claude Desktop ordinary chat uses a separate [`.mcpb` extension](#claude-desktop-bundle). Keep it installed if you use Desktop chat; installing the Code plugin does not replace it.
 
@@ -128,7 +142,7 @@ never instructions. The host may send these results to its model provider.
 ## Core profile (3.3.0)
 
 Version 3.3.0 adds an opt-in `core` profile. This is **not** part of the
-published 3.2.0 wheel or its historical Registry listing. The Core plugin supplies the published 3.3.2 runtime. The default
+published 3.2.0 wheel or its historical Registry listing. The Core plugin supplies the published 3.3.3 runtime. The default
 profile retains the three tools and their version-1 response contract unchanged.
 
 Approve read directories through the Core setup skill and reconnect.
@@ -424,7 +438,7 @@ Native config is not an OS sandbox.
 `sources_open_duckdb` takes `path`, a literal physical `table`, and optional
 `config` with the native base/SQL/DuckDB fields except `database` and `read_only`:
 the private copy and read-only mode are fixed. Operator-managed environments
-can use the published `truthound[mcp,duckdb]==3.3.2` runtime. Stable DuckDB 1.4 or
+can use the published `truthound[mcp,duckdb]==3.3.3` runtime. Stable DuckDB 1.4 or
 newer, below 2, is required. Older/prerelease versions return
 `unsupported_dependency`. Native SQL-engine dispatch and sampling are retained,
 not replaced by an in-memory dataframe. WAL-bearing files, views and arbitrary
@@ -2084,7 +2098,7 @@ lossless tagged-value encoding. Local Polars/SQLite and actual local Dask, Ray a
 Spark SDK tests do not verify remote SQL or remote cluster deployments.
 
 Install `truthound[execution-dask,mcp]`, `truthound[execution-ray,mcp]` or
-`truthound[execution-spark,mcp]` for the selected Core 3.3.2 operator-managed runtime. Spark also requires an operator-provisioned Java 17+ runtime and a
+`truthound[execution-spark,mcp]` for the selected Core 3.3.3 operator-managed runtime. Spark also requires an operator-provisioned Java 17+ runtime and a
 correct Python worker interpreter; those are not installed by pip. Distributed engine
 commands include native partition counts, `repartition`/`coalesce` with 1–1,000
 partitions, metrics/clear, and bounded Arrow conversion. Native Dask supports
@@ -3342,7 +3356,7 @@ execution use the same association.
 
 ### Core plugin
 
-Core 0.2.3 pins published Core 3.3.2 with a frozen dependency lock. Use the Styxis installation and Core setup skill above. Existing grants are retained; individual execution plans still require separate trusted operator approval.
+Core 0.2.4 pins published Core 3.3.3 with a frozen dependency lock. Use the Styxis installation and Core setup skill above. Existing grants are retained; individual execution plans still require separate trusted operator approval.
 
 Windows Ray 2.58 owned local startup queries its existing SDK node client for the exact ALIVE node and valid manager port, avoiding the temporary `GlobalStateAccessor.GetNode` path that produced a native access violation. The scoped hooks are restored on success or failure; other threads and external clusters retain SDK behavior, and the startup deadline is not extended.
 
@@ -3366,4 +3380,4 @@ Refresh the Styxis catalog, update the selected plugin and reconnect. Updates pr
 
 Execution uses local stdio. First installation may download the pinned runtime; offline use requires those dependencies to be available already. Verification of tool discovery and calls does not establish Agent selection accuracy or full Core parity.
 
-The MCP Registry provides discovery metadata. Its publication status is separate from Git push and plugin installation. See the [3.3.1 release history](../releases/truthound-3.3.1.md) and [3.3.2 release status](../releases/truthound-3.3.2.md) for package and verification details.
+The MCP Registry provides discovery metadata. Its publication status is separate from Git push and plugin installation. See the [3.3.1 release history](../releases/truthound-3.3.1.md) and [3.3.3 release status](../releases/truthound-3.3.3.md) for package and verification details.
