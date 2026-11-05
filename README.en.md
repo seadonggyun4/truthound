@@ -45,7 +45,7 @@ and ends at the closing </p> of the badge block above.
 
 ### Use through MCP
 
-Install MCP through Styxis plugins in Codex CLI or Claude Code. The plugin manages the runtime and MCP configuration; approve the data directories separately after installation.
+Start at Styxis Plugins for Codex CLI, Claude Code, or the separate Claude Desktop extensions. The plugin manages the runtime and MCP configuration; approve the data directories separately after installation.
 
 | Truthound Local | Truthound Core |
 | --- | --- |

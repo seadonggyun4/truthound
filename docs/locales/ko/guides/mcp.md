@@ -34,7 +34,7 @@ claude plugin install truthound-core@styxis-plugin
 | Local | 결측·중복 검사, 프로파일링, PII 표본 탐지 | Truthound setup 스킬에서 읽을 폴더 승인 |
 | Core | 스키마·드리프트·마스킹 등 추가 작업 | Core setup 스킬에서 읽기·작업공간·제어·민감 결과 권한을 각각 승인하고 재연결 |
 
-설치만으로 데이터 접근을 허용하지 않습니다. 기존 권한은 업데이트해도 유지됩니다. 두 프로파일은 공개 Core 3.3.1을 사용하며 MCP를 통한 전체 Core 동등성은 검증되지 않았습니다.
+설치만으로 데이터 접근을 허용하지 않습니다. 기존 권한은 업데이트해도 유지됩니다. 두 프로파일은 공개 Core 3.3.2을 사용하며 MCP를 통한 전체 Core 동등성은 검증되지 않았습니다.
 기존 카탈로그는 Codex의 `codex plugin marketplace upgrade styxis-plugin`, Claude Code의 `claude plugin marketplace update styxis-plugin`으로 갱신한 뒤 해당 플러그인을 다시 설치합니다.
 
 이 CLI 안내는 **Claude Code**용입니다. Claude Desktop 일반 채팅은 별도 [`.mcpb` 확장](#claude-desktop-bundle)을 사용합니다. Desktop 채팅을 사용한다면 확장을 유지하세요. Code 플러그인 설치가 이를 대체하지 않습니다.
@@ -123,7 +123,7 @@ timeout은 파일 복사 시간을 포함하지 않습니다. 압축 파일은 �
 
 3.3.0에는 선택형 `core` 프로파일이 추가됩니다. **이미 게시된 3.2.0 wheel
 및 해당 버전의 과거 Registry 등록 정보에는 포함되지 않습니다.**
-Core 플러그인은 공개 3.3.1 런타임을 제공합니다. 기본 프로파일의 기존
+Core 플러그인은 공개 3.3.2 런타임을 제공합니다. 기본 프로파일의 기존
 도구 세 개와 버전 1 응답 계약은 바꾸지 않습니다.
 
 Core setup 스킬에서 읽을 디렉터리를 승인하고 재연결합니다.
@@ -395,8 +395,8 @@ rollback journal DB와 실제 테이블만 받으며 WAL·뷰·모델이 작성�
 
 `sources_open_duckdb`는 `path`, 물리적 `table` 이름, 선택적 `config`를 받습니다.
 네이티브 기본·SQL·DuckDB 설정을 전달하되 `database`는 비공개 복사본에,
-`read_only`는 참으로 고정합니다. 이 미배포 체크아웃에서
-`pip install '.[mcp,duckdb]' 'duckdb>=1.4,<2'`로 설치합니다. 안정 버전
+`read_only`는 참으로 고정합니다. 운영자가 관리하는 환경에서는
+게시된 `truthound[mcp,duckdb]==3.3.2` 런타임을 사용할 수 있습니다. 안정 버전
 DuckDB 1.4 이상·2 미만이 필요하며 구버전·사전 배포판은 `unsupported_dependency`입니다.
 Core의 실제 SQL 엔진과 표본 추출을 사용하며 메모리 DataFrame 엔진으로 대체하지 않습니다.
 WAL·뷰·임의 SQL은 거부하며 복사 도중 파일 상태나 WAL이 변하면 게시하지 않습니다.
@@ -777,7 +777,7 @@ Core 동기·비동기 `check_now`, 버전 직렬화와 호환성 파괴 알림 
 32개, 정의당 최대 1 MiB이며 운영자 파일/세션 한도도 적용합니다. 이벤트 한도도
 유지합니다. 용량 초과는 실패로 처리하고 알림을 몰래 삭제하지 않습니다.
 로컬 실제 HTTP·별도 프로세스 재시작·전송 직후 충돌을 검증하며 클라우드·이메일·
-브로커 실계정은 미검증입니다. 아직 게시된 패키지에 포함되지 않은 개발 기능입니다.
+브로커 실계정은 미검증입니다. 이 기능들은 Core 3.3.2에 포함됩니다.
 
 #### 승인 기반 일시중지·대사·대기열 보존
 
@@ -968,7 +968,7 @@ Core 생성 시각에 맞춰 시간대 없는 날짜 필터를 사용하세요. 
 `rules` 생략·`null`·빈 목록은 모두 Core의 기본 세 규칙을 유지합니다.
 전체 산출물에는 `is_compatible`, `level`, `issues`, `rules_checked`가 포함됩니다.
 읽기에는 민감 결과 허용과 두 부모 자산의 유효한 권한이 필요하며 임의 Python 규칙은
-받지 않습니다. 이 미출시 checkout의 `strict=true`는 보고된 문제가 하나라도 있으면
+받지 않습니다. Core 프로파일의 `strict=true`는 보고된 문제가 하나라도 있으면
 호환 판정을 거부하고 level `none`을 반환합니다. 실패하거나 잘못된 타입을 반환한 규칙은
 `CompatibilityAnalysisError`로 실패하며 성공 artifact를 만들지 않습니다. 선택형
 `baseline_nullability`·`current_nullability`는 컬럼별 선언 bool이며 두 map을 함께
@@ -1636,7 +1636,7 @@ MCP 영수증이 다른 workspace writer와의 다중 파일 쓰기를 원자적
 `truthound.mcp.openlineage_services.OpenLineageRuntime(emitter, datasets={alias: dataset})`를
 제공합니다. Emitter는 네이티브 `OpenLineageEmitter`이며 운영자가 전송 대상·인증·
 데이터셋 메타데이터를 설정합니다. 열기만으로 이벤트를 보내지 않습니다.
-이 기능은 미출시 소스 체크아웃 기능이며 공개 서비스 배포를 의미하지 않습니다.
+이 기능은 운영자가 구성하는 Core 기능이며 원격 실서비스 배포 검증을 의미하지 않습니다.
 
 각 `openlineage_services_execute` 요청은 `binding_id`, `service_id`, 정확한
 `idempotency_key`를 포함하고 승인을 받아야 합니다. 명령은 `status`, `start`,
@@ -1881,7 +1881,7 @@ root 해제는 `resources_release(service_id)`를 사용합니다. SQL 필터는
 무손실 태그 인코딩을 사용합니다. 로컬 Polars·SQLite와 실제 로컬 Dask·Ray·Spark SDK
 증거는 원격 SQL·원격 클러스터 배포 검증을 뜻하지 않습니다.
 
-이 미출시 checkout에서는 선택한 runtime에 따라 `truthound[execution-dask,mcp]`,
+운영자가 관리하는 Core 3.3.2 환경에서는 선택한 runtime에 따라 `truthound[execution-dask,mcp]`,
 `truthound[execution-ray,mcp]`, `truthound[execution-spark,mcp]`를 설치합니다.
 Spark에는 운영자가 준비한 Java 17+와 올바른 Python worker 인터프리터가 추가로
 필요하며 pip가 이 런타임을 설치하지는 않습니다. 분산 명령은 파티션 수,
@@ -2396,7 +2396,7 @@ truthound-mcp plugin-fingerprint --distribution your-reviewed-distribution
 
 Desktop 일반 채팅과 Claude Code는 별도로 설치합니다. 검증된 Local 또는 Core `.mcpb` 번들을 설치하고, 설정에서 계속 유지할 실제 데이터 폴더를 선택하세요. 재시작 후 사라질 수 있는 임시 폴더는 피합니다. Core의 작업공간·운영자 제어·민감 결과 권한은 별도 승인 전까지 부여하지 않습니다.
 
-현재 소스의 번들 생성기는 Local과 Core가 공존하도록 확장 ID를 `truthound`와 `truthound-core`로 구분하고 작은 PNG 아이콘을 포함합니다. 이전 번들은 ID가 같을 수 있습니다. 이 수정은 이미 게시된 3.3.1 파일을 변경하지 않으며, 로컬 재빌드 번들은 별도 버전과 해시로 구분해야 합니다.
+3.3.2 번들 생성기는 Local과 Core가 공존하도록 확장 ID를 `truthound`와 `truthound-core`로 구분하고 작은 PNG 아이콘을 포함합니다. 이전 번들은 ID가 같을 수 있습니다. 이미 게시된 3.3.1 파일은 변경하지 않습니다. 최신 Desktop 번들은 Styxis Plugins의 설치 안내에서 확인합니다.
 
 설치 후 Desktop을 재시작하고 커넥터의 도구 목록과 승인한 합성 데이터에 대한 실제 호출을 모두 확인하세요. MCP 초기화 성공만으로 Desktop의 스키마 수락을 확인할 수 없습니다. Core 도구를 불러오지 못하면 재귀 모델을 포함한 모든 입력 스키마의 최상위 객체 타입을 확인하되, 중첩 검증 조건은 유지해야 합니다.
 
@@ -3020,7 +3020,7 @@ files={별칭: 운영자_절대경로})`를 반환합니다. 팩터리는 네이
 
 ### Core 플러그인
 
-Core 0.2.2는 공개 Core 3.3.1과 고정 의존성 lock을 사용합니다. 위 Styxis 설치와 Core setup 스킬로 권한을 관리합니다. 기존 권한을 유지하며 개별 실행 계획은 별도의 신뢰된 운영자 승인이 필요합니다.
+Core 0.2.3은 공개 Core 3.3.2과 고정 의존성 lock을 사용합니다. 위 Styxis 설치와 Core setup 스킬로 권한을 관리합니다. 기존 권한을 유지하며 개별 실행 계획은 별도의 신뢰된 운영자 승인이 필요합니다.
 
 Windows Ray 2.58의 소유한 로컬 시작은 기존 SDK 노드 클라이언트로 정확한 ALIVE 노드와 유효한 관리 포트를 조회하여 네이티브 접근 위반이 발생한 임시 `GlobalStateAccessor.GetNode` 경로를 우회합니다. 범위를 제한한 훅은 성공·실패 모두 복원하며, 다른 스레드·외부 클러스터는 SDK 동작을 유지하고 시작 제한 시간을 늘리지 않습니다.
 
@@ -3038,35 +3038,10 @@ Windows 바이트 모드 파이프에서는 writer가 열린 상태에서도 크
 
 ## 배포 카탈로그
 
-최신 설치 명령과 카탈로그 고정 버전은 [Styxis Plugins](https://github.com/seadonggyun4/styxis-plugin#install)에서 관리합니다. Local과 Core는 독립 플러그인이며 필요한 프로파일을 선택합니다.
+Local·Core 설치는 [Styxis Plugins](https://github.com/seadonggyun4/styxis-plugin#install)에서 시작합니다. 최신 클라이언트 명령, 플러그인 버전과 고정 소스 커밋은 이 카탈로그에서 관리합니다. Claude Desktop 확장은 Codex·Claude Code 플러그인과 별도이며 같은 설치 화면에서 안내합니다.
 
-# Or install the separately permissioned Core profile:
-claude plugin install truthound-core@styxis-plugin
-```
+Styxis 카탈로그를 갱신하고 선택한 플러그인을 업데이트한 뒤 다시 연결합니다. 기존 권한은 유지됩니다. 데이터 폴더는 setup 스킬에서 승인하며, 설치만으로 접근을 허용하지 않습니다. Local 도구 이름은 `check_file`, `profile_file`, `scan_pii`로 유지됩니다.
 
-Core 플러그인 0.2.2도 동일한 공개 Core 버전과 frozen lock을 사용합니다. 별도 Claude manifest는 설치 경로의 절대경로로 `truthound.mcp.consent serve`를 실행합니다. Core setup 스킬에서 권한을 명시적으로 승인하고 변경 뒤 재연결하세요.
+실행은 로컬 stdio를 사용합니다. 최초 설치에는 고정 런타임 다운로드가 필요할 수 있으며, 오프라인 사용에는 의존성이 미리 준비돼 있어야 합니다. 도구 발견·호출 검증이 Agent 선택 정확성이나 전체 Core 동등성을 뜻하지는 않습니다.
 
-Plugin 0.1.7은 독립 `.claude-plugin/plugin.json`과
-`${CLAUDE_PLUGIN_ROOT}` 기반 절대경로 launcher를 제공합니다.
-portable `mcp.json`과 Codex 호환 `.mcp.json`의 plugin-relative `cwd`는
-유지합니다. Local runtime은 배포된 `truthound[mcp]==3.3.1`에 고정됩니다.
-3.3.1 패키지에 개선된 `tools/list` 설명·schema가 포함됩니다.
-기존 설치는 marketplace를 갱신하고 plugin을 재설치한 뒤 다시 연결합니다.
-
-setup skill에서 정확한 기존 데이터 디렉터리를 승인해야 합니다. 설치는
-데이터 접근을 승인하지 않으며, 승인 정보가 없으면 호출이 차단됩니다.
-`permissions.py --revoke`로 철회합니다. 호환성을 위해 `check_file`,
-`profile_file`, `scan_pii` 이름을 유지하고 서버 namespace로 식별합니다.
-Local에 별도 alias나 Core tool을 추가하지 않습니다. 의존성 준비 뒤
-stdio로 로컬 실행하며, 최초 설치에는 패키지 다운로드가 필요할 수 있습니다.
-오프라인 실행에는 준비된 runtime이 필요합니다.
-
-Official MCP Registry의 새 불변 버전 3.3.1에 소스 `server.json`과 같은
-설명·PyPI pin·명시적 `--allow-dir` 계약이 게시되었습니다. Git push와 별도로
-공식 API의 active 상태와 최신 버전을 확인했습니다.
-현재 설치 안내는
-[배포 카탈로그](https://github.com/seadonggyun4/styxis-plugin)을 참고하세요. 제품 실행 검증은 Truthound 저장소에서 관리합니다.
-
-## Core 3.3.1 배포
-
-[3.3.1 릴리스 노트](../releases/truthound-3.3.1.md)에서 실제 PyPI·Registry 게시와 검증 출처를 확인할 수 있습니다. Local 0.1.7은 frozen lock으로 Core 3.3.1을 사용합니다. 실제 Agent 선택 정확성은 CLI 접근 제한으로 미측정입니다.
+MCP Registry는 발견용 메타데이터를 제공합니다. Registry 게시 상태는 Git push·플러그인 설치와 별도입니다. 패키지와 검증 내역은 [3.3.1 배포 이력](../releases/truthound-3.3.1.md)과 [3.3.2 배포 상태](../releases/truthound-3.3.2.md)를 참고하세요.

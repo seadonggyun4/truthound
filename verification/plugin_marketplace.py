@@ -18,7 +18,7 @@ def build_marketplace(output: Path, source_root: Path = ROOT / "plugins") -> Pat
     output.mkdir(parents=True, exist_ok=False)
     entries = []
     for name, files in (
-        ("truthound", (*LOCAL_FILES, ".claude-plugin/plugin.json")),
+        ("truthound", LOCAL_FILES),
         ("truthound-core", CORE_FILES),
     ):
         source = source_root / name

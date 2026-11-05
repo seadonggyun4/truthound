@@ -45,7 +45,7 @@ and ends at the closing </p> of the badge block above.
 
 ### MCP로 사용하기
 
-Codex CLI와 Claude Code에서 Styxis 플러그인으로 MCP를 설치합니다. 런타임과 MCP 설정은 플러그인이 관리하며, 설치 후 사용할 데이터 폴더를 별도로 승인합니다.
+Codex CLI·Claude Code 플러그인과 별도 Claude Desktop 확장 모두 Styxis Plugins에서 설치를 시작합니다. 런타임과 MCP 설정은 플러그인이 관리하며, 설치 후 사용할 데이터 폴더를 별도로 승인합니다.
 
 | Truthound Local | Truthound Core |
 | --- | --- |

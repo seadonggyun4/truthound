@@ -86,6 +86,9 @@ def test_package_builder_never_sweeps_generated_or_private_files(tmp_path):
     with zipfile.ZipFile(output) as archive:
         assert set(archive.namelist()) == set(api["FILES"])
         assert "permissions.json" not in archive.namelist()
+        claude = json.loads(archive.read(".claude-plugin/plugin.json"))
+        assert claude["version"] == json.loads(archive.read("plugin.json"))["version"]
+        assert "${CLAUDE_PLUGIN_ROOT}" in claude["mcpServers"]["truthound"]["args"]
         import hashlib
 
         icon = archive.read("assets/icon.png")
@@ -142,6 +145,26 @@ def test_cli_build_checks_manifest_lock_and_relocatable_command(tmp_path):
         )
         mcp = json.loads(archive.read("mcp.json"))["mcpServers"]["truthound"]
         assert mcp["cwd"] == "./" and not any("${" in a for a in mcp["args"])
+
+
+def test_cli_build_rejects_claude_version_drift_before_creating_archive(tmp_path):
+    import shutil
+
+    plugin = tmp_path / "plugin"
+    shutil.copytree(ROOT / "plugins/truthound", plugin,
+                    ignore=shutil.ignore_patterns(".venv", "__pycache__"))
+    path = plugin / ".claude-plugin/plugin.json"
+    manifest = json.loads(path.read_text())
+    manifest["version"] = "999.0.0"
+    path.write_text(json.dumps(manifest))
+    output = tmp_path / "dist"
+    result = subprocess.run(
+        [sys.executable, str(ROOT / "verification/openai_plugin.py"),
+         "--plugin", str(plugin), "--output", str(output)],
+        capture_output=True, text=True,
+    )
+    assert result.returncode != 0
+    assert not output.exists()
 
 
 def test_windows_npm_shim_uses_node_without_shell_evaluation(tmp_path, monkeypatch):

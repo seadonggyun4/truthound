@@ -102,8 +102,9 @@ async def smoke(plugin, wheel, work, client_kind="codex"):
         "POLARS_MAX_THREADS": "1",
     }
     environment.pop("UV_NO_SOURCES", None)
-    if wheel:
-        environment["UV_FIND_LINKS"] = str(wheel.parent)
+    # The comparison wheel must not become an alternative installation source.
+    # Candidate fixtures declare their local source explicitly in pyproject.toml.
+    environment.pop("UV_FIND_LINKS", None)
     work.mkdir(parents=True, exist_ok=True)
     data = work / "data"
     data.mkdir()
@@ -147,7 +148,7 @@ async def smoke(plugin, wheel, work, client_kind="codex"):
                 "import importlib.metadata,sys,zipfile; from pathlib import Path; "
                 "d=importlib.metadata.distribution('truthound'); assert d.version==sys.argv[2]; "
                 "z=zipfile.ZipFile(sys.argv[1]); names=[n for n in z.namelist() "
-                "if n.startswith('truthound/') and n.endswith(('.py','.json'))]; "
+                "if n.startswith('truthound/') and not n.endswith('/')]; "
                 "mismatches=[n for n in names if Path(d.locate_file(n)).read_bytes()!=z.read(n)]; "
                 "assert names and not mismatches, mismatches[:10]",
                 str(wheel),

@@ -34,7 +34,7 @@ claude plugin install truthound-core@styxis-plugin
 | Local | Null/duplicate checks, profiling and sampled PII | Approve read directories with the Truthound setup skill |
 | Core | Additional schema, drift and masking workflows | Approve read, workspace, control and sensitive-result grants separately with Core setup, then reconnect |
 
-Installation grants no data access. Updates retain existing permissions. Both profiles use published Core 3.3.1; full Core parity through MCP is not verified.
+Installation grants no data access. Updates retain existing permissions. Both profiles use published Core 3.3.2; full Core parity through MCP is not verified.
 Refresh an existing catalog with `codex plugin marketplace upgrade styxis-plugin` or `claude plugin marketplace update styxis-plugin`, then install the relevant plugin again.
 
 These CLI instructions target **Claude Code**. Claude Desktop ordinary chat uses a separate [`.mcpb` extension](#claude-desktop-bundle). Keep it installed if you use Desktop chat; installing the Code plugin does not replace it.
@@ -128,7 +128,7 @@ never instructions. The host may send these results to its model provider.
 ## Core profile (3.3.0)
 
 Version 3.3.0 adds an opt-in `core` profile. This is **not** part of the
-published 3.2.0 wheel or its historical Registry listing. The Core plugin supplies the published 3.3.1 runtime. The default
+published 3.2.0 wheel or its historical Registry listing. The Core plugin supplies the published 3.3.2 runtime. The default
 profile retains the three tools and their version-1 response contract unchanged.
 
 Approve read directories through the Core setup skill and reconnect.
@@ -423,8 +423,8 @@ Native config is not an OS sandbox.
 
 `sources_open_duckdb` takes `path`, a literal physical `table`, and optional
 `config` with the native base/SQL/DuckDB fields except `database` and `read_only`:
-the private copy and read-only mode are fixed. From this unreleased checkout,
-install `pip install '.[mcp,duckdb]' 'duckdb>=1.4,<2'`. Stable DuckDB 1.4 or
+the private copy and read-only mode are fixed. Operator-managed environments
+can use the published `truthound[mcp,duckdb]==3.3.2` runtime. Stable DuckDB 1.4 or
 newer, below 2, is required. Older/prerelease versions return
 `unsupported_dependency`. Native SQL-engine dispatch and sampling are retained,
 not replaced by an in-memory dataframe. WAL-bearing files, views and arbitrary
@@ -854,7 +854,7 @@ send. Evidence is retained. Storage is bounded to 32 definitions and at most
 1 MiB per definition (also bounded by operator file/session limits); event limits
 remain enforced. Exhaustion fails closed, not by silently dropping notifications.
 Real loopback HTTP, separate-process restart and crash-after-send are tested;
-cloud/email/broker accounts remain unverified. These are unreleased source features.
+cloud/email/broker accounts remain unverified. These features ship in Core 3.3.2.
 
 #### Approved lifecycle, reconciliation and retention
 
@@ -1060,7 +1060,7 @@ Omitting `rules`, setting it to `null`, or supplying `[]` preserves Core's
 default three rules. The complete artifact includes `is_compatible`, `level`,
 `issues`, and `rules_checked`; reading it requires sensitive-result permission
 and both live parent assets. Custom Python rules are not accepted.
-In this unreleased checkout, `strict=true` rejects any reported issue and
+In the Core profile, `strict=true` rejects any reported issue and
 returns compatibility level `none`. Failed or wrongly typed native rule verdicts
 raise `CompatibilityAnalysisError`; they cannot produce a successful compatibility
 artifact. Optional `baseline_nullability` and `current_nullability` map column names
@@ -1804,7 +1804,7 @@ an installed async factory yielding
 `truthound.mcp.openlineage_services.OpenLineageRuntime(emitter, datasets={alias: dataset})`.
 The emitter is a native `OpenLineageEmitter`; endpoint, authorization and dataset
 metadata are configured by the operator. Opening sends no lineage event. This is
-an unreleased source-checkout feature, not a published-service claim.
+an operator-configured Core feature, not a verified remote-service deployment.
 
 Every `openlineage_services_execute` call repeats `binding_id`, `service_id` and
 an exact `idempotency_key` and requires approval. Closed commands are `status`,
@@ -2084,8 +2084,7 @@ lossless tagged-value encoding. Local Polars/SQLite and actual local Dask, Ray a
 Spark SDK tests do not verify remote SQL or remote cluster deployments.
 
 Install `truthound[execution-dask,mcp]`, `truthound[execution-ray,mcp]` or
-`truthound[execution-spark,mcp]` for the selected runtime from this unreleased
-checkout. Spark also requires an operator-provisioned Java 17+ runtime and a
+`truthound[execution-spark,mcp]` for the selected Core 3.3.2 operator-managed runtime. Spark also requires an operator-provisioned Java 17+ runtime and a
 correct Python worker interpreter; those are not installed by pip. Distributed engine
 commands include native partition counts, `repartition`/`coalesce` with 1–1,000
 partitions, metrics/clear, and bounded Arrow conversion. Native Dask supports
@@ -2671,7 +2670,7 @@ exceptions returned as critical quality issues.
 
 Desktop ordinary chat and Claude Code have separate installations. Install a verified Local or Core `.mcpb` bundle, then select an existing, persistent data directory in its configuration. Avoid temporary directories that may disappear after a restart. Core workspace, operator control and sensitive-result grants are optional and remain off unless explicitly approved.
 
-The bundle builder in the current source uses distinct extension IDs (`truthound` and `truthound-core`) so Local and Core can coexist, and includes a compact PNG icon. Older bundles may share the same ID. These source fixes do not change already published 3.3.1 files; a locally rebuilt bundle must be identified by its own version and hash.
+The 3.3.2 bundle builder uses distinct extension IDs (`truthound` and `truthound-core`) so Local and Core can coexist, and includes a compact PNG icon. Older bundles may share the same ID. Previously published 3.3.1 files remain unchanged. Start at Styxis Plugins for the current Desktop bundle links.
 
 After installation, restart Desktop and check both the connector's tool list and an actual call against approved synthetic data. A successful MCP handshake alone does not prove that Desktop accepted the tool schemas. If Core tools fail to load, check that every advertised input schema has an object root, including recursive model definitions. Keep their nested validation constraints intact.
 
@@ -2712,7 +2711,7 @@ SQL through a file tool. See the [design rationale](../adr/005-local-mcp.md).
 
 ### Approved native streaming stores
 
-In the unreleased Core profile, `streaming_store_services_open` uses an approved installed capability returning `StreamingStoreRuntime(store, runs={alias: StreamingRun(run_id, data_asset, metadata)})`. The store must be a native `StreamingValidationStore`; this group is separate from general `BaseStore` bindings. Add its alias-to-capability mapping under `streaming_store_services` in operator bindings. Backend URLs, credentials, codecs and physical run identities stay in the factory.
+In the Core profile, `streaming_store_services_open` uses an approved installed capability returning `StreamingStoreRuntime(store, runs={alias: StreamingRun(run_id, data_asset, metadata)})`. The store must be a native `StreamingValidationStore`; this group is separate from general `BaseStore` bindings. Add its alias-to-capability mapping under `streaming_store_services` in operator bindings. Backend URLs, credentials, codecs and physical run identities stay in the factory.
 
 `streaming_store_services_execute` explicitly provides `inspect`, `session_create/open/resume/status`, `writer_open/write/write_run/flush/close/abort/status`, `reader_open/read/reset/close/status`, `chunks_list`, `chunk_get`, `chunks_delete`, `finalize`, `stats` and filesystem-only `storage_size` commands (use their underscore spellings, such as `session_create` and `writer_write_run`). Every operation requires approval and returns a bounded private artifact. `run_id` selects a fixed run alias; session/writer/reader/chunk IDs are owner-local references. `writer_write` accepts at most 1,000 typed persistence validator records; `writer_write_run` consumes a pinned canonical validation artifact and rejects runs with execution issues that a verdict-only stream cannot preserve. Writer/reader creation accepts `asynchronous=true` for native async wrappers. Reads and chunk listings are paged with a bounded `limit`; listings also accept `offset`.
 
@@ -3343,7 +3342,7 @@ execution use the same association.
 
 ### Core plugin
 
-Core 0.2.2 pins published Core 3.3.1 with a frozen dependency lock. Use the Styxis installation and Core setup skill above. Existing grants are retained; individual execution plans still require separate trusted operator approval.
+Core 0.2.3 pins published Core 3.3.2 with a frozen dependency lock. Use the Styxis installation and Core setup skill above. Existing grants are retained; individual execution plans still require separate trusted operator approval.
 
 Windows Ray 2.58 owned local startup queries its existing SDK node client for the exact ALIVE node and valid manager port, avoiding the temporary `GlobalStateAccessor.GetNode` path that produced a native access violation. The scoped hooks are restored on success or failure; other threads and external clusters retain SDK behavior, and the startup deadline is not extended.
 
@@ -3361,35 +3360,10 @@ On Windows byte-mode pipes the zero-size availability check uses the byte count,
 
 ## Distribution catalog
 
-[Styxis Plugins](https://github.com/seadonggyun4/styxis-plugin#install) owns the current installation commands and catalog pins. Local and Core are independent plugins; choose the profile you need.
+[Styxis Plugins](https://github.com/seadonggyun4/styxis-plugin#install) is the installation entry for Local and Core. It maintains the current client commands, plugin versions and fixed source commits. Claude Desktop extensions are separate from Codex and Claude Code plugins and are linked from the same entry.
 
-# Or install the separately permissioned Core profile:
-claude plugin install truthound-core@styxis-plugin
-```
+Refresh the Styxis catalog, update the selected plugin and reconnect. Updates preserve existing grants. Approve data directories through the setup skill; installation alone grants no access. The Local tool names remain `check_file`, `profile_file` and `scan_pii`.
 
-Core plugin 0.2.2 uses the same published Core pin and a frozen lock. Its separate Claude manifest launches `truthound.mcp.consent serve` from the absolute installed plugin directory. Use the Core setup skill for explicit grants and reconnect after changes.
+Execution uses local stdio. First installation may download the pinned runtime; offline use requires those dependencies to be available already. Verification of tool discovery and calls does not establish Agent selection accuracy or full Core parity.
 
-Plugin 0.1.7 has an independent `.claude-plugin/plugin.json` and a Claude-specific
-absolute launcher using `${CLAUDE_PLUGIN_ROOT}`. The portable `mcp.json` and
-Codex compatibility `.mcp.json` retain their plugin-relative `cwd`. The public
-Local runtime remains frozen to published `truthound[mcp]==3.3.1`. The improved
-`tools/list` descriptions and schemas ship in Core 3.3.1. Refresh the marketplace,
-reinstall the plugin and reconnect to update an existing installation.
-
-Approve only the exact existing data directory through the setup skill.
-Installation grants no access; missing consent denies calls. Revoke access with
-`permissions.py --revoke`. The installed names remain `check_file`,
-`profile_file`, `scan_pii` for client compatibility; the server namespace supplies
-product identity. No aliases or extra Core tools are added to the Local surface.
-Execution after dependency setup is local over stdio; first setup can download
-packages. Offline execution requires the runtime already to be available.
-
-The Official MCP Registry now publishes immutable version 3.3.1 with the same
-description, PyPI pin and explicit `--allow-dir` contract as `server.json`. The
-official API confirms active/latest status separately from Git push.
-See the [distribution catalog](https://github.com/seadonggyun4/styxis-plugin)
-for current installation instructions. Product runtime verification is maintained in the Truthound repository.
-
-## Core 3.3.1 publication
-
-The [3.3.1 release notes](../releases/truthound-3.3.1.md) record actual PyPI/Registry publication and verification provenance. Local 0.1.7 pins Core 3.3.1 with a frozen lock. Actual Agent selection accuracy remains unmeasured because CLI access was rejected.
+The MCP Registry provides discovery metadata. Its publication status is separate from Git push and plugin installation. See the [3.3.1 release history](../releases/truthound-3.3.1.md) and [3.3.2 release status](../releases/truthound-3.3.2.md) for package and verification details.

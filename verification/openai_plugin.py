@@ -19,6 +19,7 @@ FILES = (
     "plugin.json",
     "mcp.json",
     ".codex-plugin/plugin.json",
+    ".claude-plugin/plugin.json",
     ".mcp.json",
     "pyproject.toml",
     "uv.lock",
@@ -46,10 +47,12 @@ def build_zip(plugin: Path, output: Path) -> None:
             archive.writestr(entry, source.read_bytes())
 
 
-async def smoke(plugin: Path, work: Path) -> dict:
+async def smoke(plugin: Path, work: Path, client_kind: str = "codex") -> dict:
     from mcp import ClientSession, StdioServerParameters
     from mcp.client.stdio import stdio_client
 
+    assert client_kind in {"codex", "claude"}
+    work.mkdir(parents=True, exist_ok=True)
     config = work / "consent" / "permissions.json"
     environment = work / "runtime"
     env = {
@@ -64,10 +67,17 @@ async def smoke(plugin: Path, work: Path) -> dict:
     assert (
         connection["type"] == "stdio" and connection["command"] == "uv" and "url" not in connection
     )
-    args = [a.replace("${PLUGIN_ROOT}", str(plugin)) for a in connection["args"]]
-    assert not any("${" in a for a in args)
     assert connection["cwd"] == "./"
     working_directory = plugin / connection["cwd"]
+    placeholder = "${PLUGIN_ROOT}"
+    if client_kind == "claude":
+        connection = json.loads((plugin / ".claude-plugin/plugin.json").read_text())["mcpServers"]["truthound"]
+        placeholder = "${CLAUDE_PLUGIN_ROOT}"
+        working_directory = work / "unrelated working directory"
+        working_directory.mkdir()
+    assert connection["type"] == "stdio" and connection["command"] == "uv" and "url" not in connection
+    args = [a.replace(placeholder, str(plugin)) for a in connection["args"]]
+    assert not any("${" in a for a in args)
     data = work / "approved"
     data.mkdir()
     source = data / "input.csv"
@@ -88,7 +98,7 @@ async def smoke(plugin: Path, work: Path) -> dict:
     ):
         initialized = await client.initialize()
         assert (
-            initialized.serverInfo.version == "3.3.1"
+            initialized.serverInfo.version == "3.3.2"
             and initialized.protocolVersion == "2025-11-25"
         )
         tools = {t.name for t in (await client.list_tools()).tools}
@@ -120,8 +130,9 @@ async def smoke(plugin: Path, work: Path) -> dict:
         capture_output=True,
         text=True,
     ).stdout.strip()
-    assert version == "3.3.1"
+    assert version == "3.3.2"
     return {
+        "client": client_kind,
         "core_version": version,
         "protocol": initialized.protocolVersion,
         "tools": sorted(tools),
@@ -181,6 +192,7 @@ def main() -> None:
     assert manifest["name"] == "truthound" and manifest["version"] == project["version"]
     extension = manifest["extensions"]["com.openai"]
     compat = json.loads((plugin / ".codex-plugin/plugin.json").read_text(encoding="utf-8"))
+    claude = json.loads((plugin / ".claude-plugin/plugin.json").read_text(encoding="utf-8"))
     assert compat["interface"] == extension["interface"]
     for key in [
         "name",
@@ -193,6 +205,7 @@ def main() -> None:
         "keywords",
     ]:
         assert compat[key] == manifest[key]
+        assert claude[key] == manifest[key]
     assert compat["requires_local_executor"] is True
     assert compat["extensions"]["com.openai"]["onboardingSkill"] == extension["onboardingSkill"]
     assert (
@@ -207,10 +220,10 @@ def main() -> None:
     virtual = next(p for p in lock["package"] if p["name"] == project["name"])
     assert virtual["version"] == manifest["version"]
     core = next(p for p in lock["package"] if p["name"] == "truthound")
-    assert core["version"] == "3.3.1" and core["source"] == {"registry": "https://pypi.org/simple"}
+    assert core["version"] == "3.3.2" and core["source"] == {"registry": "https://pypi.org/simple"}
     assert (
         core["wheels"][0]["hash"]
-        == "sha256:7631e8c63df59021496d093bd81ba961614b3ad9fb096da249c4f6e662a9f589"
+        == "sha256:6ea961ec86d7bcc0a5baf8fa7a8521d3bd8638d627e10e1d1819f22fec7608cc"
     )
     args.output.mkdir(parents=True, exist_ok=False)
     output = args.output / ("truthound-openai-plugin-" + manifest["version"] + ".zip")
@@ -256,7 +269,8 @@ def main() -> None:
             with zipfile.ZipFile(output) as archive:
                 assert set(archive.namelist()) == set(FILES)
                 archive.extractall(extracted)
-            result["smoke"] = asyncio.run(smoke(extracted, work))
+            result["smoke"] = asyncio.run(smoke(extracted, work / "codex"))
+            result["claude_smoke"] = asyncio.run(smoke(extracted, work / "claude", "claude"))
     (args.output / "verification.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
     print(json.dumps(result))
 
