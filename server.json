@@ -3,7 +3,7 @@
   "name": "io.github.seadonggyun4/truthound",
   "title": "Truthound",
   "description": "Local data quality for CSV/Parquet: nulls, duplicates, profiles, sampled PII; directory consent.",
-  "version": "3.3.2",
+  "version": "3.3.3",
   "repository": {
     "url": "https://github.com/seadonggyun4/truthound",
     "source": "github"
@@ -23,13 +23,13 @@
       "registryType": "pypi",
       "registryBaseUrl": "https://pypi.org",
       "identifier": "truthound",
-      "version": "3.3.2",
+      "version": "3.3.3",
       "runtimeHint": "uvx",
       "runtimeArguments": [
         {
           "type": "named",
           "name": "--with",
-          "value": "truthound[mcp]==3.3.2"
+          "value": "truthound[mcp]==3.3.3"
         }
       ],
       "packageArguments": [

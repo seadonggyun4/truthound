@@ -279,7 +279,7 @@ The root package intentionally exposes a small API.
 Expression validation keeps failure samples, counts and rows attached to the reported column after passing checks are omitted.
 
 The `ai`, `mcp` and `all` extras share a Pydantic 2.11 minimum in 3.3.0.
-Truthound Local plugin 0.1.8 and the separate `truthound-core` 0.2.3 plugin pin Core 3.3.2 and use explicit data, workspace, control and disclosure grants; reconnect after changes.
+Truthound Local plugin 0.1.8 and the separate `truthound-core` 0.2.3 plugin pin Core 3.3.3 and use explicit data, workspace, control and disclosure grants; reconnect after changes.
 
 ## License
 
