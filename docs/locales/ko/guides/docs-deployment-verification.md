@@ -19,7 +19,7 @@ Preview에는 Vercel 인증과 Preview 검색 제외 정책이 적용되며 소�
 기존 호스팅 설정은 제거합니다. 이미 게시된 패키지 메타데이터는 수정할 수 없으므로
 다음 패키지·플러그인 배포부터 새 주소가 제공됩니다.
 
-루트 도메인 `truthound-docs.tech`는 `www.truthound-docs.tech`로 이동합니다. 이전 `truthound-docs.vercel.app` 주소는 요청한 경로와 쿼리를 유지하여 대표 도메인으로 영구 리디렉션됩니다. 이미 게시된 패키지·Registry의 이전 링크도 이 리디렉션으로 계속 사용할 수 있으며, 소스 메타데이터는 대표 주소를 사용합니다.
+루트 도메인 `truthound-docs.tech`는 `www.truthound-docs.tech`로 이동합니다. 이전 `truthound-docs.vercel.app` 주소는 요청한 경로와 쿼리를 유지하여 대표 도메인으로 영구 리디렉션됩니다. 이미 게시된 패키지·Registry의 이전 링크도 이 리디렉션으로 계속 사용할 수 있으며, 소스 메타데이터는 대표 주소를 사용합니다. 도메인 리디렉션은 Vercel Project Domains에서 관리하며, `vercel.json`은 `/ko/` 경로 호환 규칙을 유지합니다.
 
 ## 저장소 설정 확인
 

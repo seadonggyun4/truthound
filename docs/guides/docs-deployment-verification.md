@@ -19,7 +19,7 @@ URLs and applies its Preview indexing policy. Source-map protection stays enable
 The old hosting configuration is removed. Previously published package metadata
 cannot be rewritten; future packages and plugin updates carry the new links.
 
-The apex `truthound-docs.tech` redirects to `www.truthound-docs.tech`. The previous `truthound-docs.vercel.app` hostname permanently redirects to the canonical host while preserving the requested path and query. Existing published package and Registry links remain usable through this redirect; source metadata uses the canonical address.
+The apex `truthound-docs.tech` redirects to `www.truthound-docs.tech`. The previous `truthound-docs.vercel.app` hostname permanently redirects to the canonical host while preserving the requested path and query. Existing published package and Registry links remain usable through this redirect; source metadata uses the canonical address. Domain-level redirects are managed in Vercel Project Domains; `vercel.json` keeps the `/ko/` path compatibility rules.
 
 ## Vercel Configuration Checklist
 
