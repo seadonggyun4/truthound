@@ -1,7 +1,7 @@
 {
   "name": "truthound-core",
-  "version": "0.2.5",
-  "description": "Explicitly authorized local Core tools using Truthound Core 3.3.3.",
+  "version": "0.2.6",
+  "description": "Explicitly authorized local Core tools using Truthound Core 3.3.4.",
   "author": {
     "name": "Truthound contributors",
     "url": "https://github.com/seadonggyun4/truthound"

@@ -38,7 +38,7 @@ def test_core_archive_preserves_client_launchers_and_excludes_private_state(tmp_
         assert args[args.index("--directory") + 1] == "${CLAUDE_PLUGIN_ROOT}"
         assert "--frozen" in args
         lock = tomllib.loads(z.read("uv.lock").decode())
-        assert next(p for p in lock["package"] if p["name"] == "truthound")["version"] == "3.3.3"
+        assert next(p for p in lock["package"] if p["name"] == "truthound")["version"] == "3.3.4"
 
 
 @pytest.mark.parametrize(
@@ -57,7 +57,7 @@ def test_client_or_lock_version_drift_rejected(tmp_path, monkeypatch, file):
         value["version"] = "999.0.0"
         path.write_text(json.dumps(value))
     else:
-        path.write_text(path.read_text().replace('version = "0.2.5"', 'version = "999.0.0"'))
+        path.write_text(path.read_text().replace('version = "0.2.6"', 'version = "999.0.0"'))
     with pytest.raises(AssertionError):
         api(monkeypatch)["versions"](plugin)
 
