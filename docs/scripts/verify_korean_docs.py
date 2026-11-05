@@ -33,14 +33,14 @@ ATTRIBUTE = re.compile(
 
 
 def _approved_core_ui_href(value: str, relative_page: str) -> bool:
-    base = "https://truthound.netlify.app/" + relative_page.removesuffix("index.html")
+    base = "https://truthound-docs.vercel.app/" + relative_page.removesuffix("index.html")
     try:
         parsed = urlsplit(urljoin(base, html_lib.unescape(value)))
     except ValueError:
         return False
     if parsed.query or parsed.fragment:
         return False
-    if parsed.scheme == "https" and parsed.netloc == "truthound.netlify.app":
+    if parsed.scheme == "https" and parsed.netloc == "truthound-docs.vercel.app":
         path = parsed.path.removeprefix("/en") if parsed.path.startswith("/en/") else parsed.path
         return path in CORE_UI_ROUTES
     if parsed.scheme == "https" and parsed.netloc == "github.com":

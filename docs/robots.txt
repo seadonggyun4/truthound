@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://truthound.netlify.app/sitemap.xml
+Sitemap: https://truthound-docs.vercel.app/sitemap.xml

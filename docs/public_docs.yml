@@ -52,7 +52,6 @@ external_sources:
     docs_root: docs
 
 support_files:
-  - _redirects
   - robots.txt
 
 support_directories:

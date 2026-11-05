@@ -2,26 +2,41 @@
 
 Use this page as the canonical operator checklist whenever the public Truthound docs portal is built, verified, or repaired.
 
-## Netlify Configuration Checklist
+## Vercel automatic deployment
 
-- [ ] Netlify source repository is `seadonggyun4/Truthound`
+The `truthound-docs` project uses the Hobby plan and the GitHub repository
+`seadonggyun4/Truthound`. Pushes to `main` deploy the production documentation;
+other branches and pull requests produce authenticated Preview deployments.
+`vercel.json` owns the install command, build command, `site` output directory,
+and permanent `/ko/` compatibility redirects. The install uses Python 3.11 and
+`uv sync --frozen --extra docs`. Builds use the committed orchestration snapshot,
+not a moving upstream checkout. No API or serverless runtime is deployed.
+
+The canonical address is `https://truthound-docs.vercel.app/`. Korean pages use
+`/`; English pages use `/en/`. Production is indexable; Vercel protects Preview
+URLs and applies its Preview indexing policy. Source-map protection stays enabled.
+The old hosting configuration is removed. Previously published package metadata
+cannot be rewritten; future packages and plugin updates carry the new links.
+
+## Vercel Configuration Checklist
+
+- [ ] Vercel source repository is `seadonggyun4/Truthound`
 - [ ] the production branch is `main`
 - [ ] the build command is `sh docs/scripts/build_site.sh`
 - [ ] the publish directory is `site`
-- [ ] the deployed site uses `https://truthound.netlify.app/` as the canonical docs URL
+- [ ] the deployed site uses `https://truthound-docs.vercel.app/` as the canonical docs URL
 - [ ] the docs operator runbook treats the public docs host as the only MkDocs deployment surface
 
 ## Repo Configuration Checklist
 
-- [ ] `mkdocs.yml` sets `site_url: https://truthound.netlify.app/`
+- [ ] `mkdocs.yml` sets `site_url: https://truthound-docs.vercel.app/`
 - [ ] `mkdocs.yml` builds from the staged full docs tree
 - [ ] `mkdocs.public.yml` builds from the staged public docs tree
-- [ ] `netlify.toml` points at the repo-owned docs build script
+- [ ] `vercel.json` points at the repo-owned docs build script
 - [ ] `docs/public_docs.yml` defines the public docs manifest, including section prefixes and exclusions
-- [ ] `docs/_redirects` keeps `truthound.io` and `www.truthound.io` in redirect-only mode toward `truthound.netlify.app`
 - [ ] `docs/orchestration/` is a checked-in snapshot mirrored from `truthound-orchestration`
 - [ ] `docs/ai/` is a locally maintained technical section describing the public `truthound.ai` contract
-- [ ] docs verification confirms dashboard and Depot pages are not hosted inside the Netlify site
+- [ ] docs verification confirms dashboard and Depot pages are not hosted inside the Vercel site
 - [ ] `scripts/fetch-external-docs.sh orchestration` is the canonical pre-release sync step for the orchestration snapshot
 - [ ] full and public docs staging run before the respective MkDocs builds
 - [ ] brand assets remain unchanged:
@@ -32,7 +47,7 @@ Use this page as the canonical operator checklist whenever the public Truthound 
 
 ## Generated Site Checklist
 
-After a local or Netlify build, confirm all of the following under `site/`:
+After a local or Vercel build, confirm all of the following under `site/`:
 
 - [ ] `site/index.html` contains the 3.0 landing copy and expanded portal navigation
 - [ ] `site/tutorials/index.html` exists
@@ -144,4 +159,4 @@ python docs/scripts/verify_public_surface.py --manifest docs/public_docs.yml --s
 
 After the public/Korean build gates, the build writes `deployment-manifest.json` containing only the source Git commit, package version and SHA-256 hashes of explicitly allowlisted public verification pages. The allowlist covers the MCP reference, focused MCP guide, reproducible example, established file/CLI entry pages, CI testing and deployment-verification pages in both languages. It does not collect environment variables, private records or arbitrary files. A deployment record is not evidence of Release CI success or PyPI publication.
 
-Fetch `https://truthound.netlify.app/deployment-manifest.json`, require `source_commit` to equal the intended final commit, then download each fixed public page and compare its exact response bytes with `page_sha256`. An old commit, missing page or hash mismatch remains a failed deployment check. The default Korean pages use `/guides/.../`; English uses `/en/guides/.../`. HTTP 200 and matching text alone do not prove the deployed commit.
+Fetch `https://truthound-docs.vercel.app/deployment-manifest.json`, require `source_commit` to equal the intended final commit, then download each fixed public page and compare its exact response bytes with `page_sha256`. An old commit, missing page or hash mismatch remains a failed deployment check. The default Korean pages use `/guides/.../`; English uses `/en/guides/.../`. HTTP 200 and matching text alone do not prove the deployed commit.

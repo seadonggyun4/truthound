@@ -1,0 +1,31 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "installCommand": "python3 -m pip install uv==0.9.13 && uv sync --frozen --extra docs --python 3.11",
+  "buildCommand": "sh docs/scripts/build_site.sh",
+  "outputDirectory": "site",
+  "trailingSlash": true,
+  "redirects": [
+    {
+      "source": "/ko/",
+      "destination": "/",
+      "permanent": true
+    },
+    {
+      "source": "/ko/:path*/",
+      "destination": "/:path*/",
+      "permanent": true
+    }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        }
+      ]
+    }
+  ]
+}

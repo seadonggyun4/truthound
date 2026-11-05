@@ -1,7 +1,7 @@
 site_name: Truthound — Data Quality Workflow
 site_description: Truthound data quality validation and workflow automation with a Polars-first core
 site_author: SEO DONG GYUN
-site_url: https://truthound.netlify.app/
+site_url: https://truthound-docs.vercel.app/
 
 repo_name: seadonggyun4/Truthound
 repo_url: https://github.com/seadonggyun4/Truthound

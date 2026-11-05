@@ -7,7 +7,7 @@
     "name": "Truthound contributors",
     "url": "https://github.com/seadonggyun4/truthound"
   },
-  "homepage": "https://truthound.netlify.app/guides/mcp/",
+  "homepage": "https://truthound-docs.vercel.app/guides/mcp/",
   "repository": "https://github.com/seadonggyun4/truthound",
   "license": "Apache-2.0",
   "keywords": [
@@ -34,7 +34,7 @@
           "Read approved local data",
           "Aggregate quality summaries"
         ],
-        "websiteURL": "https://truthound.netlify.app/guides/mcp/",
+        "websiteURL": "https://truthound-docs.vercel.app/guides/mcp/",
         "supportURL": "https://github.com/seadonggyun4/truthound/issues",
         "composerIcon": "./assets/icon.png",
         "logo": "./assets/icon.png",

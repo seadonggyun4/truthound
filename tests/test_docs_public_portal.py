@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import json
 import re
 import struct
 import subprocess
@@ -31,7 +32,7 @@ def _check_korean_site(tmp_path, monkeypatch, body: str, surface: str) -> int:
 
 
 def test_full_korean_gate_accepts_only_actual_core_ui_links(tmp_path, monkeypatch):
-    body = '''<link rel="canonical" href="https://truthound.netlify.app/dashboard/">
+    body = '''<link rel="canonical" href="https://truthound-docs.vercel.app/dashboard/">
     <link rel="alternate" href="../en/dashboard/" hreflang="en">
     <a href="../cli/dashboard/">명령어</a>
     <a href="../guides/datadocs/dashboard/">사용법</a>
@@ -40,19 +41,19 @@ def test_full_korean_gate_accepts_only_actual_core_ui_links(tmp_path, monkeypatc
 
 
 @pytest.mark.parametrize("surface,body", [
-    ("public", '<a href="https://truthound.netlify.app/dashboard/">UI</a>'),
+    ("public", '<a href="https://truthound-docs.vercel.app/dashboard/">UI</a>'),
     ("full", '<a href="https://evil.example/dashboard/">외부</a>'),
     ("full", '<a href="https://[invalid/dashboard/">잘못된 URL</a>'),
-    ("full", '<a href="https://truthound.netlify.app/other/dashboard/">미등록</a>'),
-    ("full", '<a href="https://truthound.netlify.app/dashboard/?redirect=external">질의</a>'),
+    ("full", '<a href="https://truthound-docs.vercel.app/other/dashboard/">미등록</a>'),
+    ("full", '<a href="https://truthound-docs.vercel.app/dashboard/?redirect=external">질의</a>'),
     ("full", '<p>/dashboard/</p>'),
-    ("full", '<script>const copied = \'<a href="https://truthound.netlify.app/dashboard/">UI</a>\';</script>'),
-    ("full", '<!-- <a href="https://truthound.netlify.app/dashboard/">UI</a> -->'),
-    ("full", '<a data-href="https://truthound.netlify.app/dashboard/">속성</a>'),
-    ("full", '''<a title="href='https://truthound.netlify.app/dashboard/'">제목</a>'''),
-    ("full", '''<a href="https://truthound.netlify.app/dashboard/" title="href='https://truthound.netlify.app/dashboard/'">제목</a>'''),
-    ("full", '<a href="https://truthound.netlify.app/dashboard/">허용</a><p>truthound-dashboard</p>'),
-    ("full", '<a href="https://truthound.netlify.app/depot/">차단</a>'),
+    ("full", '<script>const copied = \'<a href="https://truthound-docs.vercel.app/dashboard/">UI</a>\';</script>'),
+    ("full", '<!-- <a href="https://truthound-docs.vercel.app/dashboard/">UI</a> -->'),
+    ("full", '<a data-href="https://truthound-docs.vercel.app/dashboard/">속성</a>'),
+    ("full", '''<a title="href='https://truthound-docs.vercel.app/dashboard/'">제목</a>'''),
+    ("full", '''<a href="https://truthound-docs.vercel.app/dashboard/" title="href='https://truthound-docs.vercel.app/dashboard/'">제목</a>'''),
+    ("full", '<a href="https://truthound-docs.vercel.app/dashboard/">허용</a><p>truthound-dashboard</p>'),
+    ("full", '<a href="https://truthound-docs.vercel.app/depot/">차단</a>'),
 ])
 def test_korean_route_policy_still_rejects_removed_or_untrusted_surfaces(tmp_path, monkeypatch, surface, body):
     assert _check_korean_site(tmp_path, monkeypatch, body, surface) == 1
@@ -61,7 +62,7 @@ def test_korean_route_policy_still_rejects_removed_or_untrusted_surfaces(tmp_pat
 def test_core_ui_link_permission_does_not_bypass_language_gate(tmp_path, monkeypatch):
     page = tmp_path / "dashboard/index.html"
     page.parent.mkdir()
-    page.write_text('<a href="https://truthound.netlify.app/dashboard/">English only</a>' * 40, encoding="utf-8")
+    page.write_text('<a href="https://truthound-docs.vercel.app/dashboard/">English only</a>' * 40, encoding="utf-8")
     monkeypatch.setattr(sys, "argv", ["verify_korean_docs", "--site-dir", str(tmp_path), "--surface", "full"])
     assert _korean_checker().main() == 1
 
@@ -194,13 +195,13 @@ def test_language_redirect_matches_static_i18n_output_layout() -> None:
     redirect_js = (
         REPO_ROOT / "docs" / "javascripts" / "language-redirect.js"
     ).read_text(encoding="utf-8")
-    redirects = (REPO_ROOT / "docs" / "_redirects").read_text(encoding="utf-8")
+    redirects = json.loads((REPO_ROOT / "vercel.json").read_text())["redirects"]
 
     assert 'if (lang === "ko")' in redirect_js
     assert 'var nextPath = "/en" + (path === "/" ? "/" : path);' in redirect_js
     assert '"/" + lang + "/"' not in redirect_js
-    assert "/ko/* /:splat 301!" in redirects
-    assert "/ko/ / 301!" in redirects
+    assert {"source": "/ko/:path*/", "destination": "/:path*/", "permanent": True} in redirects
+    assert {"source": "/ko/", "destination": "/", "permanent": True} in redirects
 
 
 def test_public_docs_have_real_korean_locale_overlays() -> None:
@@ -407,8 +408,8 @@ def test_docs_deployment_verification_excludes_dashboard_and_depot_surface() -> 
         REPO_ROOT / "docs" / "guides" / "docs-deployment-verification.md"
     ).read_text(encoding="utf-8")
 
-    assert "https://truthound.netlify.app/" in verification_doc
-    assert "dashboard and Depot pages are not hosted inside the Netlify site" in verification_doc
+    assert "https://truthound-docs.vercel.app/" in verification_doc
+    assert "dashboard and Depot pages are not hosted inside the Vercel site" in verification_doc
     assert "dashboard and Depot docs remain outside the public MkDocs surface" in verification_doc
     assert "docs/dashboard/index.md" not in verification_doc
     assert "docs/ai/" in verification_doc

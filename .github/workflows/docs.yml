@@ -5,10 +5,10 @@ on:
   merge_group:
   workflow_dispatch:
   pull_request:
-    paths: [".github/workflows/docs.yml", "docs/**", "mkdocs.yml", "mkdocs.public.yml", "pyproject.toml", "uv.lock", "src/**", "!src/truthound/mcp/**", "tests/cli_modules/test_plugins_cli.py", "tests/test_docs*.py", "tests/test_public_surface.py", "verification/ci/requirements-lite.txt"]
+    paths: [".github/workflows/docs.yml", "docs/**", "mkdocs.yml", "mkdocs.public.yml", "vercel.json", "pyproject.toml", "uv.lock", "src/**", "!src/truthound/mcp/**", "tests/cli_modules/test_plugins_cli.py", "tests/test_docs*.py", "tests/test_public_surface.py", "verification/ci/requirements-lite.txt"]
   push:
     branches: [main]
-    paths: [".github/workflows/docs.yml", "docs/**", "mkdocs.yml", "mkdocs.public.yml", "pyproject.toml", "uv.lock", "src/**", "!src/truthound/mcp/**", "tests/cli_modules/test_plugins_cli.py", "tests/test_docs*.py", "tests/test_public_surface.py", "verification/ci/requirements-lite.txt"]
+    paths: [".github/workflows/docs.yml", "docs/**", "mkdocs.yml", "mkdocs.public.yml", "vercel.json", "pyproject.toml", "uv.lock", "src/**", "!src/truthound/mcp/**", "tests/cli_modules/test_plugins_cli.py", "tests/test_docs*.py", "tests/test_public_surface.py", "verification/ci/requirements-lite.txt"]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}

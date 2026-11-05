@@ -60,3 +60,15 @@ def test_invalid_build_identity_cannot_replace_previous_deployment_evidence(tmp_
     with pytest.raises((ValueError, OSError)):
         module.write_manifest(tmp_path, commit, version)
     assert destination.read_text() == "previous evidence"
+
+
+def test_vercel_build_records_provider_commit_without_git_checkout(tmp_path, monkeypatch):
+    module = load()
+    prepare(tmp_path, module)
+    monkeypatch.setenv("VERCEL_GIT_COMMIT_SHA", "b" * 40)
+    monkeypatch.setattr("sys.argv", ["manifest", "--site-dir", str(tmp_path)])
+    def no_git(*args, **kwargs):
+        raise AssertionError("Vercel source archives need no .git checkout")
+    monkeypatch.setattr(module.subprocess, "check_output", no_git)
+    module.main()
+    assert json.loads((tmp_path / "deployment-manifest.json").read_text())["source_commit"] == "b" * 40

@@ -142,3 +142,8 @@ truthound-test/
 .github/copilot-instructions.md
 
 AGENTS.md
+
+# Vercel local linkage stays private; deployment configuration is versioned.
+.vercel/
+!vercel.json
+.env*

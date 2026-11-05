@@ -1,6 +1,6 @@
 #!/bin/bash
 # Sync checked-in external docs snapshots from truthound-* repositories.
-# Netlify builds use the committed snapshot only; this script should be run
+# Vercel builds use the committed snapshot only; this script should be run
 # before commit or release when an external docs mirror needs to be refreshed.
 #
 # Usage: ./scripts/fetch-external-docs.sh [repo-name]

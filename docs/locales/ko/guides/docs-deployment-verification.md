@@ -1,38 +1,36 @@
-# Docs Deployment Verification
+# 문서 배포 검증
 
-실무 운영 가이드에서 Truthound을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+공개 문서의 빌드, 배포, 복구 시 사용하는 운영 가이드입니다.
 
-## Netlify 설정 Checklist
+## Vercel 자동 배포
 
-- [ ] Netlify 소스 repository is `seadonggyun4/Truthound`
-- 실무 운영 가이드에서 `main`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-- 실무 운영 가이드에서 `sh docs/scripts/build_site.sh`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-- 실무 운영 가이드에서 `site`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-- 실무 운영 가이드에서 `https://truthound.netlify.app/`, URL을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-- 실무 운영 가이드에서 MkDocs을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+`truthound-docs` 프로젝트는 Hobby 플랜과 GitHub의
+`seadonggyun4/Truthound` 저장소를 사용합니다. `main` push는 운영 문서를,
+다른 브랜치와 pull request는 인증이 필요한 Preview를 배포합니다.
+`vercel.json`에서 설치·빌드 명령, 출력 디렉터리 `site`, `/ko/` 호환
+영구 리디렉션을 관리합니다. Python 3.11에서 `uv sync --frozen --extra docs`로
+의존성을 설치하며, `sh docs/scripts/build_site.sh`로 공개 문서를 검증하고 빌드합니다.
+오케스트레이션 문서는 커밋된 스냅샷을 사용하며 빌드 도중 외부 main을 가져오지 않습니다.
+API나 서버리스 실행 환경은 배포하지 않습니다.
 
-## Repo 설정 Checklist
+대표 주소는 `https://truthound-docs.vercel.app/`입니다. 한국어는 `/`, 영어는
+`/en/` 경로를 사용합니다. 운영 문서는 검색 엔진 수집을 허용합니다.
+Preview에는 Vercel 인증과 Preview 검색 제외 정책이 적용되며 소스맵 보호도 유지합니다.
+기존 호스팅 설정은 제거합니다. 이미 게시된 패키지 메타데이터는 수정할 수 없으므로
+다음 패키지·플러그인 배포부터 새 주소가 제공됩니다.
 
-- 실무 운영 가이드에서 `mkdocs.yml`, `site_url: https://truthound.netlify.app/`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-- 실무 운영 가이드에서 `mkdocs.yml`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-- 실무 운영 가이드에서 `mkdocs.public.yml`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-- 실무 운영 가이드에서 `netlify.toml`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-- 실무 운영 가이드에서 `docs/public_docs.yml`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-- 실무 운영 가이드에서 `docs/_redirects`, `truthound.io`, `www.truthound.io`, `truthound.netlify.app`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-- 실무 운영 가이드에서 `docs/orchestration/`, `truthound-orchestration`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-- 실무 운영 가이드에서 `docs/ai/`, `truthound.ai`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-- 실무 운영 가이드에서 Depot, Netlify을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-- 실무 운영 가이드에서 `scripts/fetch-external-docs.sh orchestration`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-- 실무 운영 가이드에서 MkDocs을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-- [ ] brand 자산 remain unchanged:
-  - 실무 운영 가이드에서 `assets/truthound_banner.png`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-  - 실무 운영 가이드에서 `assets/truthound_icon.png`, MkDocs을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-  - 실무 운영 가이드에서 MkDocs을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
-  - 실무 운영 가이드에서 `theme.logo`, `theme.favicon`, MkDocs을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
+## 저장소 설정 확인
+
+- `mkdocs.yml`과 `mkdocs.public.yml`의 대표 주소가 Vercel인지 확인합니다.
+- full/public 문서 준비 후 각 빌드와 한국어 검증을 수행합니다.
+- `docs/public_docs.yml`의 공개 범위를 유지합니다. dashboard와 Depot는 공개하지 않습니다.
+- `docs/orchestration/`은 저장소 스냅샷, `docs/ai/`는 Core AI 기술 문서입니다.
+- 스냅샷을 갱신할 때만 `scripts/fetch-external-docs.sh orchestration`을 실행합니다.
+- 배너·아이콘·테마 설정은 유지합니다.
 
 ## Generated Site Checklist
 
-실무 운영 가이드에서 `site/`, Netlify을(를) 다루는 항목입니다:
+실무 운영 가이드에서 `site/`, Vercel을(를) 다루는 항목입니다:
 
 - 실무 운영 가이드에서 `site/index.html`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
 - 실무 운영 가이드에서 `site/tutorials/index.html`을(를) 기준으로 데이터 품질 검증, 워크플로우 자동화, 결과 해석 방법을 설명합니다.
@@ -143,4 +141,4 @@ python docs/scripts/verify_public_surface.py --manifest docs/public_docs.yml --s
 
 공개·한국어 빌드 gate 이후 `deployment-manifest.json`에 소스 Git 커밋, 패키지 버전과 명시적으로 허용한 공개 검증 문서의 SHA-256 해시만 기록합니다. 허용 목록에는 MCP 참조·작업 안내·재현 예제, 기존 파일·CLI 진입 문서, CI 검사와 배포 검증 문서가 두 언어로 포함됩니다. 환경 변수, 비공개 기록, 임의 파일을 수집하지 않습니다. 이 기록은 Release CI 성공이나 PyPI 게시 증거를 대신하지 않습니다.
 
-`https://truthound.netlify.app/deployment-manifest.json`의 `source_commit`이 최종 목표 커밋과 같은지 확인하고 고정된 공개 페이지 각각의 실제 응답 바이트를 `page_sha256`과 대조합니다. 이전 커밋, 누락 페이지, 해시 불일치는 배포 검증 실패입니다. 기본 한국어 페이지는 `/guides/.../`, 영어는 `/en/guides/.../`를 사용합니다. HTTP 200과 문구 일치만으로 배포 커밋을 증명하지 않습니다.
+`https://truthound-docs.vercel.app/deployment-manifest.json`의 `source_commit`이 최종 목표 커밋과 같은지 확인하고 고정된 공개 페이지 각각의 실제 응답 바이트를 `page_sha256`과 대조합니다. 이전 커밋, 누락 페이지, 해시 불일치는 배포 검증 실패입니다. 기본 한국어 페이지는 `/guides/.../`, 영어는 `/en/guides/.../`를 사용합니다. HTTP 200과 문구 일치만으로 배포 커밋을 증명하지 않습니다.

@@ -15,7 +15,7 @@
   <em>Sniffs out bad data.</em>
 </p>
 
-[![Documentation](https://img.shields.io/badge/docs-truthound.netlify.app-blue)](https://truthound.netlify.app/)
+[![Documentation](https://img.shields.io/badge/docs-truthound-docs.vercel.app-blue)](https://truthound-docs.vercel.app/en/)
 [![PyPI](https://img.shields.io/pypi/v/truthound.svg)](https://pypi.org/project/truthound/)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-orange.svg)](https://opensource.org/licenses/Apache-2.0)
@@ -73,7 +73,7 @@ workflows, built on a Polars-first validation kernel.
 
 The benchmark CLI supports `--size stress` (100 million rows); `--rows` overrides the preset. See the [benchmark command](docs/cli/benchmark/run.md). Console and JSON benchmark output work without the optional HTML reporting dependencies.
 
-**Documentation**: [truthound.netlify.app](https://truthound.netlify.app/)
+**Documentation**: [truthound-docs.vercel.app](https://truthound-docs.vercel.app/en/)
 
 ---
 
@@ -262,7 +262,7 @@ The root package intentionally exposes a small API.
 
 ## Documentation
 
-- Main docs portal: [truthound.netlify.app](https://truthound.netlify.app/)
+- Main docs portal: [truthound-docs.vercel.app](https://truthound-docs.vercel.app/en/)
 - Overview: [docs/index.md](https://github.com/seadonggyun4/truthound/blob/main/docs/index.md)
 - Getting started: [docs/getting-started/index.md](https://github.com/seadonggyun4/truthound/blob/main/docs/getting-started/index.md)
 - Architecture: [docs/concepts/architecture.md](https://github.com/seadonggyun4/truthound/blob/main/docs/concepts/architecture.md)
@@ -270,7 +270,7 @@ The root package intentionally exposes a small API.
 - Guides: [docs/guides/index.md](https://github.com/seadonggyun4/truthound/blob/main/docs/guides/index.md)
 - Reference: [docs/reference/index.md](https://github.com/seadonggyun4/truthound/blob/main/docs/reference/index.md)
 - AI docs: [docs/ai/index.md](https://github.com/seadonggyun4/truthound/blob/main/docs/ai/index.md)
-- Orchestration: [truthound.netlify.app/orchestration/](https://truthound.netlify.app/orchestration/)
+- Orchestration: [truthound-docs.vercel.app/orchestration/](https://truthound-docs.vercel.app/en/orchestration/)
 - Orchestration getting started: [docs/orchestration/getting-started.md](https://github.com/seadonggyun4/truthound/blob/main/docs/orchestration/getting-started.md)
 - Latest verified benchmark summary: [docs/releases/latest-benchmark-summary.md](https://github.com/seadonggyun4/truthound/blob/main/docs/releases/latest-benchmark-summary.md)
 

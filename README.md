@@ -15,7 +15,7 @@
   <em>Sniffs out bad data.</em>
 </p>
 
-[![Documentation](https://img.shields.io/badge/docs-truthound.netlify.app-blue)](https://truthound.netlify.app/)
+[![Documentation](https://img.shields.io/badge/docs-truthound-docs.vercel.app-blue)](https://truthound-docs.vercel.app/)
 [![PyPI](https://img.shields.io/pypi/v/truthound.svg)](https://pypi.org/project/truthound/)
 [![Python](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-orange.svg)](https://opensource.org/licenses/Apache-2.0)
@@ -72,7 +72,7 @@ Truthound is an open-source framework for data validation and data quality workf
 
 
 **English Readme**: [English README](README.en.md) <br/>
-**문서 (Documentation)**: [truthound.netlify.app](https://truthound.netlify.app/)
+**문서 (Documentation)**: [truthound-docs.vercel.app](https://truthound-docs.vercel.app/)
 
 ---
 
@@ -268,7 +268,7 @@ Lineage sample 메타데이터는 명시적 활성화 시에만 행·바이트 �
 
 ## 문서 (Documentation)
 
-- 메인 문서 포털: [truthound.netlify.app](https://truthound.netlify.app/)
+- 메인 문서 포털: [truthound-docs.vercel.app](https://truthound-docs.vercel.app/)
 - 개요: [docs/index.md](https://github.com/seadonggyun4/truthound/blob/main/docs/index.md)
 - 시작하기: [docs/getting-started/index.md](https://github.com/seadonggyun4/truthound/blob/main/docs/getting-started/index.md)
 - 아키텍처: [docs/concepts/architecture.md](https://github.com/seadonggyun4/truthound/blob/main/docs/concepts/architecture.md)
@@ -276,7 +276,7 @@ Lineage sample 메타데이터는 명시적 활성화 시에만 행·바이트 �
 - 가이드: [docs/guides/index.md](https://github.com/seadonggyun4/truthound/blob/main/docs/guides/index.md)
 - 레퍼런스: [docs/reference/index.md](https://github.com/seadonggyun4/truthound/blob/main/docs/reference/index.md)
 - AI 문서: [docs/ai/index.md](https://github.com/seadonggyun4/truthound/blob/main/docs/ai/index.md)
-- 오케스트레이션: [truthound.netlify.app/orchestration/](https://truthound.netlify.app/orchestration/)
+- 오케스트레이션: [truthound-docs.vercel.app/orchestration/](https://truthound-docs.vercel.app/orchestration/)
 - 오케스트레이션 시작하기: [docs/orchestration/getting-started.md](https://github.com/seadonggyun4/truthound/blob/main/docs/orchestration/getting-started.md)
 - 최신 검증 벤치마크 요약: [docs/releases/latest-benchmark-summary.md](https://github.com/seadonggyun4/truthound/blob/main/docs/releases/latest-benchmark-summary.md)
 
