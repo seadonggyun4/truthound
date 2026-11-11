@@ -230,7 +230,7 @@ class RunInputResolver:
         payload = json.loads(run_path.read_text(encoding="utf-8"))
         if not isinstance(payload, dict):
             raise ValueError(f"Persisted run artifact is not a JSON object: {run_id}")
-        return ValidationRunResult.from_dict(payload)
+        return ValidationRunResult.from_artifact_dict(payload, expected_run_id=run_id)
 
     def _resolve_run_path(self, run_result: ValidationRunResult, context: TruthoundContext) -> Path:
         metadata_path = run_result.metadata.get("context_run_artifact")

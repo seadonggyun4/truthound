@@ -316,6 +316,56 @@ class ValidationRunResult:
         print(output)
 
     @classmethod
+    def from_artifact_dict(
+        cls, data: dict[str, Any], *, expected_run_id: str | None = None
+    ) -> ValidationRunResult:
+        """Read a persisted run without defaulting missing evidence to success.
+
+        Unversioned canonical artifacts remain supported. Unlike ``from_dict``,
+        this boundary requires explicit identity, dimensions and outcome lists.
+        It validates structure, not authenticity or completeness of execution.
+        """
+        def invalid(reason: str) -> None:
+            raise ValueError(f"Invalid validation run artifact: {reason}")
+
+        if not isinstance(data, dict):
+            invalid("expected an object")
+        for key in ("run_id", "run_time", "suite_name", "source"):
+            if not isinstance(data.get(key), str):
+                invalid(f"missing or invalid {key}")
+        if not data["run_time"]:
+            invalid("missing run_time")
+        if not data["run_id"] or (expected_run_id is not None and data["run_id"] != expected_run_id):
+            invalid("run_id does not match the requested run")
+        for key in ("row_count", "column_count"):
+            if type(data.get(key)) is not int or data[key] < 0:
+                invalid(f"missing or invalid {key}")
+        for key in ("checks", "issues", "execution_issues"):
+            if not isinstance(data.get(key), list) or any(
+                not isinstance(item, dict) for item in data[key]
+            ):
+                invalid(f"missing or invalid {key}")
+        for check in data["checks"]:
+            if not isinstance(check.get("name"), str) or type(check.get("success")) is not bool:
+                invalid("invalid check identity or verdict")
+            if type(check.get("issue_count")) is not int or check["issue_count"] < 0:
+                invalid("invalid check issue_count")
+            if not isinstance(check.get("issues"), list):
+                invalid("missing check issues")
+            if any(not isinstance(issue, dict) for issue in check["issues"]):
+                invalid("invalid check issues")
+        for issue in data["issues"] + [i for c in data["checks"] for i in c["issues"]]:
+            if not isinstance(issue.get("severity"), str) or not isinstance(issue.get("issue_type"), str):
+                invalid("missing issue severity or type")
+        for issue in data["execution_issues"]:
+            if not isinstance(issue.get("check_name"), str) or not isinstance(issue.get("message"), str):
+                invalid("invalid execution issue")
+        try:
+            return cls.from_dict(data)
+        except (ValueError, TypeError, KeyError) as exc:
+            raise ValueError("Invalid validation run artifact") from exc
+
+    @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ValidationRunResult:
         return cls(
             run_id=str(data.get("run_id", "")),

@@ -250,6 +250,7 @@ The root package intentionally exposes a small API.
 - Stable facade: `check`, `scan`, `mask`, `profile`, `learn`, `read`, `get_context`
 - Core types: `TruthoundContext`, `ValidationSuite`, `CheckSpec`, `SchemaSpec`, `ValidationRunResult`, `CheckResult`
 - `th.check()` returns `ValidationRunResult` directly.
+- Store round trips preserve check-local evidence; persisted-run readers reject missing outcomes. See [result persistence contracts](docs/guides/migration-3.0.md#result-persistence-contracts).
 - Checkpoint results: `CheckpointResult.validation_run` is canonical, while `CheckpointResult.validation_view` is a legacy compatibility projection.
 - Reporter types: `truthound.reporters.RunPresentation`, `truthound.reporters.ReporterContext`
 - Validation docs entry points: `truthound.datadocs.ValidationDocsBuilder`, `truthound.datadocs.generate_validation_report`

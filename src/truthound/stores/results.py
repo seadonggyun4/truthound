@@ -372,16 +372,9 @@ class ValidationResult:
 
         metadata = dict(run_result.metadata)
         metadata["_validation_run_contract"] = {
-            "checks": [
-                {
-                    "name": check.name,
-                    "category": check.category,
-                    "success": check.success,
-                    "issue_count": check.issue_count,
-                    "metadata": dict(check.metadata),
-                }
-                for check in run_result.checks
-            ],
+            "version": 2,
+            "checks": [check.to_dict() for check in run_result.checks],
+            "issues": [issue.to_dict() for issue in run_result.issues],
             "execution_issues": [issue.to_dict() for issue in run_result.execution_issues],
         }
         metadata.setdefault("_execution_mode", run_result.execution_mode)

@@ -121,3 +121,32 @@ This is the supported path for long-term compatibility in 3.0.
 - [Architecture](../concepts/architecture.md)
 - [Zero-Config Context](../concepts/zero-config.md)
 - [Release Notes: Truthound 3.0](../releases/truthound-3.0.md)
+
+## Result persistence contracts
+
+New persistence DTOs use version 2 of the embedded `_validation_run_contract`.
+They retain each check's own issue evidence, including detail selected by the
+result format, instead of assigning evidence by display name. Repeated validator
+names and display aliases therefore retain their distinct outcomes after a store
+round trip. Treat stored results as sensitive artifacts, just like canonical run
+files; a summary view is not a redaction policy.
+
+Unversioned DTOs remain readable when issue ownership is unambiguous. An old
+contract with repeated check names and matching issue evidence is rejected with
+`ValueError`; rerun validation to recover exact ownership. DTOs without an embedded
+contract retain the legacy row-level projection. Unknown embedded contract
+versions are rejected rather than guessed.
+
+`ValidationRunResult.from_artifact_dict(payload, expected_run_id=...)` is the
+strict persisted-run reader. It requires explicit identity, dimensions, checks,
+issues and execution issues, including explicit empty lists for an empty run.
+AI persisted-run loading validates the requested run ID. Checkpoint restoration
+uses the same reader for a non-null canonical `validation_run`; null still means
+no run. Malformed or incomplete artifacts raise `ValueError` before analysis.
+Existing unversioned canonical files with these fields remain supported.
+
+`ValidationRunResult.from_dict` remains a permissive construction helper for
+compatibility, including intentional empty results. Do not use it as a corruption
+check. Structural validation is not an authenticity guarantee and cannot detect
+all coherent alterations of evidence. Severity filtering narrows the available
+view; it does not rerun checks or recover discarded lower-severity details.

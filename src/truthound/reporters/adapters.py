@@ -86,10 +86,41 @@ def stored_validation_result_to_validation_run_result(
 
     metadata = dict(result.metadata)
     validation_run_meta = metadata.pop("_validation_run_contract", {})
-    if isinstance(validation_run_meta, dict) and validation_run_meta.get("checks"):
+    if isinstance(validation_run_meta, dict) and "version" in validation_run_meta:
+        if type(validation_run_meta["version"]) is not int or validation_run_meta["version"] != 2:
+            raise ValueError("Unsupported persisted validation artifact contract version")
+        # Check-local evidence is authoritative; display names are not identities.
+        restored = ValidationRunResult.from_artifact_dict({
+            "run_id": result.run_id,
+            "run_time": result.run_time.isoformat(),
+            "suite_name": result.suite_name or "stored-validation-result",
+            "source": result.data_asset,
+            "row_count": result.statistics.total_rows,
+            "column_count": result.statistics.total_columns,
+            "checks": validation_run_meta.get("checks"),
+            "issues": validation_run_meta.get("issues"),
+            "execution_issues": validation_run_meta.get("execution_issues"),
+        })
+        checks = list(restored.checks)
+        issues = list(restored.issues)
+    elif isinstance(validation_run_meta, dict) and validation_run_meta.get("checks"):
         issues_by_name: dict[str, list[ValidationIssue]] = {}
         for issue in issues:
             issues_by_name.setdefault(issue.validator_name or issue.issue_type, []).append(issue)
+
+        for name, owned_issues in issues_by_name.items():
+            candidates = [
+                check for check in validation_run_meta["checks"] if str(check["name"]) == name
+            ]
+            if (
+                len(candidates) != 1
+                or candidates[0].get("success", False)
+                or int(candidates[0].get("issue_count", len(owned_issues))) != len(owned_issues)
+            ):
+                raise ValueError(
+                    "Ambiguous legacy validation artifact: issue ownership cannot be recovered; "
+                    "re-run validation to recover check-local evidence"
+                )
 
         checks = [
             CheckResult(

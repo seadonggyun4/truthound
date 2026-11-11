@@ -254,6 +254,7 @@ Lineage sample 메타데이터는 명시적 활성화 시에만 행·바이트 �
 - 안정 파사드: `check`, `scan`, `mask`, `profile`, `learn`, `read`, `get_context`
 - 핵심 타입: `TruthoundContext`, `ValidationSuite`, `CheckSpec`, `SchemaSpec`, `ValidationRunResult`, `CheckResult`
 - `th.check()`는 `ValidationRunResult`를 직접 반환합니다.
+- 저장소 왕복은 검사별 근거를 보존하며 실행 파일 로딩은 누락된 판정을 거부합니다. [결과 저장·복원 계약](docs/locales/ko/guides/migration-3.0.md#result-persistence-contracts)을 참고하세요.
   - 3.1.14부터 issue 상세가 없어도 명시적으로 실패한 check를 실패로 보존합니다. 설치된 버전을 확인해야 합니다.
 - 체크포인트 결과: `CheckpointResult.validation_run`이 정식이며, `CheckpointResult.validation_view`는 레거시 호환 프로젝션입니다.
 - 리포터 타입: `truthound.reporters.RunPresentation`, `truthound.reporters.ReporterContext`

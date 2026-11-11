@@ -85,8 +85,8 @@ def validation_run_to_persistence_dict(run_result: ValidationRunResult) -> dict[
 def validation_run_from_checkpoint_dict(data: dict[str, Any]) -> ValidationRunResult | None:
     """Restore the canonical result model from serialized checkpoint data."""
     payload = data.get("validation_run")
-    if isinstance(payload, dict):
-        return ValidationRunResult.from_dict(payload)
+    if payload is not None:
+        return ValidationRunResult.from_artifact_dict(payload)
 
     legacy_payload = data.get("validation_result")
     if isinstance(legacy_payload, dict):
